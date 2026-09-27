@@ -124,6 +124,31 @@ class ReviewFlowTest(AppTestCase):
                 await pilot.press("n")
         self.assertIn("wow.running_warning", [r["event"] for r in records])
 
+    async def test_confirm_uses_saved_backup_setting_and_flags_no_backup(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            self.cfg.set("wtf_cleaner", "backup_before_delete", False)
+            await pilot.press("c")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertIn("No backup will be made", app.screen.alerts[0])
+            await pilot.press("n")
+
+    async def test_dry_run_is_fixed_at_confirm_time(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            await pilot.press("d", "c")
+            await pilot.pause()
+            review.dry_run = False  # flipped after the user confirmed a simulation
+            await pilot.press("y")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            self.assertTrue(app.screen.result.dry_run)
+        self.assertTrue((self.sv / "Uninstalled.lua").exists())
+
     async def test_odd_names_render_without_markup(self):
         (self.sv / "[Weird] Addon.lua").write_text("x")
         app = self.make_app()

@@ -27,8 +27,8 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 | 11 | Updater part 1: release check | done | 1d9e346 | No deviations |
 | 12 | Updater part 2: apply + update command | done | 3f8d9d5 | No deviations; hardened after review: rollback failure names .update-backup |
 | 13 | Dispatcher, registry, CLI, wrappers | done | 91a4494 | No deviations |
-| 14 | Shared UI | done | | No deviations (plan code verbatim; 6 tests pass on Textual 8.2.8) |
-| 15 | WTF Cleaner TUI | done | | No code deviations (plan code verbatim; 8 tests pass on Textual 8.2.8); Step 6 interactive smoke test not run by the subagent (needs a human terminal) |
+| 14 | Shared UI | done | 5b31c47 | No deviations (plan code verbatim; 6 tests pass on Textual 8.2.8) |
+| 15 | WTF Cleaner TUI | done | 5886042 | No code deviations (plan code verbatim; 8 tests pass on Textual 8.2.8); Step 6 interactive smoke test not run by the subagent (needs a human terminal); hardened after review: dry run fixed at confirm, backup setting re-read, no-backup shown in red |
 | 16 | Documentation | pending | | |
 | 17 | Verify end to end + publish v0.1.0 | pending | | Needs the user's approval for the release |
 
@@ -40,5 +40,5 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 | M2 Core services | 5–7 | yes |
 | M3 Cleaner logic | 8–10 | yes |
 | M4 Updater + CLI | 11–13 | yes |
-| M5 TUI | 14–15 | |
+| M5 TUI | 14–15 | yes |
 | M6 Docs + verification | 16–17 | |

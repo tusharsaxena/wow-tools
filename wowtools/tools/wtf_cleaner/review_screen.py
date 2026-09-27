@@ -37,15 +37,19 @@ class ConfirmScreen(ModalScreen[bool]):
     """
     BINDINGS = [Binding("y", "answer(True)", "Yes"), Binding("n,escape", "answer(False)", "No")]
 
-    def __init__(self, title: str, body: str) -> None:
+    def __init__(self, title: str, body: str, alerts: tuple[str, ...] = ()) -> None:
         super().__init__()
         self.title_text = title
-        self.body_text = body
+        self.alerts = alerts
+        self.body_text = "\n".join([body, *alerts]) if alerts else body
 
     def compose(self) -> ComposeResult:
         with Vertical(id="confirm-box"):
             yield Static(Text(self.title_text), id="confirm-title")
-            yield Static(Text(self.body_text))
+            body = Text(self.body_text)
+            for alert in self.alerts:
+                body.highlight_words([alert], style="bold #E5534B")
+            yield Static(body)
             with Horizontal(id="confirm-buttons"):
                 yield Button("Yes (y)", variant="primary", id="yes")
                 yield Button("No (n)", id="no")
@@ -355,33 +359,41 @@ class ReviewScreen(Screen[str]):
         running = self.wow_check()
         if running:
             log_event("wow.running_warning", executables=running)
+        self.settings = load_settings(self.cfg)
         backup = self.settings.backup_before_delete
+        dry_run = self.dry_run
         backup_dir = self.cfg.backup_dir
         files = sum(len(i.files) for i in selection)
         size = format_size(sum(i.total_size for i in selection))
         lines = [f"{len(selection)} addon groups, {files} files, {size}."]
-        lines.append(f"Backup zip goes to: {backup_dir}" if backup else "No backup will be made (backup is off in settings).")
-        if self.dry_run:
+        alerts: list[str] = []
+        if backup:
+            lines.append(f"Backup zip goes to: {backup_dir}")
+        else:
+            alerts.append("No backup will be made (backup is off in settings).")
+        if dry_run:
             lines.append("DRY RUN: nothing will be written or deleted.")
         if running:
-            lines.append(f"WoW appears to be running ({', '.join(running)}). Close it first: WoW rewrites "
-                         "SavedVariables when you log out.")
-        title = "Simulate this clean?" if self.dry_run else "Back up and delete these files?"
-        self.app.push_screen(ConfirmScreen(title, "\n".join(lines)),
-                             lambda ok: self._confirmed(ok, selection, backup, backup_dir))
+            alerts.append(f"WoW appears to be running ({', '.join(running)}). Close it first: WoW rewrites "
+                          "SavedVariables when you log out.")
+        title = "Simulate this clean?" if dry_run else "Back up and delete these files?"
+        self.app.push_screen(ConfirmScreen(title, "\n".join(lines), tuple(alerts)),
+                             lambda ok: self._confirmed(ok, selection, backup, backup_dir, dry_run))
 
     def _confirmed(self, ok: bool | None, selection: list[ProposalItem], backup: bool,
-                   backup_dir: Path | None) -> None:
-        log_event("ui.selection", screen="confirm", control="confirm", value=bool(ok), dry_run=self.dry_run)
+                   backup_dir: Path | None, dry_run: bool) -> None:
+        # dry_run is the value shown in the confirm dialog, so what the user agreed to is what runs.
+        log_event("ui.selection", screen="confirm", control="confirm", value=bool(ok), dry_run=dry_run)
         if not ok:
             return
         self.app.busy = True
-        self.run_worker(lambda: self._clean_worker(selection, backup, backup_dir), thread=True,
+        self.run_worker(lambda: self._clean_worker(selection, backup, backup_dir, dry_run), thread=True,
                         exclusive=True, group="clean")
 
-    def _clean_worker(self, selection: list[ProposalItem], backup: bool, backup_dir: Path | None) -> None:
+    def _clean_worker(self, selection: list[ProposalItem], backup: bool, backup_dir: Path | None,
+                      dry_run: bool) -> None:
         try:
-            result = execute(selection, self.flavor, dry_run=self.dry_run, backup=backup, backup_dir=backup_dir)
+            result = execute(selection, self.flavor, dry_run=dry_run, backup=backup, backup_dir=backup_dir)
         except (BackupError, CleanError) as exc:
             if isinstance(exc, CleanError):
                 log_exception("clean", exc)
