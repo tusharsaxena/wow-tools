@@ -10,7 +10,7 @@ from wowtools.core.config import Config
 from wowtools.core.events import get_event_log, log_event, log_exception
 from wowtools.core.install import WowInstall
 from wowtools.core.paths import to_native
-from wowtools.core.process import running_wow_executables
+from wowtools.core.process import wow_check_for
 from wowtools.core.updater import UpdateCheck
 from wowtools.tools.wtf_cleaner.cleaner import CleanError, execute
 from wowtools.tools.wtf_cleaner.report import (format_proposal_text, format_result_text, format_size,
@@ -44,7 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str], *, cfg: Config | None = None, stdout=None, stderr=None, input_fn=input,
-         wow_check=running_wow_executables) -> int:
+         wow_check=None) -> int:
     stdout = stdout or sys.stdout
     stderr = stderr or sys.stderr
     try:
@@ -172,7 +172,7 @@ def _run(args, cfg: Config, stdout, stderr, input_fn, wow_check) -> int:
     if not args.json:
         out(format_proposal_text(proposal, flavor))
 
-    running = wow_check()
+    running = (wow_check or wow_check_for(flavor))()
     if running:
         log_event("wow.running_warning", executables=running)
         err(f"Warning: WoW appears to be running ({', '.join(running)}). Close it first: "

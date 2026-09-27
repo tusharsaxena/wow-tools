@@ -16,6 +16,7 @@ from wowtools.core.backup import BackupError
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import ACCOUNT_WIDE, Flavor
+from wowtools.core.process import wow_check_for
 from wowtools.tools.wtf_cleaner.cleaner import CleanError, CleanResult, execute
 from wowtools.tools.wtf_cleaner.report import CRITERION_SHORT, age_days, format_result_text, format_size
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, ProposalItem, evaluate
@@ -124,12 +125,12 @@ class ReviewScreen(Screen[str]):
     ]
 
     def __init__(self, cfg: Config, flavor: Flavor, *, account: str | None = None,
-                 wow_check: Callable[[], list[str] | None]) -> None:
+                 wow_check: Callable[[], list[str] | None] | None = None) -> None:
         super().__init__()
         self.cfg = cfg
         self.flavor = flavor
         self.account = account or None
-        self.wow_check = wow_check
+        self.wow_check = wow_check or wow_check_for(flavor)
         self.settings = load_settings(cfg)
         self.criteria = self.settings.criteria.copy()
         self.dry_run = False

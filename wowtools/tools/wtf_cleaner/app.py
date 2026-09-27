@@ -14,7 +14,6 @@ from textual.widgets import Button, Footer, Header, Input, Label, Static, Switch
 from wowtools.core.config import Config
 from wowtools.core.install import Flavor, WowInstall, detect_installs
 from wowtools.core.paths import to_native, to_stored
-from wowtools.core.process import running_wow_executables
 from wowtools.tools.wtf_cleaner.report import CRITERION_LABELS
 from wowtools.tools.wtf_cleaner.review_screen import ReviewScreen
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, Criteria
@@ -112,7 +111,7 @@ class WtfCleanerApp(Ka0sApp):
     BINDINGS = [Binding("s", "settings", "Settings")]
 
     def __init__(self, cfg: Config, *, check_updates: bool = True,
-                 wow_check: Callable[[], list[str] | None] = running_wow_executables,
+                 wow_check: Callable[[], list[str] | None] | None = None,
                  detect: Callable[[], list[Path]] = detect_installs) -> None:
         super().__init__(cfg, check_updates=check_updates)
         self._wow_check = wow_check
