@@ -1,0 +1,114 @@
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from textual.widgets import Input
+
+from tests.fixtures import build_wow_tree
+from wowtools.core.config import Config
+from wowtools.core.events import capture_events
+from wowtools.core.install import WowInstall
+from wowtools.core.updater import ReleaseInfo
+from wowtools.ui.base import Ka0sApp, UpdateScreen
+from wowtools.ui.branding import BrandBar
+from wowtools.ui.flavor_screen import FlavorScreen
+from wowtools.ui.setup_screen import SetupScreen
+from wowtools.ui.tool_picker import ToolPickerApp
+
+
+class Host(Ka0sApp):
+    """Pushes one screen and records what it dismisses with."""
+
+    def __init__(self, cfg, screen):
+        super().__init__(cfg, check_updates=False)
+        self._screen = screen
+        self.results = []
+
+    def after_mount(self):
+        self.push_screen(self._screen, self.results.append)
+
+
+class UiTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+        self.root = build_wow_tree(self.tmp / "World of Warcraft")
+        self.cfg = Config(self.tmp / "wow-tools.cfg")
+
+
+class ToolPickerTest(UiTestCase):
+    async def test_theme_branding_and_choice(self):
+        app = ToolPickerApp(self.cfg, check_updates=False)
+        async with app.run_test(size=(120, 40)) as pilot:
+            self.assertEqual(app.theme, "ka0s")
+            self.assertEqual(app.title, "Ka0s · WoW Tools")
+            self.assertIn("Ka0s WoW Tools v0.1.0", app.query_one(BrandBar).text)
+            await pilot.press("enter")
+        self.assertEqual(app.return_value, "wtf-cleaner")
+
+    async def test_update_badge_and_prompt(self):
+        app = ToolPickerApp(self.cfg, check_updates=False)
+        applied = []
+        with patch("wowtools.ui.base.apply_update", side_effect=lambda rel: applied.append(rel) or "Updated"):
+            async with app.run_test(size=(120, 40)) as pilot:
+                app._update_found(ReleaseInfo.from_version("9.9.9"))
+                await pilot.pause()
+                self.assertIn("v9.9.9 available", app.query_one(BrandBar).text)
+                await pilot.press("u")
+                await pilot.pause()
+                self.assertIsInstance(app.screen, UpdateScreen)
+                await pilot.click("#update-yes")
+                await pilot.pause()
+        self.assertEqual([r.version for r in applied], ["9.9.9"])
+
+    async def test_update_blocked_while_busy(self):
+        app = ToolPickerApp(self.cfg, check_updates=False)
+        async with app.run_test(size=(120, 40)) as pilot:
+            app._update_found(ReleaseInfo.from_version("9.9.9"))
+            app.busy = True
+            await pilot.press("u")
+            await pilot.pause()
+            self.assertNotIsInstance(app.screen, UpdateScreen)
+
+
+class SetupScreenTest(UiTestCase):
+    async def test_rejects_invalid_folder_then_saves(self):
+        screen = SetupScreen(self.cfg, first_run=True, detect=lambda: [])
+        app = Host(self.cfg, screen)
+        with capture_events() as records:
+            async with app.run_test(size=(120, 50)) as pilot:
+                screen.query_one("#wow_path", Input).value = str(self.tmp / "nothing-here")
+                await pilot.click("#save")
+                await pilot.pause()
+                self.assertIn("No WoW flavor folders", screen.error_text)
+                self.assertEqual(app.results, [])
+                screen.query_one("#wow_path", Input).value = str(self.root)
+                await pilot.click("#save")
+                await pilot.pause()
+        self.assertEqual(app.results, [True])
+        saved = Config(self.cfg.path).load()
+        self.assertEqual(saved.wow_path, self.root)
+        changed = [r for r in records if r["event"] == "config.changed"]
+        self.assertEqual(changed[0]["data"]["source"], "wizard")
+
+    async def test_prefills_detected_install(self):
+        screen = SetupScreen(self.cfg, first_run=True, detect=lambda: [self.root])
+        app = Host(self.cfg, screen)
+        async with app.run_test(size=(120, 50)):
+            self.assertEqual(screen.query_one("#wow_path", Input).value, str(self.root))
+
+
+class FlavorScreenTest(UiTestCase):
+    async def test_last_flavor_preselected_and_logged(self):
+        self.cfg.set("general", "last_flavor", "_classic_era_")
+        app = Host(self.cfg, FlavorScreen(self.cfg, WowInstall(self.root)))
+        with capture_events() as records:
+            async with app.run_test(size=(120, 40)) as pilot:
+                await pilot.pause()
+                await pilot.press("enter")
+                await pilot.pause()
+        self.assertEqual(app.results[0].folder, "_classic_era_")
+        selections = [r["data"] for r in records if r["event"] == "ui.selection"]
+        self.assertIn({"screen": "flavor", "control": "flavor", "value": "_classic_era_"}, selections)

@@ -27,7 +27,7 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 | 11 | Updater part 1: release check | done | 1d9e346 | No deviations |
 | 12 | Updater part 2: apply + update command | done | 3f8d9d5 | No deviations; hardened after review: rollback failure names .update-backup |
 | 13 | Dispatcher, registry, CLI, wrappers | done | 91a4494 | No deviations |
-| 14 | Shared UI | pending | | |
+| 14 | Shared UI | done | | No deviations (plan code verbatim; 6 tests pass on Textual 8.2.8) |
 | 15 | WTF Cleaner TUI | pending | | |
 | 16 | Documentation | pending | | |
 | 17 | Verify end to end + publish v0.1.0 | pending | | Needs the user's approval for the release |
