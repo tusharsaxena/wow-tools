@@ -2615,7 +2615,7 @@ def format_proposal_text(proposal: Proposal, flavor: Flavor, now: float | None =
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest tests.test_rules -v`
-Expected: 16 tests, OK.
+Expected: 15 tests, OK.
 
 - [ ] **Step 5: Commit**
 

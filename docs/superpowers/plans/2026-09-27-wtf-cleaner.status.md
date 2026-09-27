@@ -21,9 +21,9 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 | 5 | WoW install model + test fixture tree | done |  | No deviations |
 | 6 | Verified zip backups | done | 5461825 | No deviations |
 | 7 | "Is WoW running?" check | done | 9751713 | No deviations |
-| 8 | WTF Cleaner scanner + event registry | done | | No deviations |
-| 9 | Rules, settings, report | done | | No code deviations (plan says 16 tests; its test file has 15, all pass) |
-| 10 | Clean pipeline | done | | No deviations |
+| 8 | WTF Cleaner scanner + event registry | done | b983c70 | No deviations |
+| 9 | Rules, settings, report | done | 4294b06 | No code deviations (plan says 16 tests; its test file has 15, all pass) |
+| 10 | Clean pipeline | done | 5897e4a | No deviations |
 | 11 | Updater part 1: release check | pending | | |
 | 12 | Updater part 2: apply + update command | pending | | |
 | 13 | Dispatcher, registry, CLI, wrappers | pending | | |
@@ -38,7 +38,7 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 |---|---|---|
 | M1 Core foundation | 1–4 | yes |
 | M2 Core services | 5–7 | yes |
-| M3 Cleaner logic | 8–10 | |
+| M3 Cleaner logic | 8–10 | yes |
 | M4 Updater + CLI | 11–13 | |
 | M5 TUI | 14–15 | |
 | M6 Docs + verification | 16–17 | |
