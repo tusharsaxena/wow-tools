@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Vertical, VerticalScroll
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label, Markdown
@@ -13,6 +13,7 @@ from wowtools.core.config import Config
 from wowtools.core.events import log_event
 from wowtools.core.updater import ReleaseInfo, UpdateError, apply_update, check_for_update
 from wowtools.ui.theme import KA0S_THEME
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint
 
 
 class UpdateScreen(ModalScreen[bool]):
@@ -24,7 +25,7 @@ class UpdateScreen(ModalScreen[bool]):
     UpdateScreen #update-buttons { height: auto; align-horizontal: right; }
     UpdateScreen Button { margin-left: 2; }
     """
-    BINDINGS = [Binding("escape", "later", "Later")]
+    BINDINGS = [Binding("escape", "later", "Later"), *NAV_BINDINGS]
 
     def __init__(self, release: ReleaseInfo) -> None:
         super().__init__()
@@ -35,9 +36,13 @@ class UpdateScreen(ModalScreen[bool]):
             yield Label(f"Ka0s WoW Tools v{self.release.version} is available (you have v{__version__}).")
             with VerticalScroll(id="update-notes"):
                 yield Markdown(self.release.notes or "_No release notes._")
-            with Horizontal(id="update-buttons"):
+            with ButtonRow(id="update-buttons"):
                 yield Button("Update now", variant="primary", id="update-yes")
                 yield Button("Later", id="update-no")
+            yield NavHint("←→ buttons · ↑↓/Tab move · Enter press · Esc later")
+
+    def on_mount(self) -> None:
+        self.query_one("#update-yes", Button).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.dismiss(event.button.id == "update-yes")

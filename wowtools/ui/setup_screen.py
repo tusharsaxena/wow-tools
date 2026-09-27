@@ -7,7 +7,7 @@ from typing import Callable
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Label, Static
 
@@ -16,6 +16,7 @@ from wowtools.core.events import log_event
 from wowtools.core.install import WowInstall, detect_installs
 from wowtools.core.paths import to_native, to_stored
 from wowtools.ui.branding import Banner, BrandBar
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint
 
 
 class SetupScreen(Screen[bool]):
@@ -27,7 +28,7 @@ class SetupScreen(Screen[bool]):
     SetupScreen .buttons { height: auto; margin-top: 1; }
     SetupScreen Button { margin-right: 2; }
     """
-    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+    BINDINGS = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
 
     def __init__(self, cfg: Config, *, first_run: bool,
                  detect: Callable[[], list[Path]] = detect_installs) -> None:
@@ -39,7 +40,7 @@ class SetupScreen(Screen[bool]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with VerticalScroll(id="setup"):
+        with VerticalScroll(id="setup", can_focus=False):
             yield Banner()
             yield Static("First-time setup" if self.first_run else "General settings", classes="title")
             yield Label("World of Warcraft folder (the one that contains _retail_, _classic_ and so on)")
@@ -47,9 +48,10 @@ class SetupScreen(Screen[bool]):
                         id="wow_path")
             yield Static(Text(self._detected_hint()), classes="hint")
             yield Static("", id="setup-error")
-            with Horizontal(classes="buttons"):
+            with ButtonRow(classes="buttons"):
                 yield Button("Save", variant="primary", id="save")
                 yield Button("Cancel", id="cancel")
+            yield NavHint("↑↓/Tab move · ←→ buttons · Enter save/press · Esc cancel")
         yield BrandBar()
         yield Footer()
 

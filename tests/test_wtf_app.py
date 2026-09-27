@@ -5,21 +5,22 @@ import unittest
 from pathlib import Path
 
 from textual.app import App
-from textual.widgets import Button, Input, ProgressBar, Static, Tree
+from textual.widgets import Button, DataTable, Input, ProgressBar, Static, Tree
 
 from tests.fixtures import build_wow_tree, make_config
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.tools.wtf_cleaner.app import CleanerSettingsScreen, WtfCleanerApp
 from wowtools.core.install import WowInstall
-from wowtools.tools.wtf_cleaner.report import CRITERION_COLORS
+from wowtools.tools.wtf_cleaner.cleaner import CleanResult, FileOutcome
+from wowtools.tools.wtf_cleaner.report import CRITERION_COLORS, RESULT_COLUMNS, result_rows
 from wowtools.tools.wtf_cleaner.review_screen import (CleanProgressScreen, ConfirmScreen, RecoveryScreen,
                                                       ResultScreen, ReviewScreen)
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, criterion_counts
 from wowtools.tools.wtf_cleaner.safety import MARKER_NAME
 from wowtools.tools.wtf_cleaner.scanner import scan
 from wowtools.tools.wtf_cleaner.settings import load_settings
-from wowtools.ui.widgets import Ka0sCheckbox
+from wowtools.ui.widgets import ButtonRow, Ka0sCheckbox, NavHint
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
@@ -455,6 +456,192 @@ class FirstRunTest(AppTestCase):
             await pilot.pause()
             self.assertIsNot(app.screen, screen)
         self.assertEqual(load_settings(Config(self.cfg.path).load()).backup_dir, target)
+
+
+class KeyboardNavigationTest(AppTestCase):
+    async def test_confirm_keyboard_navigation(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            await pilot.press("y")
+            await pilot.pause()
+            confirm = app.screen
+            self.assertIsInstance(confirm, ConfirmScreen)
+            self.assertTrue(confirm.query(ButtonRow))
+            self.assertTrue(confirm.query(NavHint))
+            self.assertEqual(confirm.focused.id, "yes")
+            await pilot.press("right")
+            self.assertEqual(confirm.focused.id, "no")
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertIs(app.screen, review)
+            await pilot.press("c")
+            await pilot.pause()
+            confirm = app.screen
+            self.assertIsInstance(confirm, ConfirmScreen)
+            self.assertEqual(confirm.focused.id, "no")
+            await pilot.press("left")
+            self.assertEqual(confirm.focused.id, "yes")
+            await pilot.press("escape")
+            await pilot.pause()
+            self.assertIs(app.screen, review)
+        self.assertTrue((self.sv / "Uninstalled.lua").exists())
+        self.assertFalse(list(self.backup_dir.glob("*.zip")))
+
+    async def test_confirm_dismisses_false_on_enter_over_no(self):
+        results = []
+
+        class Probe(App):
+            def on_mount(self):
+                self.push_screen(ConfirmScreen("t", "b", default_yes=True), results.append)
+
+        app = Probe()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("right", "enter")
+            await pilot.pause()
+        self.assertEqual(results, [False])
+
+    async def test_result_screen_tables(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await pilot.press("y")
+            await pilot.pause()
+            await pilot.press("y")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            screen = app.screen
+            self.assertIsInstance(screen, ResultScreen)
+            summary = screen.query_one("#result-summary", DataTable)
+            self.assertEqual([str(c.label) for c in summary.ordered_columns], ["Item", "Value"])
+            rows = {str(summary.get_row_at(i)[0]): str(summary.get_row_at(i)[1]) for i in range(summary.row_count)}
+            self.assertIn("Would delete", rows)
+            self.assertIn("8", rows["Would delete"])
+            self.assertEqual(rows["Mode"], "Dry run")
+            self.assertEqual(rows["Safety snapshot"], "not taken (dry run)")
+            for key in ("Backup zip", "Size", "Skipped", "Failed"):
+                self.assertIn(key, rows)
+            files = screen.query_one("#result-files", DataTable)
+            self.assertEqual(files.row_count, 8)
+            self.assertEqual([str(c.label) for c in files.ordered_columns],
+                             ["Status", "Account", "Character", "Addon", "File", "Size", "Reasons"])
+            self.assertTrue(screen.query(ButtonRow))
+            self.assertTrue(screen.query(NavHint))
+            self.assertEqual(screen.focused.id, "review")
+            await pilot.press("right", "right")
+            self.assertEqual(screen.focused.id, "quit")
+
+    async def test_real_clean_result_summary(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await pilot.press("c")
+            await pilot.pause()
+            await pilot.press("y")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            summary = app.screen.query_one("#result-summary", DataTable)
+            rows = {str(summary.get_row_at(i)[0]): str(summary.get_row_at(i)[1]) for i in range(summary.row_count)}
+            self.assertEqual(rows["Mode"], "Clean")
+            self.assertIn("8", rows["Deleted"])
+            self.assertEqual(rows["Safety snapshot"], "taken and removed after success")
+
+    async def test_setup_and_settings_keyboard_only(self):
+        cfg = Config(self.tmp / "fresh.cfg")
+        app = self.make_app(cfg=cfg)
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            setup = app.screen
+            self.assertIsInstance(setup, SetupScreen)
+            self.assertEqual(setup.focused.id, "wow_path")
+            self.assertTrue(setup.query(ButtonRow))
+            self.assertTrue(setup.query(NavHint))
+            await pilot.press(*str(self.root))
+            self.assertEqual(setup.query_one("#wow_path", Input).value, str(self.root))
+            await pilot.press("down")
+            self.assertEqual(setup.focused.id, "save")
+            await pilot.press("enter")
+            await pilot.pause()
+            settings = app.screen
+            self.assertIsInstance(settings, CleanerSettingsScreen)
+            self.assertTrue(settings.query(ButtonRow))
+            self.assertTrue(settings.query(NavHint))
+            self.assertFalse(settings.query("Switch"))
+            order = [settings.focused.id]
+            for _ in range(7):
+                await pilot.press("down")
+                order.append(settings.focused.id)
+            self.assertEqual(order, ["max_age", "backup_dir", *[f"sw_{n}" for n in CRITERIA], "sw_backup", "save"])
+            for name in (*[f"sw_{n}" for n in CRITERIA], "sw_backup"):
+                self.assertIsInstance(settings.query_one(f"#{name}"), Ka0sCheckbox)
+            await pilot.press("up")  # back to the backup toggle
+            self.assertEqual(settings.focused.id, "sw_backup")
+            self.assertTrue(settings.focused.value)
+            await pilot.press("space")
+            self.assertFalse(settings.focused.value)
+            await pilot.press("down", "enter")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, FlavorScreen)
+        saved = load_settings(Config(cfg.path).load())
+        self.assertFalse(saved.backup_before_delete)
+        self.assertEqual(Config(cfg.path).load().wow_path, self.root)
+
+    async def test_arrow_keys_stay_with_tree(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            self.assertIs(review.focused, tree)
+            before = tree.cursor_line
+            await pilot.press("down")
+            await pilot.pause()
+            self.assertIs(review.focused, tree)
+            self.assertEqual(tree.cursor_line, before + 1)
+
+
+class ResultRowsTest(unittest.TestCase):
+    def test_result_rows(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = build_wow_tree(Path(tmp.name) / "World of Warcraft")
+        retail = WowInstall(root).flavor("retail")
+        acct = retail.account_dir / "ACCT1"
+        result = CleanResult(dry_run=False, backup_path=None, outcomes=[
+            FileOutcome(acct / "SavedVariables" / "Uninstalled.lua.bak", 2048, "deleted", "",
+                        ("not_installed",)),
+            FileOutcome(acct / "Realm1" / "CharA" / "SavedVariables" / "Uninstalled.lua", 10, "skipped",
+                        "changed since the scan", ("not_installed", "older_than")),
+            FileOutcome(acct / "SavedVariables" / "Details.lua - Copy.bak", 5, "failed", "denied",
+                        ("stray_copies",)),
+        ])
+        rows = result_rows(result, retail)
+        self.assertEqual(RESULT_COLUMNS, ("Status", "Account", "Character", "Addon", "File", "Size", "Reasons"))
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0], ("Deleted", "ACCT1", "account-wide", "Uninstalled", "Uninstalled.lua.bak",
+                                   "2.0 KB", "not_installed"))
+        self.assertEqual(rows[1], ("Skipped: changed since the scan", "ACCT1", "Realm1/CharA", "Uninstalled",
+                                   "Uninstalled.lua", "10 B", "not_installed, older_than"))
+        self.assertEqual(rows[2][0], "Failed: denied")
+        self.assertEqual(rows[2][3], "Details")
+        self.assertTrue(all(len(row) == len(RESULT_COLUMNS) for row in rows))
+        self.assertTrue(all(isinstance(cell, str) for row in rows for cell in row))
+
+
+class SpaceKeyTest(AppTestCase):
+    async def test_space_on_button_presses_it_and_leaves_selection_alone(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            before = set(review.unchecked)
+            review.query_one("#btn-dry").focus()
+            await pilot.press("space")
+            await pilot.pause()
+            self.assertEqual(review.unchecked, before)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            await pilot.press("n")
 
 
 def _walk(node):

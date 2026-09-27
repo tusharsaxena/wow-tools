@@ -16,6 +16,7 @@ from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.tool_picker import ToolPickerApp
+from wowtools.ui.widgets import ButtonRow, NavHint
 
 
 class Host(Ka0sApp):
@@ -103,7 +104,33 @@ class SetupScreenTest(UiTestCase):
             self.assertEqual(len(screen.query("#backup_dir")), 0)
 
 
+class UpdateScreenKeyboardTest(UiTestCase):
+    async def test_update_screen_keyboard(self):
+        screen = UpdateScreen(ReleaseInfo.from_version("9.9.9"))
+        app = Host(self.cfg, screen)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            self.assertEqual(screen.focused.id, "update-yes")
+            self.assertTrue(screen.query(ButtonRow))
+            self.assertTrue(screen.query(NavHint))
+            await pilot.press("right")
+            self.assertEqual(screen.focused.id, "update-no")
+            await pilot.press("enter")
+            await pilot.pause()
+        self.assertEqual(app.results, [False])
+
+
 class FlavorScreenTest(UiTestCase):
+    async def test_escape_goes_back_and_hint_shown(self):
+        app = Host(self.cfg, FlavorScreen(self.cfg, WowInstall(self.root)))
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            self.assertIsInstance(app.screen.focused, OptionList)
+            self.assertTrue(app.screen.query(NavHint))
+            await pilot.press("escape")
+            await pilot.pause()
+        self.assertEqual(app.results, [None])
+
     async def test_last_flavor_preselected_and_logged(self):
         self.cfg.set("general", "last_flavor", "_classic_era_")
         app = Host(self.cfg, FlavorScreen(self.cfg, WowInstall(self.root)))
@@ -126,6 +153,8 @@ class AccountScreenTest(UiTestCase):
         async with app.run_test(size=(120, 40)) as pilot:
             await pilot.pause()
             options = app.screen.query_one(OptionList)
+            self.assertIs(app.screen.focused, options)
+            self.assertTrue(app.screen.query(NavHint))
             self.assertEqual([options.get_option_at_index(i).id for i in range(options.option_count)],
                              ["__all__", "ACCT1", "ACCT2"])
             await pilot.press("enter")

@@ -14,14 +14,16 @@ from wowtools.core.config import GENERAL, Config
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor, WowInstall
 from wowtools.ui.branding import Banner, BrandBar
+from wowtools.ui.widgets import NAV_BINDINGS, NavHint
 
 
 class FlavorScreen(Screen[Optional[Flavor]]):
     DEFAULT_CSS = """
     FlavorScreen .title { color: $accent; text-style: bold; padding: 0 2; }
+    FlavorScreen NavHint { padding: 0 2; }
     FlavorScreen OptionList { margin: 1 2; height: auto; max-height: 20; border: tall $primary; }
     """
-    BINDINGS = [Binding("escape", "cancel", "Quit")]
+    BINDINGS = [Binding("escape", "cancel", "Quit"), *NAV_BINDINGS]
 
     def __init__(self, cfg: Config, install: WowInstall) -> None:
         super().__init__()
@@ -34,6 +36,7 @@ class FlavorScreen(Screen[Optional[Flavor]]):
         yield Static("Choose a WoW flavor", classes="title")
         yield OptionList(*[Option(Text(f"{f.display_name}  ({f.folder})"), id=f.folder) for f in self.flavors],
                          id="flavors")
+        yield NavHint("↑↓ choose · Enter select · Esc quit")
         yield BrandBar()
         yield Footer()
 

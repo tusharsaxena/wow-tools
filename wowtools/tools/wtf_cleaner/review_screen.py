@@ -8,9 +8,9 @@ from typing import Callable
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, ProgressBar, Static, Tree
+from textual.widgets import Button, Checkbox, DataTable, Footer, Header, Input, Label, ProgressBar, Static, Tree
 
 from wowtools.core.backup import BackupError
 from wowtools.core.config import Config
@@ -18,8 +18,8 @@ from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import ACCOUNT_WIDE, Flavor
 from wowtools.core.process import wow_check_for
 from wowtools.tools.wtf_cleaner.cleaner import CleanError, CleanResult, execute
-from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, age_days, format_result_text,
-                                               format_size)
+from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, RESULT_COLUMNS, age_days,
+                                               format_size, result_rows)
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, ProposalItem, criterion_counts, evaluate
 from wowtools.tools.wtf_cleaner.safety import Marker, clear_marker, read_marker, recovery_message
 from wowtools.tools.wtf_cleaner.scanner import ScanError, ScanResult, scan
@@ -43,10 +43,11 @@ class ConfirmScreen(ModalScreen[bool]):
     ConfirmScreen #confirm-buttons { height: auto; align-horizontal: right; margin-top: 1; }
     ConfirmScreen Button { margin-left: 2; }
     """
-    BINDINGS = [Binding("y", "answer(True)", "Yes"), Binding("n,escape", "answer(False)", "No")]
+    BINDINGS = [Binding("y", "answer(True)", "Yes"), Binding("n,escape", "answer(False)", "No"), *NAV_BINDINGS]
 
-    def __init__(self, title: str, body: str, alerts: tuple[str, ...] = ()) -> None:
+    def __init__(self, title: str, body: str, alerts: tuple[str, ...] = (), *, default_yes: bool = False) -> None:
         super().__init__()
+        self.default_yes = default_yes
         self.title_text = title
         self.alerts = alerts
         self.body_text = "\n".join([body, *alerts]) if alerts else body
@@ -58,9 +59,13 @@ class ConfirmScreen(ModalScreen[bool]):
             for alert in self.alerts:
                 body.highlight_words([alert], style="bold #E5534B")
             yield Static(body)
-            with Horizontal(id="confirm-buttons"):
+            with ButtonRow(id="confirm-buttons"):
                 yield Button("Yes (y)", variant="primary", id="yes")
                 yield Button("No (n)", id="no")
+            yield NavHint("←→ choose · Enter press · y yes · n/Esc no")
+
+    def on_mount(self) -> None:
+        self.query_one("#yes" if self.default_yes else "#no", Button).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.dismiss(event.button.id == "yes")
@@ -142,30 +147,78 @@ class RecoveryScreen(ModalScreen[str]):
 
 
 class ResultScreen(Screen[str]):
+    """The outcome of a clean or dry run: a summary table, a per-file table and what to do next."""
+
     DEFAULT_CSS = """
-    ResultScreen #result { padding: 1 2; }
+    ResultScreen #result { height: 1fr; padding: 1 2; }
+    ResultScreen #result-summary { height: auto; margin-bottom: 1; }
+    ResultScreen #result-files { height: 1fr; }
     ResultScreen .buttons { height: auto; padding: 0 2; }
     ResultScreen Button { margin-right: 2; }
+    ResultScreen NavHint { padding: 0 2; margin-top: 0; }
     """
     BINDINGS = [Binding("r", "choose('review')", "Rescan"), Binding("f", "choose('flavors')", "Flavors"),
-                Binding("q", "choose('quit')", "Quit")]
+                Binding("q", "choose('quit')", "Quit"), *NAV_BINDINGS]
 
-    def __init__(self, result: CleanResult) -> None:
+    def __init__(self, result: CleanResult, flavor: Flavor) -> None:
         super().__init__()
         self.result = result
+        self.flavor = flavor
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with VerticalScroll(id="result"):
-            yield Static(Text(format_result_text(self.result)))
-        with Horizontal(classes="buttons"):
+        with Vertical(id="result"):
+            yield DataTable(id="result-summary", cursor_type="row", zebra_stripes=True)
+            yield DataTable(id="result-files", cursor_type="row", zebra_stripes=True)
+        with ButtonRow(classes="buttons"):
             yield Button("Rescan (r)", variant="primary", id="review")
             yield Button("Other flavor (f)", id="flavors")
             yield Button("Quit (q)", id="quit")
+        yield NavHint("↑↓/Tab move · ←→ buttons · Enter press · r rescan · f other flavor · q quit")
         yield Footer()
 
     def on_mount(self) -> None:
         self.sub_title = "WTF Cleaner · dry run result" if self.result.dry_run else "WTF Cleaner · result"
+        summary = self.query_one("#result-summary", DataTable)
+        summary.add_columns("Item", "Value")
+        summary.add_rows((Text(item), Text(value)) for item, value in self.summary_rows())
+        files = self.query_one("#result-files", DataTable)
+        files.add_columns(*RESULT_COLUMNS)
+        for outcome, row in zip(self.result.outcomes, result_rows(self.result, self.flavor)):
+            status, *middle, reasons = row
+            files.add_row(Text(status, style=self._status_style(outcome.status)), *(Text(c) for c in middle),
+                          ReviewScreen._reasons(list(outcome.reasons)))
+        self.query_one("#review", Button).focus()
+
+    def summary_rows(self) -> list[tuple[str, str]]:
+        result = self.result
+        done = result.would_delete if result.dry_run else result.deleted
+        if result.dry_run:
+            snapshot = "not taken (dry run)"
+        elif result.snapshot_path is not None:
+            snapshot = "taken and removed after success"
+        else:
+            snapshot = "not taken"
+        return [
+            ("Mode", "Dry run" if result.dry_run else "Clean"),
+            ("Backup zip", str(result.backup_path) if result.backup_path else "none (backup is off)"),
+            ("Safety snapshot", snapshot),
+            ("Would delete" if result.dry_run else "Deleted", f"{len(done)} files"),
+            ("Size", format_size(result.bytes_freed)),
+            ("Skipped", f"{len(result.skipped)} files (changed or missing since the scan)"),
+            ("Failed", f"{len(result.failed)} files"),
+        ]
+
+    def _status_style(self, status: str) -> str:
+        try:
+            theme = self.app.current_theme
+            colours = {"deleted": theme.success, "would_delete": theme.accent, "skipped": theme.warning,
+                       "failed": theme.error}
+        except Exception:  # noqa: BLE001 - no theme yet: use the Ka0s colours
+            colours = {}
+        fallback = {"deleted": SUCCESS_FALLBACK, "would_delete": "#5CC8FF", "skipped": "#E8C547",
+                    "failed": "#E5534B"}
+        return f"bold {colours.get(status) or fallback.get(status, '')}".strip()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.action_choose(event.button.id or "quit")
@@ -435,6 +488,11 @@ class ReviewScreen(Screen[str]):
         if isinstance(focused, Checkbox):
             focused.toggle()
             return
+        if isinstance(focused, Button):  # Space activates the focused button (§A.8), never the tree
+            focused.press()
+            return
+        if not isinstance(focused, Tree):
+            return
         node = self.query_one("#proposal", Tree).cursor_node
         if node is None or node.data is None:
             return
@@ -538,7 +596,7 @@ class ReviewScreen(Screen[str]):
             alerts.append(f"WoW appears to be running ({', '.join(running)}). Close it first: WoW rewrites "
                           "SavedVariables when you log out.")
         title = "Simulate this clean?" if dry_run else "Back up and delete these files?"
-        self.app.push_screen(ConfirmScreen(title, "\n".join(lines), tuple(alerts)),
+        self.app.push_screen(ConfirmScreen(title, "\n".join(lines), tuple(alerts), default_yes=dry_run),
                              lambda ok: self._confirmed(ok, selection, backup, backup_dir, dry_run))
 
     def _confirmed(self, ok: bool | None, selection: list[ProposalItem], backup: bool,
@@ -583,7 +641,7 @@ class ReviewScreen(Screen[str]):
         self.app.busy = False
         self._close_progress()
         self.unchecked.clear()
-        self.app.push_screen(ResultScreen(result), self._after_result)
+        self.app.push_screen(ResultScreen(result, self.flavor), self._after_result)
 
     def _after_result(self, choice: str | None) -> None:
         if choice == "flavors":

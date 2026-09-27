@@ -14,6 +14,7 @@ from wowtools.core.config import Config
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor
 from wowtools.ui.branding import Banner, BrandBar
+from wowtools.ui.widgets import NAV_BINDINGS, NavHint
 
 ALL_ID = "__all__"
 
@@ -23,9 +24,10 @@ class AccountScreen(Screen[Optional[str]]):
 
     DEFAULT_CSS = """
     AccountScreen .title { color: $accent; text-style: bold; padding: 0 2; }
+    AccountScreen NavHint { padding: 0 2; }
     AccountScreen OptionList { margin: 1 2; height: auto; max-height: 20; border: tall $primary; }
     """
-    BINDINGS = [Binding("escape", "back", "Back")]
+    BINDINGS = [Binding("escape", "back", "Back"), *NAV_BINDINGS]
 
     def __init__(self, cfg: Config, flavor: Flavor, last: str | None = None) -> None:
         super().__init__()
@@ -40,6 +42,7 @@ class AccountScreen(Screen[Optional[str]]):
         yield Static(f"Choose an account ({self.flavor.display_name})", classes="title")
         yield OptionList(Option(Text("All accounts"), id=ALL_ID),
                          *[Option(Text(name), id=name) for name in self.accounts], id="accounts")
+        yield NavHint("↑↓ choose · Enter select · Esc back")
         yield BrandBar()
         yield Footer()
 

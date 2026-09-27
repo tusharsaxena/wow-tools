@@ -7,9 +7,9 @@ from typing import Callable
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Input, Label, Static, Switch
+from textual.widgets import Button, Footer, Header, Input, Label, Static
 
 from wowtools.core.config import Config
 from wowtools.core.install import Flavor, WowInstall, detect_installs
@@ -24,19 +24,19 @@ from wowtools.ui.base import Ka0sApp
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint
 
 
 class CleanerSettingsScreen(Screen[bool]):
     DEFAULT_CSS = """
     CleanerSettingsScreen #settings { padding: 0 2; }
     CleanerSettingsScreen .title { color: $accent; text-style: bold; margin: 1 0; }
-    CleanerSettingsScreen .row { height: auto; margin-bottom: 1; }
-    CleanerSettingsScreen .row Label { padding: 1 0 0 1; }
+    CleanerSettingsScreen Ka0sCheckbox { margin-bottom: 1; }
     CleanerSettingsScreen #settings-error { color: $error; height: auto; }
     CleanerSettingsScreen .buttons { height: auto; margin-top: 1; }
     CleanerSettingsScreen Button { margin-right: 2; }
     """
-    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+    BINDINGS = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
 
     def __init__(self, cfg: Config, *, source: str) -> None:
         super().__init__()
@@ -48,30 +48,29 @@ class CleanerSettingsScreen(Screen[bool]):
     def compose(self) -> ComposeResult:
         criteria = self.settings.criteria
         yield Header()
-        with VerticalScroll(id="settings"):
+        with VerticalScroll(id="settings", can_focus=False):
             yield Static("WTF Cleaner settings", classes="title")
             yield Label("Propose SavedVariables older than this many days")
             yield Input(str(criteria.max_age_days), type="integer", id="max_age")
-            yield Static("Propose SavedVariables when:", classes="title")
-            for name in CRITERIA:
-                with Horizontal(classes="row"):
-                    yield Switch(getattr(criteria, name), id=f"sw_{name}")
-                    yield Label(CRITERION_LABELS[name])
-            with Horizontal(classes="row"):
-                yield Switch(self.settings.backup_before_delete, id="sw_backup")
-                yield Label("Back up files to a timestamped zip before deleting (recommended)")
             yield Label("Backup folder (leave empty to use <WoW folder>/wow-tools/wtf-cleaner)")
             yield Input(to_stored(self.settings.backup_dir) if self.settings.backup_dir else "",
                         placeholder=_default_backup_hint(self.cfg), id="backup_dir")
+            yield Static("Propose SavedVariables when:", classes="title")
+            for name in CRITERIA:
+                yield Ka0sCheckbox(CRITERION_LABELS[name], getattr(criteria, name), id=f"sw_{name}")
+            yield Ka0sCheckbox("Back up files to a timestamped zip before deleting (recommended)",
+                               self.settings.backup_before_delete, id="sw_backup")
             yield Static("", id="settings-error")
-            with Horizontal(classes="buttons"):
+            with ButtonRow(classes="buttons"):
                 yield Button("Save", variant="primary", id="save")
                 yield Button("Cancel", id="cancel")
+            yield NavHint("↑↓/Tab move · ←→ buttons · Space/Enter tick · Enter press · Esc cancel")
         yield BrandBar()
         yield Footer()
 
     def on_mount(self) -> None:
         self.sub_title = "WTF Cleaner settings"
+        self.query_one("#max_age", Input).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "save":
@@ -91,10 +90,10 @@ class CleanerSettingsScreen(Screen[bool]):
             self.error_text = "Max age must be a whole number of days, at least 1."
             self.query_one("#settings-error", Static).update(Text(self.error_text))
             return
-        criteria = Criteria(**{name: self.query_one(f"#sw_{name}", Switch).value for name in CRITERIA},
+        criteria = Criteria(**{name: self.query_one(f"#sw_{name}", Ka0sCheckbox).value for name in CRITERIA},
                             max_age_days=days)
         backup_raw = self.query_one("#backup_dir", Input).value.strip()
-        save_settings(self.cfg, CleanerSettings(criteria, self.query_one("#sw_backup", Switch).value,
+        save_settings(self.cfg, CleanerSettings(criteria, self.query_one("#sw_backup", Ka0sCheckbox).value,
                                                 to_native(backup_raw) if backup_raw else None,
                                                 load_settings(self.cfg).last_account),
                       source=self.source)

@@ -5,6 +5,7 @@ import time
 
 from wowtools.core.install import ACCOUNT_WIDE, Flavor
 from wowtools.tools.wtf_cleaner.rules import Proposal
+from wowtools.tools.wtf_cleaner.scanner import addon_name_for
 
 DAY = 86400.0
 
@@ -126,3 +127,32 @@ def format_result_text(result) -> str:
         lines.append(f"Failed: {len(result.failed)} files")
         lines += [f"  {o.path}  ({o.detail})" for o in result.failed]
     return "\n".join(lines)
+
+
+RESULT_COLUMNS = ("Status", "Account", "Character", "Addon", "File", "Size", "Reasons")
+STATUS_LABELS = {"deleted": "Deleted", "would_delete": "Would delete", "skipped": "Skipped", "failed": "Failed"}
+
+
+def _owner(path, flavor: Flavor) -> tuple[str, str]:
+    """(account, character label) for a SavedVariables file under the flavor's WTF/Account folder."""
+    try:
+        parts = path.relative_to(flavor.account_dir).parts
+    except ValueError:
+        return "", ""
+    account = parts[0] if parts else ""
+    if len(parts) >= 5:  # <account>/<realm>/<character>/SavedVariables/<file>
+        return account, f"{parts[1]}/{parts[2]}"
+    return account, ACCOUNT_WIDE
+
+
+def result_rows(result, flavor: Flavor) -> list[tuple[str, ...]]:
+    """One row per outcome, in RESULT_COLUMNS order. Skipped and failed rows carry their reason in Status."""
+    rows = []
+    for outcome in result.outcomes:
+        status = STATUS_LABELS.get(outcome.status, outcome.status)
+        if outcome.detail:
+            status = f"{status}: {outcome.detail}"
+        account, character = _owner(outcome.path, flavor)
+        rows.append((status, account, character, addon_name_for(outcome.path.name) or "", outcome.path.name,
+                     format_size(outcome.size), ", ".join(outcome.reasons)))
+    return rows
