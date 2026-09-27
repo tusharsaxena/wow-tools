@@ -40,7 +40,14 @@ class ButtonRow(Horizontal):
     BINDINGS = [
         Binding("left", "move(-1)", "Previous button", show=False),
         Binding("right", "move(1)", "Next button", show=False),
+        Binding("space", "press_focused", "Press", show=False),
     ]
+
+    def action_press_focused(self) -> None:
+        """Space activates the focused button, like Enter (Textual's Button only binds Enter)."""
+        focused = self.screen.focused
+        if isinstance(focused, Button) and focused in self.query(Button):
+            focused.press()
 
     def action_move(self, step: int) -> None:
         buttons = [b for b in self.query(Button) if b.focusable]

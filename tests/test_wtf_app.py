@@ -488,6 +488,31 @@ class KeyboardNavigationTest(AppTestCase):
         self.assertTrue((self.sv / "Uninstalled.lua").exists())
         self.assertFalse(list(self.backup_dir.glob("*.zip")))
 
+    async def test_space_presses_buttons_and_esc_leaves_results(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            await pilot.press("c")
+            await pilot.pause()
+            self.assertEqual(app.screen.focused.id, "no")
+            await pilot.press("space")  # Space on the focused No button: cancel
+            await pilot.pause()
+            self.assertIs(app.screen, review)
+            await pilot.press("y")
+            await pilot.pause()
+            await pilot.press("space")  # Space on the focused Yes button: run the dry run
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ResultScreen)
+            self.assertFalse(app.screen.query_one("#result-summary").can_focus)
+            await pilot.press("escape")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            self.assertIs(app.screen, review)
+        self.assertTrue((self.sv / "Uninstalled.lua").exists())
+
     async def test_confirm_dismisses_false_on_enter_over_no(self):
         results = []
 

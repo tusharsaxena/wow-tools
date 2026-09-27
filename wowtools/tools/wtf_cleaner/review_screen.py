@@ -29,7 +29,7 @@ from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, Ka
 
 ACCENT = "bold #5CC8FF"
 SUCCESS_FALLBACK = "#4CC38A"
-NAV_HINT = ("↑↓/Tab move · ←→ buttons · Space tick · Enter press · 1-4 criteria · c clean · y dry run · "
+NAV_HINT = ("↑↓/Tab move · ←→ buttons · Space tick · Enter/Space press · 1-4 criteria · c clean · y dry run · "
             "r rescan")
 STAGE_TITLES = {"snapshot": "Taking safety snapshot", "backup": "Writing backup", "verify": "Verifying backup",
                 "delete": "Deleting"}
@@ -62,7 +62,7 @@ class ConfirmScreen(ModalScreen[bool]):
             with ButtonRow(id="confirm-buttons"):
                 yield Button("Yes (y)", variant="primary", id="yes")
                 yield Button("No (n)", id="no")
-            yield NavHint("←→ choose · Enter press · y yes · n/Esc no")
+            yield NavHint("←→ choose · Enter/Space press · y yes · n/Esc no")
 
     def on_mount(self) -> None:
         self.query_one("#yes" if self.default_yes else "#no", Button).focus()
@@ -158,7 +158,8 @@ class ResultScreen(Screen[str]):
     ResultScreen NavHint { padding: 0 2; margin-top: 0; }
     """
     BINDINGS = [Binding("r", "choose('review')", "Rescan"), Binding("f", "choose('flavors')", "Flavors"),
-                Binding("q", "choose('quit')", "Quit"), *NAV_BINDINGS]
+                Binding("q", "choose('quit')", "Quit"), Binding("escape", "choose('review')", "Back", show=False),
+                *NAV_BINDINGS]
 
     def __init__(self, result: CleanResult, flavor: Flavor) -> None:
         super().__init__()
@@ -168,13 +169,15 @@ class ResultScreen(Screen[str]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="result"):
-            yield DataTable(id="result-summary", cursor_type="row", zebra_stripes=True)
+            summary = DataTable(id="result-summary", cursor_type="none", zebra_stripes=True)
+            summary.can_focus = False  # read-only summary: not a focus stop
+            yield summary
             yield DataTable(id="result-files", cursor_type="row", zebra_stripes=True)
         with ButtonRow(classes="buttons"):
             yield Button("Rescan (r)", variant="primary", id="review")
             yield Button("Other flavor (f)", id="flavors")
             yield Button("Quit (q)", id="quit")
-        yield NavHint("↑↓/Tab move · ←→ buttons · Enter press · r rescan · f other flavor · q quit")
+        yield NavHint("↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · r rescan · f other flavor · q quit")
         yield Footer()
 
     def on_mount(self) -> None:

@@ -64,7 +64,7 @@ class CleanerSettingsScreen(Screen[bool]):
             with ButtonRow(classes="buttons"):
                 yield Button("Save", variant="primary", id="save")
                 yield Button("Cancel", id="cancel")
-            yield NavHint("↑↓/Tab move · ←→ buttons · Space/Enter tick · Enter press · Esc cancel")
+            yield NavHint("↑↓/Tab move · ←→ buttons · Space/Enter tick · Enter/Space press · Esc cancel")
         yield BrandBar()
         yield Footer()
 

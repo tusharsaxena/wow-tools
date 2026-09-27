@@ -39,7 +39,7 @@ class UpdateScreen(ModalScreen[bool]):
             with ButtonRow(id="update-buttons"):
                 yield Button("Update now", variant="primary", id="update-yes")
                 yield Button("Later", id="update-no")
-            yield NavHint("←→ buttons · ↑↓/Tab move · Enter press · Esc later")
+            yield NavHint("←→ buttons · ↑↓/Tab move · Enter/Space press · Esc later")
 
     def on_mount(self) -> None:
         self.query_one("#update-yes", Button).focus()
