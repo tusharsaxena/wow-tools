@@ -21,7 +21,7 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 | 5 | WoW install model + test fixture tree | done |  | No deviations |
 | 6 | Verified zip backups | done | 5461825 | No deviations |
 | 7 | "Is WoW running?" check | done | 9751713 | No deviations |
-| 8 | WTF Cleaner scanner + event registry | pending | | |
+| 8 | WTF Cleaner scanner + event registry | done | | No deviations |
 | 9 | Rules, settings, report | pending | | |
 | 10 | Clean pipeline | pending | | |
 | 11 | Updater part 1: release check | pending | | |

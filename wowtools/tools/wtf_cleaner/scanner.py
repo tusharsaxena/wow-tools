@@ -1,0 +1,205 @@
+"""Find installed and enabled addons and group every SavedVariables file by addon."""
+from __future__ import annotations
+
+import re
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Iterable
+
+from wowtools.core.events import log_event
+from wowtools.core.install import ACCOUNT_WIDE, Account, Character, Flavor
+
+PROTECTED_PREFIXES = ("blizzard_",)
+_LUA = re.compile(r"\.lua", re.IGNORECASE)
+
+
+class ScanError(Exception):
+    """The flavor cannot be scanned safely."""
+
+
+@dataclass(frozen=True)
+class ScanWarning:
+    path: str
+    message: str
+
+    def __str__(self) -> str:
+        return f"{self.path}: {self.message}"
+
+
+@dataclass(frozen=True)
+class SVFile:
+    path: Path
+    size: int
+    mtime: float
+    canonical: bool
+
+    @property
+    def name(self) -> str:
+        return self.path.name
+
+
+@dataclass
+class SVGroup:
+    account: str
+    character: Character | None
+    addon: str
+    files: list[SVFile] = field(default_factory=list)
+
+    @property
+    def scope(self) -> str:
+        return "character" if self.character else "account"
+
+    @property
+    def owner_label(self) -> str:
+        return self.character.label if self.character else ACCOUNT_WIDE
+
+    @property
+    def key(self) -> str:
+        return f"{self.account}|{self.owner_label}|{self.addon.casefold()}"
+
+    @property
+    def newest_mtime(self) -> float:
+        return max(f.mtime for f in self.files)
+
+    @property
+    def total_size(self) -> int:
+        return sum(f.size for f in self.files)
+
+
+@dataclass
+class ScanResult:
+    flavor: Flavor
+    installed: dict[str, str]
+    enabled: set[str]
+    groups: list[SVGroup]
+    accounts: int
+    characters: int
+    warnings: list[ScanWarning]
+
+    @property
+    def sv_files(self) -> int:
+        return sum(len(g.files) for g in self.groups)
+
+
+def addon_name_for(filename: str) -> str | None:
+    """Everything before the first '.lua' (any case); None if there is no addon name."""
+    match = _LUA.search(filename)
+    if not match or match.start() == 0:
+        return None
+    return filename[:match.start()]
+
+
+def is_canonical(filename: str, addon: str) -> bool:
+    """True for the only two names WoW itself writes: <Addon>.lua and <Addon>.lua.bak."""
+    return filename.casefold() in {f"{addon}.lua".casefold(), f"{addon}.lua.bak".casefold()}
+
+
+def installed_addons(addons_dir: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    try:
+        entries = list(addons_dir.iterdir())
+    except OSError:
+        return result
+    for folder in entries:
+        try:
+            if folder.is_dir() and any(p.suffix.lower() == ".toc" for p in folder.iterdir()):
+                result[folder.name.casefold()] = folder.name
+        except OSError:
+            continue
+    return result
+
+
+def parse_addons_txt(path: Path, warnings: list[ScanWarning] | None = None) -> dict[str, bool]:
+    """Parse 'Name: enabled|disabled' lines. Keys are casefolded addon names."""
+    text = path.read_bytes().decode("utf-8", errors="replace")
+    states: dict[str, bool] = {}
+    for lineno, raw in enumerate(text.splitlines(), start=1):
+        line = raw.strip()
+        if not line:
+            continue
+        name, sep, state = line.rpartition(":")
+        state = state.strip().lower()
+        if not sep or not name.strip() or state not in ("enabled", "disabled"):
+            if warnings is not None:
+                warnings.append(ScanWarning(str(path), f"line {lineno} not understood: {raw!r}"))
+            continue
+        states[name.strip().casefold()] = state == "enabled"
+    return states
+
+
+def enabled_addons(characters: Iterable[Character], installed: dict[str, str],
+                   warnings: list[ScanWarning]) -> set[str]:
+    """Global union: enabled on any character. Unlisted or no AddOns.txt means WoW's default (on)."""
+    enabled: set[str] = set()
+    for character in characters:
+        if not character.addons_txt.is_file():
+            enabled.update(installed)
+            continue
+        try:
+            states = parse_addons_txt(character.addons_txt, warnings)
+        except OSError as exc:
+            warnings.append(ScanWarning(str(character.addons_txt), f"cannot read: {exc}"))
+            enabled.update(installed)
+            continue
+        enabled.update(name for name, on in states.items() if on)
+        enabled.update(name for name in installed if name not in states)
+    return enabled
+
+
+def _scan_sv_dir(sv_dir: Path, account: Account, character: Character | None,
+                 warnings: list[ScanWarning]) -> list[SVGroup]:
+    if not sv_dir.is_dir():
+        return []
+    try:
+        entries = sorted(sv_dir.iterdir(), key=lambda p: p.name.casefold())
+    except OSError as exc:
+        warnings.append(ScanWarning(str(sv_dir), f"cannot read folder: {exc}"))
+        return []
+    groups: dict[str, SVGroup] = {}
+    for path in entries:
+        addon = addon_name_for(path.name)
+        if addon is None or addon.casefold().startswith(PROTECTED_PREFIXES):
+            continue
+        try:
+            if not path.is_file():
+                continue
+            stat = path.stat()
+        except OSError as exc:
+            warnings.append(ScanWarning(str(path), f"cannot read file: {exc}"))
+            continue
+        group = groups.setdefault(addon.casefold(), SVGroup(account.name, character, addon))
+        group.files.append(SVFile(path, stat.st_size, stat.st_mtime, is_canonical(path.name, addon)))
+    return list(groups.values())
+
+
+def scan(flavor: Flavor) -> ScanResult:
+    started = time.monotonic()
+    log_event("scan.started", flavor=flavor.folder, wow_path=str(flavor.path.parent))
+    installed = installed_addons(flavor.addons_dir)
+    if not installed:
+        raise ScanError(f"No addons found in {flavor.addons_dir}. Refusing to scan: every "
+                        "SavedVariables file would look uninstalled.")
+    warnings: list[ScanWarning] = []
+
+    def on_error(path: Path, exc: OSError) -> None:
+        warnings.append(ScanWarning(str(path), f"cannot read folder: {exc}"))
+
+    accounts = flavor.accounts(on_error)
+    characters = [c for account in accounts for c in account.characters(on_error)]
+    enabled = enabled_addons(characters, installed, warnings)
+    log_event("scan.addons", installed=sorted(installed.values(), key=str.casefold), enabled=sorted(enabled))
+
+    groups: list[SVGroup] = []
+    for account in accounts:
+        groups += _scan_sv_dir(account.saved_variables_dir, account, None, warnings)
+        for character in (c for c in characters if c.account == account.name):
+            groups += _scan_sv_dir(character.saved_variables_dir, account, character, warnings)
+
+    for warning in warnings:
+        log_event("scan.warning", path=warning.path, message=warning.message)
+    result = ScanResult(flavor, installed, enabled, groups, len(accounts), len(characters), warnings)
+    log_event("scan.completed", flavor=flavor.folder, installed=len(installed), enabled=len(enabled),
+              accounts=len(accounts), characters=len(characters), sv_files=result.sv_files,
+              groups=len(groups), duration_s=round(time.monotonic() - started, 3))
+    return result
