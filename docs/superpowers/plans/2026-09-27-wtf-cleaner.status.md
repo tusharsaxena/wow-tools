@@ -30,7 +30,7 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 | 14 | Shared UI | done | 5b31c47 | No deviations (plan code verbatim; 6 tests pass on Textual 8.2.8) |
 | 15 | WTF Cleaner TUI | done | 5886042 | No code deviations (plan code verbatim; 8 tests pass on Textual 8.2.8); Step 6 interactive smoke test not run by the subagent (needs a human terminal); hardened after review: dry run fixed at confirm, backup setting re-read, no-backup shown in red |
 | 16 | Documentation | done | 50e45e5 | No deviations (plan content verbatim; events.md generated with core + wtf-cleaner sections) |
-| 17 | Verify end to end + publish v0.1.0 | in-progress | | Suites green on WSL (Py 3.12) and Windows (Py 3.14, 6 POSIX-only skips) after two Windows-only test fixes; read-only scan of the real retail install proposed 410 items / 758 files / 42 MB. Release and merge wait for the user's approval |
+| 17 | Verify end to end + publish v0.1.0 | done (release deferred) | | Suites green on WSL (Py 3.12) and Windows (Py 3.14, 6 POSIX-only skips). Read-only scan of the real retail install proposed 410 items / 758 files / 42 MB. Merged to master with the user's approval; the user asked not to tag or release yet |
 
 ## Milestones (the branch is pushed to origin after each; merging into master waits for the user's go-ahead)
 
@@ -41,4 +41,4 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 | M3 Cleaner logic | 8–10 | yes |
 | M4 Updater + CLI | 11–13 | yes |
 | M5 TUI | 14–15 | yes |
-| M6 Docs + verification | 16–17 | yes (release pending) |
+| M6 Docs + verification | 16–17 | yes (merged to master; no release by request) |
