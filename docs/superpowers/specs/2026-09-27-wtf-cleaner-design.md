@@ -411,3 +411,71 @@ python -m wowtools wtf-cleaner [--flavor NAME] [options]
 - Per-character/per-account "enabled" scoping (global was chosen).
 - Screenshot organizer (separate spec; §3 and §4 are designed for reuse by it).
 - Packaging (pyz/exe).
+
+---
+
+## Addendum A: feedback round 1 (2026-09-27)
+
+This addendum records the changes agreed with the user after they tried v0.1. Where it conflicts with an earlier section, **this addendum wins**.
+
+### A.1 Backup folder is a cleaner setting
+- The backup folder moves to `[wtf_cleaner] backup_dir`. Its default is `<wow_path>/wow-tools/wtf-cleaner/`.
+- `[general] backup_dir` is no longer read or offered. The general setup screen only asks for the WoW folder, and the backup folder field moves to the WTF Cleaner settings screen.
+- `--backup-dir` still overrides the folder for one CLI run.
+
+### A.2 Dry run writes the backup and deletes nothing
+- A dry run now writes and verifies the selective backup zip (when backup is on) and reports "would delete". It takes no safety snapshot and deletes nothing.
+- In the TUI, **Clean** and **Dry run** are separate action buttons. The `d` toggle and the DRY RUN bar are removed. In the CLI, `--dry-run` keeps its meaning with the new backup behaviour.
+
+### A.3 Account scope
+- When a flavor has more than one account, an account screen follows the flavor picker. It offers "All accounts" plus each account, and the last choice is pre-selected (`[wtf_cleaner] last_account`, empty = all).
+- **When one account is chosen, scope is fully scoped.** Only that account's characters decide the enabled set, and only that account's SavedVariables are scanned and proposed. "All accounts" keeps the global behaviour from §5.2.
+- CLI: `--account NAME` (omitted means all accounts).
+
+### A.4 Safety snapshot and crash recovery (real cleans only)
+1. **Before deleting:** zip the whole `<flavor>/WTF` folder to `<backup_dir>/wtf-snapshot_<flavor>_<YYYYMMDD-HHMMSS>.zip` (verified). Then write the marker `<backup_dir>/clean-in-progress.json`, which holds `snapshot`, `flavor`, `flavor_path`, `started`, `pid`, `suite_version` and the list of files to delete (relative to the flavor folder). If the snapshot fails, the clean aborts and nothing is deleted.
+2. **Deleting:** as before. Per-file failures are still reported and do not count as a crash.
+3. **Unexpected error during deleting** (any exception other than a per-file `OSError`, including `KeyboardInterrupt`): restore **only the files this run already deleted** by extracting them from the snapshot, then remove the marker and report "clean stopped; N files restored". If the restore itself fails, keep the marker and the snapshot and name the snapshot in the error.
+4. **Success,** including partial per-file failures: delete the snapshot and the marker.
+5. **Detecting an interrupted clean:** when the cleaner starts (TUI or CLI) and finds a marker in the resolved backup folder, it does **not** restore automatically.
+   - The TUI shows a warning dialog: when the interrupted clean started, the snapshot path, and how to restore by hand (close WoW, unzip into the flavor folder). The dialog offers two choices. "Dismiss" removes the marker and keeps the snapshot. "Remind me next time" keeps both.
+   - The CLI prints the same message to stderr.
+   - Both emit `recovery.incomplete_clean`.
+
+### A.5 Progress
+- `scan()` takes an optional `progress(current, total, label)` callback. The total is the number of SavedVariables folders to read.
+- `execute()` takes an optional `progress(stage, current, total, detail)` callback. The stages are `snapshot`, `backup`, `verify` and `delete`.
+- The TUI shows a real progress bar while scanning and a modal progress screen while cleaning (the stage name, a percentage bar and the current file). The progress screen closes into the results screen.
+
+### A.6 Review screen
+- **Buttons:** `Clean`, `Dry run` and `Rescan` at the bottom of the left panel.
+- **Criterion checkboxes:**
+  - A bright `✔` when ticked and a dimmed `✘` when unticked. The tree uses the same marks.
+  - Each label shows how many files that criterion matches on its own, e.g. `1 Not installed (672 files)`, recomputed after each scan and whenever the max age changes.
+  - Each criterion has its own colour, used on its checkbox label and wherever that reason appears in the tree: not_installed `#E5534B` (red), not_enabled `#F08C3A` (orange), older_than `#E8C547` (yellow), stray_copies `#B07CFF` (purple).
+
+### A.7 Results screen
+The results screen is built from tables.
+- **Summary table:** mode (clean or dry run), backup zip, snapshot outcome, deleted or would-delete count and bytes, skipped, failed.
+- **Per-file `DataTable`:** status, account, character, addon, file, size, reasons. Columns are sized to their content.
+
+### A.8 Keyboard navigation everywhere
+- Every screen can be used without a mouse:
+  - `↑`/`↓` and `Tab`/`Shift+Tab` move focus between fields and buttons.
+  - `←`/`→` move between buttons in a button row.
+  - `Enter` or `Space` activates the focused control.
+  - `Esc` goes back or cancels.
+- Widgets that use the arrow keys themselves (the tree, lists, tables, text inputs) keep them while they have focus.
+- **Initial focus:**
+  - Confirm dialogs start on **No** for a real clean and on **Yes** for a dry run.
+  - Other screens start on their main control.
+- Each screen shows a one-line hint with these keys.
+
+### A.9 WoW running check per flavor
+- The check matches running WoW processes by executable path. A process belongs to a flavor when the folder containing the executable is named like the flavor folder (`_retail_`, `_classic_era_`, …).
+- **How paths are found:**
+  - Windows and WSL: PowerShell `Get-CimInstance Win32_Process` (name and `ExecutablePath`).
+  - Linux (Wine): `/proc/<pid>/cmdline`.
+  - If paths can't be read, the check falls back to name-only (`tasklist`) and the warning says so.
+  - macOS returns "unknown".
+- The review screen warns only about processes of the chosen flavor. Processes with an unknown path are listed as "flavor unknown".
