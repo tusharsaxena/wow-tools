@@ -23,9 +23,9 @@ class TranslateTest(unittest.TestCase):
         self.assertEqual(to_native("/home/me/wow", wsl=True), Path("/home/me/wow"))
 
     def test_to_stored_under_wsl(self):
-        self.assertEqual(to_stored(Path("/mnt/g/WoW"), wsl=True), r"G:\WoW")
+        self.assertEqual(to_stored("/mnt/g/WoW", wsl=True), r"G:\WoW")
         self.assertEqual(to_stored("/home/me/wow", wsl=True), "/home/me/wow")
 
     def test_no_translation_off_wsl(self):
         self.assertEqual(to_stored("/mnt/g/WoW", wsl=False), "/mnt/g/WoW")
-        self.assertEqual(str(to_native("/home/me/wow", wsl=False)), "/home/me/wow")
+        self.assertEqual(to_native("/home/me/wow", wsl=False), Path("/home/me/wow"))

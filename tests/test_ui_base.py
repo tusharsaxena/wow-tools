@@ -85,6 +85,7 @@ class SetupScreenTest(UiTestCase):
                 self.assertIn("No WoW flavor folders", screen.error_text)
                 self.assertEqual(app.results, [])
                 screen.query_one("#wow_path", Input).value = str(self.root)
+                await pilot.pause(0.3)  # Textual ignores a second press during the button's active effect
                 await pilot.click("#save")
                 await pilot.pause()
         self.assertEqual(app.results, [True])
