@@ -118,6 +118,22 @@ class ZipUpdateTest(unittest.TestCase):
         self.assertTrue((self.root / "vendor" / "lib.py").exists())
         self.assertFalse((self.root / "scripts").exists())
 
+    def test_failed_rollback_names_the_backup(self):
+        make_zipball(self.zipball, "0.2.0")
+
+        def always_fail(src, dst):
+            if ".update-backup" in str(dst):
+                shutil.copytree(src, dst) if src.is_dir() else shutil.copy2(src, dst)
+                return
+            raise OSError("disk full")
+
+        with patch.object(updater, "_copy", always_fail):
+            with self.assertRaises(UpdateError) as ctx:
+                apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0",
+                             download=self.download)
+        self.assertIn("rollback also failed", str(ctx.exception))
+        self.assertIn(".update-backup", str(ctx.exception))
+
 
 @unittest.skipUnless(HAS_GIT, "git not installed")
 class GitUpdateTest(unittest.TestCase):

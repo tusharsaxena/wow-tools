@@ -234,7 +234,7 @@ def _apply_zip(root: Path, release: ReleaseInfo, current: str, download: Callabl
         try:
             with zipfile.ZipFile(archive) as zf:
                 zf.extractall(work / "extract")
-        except (zipfile.BadZipFile, OSError) as exc:
+        except (zipfile.BadZipFile, OSError, RuntimeError, NotImplementedError, EOFError) as exc:
             raise UpdateError(f"the downloaded file is not a valid zip: {exc}") from exc
         tops = [p for p in (work / "extract").iterdir() if p.is_dir()]
         if len(tops) != 1:
@@ -261,7 +261,11 @@ def _apply_zip(root: Path, release: ReleaseInfo, current: str, download: Callabl
             for name in _managed_names(staging):
                 _copy(staging / name, root / name)
         except OSError as exc:
-            _rollback(root, backup)
+            try:
+                _rollback(root, backup)
+            except OSError as rollback_exc:
+                raise UpdateError(f"update failed ({exc}) and the rollback also failed ({rollback_exc}). "
+                                  f"Your previous version is saved in {backup}") from exc
             raise UpdateError(f"update failed and was rolled back: {exc}") from exc
 
 
