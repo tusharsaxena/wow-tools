@@ -23,7 +23,7 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 | 7 | "Is WoW running?" check | done | 9751713 | No deviations |
 | 8 | WTF Cleaner scanner + event registry | done | | No deviations |
 | 9 | Rules, settings, report | done | | No code deviations (plan says 16 tests; its test file has 15, all pass) |
-| 10 | Clean pipeline | pending | | |
+| 10 | Clean pipeline | done | | No deviations |
 | 11 | Updater part 1: release check | pending | | |
 | 12 | Updater part 2: apply + update command | pending | | |
 | 13 | Dispatcher, registry, CLI, wrappers | pending | | |

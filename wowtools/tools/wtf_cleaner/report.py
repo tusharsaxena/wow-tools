@@ -81,3 +81,33 @@ def format_proposal_text(proposal: Proposal, flavor: Flavor, now: float | None =
     for warning in proposal.warnings:
         lines.append(f"Warning: {warning}")
     return "\n".join(lines)
+
+
+def result_to_dict(result) -> dict:
+    return {
+        "dry_run": result.dry_run,
+        "backup": str(result.backup_path) if result.backup_path else None,
+        "counts": {"deleted": len(result.deleted), "would_delete": len(result.would_delete),
+                   "skipped": len(result.skipped), "failed": len(result.failed)},
+        "bytes": result.bytes_freed,
+        "outcomes": [{"path": str(o.path), "size": o.size, "status": o.status, "detail": o.detail,
+                      "reasons": list(o.reasons)} for o in result.outcomes],
+    }
+
+
+def format_result_text(result) -> str:
+    lines = ["DRY RUN: nothing was backed up or deleted." if result.dry_run else "Clean finished."]
+    if result.backup_path:
+        lines.append(("Backup would be written to: " if result.dry_run else "Backup: ") + str(result.backup_path))
+    else:
+        lines.append("No backup was made.")
+    done = result.would_delete if result.dry_run else result.deleted
+    verb = "Would delete" if result.dry_run else "Deleted"
+    lines.append(f"{verb}: {len(done)} files ({format_size(result.bytes_freed)})")
+    if result.skipped:
+        lines.append(f"Skipped (changed or missing since the scan): {len(result.skipped)} files")
+        lines += [f"  {o.path}  ({o.detail})" for o in result.skipped]
+    if result.failed:
+        lines.append(f"Failed: {len(result.failed)} files")
+        lines += [f"  {o.path}  ({o.detail})" for o in result.failed]
+    return "\n".join(lines)
