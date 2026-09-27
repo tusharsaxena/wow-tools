@@ -7,6 +7,7 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 MANIFEST_NAME = "manifest.json"
 
@@ -25,8 +26,11 @@ def backup_filename(tool: str, flavor_short: str, when: datetime) -> str:
     return f"{tool}_{flavor_short}_{when:%Y%m%d-%H%M%S}.zip"
 
 
-def create_backup(entries: list[BackupEntry], base_dir: Path, dest_zip: Path, meta: dict) -> Path:
-    """Zip entries (stored relative to base_dir) plus manifest.json, verify, then move into place."""
+def create_backup(entries: list[BackupEntry], base_dir: Path, dest_zip: Path, meta: dict,
+                  on_file: Callable[[int, int, str], None] | None = None) -> Path:
+    """Zip entries (stored relative to base_dir) plus manifest.json, verify, then move into place.
+
+    on_file(current, total, arcname) is called after each file is written to the zip."""
     if not entries:
         raise BackupError("nothing to back up")
     base = base_dir.resolve()
@@ -50,8 +54,10 @@ def create_backup(entries: list[BackupEntry], base_dir: Path, dest_zip: Path, me
     try:
         dest_zip.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(partial, "w", compression=zipfile.ZIP_DEFLATED, strict_timestamps=False) as zf:
-            for entry, info in zip(entries, files):
+            for index, (entry, info) in enumerate(zip(entries, files), 1):
                 zf.write(entry.path, info["path"])
+                if on_file is not None:
+                    on_file(index, len(files), info["path"])
             zf.writestr(MANIFEST_NAME, json.dumps({**meta, "files": files}, indent=2, ensure_ascii=False))
         verify_backup(partial, expected)
         os.replace(partial, dest_zip)

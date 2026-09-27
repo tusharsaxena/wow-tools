@@ -16,6 +16,7 @@ from wowtools.tools.wtf_cleaner.cleaner import CleanError, execute
 from wowtools.tools.wtf_cleaner.report import (format_proposal_text, format_result_text, format_size,
                                                proposal_to_dict, result_to_dict)
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, Criteria, evaluate
+from wowtools.tools.wtf_cleaner.safety import read_marker, recovery_message
 from wowtools.tools.wtf_cleaner.scanner import ScanError, scan
 from wowtools.tools.wtf_cleaner.settings import DEFAULT_BACKUP_SUBDIR, SECTION, load_settings, resolve_backup_dir
 
@@ -140,6 +141,12 @@ def _run(args, cfg: Config, stdout, stderr, input_fn, wow_check) -> int:
         override = wow_path / DEFAULT_BACKUP_SUBDIR  # the default follows a --wow-path override too
     backup_dir = resolve_backup_dir(cfg, settings, override)
 
+    marker = read_marker(backup_dir)
+    if marker is not None:  # never restored automatically; the TUI's Dismiss is what removes the marker
+        log_event("recovery.incomplete_clean", flavor=marker.flavor, started=marker.started,
+                  snapshot=str(marker.snapshot), files=len(marker.files))
+        err(recovery_message(marker))
+
     try:
         result_scan = scan(flavor, account=account)
     except ScanError as exc:
@@ -180,8 +187,21 @@ def _run(args, cfg: Config, stdout, stderr, input_fn, wow_check) -> int:
             out("Aborted. Nothing was changed.")
             return EXIT_OK
 
+    stage_lines = {"snapshot": "Taking safety snapshot…", "backup": "Writing backup…"}
+    if not args.dry_run:
+        stage_lines["delete"] = "Deleting…"
+    last_stage: list[str] = []
+
+    def on_progress(stage: str, current: int, total: int, detail: str) -> None:
+        if last_stage and last_stage[-1] == stage:
+            return  # stage changes only, never one line per file
+        last_stage.append(stage)
+        if stage in stage_lines:
+            out(stage_lines[stage])
+
     try:
-        result = execute(proposal.items, flavor, dry_run=args.dry_run, backup=backup, backup_dir=backup_dir)
+        result = execute(proposal.items, flavor, dry_run=args.dry_run, backup=backup, backup_dir=backup_dir,
+                         progress=None if args.json else on_progress)
     except BackupError as exc:
         err(f"Backup failed, nothing was deleted: {exc}")
         return EXIT_BACKUP

@@ -20,6 +20,12 @@ EVENTS: dict[str, EventSpec] = {
     "sv.skipped": EventSpec("warning", "A selected file was skipped because it vanished or changed after the scan."),
     "sv.failed": EventSpec("error", "A SavedVariables file could not be deleted."),
     "clean.completed": EventSpec("info", "A clean finished (logged at warning if any file failed)."),
+    "snapshot.created": EventSpec("info", "The safety snapshot of the whole WTF folder was written and verified."),
+    "snapshot.removed": EventSpec("info", "The clean finished, so its safety snapshot and marker were removed."),
+    "snapshot.failed": EventSpec("error", "The safety snapshot failed; nothing was deleted."),
+    "restore.completed": EventSpec("warning", "A clean stopped unexpectedly; the files it had deleted were restored."),
+    "restore.failed": EventSpec("error", "Restoring from the safety snapshot failed; the marker and snapshot were kept."),
+    "recovery.incomplete_clean": EventSpec("warning", "A marker from an unfinished clean was found at startup."),
 }
 
 register_events(TOOL_NAME, EVENTS)

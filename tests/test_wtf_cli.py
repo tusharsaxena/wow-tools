@@ -182,6 +182,40 @@ class CliTest(unittest.TestCase):
         self.assertIn("Failed: 1 files", out)
 
 
+    def test_interrupted_clean_marker_is_reported_and_kept(self):
+        marker = self.backup_dir / "clean-in-progress.json"
+        self.backup_dir.mkdir()
+        marker.write_text(json.dumps({
+            "snapshot": str(self.backup_dir / "wtf-snapshot_retail_20260927-140311.zip"), "flavor": "_retail_",
+            "flavor_path": str(self.root / "_retail_"), "started": "2026-09-27T14:03:11", "pid": 1,
+            "suite_version": "0.1.0", "files": []}), encoding="utf-8")
+        with capture_events() as records:
+            code, out, err = self.cli("--flavor", "retail", "--backup-dir", str(self.backup_dir))
+        self.assertEqual(code, 0)
+        self.assertIn("did not finish", err)
+        self.assertIn("wtf-snapshot_retail_20260927-140311.zip", err)
+        self.assertTrue(out)
+        self.assertTrue(marker.exists())
+        self.assertIn("recovery.incomplete_clean", [r["event"] for r in records])
+
+    def test_clean_prints_stage_lines_only(self):
+        code, out, _ = self.cli("--flavor", "retail", "--clean", "--yes", "--backup-dir", str(self.backup_dir))
+        self.assertEqual(code, 0)
+        for line in ("Taking safety snapshot…", "Writing backup…", "Deleting…"):
+            self.assertEqual(out.count(line), 1, line)
+        self.assertLess(out.index("Taking safety snapshot…"), out.index("Writing backup…"))
+        self.assertLess(out.index("Writing backup…"), out.index("Deleting…"))
+        self.assertEqual(sorted(p.name for p in self.backup_dir.iterdir())[0][:12], "wtf-cleaner_")
+        self.assertEqual(len(list(self.backup_dir.iterdir())), 1)
+
+    def test_json_clean_prints_no_stage_lines(self):
+        code, out, _ = self.cli("--flavor", "retail", "--clean", "--yes", "--json",
+                                "--backup-dir", str(self.backup_dir))
+        self.assertEqual(code, 0)
+        data = json.loads(out)
+        self.assertIsNotNone(data["result"]["snapshot"])
+        self.assertEqual(data["result"]["restored"], [])
+
 @unittest.skipIf(os.name == "nt", "shell wrapper test runs on POSIX")
 class WrapperTest(unittest.TestCase):
     def test_sh_wrapper_runs_from_another_cwd(self):

@@ -89,6 +89,8 @@ def result_to_dict(result) -> dict:
     return {
         "dry_run": result.dry_run,
         "backup": str(result.backup_path) if result.backup_path else None,
+        "snapshot": str(result.snapshot_path) if result.snapshot_path else None,
+        "restored": list(result.restored),
         "counts": {"deleted": len(result.deleted), "would_delete": len(result.would_delete),
                    "skipped": len(result.skipped), "failed": len(result.failed)},
         "bytes": result.bytes_freed,

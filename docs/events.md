@@ -58,10 +58,16 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `clean.started` | info | A clean (or dry run) started. |
 | `proposal.built` | info | The cleanup proposal was built from scan results and criteria. |
 | `proposal.item` | debug | One addon group in the proposal. |
+| `recovery.incomplete_clean` | warning | A marker from an unfinished clean was found at startup. |
+| `restore.completed` | warning | A clean stopped unexpectedly; the files it had deleted were restored. |
+| `restore.failed` | error | Restoring from the safety snapshot failed; the marker and snapshot were kept. |
 | `scan.addons` | debug | Installed and enabled addon lists found by the scan. |
 | `scan.completed` | info | A scan finished, with counts. |
 | `scan.started` | info | A scan of one flavor started. |
 | `scan.warning` | warning | Something was skipped during a scan (unreadable folder, bad AddOns.txt line). |
+| `snapshot.created` | info | The safety snapshot of the whole WTF folder was written and verified. |
+| `snapshot.failed` | error | The safety snapshot failed; nothing was deleted. |
+| `snapshot.removed` | info | The clean finished, so its safety snapshot and marker were removed. |
 | `sv.deleted` | info | A SavedVariables file was deleted. |
 | `sv.failed` | error | A SavedVariables file could not be deleted. |
 | `sv.skipped` | warning | A selected file was skipped because it vanished or changed after the scan. |

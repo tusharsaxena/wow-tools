@@ -10,9 +10,11 @@ from tests.fixtures import NOW, build_wow_tree
 from wowtools.core.backup import BackupError
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
+from wowtools.tools.wtf_cleaner import cleaner as cleaner_module
 from wowtools.tools.wtf_cleaner.cleaner import CleanError, execute
 from wowtools.tools.wtf_cleaner.report import format_result_text, result_to_dict
 from wowtools.tools.wtf_cleaner.rules import Criteria, ProposalItem, evaluate
+from wowtools.tools.wtf_cleaner.safety import MARKER_NAME
 from wowtools.tools.wtf_cleaner.scanner import SVFile, scan
 
 WHEN = datetime(2026, 9, 27, 14, 3, 11)
@@ -118,14 +120,16 @@ class CleanerTest(unittest.TestCase):
                         backup_dir=blocker / "sub", now=WHEN)
         for path in self.paths():
             self.assertTrue(path.exists(), path)
-        self.assertIn("backup.failed", [r["event"] for r in records])
+        # An unwritable backup folder now fails at the safety snapshot, which comes before the backup.
+        self.assertIn("snapshot.failed", [r["event"] for r in records])
 
     def test_without_backup(self):
         result = execute(self.proposal.items, self.retail, dry_run=False, backup=False,
                          backup_dir=self.backup_dir, now=WHEN)
         self.assertIsNone(result.backup_path)
         self.assertEqual(len(result.deleted), 8)
-        self.assertFalse(self.backup_dir.exists())
+        # The safety snapshot lives in backup_dir while deleting, so the folder may exist, but it ends empty.
+        self.assertEqual(list(self.backup_dir.iterdir()) if self.backup_dir.exists() else [], [])
 
     def test_empty_selection_makes_no_backup(self):
         result = execute([], self.retail, dry_run=False, backup=True, backup_dir=self.backup_dir, now=WHEN)
@@ -164,7 +168,7 @@ class CleanerTest(unittest.TestCase):
         with capture_events() as records:
             with patch.object(Path, "unlink", flaky):
                 result = execute(self.proposal.items, self.retail, dry_run=False, backup=False,
-                                 backup_dir=None, now=WHEN)
+                                 backup_dir=self.backup_dir, now=WHEN)
         self.assertEqual(len(result.failed), 1)
         self.assertEqual(len(result.deleted), 7)
         completed = [r for r in records if r["event"] == "clean.completed"][0]
@@ -178,3 +182,159 @@ class CleanerTest(unittest.TestCase):
         self.assertTrue(data["dry_run"])
         self.assertEqual(data["counts"]["would_delete"], 8)
         self.assertEqual(len(data["outcomes"]), 8)
+
+
+class SafetySnapshotCleanTest(unittest.TestCase):
+    """Safety snapshot, marker and restore around a real clean (spec A.4), and progress stages (A.5)."""
+
+    setUp = CleanerTest.setUp
+    paths = CleanerTest.paths
+
+    def run_clean(self, **kwargs):
+        options = dict(dry_run=False, backup=True, backup_dir=self.backup_dir, now=WHEN)
+        options.update(kwargs)
+        return execute(self.proposal.items, self.retail, **options)
+
+    def snapshot_path(self):
+        return self.backup_dir / "wtf-snapshot_retail_20260927-140311.zip"
+
+    def test_clean_success_removes_snapshot_and_marker(self):
+        with capture_events() as records:
+            result = self.run_clean()
+        self.assertEqual(sorted(p.name for p in self.backup_dir.iterdir()),
+                         ["wtf-cleaner_retail_20260927-140311.zip"])
+        self.assertEqual(result.snapshot_path, self.snapshot_path())
+        self.assertEqual(result.restored, [])
+        names = [r["event"] for r in records]
+        self.assertIn("snapshot.created", names)
+        self.assertIn("snapshot.removed", names)
+        self.assertLess(names.index("snapshot.created"), names.index("backup.created"))
+        self.assertLess(names.index("sv.deleted"), names.index("snapshot.removed"))
+
+    def test_snapshot_failure_deletes_nothing(self):
+        def boom(*args, **kwargs):
+            raise BackupError("disk full")
+
+        with capture_events() as records:
+            with patch.object(cleaner_module, "take_snapshot", boom):
+                with self.assertRaises(BackupError):
+                    self.run_clean()
+        for path in self.paths():
+            self.assertTrue(path.exists(), path)
+        self.assertFalse((self.backup_dir / MARKER_NAME).exists())
+        names = [r["event"] for r in records]
+        self.assertIn("snapshot.failed", names)
+        self.assertNotIn("sv.deleted", names)
+
+    def _interrupt_on_fourth_unlink(self, exc_type):
+        before = {p: p.read_bytes() for p in self.paths()}
+        original = Path.unlink
+        deleted = []
+
+        def flaky(path, *args, **kwargs):
+            if len(deleted) == 3:
+                raise exc_type("boom")
+            deleted.append(path)
+            return original(path, *args, **kwargs)
+
+        with capture_events() as records:
+            with patch.object(Path, "unlink", flaky):
+                with self.assertRaises(CleanError) as ctx:
+                    self.run_clean()
+        self.assertEqual(len(deleted), 3)
+        for path, data in before.items():
+            self.assertTrue(path.exists(), path)
+            self.assertEqual(path.read_bytes(), data, path)
+        self.assertFalse((self.backup_dir / MARKER_NAME).exists())
+        self.assertIn("restored", str(ctx.exception))
+        self.assertIn("3 deleted files", str(ctx.exception))
+        names = [r["event"] for r in records]
+        self.assertIn("restore.completed", names)
+        self.assertNotIn("restore.failed", names)
+
+    def test_unexpected_error_mid_delete_restores_deleted_files(self):
+        self._interrupt_on_fourth_unlink(RuntimeError)
+
+    def test_keyboard_interrupt_mid_delete_restores(self):
+        self._interrupt_on_fourth_unlink(KeyboardInterrupt)
+
+    def test_restore_failure_keeps_marker_and_snapshot(self):
+        original = Path.unlink
+        calls = []
+
+        def flaky(path, *args, **kwargs):
+            calls.append(path)
+            if len(calls) == 2:
+                raise RuntimeError("boom")
+            return original(path, *args, **kwargs)
+
+        def broken_restore(*args, **kwargs):
+            raise BackupError("snapshot unreadable")
+
+        with capture_events() as records:
+            with patch.object(Path, "unlink", flaky), \
+                    patch.object(cleaner_module, "restore_deleted", broken_restore):
+                with self.assertRaises(CleanError) as ctx:
+                    self.run_clean()
+        self.assertTrue((self.backup_dir / MARKER_NAME).exists())
+        self.assertTrue(self.snapshot_path().exists())
+        self.assertIn(str(self.snapshot_path()), str(ctx.exception))
+        names = [r["event"] for r in records]
+        self.assertIn("restore.failed", names)
+        self.assertNotIn("restore.completed", names)
+        self.assertNotIn("snapshot.removed", names)
+
+    def test_selective_backup_failure_after_snapshot_deletes_nothing(self):
+        def boom(*args, **kwargs):
+            raise BackupError("zip broke")
+
+        with capture_events() as records:
+            with patch.object(cleaner_module, "create_backup", boom):
+                with self.assertRaises(BackupError):
+                    self.run_clean()
+        for path in self.paths():
+            self.assertTrue(path.exists(), path)
+        self.assertEqual(list(self.backup_dir.iterdir()), [])  # snapshot and marker cleaned up
+        names = [r["event"] for r in records]
+        self.assertIn("snapshot.created", names)
+        self.assertIn("backup.failed", names)
+
+    def test_dry_run_takes_no_snapshot(self):
+        with capture_events() as records:
+            result = self.run_clean(dry_run=True)
+        self.assertEqual(sorted(p.name for p in self.backup_dir.iterdir()),
+                         ["wtf-cleaner_retail_20260927-140311.zip"])
+        self.assertIsNone(result.snapshot_path)
+        names = [r["event"] for r in records]
+        self.assertNotIn("snapshot.created", names)
+        self.assertFalse((self.backup_dir / MARKER_NAME).exists())
+
+    def test_progress_stages_in_order(self):
+        calls = []
+        result = self.run_clean(progress=lambda *a: calls.append(a))
+        self.assertEqual(len(result.deleted), 8)
+        stages = []
+        for stage, *_ in calls:
+            if not stages or stages[-1] != stage:
+                stages.append(stage)
+        self.assertEqual(stages, ["snapshot", "backup", "verify", "delete"])
+        for stage in stages:
+            last = [c for c in calls if c[0] == stage][-1]
+            self.assertEqual(last[1], last[2], stage)
+        self.assertEqual(len([c for c in calls if c[0] == "backup"]), 8)
+        self.assertEqual(len([c for c in calls if c[0] == "verify"]), 1)
+        self.assertEqual(len([c for c in calls if c[0] == "delete"]), 8)
+
+    def test_raising_progress_callback_changes_nothing(self):
+        def bad(*args):
+            raise RuntimeError("the UI went away")
+
+        with capture_events() as records:
+            result = self.run_clean(progress=bad)
+        self.assertEqual(len(result.deleted), 8)
+        self.assertEqual(result.failed, [])
+        self.assertEqual(sorted(p.name for p in self.backup_dir.iterdir()),
+                         ["wtf-cleaner_retail_20260927-140311.zip"])
+        names = [r["event"] for r in records]
+        self.assertNotIn("restore.completed", names)
+        self.assertNotIn("restore.failed", names)
