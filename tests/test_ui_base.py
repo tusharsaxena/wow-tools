@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from textual.widgets import Input
+from textual.widgets import Input, OptionList
 
 from tests.fixtures import build_wow_tree
 from wowtools.core.config import Config
@@ -12,6 +12,7 @@ from wowtools.core.install import WowInstall
 from wowtools.core.updater import ReleaseInfo
 from wowtools.ui.base import Ka0sApp, UpdateScreen
 from wowtools.ui.branding import BrandBar
+from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.tool_picker import ToolPickerApp
@@ -114,3 +115,33 @@ class FlavorScreenTest(UiTestCase):
         self.assertEqual(app.results[0].folder, "_classic_era_")
         selections = [r["data"] for r in records if r["event"] == "ui.selection"]
         self.assertIn({"screen": "flavor", "control": "flavor", "value": "_classic_era_"}, selections)
+
+
+class AccountScreenTest(UiTestCase):
+    def retail(self):
+        return WowInstall(self.root).flavor("retail")
+
+    async def test_lists_all_then_accounts_and_preselects_last(self):
+        app = Host(self.cfg, AccountScreen(self.cfg, self.retail(), last="acct2"))
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            options = app.screen.query_one(OptionList)
+            self.assertEqual([options.get_option_at_index(i).id for i in range(options.option_count)],
+                             ["__all__", "ACCT1", "ACCT2"])
+            await pilot.press("enter")
+            await pilot.pause()
+        self.assertEqual(app.results, ["ACCT2"])
+
+    async def test_all_accounts_is_empty_string_and_escape_is_none(self):
+        app = Host(self.cfg, AccountScreen(self.cfg, self.retail(), last=None))
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+        self.assertEqual(app.results, [""])
+        app = Host(self.cfg, AccountScreen(self.cfg, self.retail(), last=None))
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            await pilot.press("escape")
+            await pilot.pause()
+        self.assertEqual(app.results, [None])

@@ -48,6 +48,27 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out)["flavor"], "_retail_")
 
+    def test_account_scope_json(self):
+        code, out, _ = self.cli("--flavor", "retail", "--account", "acct2", "--json", answer=None)
+        self.assertEqual(code, 0)
+        data = json.loads(out)
+        self.assertEqual(data["account"], "ACCT2")
+        self.assertTrue(data["items"])
+        self.assertEqual({i["account"] for i in data["items"]}, {"ACCT2"})
+
+    def test_all_accounts_json_has_null_account(self):
+        code, out, _ = self.cli("--flavor", "retail", "--json", answer=None)
+        self.assertEqual(code, 0)
+        data = json.loads(out)
+        self.assertIsNone(data["account"])
+        # Across all accounts Details counts as enabled (CharA), so only ACCT1 items are proposed.
+        self.assertEqual({i["account"] for i in data["items"]}, {"ACCT1"})
+
+    def test_unknown_account(self):
+        code, _, err = self.cli("--flavor", "retail", "--account", "nope", answer=None)
+        self.assertEqual(code, 1)
+        self.assertIn("ACCT1, ACCT2", err)
+
     def test_clean_prompt_declined(self):
         code, out, _ = self.cli("--flavor", "retail", "--clean", answer="n")
         self.assertEqual(code, 0)

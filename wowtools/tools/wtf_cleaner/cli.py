@@ -28,6 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Find and remove stale addon SavedVariables, backing them up to a zip first. "
                     "Without --flavor, --clean, --json or --dry-run the interactive TUI opens.")
     parser.add_argument("--flavor", help="retail, classic, classic_era, anniversary, ... (default: last used)")
+    parser.add_argument("--account", metavar="NAME", help="scan only this account (default: all accounts)")
     parser.add_argument("--clean", action="store_true", help="back up and delete the proposal (asks first)")
     parser.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     parser.add_argument("--dry-run", action="store_true", help="write the backup zip but delete nothing")
@@ -101,6 +102,15 @@ def _run(args, cfg: Config, stdout, stderr, input_fn, wow_check) -> int:
         err(f"Unknown flavor {flavor_name!r}. Available: {available}")
         return EXIT_USAGE
     log_event("ui.selection", screen="cli", control="flavor", value=flavor.folder)
+    account = None
+    if args.account:
+        names = sorted((a.name for a in flavor.accounts()), key=str.casefold)
+        account = next((n for n in names if n.casefold() == args.account.strip().casefold()), None)
+        if account is None:
+            err(f"Unknown account {args.account!r} in {flavor.display_name}. "
+                f"Available: {', '.join(names) or 'none'}")
+            return EXIT_USAGE
+        log_event("ui.selection", screen="cli", control="account", value=account)
 
     settings = load_settings(cfg)
     criteria = settings.criteria
@@ -131,7 +141,7 @@ def _run(args, cfg: Config, stdout, stderr, input_fn, wow_check) -> int:
     backup_dir = resolve_backup_dir(cfg, settings, override)
 
     try:
-        result_scan = scan(flavor)
+        result_scan = scan(flavor, account=account)
     except ScanError as exc:
         log_exception("scan", exc)
         err(str(exc))
@@ -139,7 +149,7 @@ def _run(args, cfg: Config, stdout, stderr, input_fn, wow_check) -> int:
     proposal = evaluate(result_scan, criteria)
 
     if not args.clean:
-        out(json.dumps(proposal_to_dict(proposal, flavor), indent=2, ensure_ascii=False) if args.json
+        out(json.dumps(proposal_to_dict(proposal, flavor, account=account), indent=2, ensure_ascii=False) if args.json
             else format_proposal_text(proposal, flavor))
         return EXIT_OK
     if args.no_backup and not args.yes:
@@ -149,7 +159,7 @@ def _run(args, cfg: Config, stdout, stderr, input_fn, wow_check) -> int:
         err("--json with --clean needs --yes or --dry-run (there is no prompt in JSON mode).")
         return EXIT_USAGE
     if not proposal.items:
-        out(json.dumps({"proposal": proposal_to_dict(proposal, flavor), "result": None}, indent=2)
+        out(json.dumps({"proposal": proposal_to_dict(proposal, flavor, account=account), "result": None}, indent=2)
             if args.json else "Nothing to clean.")
         return EXIT_OK
     if not args.json:
@@ -180,7 +190,7 @@ def _run(args, cfg: Config, stdout, stderr, input_fn, wow_check) -> int:
         err(str(exc))
         return EXIT_USAGE
     if args.json:
-        out(json.dumps({"proposal": proposal_to_dict(proposal, flavor), "result": result_to_dict(result)},
+        out(json.dumps({"proposal": proposal_to_dict(proposal, flavor, account=account), "result": result_to_dict(result)},
                        indent=2, ensure_ascii=False))
     else:
         out("")

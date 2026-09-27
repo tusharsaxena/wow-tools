@@ -10,6 +10,7 @@ from wowtools.core.events import capture_events
 from wowtools.tools.wtf_cleaner.app import CleanerSettingsScreen, WtfCleanerApp
 from wowtools.tools.wtf_cleaner.review_screen import ConfirmScreen, ResultScreen, ReviewScreen
 from wowtools.tools.wtf_cleaner.settings import load_settings
+from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
 
@@ -35,6 +36,11 @@ class AppTestCase(unittest.IsolatedAsyncioTestCase):
     async def open_review(self, app, pilot):
         await pilot.pause()
         self.assertIsInstance(app.screen, FlavorScreen)
+        await pilot.press("enter")
+        await pilot.pause()
+        # Retail in the fixture has two accounts, so the account picker comes next;
+        # Enter keeps the default highlight ("All accounts").
+        self.assertIsInstance(app.screen, AccountScreen)
         await pilot.press("enter")
         await pilot.pause()
         await app.workers.wait_for_complete()
@@ -159,6 +165,63 @@ class ReviewFlowTest(AppTestCase):
             review = await self.open_review(app, pilot)
             labels = [str(n.label) for n in _walk(review.query_one(Tree).root)]
             self.assertTrue(any("[Weird] Addon" in label for label in labels))
+
+
+class AccountScopeFlowTest(AppTestCase):
+    async def test_account_screen_scopes_the_review(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            self.assertIsInstance(app.screen, FlavorScreen)
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, AccountScreen)
+            await pilot.press("down", "down", "enter")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            review = app.screen
+            self.assertIsInstance(review, ReviewScreen)
+            self.assertEqual(review.account, "ACCT2")
+            self.assertTrue(review.proposal.items)
+            self.assertEqual({i.account for i in review.proposal.items}, {"ACCT2"})
+            self.assertIn("Retail · ACCT2", review.sub_title)
+        self.assertEqual(load_settings(Config(self.cfg.path).load()).last_account, "ACCT2")
+
+    async def test_all_accounts_scope_in_sub_title(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            self.assertIsNone(review.account)
+            self.assertEqual({i.account for i in review.proposal.items}, {"ACCT1"})
+            self.assertIn("Retail · all accounts", review.sub_title)
+
+    async def test_escape_on_account_screen_goes_back_to_flavors(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, AccountScreen)
+            await pilot.press("escape")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, FlavorScreen)
+
+    async def test_single_account_flavor_skips_account_screen(self):
+        self.cfg.set("general", "last_flavor", "_classic_era_", log=False)
+        self.cfg.save()
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            self.assertIsInstance(app.screen, FlavorScreen)
+            await pilot.press("enter")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            review = app.screen
+            self.assertIsInstance(review, ReviewScreen)
+            self.assertIsNone(review.account)
+            self.assertIn("Classic Era · all accounts", review.sub_title)
 
 
 class FirstRunTest(AppTestCase):

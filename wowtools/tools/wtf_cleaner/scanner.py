@@ -76,6 +76,7 @@ class ScanResult:
     accounts: int
     characters: int
     warnings: list[ScanWarning]
+    account: str | None = None
 
     @property
     def sv_files(self) -> int:
@@ -173,9 +174,11 @@ def _scan_sv_dir(sv_dir: Path, account: Account, character: Character | None,
     return list(groups.values())
 
 
-def scan(flavor: Flavor) -> ScanResult:
+def scan(flavor: Flavor, *, account: str | None = None, progress=None) -> ScanResult:
+    """Scan one flavor. With `account`, only that account (any case) is scanned and "enabled" comes
+    from its characters alone. `progress` is accepted for the scan progress bar and ignored for now."""
     started = time.monotonic()
-    log_event("scan.started", flavor=flavor.folder, wow_path=str(flavor.path.parent))
+    log_event("scan.started", flavor=flavor.folder, wow_path=str(flavor.path.parent), account=account)
     installed = installed_addons(flavor.addons_dir)
     if not installed:
         raise ScanError(f"No addons found in {flavor.addons_dir}. Refusing to scan: every "
@@ -186,20 +189,27 @@ def scan(flavor: Flavor) -> ScanResult:
         warnings.append(ScanWarning(str(path), f"cannot read folder: {exc}"))
 
     accounts = flavor.accounts(on_error)
-    characters = [c for account in accounts for c in account.characters(on_error)]
+    if account is not None:
+        wanted = [a for a in accounts if a.name.casefold() == account.casefold()]
+        if not wanted:
+            available = ", ".join(sorted((a.name for a in accounts), key=str.casefold)) or "none"
+            raise ScanError(f"Unknown account {account!r} in {flavor.display_name}; available: {available}")
+        accounts = wanted[:1]
+        account = accounts[0].name
+    characters = [c for acct in accounts for c in acct.characters(on_error)]
     enabled = enabled_addons(characters, installed, warnings)
     log_event("scan.addons", installed=sorted(installed.values(), key=str.casefold), enabled=sorted(enabled))
 
     groups: list[SVGroup] = []
-    for account in accounts:
-        groups += _scan_sv_dir(account.saved_variables_dir, account, None, warnings)
-        for character in (c for c in characters if c.account == account.name):
-            groups += _scan_sv_dir(character.saved_variables_dir, account, character, warnings)
+    for acct in accounts:
+        groups += _scan_sv_dir(acct.saved_variables_dir, acct, None, warnings)
+        for character in (c for c in characters if c.account == acct.name):
+            groups += _scan_sv_dir(character.saved_variables_dir, acct, character, warnings)
 
     for warning in warnings:
         log_event("scan.warning", path=warning.path, message=warning.message)
-    result = ScanResult(flavor, installed, enabled, groups, len(accounts), len(characters), warnings)
-    log_event("scan.completed", flavor=flavor.folder, installed=len(installed), enabled=len(enabled),
-              accounts=len(accounts), characters=len(characters), sv_files=result.sv_files,
-              groups=len(groups), duration_s=round(time.monotonic() - started, 3))
+    result = ScanResult(flavor, installed, enabled, groups, len(accounts), len(characters), warnings, account)
+    log_event("scan.completed", flavor=flavor.folder, account=account, installed=len(installed),
+              enabled=len(enabled), accounts=len(accounts), characters=len(characters),
+              sv_files=result.sv_files, groups=len(groups), duration_s=round(time.monotonic() - started, 3))
     return result

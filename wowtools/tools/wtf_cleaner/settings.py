@@ -16,13 +16,15 @@ class CleanerSettings:
     criteria: Criteria = field(default_factory=Criteria)
     backup_before_delete: bool = True
     backup_dir: Path | None = None
+    last_account: str | None = None  # None (stored as empty) means all accounts
 
 
 def load_settings(cfg: Config) -> CleanerSettings:
     criteria = Criteria(**{name: cfg.get_bool(SECTION, f"criterion_{name}", True) for name in CRITERIA},
                         max_age_days=max(1, cfg.get_int(SECTION, "max_age_days", 90)))
     return CleanerSettings(criteria, cfg.get_bool(SECTION, "backup_before_delete", True),
-                           cfg.get_path(SECTION, "backup_dir"))
+                           cfg.get_path(SECTION, "backup_dir"),
+                           (cfg.get(SECTION, "last_account") or "").strip() or None)
 
 
 def save_settings(cfg: Config, settings: CleanerSettings, *, source: str = "settings") -> None:
@@ -31,6 +33,7 @@ def save_settings(cfg: Config, settings: CleanerSettings, *, source: str = "sett
         cfg.set(SECTION, f"criterion_{name}", getattr(settings.criteria, name), source=source)
     cfg.set(SECTION, "backup_before_delete", settings.backup_before_delete, source=source)
     cfg.set_path(SECTION, "backup_dir", settings.backup_dir, source=source)
+    cfg.set(SECTION, "last_account", settings.last_account or "", source=source)
     cfg.save()
 
 

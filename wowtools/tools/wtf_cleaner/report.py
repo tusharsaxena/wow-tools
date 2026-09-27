@@ -40,10 +40,12 @@ def _sort_key(item) -> tuple:
             item.addon.casefold())
 
 
-def proposal_to_dict(proposal: Proposal, flavor: Flavor, now: float | None = None) -> dict:
+def proposal_to_dict(proposal: Proposal, flavor: Flavor, now: float | None = None, *,
+                     account: str | None = None) -> dict:
     now = time.time() if now is None else now
     return {
         "flavor": flavor.folder,
+        "account": account,
         "criteria": proposal.criteria.enabled_names(),
         "max_age_days": proposal.criteria.max_age_days,
         "totals": {"items": len(proposal.items), "files": proposal.total_files, "bytes": proposal.total_size},

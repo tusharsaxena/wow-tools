@@ -18,7 +18,9 @@ from wowtools.core.process import running_wow_executables
 from wowtools.tools.wtf_cleaner.report import CRITERION_LABELS
 from wowtools.tools.wtf_cleaner.review_screen import ReviewScreen
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, Criteria
-from wowtools.tools.wtf_cleaner.settings import CleanerSettings, load_settings, resolve_backup_dir, save_settings
+from wowtools.tools.wtf_cleaner.settings import (SECTION, CleanerSettings, load_settings, resolve_backup_dir,
+                                                 save_settings)
+from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.base import Ka0sApp
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.flavor_screen import FlavorScreen
@@ -94,7 +96,8 @@ class CleanerSettingsScreen(Screen[bool]):
                             max_age_days=days)
         backup_raw = self.query_one("#backup_dir", Input).value.strip()
         save_settings(self.cfg, CleanerSettings(criteria, self.query_one("#sw_backup", Switch).value,
-                                                to_native(backup_raw) if backup_raw else None),
+                                                to_native(backup_raw) if backup_raw else None,
+                                                load_settings(self.cfg).last_account),
                       source=self.source)
         self.dismiss(True)
 
@@ -145,7 +148,25 @@ class WtfCleanerApp(Ka0sApp):
         if flavor is None:
             self.exit()
             return
-        self.push_screen(ReviewScreen(self.cfg, flavor, wow_check=self._wow_check), self._after_review)
+        if len(flavor.accounts()) > 1:
+            self.push_screen(AccountScreen(self.cfg, flavor, load_settings(self.cfg).last_account),
+                             lambda choice: self._after_account(flavor, choice))
+        else:
+            self._review(flavor, None)
+
+    def _after_account(self, flavor: Flavor, choice: str | None) -> None:
+        if choice is None:
+            self._pick_flavor()
+            return
+        account = choice or None
+        if self.cfg.get(SECTION, "last_account", "") != (account or ""):
+            self.cfg.set(SECTION, "last_account", account or "")
+            self.cfg.save_if_exists()
+        self._review(flavor, account)
+
+    def _review(self, flavor: Flavor, account: str | None) -> None:
+        self.push_screen(ReviewScreen(self.cfg, flavor, account=account, wow_check=self._wow_check),
+                         self._after_review)
 
     def _after_review(self, choice: str | None) -> None:
         if choice == "flavors":

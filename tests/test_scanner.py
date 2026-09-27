@@ -2,9 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.fixtures import build_wow_tree
+from tests.fixtures import NOW, build_wow_tree
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
+from wowtools.tools.wtf_cleaner.rules import Criteria, evaluate
 from wowtools.tools.wtf_cleaner.scanner import (ScanError, addon_name_for, installed_addons, is_canonical,
                                                 parse_addons_txt, scan)
 
@@ -89,3 +90,44 @@ class ScannerTest(unittest.TestCase):
     def test_empty_addons_folder_aborts(self):
         with self.assertRaises(ScanError):
             scan(self.install.flavor("anniversary"))
+
+
+class AccountScopeTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.install = WowInstall(build_wow_tree(Path(tmp.name) / "World of Warcraft"))
+        self.retail = self.install.flavor("retail")
+
+    def test_scoped_scan_uses_only_that_accounts_characters(self):
+        with capture_events() as records:
+            result = scan(self.retail, account="ACCT2")
+        self.assertEqual(result.account, "ACCT2")
+        self.assertEqual(result.enabled, {"auctionator"})
+        self.assertCountEqual([(g.account, g.owner_label, g.addon) for g in result.groups], [
+            ("ACCT2", "account-wide", "Details"), ("ACCT2", "Realm2/Chârb", "Details")])
+        self.assertEqual((result.accounts, result.characters), (1, 1))
+        proposal = evaluate(result, Criteria(), now=NOW)
+        self.assertCountEqual([(i.owner_label, i.addon, i.reasons) for i in proposal.items], [
+            ("account-wide", "Details", ["not_enabled"]), ("Realm2/Chârb", "Details", ["not_enabled"])])
+        started = [r for r in records if r["event"] == "scan.started"][0]["data"]
+        completed = [r for r in records if r["event"] == "scan.completed"][0]["data"]
+        self.assertEqual((started["account"], completed["account"]), ("ACCT2", "ACCT2"))
+
+    def test_scoped_scan_is_case_insensitive_and_unknown_raises(self):
+        result = scan(self.retail, account="acct2")
+        self.assertEqual(result.account, "ACCT2")
+        self.assertEqual({g.account for g in result.groups}, {"ACCT2"})
+        with self.assertRaises(ScanError) as ctx:
+            scan(self.retail, account="nope")
+        self.assertIn("Unknown account", str(ctx.exception))
+        self.assertIn("available: ACCT1, ACCT2", str(ctx.exception))
+
+    def test_all_accounts_unchanged(self):
+        with capture_events() as records:
+            result = scan(self.retail, account=None, progress=None)
+        self.assertIsNone(result.account)
+        self.assertEqual(result.enabled, {"auctionator", "details", "oldaddon"})
+        self.assertEqual((len(result.groups), result.sv_files, result.accounts, result.characters), (9, 14, 2, 2))
+        started = [r for r in records if r["event"] == "scan.started"][0]["data"]
+        self.assertIsNone(started["account"])

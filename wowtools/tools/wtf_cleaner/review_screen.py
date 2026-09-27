@@ -120,10 +120,12 @@ class ReviewScreen(Screen[str]):
         Binding("4", "criterion(3)", CRITERION_SHORT["stray_copies"], show=False),
     ]
 
-    def __init__(self, cfg: Config, flavor: Flavor, *, wow_check: Callable[[], list[str] | None]) -> None:
+    def __init__(self, cfg: Config, flavor: Flavor, *, account: str | None = None,
+                 wow_check: Callable[[], list[str] | None]) -> None:
         super().__init__()
         self.cfg = cfg
         self.flavor = flavor
+        self.account = account or None
         self.wow_check = wow_check
         self.settings = load_settings(cfg)
         self.criteria = self.settings.criteria.copy()
@@ -165,7 +167,7 @@ class ReviewScreen(Screen[str]):
 
     def _scan_worker(self) -> None:
         try:
-            result = scan(self.flavor)
+            result = scan(self.flavor, account=self.account)
         except ScanError as exc:
             log_exception("scan", exc)
             self.app.call_from_thread(self._scan_failed, str(exc))
@@ -272,11 +274,14 @@ class ReviewScreen(Screen[str]):
         if self.dry_run:
             status.update(Text("DRY RUN: the backup is written, nothing is deleted (press d to turn off)"))
             status.add_class("dry")
-            self.sub_title = f"WTF Cleaner · {self.flavor.display_name} · DRY RUN"
+            self.sub_title = f"WTF Cleaner · {self._scope()} · DRY RUN"
         else:
             status.update(Text("space tick/untick · a all · n none · 1-4 criteria · d dry run · c clean"))
             status.remove_class("dry")
-            self.sub_title = f"WTF Cleaner · {self.flavor.display_name}"
+            self.sub_title = f"WTF Cleaner · {self._scope()}"
+
+    def _scope(self) -> str:
+        return f"{self.flavor.display_name} · {self.account or 'all accounts'}"
 
     # --- actions ---------------------------------------------------------------------------------
     def action_toggle(self) -> None:

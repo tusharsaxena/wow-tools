@@ -140,6 +140,19 @@ class SettingsTest(unittest.TestCase):
         save_settings(cfg, settings)
         self.assertIsNone(load_settings(Config(self.path).load()).backup_dir)
 
+    def test_settings_round_trip_last_account(self):
+        cfg = Config(self.path)
+        settings = load_settings(cfg)
+        self.assertIsNone(settings.last_account)
+        settings.last_account = "ACCT2"
+        save_settings(cfg, settings)
+        self.assertEqual(Config(self.path).load().get(SECTION, "last_account"), "ACCT2")
+        self.assertEqual(load_settings(Config(self.path).load()).last_account, "ACCT2")
+        settings.last_account = None
+        save_settings(cfg, settings)
+        self.assertEqual(Config(self.path).load().get(SECTION, "last_account"), "")
+        self.assertIsNone(load_settings(Config(self.path).load()).last_account)
+
     def test_general_backup_dir_is_ignored(self):
         self.path.write_text("[general]\nwow_path = /games/wow\nbackup_dir = /x\n", encoding="utf-8")
         cfg = Config(self.path).load()
