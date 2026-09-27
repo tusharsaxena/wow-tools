@@ -268,7 +268,7 @@ The updater applies to the **whole suite**, not to individual tools.
   3. Copy the current **managed paths** (`wowtools/`, `vendor/`, `scripts/`, `docs/`, root `*.md`, `wtf-cleaner.cmd`, `wtf-cleaner.sh`, `requirements.txt`) to `.update-backup/<old-version>/`.
   4. Replace the managed paths from staging.
   5. On any failure, roll back automatically from `.update-backup/`.
-- **Never touched:** `wow-tools.cfg`, `wow-tools.log*`, backup zips, and anything not on the managed list.
+- **Never touched:** `wow-tools.cfg`, `logs/`, backup zips, and anything not on the managed list.
 - **After applying:** "Updated to vX. Restart to use the new version", then a clean exit. There is no hot reload.
 - **Safety:** an update is never applied while a clean is running. The TUI only offers `u` from the tool picker, flavor and review screens.
 
