@@ -19,8 +19,8 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 | 3 | Suite event log | done | 4a2cebf | No code deviations (plan says 12 tests; its test file has 13, all pass) |
 | 4 | Config | done | 1a4e4a0 | No deviations |
 | 5 | WoW install model + test fixture tree | done |  | No deviations |
-| 6 | Verified zip backups | done | | No deviations |
-| 7 | "Is WoW running?" check | done | | No deviations |
+| 6 | Verified zip backups | done | 5461825 | No deviations |
+| 7 | "Is WoW running?" check | done | 9751713 | No deviations |
 | 8 | WTF Cleaner scanner + event registry | pending | | |
 | 9 | Rules, settings, report | pending | | |
 | 10 | Clean pipeline | pending | | |
@@ -37,7 +37,7 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 | Milestone | Tasks | Pushed |
 |---|---|---|
 | M1 Core foundation | 1–4 | yes |
-| M2 Core services | 5–7 | |
+| M2 Core services | 5–7 | yes |
 | M3 Cleaner logic | 8–10 | |
 | M4 Updater + CLI | 11–13 | |
 | M5 TUI | 14–15 | |
