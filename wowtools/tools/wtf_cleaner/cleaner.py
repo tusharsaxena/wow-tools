@@ -16,15 +16,17 @@ from wowtools.core.events import log_event
 from wowtools.core.install import Flavor
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
 from wowtools.tools.wtf_cleaner.rules import ProposalItem
-from wowtools.tools.wtf_cleaner.safety import (Marker, clear_marker, remove_snapshot, restore_deleted,
-                                               take_snapshot, write_marker)
+from wowtools.tools.wtf_cleaner.safety import (MARKER_NAME, Marker, clear_marker, read_marker, remove_snapshot,
+                                               restore_deleted, take_snapshot, write_marker)
 from wowtools.tools.wtf_cleaner.scanner import SVFile
 
 CleanProgress = Callable[[str, int, int, str], None]
 
 
 class CleanError(Exception):
-    """A selected path is not a SavedVariables file inside WTF/Account. Nothing was touched."""
+    """The clean was refused or stopped. `restored` lists files put back from the snapshot, if any."""
+
+    restored: list[str] = []
 
 
 @dataclass(frozen=True)
@@ -119,6 +121,14 @@ def _take_safety_snapshot(flavor: Flavor, backup_dir: Path | None, now: datetime
     if backup_dir is None:
         log_event("snapshot.failed", flavor=flavor.folder, error="no backup folder is configured")
         raise BackupError("no backup folder is configured (the safety snapshot needs one)")
+    earlier = read_marker(backup_dir)
+    if earlier is not None:
+        # Starting a new clean would overwrite the only pointer to the earlier snapshot.
+        log_event("snapshot.failed", flavor=flavor.folder, error="an earlier clean did not finish",
+                  earlier_snapshot=str(earlier.snapshot))
+        raise BackupError(f"an earlier clean (started {earlier.started}) did not finish. Its safety snapshot is "
+                          f"kept at {earlier.snapshot}. Dismiss that notice in the TUI (the snapshot is kept) or "
+                          f"delete {backup_dir / MARKER_NAME}, then clean again.")
     try:
         snapshot = take_snapshot(flavor, backup_dir, now, progress=report)
     except BackupError as exc:
@@ -134,6 +144,9 @@ def _take_safety_snapshot(flavor: Flavor, backup_dir: Path | None, now: datetime
         _discard_safety(backup_dir, snapshot)
         log_event("snapshot.failed", flavor=flavor.folder, error=f"could not write the clean marker: {exc}")
         raise BackupError(f"could not write the clean marker: {exc}") from exc
+    except BaseException:  # interrupted before deleting anything: the snapshot is not needed
+        _discard_safety(backup_dir, snapshot)
+        raise
     return snapshot
 
 
@@ -152,7 +165,9 @@ def _restore_after(exc: BaseException, snapshot: Path, backup_dir: Path, flavor:
     log_event("restore.completed", flavor=flavor.folder, snapshot=str(snapshot), restored=len(restored),
               reason=reason, files=restored)
     clear_marker(backup_dir)
-    return CleanError(f"Clean stopped ({reason}); {len(restored)} deleted files were restored from {snapshot}")
+    error = CleanError(f"Clean stopped ({reason}); {len(restored)} deleted files were restored from {snapshot}")
+    error.restored = restored
+    return error
 
 
 def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup: bool,

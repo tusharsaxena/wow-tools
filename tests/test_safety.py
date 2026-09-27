@@ -5,9 +5,12 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
-from tests.fixtures import build_wow_tree
+from tests.fixtures import NOW, build_wow_tree
 from wowtools.core.backup import BackupError
 from wowtools.core.install import WowInstall
+from wowtools.tools.wtf_cleaner.cleaner import execute
+from wowtools.tools.wtf_cleaner.rules import Criteria, evaluate
+from wowtools.tools.wtf_cleaner.scanner import scan
 from wowtools.tools.wtf_cleaner.safety import (MARKER_NAME, Marker, clear_marker, read_marker, recovery_message,
                                                restore_deleted, take_snapshot, write_marker)
 
@@ -101,3 +104,35 @@ class SafetyTest(unittest.TestCase):
         self.assertIn("2026-09-27T14:03:11", text)
         self.assertIn(str(marker.snapshot), text)
         self.assertIn(f"close WoW, then unzip it into {marker.flavor_path} to restore", text)
+
+
+class UnresolvedMarkerTest(unittest.TestCase):
+    """A new real clean must not overwrite the marker of an earlier clean that did not finish."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+        self.root = build_wow_tree(self.tmp / "World of Warcraft")
+        self.retail = WowInstall(self.root).flavor("retail")
+        self.backup_dir = self.tmp / "bk"
+        self.proposal = evaluate(scan(self.retail), Criteria(), now=NOW)
+        self.earlier = Marker(snapshot=self.backup_dir / "wtf-snapshot_retail_20260101-000000.zip",
+                              flavor="_retail_", flavor_path=self.retail.path, started="2026-01-01T00:00:00",
+                              pid=1, suite_version="0.1.0", files=["WTF/x.lua"])
+        write_marker(self.backup_dir, self.earlier)
+
+    def test_real_clean_is_refused_and_marker_kept(self):
+        with self.assertRaises(BackupError) as ctx:
+            execute(self.proposal.items, self.retail, dry_run=False, backup=True, backup_dir=self.backup_dir)
+        self.assertIn("did not finish", str(ctx.exception))
+        self.assertEqual(read_marker(self.backup_dir).started, "2026-01-01T00:00:00")
+        for item in self.proposal.items:
+            for sv in item.files:
+                self.assertTrue(sv.path.exists())
+        self.assertEqual(list(self.backup_dir.glob("wtf-snapshot_retail_2026092*")), [])
+
+    def test_dry_run_still_allowed(self):
+        result = execute(self.proposal.items, self.retail, dry_run=True, backup=True, backup_dir=self.backup_dir)
+        self.assertTrue(result.would_delete)
+        self.assertIsNotNone(read_marker(self.backup_dir))

@@ -77,6 +77,9 @@ def take_snapshot(flavor: Flavor, backup_dir: Path, now: datetime,
     except (OSError, zipfile.BadZipFile, ValueError) as exc:
         _remove(partial)
         raise BackupError(f"safety snapshot failed: {exc}") from exc
+    except BaseException:  # e.g. Ctrl+C while zipping: never leave a stray .partial behind
+        _remove(partial)
+        raise
     return dest
 
 

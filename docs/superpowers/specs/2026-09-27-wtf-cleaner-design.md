@@ -442,6 +442,8 @@ This addendum records the changes agreed with the user after they tried v0.1. Wh
    - The CLI prints the same message to stderr.
    - Both emit `recovery.incomplete_clean`.
 
+6. **An unresolved marker blocks new real cleans.** A real clean refuses to start (as a `BackupError`, so nothing is deleted) while a marker from an earlier interrupted clean exists, because a new marker would overwrite the only pointer to the earlier snapshot. Dry runs are still allowed. To clear it, use Dismiss in the TUI (the snapshot is kept) or delete the marker file.
+
 ### A.5 Progress
 - `scan()` takes an optional `progress(current, total, label)` callback. The total is the number of SavedVariables folders to read.
 - `execute()` takes an optional `progress(stage, current, total, detail)` callback. The stages are `snapshot`, `backup`, `verify` and `delete`.
