@@ -1,0 +1,298 @@
+# Ka0s WoW Tools — Framework + WTF Cleaner Design
+
+- **Date:** 2026-09-27
+- **Status:** Draft for review
+- **Scope:** The shared `wow-tools` framework and its first tool, the WTF Cleaner. The screenshot organizer is a later, separate spec.
+
+## 1. Purpose
+
+`wow-tools` is a repo of out-of-game companion tools for World of Warcraft, branded **Ka0s**. The tools share one framework: a single config, one set of vendored libraries, a common WoW-install model and common TUI screens. They run with no install step on Windows and on Linux/WSL.
+
+The first tool is the **WTF Cleaner**. Over time the WTF folder collects SavedVariables (SV) files from addons that are no longer installed, no longer enabled, or long abandoned, plus hand-made backup copies. The cleaner finds these files, proposes them for deletion with the reason for each, backs them up to a timestamped zip, and deletes them only after you confirm. A dry-run mode simulates the whole process.
+
+**Success criteria**
+- On a fresh clone: run `wtf-cleaner.cmd` (Windows) or `./wtf-cleaner.sh` (Linux/WSL), answer the first-run questions, pick a flavor, review a proposal, and clean. No pip, no virtualenv.
+- Nothing is deleted without a verified backup, unless the user explicitly opts out.
+- Every proposed file shows the reason it was proposed.
+- The same config file works from both Windows and WSL.
+
+## 2. Constraints and decisions
+
+| Topic | Decision |
+|---|---|
+| Language | Python ≥ 3.10, stdlib plus vendored pure-Python libs |
+| TUI | Textual (with Rich), vendored |
+| Vendoring | `vendor/` is committed to git and populated by `scripts/update_vendor.py` via `pip install --target vendor -r requirements.txt` (pinned) |
+| Entry point | `python -m wowtools <tool> [args]`; `wowtools/__main__.py` adds `vendor/` to `sys.path` before any third-party import. Thin wrappers: `wtf-cleaner.cmd`, `wtf-cleaner.sh` |
+| Config | `wow-tools.cfg` (INI, `configparser`) in the repo root, git-ignored |
+| Paths | `wow_path` is stored in Windows form and translated automatically under WSL (`G:\X` ⇄ `/mnt/g/X`) |
+| Front ends | TUI (default) **and** a non-interactive CLI, both thin layers over a UI-free core |
+| Criteria | Four, each toggleable. Default: all on, and a group is flagged if **any** criterion matches |
+| "Enabled" scope | **Global** within the flavor: enabled on any character in any account protects the addon's SV files everywhere |
+| Tests | Stdlib `unittest`; Textual's `App.run_test()` for the TUI |
+
+## 3. Repo layout
+
+```
+wow-tools/
+├── README.md                     # user-facing
+├── CLAUDE.md                     # dev notes
+├── .gitignore                    # wow-tools.cfg, *.log, __pycache__/, backups/
+├── requirements.txt              # pinned textual + deps
+├── wtf-cleaner.cmd               # @py -3 -m wowtools wtf-cleaner %*   (falls back to python)
+├── wtf-cleaner.sh                # exec python3 -m wowtools wtf-cleaner "$@"
+├── vendor/                       # committed third-party libs
+├── scripts/update_vendor.py
+├── wowtools/
+│   ├── __init__.py               # __version__
+│   ├── __main__.py               # bootstrap vendor/, dispatch subcommand; no args → tool picker
+│   ├── core/                     # no UI imports
+│   │   ├── bootstrap.py          # vendor path setup + Python version check
+│   │   ├── config.py             # load/save wow-tools.cfg, typed accessors, defaults
+│   │   ├── paths.py              # WSL detection, Windows⇄WSL translation
+│   │   ├── install.py            # WowInstall → Flavor → Account → Realm → Character
+│   │   ├── backup.py             # zip writer + manifest + verification
+│   │   ├── process.py            # best-effort "is WoW running?"
+│   │   └── logging.py            # rotating wow-tools.log
+│   ├── ui/                       # shared Textual pieces
+│   │   ├── theme.py              # Ka0s theme + branding widgets
+│   │   ├── setup_screen.py       # first-run / settings wizard
+│   │   └── flavor_screen.py      # flavor picker
+│   └── tools/
+│       ├── __init__.py           # tool registry: name → (cli main, tui app)
+│       └── wtf_cleaner/
+│           ├── scanner.py        # installed/enabled addons, SV discovery, grouping
+│           ├── rules.py          # criteria → Proposal
+│           ├── cleaner.py        # recheck, backup, delete / simulate
+│           ├── cli.py
+│           └── app.py            # Textual app + screens
+├── tests/
+│   ├── fixtures.py               # synthetic WoW tree builder
+│   └── test_*.py
+└── docs/
+    ├── architecture.md
+    ├── adding-a-tool.md
+    ├── vendoring.md
+    └── assets/ka0s-logo.png
+```
+
+**Rule:** `core/` and the non-UI modules of each tool (`scanner`, `rules`, `cleaner`) never import Textual. They can be tested and used from the CLI without it.
+
+## 4. Shared framework
+
+### 4.1 Bootstrap (`__main__.py`, `core/bootstrap.py`)
+- Checks that Python is ≥ 3.10, with a readable message otherwise.
+- Inserts `<repo>/vendor` at the front of `sys.path`.
+- Dispatches: `python -m wowtools wtf-cleaner …` goes to the registered tool. No argument opens a small Textual tool picker. `--help` lists the tools.
+- A tool runs its TUI unless CLI-mode flags are given (see §6.6).
+
+### 4.2 Config (`core/config.py`)
+INI file `wow-tools.cfg` in the repo root:
+
+```ini
+[general]
+wow_path = G:\Games\Blizzard\World of Warcraft
+backup_dir = G:\Games\Blizzard\World of Warcraft\wow-tools-backups
+last_flavor = _retail_
+
+[wtf_cleaner]
+max_age_days = 90
+criterion_not_installed = true
+criterion_not_enabled = true
+criterion_older_than = true
+criterion_stray_copies = true
+backup_before_delete = true
+```
+
+- Path values are stored in Windows form when they came from a Windows or WSL-translatable path. Other Linux paths (e.g. native Linux WoW under Wine/Lutris) are stored as-is.
+- Missing keys fall back to defaults. Unknown keys are preserved on save.
+- Each tool owns one section. `[general]` is shared.
+- Default `backup_dir` is `<wow_path>/wow-tools-backups`.
+
+### 4.3 Paths (`core/paths.py`)
+- `is_wsl()`: checks `/proc/version` for `microsoft`/`WSL`.
+- `to_native(p)`: under WSL, `X:\a\b` becomes `/mnt/x/a/b`. On Windows or native Linux, the path is unchanged.
+- `to_stored(p)`: under WSL, `/mnt/x/a/b` becomes `X:\a\b`. Otherwise the path is unchanged.
+- All code works on native `pathlib.Path` objects from `to_native()`.
+
+### 4.4 Install model (`core/install.py`)
+- `WowInstall(root)` validates that `root` contains at least one flavor folder.
+- **Flavor discovery** means any direct child folder matching `_*_`, e.g. `_retail_`, `_classic_`, `_classic_era_`, `_anniversary_`, `_classic_beta_`, `_ptr_`, `_beta_`. Display names come from a known-name map, and unknown flavors fall back to title-casing (`_classic_beta_` → "Classic Beta").
+- `Flavor` exposes `addons_dir`, `wtf_dir`, and `accounts()`.
+- `Account(name, path)` exposes `saved_variables_dir` and `characters()`.
+- `Character(account, realm, name, path)` exposes `saved_variables_dir` and `addons_txt`.
+- Realm and character discovery covers the subdirectories of `Account/<acct>/` other than `SavedVariables`, and their subdirectories.
+- Directory names are read as `str` from the filesystem, so the UTF-8 names WoW writes (e.g. `Aellâ`) are handled as-is.
+- **Auto-detect** candidates for setup: common Windows install paths (`C:\Program Files (x86)\World of Warcraft`, `C:\Program Files\…`, `<drive>:\Games\…`, and `<drive>:\…\Blizzard\World of Warcraft` on every existing drive letter up to a shallow depth). Under WSL these are checked via `/mnt/<drive>/`.
+
+### 4.5 Backup (`core/backup.py`)
+- `create_backup(files, base_dir, dest_zip, manifest_extra)` writes a ZIP_DEFLATED archive. Entries are stored relative to `base_dir` (the flavor folder), so they start with `WTF/Account/...`.
+- Adds `manifest.json`, which contains the tool, version, flavor, timestamp, and a list of files, each with its relative path, size, modified time and reasons.
+- **Verification:** re-open the zip, run `testzip()`, and check that the entry set and sizes match the input. Anything else raises `BackupError`.
+- Restoring means unzipping into the flavor folder. This is documented in the README. No restore command is included in this version.
+
+### 4.6 WoW running check (`core/process.py`)
+- Windows: `tasklist` filtered for `Wow.exe`, `WowClassic.exe`, `WowB.exe`, `WowT.exe`.
+- WSL: the same, via `tasklist.exe`.
+- Linux: `/proc/*/comm` matching those names (for Wine).
+- Returns a bool or `None` (unknown). The check is only a warning and never blocks.
+
+### 4.7 Logging (`core/logging.py`)
+Writes `wow-tools.log` in the repo root (git-ignored), rotating at 1 MB with 3 backups kept. It records the start and end of each scan and clean, and every delete or failure.
+
+### 4.8 Theme and branding (`ui/theme.py`)
+The Textual theme is registered as `ka0s` and taken from the Ka0s shield logo: a near-black navy background, deep-blue panels, glowing electric-blue accents, and steel-silver text.
+
+| Token | Value | Use |
+|---|---|---|
+| background | `#05080F` | app background |
+| surface | `#0B1526` | panels, tree |
+| panel | `#10213D` | header/footer, dialogs |
+| primary | `#2F8CFF` | focus, selection, buttons |
+| accent | `#5CC8FF` | glow highlights, active borders |
+| foreground | `#D3DAE3` | body text (steel silver) |
+| secondary | `#8A96A8` | muted text, metadata |
+| success | `#4CC38A` | |
+| warning | `#E8B04B` | dry-run banner, WoW-running warning |
+| error | `#E5534B` | |
+
+Branding:
+- The header title is **"Ka0s · WoW Tools"**, with the tool name as sub-title.
+- A small Unicode shield/"K" banner with the tagline **"Ka0s WoW Tools"** in accent blue appears on the tool picker and the setup wizard.
+- The footer shows `Ka0s` and the version.
+- The README shows `docs/assets/ka0s-logo.png` at the top.
+
+## 5. WTF Cleaner — scanning
+
+### 5.1 Installed addons
+- Every folder under `<flavor>/Interface/AddOns/` that contains at least one `*.toc` counts. This includes flavor-suffixed TOCs (`Foo_Mainline.toc`, `Foo-Classic.toc`, `Foo_Vanilla.toc`, etc.). The addon name is the folder name.
+- Names are compared case-insensitively (casefold).
+
+### 5.2 Enabled addons (global)
+- For each character in each account of the flavor, parse `AddOns.txt`. Lines have the form `Name: enabled|disabled`. Surrounding whitespace is stripped, and malformed lines are ignored.
+- `enabled_set` is the union of addons listed `enabled`.
+- Plus: for each character, installed addons **not listed** in its `AddOns.txt` count as enabled, because WoW's default is on.
+- Plus: a character with **no** `AddOns.txt` contributes all installed addons.
+
+### 5.3 SV discovery and grouping
+- Scanned locations:
+  - `WTF/Account/<acct>/SavedVariables/`
+  - `WTF/Account/<acct>/<realm>/<char>/SavedVariables/`
+- Only regular files directly in these folders are scanned (no recursion).
+- **Addon name** is the part of the filename before the first occurrence of `.lua` (case-insensitive). Files with no `.lua` are ignored.
+- A **group** is (scope = account or character, the owner, addon name) together with all its files.
+- **Canonical files** are exactly `<Addon>.lua` and `<Addon>.lua.bak`. Every other file in the group is a **stray copy** (e.g. `Foo.lua.pre-schema8-20260926-103400`, `Foo.lua - Copy.bak`, `Foo.lua.before-x`).
+
+### 5.4 Protection (never proposed)
+- Groups whose addon name starts with `Blizzard_` (case-insensitive).
+- Anything outside a `SavedVariables/` folder: `config-cache.wtf`, bindings, macros, `AddOns.txt`, layout files, etc.
+- **Safety abort:** if `Interface/AddOns` is missing or has no addons, the scan raises `ScanError`. Otherwise every SV file would look not-installed.
+
+## 6. WTF Cleaner — rules, flow, cleaning
+
+### 6.1 Criteria (`rules.py`)
+Each criterion is toggleable in config, the TUI and the CLI. Default: all on, and an item is flagged if any criterion matches.
+
+| Criterion | Unit | Flags when |
+|---|---|---|
+| `not_installed` | group | addon not in the installed set |
+| `not_enabled` | group | addon installed but not in `enabled_set` |
+| `older_than` | group | the **newest** modified time among the group's files is older than `max_age_days` (default 90) |
+| `stray_copies` | file | the file is a stray copy (§5.3). Applies even when the group is otherwise kept |
+
+- A flagged group proposes **all** its files.
+- An unflagged group with stray copies proposes **only those stray files**.
+- Each `ProposalItem` records the account, the character (if character-scoped), the addon, the scope, the files (path, size, modified time), the reasons (a list), the total size and the newest modified time.
+- A `Proposal` holds the items plus totals and scan warnings (e.g. unreadable directories).
+
+### 6.2 TUI flow (`app.py`)
+1. **Setup wizard** runs when there is no config or `wow_path` is invalid. It can be reopened with `s`. The fields are: WoW folder (auto-detected choices plus a text input, validated), backup folder, max age, the four criterion toggles, and backup-before-delete. The answers are saved to the config.
+2. **Flavor picker** lists the flavors found on disk with the last one used pre-selected, and saves `last_flavor`.
+3. **Scan and review:**
+   - Scanning runs in a worker with a loading indicator.
+   - The results are shown as a tree: Account → "Account-wide" and one node per `Realm / Character` → addon group, showing reasons, file count, size and age. Group nodes expand to individual files.
+   - Everything starts checked. `space` toggles the current item, and `a`/`n` select all or none.
+   - Criterion filter toggles (keys `1`–`4`) re-evaluate the proposal live, and the max age can be edited inline.
+   - A summary bar shows the selected groups, files and bytes.
+   - `d` toggles **dry run**. When dry run is on, a warning-colored **DRY RUN** banner appears in the header.
+   - `c` starts cleaning, `r` rescans, `q` quits.
+4. **Confirm dialog** shows the counts and size, the backup path (or "no backup" in red), the dry-run state, and the WoW-running warning if it applies.
+5. **Result screen** shows the backup zip path, the deleted (or would-delete) count and size, and a list of skipped and failed files with their reasons. From there you can go back to the flavor picker or quit.
+
+### 6.3 Clean pipeline (`cleaner.py`)
+`execute(selection, *, dry_run, backup, flavor, backup_dir) -> CleanResult`
+
+1. **Re-check** each selected file. Skip it (reason `missing` or `changed`) if it no longer exists or its modified time or size differs from the scan.
+2. **Path guard.** Resolve each path and require it to be inside `<flavor>/WTF/Account/` and inside a `SavedVariables` folder. Anything else aborts with an error. This is a programming-error guard.
+3. **Backup** (if enabled and not a dry run): write `<backup_dir>/wtf-cleaner_<flavor>_<YYYYMMDD-HHMMSS>.zip` and verify it. On any failure, abort and delete nothing.
+4. **Delete** each file with `Path.unlink()`. Per-file errors are collected, and processing continues.
+5. **Dry run:** steps 1–2 run for real. Steps 3–4 are only reported ("would write …", "would delete …"). No files are created or removed.
+6. Everything is logged to `wow-tools.log`.
+
+### 6.4 WoW running
+The check runs before the confirm step, as a warning (§4.6).
+
+### 6.5 Error handling summary
+| Situation | Behavior |
+|---|---|
+| Config missing/unreadable | TUI → setup wizard; CLI → error with hint (`run the TUI once or pass --wow-path`) |
+| `wow_path` invalid | re-validated every launch; same as above |
+| Unreadable directory during scan | skipped, added to the proposal's warnings, logged |
+| Malformed `AddOns.txt` line | ignored |
+| Empty/missing `Interface/AddOns` | `ScanError`, nothing proposed |
+| Backup failure | whole clean aborted, nothing deleted |
+| Per-file delete failure | recorded, rest continue, shown in results |
+| Path outside `WTF/Account/**/SavedVariables` | abort (guard) |
+
+### 6.6 CLI (`cli.py`)
+```
+python -m wowtools wtf-cleaner [--flavor NAME] [options]
+
+  (no --clean)          print the proposal and exit (read-only)
+  --clean               back up and delete the proposal after a y/N prompt
+  --yes                 skip the prompt
+  --dry-run             simulate even with --clean
+  --no-backup           skip the zip; refused unless --yes is also given
+  --max-age N           override max_age_days
+  --criteria LIST       comma list of not_installed,not_enabled,older_than,stray_copies
+  --wow-path PATH       override config wow_path
+  --backup-dir PATH     override config backup_dir
+  --json                machine-readable proposal/result on stdout
+  --tui                 force the TUI
+```
+- CLI mode is active whenever any of `--flavor`, `--clean`, `--json` or `--dry-run` is given. Otherwise the TUI launches.
+- `--flavor` accepts the folder name or a short form (`retail`, `classic`, `classic_era`, `anniversary`, …). If it's omitted in CLI mode, `last_flavor` is used, and if that's unset the CLI exits with an error.
+- Exit codes: 0 ok, 1 usage/config error, 2 scan error, 3 clean completed with per-file failures, 4 backup failure.
+
+## 7. Testing
+- The `tests/fixtures.py` builder creates a temp WoW tree with:
+  - `_retail_` and `_classic_era_`, 2 accounts, and several realms and characters.
+  - One character without `AddOns.txt`.
+  - Installed addons, including one with a flavor-suffixed TOC only.
+  - Uninstalled-addon SVs, installed-but-disabled addons, and enabled addons.
+  - `Blizzard_*` SVs, stray copies, non-SV files, and controlled modified times.
+- **Unit tests:** path translation; config round-trip and defaults; flavor, account and character discovery; TOC detection; `AddOns.txt` parsing and the enabled union; grouping and stray detection; each criterion alone and in combination; protections; the safety abort; backup zip contents, manifest and verification failure; the dry run leaving the tree byte-identical; the re-check skipping changed files; the path guard; CLI argument handling, JSON output and exit codes.
+- **TUI tests:** `App.run_test()` pilot through setup → flavor → review → dry-run clean → result, against the fixture tree.
+- Run with `python -m unittest` from the repo root. The test package bootstraps `vendor/` itself.
+- Tests never touch a real WoW install.
+
+## 8. Documentation
+- **README.md** (user-facing):
+  - Ka0s logo, what the repo is, and the list of tools.
+  - Requirements (Python 3.10+).
+  - Quick start for Windows and for Linux/WSL.
+  - First-run setup and how to change settings.
+  - WTF Cleaner: what it does, the four criteria with examples, the TUI key reference, CLI usage with examples, dry run, backups and **how to restore**.
+  - Safety notes (close WoW first; `Blizzard_*` and game settings are never touched).
+  - Where the config and log live, and an FAQ/troubleshooting section.
+- **docs/architecture.md:** layering (core / ui / tools), bootstrap, config schema, install model, Windows⇄WSL paths, theme.
+- **docs/adding-a-tool.md:** a step-by-step guide to adding a tool (registry entry, config section, reusing the flavor and setup screens and theme, tests), using the future screenshot organizer as the running example.
+- **docs/vendoring.md:** updating and adding libraries with `scripts/update_vendor.py`, pinning, and keeping libraries pure-Python.
+- **CLAUDE.md:** commands, layout, conventions (no Textual in core, stdlib tests, Windows-form stored paths).
+
+## 9. Out of scope (this spec)
+- Restore command (restoring is a manual unzip, documented in the README).
+- Cleaning non-SV WTF files (config-cache, bindings, macros).
+- Per-character/per-account "enabled" scoping (global was chosen).
+- Screenshot organizer (separate spec; §3 and §4 are designed for reuse by it).
+- Packaging (pyz/exe).

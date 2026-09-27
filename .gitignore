@@ -1,0 +1,7 @@
+wow-tools.cfg
+*.log
+*.log.*
+__pycache__/
+*.pyc
+backups/
+wow-tools-backups/
