@@ -1,16 +1,24 @@
 """Suite updater: check GitHub Releases on launch and update the whole suite in place."""
 from __future__ import annotations
 
+import argparse
 import json
 import re
+import shutil
+import subprocess
+import sys
+import tempfile
 import threading
 import urllib.error
 import urllib.request
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Callable
 
 from wowtools import __version__
+from wowtools.core.bootstrap import REPO_ROOT
 from wowtools.core.config import GENERAL, Config
 from wowtools.core.events import log_event
 
@@ -130,3 +138,160 @@ class UpdateCheck:
             return None
         return (f"Ka0s WoW Tools v{self.release.version} is available (you have v{__version__}). "
                 "Update with: python -m wowtools update")
+
+
+# --- applying an update ---------------------------------------------------------------------
+MANAGED_DIRS = ("wowtools", "vendor", "scripts", "docs")
+MANAGED_FILES = ("wtf-cleaner.cmd", "wtf-cleaner.sh", "wow-tools.cmd", "wow-tools.sh",
+                 "requirements.txt", ".gitattributes")
+BACKUP_DIR_NAME = ".update-backup"
+_VERSION_RE = re.compile(r'^__version__\s*=\s*["\']([^"\']+)["\']', re.MULTILINE)
+
+
+def install_kind(root: Path = REPO_ROOT) -> str:
+    return "git" if (root / ".git").exists() else "zip"
+
+
+def apply_update(release: ReleaseInfo, *, root: Path = REPO_ROOT, current: str = __version__,
+                 runner=subprocess.run, download: Callable[[str, Path], None] | None = None) -> str:
+    kind = install_kind(root)
+    try:
+        if kind == "git":
+            _apply_git(root, release.tag, runner)
+        else:
+            _apply_zip(root, release, current, download or _download)
+    except UpdateError as exc:
+        log_event("update.failed", method=kind, error=str(exc))
+        raise
+    log_event("update.applied", method=kind, **{"from": current, "to": release.version})
+    return f"Updated Ka0s WoW Tools to v{release.version}. Restart to use the new version."
+
+
+def _git(root: Path, runner, *args: str) -> str:
+    try:
+        proc = runner(["git", *args], cwd=root, capture_output=True, text=True, check=False)
+    except OSError as exc:
+        raise UpdateError("git is not available. Install git, or download the release zip instead.") from exc
+    if proc.returncode != 0:
+        raise UpdateError(f"git {' '.join(args)} failed: {(proc.stderr or proc.stdout).strip()}")
+    return proc.stdout
+
+
+def _apply_git(root: Path, tag: str, runner) -> None:
+    if _git(root, runner, "status", "--porcelain").strip():
+        raise UpdateError("You have local changes in the wow-tools folder. Commit or stash them, then update again.")
+    _git(root, runner, "fetch", "--tags", "--force", "origin")
+    _git(root, runner, "merge", "--ff-only", tag)
+
+
+def _download(url: str, dest: Path) -> None:
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response, dest.open("wb") as handle:
+            shutil.copyfileobj(response, handle)
+    except (OSError, urllib.error.URLError) as exc:
+        raise UpdateError(f"download failed: {exc}") from exc
+
+
+def _managed_names(folder: Path) -> list[str]:
+    names = [name for name in (*MANAGED_DIRS, *MANAGED_FILES) if (folder / name).exists()]
+    names += sorted(p.name for p in folder.glob("*.md") if p.is_file())
+    return names
+
+
+def _copy(src: Path, dst: Path) -> None:
+    if src.is_dir():
+        shutil.copytree(src, dst)
+    else:
+        shutil.copy2(src, dst)
+
+
+def _remove(path: Path) -> None:
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    elif path.exists():
+        path.unlink()
+
+
+def _rollback(root: Path, backup: Path) -> None:
+    saved = {p.name for p in backup.iterdir()}
+    for name in set(_managed_names(root)) | saved:
+        try:
+            _remove(root / name)
+        except OSError:
+            pass
+    for name in saved:
+        _copy(backup / name, root / name)
+
+
+def _apply_zip(root: Path, release: ReleaseInfo, current: str, download: Callable[[str, Path], None]) -> None:
+    if not release.zipball_url:
+        raise UpdateError("the release has no download URL")
+    with tempfile.TemporaryDirectory(prefix="wowtools-update-") as tmp:
+        work = Path(tmp)
+        archive = work / "release.zip"
+        download(release.zipball_url, archive)
+        try:
+            with zipfile.ZipFile(archive) as zf:
+                zf.extractall(work / "extract")
+        except (zipfile.BadZipFile, OSError) as exc:
+            raise UpdateError(f"the downloaded file is not a valid zip: {exc}") from exc
+        tops = [p for p in (work / "extract").iterdir() if p.is_dir()]
+        if len(tops) != 1:
+            raise UpdateError("unexpected release layout")
+        staging = tops[0]
+        init = staging / "wowtools" / "__init__.py"
+        match = _VERSION_RE.search(init.read_text(encoding="utf-8")) if init.is_file() else None
+        if not match or match.group(1) != release.version:
+            raise UpdateError(f"the download does not contain version {release.version}")
+
+        backup = root / BACKUP_DIR_NAME / current
+        if backup.exists():
+            shutil.rmtree(backup)
+        backup.mkdir(parents=True)
+        old_names = _managed_names(root)
+        try:
+            for name in old_names:
+                _copy(root / name, backup / name)
+        except OSError as exc:
+            raise UpdateError(f"could not back up the current version: {exc}") from exc
+        try:
+            for name in old_names:
+                _remove(root / name)
+            for name in _managed_names(staging):
+                _copy(staging / name, root / name)
+        except OSError as exc:
+            _rollback(root, backup)
+            raise UpdateError(f"update failed and was rolled back: {exc}") from exc
+
+
+def run_update_command(argv: list[str], cfg: Config, *, stdout=None, stderr=None,
+                       check=check_for_update, apply=apply_update) -> int:
+    stdout = stdout or sys.stdout
+    stderr = stderr or sys.stderr
+    parser = argparse.ArgumentParser(prog="python -m wowtools update",
+                                     description="Check for and apply Ka0s WoW Tools updates.")
+    parser.add_argument("--check", action="store_true", help="only report whether an update is available")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return 0 if exc.code in (0, None) else 1
+    try:
+        release = check(cfg, force=True, raise_errors=True)
+    except UpdateError as exc:
+        print(f"Could not check for updates: {exc}", file=stderr)
+        return 1
+    if release is None:
+        print(f"Ka0s WoW Tools v{__version__} is up to date.", file=stdout)
+        return 0
+    if args.check:
+        print(f"Update available: v{release.version} (you have v{__version__}). "
+              "Run: python -m wowtools update", file=stdout)
+        return 10
+    log_event("ui.selection", screen="cli", control="update", value="accepted")
+    try:
+        print(apply(release), file=stdout)
+    except UpdateError as exc:
+        print(f"Update failed: {exc}", file=stderr)
+        return 1
+    return 0

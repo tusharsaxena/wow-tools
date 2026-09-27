@@ -25,7 +25,7 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 | 9 | Rules, settings, report | done | 4294b06 | No code deviations (plan says 16 tests; its test file has 15, all pass) |
 | 10 | Clean pipeline | done | 5897e4a | No deviations |
 | 11 | Updater part 1: release check | done | | No deviations |
-| 12 | Updater part 2: apply + update command | pending | | |
+| 12 | Updater part 2: apply + update command | done | | No deviations |
 | 13 | Dispatcher, registry, CLI, wrappers | pending | | |
 | 14 | Shared UI | pending | | |
 | 15 | WTF Cleaner TUI | pending | | |
