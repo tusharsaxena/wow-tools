@@ -72,7 +72,7 @@ def proposal_to_dict(proposal: Proposal, flavor: Flavor, now: float | None = Non
     }
 
 
-def format_proposal_text(proposal: Proposal, flavor: Flavor, account: str | None = None,
+def format_proposal_text(proposal: Proposal, flavor: Flavor, *, account: str | None = None,
                          now: float | None = None) -> str:
     now = time.time() if now is None else now
     lines = [f"Scope: {flavor.display_name} ({flavor.folder}) · {account or 'all accounts'}",

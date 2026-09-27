@@ -222,7 +222,7 @@ python -m wowtools wtf-cleaner --flavor retail --json --criteria not_installed,s
 | `--json` | Machine-readable output (`--clean --json` also needs `--yes` or `--dry-run`) |
 | `--tui` | Open the TUI even when other flags are given |
 
-The text proposal starts with a `Scope: <flavor> · <account|all accounts>` line.
+The text proposal starts with a scope line, for example `Scope: Retail (_retail_) · all accounts`.
 
 Exit codes: `0` ok · `1` usage or config problem (including an unknown `--account`), or a clean stopped by an unexpected error · `2` scan refused
 (e.g. no addons installed) · `3` finished but some files could not be deleted · `4` backup or safety snapshot
