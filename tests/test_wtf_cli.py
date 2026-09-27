@@ -11,6 +11,7 @@ from unittest.mock import patch
 from tests.fixtures import build_wow_tree, make_config
 from wowtools.core.bootstrap import REPO_ROOT
 from wowtools.core.config import Config
+from wowtools.core.events import capture_events
 from wowtools.tools.wtf_cleaner.cli import main
 
 
@@ -61,6 +62,22 @@ class CliTest(unittest.TestCase):
         self.assertTrue((self.sv / "Auctionator.lua").exists())
         self.assertEqual(len(list(self.backup_dir.glob("wtf-cleaner_retail_*.zip"))), 1)
         self.assertIn("Deleted: 8 files", out)
+
+    def test_clean_with_yes_defaults_backup_under_wow_folder(self):
+        code, out, _ = self.cli("--flavor", "retail", "--clean", "--yes", answer=None)
+        self.assertEqual(code, 0)
+        default_dir = self.root / "wow-tools" / "wtf-cleaner"
+        self.assertEqual(len(list(default_dir.glob("wtf-cleaner_retail_*.zip"))), 1)
+
+    def test_backup_dir_override_is_logged_under_wtf_cleaner(self):
+        with capture_events() as records:
+            code, _, _ = self.cli("--flavor", "retail", "--clean", "--yes", "--backup-dir", str(self.backup_dir),
+                                  answer=None)
+        self.assertEqual(code, 0)
+        overrides = [r["data"] for r in records
+                     if r["event"] == "config.changed" and r["data"].get("key") == "backup_dir"]
+        self.assertEqual(len(overrides), 1)
+        self.assertEqual(overrides[0]["section"], "wtf_cleaner")
 
     def test_dry_run_clean_needs_no_prompt(self):
         code, out, _ = self.cli("--flavor", "retail", "--clean", "--dry-run", answer=None)

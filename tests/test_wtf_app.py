@@ -9,6 +9,7 @@ from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.tools.wtf_cleaner.app import CleanerSettingsScreen, WtfCleanerApp
 from wowtools.tools.wtf_cleaner.review_screen import ConfirmScreen, ResultScreen, ReviewScreen
+from wowtools.tools.wtf_cleaner.settings import load_settings
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
 
@@ -23,7 +24,9 @@ class AppTestCase(unittest.IsolatedAsyncioTestCase):
         self.root = build_wow_tree(self.tmp / "World of Warcraft")
         self.sv = self.root / "_retail_" / "WTF" / "Account" / "ACCT1" / "SavedVariables"
         self.backup_dir = self.tmp / "bk"
-        self.cfg = make_config(self.tmp, self.root, backup_dir=str(self.backup_dir))
+        self.cfg = make_config(self.tmp, self.root)
+        self.cfg.set("wtf_cleaner", "backup_dir", str(self.backup_dir), log=False)
+        self.cfg.save()
 
     def make_app(self, cfg=None, running=()):
         return WtfCleanerApp(cfg or self.cfg, check_updates=False, wow_check=lambda: list(running),
@@ -189,6 +192,21 @@ class FirstRunTest(AppTestCase):
             await pilot.pause()
             self.assertIs(app.screen, screen)
             self.assertIn("whole number", screen.error_text)
+
+    async def test_settings_saves_backup_folder(self):
+        app = self.make_app()
+        target = self.tmp / "my backups"
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            screen = CleanerSettingsScreen(self.cfg, source="settings")
+            app.push_screen(screen)
+            await pilot.pause()
+            self.assertEqual(screen.query_one("#backup_dir", Input).value, str(self.backup_dir))
+            screen.query_one("#backup_dir", Input).value = str(target)
+            await pilot.click("#save")
+            await pilot.pause()
+            self.assertIsNot(app.screen, screen)
+        self.assertEqual(load_settings(Config(self.cfg.path).load()).backup_dir, target)
 
 
 def _walk(node):

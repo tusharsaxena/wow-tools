@@ -99,6 +99,7 @@ class SetupScreenTest(UiTestCase):
         app = Host(self.cfg, screen)
         async with app.run_test(size=(120, 50)):
             self.assertEqual(screen.query_one("#wow_path", Input).value, str(self.root))
+            self.assertEqual(len(screen.query("#backup_dir")), 0)
 
 
 class FlavorScreenTest(UiTestCase):

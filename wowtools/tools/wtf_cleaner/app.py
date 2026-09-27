@@ -13,11 +13,12 @@ from textual.widgets import Button, Footer, Header, Input, Label, Static, Switch
 
 from wowtools.core.config import Config
 from wowtools.core.install import Flavor, WowInstall, detect_installs
+from wowtools.core.paths import to_native, to_stored
 from wowtools.core.process import running_wow_executables
 from wowtools.tools.wtf_cleaner.report import CRITERION_LABELS
 from wowtools.tools.wtf_cleaner.review_screen import ReviewScreen
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, Criteria
-from wowtools.tools.wtf_cleaner.settings import CleanerSettings, load_settings, save_settings
+from wowtools.tools.wtf_cleaner.settings import CleanerSettings, load_settings, resolve_backup_dir, save_settings
 from wowtools.ui.base import Ka0sApp
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.flavor_screen import FlavorScreen
@@ -58,6 +59,9 @@ class CleanerSettingsScreen(Screen[bool]):
             with Horizontal(classes="row"):
                 yield Switch(self.settings.backup_before_delete, id="sw_backup")
                 yield Label("Back up files to a timestamped zip before deleting (recommended)")
+            yield Label("Backup folder (leave empty to use <WoW folder>/wow-tools/wtf-cleaner)")
+            yield Input(to_stored(self.settings.backup_dir) if self.settings.backup_dir else "",
+                        placeholder=_default_backup_hint(self.cfg), id="backup_dir")
             yield Static("", id="settings-error")
             with Horizontal(classes="buttons"):
                 yield Button("Save", variant="primary", id="save")
@@ -88,9 +92,16 @@ class CleanerSettingsScreen(Screen[bool]):
             return
         criteria = Criteria(**{name: self.query_one(f"#sw_{name}", Switch).value for name in CRITERIA},
                             max_age_days=days)
-        save_settings(self.cfg, CleanerSettings(criteria, self.query_one("#sw_backup", Switch).value),
+        backup_raw = self.query_one("#backup_dir", Input).value.strip()
+        save_settings(self.cfg, CleanerSettings(criteria, self.query_one("#sw_backup", Switch).value,
+                                                to_native(backup_raw) if backup_raw else None),
                       source=self.source)
         self.dismiss(True)
+
+
+def _default_backup_hint(cfg: Config) -> str:
+    default = resolve_backup_dir(cfg, CleanerSettings())
+    return to_stored(default) if default is not None else ""
 
 
 class WtfCleanerApp(Ka0sApp):

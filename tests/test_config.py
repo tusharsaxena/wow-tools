@@ -21,7 +21,6 @@ class ConfigTest(unittest.TestCase):
         cfg = Config(self.path).load()
         self.assertFalse(cfg.exists)
         self.assertIsNone(cfg.wow_path)
-        self.assertIsNone(cfg.backup_dir)
         self.assertIsNone(cfg.last_flavor)
         self.assertTrue(cfg.check_for_updates)
         self.assertFalse(cfg.auto_update)
@@ -51,14 +50,10 @@ class ConfigTest(unittest.TestCase):
         self.assertIsNone(cfg.last_update_check)
         self.assertEqual(cfg.get_int("general", "log_retention_days", 7), 7)
 
-    def test_backup_dir_defaults_under_wow_path(self):
+    def test_backup_dir_is_not_a_general_setting(self):
         cfg = Config(self.path)
         cfg.set("general", "wow_path", "/games/wow")
-        self.assertEqual(cfg.backup_dir, Path("/games/wow") / "wow-tools-backups")
-        cfg.set_path("general", "backup_dir", Path("/elsewhere/bk"))
-        self.assertEqual(cfg.backup_dir, Path("/elsewhere/bk"))
-        cfg.set_path("general", "backup_dir", None)
-        self.assertEqual(cfg.backup_dir, Path("/games/wow") / "wow-tools-backups")
+        self.assertFalse(hasattr(cfg, "backup_dir"))
 
     def test_set_logs_real_changes_only(self):
         cfg = Config(self.path)

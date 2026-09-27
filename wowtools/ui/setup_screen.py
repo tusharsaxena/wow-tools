@@ -1,4 +1,4 @@
-"""First-run and general settings: WoW folder and backup folder ([general] in wow-tools.cfg)."""
+"""First-run and general settings: the WoW folder ([general] in wow-tools.cfg)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -46,8 +46,6 @@ class SetupScreen(Screen[bool]):
             yield Input(value=self._initial_wow_path(), placeholder=r"C:\Program Files (x86)\World of Warcraft",
                         id="wow_path")
             yield Static(Text(self._detected_hint()), classes="hint")
-            yield Label("Backup folder (leave empty to use <WoW folder>/wow-tools-backups)")
-            yield Input(value=self.cfg.get(GENERAL, "backup_dir") or "", id="backup_dir")
             yield Static("", id="setup-error")
             with Horizontal(classes="buttons"):
                 yield Button("Save", variant="primary", id="save")
@@ -91,9 +89,7 @@ class SetupScreen(Screen[bool]):
                                "Choose the World of Warcraft folder itself.")
             self.query_one("#setup-error", Static).update(Text(self.error_text))
             return
-        backup_raw = self.query_one("#backup_dir", Input).value.strip()
         source = "wizard" if self.first_run else "settings"
         self.cfg.set_path(GENERAL, "wow_path", wow, source=source)
-        self.cfg.set_path(GENERAL, "backup_dir", to_native(backup_raw) if backup_raw else None, source=source)
         self.cfg.save()
         self.dismiss(True)

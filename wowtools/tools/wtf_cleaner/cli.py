@@ -17,7 +17,7 @@ from wowtools.tools.wtf_cleaner.report import (format_proposal_text, format_resu
                                                proposal_to_dict, result_to_dict)
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, Criteria, evaluate
 from wowtools.tools.wtf_cleaner.scanner import ScanError, scan
-from wowtools.tools.wtf_cleaner.settings import SECTION, load_settings
+from wowtools.tools.wtf_cleaner.settings import DEFAULT_BACKUP_SUBDIR, SECTION, load_settings, resolve_backup_dir
 
 EXIT_OK, EXIT_USAGE, EXIT_SCAN, EXIT_PARTIAL, EXIT_BACKUP = 0, 1, 2, 3, 4
 
@@ -122,11 +122,13 @@ def _run(args, cfg: Config, stdout, stderr, input_fn, wow_check) -> int:
             _override(SECTION, "max_age_days", settings.criteria.max_age_days, max_age)
 
     backup = settings.backup_before_delete and not args.no_backup
+    override = None
     if args.backup_dir:
-        backup_dir = to_native(args.backup_dir)
-        _override("general", "backup_dir", cfg.get("general", "backup_dir"), args.backup_dir)
-    else:
-        backup_dir = cfg.get_path("general", "backup_dir") or wow_path / "wow-tools-backups"
+        override = to_native(args.backup_dir)
+        _override(SECTION, "backup_dir", cfg.get(SECTION, "backup_dir"), args.backup_dir)
+    elif args.wow_path and settings.backup_dir is None:
+        override = wow_path / DEFAULT_BACKUP_SUBDIR  # the default follows a --wow-path override too
+    backup_dir = resolve_backup_dir(cfg, settings, override)
 
     try:
         result_scan = scan(flavor)

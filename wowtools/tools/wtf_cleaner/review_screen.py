@@ -20,7 +20,7 @@ from wowtools.tools.wtf_cleaner.cleaner import CleanError, CleanResult, execute
 from wowtools.tools.wtf_cleaner.report import CRITERION_SHORT, age_days, format_result_text, format_size
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, ProposalItem, evaluate
 from wowtools.tools.wtf_cleaner.scanner import ScanError, ScanResult, scan
-from wowtools.tools.wtf_cleaner.settings import load_settings
+from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir
 from wowtools.ui.branding import BrandBar
 
 ACCENT = "bold #5CC8FF"
@@ -362,7 +362,7 @@ class ReviewScreen(Screen[str]):
         self.settings = load_settings(self.cfg)
         backup = self.settings.backup_before_delete
         dry_run = self.dry_run
-        backup_dir = self.cfg.backup_dir
+        backup_dir = resolve_backup_dir(self.cfg, self.settings)
         files = sum(len(i.files) for i in selection)
         size = format_size(sum(i.total_size for i in selection))
         lines = [f"{len(selection)} addon groups, {files} files, {size}."]

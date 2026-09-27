@@ -15,7 +15,6 @@ from wowtools.core.events import LEVELS, log_event
 from wowtools.core.paths import to_native, to_stored
 
 DEFAULT_CONFIG_PATH = REPO_ROOT / "wow-tools.cfg"
-DEFAULT_BACKUP_DIRNAME = "wow-tools-backups"
 GENERAL = "general"
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
@@ -103,14 +102,6 @@ class Config:
     @property
     def wow_path(self) -> Path | None:
         return self.get_path(GENERAL, "wow_path")
-
-    @property
-    def backup_dir(self) -> Path | None:
-        explicit = self.get_path(GENERAL, "backup_dir")
-        if explicit is not None:
-            return explicit
-        wow = self.wow_path
-        return wow / DEFAULT_BACKUP_DIRNAME if wow is not None else None
 
     @property
     def last_flavor(self) -> str | None:

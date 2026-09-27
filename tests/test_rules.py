@@ -11,7 +11,8 @@ from wowtools.core.install import WowInstall
 from wowtools.tools.wtf_cleaner.report import format_proposal_text, format_size, proposal_to_dict
 from wowtools.tools.wtf_cleaner.rules import Criteria, evaluate
 from wowtools.tools.wtf_cleaner.scanner import scan
-from wowtools.tools.wtf_cleaner.settings import SECTION, load_settings, save_settings
+from wowtools.tools.wtf_cleaner.settings import (DEFAULT_BACKUP_SUBDIR, SECTION, CleanerSettings, load_settings,
+                                                 resolve_backup_dir, save_settings)
 
 
 class RulesTest(unittest.TestCase):
@@ -111,6 +112,38 @@ class SettingsTest(unittest.TestCase):
         self.assertTrue(settings.criteria.older_than)
         cfg.set(SECTION, "max_age_days", "soon")
         self.assertEqual(load_settings(cfg).criteria.max_age_days, 90)
+
+
+    def test_resolve_backup_dir_default(self):
+        cfg = Config(self.path)
+        cfg.set("general", "wow_path", "/games/wow")
+        self.assertEqual(DEFAULT_BACKUP_SUBDIR, Path("wow-tools") / "wtf-cleaner")
+        self.assertEqual(resolve_backup_dir(cfg, load_settings(cfg)), Path("/games/wow") / "wow-tools" / "wtf-cleaner")
+        self.assertIsNone(resolve_backup_dir(Config(self.path), CleanerSettings()))
+
+    def test_resolve_backup_dir_setting_and_override(self):
+        cfg = Config(self.path)
+        cfg.set("general", "wow_path", "/games/wow")
+        cfg.set_path(SECTION, "backup_dir", Path("/elsewhere/bk"))
+        settings = load_settings(cfg)
+        self.assertEqual(resolve_backup_dir(cfg, settings), Path("/elsewhere/bk"))
+        self.assertEqual(resolve_backup_dir(cfg, settings, Path("/cli/bk")), Path("/cli/bk"))
+
+    def test_settings_round_trip_backup_dir(self):
+        cfg = Config(self.path)
+        settings = load_settings(cfg)
+        self.assertIsNone(settings.backup_dir)
+        settings.backup_dir = Path("/elsewhere/bk")
+        save_settings(cfg, settings)
+        self.assertEqual(load_settings(Config(self.path).load()).backup_dir, Path("/elsewhere/bk"))
+        settings.backup_dir = None
+        save_settings(cfg, settings)
+        self.assertIsNone(load_settings(Config(self.path).load()).backup_dir)
+
+    def test_general_backup_dir_is_ignored(self):
+        self.path.write_text("[general]\nwow_path = /games/wow\nbackup_dir = /x\n", encoding="utf-8")
+        cfg = Config(self.path).load()
+        self.assertEqual(resolve_backup_dir(cfg, load_settings(cfg)), Path("/games/wow") / "wow-tools" / "wtf-cleaner")
 
 
 class ReportTest(unittest.TestCase):
