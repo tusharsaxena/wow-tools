@@ -15,7 +15,7 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 | # | Task | Status | Commit | Notes |
 |---|---|---|---|---|
 | 1 | Scaffold, vendored libraries, bootstrap | done | | No deviations (pip deps complete; tests pass from repo root and another cwd) |
-| 2 | Windows ⇄ WSL paths | pending | | |
+| 2 | Windows ⇄ WSL paths | done | | No deviations |
 | 3 | Suite event log | pending | | |
 | 4 | Config | pending | | |
 | 5 | WoW install model + test fixture tree | pending | | |
