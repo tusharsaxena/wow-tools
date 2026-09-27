@@ -26,7 +26,7 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 | 10 | Clean pipeline | done | 5897e4a | No deviations |
 | 11 | Updater part 1: release check | done | | No deviations |
 | 12 | Updater part 2: apply + update command | done | | No deviations |
-| 13 | Dispatcher, registry, CLI, wrappers | pending | | |
+| 13 | Dispatcher, registry, CLI, wrappers | done | | No deviations |
 | 14 | Shared UI | pending | | |
 | 15 | WTF Cleaner TUI | pending | | |
 | 16 | Documentation | pending | | |
