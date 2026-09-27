@@ -157,7 +157,7 @@ def _run(args, cfg: Config, stdout, stderr, input_fn, wow_check) -> int:
 
     if not args.clean:
         out(json.dumps(proposal_to_dict(proposal, flavor, account=account), indent=2, ensure_ascii=False) if args.json
-            else format_proposal_text(proposal, flavor))
+            else format_proposal_text(proposal, flavor, account=account))
         return EXIT_OK
     if args.no_backup and not args.yes:
         err("--no-backup is only allowed together with --yes.")
@@ -170,7 +170,7 @@ def _run(args, cfg: Config, stdout, stderr, input_fn, wow_check) -> int:
             if args.json else "Nothing to clean.")
         return EXIT_OK
     if not args.json:
-        out(format_proposal_text(proposal, flavor))
+        out(format_proposal_text(proposal, flavor, account=account))
 
     running = (wow_check or wow_check_for(flavor))()
     if running:

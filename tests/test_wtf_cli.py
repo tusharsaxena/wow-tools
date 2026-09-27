@@ -90,6 +90,22 @@ class CliTest(unittest.TestCase):
         default_dir = self.root / "wow-tools" / "wtf-cleaner"
         self.assertEqual(len(list(default_dir.glob("wtf-cleaner_retail_*.zip"))), 1)
 
+    def test_wow_path_override_moves_default_backup_dir(self):
+        other = build_wow_tree(self.tmp / "Other WoW")
+        (self.tmp / "other-cfg").mkdir()
+        cfg = make_config(self.tmp / "other-cfg", other)
+        code, _, _ = self.cli("--flavor", "retail", "--wow-path", str(self.root), "--clean", "--yes",
+                              cfg=cfg, answer=None)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(list((self.root / "wow-tools" / "wtf-cleaner").glob("wtf-cleaner_retail_*.zip"))), 1)
+        self.assertFalse((other / "wow-tools").exists())
+        self.assertFalse((self.sv / "Uninstalled.lua").exists())
+
+    def test_proposal_text_has_scope_line(self):
+        code, out, _ = self.cli("--flavor", "retail", "--account", "ACCT2", answer=None)
+        self.assertEqual(code, 0)
+        self.assertEqual(out.splitlines()[0], "Scope: Retail (_retail_) · ACCT2")
+
     def test_backup_dir_override_is_logged_under_wtf_cleaner(self):
         with capture_events() as records:
             code, _, _ = self.cli("--flavor", "retail", "--clean", "--yes", "--backup-dir", str(self.backup_dir),

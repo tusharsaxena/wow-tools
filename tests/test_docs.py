@@ -25,5 +25,6 @@ class DocsTest(unittest.TestCase):
     def test_readme_mentions_every_tool_and_cli_flag(self):
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         for needle in ("wtf-cleaner", "--dry-run", "--clean", "--no-backup", "--criteria", "--max-age",
-                       "--json", "python -m wowtools update", "stray_copies", "Restoring a backup"):
+                       "--json", "python -m wowtools update", "stray_copies", "Restoring a backup",
+                       "--account", "wtf-snapshot", "Dry run"):
             self.assertIn(needle, readme)

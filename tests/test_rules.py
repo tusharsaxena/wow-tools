@@ -195,6 +195,14 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(data["totals"]["files"], 8)
         self.assertEqual(len(data["items"]), 6)
 
+    def test_proposal_text_starts_with_scope_line(self):
+        proposal = evaluate(scan(self.retail), Criteria(), now=NOW)
+        text = format_proposal_text(proposal, self.retail, now=NOW)
+        self.assertEqual(text.splitlines()[0], "Scope: Retail (_retail_) · all accounts")
+        scoped = evaluate(scan(self.retail, account="ACCT2"), Criteria(), now=NOW)
+        text = format_proposal_text(scoped, self.retail, account="ACCT2", now=NOW)
+        self.assertEqual(text.splitlines()[0], "Scope: Retail (_retail_) · ACCT2")
+
     def test_names_with_brackets_survive(self):
         (self.retail.account_dir / "ACCT1" / "SavedVariables" / "[Weird] Addon.lua").write_text("x")
         proposal = evaluate(scan(self.retail), Criteria(), now=NOW)
