@@ -1,6 +1,5 @@
 wow-tools.cfg
-*.log
-*.log.*
+logs/
 __pycache__/
 *.pyc
 backups/
