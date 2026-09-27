@@ -131,3 +131,38 @@ class AccountScopeTest(unittest.TestCase):
         self.assertEqual((len(result.groups), result.sv_files, result.accounts, result.characters), (9, 14, 2, 2))
         started = [r for r in records if r["event"] == "scan.started"][0]["data"]
         self.assertIsNone(started["account"])
+
+
+class ScanProgressTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.install = WowInstall(build_wow_tree(Path(tmp.name) / "World of Warcraft"))
+        self.retail = self.install.flavor("retail")
+
+    def test_scan_progress_reports_every_folder(self):
+        calls = []
+        scan(self.retail, progress=lambda current, total, label: calls.append((current, total, label)))
+        # Retail in the fixture: ACCT1, ACCT1 · Realm1/CharA, ACCT2, ACCT2 · Realm2/Chârb.
+        self.assertEqual(calls[0], (0, 4, "Reading AddOns"))
+        self.assertEqual([c[0] for c in calls], [0, 1, 2, 3, 4])
+        self.assertTrue(all(c[1] == 4 for c in calls))
+        self.assertEqual(calls[-1][0], calls[-1][1])
+        self.assertEqual([c[2] for c in calls[1:]],
+                         ["ACCT1", "ACCT1 · Realm1/CharA", "ACCT2", "ACCT2 · Realm2/Chârb"])
+
+    def test_scan_progress_scoped_counts_only_that_account(self):
+        calls = []
+        scan(self.retail, account="ACCT2", progress=lambda *args: calls.append(args))
+        self.assertEqual([(c[0], c[1]) for c in calls], [(0, 2), (1, 2), (2, 2)])
+
+    def test_scan_progress_callback_errors_are_ignored(self):
+        calls = []
+
+        def boom(current, total, label):
+            calls.append(current)
+            raise RuntimeError("callback broke")
+
+        result = scan(self.retail, progress=boom)
+        self.assertEqual(calls, [0, 1, 2, 3, 4])
+        self.assertEqual((len(result.groups), result.sv_files), (9, 14))

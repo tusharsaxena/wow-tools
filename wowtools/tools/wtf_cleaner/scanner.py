@@ -5,13 +5,17 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 from wowtools.core.events import log_event
 from wowtools.core.install import ACCOUNT_WIDE, Account, Character, Flavor
 
 PROTECTED_PREFIXES = ("blizzard_",)
 _LUA = re.compile(r"\.lua", re.IGNORECASE)
+
+
+ScanProgress = Callable[[int, int, str], None]
+"""Called as (current, total, label); total is the number of SavedVariables folders to read."""
 
 
 class ScanError(Exception):
@@ -174,9 +178,20 @@ def _scan_sv_dir(sv_dir: Path, account: Account, character: Character | None,
     return list(groups.values())
 
 
-def scan(flavor: Flavor, *, account: str | None = None, progress=None) -> ScanResult:
+def _report(progress: ScanProgress | None, current: int, total: int, label: str) -> None:
+    """Call the progress callback; a callback that raises must never break the scan."""
+    if progress is None:
+        return
+    try:
+        progress(current, total, label)
+    except Exception:  # noqa: BLE001 - progress is cosmetic
+        pass
+
+
+def scan(flavor: Flavor, *, account: str | None = None, progress: ScanProgress | None = None) -> ScanResult:
     """Scan one flavor. With `account`, only that account (any case) is scanned and "enabled" comes
-    from its characters alone. `progress` is accepted for the scan progress bar and ignored for now."""
+    from its characters alone. `progress(current, total, label)` is called with (0, total, ...) before
+    the SavedVariables folders are read and once after each folder; errors it raises are ignored."""
     started = time.monotonic()
     log_event("scan.started", flavor=flavor.folder, wow_path=str(flavor.path.parent), account=account)
     installed = installed_addons(flavor.addons_dir)
@@ -200,11 +215,18 @@ def scan(flavor: Flavor, *, account: str | None = None, progress=None) -> ScanRe
     enabled = enabled_addons(characters, installed, warnings)
     log_event("scan.addons", installed=sorted(installed.values(), key=str.casefold), enabled=sorted(enabled))
 
+    total = len(accounts) + len(characters)
+    done = 0
+    _report(progress, done, total, "Reading AddOns")
     groups: list[SVGroup] = []
     for acct in accounts:
         groups += _scan_sv_dir(acct.saved_variables_dir, acct, None, warnings)
+        done += 1
+        _report(progress, done, total, acct.name)
         for character in (c for c in characters if c.account == acct.name):
             groups += _scan_sv_dir(character.saved_variables_dir, acct, character, warnings)
+            done += 1
+            _report(progress, done, total, f"{acct.name} · {character.label}")
 
     for warning in warnings:
         log_event("scan.warning", path=warning.path, message=warning.message)

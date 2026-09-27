@@ -10,7 +10,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, Static, Tree
+from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, ProgressBar, Static, Tree
 
 from wowtools.core.backup import BackupError
 from wowtools.core.config import Config
@@ -103,6 +103,9 @@ class ReviewScreen(Screen[str]):
     ReviewScreen #filters { width: 36; padding: 1; border-right: solid $primary; }
     ReviewScreen .section { color: $accent; text-style: bold; margin: 1 0 0 0; }
     ReviewScreen #proposal { width: 1fr; padding: 0 1; }
+    ReviewScreen #scan-box { width: 1fr; height: auto; padding: 1 2; }
+    ReviewScreen #scan-progress { width: 1fr; }
+    ReviewScreen #scan-label { color: $text-muted; margin-top: 1; }
     ReviewScreen #summary { height: auto; padding: 0 1; background: $surface; }
     """
     BINDINGS = [
@@ -147,6 +150,9 @@ class ReviewScreen(Screen[str]):
                                    id=f"crit_{name}")
                 yield Label("Max age in days (Enter)", classes="section")
                 yield Input(str(self.criteria.max_age_days), type="integer", id="max_age")
+            with Vertical(id="scan-box"):
+                yield ProgressBar(id="scan-progress", show_eta=False)
+                yield Static("", id="scan-label")
             yield Tree(Text(self.flavor.display_name), id="proposal")
         yield Static("", id="summary")
         yield BrandBar()
@@ -161,13 +167,29 @@ class ReviewScreen(Screen[str]):
     def action_rescan(self) -> None:
         self.settings = load_settings(self.cfg)
         self.scan_result = None
-        tree = self.query_one("#proposal", Tree)
-        tree.loading = True
+        self._show_scan_progress(True)
         self.run_worker(self._scan_worker, thread=True, exclusive=True, group="scan")
 
+    def _show_scan_progress(self, scanning: bool) -> None:
+        """While scanning, the tree is replaced by a progress bar and the folder being read."""
+        bar = self.query_one("#scan-progress", ProgressBar)
+        if scanning:
+            bar.update(total=None, progress=0)
+            self.query_one("#scan-label", Static).update(Text("Reading AddOns"))
+        for selector in ("#scan-box", "#scan-progress", "#scan-label"):
+            self.query_one(selector).display = scanning
+        self.query_one("#proposal", Tree).display = not scanning
+
+    def _scan_progress(self, current: int, total: int, label: str) -> None:
+        self.query_one("#scan-progress", ProgressBar).update(total=total, progress=current)
+        self.query_one("#scan-label", Static).update(Text(label))
+
     def _scan_worker(self) -> None:
+        def progress(current: int, total: int, label: str) -> None:
+            self.app.call_from_thread(self._scan_progress, current, total, label)
+
         try:
-            result = scan(self.flavor, account=self.account)
+            result = scan(self.flavor, account=self.account, progress=progress)
         except ScanError as exc:
             log_exception("scan", exc)
             self.app.call_from_thread(self._scan_failed, str(exc))
@@ -175,15 +197,16 @@ class ReviewScreen(Screen[str]):
         self.app.call_from_thread(self._scanned, result)
 
     def _scan_failed(self, message: str) -> None:
-        self.query_one("#proposal", Tree).loading = False
+        self._show_scan_progress(False)
         self.summary_text = message
         self.query_one("#summary", Static).update(Text(message))
         self.notify(message, title="Scan failed", severity="error", timeout=15)
 
     def _scanned(self, result: ScanResult) -> None:
         self.scan_result = result
-        self.query_one("#proposal", Tree).loading = False
+        self._show_scan_progress(False)
         self._rebuild()
+        self.query_one("#proposal", Tree).focus()
 
     # --- tree ------------------------------------------------------------------------------------
     def _rebuild(self) -> None:

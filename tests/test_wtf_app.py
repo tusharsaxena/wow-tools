@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from textual.widgets import Input, Tree
+from textual.widgets import Input, ProgressBar, Static, Tree
 
 from tests.fixtures import build_wow_tree, make_config
 from wowtools.core.config import Config
@@ -165,6 +165,19 @@ class ReviewFlowTest(AppTestCase):
             review = await self.open_review(app, pilot)
             labels = [str(n.label) for n in _walk(review.query_one(Tree).root)]
             self.assertTrue(any("[Weird] Addon" in label for label in labels))
+
+    async def test_scan_progress_bar_hidden_after_scan(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            bar = review.query_one("#scan-progress", ProgressBar)
+            label = review.query_one("#scan-label", Static)
+            tree = review.query_one("#proposal", Tree)
+            self.assertFalse(bar.display)
+            self.assertFalse(label.display)
+            self.assertTrue(tree.display)
+            self.assertFalse(tree.loading)
+            self.assertEqual((bar.progress, bar.total), (4, 4))
 
 
 class AccountScopeFlowTest(AppTestCase):
