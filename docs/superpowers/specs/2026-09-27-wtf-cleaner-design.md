@@ -37,7 +37,7 @@ The first tool is the **WTF Cleaner**. Over time the WTF folder collects SavedVa
 wow-tools/
 ├── README.md                     # user-facing
 ├── CLAUDE.md                     # dev notes
-├── .gitignore                    # wow-tools.cfg, *.log, __pycache__/, backups/
+├── .gitignore                    # wow-tools.cfg, *.log, __pycache__/, backups/, .update-backup/
 ├── requirements.txt              # pinned textual + deps
 ├── wtf-cleaner.cmd               # @py -3 -m wowtools wtf-cleaner %*   (falls back to python)
 ├── wtf-cleaner.sh                # exec python3 -m wowtools wtf-cleaner "$@"
@@ -53,6 +53,7 @@ wow-tools/
 │   │   ├── install.py            # WowInstall → Flavor → Account → Realm → Character
 │   │   ├── backup.py             # zip writer + manifest + verification
 │   │   ├── process.py            # best-effort "is WoW running?"
+│   │   ├── updater.py            # GitHub release check + self-update
 │   │   └── logging.py            # rotating wow-tools.log
 │   ├── ui/                       # shared Textual pieces
 │   │   ├── theme.py              # Ka0s theme + branding widgets
@@ -73,6 +74,7 @@ wow-tools/
     ├── architecture.md
     ├── adding-a-tool.md
     ├── vendoring.md
+    ├── releasing.md
     └── assets/ka0s-logo.png
 ```
 
@@ -83,7 +85,8 @@ wow-tools/
 ### 4.1 Bootstrap (`__main__.py`, `core/bootstrap.py`)
 - Checks that Python is ≥ 3.10, with a readable message otherwise.
 - Inserts `<repo>/vendor` at the front of `sys.path`.
-- Dispatches: `python -m wowtools wtf-cleaner …` goes to the registered tool. No argument opens a small Textual tool picker. `--help` lists the tools.
+- Starts the background update check (§4.9) for every tool.
+- Dispatches: `python -m wowtools wtf-cleaner …` goes to the registered tool. `python -m wowtools update [--check]` goes to the updater. No argument opens a small Textual tool picker. `--help` lists the tools.
 - A tool runs its TUI unless CLI-mode flags are given (see §6.6).
 
 ### 4.2 Config (`core/config.py`)
@@ -94,6 +97,10 @@ INI file `wow-tools.cfg` in the repo root:
 wow_path = G:\Games\Blizzard\World of Warcraft
 backup_dir = G:\Games\Blizzard\World of Warcraft\wow-tools-backups
 last_flavor = _retail_
+check_for_updates = true
+auto_update = false
+last_update_check = 2026-09-27T12:00:00
+latest_seen_version = 0.1.0
 
 [wtf_cleaner]
 max_age_days = 90
@@ -161,6 +168,44 @@ Branding:
 - A small Unicode shield/"K" banner with the tagline **"Ka0s WoW Tools"** in accent blue appears on the tool picker and the setup wizard.
 - The footer shows `Ka0s` and the version.
 - The README shows `docs/assets/ka0s-logo.png` at the top.
+
+### 4.9 Suite updater (`core/updater.py`)
+The updater applies to the **whole suite**, not to individual tools.
+
+**Versioning**
+- The whole suite has one version, `wowtools.__version__` (semver, starting at `0.1.0`).
+- Releases are GitHub Releases tagged `vX.Y.Z` on `tusharsaxena/wow-tools`.
+- The release steps are in `docs/releasing.md`.
+
+**Check on load**
+- `__main__.py` starts the check before the tool picker or any tool.
+- It calls `GET https://api.github.com/repos/tusharsaxena/wow-tools/releases/latest` using stdlib `urllib`. No auth is needed, the timeout is 3 seconds, and it runs in a daemon thread so startup never waits on the network.
+- It checks at most once every 24 hours via `last_update_check`, and caches `latest_seen_version`.
+- It is disabled with `check_for_updates = false`. Drafts and pre-releases are ignored.
+- Versions are compared as semver tuples.
+- Every failure (offline, rate limit, bad JSON) is logged and otherwise silent.
+
+**Notify**
+- **TUI:** a toast and a header badge: "Ka0s WoW Tools vX available (you have vY)". A release-notes view offers `u` to update now.
+- **CLI:** one line on stderr. There is no notice in `--json` mode.
+- **`python -m wowtools update`** applies the update. With `--check`, it only reports and exits 0 if the suite is up to date or 10 if an update is available.
+
+**Auto update**
+- `auto_update = false` is the default: the updater notifies and waits for the user to press `u` or run the command.
+- When `auto_update = true`, the update is applied at launch before any tool starts, and the app asks the user to restart.
+
+**Apply.** The method depends on how the suite was obtained:
+- **Git checkout** (`.git` present): `git fetch --tags`, then `git merge --ff-only v<X.Y.Z>`.
+  - It refuses with a clear message if there are uncommitted changes, the branch has diverged, or git is not available.
+- **Zip download** (no `.git`):
+  1. Download the release zipball to a temp dir and extract it to staging.
+  2. Validate that `wowtools/__init__.py` exists and has the expected version.
+  3. Copy the current **managed paths** (`wowtools/`, `vendor/`, `scripts/`, `docs/`, root `*.md`, `wtf-cleaner.cmd`, `wtf-cleaner.sh`, `requirements.txt`) to `.update-backup/<old-version>/`.
+  4. Replace the managed paths from staging.
+  5. On any failure, roll back automatically from `.update-backup/`.
+- **Never touched:** `wow-tools.cfg`, `wow-tools.log*`, backup zips, and anything not on the managed list.
+- **After applying:** "Updated to vX. Restart to use the new version", then a clean exit. There is no hot reload.
+- **Safety:** an update is never applied while a clean is running. The TUI only offers `u` from the tool picker, flavor and review screens.
 
 ## 5. WTF Cleaner — scanning
 
@@ -272,6 +317,7 @@ python -m wowtools wtf-cleaner [--flavor NAME] [options]
   - Uninstalled-addon SVs, installed-but-disabled addons, and enabled addons.
   - `Blizzard_*` SVs, stray copies, non-SV files, and controlled modified times.
 - **Unit tests:** path translation; config round-trip and defaults; flavor, account and character discovery; TOC detection; `AddOns.txt` parsing and the enabled union; grouping and stray detection; each criterion alone and in combination; protections; the safety abort; backup zip contents, manifest and verification failure; the dry run leaving the tree byte-identical; the re-check skipping changed files; the path guard; CLI argument handling, JSON output and exit codes.
+- **Updater tests:** version comparison; 24h throttle; disabled flag; network failure is silent (mocked `urlopen`); git path refuses on a dirty tree (temp git repo); zip path replaces managed paths, preserves `wow-tools.cfg` and logs, and rolls back on a mid-apply failure (local fake zipball).
 - **TUI tests:** `App.run_test()` pilot through setup → flavor → review → dry-run clean → result, against the fixture tree.
 - Run with `python -m unittest` from the repo root. The test package bootstraps `vendor/` itself.
 - Tests never touch a real WoW install.
@@ -287,11 +333,13 @@ python -m wowtools wtf-cleaner [--flavor NAME] [options]
   - Where the config and log live, and an FAQ/troubleshooting section.
 - **docs/architecture.md:** layering (core / ui / tools), bootstrap, config schema, install model, Windows⇄WSL paths, theme.
 - **docs/adding-a-tool.md:** a step-by-step guide to adding a tool (registry entry, config section, reusing the flavor and setup screens and theme, tests), using the future screenshot organizer as the running example.
+- **docs/releasing.md:** bump `__version__`, commit, tag `vX.Y.Z`, push, `gh release create`; how the updater consumes releases.
 - **docs/vendoring.md:** updating and adding libraries with `scripts/update_vendor.py`, pinning, and keeping libraries pure-Python.
 - **CLAUDE.md:** commands, layout, conventions (no Textual in core, stdlib tests, Windows-form stored paths).
 
 ## 9. Out of scope (this spec)
 - Restore command (restoring is a manual unzip, documented in the README).
+- Updater rollback to an arbitrary older version; signed releases.
 - Cleaning non-SV WTF files (config-cache, bindings, macros).
 - Per-character/per-account "enabled" scoping (global was chosen).
 - Screenshot organizer (separate spec; §3 and §4 are designed for reuse by it).
