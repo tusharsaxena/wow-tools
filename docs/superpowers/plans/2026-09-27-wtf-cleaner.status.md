@@ -14,10 +14,10 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 
 | # | Task | Status | Commit | Notes |
 |---|---|---|---|---|
-| 1 | Scaffold, vendored libraries, bootstrap | done | | No deviations (pip deps complete; tests pass from repo root and another cwd) |
-| 2 | Windows ⇄ WSL paths | done | | No deviations |
-| 3 | Suite event log | done | | No code deviations (plan says 12 tests; its test file has 13, all pass) |
-| 4 | Config | done | | No deviations |
+| 1 | Scaffold, vendored libraries, bootstrap | done | 4faabcf | No deviations (pip deps complete; tests pass from repo root and another cwd) |
+| 2 | Windows ⇄ WSL paths | done | 07ac44a | No deviations |
+| 3 | Suite event log | done | 4a2cebf | No code deviations (plan says 12 tests; its test file has 13, all pass) |
+| 4 | Config | done | 1a4e4a0 | No deviations |
 | 5 | WoW install model + test fixture tree | pending | | |
 | 6 | Verified zip backups | pending | | |
 | 7 | "Is WoW running?" check | pending | | |
@@ -36,7 +36,7 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 
 | Milestone | Tasks | Pushed |
 |---|---|---|
-| M1 Core foundation | 1–4 | |
+| M1 Core foundation | 1–4 | yes |
 | M2 Core services | 5–7 | |
 | M3 Cleaner logic | 8–10 | |
 | M4 Updater + CLI | 11–13 | |

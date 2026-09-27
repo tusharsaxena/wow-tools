@@ -773,7 +773,7 @@ def capture_events(**kwargs: Any) -> Iterator[list[dict]]:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest tests.test_events -v`
-Expected: 12 tests, OK.
+Expected: 13 tests, OK.
 
 - [ ] **Step 5: Commit**
 
