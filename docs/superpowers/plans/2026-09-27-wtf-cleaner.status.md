@@ -17,7 +17,7 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 | 1 | Scaffold, vendored libraries, bootstrap | done | | No deviations (pip deps complete; tests pass from repo root and another cwd) |
 | 2 | Windows ⇄ WSL paths | done | | No deviations |
 | 3 | Suite event log | done | | No code deviations (plan says 12 tests; its test file has 13, all pass) |
-| 4 | Config | pending | | |
+| 4 | Config | done | | No deviations |
 | 5 | WoW install model + test fixture tree | pending | | |
 | 6 | Verified zip backups | pending | | |
 | 7 | "Is WoW running?" check | pending | | |
