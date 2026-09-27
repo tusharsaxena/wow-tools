@@ -9,7 +9,7 @@ from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.tools.wtf_cleaner.report import format_proposal_text, format_size, proposal_to_dict
-from wowtools.tools.wtf_cleaner.rules import Criteria, evaluate
+from wowtools.tools.wtf_cleaner.rules import Criteria, criterion_counts, evaluate
 from wowtools.tools.wtf_cleaner.scanner import scan
 from wowtools.tools.wtf_cleaner.settings import (DEFAULT_BACKUP_SUBDIR, SECTION, CleanerSettings, load_settings,
                                                  resolve_backup_dir, save_settings)
@@ -71,6 +71,18 @@ class RulesTest(unittest.TestCase):
     def test_unknown_criterion_rejected(self):
         with self.assertRaises(ValueError):
             Criteria.from_names(["bogus"])
+
+    def test_criterion_counts(self):
+        # Files each criterion proposes on its own (see the fixture docstring): Uninstalled.lua + .bak +
+        # CharA/Uninstalled.lua; DisabledAddon.lua; OldAddon.lua + .bak; the two hand-made copies.
+        self.assertEqual(criterion_counts(self.scan, max_age_days=90, now=NOW),
+                         {"not_installed": 3, "not_enabled": 1, "older_than": 2, "stray_copies": 2})
+        self.assertEqual(criterion_counts(self.scan, max_age_days=250, now=NOW)["older_than"], 0)
+
+    def test_criterion_counts_emits_no_proposal_events(self):
+        with capture_events() as records:
+            criterion_counts(self.scan, max_age_days=90, now=NOW)
+        self.assertEqual([r["event"] for r in records if r["event"].startswith("proposal.")], [])
 
     def test_proposal_events(self):
         with capture_events() as records:

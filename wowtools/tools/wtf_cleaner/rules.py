@@ -117,7 +117,7 @@ def _group_reasons(group: SVGroup, scan: ScanResult, criteria: Criteria, now: fl
     return reasons
 
 
-def evaluate(scan: ScanResult, criteria: Criteria, *, now: float | None = None) -> Proposal:
+def evaluate(scan: ScanResult, criteria: Criteria, *, now: float | None = None, log: bool = True) -> Proposal:
     now = time.time() if now is None else now
     items: list[ProposalItem] = []
     for group in scan.groups:
@@ -130,6 +130,8 @@ def evaluate(scan: ScanResult, criteria: Criteria, *, now: float | None = None) 
         elif criteria.stray_copies and strays:
             items.append(ProposalItem(group, strays, ["stray_copies"]))
     proposal = Proposal(items, criteria.copy(), list(scan.warnings))
+    if not log:
+        return proposal
     log_event("proposal.built", flavor=scan.flavor.folder, criteria=criteria.enabled_names(),
               max_age_days=criteria.max_age_days, items=len(items), files=proposal.total_files,
               bytes=proposal.total_size, by_reason=proposal.by_reason())
@@ -137,3 +139,11 @@ def evaluate(scan: ScanResult, criteria: Criteria, *, now: float | None = None) 
         log_event("proposal.item", account=item.account, character=item.owner_label, addon=item.addon,
                   reasons=item.reasons, files=[f.name for f in item.files])
     return proposal
+
+
+def criterion_counts(scan: ScanResult, *, max_age_days: int, now: float | None = None) -> dict[str, int]:
+    """The number of files each criterion would propose on its own (no proposal.* events)."""
+    now = time.time() if now is None else now
+    return {name: evaluate(scan, Criteria.from_names([name], max_age_days=max_age_days), now=now,
+                           log=False).total_files
+            for name in CRITERIA}

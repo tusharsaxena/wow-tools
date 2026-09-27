@@ -1,4 +1,4 @@
-"""Review the proposal as a tree, tick/untick, toggle criteria and dry run, then clean."""
+"""Review the proposal as a tree, tick/untick, toggle criteria, then clean or dry run (with a progress screen)."""
 from __future__ import annotations
 
 import time
@@ -18,14 +18,21 @@ from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import ACCOUNT_WIDE, Flavor
 from wowtools.core.process import wow_check_for
 from wowtools.tools.wtf_cleaner.cleaner import CleanError, CleanResult, execute
-from wowtools.tools.wtf_cleaner.report import CRITERION_SHORT, age_days, format_result_text, format_size
-from wowtools.tools.wtf_cleaner.rules import CRITERIA, ProposalItem, evaluate
+from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, age_days, format_result_text,
+                                               format_size)
+from wowtools.tools.wtf_cleaner.rules import CRITERIA, ProposalItem, criterion_counts, evaluate
+from wowtools.tools.wtf_cleaner.safety import Marker, clear_marker, read_marker, recovery_message
 from wowtools.tools.wtf_cleaner.scanner import ScanError, ScanResult, scan
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir
 from wowtools.ui.branding import BrandBar
+from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint
 
 ACCENT = "bold #5CC8FF"
-REASON = "#E8B04B"
+SUCCESS_FALLBACK = "#4CC38A"
+NAV_HINT = ("↑↓/Tab move · ←→ buttons · Space tick · Enter press · 1-4 criteria · c clean · y dry run · "
+            "r rescan")
+STAGE_TITLES = {"snapshot": "Taking safety snapshot", "backup": "Writing backup", "verify": "Verifying backup",
+                "delete": "Deleting"}
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -60,6 +67,78 @@ class ConfirmScreen(ModalScreen[bool]):
 
     def action_answer(self, value: bool) -> None:
         self.dismiss(value)
+
+
+class CleanProgressScreen(ModalScreen[None]):
+    """Shown while a clean or dry run runs: the stage, a progress bar and the current file."""
+
+    DEFAULT_CSS = """
+    CleanProgressScreen { align: center middle; }
+    CleanProgressScreen #clean-box { width: 80; height: auto; border: thick $accent; background: $panel;
+                                     padding: 1 2; }
+    CleanProgressScreen #clean-stage { color: $accent; text-style: bold; margin-bottom: 1; }
+    CleanProgressScreen #clean-progress { width: 1fr; }
+    CleanProgressScreen #clean-file { color: $text-muted; margin-top: 1; }
+    """
+
+    def __init__(self, dry_run: bool) -> None:
+        super().__init__()
+        self.dry_run = dry_run
+        self.stage = ""
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="clean-box"):
+            yield Static(Text("Simulating" if self.dry_run else "Starting"), id="clean-stage")
+            yield ProgressBar(id="clean-progress", show_eta=False)
+            yield Static("", id="clean-file")
+
+    def stage_title(self, stage: str) -> str:
+        if stage == "delete" and self.dry_run:
+            return "Simulating"
+        return STAGE_TITLES.get(stage, stage)
+
+    def update_progress(self, stage: str, current: int, total: int, detail: str = "") -> None:
+        self.stage = stage
+        self.query_one("#clean-stage", Static).update(Text(self.stage_title(stage)))
+        self.query_one("#clean-progress", ProgressBar).update(total=total, progress=current)
+        self.query_one("#clean-file", Static).update(Text(detail))
+
+
+class RecoveryScreen(ModalScreen[str]):
+    """An earlier clean did not finish: say where its safety snapshot is. Never restores anything itself."""
+
+    DEFAULT_CSS = """
+    RecoveryScreen { align: center middle; }
+    RecoveryScreen #recovery-box { width: 90; height: auto; border: thick $warning; background: $panel;
+                                   padding: 1 2; }
+    RecoveryScreen #recovery-title { color: $warning; text-style: bold; margin-bottom: 1; }
+    RecoveryScreen #recovery-buttons { height: auto; align-horizontal: right; margin-top: 1; }
+    RecoveryScreen Button { margin-left: 2; }
+    """
+
+    def __init__(self, marker: Marker, backup_dir: Path) -> None:
+        super().__init__()
+        self.marker = marker
+        self.backup_dir = backup_dir
+        self.message = recovery_message(marker)
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="recovery-box"):
+            yield Static(Text("An earlier clean did not finish"), id="recovery-title")
+            yield Static(Text(self.message))
+            with ButtonRow(id="recovery-buttons"):
+                yield Button("Dismiss (keep the snapshot)", id="recovery-dismiss")
+                yield Button("Remind me next time", variant="primary", id="recovery-remind")
+
+    def on_mount(self) -> None:
+        self.query_one("#recovery-remind", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "recovery-dismiss":
+            clear_marker(self.backup_dir)  # the snapshot stays where it is
+            self.dismiss("dismissed")
+        else:
+            self.dismiss("remind")
 
 
 class ResultScreen(Screen[str]):
@@ -98,10 +177,10 @@ class ResultScreen(Screen[str]):
 
 class ReviewScreen(Screen[str]):
     DEFAULT_CSS = """
-    ReviewScreen #status { height: auto; padding: 0 1; color: $text-muted; }
-    ReviewScreen #status.dry { background: $warning; color: $background; text-style: bold; }
     ReviewScreen #body { height: 1fr; }
-    ReviewScreen #filters { width: 36; padding: 1; border-right: solid $primary; }
+    ReviewScreen #filters { width: 46; padding: 1; border-right: solid $primary; }
+    ReviewScreen #actions { margin-top: 1; }
+    ReviewScreen #actions Button { min-width: 0; width: auto; margin-right: 1; }
     ReviewScreen .section { color: $accent; text-style: bold; margin: 1 0 0 0; }
     ReviewScreen #proposal { width: 1fr; padding: 0 1; }
     ReviewScreen #scan-box { width: 1fr; height: auto; padding: 1 2; }
@@ -113,8 +192,8 @@ class ReviewScreen(Screen[str]):
         Binding("space", "toggle", "Tick/untick", priority=True),
         Binding("a", "select_all", "All"),
         Binding("n", "select_none", "None"),
-        Binding("d", "toggle_dry_run", "Dry run"),
         Binding("c", "clean", "Clean"),
+        Binding("y", "dry_run", "Dry run"),
         Binding("r", "rescan", "Rescan"),
         Binding("f", "flavors", "Flavors"),
         Binding("q", "quit_tool", "Quit"),
@@ -122,6 +201,7 @@ class ReviewScreen(Screen[str]):
         Binding("2", "criterion(1)", CRITERION_SHORT["not_enabled"], show=False),
         Binding("3", "criterion(2)", CRITERION_SHORT["older_than"], show=False),
         Binding("4", "criterion(3)", CRITERION_SHORT["stray_copies"], show=False),
+        *NAV_BINDINGS,
     ]
 
     def __init__(self, cfg: Config, flavor: Flavor, *, account: str | None = None,
@@ -133,24 +213,28 @@ class ReviewScreen(Screen[str]):
         self.wow_check = wow_check or wow_check_for(flavor)
         self.settings = load_settings(cfg)
         self.criteria = self.settings.criteria.copy()
-        self.dry_run = False
         self.scan_result: ScanResult | None = None
         self.proposal = None
         self.unchecked: set[Path] = set()
         self.summary_text = ""
+        self._progress_screen: CleanProgressScreen | None = None
 
     # --- layout -------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Static("", id="status")
         with Horizontal(id="body"):
             with Vertical(id="filters"):
                 yield Label("Criteria (keys 1-4)", classes="section")
                 for index, name in enumerate(CRITERIA, start=1):
-                    yield Checkbox(f"{index} {CRITERION_SHORT[name]}", getattr(self.criteria, name),
-                                   id=f"crit_{name}")
+                    yield Ka0sCheckbox(self._criterion_label(index, name), getattr(self.criteria, name),
+                                       id=f"crit_{name}")
                 yield Label("Max age in days (Enter)", classes="section")
                 yield Input(str(self.criteria.max_age_days), type="integer", id="max_age")
+                with ButtonRow(id="actions"):
+                    yield Button("Clean", variant="error", id="btn-clean")
+                    yield Button("Dry run", variant="primary", id="btn-dry")
+                    yield Button("Rescan", id="btn-rescan")
+                yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)
                 yield Static("", id="scan-label")
@@ -160,9 +244,23 @@ class ReviewScreen(Screen[str]):
         yield Footer()
 
     def on_mount(self) -> None:
-        self._update_status()
+        self.sub_title = f"WTF Cleaner · {self._scope()}"
         self.query_one("#proposal", Tree).focus()
         self.action_rescan()
+        self._check_recovery()
+
+    # --- recovery notice (spec A.4.5: never restores on its own) -------------------------------------
+    def _check_recovery(self) -> None:
+        backup_dir = resolve_backup_dir(self.cfg, self.settings)
+        marker = read_marker(backup_dir)
+        if marker is None or backup_dir is None:
+            return
+        log_event("recovery.incomplete_clean", flavor=marker.flavor, started=marker.started,
+                  snapshot=str(marker.snapshot), files=len(marker.files))
+        self.app.push_screen(RecoveryScreen(marker, backup_dir), self._recovery_chosen)
+
+    def _recovery_chosen(self, choice: str | None) -> None:
+        log_event("ui.selection", screen="recovery", control="recovery", value=choice or "remind")
 
     # --- scanning ------------------------------------------------------------------------------
     def action_rescan(self) -> None:
@@ -206,8 +304,24 @@ class ReviewScreen(Screen[str]):
     def _scanned(self, result: ScanResult) -> None:
         self.scan_result = result
         self._show_scan_progress(False)
+        self._update_criterion_labels()
         self._rebuild()
         self.query_one("#proposal", Tree).focus()
+
+    # --- criteria -------------------------------------------------------------------------------------
+    @staticmethod
+    def _criterion_label(index: int, name: str, files: int | None = None) -> Text:
+        text = f"{index} {CRITERION_SHORT[name]}"
+        if files is not None:
+            text += f" ({files} files)"
+        return Text(text, style=CRITERION_COLORS[name])
+
+    def _update_criterion_labels(self) -> None:
+        if self.scan_result is None:
+            return
+        counts = criterion_counts(self.scan_result, max_age_days=self.criteria.max_age_days)
+        for index, name in enumerate(CRITERIA, start=1):
+            self.query_one(f"#crit_{name}", Ka0sCheckbox).label = self._criterion_label(index, name, counts[name])
 
     # --- tree ------------------------------------------------------------------------------------
     def _rebuild(self) -> None:
@@ -242,23 +356,42 @@ class ReviewScreen(Screen[str]):
             return [f.path for f in data[1].files]
         return [f.path for item in data[1] for f in item.files]
 
+    def _mark(self, paths: list[Path]) -> tuple[str, str]:
+        unchecked = sum(1 for p in paths if p in self.unchecked)
+        if paths and unchecked == len(paths):
+            return f"{CHECK_OFF} ", "dim"
+        if unchecked:
+            return "◩ ", "bold"
+        try:
+            success = self.app.current_theme.success or SUCCESS_FALLBACK
+        except Exception:  # noqa: BLE001 - no theme yet: use the Ka0s colour
+            success = SUCCESS_FALLBACK
+        return f"{CHECK_ON} ", f"bold {success}"
+
+    @staticmethod
+    def _reasons(reasons: list[str]) -> Text:
+        text = Text()
+        for index, reason in enumerate(reasons):
+            if index:
+                text.append(", ")
+            text.append(reason, style=CRITERION_COLORS.get(reason, ""))
+        return text
+
     def _label(self, data) -> Text:
         now = time.time()
-        paths = self._paths(data)
-        unchecked = sum(1 for p in paths if p in self.unchecked)
-        mark = "☐ " if paths and unchecked == len(paths) else ("◩ " if unchecked else "☑ ")
+        mark = self._mark(self._paths(data))
         kind = data[0]
         if kind == "file":
             sv = data[2]
-            return Text.assemble((mark, "bold"), sv.name,
+            return Text.assemble(mark, sv.name,
                                  (f"  {format_size(sv.size)} · {age_days(sv.mtime, now)}d", "dim"))
         if kind == "item":
             item = data[1]
-            return Text.assemble((mark, "bold"), (item.addon, "bold"), "  ", (", ".join(item.reasons), REASON),
+            return Text.assemble(mark, (item.addon, "bold"), "  ", self._reasons(item.reasons),
                                  (f"  {len(item.files)} files · {format_size(item.total_size)} · "
                                   f"{age_days(item.newest_mtime, now)}d", "dim"))
         items, name = data[1], data[2]
-        return Text.assemble((mark, "bold"), (name, ACCENT), (f"  {len(items)} items", "dim"))
+        return Text.assemble(mark, (name, ACCENT), (f"  {len(items)} items", "dim"))
 
     def _refresh_labels(self) -> None:
         tree = self.query_one("#proposal", Tree)
@@ -292,17 +425,6 @@ class ReviewScreen(Screen[str]):
             text += f"    ⚠ {len(self.proposal.warnings)} scan warnings (see the log)"
         self.summary_text = text
         self.query_one("#summary", Static).update(Text(text))
-
-    def _update_status(self) -> None:
-        status = self.query_one("#status", Static)
-        if self.dry_run:
-            status.update(Text("DRY RUN: the backup is written, nothing is deleted (press d to turn off)"))
-            status.add_class("dry")
-            self.sub_title = f"WTF Cleaner · {self._scope()} · DRY RUN"
-        else:
-            status.update(Text("space tick/untick · a all · n none · 1-4 criteria · d dry run · c clean"))
-            status.remove_class("dry")
-            self.sub_title = f"WTF Cleaner · {self._scope()}"
 
     def _scope(self) -> str:
         return f"{self.flavor.display_name} · {self.account or 'all accounts'}"
@@ -338,11 +460,6 @@ class ReviewScreen(Screen[str]):
         log_event("ui.selection", screen="review", control="select_none", value=True)
         self._refresh_labels()
 
-    def action_toggle_dry_run(self) -> None:
-        self.dry_run = not self.dry_run
-        log_event("ui.selection", screen="review", control="dry_run", value=self.dry_run)
-        self._update_status()
-
     def action_criterion(self, index: int) -> None:
         self.query_one(f"#crit_{CRITERIA[index]}", Checkbox).toggle()
 
@@ -366,6 +483,7 @@ class ReviewScreen(Screen[str]):
             return
         self.criteria.max_age_days = days
         log_event("ui.selection", screen="review", control="max_age_days", value=days)
+        self._update_criterion_labels()
         self._rebuild()
         self.query_one("#proposal", Tree).focus()
 
@@ -377,10 +495,24 @@ class ReviewScreen(Screen[str]):
         if not self.app.busy:
             self.dismiss("quit")
 
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        actions = {"btn-clean": self.action_clean, "btn-dry": self.action_dry_run, "btn-rescan": self.action_rescan}
+        action = actions.get(event.button.id or "")
+        if action is not None:
+            event.stop()
+            action()
+
     # --- cleaning --------------------------------------------------------------------------------
     def action_clean(self) -> None:
+        self._start(dry_run=False)
+
+    def action_dry_run(self) -> None:
+        self._start(dry_run=True)
+
+    def _start(self, dry_run: bool) -> None:
         if self.proposal is None or self.app.busy:
             return
+        log_event("ui.selection", screen="review", control="dry_run" if dry_run else "clean", value=True)
         selection = self._selection()
         if not selection:
             self.notify("Nothing is selected.")
@@ -390,7 +522,6 @@ class ReviewScreen(Screen[str]):
             log_event("wow.running_warning", executables=running)
         self.settings = load_settings(self.cfg)
         backup = self.settings.backup_before_delete
-        dry_run = self.dry_run
         backup_dir = resolve_backup_dir(self.cfg, self.settings)
         files = sum(len(i.files) for i in selection)
         size = format_size(sum(i.total_size for i in selection))
@@ -412,18 +543,25 @@ class ReviewScreen(Screen[str]):
 
     def _confirmed(self, ok: bool | None, selection: list[ProposalItem], backup: bool,
                    backup_dir: Path | None, dry_run: bool) -> None:
-        # dry_run is the value shown in the confirm dialog, so what the user agreed to is what runs.
         log_event("ui.selection", screen="confirm", control="confirm", value=bool(ok), dry_run=dry_run)
         if not ok:
             return
         self.app.busy = True
-        self.run_worker(lambda: self._clean_worker(selection, backup, backup_dir, dry_run), thread=True,
-                        exclusive=True, group="clean")
+        progress_screen = CleanProgressScreen(dry_run)
+        self._progress_screen = progress_screen
+        self.app.push_screen(progress_screen)
+        self.run_worker(lambda: self._clean_worker(selection, backup, backup_dir, dry_run, progress_screen),
+                        thread=True, exclusive=True, group="clean")
 
     def _clean_worker(self, selection: list[ProposalItem], backup: bool, backup_dir: Path | None,
-                      dry_run: bool) -> None:
+                      dry_run: bool, progress_screen: CleanProgressScreen) -> None:
+        # Runs in a worker thread: the progress screen is only ever touched on the UI thread.
+        def progress(*args) -> None:
+            self.app.call_from_thread(progress_screen.update_progress, *args)
+
         try:
-            result = execute(selection, self.flavor, dry_run=dry_run, backup=backup, backup_dir=backup_dir)
+            result = execute(selection, self.flavor, dry_run=dry_run, backup=backup, backup_dir=backup_dir,
+                             progress=progress)
         except (BackupError, CleanError) as exc:
             if isinstance(exc, CleanError):
                 log_exception("clean", exc)
@@ -431,12 +569,19 @@ class ReviewScreen(Screen[str]):
             return
         self.app.call_from_thread(self._cleaned, result)
 
+    def _close_progress(self) -> None:
+        progress_screen, self._progress_screen = self._progress_screen, None
+        if progress_screen is not None and self.app.screen is progress_screen:
+            self.app.pop_screen()
+
     def _clean_failed(self, exc: Exception) -> None:
         self.app.busy = False
+        self._close_progress()
         self.notify(f"Nothing was deleted: {exc}", title="Clean stopped", severity="error", timeout=20)
 
     def _cleaned(self, result: CleanResult) -> None:
         self.app.busy = False
+        self._close_progress()
         self.unchecked.clear()
         self.app.push_screen(ResultScreen(result), self._after_result)
 

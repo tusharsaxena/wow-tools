@@ -21,6 +21,13 @@ CRITERION_SHORT = {
     "stray_copies": "Stray copies",
 }
 
+CRITERION_COLORS = {
+    "not_installed": "#E5534B",
+    "not_enabled": "#F08C3A",
+    "older_than": "#E8C547",
+    "stray_copies": "#B07CFF",
+}
+
 
 def format_size(n: int) -> str:
     size = float(n)

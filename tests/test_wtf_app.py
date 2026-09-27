@@ -1,15 +1,25 @@
+import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
-from textual.widgets import Input, ProgressBar, Static, Tree
+from textual.app import App
+from textual.widgets import Button, Input, ProgressBar, Static, Tree
 
 from tests.fixtures import build_wow_tree, make_config
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.tools.wtf_cleaner.app import CleanerSettingsScreen, WtfCleanerApp
-from wowtools.tools.wtf_cleaner.review_screen import ConfirmScreen, ResultScreen, ReviewScreen
+from wowtools.core.install import WowInstall
+from wowtools.tools.wtf_cleaner.report import CRITERION_COLORS
+from wowtools.tools.wtf_cleaner.review_screen import (CleanProgressScreen, ConfirmScreen, RecoveryScreen,
+                                                      ResultScreen, ReviewScreen)
+from wowtools.tools.wtf_cleaner.rules import CRITERIA, criterion_counts
+from wowtools.tools.wtf_cleaner.safety import MARKER_NAME
+from wowtools.tools.wtf_cleaner.scanner import scan
 from wowtools.tools.wtf_cleaner.settings import load_settings
+from wowtools.ui.widgets import Ka0sCheckbox
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
@@ -58,9 +68,9 @@ class ReviewFlowTest(AppTestCase):
             async with app.run_test(size=SIZE) as pilot:
                 review = await self.open_review(app, pilot)
                 self.assertEqual(len(review.proposal.items), 6)
-                await pilot.press("d")
-                self.assertTrue(review.dry_run)
-                await pilot.press("c")
+                review.query_one("#btn-dry", Button).focus()
+                await pilot.pause()
+                await pilot.press("enter")
                 await pilot.pause()
                 self.assertIsInstance(app.screen, ConfirmScreen)
                 await pilot.press("y")
@@ -79,16 +89,31 @@ class ReviewFlowTest(AppTestCase):
 
     async def test_real_clean_backs_up_and_deletes(self):
         app = self.make_app()
+        pushed = []
+        push_screen = app.push_screen
+
+        def spy(screen, *args, **kwargs):
+            pushed.append(screen)
+            return push_screen(screen, *args, **kwargs)
+
+        app.push_screen = spy
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
             await pilot.press("c")
             await pilot.pause()
+            self.assertIsInstance(app.screen, ConfirmScreen)
             await pilot.press("y")
             await pilot.pause()
             await app.workers.wait_for_complete()
             await pilot.pause()
             self.assertIsInstance(app.screen, ResultScreen)
             self.assertEqual(len(app.screen.result.deleted), 8)
+            self.assertFalse(any(isinstance(s, CleanProgressScreen) for s in app.screen_stack))
+        progress = [s for s in pushed if isinstance(s, CleanProgressScreen)]
+        self.assertEqual(len(progress), 1)
+        self.assertFalse(progress[0].dry_run)
+        self.assertEqual(progress[0].stage, "delete")
+        self.assertFalse((self.backup_dir / MARKER_NAME).exists())
         self.assertFalse((self.sv / "Uninstalled.lua").exists())
         self.assertTrue((self.sv / "Auctionator.lua").exists())
         self.assertEqual(len(list(self.backup_dir.glob("*.zip"))), 1)
@@ -144,13 +169,14 @@ class ReviewFlowTest(AppTestCase):
             self.assertIn("No backup will be made", app.screen.alerts[0])
             await pilot.press("n")
 
-    async def test_dry_run_is_fixed_at_confirm_time(self):
+    async def test_dry_run_key_runs_a_simulation(self):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
-            review = await self.open_review(app, pilot)
-            await pilot.press("d", "c")
+            await self.open_review(app, pilot)
+            await pilot.press("y")
             await pilot.pause()
-            review.dry_run = False  # flipped after the user confirmed a simulation
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertIn("Simulate", app.screen.title_text)
             await pilot.press("y")
             await pilot.pause()
             await app.workers.wait_for_complete()
@@ -178,6 +204,152 @@ class ReviewFlowTest(AppTestCase):
             self.assertTrue(tree.display)
             self.assertFalse(tree.loading)
             self.assertEqual((bar.progress, bar.total), (4, 4))
+
+
+    async def test_criterion_labels_show_counts(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            retail = WowInstall(self.root).flavor("retail")
+            counts = criterion_counts(scan(retail), max_age_days=review.criteria.max_age_days, now=time.time())
+            self.assertEqual(counts, {"not_installed": 3, "not_enabled": 1, "older_than": 2, "stray_copies": 2})
+            for index, name in enumerate(CRITERIA, start=1):
+                label = review.query_one(f"#crit_{name}", Ka0sCheckbox).label
+                self.assertIn(f"({counts[name]} files)", label.plain)
+                self.assertTrue(label.plain.startswith(f"{index} "))
+            max_age = review.query_one("#max_age", Input)
+            max_age.focus()
+            max_age.value = "250"
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertIn("(0 files)", review.query_one("#crit_older_than", Ka0sCheckbox).label.plain)
+
+    async def test_checkbox_glyphs(self):
+        class Probe(App):
+            def compose(self):
+                yield Ka0sCheckbox("on", True, id="on")
+                yield Ka0sCheckbox("off", False, id="off")
+
+        app = Probe()
+        async with app.run_test() as pilot:
+            on = app.query_one("#on", Ka0sCheckbox)
+            off = app.query_one("#off", Ka0sCheckbox)
+            self.assertIn("✔", on.render().plain)
+            self.assertNotIn("✘", on.render().plain)
+            self.assertIn("✘", off.render().plain)
+            on.toggle()
+            await pilot.pause()
+            self.assertIn("✘", on.render().plain)
+            self.assertNotIn("✔", on.render().plain)
+
+    async def test_tree_reason_colours(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            node = next(n for n in _walk(review.query_one(Tree).root)
+                        if n.data and n.data[0] == "item" and n.data[1].addon == "Uninstalled")
+            label = node.label
+            colour = CRITERION_COLORS["not_installed"].lower()
+            spans = [label.plain[sp.start:sp.end] for sp in label.spans if colour in str(sp.style).lower()]
+            self.assertIn("not_installed", spans)
+            self.assertIn("✔", label.plain)
+
+    async def test_tree_marks_follow_selection(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one(Tree)
+            item = next(n for n in _walk(tree.root)
+                        if n.data and n.data[0] == "item" and n.data[1].addon == "OldAddon")
+            item.expand()
+            await pilot.pause()
+            leaf = item.children[0]
+            tree.focus()
+            tree.move_cursor(leaf)
+            await pilot.pause()
+            await pilot.press("space")
+            self.assertIn("◩", item.label.plain)
+            self.assertIn("✘", leaf.label.plain)
+            await pilot.press("n")
+            self.assertIn("✘", tree.root.label.plain)
+
+    async def test_buttons_and_keys_exist(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            self.assertEqual(review.query_one("#btn-clean", Button).variant, "error")
+            self.assertEqual(review.query_one("#btn-dry", Button).variant, "primary")
+            review.query_one("#btn-rescan", Button)
+            self.assertFalse(review.query("#status"))
+            self.assertFalse(hasattr(review, "dry_run"))
+            review.query_one("#btn-clean", Button).focus()
+            await pilot.press("right")
+            self.assertEqual(review.focused.id, "btn-dry")
+            await pilot.press("right")
+            self.assertEqual(review.focused.id, "btn-rescan")
+            await pilot.press("left", "left")
+            self.assertEqual(review.focused.id, "btn-clean")
+
+
+class RecoveryDialogTest(AppTestCase):
+    def setUp(self):
+        super().setUp()
+        self.backup_dir.mkdir(parents=True)
+        self.snapshot = self.backup_dir / "wtf-snapshot-retail-20260101-000000.zip"
+        self.snapshot.write_bytes(b"zip")
+        (self.backup_dir / MARKER_NAME).write_text(json.dumps({
+            "snapshot": str(self.snapshot), "flavor": "_retail_", "flavor_path": str(self.root / "_retail_"),
+            "started": "2026-01-01T00:00:00", "pid": 1, "suite_version": "0.1.0", "files": ["WTF/x.lua"]}),
+            encoding="utf-8")
+
+    async def open_recovery(self, app, pilot):
+        await pilot.pause()
+        await pilot.press("enter")  # flavor
+        await pilot.pause()
+        await pilot.press("enter")  # all accounts
+        await pilot.pause()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        self.assertIsInstance(app.screen, RecoveryScreen)
+        self.assertIn(str(self.snapshot), app.screen.message)
+        return app.screen
+
+    async def test_recovery_dialog_dismiss_clears_marker_keeps_snapshot(self):
+        app = self.make_app()
+        with capture_events() as records:
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_recovery(app, pilot)
+                await pilot.click("#recovery-dismiss")
+                await pilot.pause()
+                self.assertIsInstance(app.screen, ReviewScreen)
+        self.assertFalse((self.backup_dir / MARKER_NAME).exists())
+        self.assertTrue(self.snapshot.exists())
+        self.assertIn("recovery.incomplete_clean", [r["event"] for r in records])
+        self.assertIn({"screen": "recovery", "control": "recovery", "value": "dismissed"},
+                      [r["data"] for r in records if r["event"] == "ui.selection"])
+
+    async def test_recovery_dialog_remind_keeps_both(self):
+        app = self.make_app()
+        with capture_events() as records:
+            async with app.run_test(size=SIZE) as pilot:
+                screen = await self.open_recovery(app, pilot)
+                self.assertEqual(screen.focused.id, "recovery-remind")
+                await pilot.press("enter")
+                await pilot.pause()
+                self.assertIsInstance(app.screen, ReviewScreen)
+                # A real clean is refused while the marker exists: nothing is deleted.
+                await pilot.press("c")
+                await pilot.pause()
+                await pilot.press("y")
+                await pilot.pause()
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+                self.assertIsInstance(app.screen, ReviewScreen)
+        self.assertTrue((self.backup_dir / MARKER_NAME).exists())
+        self.assertTrue(self.snapshot.exists())
+        self.assertTrue((self.sv / "Uninstalled.lua").exists())
+        self.assertIn({"screen": "recovery", "control": "recovery", "value": "remind"},
+                      [r["data"] for r in records if r["event"] == "ui.selection"])
 
 
 class AccountScopeFlowTest(AppTestCase):
