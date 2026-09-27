@@ -30,7 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--flavor", help="retail, classic, classic_era, anniversary, ... (default: last used)")
     parser.add_argument("--clean", action="store_true", help="back up and delete the proposal (asks first)")
     parser.add_argument("--yes", action="store_true", help="do not ask for confirmation")
-    parser.add_argument("--dry-run", action="store_true", help="simulate: nothing is backed up or deleted")
+    parser.add_argument("--dry-run", action="store_true", help="write the backup zip but delete nothing")
     parser.add_argument("--no-backup", action="store_true", help="skip the zip backup (requires --yes)")
     parser.add_argument("--max-age", type=int, metavar="DAYS", help="override max_age_days")
     parser.add_argument("--criteria", metavar="LIST", help=f"comma list from: {', '.join(CRITERIA)}")

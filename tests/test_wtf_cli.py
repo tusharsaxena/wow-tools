@@ -84,6 +84,7 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("DRY RUN", out)
         self.assertTrue((self.sv / "Uninstalled.lua").exists())
+        self.assertEqual(len(list((self.root / "wow-tools" / "wtf-cleaner").glob("*.zip"))), 1)
 
     def test_no_backup_requires_yes(self):
         code, _, err = self.cli("--flavor", "retail", "--clean", "--no-backup")

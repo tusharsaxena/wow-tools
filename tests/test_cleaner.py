@@ -64,21 +64,39 @@ class CleanerTest(unittest.TestCase):
         self.assertIn("backup.created", names)
         self.assertLess(names.index("backup.created"), names.index("sv.deleted"))
 
-    def test_dry_run_touches_nothing(self):
+    def test_dry_run_writes_backup_but_deletes_nothing(self):
         before = snapshot(self.root)
         with capture_events() as records:
             result = execute(self.proposal.items, self.retail, dry_run=True, backup=True,
                              backup_dir=self.backup_dir, now=WHEN)
         self.assertEqual(snapshot(self.root), before)
-        self.assertFalse(self.backup_dir.exists())
+        zips = list(self.backup_dir.glob("*.zip"))
+        self.assertEqual(len(zips), 1)
+        self.assertEqual(result.backup_path, zips[0])
+        with zipfile.ZipFile(zips[0]) as zf:
+            self.assertEqual(len(zf.namelist()), 9)
         self.assertTrue(result.dry_run)
         self.assertEqual(len(result.would_delete), 8)
         self.assertEqual(result.deleted, [])
         would = [r for r in records if r["event"] == "sv.would_delete"]
         self.assertEqual(len(would), 8)
         self.assertTrue(all(r["dry_run"] for r in would))
-        self.assertIn("backup.would_create", [r["event"] for r in records])
-        self.assertIn("DRY RUN", format_result_text(result))
+        created = [r for r in records if r["event"] == "backup.created"]
+        self.assertEqual(len(created), 1)
+        self.assertIs(created[0]["dry_run"], True)
+        self.assertNotIn("backup.would_create", [r["event"] for r in records])
+        text = format_result_text(result)
+        self.assertIn("DRY RUN: backup written, nothing was deleted.", text)
+
+    def test_dry_run_without_backup_writes_nothing(self):
+        before = snapshot(self.root)
+        result = execute(self.proposal.items, self.retail, dry_run=True, backup=False,
+                         backup_dir=self.backup_dir, now=WHEN)
+        self.assertEqual(snapshot(self.root), before)
+        self.assertFalse(self.backup_dir.exists())
+        self.assertIsNone(result.backup_path)
+        self.assertEqual(len(result.would_delete), 8)
+        self.assertIn("DRY RUN: nothing was deleted (backup is off).", format_result_text(result))
 
     def test_changed_and_missing_files_are_skipped(self):
         (self.sv / "Uninstalled.lua").write_text("written by WoW after the scan, longer than before")

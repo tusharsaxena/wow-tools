@@ -52,9 +52,8 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 
 | Event | Level | Description |
 |---|---|---|
-| `backup.created` | info | A backup zip was written and verified. |
+| `backup.created` | info | A backup zip was written and verified (a dry run writes it too). |
 | `backup.failed` | error | The backup failed; nothing was deleted. |
-| `backup.would_create` | info | Dry run: the backup zip that would have been written. |
 | `clean.completed` | info | A clean finished (logged at warning if any file failed). |
 | `clean.started` | info | A clean (or dry run) started. |
 | `proposal.built` | info | The cleanup proposal was built from scan results and criteria. |

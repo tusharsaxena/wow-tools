@@ -1,4 +1,4 @@
-"""Execute a selection: recheck, guard, back up (verified), then delete, or simulate all of it."""
+"""Execute a selection: recheck, guard, back up (verified), then delete. A dry run writes the backup but deletes nothing."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -109,18 +109,16 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
             raise BackupError("no backup folder is configured")
         dest = backup_dir / backup_filename(TOOL_NAME, flavor.short_name, now)
         ready_bytes = sum(sv.size for _, sv in ready)
-        if dry_run:
-            log_event("backup.would_create", dry_run=True, zip=str(dest), files=len(ready), bytes=ready_bytes)
-        else:
-            meta = {"tool": TOOL_NAME, "suite_version": __version__, "flavor": flavor.folder,
-                    "created": now.isoformat(timespec="seconds")}
-            try:
-                create_backup([BackupEntry(sv.path, tuple(item.reasons)) for item, sv in ready],
-                              flavor.path, dest, meta)
-            except BackupError as exc:
-                log_event("backup.failed", zip=str(dest), error=str(exc))
-                raise
-            log_event("backup.created", zip=str(dest), files=len(ready), bytes=ready_bytes, verified=True)
+        meta = {"tool": TOOL_NAME, "suite_version": __version__, "flavor": flavor.folder,
+                "created": now.isoformat(timespec="seconds")}
+        try:
+            create_backup([BackupEntry(sv.path, tuple(item.reasons)) for item, sv in ready],
+                          flavor.path, dest, meta)
+        except BackupError as exc:
+            log_event("backup.failed", dry_run=dry_run, zip=str(dest), error=str(exc))
+            raise
+        log_event("backup.created", dry_run=dry_run, zip=str(dest), files=len(ready), bytes=ready_bytes,
+                  verified=True)
         result.backup_path = dest
 
     for item, sv in ready:

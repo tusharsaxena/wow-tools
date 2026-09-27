@@ -65,7 +65,7 @@ class ReviewFlowTest(AppTestCase):
                 self.assertTrue(app.screen.result.dry_run)
                 self.assertEqual(len(app.screen.result.would_delete), 8)
         self.assertTrue((self.sv / "Uninstalled.lua").exists())
-        self.assertFalse(self.backup_dir.exists())
+        self.assertEqual(len(list(self.backup_dir.glob("*.zip"))), 1)
         names = [r["event"] for r in records]
         self.assertIn("sv.would_delete", names)
         self.assertIn({"screen": "review", "control": "dry_run", "value": True},

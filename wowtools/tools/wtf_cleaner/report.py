@@ -96,9 +96,13 @@ def result_to_dict(result) -> dict:
 
 
 def format_result_text(result) -> str:
-    lines = ["DRY RUN: nothing was backed up or deleted." if result.dry_run else "Clean finished."]
+    if result.dry_run:
+        lines = ["DRY RUN: backup written, nothing was deleted." if result.backup_path
+                 else "DRY RUN: nothing was deleted (backup is off)."]
+    else:
+        lines = ["Clean finished."]
     if result.backup_path:
-        lines.append(("Backup would be written to: " if result.dry_run else "Backup: ") + str(result.backup_path))
+        lines.append("Backup: " + str(result.backup_path))
     else:
         lines.append("No backup was made.")
     done = result.would_delete if result.dry_run else result.deleted

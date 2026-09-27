@@ -270,7 +270,7 @@ class ReviewScreen(Screen[str]):
     def _update_status(self) -> None:
         status = self.query_one("#status", Static)
         if self.dry_run:
-            status.update(Text("DRY RUN: nothing will be backed up or deleted (press d to turn off)"))
+            status.update(Text("DRY RUN: the backup is written, nothing is deleted (press d to turn off)"))
             status.add_class("dry")
             self.sub_title = f"WTF Cleaner · {self.flavor.display_name} · DRY RUN"
         else:
@@ -372,7 +372,8 @@ class ReviewScreen(Screen[str]):
         else:
             alerts.append("No backup will be made (backup is off in settings).")
         if dry_run:
-            lines.append("DRY RUN: nothing will be written or deleted.")
+            lines.append(("DRY RUN: the backup zip is written, nothing is deleted." if backup
+                          else "DRY RUN: nothing will be written or deleted."))
         if running:
             alerts.append(f"WoW appears to be running ({', '.join(running)}). Close it first: WoW rewrites "
                           "SavedVariables when you log out.")
