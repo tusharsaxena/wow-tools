@@ -18,7 +18,7 @@ Status values: `pending` · `in-progress` · `done` · `blocked (reason)`
 | 2 | Windows ⇄ WSL paths | done | 07ac44a | No deviations |
 | 3 | Suite event log | done | 4a2cebf | No code deviations (plan says 12 tests; its test file has 13, all pass) |
 | 4 | Config | done | 1a4e4a0 | No deviations |
-| 5 | WoW install model + test fixture tree | pending | | |
+| 5 | WoW install model + test fixture tree | done |  | No deviations |
 | 6 | Verified zip backups | pending | | |
 | 7 | "Is WoW running?" check | pending | | |
 | 8 | WTF Cleaner scanner + event registry | pending | | |
