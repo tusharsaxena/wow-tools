@@ -214,7 +214,7 @@ The results screen shows the backup's path and the check's result. If the check 
 problem is shown there and every problem is logged (`clean.check_failed`). The marker is cleared either way,
 because the clean did finish.
 
-If something unexpected stops the clean partway (an error, or `Ctrl+C`), the cleaner puts back **only the files
+If something unexpected stops the clean partway (an error), the cleaner puts back **only the files
 this run had already deleted**, taking them from the backup. It never overwrites a file that exists on disk. It
 then reports that the clean stopped and how many files were restored. If that restore fails, the marker is kept
 and the error names the backup.
@@ -366,8 +366,9 @@ Undo is careful:
 The newest 10 journals are kept (`keep_journals` in settings); older ones are deleted after each run. Undone
 journals count towards that.
 
-If a run stops partway (an error, or `Ctrl+C`), the results screen shows what was done, and Undo last run can put
-it back.
+If a run stops partway (an error), the results screen shows what was done, and Undo last run can put it back when
+the run left a journal. If it stopped before anything could be journaled, the message says so and Undo is not
+offered for it.
 
 ## Settings (`config\`)
 

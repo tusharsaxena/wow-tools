@@ -58,6 +58,8 @@ def validate_dest(dest: Path | None, install: WowInstall) -> str | None:
     """Why a destination folder is not allowed, or None if it is fine (None itself means in place)."""
     if dest is None:
         return None
+    if not dest.is_absolute():  # e.g. "Shots", "~/shots", "D:Shots", or a UNC path under WSL
+        return "Use a full path for the destination, e.g. D:\\Screenshots."
     key = _key(dest)
     if key == _key(install.root):
         return "The destination cannot be the WoW folder itself."

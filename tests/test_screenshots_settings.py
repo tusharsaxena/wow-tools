@@ -6,6 +6,7 @@ from tests.fixtures import build_wow_tree
 from wowtools.core.config import Config
 from wowtools.core.events import REGISTRY
 from wowtools.core.install import WowInstall
+from wowtools.core.paths import to_native
 from wowtools.tools.screenshots import events
 from wowtools.tools.screenshots.settings import (DEFAULT_KEEP_JOURNALS, SECTION, ShotSettings, load_settings,
                                                  resolve_journal_dir, save_settings, source_dir, target_root,
@@ -53,6 +54,13 @@ class SettingsTest(unittest.TestCase):
         self.assertIsNotNone(validate_dest(self.root, self.install))
         self.assertIsNotNone(validate_dest(self.root / "_retail_" / "Screenshots", self.install))
         self.assertIsNotNone(validate_dest(self.root / "_retail_" / "Screenshots" / "x", self.install))
+
+    def test_validate_dest_needs_a_full_path(self):
+        # A relative destination would be filed under whatever folder the suite was started from.
+        for raw in ("Shots", "~/shots", "D:Shots"):
+            self.assertIn("full path", validate_dest(Path(raw), self.install) or "", raw)
+        unc = to_native(r"\\nas\share\Shots", wsl=True)  # a UNC path has no WSL form: it stays relative
+        self.assertIn("full path", validate_dest(unc, self.install) or "")
 
     def test_events_are_prefixed(self):
         self.assertTrue(events.EVENTS)

@@ -21,7 +21,8 @@ from wowtools.tools.screenshots.naming import day_parts
 from wowtools.tools.screenshots.organizer import OrganizeError, OrganizeResult, execute
 from wowtools.tools.screenshots.planner import MAYBE_DUPLICATE, FlavorPlan, Plan, ShotItem, scan
 from wowtools.tools.screenshots.report import (RESULT_COLUMNS, STAGE_TITLES, confirm_text, destination_label,
-                                               friendly_stamp, kind_class, plural, result_rows, summary_rows)
+                                               friendly_stamp, kind_class, plural, result_rows, stopped_text,
+                                               summary_rows)
 from wowtools.tools.screenshots.settings import load_settings, resolve_journal_dir
 from wowtools.tools.screenshots.undo import undo
 from wowtools.tools.wtf_cleaner.review_screen import ConfirmScreen
@@ -597,7 +598,7 @@ class ShotReviewScreen(Screen[str]):
     def _job_stopped(self, exc: OrganizeError) -> None:
         self.app.busy = False
         self._close_progress()
-        self.notify(f"{exc} What was done is in the journal; use Undo last run (z) to put it back.",
+        self.notify(stopped_text(str(exc), exc.result, latest_undoable(self._journal_dir())),
                     title="Run stopped", severity="error", timeout=20)
         self._refresh_undo()
         self.app.push_screen(ShotResultScreen(exc.result), self._after_result)

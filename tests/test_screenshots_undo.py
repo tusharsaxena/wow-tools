@@ -11,6 +11,7 @@ from wowtools.core.install import WowInstall
 from wowtools.tools.screenshots.journal import latest_undoable, read_journal
 from wowtools.tools.screenshots.organizer import (COPY_REMOVED, RESTORED, UNDO_SKIPPED, OrganizeError, execute)
 from wowtools.tools.screenshots.planner import scan
+from wowtools.tools.screenshots.report import stopped_text
 from wowtools.tools.screenshots.undo import undo
 
 A = "WoWScrnShot_073119_232713.jpg"
@@ -133,6 +134,44 @@ class UndoTest(unittest.TestCase):
         back = undo(path, wow_root=self.root)
         self.assertEqual(back.count(RESTORED), 2)
         self.assert_restored()
+
+    def test_stopped_run_without_a_journal_does_not_offer_an_older_run(self):
+        # Run A is journaled. Run B moves a file, then its journal cannot be written: B leaves no journal, and
+        # Undo would offer run A, so the stop message must not point at Undo.
+        from wowtools.tools.screenshots import journal as journal_mod
+        first = self.organize(self.dest, copy=True)
+        self.assertIsNotNone(first.journal_path)
+        other = self.tmp / "arch2"
+
+        def failing_add(writer, *a, **k):
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+        with unittest.mock.patch.object(journal_mod.JournalWriter, "add", failing_add):
+            with self.assertRaises(OrganizeError) as ctx:
+                self.organize(other)
+        result = ctx.exception.result
+        self.assertIsNone(result.journal_path)
+        self.assertEqual(latest_undoable(self.journals), first.journal_path)
+        text = stopped_text(str(ctx.exception), result, latest_undoable(self.journals))
+        self.assertNotIn("Undo last run (z) to put", text)
+        self.assertIn("cannot put back", text)
+        self.assertIn(result.outcomes[0].src.name, text)
+
+    def test_stopped_run_with_its_journal_offers_undo(self):
+        calls = []
+
+        def boom(src, dst):
+            calls.append(src)
+            if len(calls) == 2:
+                raise RuntimeError("boom")
+            os.rename(src, dst)
+
+        with self.assertRaises(OrganizeError) as ctx:
+            self.organize(self.dest, rename=boom)
+        result = ctx.exception.result
+        text = stopped_text(str(ctx.exception), result, latest_undoable(self.journals))
+        self.assertIn("Undo last run (z)", text)
+        self.assertNotIn("cannot put back", text)
 
     def test_torn_multibyte_last_line_is_tolerated(self):
         # Non-ASCII paths are journaled as UTF-8; a crash can cut the last line inside a character.

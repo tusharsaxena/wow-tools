@@ -82,6 +82,24 @@ def result_rows(result: OrganizeResult) -> list[tuple[str, str, str, str, str]]:
             for o in result.outcomes]
 
 
+def stopped_text(message: str, result: OrganizeResult, undoable: Path | None) -> str:
+    """What to tell the user when a run stopped partway. Undo is only offered when the journal Undo would pick
+    (`undoable`, from latest_undoable) is this run's own: otherwise it would put back an older, unrelated run."""
+    if result.dry_run:
+        return f"{message} This was a dry run: nothing was changed."
+    unjournaled = [o.src.name for o in result.outcomes if "not journaled" in o.reason]
+    if result.journal_path is not None and result.journal_path == undoable:
+        text = f"{message} What was done is in the journal; use Undo last run (z) to put it back."
+        if unjournaled:
+            text += f" Undo cannot put back {', '.join(unjournaled)} (not journaled)."
+        return text
+    if unjournaled:
+        return f"{message} This run left no journal, so Undo cannot put back {', '.join(unjournaled)}."
+    if result.outcomes:
+        return f"{message} Undo last run (z) cannot put back this run's changes."
+    return f"{message} Nothing was changed, so there is nothing to undo."
+
+
 def summary_rows(result: OrganizeResult) -> list[tuple[str, str]]:
     rows = [("Mode", mode_label(result))]
     counts = result.counts()
