@@ -76,21 +76,33 @@ class LockScreen(ModalScreen[bool]):
         self.dismiss(value)
 
 
+TOOL_NAME_STYLE = "bold #F2C14E"  # gold: stands apart from the blue theme, on the cursor row too
+
+
+def tool_label(title: str, description: str, width: int) -> Text:
+    """A menu row: the tool name padded to `width`, then its description, so both line up as columns."""
+    return Text.assemble((title.ljust(width), TOOL_NAME_STYLE), description)
+
+
 class ToolMenuScreen(Screen[None]):
     """The first screen: every tool in the suite. It stays at the bottom of the stack while a tool runs."""
 
     DEFAULT_CSS = """
     ToolMenuScreen #pick-title { color: $accent; text-style: bold; padding: 0 2; }
     ToolMenuScreen #tools { margin: 1 2; height: auto; border: tall $primary; }
+    /* A deeper blue than the default cursor, so the gold tool names stay readable on the highlighted row. */
+    ToolMenuScreen #tools > .option-list--option-highlighted { background: #1C4E8F; }
+    ToolMenuScreen #tools:focus > .option-list--option-highlighted { background: #1C4E8F; }
     ToolMenuScreen NavHint { padding: 0 2; }
     """
     BINDINGS = [Binding("q,escape", "app.quit", "Quit"), *NAV_BINDINGS]
 
     def compose(self) -> ComposeResult:
+        width = max(len(t.title) for t in TOOLS.values()) + 3  # names in one column, descriptions in the next
         yield Header()
         yield Banner()
         yield Static("Choose a tool", id="pick-title")
-        yield OptionList(*[Option(Text.assemble((t.title, "bold"), "  ·  ", t.description), id=t.name)
+        yield OptionList(*[Option(tool_label(t.title, t.description, width), id=t.name)
                            for t in TOOLS.values()], id="tools")
         yield NavHint("↑↓ choose · Enter open · s settings · q/Esc quit")
         yield BrandBar()
