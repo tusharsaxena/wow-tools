@@ -602,8 +602,12 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertEqual(setup.focused.id, "wow_path")
             self.assertTrue(setup.query(ButtonRow))
             self.assertTrue(setup.query(NavHint))
-            await pilot.press(*str(self.root))
-            self.assertEqual(setup.query_one("#wow_path", Input).value, str(self.root))
+            # Type the end of the path by key (typing every character of a long temp path took seconds).
+            box = setup.query_one("#wow_path", Input)
+            box.value = str(self.root)[:-3]
+            box.cursor_position = len(box.value)
+            await pilot.press(*str(self.root)[-3:])
+            self.assertEqual(box.value, str(self.root))
             await pilot.press("down")
             self.assertEqual(setup.focused.id, "save")
             await pilot.press("enter")

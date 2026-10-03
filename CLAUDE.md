@@ -2,7 +2,8 @@
 
 Out-of-game WoW companion tools (Ka0s branded). First tool: WTF Cleaner. Spec and plan: `docs/superpowers/`.
 
-- Tests: `python3 -m unittest discover -s tests -t . -v`
+- Tests: `python3 scripts/run_tests.py` (parallel, ~10s; `-k TEXT` to filter, `-j N` processes). Serial, verbose:
+  `python3 -m unittest discover -s tests -t . -v`
 - Run: `./wow-tools.sh` (Windows: `wow-tools.cmd`); the tool menu opens. `./wow-tools.sh update [--check]`.
   Tools never start on their own and have no CLI mode.
 - Rebuild vendored libs: `python3 scripts/update_vendor.py`. Event docs: `python3 scripts/gen_event_docs.py`

@@ -117,5 +117,7 @@ The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfC
 
 ## Testing
 
-`python3 -m unittest discover -s tests -t .`. `tests/fixtures.py` builds a synthetic install in a temp
+`python3 scripts/run_tests.py` deals the tests round-robin into one process per CPU (at most 16); `python3 -m
+unittest discover -s tests -t .` runs them in one process. Textual tests subclass `tests.fixtures.TuiTestCase`,
+which turns off asyncio debug mode. `tests/fixtures.py` builds a synthetic install in a temp
 folder, and TUI tests use Textual's `App.run_test()` pilot. No test touches a real WoW folder or the network.

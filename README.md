@@ -335,4 +335,5 @@ The same folder works from both. Paths are stored in Windows form (`G:\Games\…
 
 See [docs/architecture.md](docs/architecture.md), [docs/adding-a-tool.md](docs/adding-a-tool.md),
 [docs/vendoring.md](docs/vendoring.md), [docs/releasing.md](docs/releasing.md) and
-[docs/events.md](docs/events.md). Run the tests with `python3 -m unittest discover -s tests -t .`.
+[docs/events.md](docs/events.md). Run the tests with `python3 scripts/run_tests.py` (in parallel), or
+`python3 -m unittest discover -s tests -t .` (one process).
