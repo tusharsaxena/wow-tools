@@ -135,7 +135,7 @@ def _recheck(sv: SVFile, info: os.stat_result | None) -> str | None:
 def recover_probe_leftovers(folders: list[Path], flavor: Flavor) -> list[Path]:
     """Rename back every <name>.wowtools-lockcheck left in these SavedVariables folders by a crash during an
     earlier lock check, when <name> itself is absent (never overwriting). Runs before a real clean's lock check and
-    WTF backup. Returns the files put back; a leftover that cannot be renamed is left alone."""
+    WTF backup, over every SavedVariables folder in the clean's scope. Returns the files put back; a leftover that cannot be renamed is left alone."""
     recovered: list[Path] = []
     for folder in folders:
         try:
@@ -151,6 +151,19 @@ def recover_probe_leftovers(folders: list[Path], flavor: Flavor) -> list[Path]:
             recovered.append(original)
             log_event("clean.probe_recovered", flavor=flavor.folder, path=_relative(original, flavor))
     return recovered
+
+
+def saved_variables_folders(flavor: Flavor, account: str | None = None) -> list[Path]:
+    """Every SavedVariables folder a scan of this scope reads: each account's and each character's (one account,
+    any case, when `account` is given). Unreadable folders are left out."""
+    accounts = flavor.accounts()
+    if account is not None:
+        accounts = [a for a in accounts if a.name.casefold() == account.casefold()]
+    folders: list[Path] = []
+    for acct in accounts:
+        folders.append(acct.saved_variables_dir)
+        folders.extend(c.saved_variables_dir for c in acct.characters())
+    return folders
 
 
 def _probe_lock(path: Path) -> str | None:
@@ -299,7 +312,8 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
     if not dry_run and ready:
         if journal is not None:
             _open_journal(journal, flavor)
-        recover_probe_leftovers(sorted({sv.path.parent for _, sv in ready}), flavor)
+        folders = set(saved_variables_folders(flavor, account)) | {sv.path.parent for _, sv in ready}
+        recover_probe_leftovers(sorted(folders), flavor)
         _refuse_locked(ready, flavor, report)
         snapshot = _take_safety_snapshot(flavor, backup_dir, now, [_relative(sv.path, flavor) for _, sv in ready],
                                          report)

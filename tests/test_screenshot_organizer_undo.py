@@ -284,3 +284,19 @@ class UndoTest(unittest.TestCase):
         self.assertTrue(back.marked_undone)
         self.assertIsNone(latest_undoable(self.journals))
         self.assertNotIn("Undo", [label for label, _ in summary_rows(back)])
+        failed = next(o for o in back.outcomes if o.kind == FAILED)
+        self.assertNotIn("try Undo again", failed.reason)  # Undo is no longer offered for this journal
+        self.assertIn("missing", failed.reason)
+
+    def test_copy_mode_with_copies_deleted_marks_undone(self):
+        """The user deleted the archive copies: the originals are intact, so the run is already undone."""
+        result = self.organize(self.dest, copy=True)
+        for path in (self.dest / "_retail_").rglob("*"):
+            if path.is_file():
+                path.unlink()
+        back = undo(result.journal_path, wow_root=self.root)
+        self.assertEqual(back.count(FAILED), 0)
+        self.assertEqual(back.count(COPY_REMOVED), 4)
+        self.assertTrue(back.marked_undone)
+        self.assertIsNone(latest_undoable(self.journals))
+        self.assert_restored()

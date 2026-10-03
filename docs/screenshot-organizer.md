@@ -134,7 +134,8 @@ Turn on **Copy instead of move** in settings to copy screenshots into the dated 
 Changed your mind? **Undo last run** (`z`, the amber button) reverses the most recent run:
 
 - Moved screenshots go back to their `Screenshots` folder.
-- Copies are removed (only if the original is still there).
+- Copies are removed (only if the original is still there). A copy you already deleted yourself counts as
+  undone.
 - Duplicates that were removed are put back.
 
 Undo is careful too:

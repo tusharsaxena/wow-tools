@@ -180,7 +180,7 @@ def _scan_sv_dir(sv_dir: Path, account: Account, character: Character | None,
             if (sv_dir / original).exists():
                 note = f"{original} exists too, so this copy is left alone; delete it if you don't need it"
             else:
-                note = f"the next clean of this folder renames it back to {original}, or rename it yourself"
+                note = f"the next clean renames it back to {original}, or rename it yourself"
             warnings.append(ScanWarning(str(path), f"left over from an interrupted lock check: {note}"))
             continue
         addon = addon_name_for(path.name)

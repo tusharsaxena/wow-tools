@@ -3,6 +3,7 @@ recorded. Never overwrites. Afterwards, empty YYYY/MM/DD folders the run filed i
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from pathlib import Path
 
 from wowtools.core.events import log_event
@@ -48,11 +49,14 @@ def _missing(dst: Path) -> bool:
 
 MISSING_FILED = ("the filed copy is missing (if it is on a drive that is not connected, connect it and try Undo "
                  "again)")
+MISSING_FILED_FINAL = "the filed copy is missing"  # the journal was marked undone: Undo is not offered again
+COPY_GONE = "the copy was already gone"
 
 
 def _undo_one(entry: dict, wow_root: Path, dest_dir: Path | None, rename: Rename) -> tuple[str, str]:
-    """A filed copy that is missing altogether is FAILED (it may be on an unplugged drive: Undo can be tried
-    again); one that changed is UNDO_SKIPPED (left alone for good)."""
+    """A filed screenshot that is missing altogether is FAILED (it may be on an unplugged drive: Undo can be tried
+    again); one that changed is UNDO_SKIPPED (left alone for good). In copy mode a missing copy next to an intact
+    original is already undone (COPY_REMOVED)."""
     src, dst, size, action = entry["src"], entry["dst"], entry["size"], entry["action"]
     refusal = _guard(src, dst, wow_root, dest_dir)
     if refusal:
@@ -74,7 +78,7 @@ def _undo_one(entry: dict, wow_root: Path, dest_dir: Path | None, rename: Rename
         if _size(src) != size:
             return UNDO_SKIPPED, "the original is missing or was changed, so the copy is kept"
         if _missing(dst):
-            return FAILED, MISSING_FILED
+            return COPY_REMOVED, COPY_GONE
         if _size(dst) != size:
             return UNDO_SKIPPED, "the copy was changed"
         os.remove(dst)
@@ -136,6 +140,9 @@ def undo(journal_path: Path, *, wow_root: Path, progress: Progress | None = None
     result.marked_undone = restored > 0 or result.count(FAILED) == 0
     if result.marked_undone:
         mark_undone(journal_path, restored, skipped)
+        # Undo is not offered again, so don't tell the user to retry it.
+        result.outcomes = [replace(o, reason=MISSING_FILED_FINAL) if o.reason == MISSING_FILED else o
+                           for o in result.outcomes]
     log_event("shots.undo_completed", level="warning" if skipped else None, journal=str(journal_path),
               restored=restored, skipped=skipped, marked_undone=result.marked_undone)
     return result

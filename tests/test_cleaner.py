@@ -200,6 +200,25 @@ class ProbeLeftoverTest(unittest.TestCase):
         with zipfile.ZipFile(self.backup_dir / SNAPSHOT) as zf:
             self.assertIn("WTF/Account/ACCT1/SavedVariables/Details.lua", zf.namelist())
 
+    def test_execute_recovers_leftovers_in_folders_with_nothing_selected(self):
+        """A leftover in a character folder and in another account is put back by a clean of account-wide files."""
+        char_file = self.retail.account_dir / "ACCT1" / "Realm1" / "CharA" / "SavedVariables" / "Auctionator.lua"
+        other_file = self.retail.account_dir / "ACCT2" / "SavedVariables" / "Details.lua"
+        for path in (char_file, other_file):
+            path.rename(path.with_name(path.name + ".wowtools-lockcheck"))
+        execute([self.item("Uninstalled")], self.retail, dry_run=False, backup=True,
+                backup_dir=self.backup_dir, now=WHEN)
+        self.assertTrue(char_file.exists())
+        self.assertTrue(other_file.exists())
+        self.assertEqual(list(self.retail.account_dir.rglob("*.wowtools-lockcheck")), [])
+
+    def test_account_scoped_clean_leaves_other_accounts_alone(self):
+        other_file = self.retail.account_dir / "ACCT2" / "SavedVariables" / "Details.lua"
+        other_file.rename(other_file.with_name("Details.lua.wowtools-lockcheck"))
+        execute([self.item("Uninstalled")], self.retail, dry_run=False, backup=True,
+                backup_dir=self.backup_dir, now=WHEN, account="ACCT1")
+        self.assertTrue(other_file.with_name("Details.lua.wowtools-lockcheck").exists())
+
     def test_leftover_is_kept_when_the_original_exists_again(self):
         leftover = self.sv / "Details.lua.wowtools-lockcheck"
         leftover.write_bytes(b"old copy")

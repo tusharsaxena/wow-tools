@@ -111,8 +111,8 @@ the whole run, across All flavors:
 
 `execute_flavors` creates the `CleanJournal` and passes it to each `execute()`. `execute` opens it (header
 written, once per run) before the lock check and the WTF backup (the lock check is preceded by
-`recover_probe_leftovers`, which renames back any `<name>.wowtools-lockcheck` an interrupted probe left in the
-selected SavedVariables folders, never overwriting, `clean.probe_recovered`; the scanner never proposes such a file
+`recover_probe_leftovers`, which renames back any `<name>.wowtools-lockcheck` an interrupted probe left in any
+SavedVariables folder in the clean's scope (`saved_variables_folders(flavor, account)`), never overwriting, `clean.probe_recovered`; the scanner never proposes such a file
 and adds a `ScanWarning` for it); if that fails it raises `CleanError` and nothing
 is deleted (`clean.journal_failed`). An entry is appended after each delete; if that append fails the delete loop
 stops like any unexpected error, so that flavor's deletions are restored from its WTF backup. A journal with no
@@ -234,8 +234,11 @@ size that is not a number, and `latest_undoable` treats an unreadable journal as
 - `moved`: if `dst` has the recorded size and `src` is free, move it back (`move_file`, copy-verify-delete across
   devices; a failed delete of the archive copy is still `restored`, with a reason);
 - `copied` / `copied_source_left`: delete `dst` if both `src` and `dst` have the recorded size (`copy_removed`);
+  a missing `dst` next to an intact `src` is already undone (`copy_removed`, "the copy was already gone");
 - `duplicate_removed`: if `src` is free and `dst` has the recorded size, `copy_verified(dst, src)`;
-- a `dst` that is missing altogether is `failed` (it may be on an unplugged archive drive); anything else, or a
+- for `moved` and `duplicate_removed`, a `dst` that is missing altogether is `failed` (it may be on an unplugged
+  archive drive; its reason says to connect it and try Undo again, shortened to "the filed copy is missing" when
+  the journal is marked undone anyway); anything else, or a
   failed check, is `undo_skipped`; an `OSError` is `failed`.
 
 Then the `DD`, `MM` and `YYYY` folders it touched are removed bottom-up while empty and digit-named, and an
