@@ -106,7 +106,9 @@ class Journal:
 
 def read_journal(path: Path) -> Journal:
     journal = Journal(path, {})
-    with path.open(encoding="utf-8") as handle:
+    # errors="replace": a crash can cut the last line inside a multibyte character (paths are written
+    # with ensure_ascii=False); that line then fails to parse and is skipped like any other torn line.
+    with path.open(encoding="utf-8", errors="replace") as handle:
         for number, line in enumerate(handle):
             try:
                 record = json.loads(line)
@@ -145,7 +147,7 @@ def latest_undoable(journal_dir: Path | None) -> Path | None:
     for path in list_journals(journal_dir):
         try:
             journal = read_journal(path)
-        except OSError:
+        except (OSError, ValueError):
             continue
         if journal.undone is None and journal.entries:
             return path

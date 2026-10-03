@@ -21,7 +21,7 @@ from wowtools.tools.screenshots.naming import day_parts
 from wowtools.tools.screenshots.organizer import OrganizeError, OrganizeResult, execute
 from wowtools.tools.screenshots.planner import MAYBE_DUPLICATE, FlavorPlan, Plan, ShotItem, scan
 from wowtools.tools.screenshots.report import (RESULT_COLUMNS, STAGE_TITLES, confirm_text, destination_label,
-                                               kind_class, plural, result_rows, summary_rows)
+                                               friendly_stamp, kind_class, plural, result_rows, summary_rows)
 from wowtools.tools.screenshots.settings import load_settings, resolve_journal_dir
 from wowtools.tools.screenshots.undo import undo
 from wowtools.tools.wtf_cleaner.review_screen import ConfirmScreen
@@ -194,6 +194,7 @@ class ShotReviewScreen(Screen[str]):
         self._items_by_key: dict[tuple, list[ShotItem]] = {}
         self._progress_screen: ShotProgressScreen | None = None
         self._last_filter: Widget | None = None
+        self._scanning = False
 
     # --- layout -------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -233,7 +234,8 @@ class ShotReviewScreen(Screen[str]):
         return resolve_journal_dir(self.cfg.wow_path)
 
     def _refresh_undo(self) -> None:
-        self.query_one("#btn-undo", Button).disabled = latest_undoable(self._journal_dir()) is None
+        # Never offered while a scan is reading the same folders the undo would move files in.
+        self.query_one("#btn-undo", Button).disabled = self._scanning or latest_undoable(self._journal_dir()) is None
 
     # --- panes (←/→) --------------------------------------------------------------------------------
     def on_descendant_focus(self, event) -> None:
@@ -270,6 +272,7 @@ class ShotReviewScreen(Screen[str]):
 
     def _show_scan_progress(self, scanning: bool) -> None:
         """While scanning, the tree is replaced by a progress bar and the folder being read."""
+        self._scanning = scanning
         bar = self.query_one("#scan-progress", ProgressBar)
         if scanning:
             bar.update(total=None, progress=0)
@@ -279,6 +282,8 @@ class ShotReviewScreen(Screen[str]):
         self.query_one("#shots", Tree).display = not scanning
         for button_id in ("#btn-organize", "#btn-dry"):
             self.query_one(button_id, Button).disabled = scanning
+        if scanning:
+            self.query_one("#btn-undo", Button).disabled = True
 
     def _scan_progress(self, current: int, total: int, label: str) -> None:
         self.query_one("#scan-progress", ProgressBar).update(total=total or None, progress=current)
@@ -300,6 +305,7 @@ class ShotReviewScreen(Screen[str]):
 
     def _scan_failed(self, message: str) -> None:
         self._show_scan_progress(False)
+        self._refresh_undo()
         self.summary_text = message
         self.query_one("#summary", Static).update(Text(message))
         self.notify(message, title="Scan failed", severity="error", timeout=15)
@@ -617,7 +623,7 @@ class ShotReviewScreen(Screen[str]):
 
     # --- undo ------------------------------------------------------------------------------------
     def action_undo(self) -> None:
-        if self.app.busy:
+        if self.app.busy or self._scanning:
             return
         log_event("ui.selection", screen="shots_review", control="undo", value=True)
         path = latest_undoable(self._journal_dir())
@@ -627,13 +633,14 @@ class ShotReviewScreen(Screen[str]):
             return
         try:
             journal = read_journal(path)
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             self.notify(f"The journal could not be read: {exc}", severity="error")
             return
-        body = (f"Run from {journal.started}: {plural(len(journal.entries), 'file')}. Moved files go back to their "
+        body = (f"Put back {plural(len(journal.entries), 'file')}? Moved files go back to their "
                 "Screenshots folders, copies are removed, removed duplicates are restored. Anything that changed "
                 "since is left alone.")
-        self.app.push_screen(ConfirmScreen("Undo the last run?", body, default_yes=False),
+        title = f"Undo the run from {friendly_stamp(journal.started)}?"
+        self.app.push_screen(ConfirmScreen(title, body, default_yes=False),
                              lambda ok: self._undo_confirmed(ok, path))
 
     def _undo_confirmed(self, ok: bool | None, path: Path) -> None:

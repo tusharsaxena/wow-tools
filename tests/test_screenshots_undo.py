@@ -134,6 +134,17 @@ class UndoTest(unittest.TestCase):
         self.assertEqual(back.count(RESTORED), 2)
         self.assert_restored()
 
+    def test_torn_multibyte_last_line_is_tolerated(self):
+        # Non-ASCII paths are journaled as UTF-8; a crash can cut the last line inside a character.
+        result = self.organize(self.dest)
+        with result.journal_path.open("ab") as handle:
+            handle.write(b'{"action": "moved", "src": "C:\\\\Jeux\\\\\xc3')
+        self.assertEqual(latest_undoable(self.journals), result.journal_path)
+        self.assertEqual(len(read_journal(result.journal_path).entries), 4)
+        back = undo(result.journal_path, wow_root=self.root)
+        self.assertEqual(back.count(RESTORED), 4)
+        self.assert_restored()
+
     def test_undo_ignores_current_settings(self):
         result = self.organize(self.dest)
         # The user points dest_dir somewhere else afterwards: undo only reads the journal.

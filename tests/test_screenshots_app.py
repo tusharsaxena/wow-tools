@@ -135,6 +135,59 @@ class ShotsAppTest(TuiTestCase):
         self.assertFalse((self.shots / A).exists())
         self.assertIsNotNone(latest_undoable(self.root / "wow-tools" / "screenshots" / "journal"))
 
+    async def test_torn_multibyte_journal_still_opens_and_undoes(self):
+        self.save_tool_cfg(dest_dir=str(self.dest))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await self.run_action(app, pilot, "o")
+            journal = latest_undoable(self.root / "wow-tools" / "screenshots" / "journal")
+            with journal.open("ab") as handle:
+                handle.write(b'{"action": "moved", "src": "C:\\\\Jeux\\\\\xc3')
+            await pilot.press("f")  # result screen -> another flavor: a fresh review screen reads the journal
+            await pilot.pause()
+            self.assertIsInstance(app.screen, FlavorScreen)
+            await pilot.press("enter")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            review = app.screen
+            self.assertIsInstance(review, ShotReviewScreen)
+            self.assertFalse(review.query_one("#btn-undo", Button).disabled)
+            await pilot.press("z")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertRegex(app.screen.title_text, r"^Undo the run from \d{4}-\d\d-\d\d \d\d:\d\d\?$")
+            self.assertIn("Put back 6 files?", app.screen.body_text)
+            await pilot.press("y")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ShotResultScreen)
+            self.assertTrue(app.screen.result.undo)
+        self.assertTrue((self.shots / A).exists())
+
+    async def test_undo_is_blocked_while_scanning(self):
+        self.save_tool_cfg(dest_dir=str(self.dest))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await self.run_action(app, pilot, "o")
+            await pilot.press("r")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            review = app.screen
+            self.assertFalse(review.query_one("#btn-undo", Button).disabled)
+            review.action_rescan()  # the scan result can only arrive once the event loop runs again
+            self.assertTrue(review.query_one("#btn-undo", Button).disabled)
+            review.action_undo()
+            await pilot.pause()
+            self.assertIs(app.screen, review)
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            self.assertFalse(review.query_one("#btn-undo", Button).disabled)
+
     async def test_dry_run_changes_nothing(self):
         self.save_tool_cfg(dest_dir=str(self.dest))
         app = self.make_app()

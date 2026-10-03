@@ -8,7 +8,7 @@ from wowtools.tools.screenshots.organizer import (CONFLICT_KEPT, MOVED, RESTORED
                                                   Outcome)
 from wowtools.tools.screenshots.planner import NEW, FlavorPlan, Plan, ShotItem
 from wowtools.tools.screenshots.report import (KIND_LABELS, STAGE_TITLES, confirm_text, destination_label,
-                                               result_rows, summary_rows)
+                                               friendly_stamp, result_rows, summary_rows)
 from wowtools.tools.screenshots.settings import ShotSettings
 
 # Outcome kinds: the upper-case string constants of organizer, minus the partial-file suffix and the journal
@@ -18,6 +18,11 @@ KINDS = [v for k, v in vars(organizer).items() if k.isupper() and isinstance(v, 
 
 
 class ReportTest(unittest.TestCase):
+    def test_friendly_stamp(self):
+        self.assertEqual(friendly_stamp("2026-10-03T18:21:17+05:30"), "2026-10-03 18:21")
+        self.assertEqual(friendly_stamp("not a time"), "not a time")
+        self.assertEqual(friendly_stamp(""), "an unknown time")
+
     def test_every_kind_has_a_label(self):
         self.assertIn("moved", KINDS)
         for kind in KINDS:
