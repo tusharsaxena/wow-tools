@@ -5,12 +5,12 @@ from datetime import datetime
 from pathlib import Path
 
 from wowtools.core.paths import to_stored
-from wowtools.tools.screenshots.organizer import (ALREADY_FILED, CONFLICT_KEPT, COPIED, COPY_REMOVED,
-                                                  DUPLICATE_REMOVED, FAILED, MOVED, REFUSED, RESTORED, SKIPPED,
-                                                  SOURCE_LEFT, UNDO_SKIPPED, WOULD_COPY, WOULD_MOVE,
-                                                  WOULD_REMOVE_DUPLICATE, OrganizeResult)
-from wowtools.tools.screenshots.planner import MAYBE_DUPLICATE, Plan, ShotItem
-from wowtools.tools.screenshots.settings import ShotSettings
+from wowtools.tools.screenshot_organizer.organizer import (ALREADY_FILED, CONFLICT_KEPT, COPIED, COPY_REMOVED,
+                                                           DUPLICATE_REMOVED, FAILED, MOVED, REFUSED, RESTORED, SKIPPED,
+                                                           SOURCE_LEFT, UNDO_SKIPPED, WOULD_COPY, WOULD_MOVE,
+                                                           WOULD_REMOVE_DUPLICATE, OrganizeResult)
+from wowtools.tools.screenshot_organizer.planner import MAYBE_DUPLICATE, Plan, ShotItem
+from wowtools.tools.screenshot_organizer.settings import ShotSettings
 
 # Every outcome kind, in the order the result summary lists them.
 KIND_LABELS: dict[str, str] = {

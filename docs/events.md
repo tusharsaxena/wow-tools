@@ -39,7 +39,9 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `config.changed` | info | A config value changed, or was overridden for one run. |
 | `config.created` | info | A config file in config/ was written for the first time. |
 | `config.migrated` | info | The old shared wow-tools.cfg was split into config/ (one file per tool). |
+| `config.renamed` | info | A renamed tool's config file was moved to its new name (merged into the new file when both existed). |
 | `error` | error | An unexpected or fatal error. |
+| `folder.renamed` | info | A renamed tool's folder (logs/<tool>/ or <WoW>/wow-tools/<tool>/) was moved to its new name; logged as a warning when entries clashed or failed to move. |
 | `lock.conflict` | warning | Another copy of Ka0s WoW Tools appears to be running (its lock file exists). |
 | `lock.overridden` | warning | The user took over an existing lock file and carried on. |
 | `session.end` | info | The process is exiting. |
@@ -83,7 +85,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `sv.skipped` | warning | A selected file was skipped because it vanished or changed after the scan. |
 | `sv.would_delete` | info | Dry run: a SavedVariables file that would have been deleted. |
 
-## `screenshots` events
+## `screenshot-organizer` events
 
 | Event | Level | Description |
 |---|---|---|

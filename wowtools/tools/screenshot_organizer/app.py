@@ -14,10 +14,10 @@ from textual.widgets import Button, Footer, Header, Input, Label, Static
 from wowtools.core.config import Config
 from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.paths import to_native, to_stored
-from wowtools.tools.screenshots.planner import waiting_count
-from wowtools.tools.screenshots.review_screen import ShotReviewScreen
-from wowtools.tools.screenshots.settings import (SECTION, ShotSettings, load_settings, save_settings,
-                                                 validate_dest)
+from wowtools.tools.screenshot_organizer.planner import waiting_count
+from wowtools.tools.screenshot_organizer.review_screen import ShotReviewScreen
+from wowtools.tools.screenshot_organizer.settings import (SECTION, ShotSettings, load_settings, save_settings,
+                                                          validate_dest)
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.tool_flow import ToolFlow
@@ -115,7 +115,7 @@ def waiting_text(count: int | None) -> str:
 
 
 class ScreenshotsFlow(ToolFlow):
-    """The organizer's own workflow. Its settings live in config/screenshots.cfg; the WoW folder and the last
+    """The organizer's own workflow. Its settings live in config/screenshot-organizer.cfg; the WoW folder and the last
     single flavor are shared suite settings."""
 
     def __init__(self, app: WowToolsApp, tool_cfg: Config) -> None:

@@ -4,7 +4,7 @@
 
 **Goal:** Add the suite's second tool, the Screenshot Organizer. It files `<WoW>/<flavor>/Screenshots/WoWScrnShot_MMDDYY_HHMMSS.*` into `YYYY/MM/DD` folders, either in place or under an archive root (`<dest>/<flavor folder>/YYYY/MM/DD`), with a review screen, dry run, copy mode, a run journal and undo.
 
-**Architecture:** UI-free logic modules in `wowtools/tools/screenshots/` (`naming`, `settings`, `planner`, `organizer`, `journal`, `undo`, `report`, `events`) and a thin Textual front end (`app.py`, `review_screen.py`) that runs as a `ToolFlow` inside `WowToolsApp`. The shared `FlavorScreen` gains an opt-in "All flavors" entry.
+**Architecture:** UI-free logic modules in `wowtools/tools/screenshot_organizer/` (`naming`, `settings`, `planner`, `organizer`, `journal`, `undo`, `report`, `events`) and a thin Textual front end (`app.py`, `review_screen.py`) that runs as a `ToolFlow` inside `WowToolsApp`. The shared `FlavorScreen` gains an opt-in "All flavors" entry.
 
 **Tech Stack:** Python ≥ 3.10, stdlib plus vendored Textual/Rich, `unittest`.
 
@@ -15,7 +15,7 @@
 - `from __future__ import annotations` in every module. Stdlib plus `vendor/` only. Python 3.10 floor.
 - Only `app.py` and `review_screen.py` in the tool import `textual`. Logic modules never do.
 - Paths saved in config or a journal go through `core/paths.to_stored()`, and are read back with `to_native()`.
-- Every event is registered with a fixed level in `wowtools/tools/screenshots/events.py`. **Event names are global across tools** (`core/events.REGISTRY`), so every screenshot event starts with `shots.`. Run `python3 scripts/gen_event_docs.py` after changing the registry.
+- Every event is registered with a fixed level in `wowtools/tools/screenshot_organizer/events.py`. **Event names are global across tools** (`core/events.REGISTRY`), so every screenshot event starts with `shots.`. Run `python3 scripts/gen_event_docs.py` after changing the registry.
 - No per-file `Path.resolve()`. No per-file `stat()` beyond what one `os.scandir` per folder gives. The user runs on WSL over drvfs, where each call costs about 13ms.
 - Nothing is ever overwritten. Only `YYYY`/`MM`/`DD` folders and screenshot files that the tool filed are created or removed in the destination.
 - Tests use temp trees (`tests/fixtures.py`), never a real install or the network. Textual tests subclass `tests.fixtures.TuiTestCase`.
@@ -41,21 +41,21 @@
 
 | File | Status | Responsibility |
 |---|---|---|
-| `wowtools/tools/screenshots/__init__.py` | new | imports `events` |
-| `wowtools/tools/screenshots/events.py` | new | `shots.*` registry |
-| `wowtools/tools/screenshots/naming.py` | new | parse `WoWScrnShot_MMDDYY_HHMMSS.ext` |
-| `wowtools/tools/screenshots/settings.py` | new | `[screenshots]` settings, folder rules, `validate_dest` |
-| `wowtools/tools/screenshots/planner.py` | new | `scan()` gives `Plan` |
-| `wowtools/tools/screenshots/journal.py` | new | journal format, writer, reader, list, prune |
-| `wowtools/tools/screenshots/organizer.py` | new | `execute()` gives `OrganizeResult`; outcome kinds; file helpers |
-| `wowtools/tools/screenshots/undo.py` | new | `undo()` gives `OrganizeResult` |
-| `wowtools/tools/screenshots/report.py` | new | UI-free labels, summary and result rows |
-| `wowtools/tools/screenshots/app.py` | new | `ScreenshotsFlow` (`FLOW`), `ScreenshotSettingsScreen` |
-| `wowtools/tools/screenshots/review_screen.py` | new | `ShotReviewScreen`, `ShotProgressScreen`, `ShotResultScreen` |
+| `wowtools/tools/screenshot_organizer/__init__.py` | new | imports `events` |
+| `wowtools/tools/screenshot_organizer/events.py` | new | `shots.*` registry |
+| `wowtools/tools/screenshot_organizer/naming.py` | new | parse `WoWScrnShot_MMDDYY_HHMMSS.ext` |
+| `wowtools/tools/screenshot_organizer/settings.py` | new | `[screenshot_organizer]` settings, folder rules, `validate_dest` |
+| `wowtools/tools/screenshot_organizer/planner.py` | new | `scan()` gives `Plan` |
+| `wowtools/tools/screenshot_organizer/journal.py` | new | journal format, writer, reader, list, prune |
+| `wowtools/tools/screenshot_organizer/organizer.py` | new | `execute()` gives `OrganizeResult`; outcome kinds; file helpers |
+| `wowtools/tools/screenshot_organizer/undo.py` | new | `undo()` gives `OrganizeResult` |
+| `wowtools/tools/screenshot_organizer/report.py` | new | UI-free labels, summary and result rows |
+| `wowtools/tools/screenshot_organizer/app.py` | new | `ScreenshotsFlow` (`FLOW`), `ScreenshotSettingsScreen` |
+| `wowtools/tools/screenshot_organizer/review_screen.py` | new | `ShotReviewScreen`, `ShotProgressScreen`, `ShotResultScreen` |
 | `wowtools/ui/flavor_screen.py` | modify | `include_all`, `last`, `flavors` params; `ALL_FLAVORS` |
 | `wowtools/tools/__init__.py` | modify | register the tool |
 | `tests/fixtures.py` | modify | `build_screenshot_tree()` |
-| `tests/test_screenshots_*.py` | new | per module |
+| `tests/test_screenshot_organizer_*.py` | new | per module |
 | `README.md`, `docs/architecture.md`, `docs/adding-a-tool.md`, `docs/events.md`, `CLAUDE.md`, the spec (§3, §8) | modify | docs |
 
 Tasks 1 to 4 are the logic, in dependency order. Task 5 (`FlavorScreen`) is independent. Task 6 (UI) needs 1 to 5. Task 7 is docs.
@@ -65,13 +65,13 @@ Tasks 1 to 4 are the logic, in dependency order. Task 5 (`FlavorScreen`) is inde
 ### Task 1: Package, events, naming, settings
 
 **Files:**
-- Create: `wowtools/tools/screenshots/__init__.py`, `events.py`, `naming.py`, `settings.py`
-- Test: `tests/test_screenshots_naming.py`, `tests/test_screenshots_settings.py`
+- Create: `wowtools/tools/screenshot_organizer/__init__.py`, `events.py`, `naming.py`, `settings.py`
+- Test: `tests/test_screenshot_organizer_naming.py`, `tests/test_screenshot_organizer_settings.py`
 
 **Interfaces (produces):**
 - `naming.parse_shot_name(name: str) -> datetime.date | None`
 - `naming.day_parts(day: date) -> tuple[str, str, str]`, e.g. `("2019", "07", "31")`
-- `settings.SECTION = "screenshots"`, `SCREENSHOTS_DIR = "Screenshots"`, `DEFAULT_KEEP_JOURNALS = 10`, `JOURNAL_SUBDIR = Path("wow-tools") / "screenshots" / "journal"`
+- `settings.SECTION = "screenshot_organizer"`, `SCREENSHOTS_DIR = "Screenshots"`, `DEFAULT_KEEP_JOURNALS = 10`, `JOURNAL_SUBDIR = Path("wow-tools") / "screenshot-organizer" / "journal"`
 - `settings.ShotSettings(dest_dir: Path | None = None, copy_mode: bool = False, last_flavor_choice: str = "", keep_journals: int = 10)`. In `last_flavor_choice`, `""` means all flavors; otherwise it holds a flavor folder.
 - `settings.load_settings(cfg: Config) -> ShotSettings`, `save_settings(cfg, s, *, source="settings") -> None`
 - `settings.source_dir(flavor: Flavor) -> Path` (`flavor.path / "Screenshots"`)
@@ -81,12 +81,12 @@ Tasks 1 to 4 are the logic, in dependency order. Task 5 (`FlavorScreen`) is inde
 
 - [ ] **Step 1: Write the failing tests**
 
-`tests/test_screenshots_naming.py`:
+`tests/test_screenshot_organizer_naming.py`:
 ```python
 import unittest
 from datetime import date
 
-from wowtools.tools.screenshots.naming import day_parts, parse_shot_name
+from wowtools.tools.screenshot_organizer.naming import day_parts, parse_shot_name
 
 
 class NamingTest(unittest.TestCase):
@@ -109,7 +109,7 @@ class NamingTest(unittest.TestCase):
         self.assertEqual(day_parts(date(2019, 7, 3)), ("2019", "07", "03"))
 ```
 
-`tests/test_screenshots_settings.py`:
+`tests/test_screenshot_organizer_settings.py`:
 ```python
 import tempfile
 import unittest
@@ -119,8 +119,8 @@ from tests.fixtures import build_wow_tree
 from wowtools.core.config import Config
 from wowtools.core.events import REGISTRY
 from wowtools.core.install import WowInstall
-from wowtools.tools.screenshots import events
-from wowtools.tools.screenshots.settings import (DEFAULT_KEEP_JOURNALS, SECTION, ShotSettings, load_settings,
+from wowtools.tools.screenshot_organizer import events
+from wowtools.tools.screenshot_organizer.settings import (DEFAULT_KEEP_JOURNALS, SECTION, ShotSettings, load_settings,
                                                  resolve_journal_dir, save_settings, source_dir, target_root,
                                                  validate_dest)
 
@@ -135,14 +135,14 @@ class SettingsTest(unittest.TestCase):
         self.retail = self.install.flavor("retail")
 
     def test_defaults_and_round_trip(self):
-        cfg = Config(self.tmp / "screenshots.cfg")
+        cfg = Config(self.tmp / "screenshot-organizer.cfg")
         self.assertEqual(load_settings(cfg), ShotSettings())
         save_settings(cfg, ShotSettings(self.tmp / "arch", True, "_retail_", 3))
         again = load_settings(Config(cfg.path).load())
         self.assertEqual(again, ShotSettings(self.tmp / "arch", True, "_retail_", 3))
 
     def test_bad_values_fall_back(self):
-        cfg = Config(self.tmp / "screenshots.cfg")
+        cfg = Config(self.tmp / "screenshot-organizer.cfg")
         cfg.set(SECTION, "copy_mode", "maybe", log=False)
         cfg.set(SECTION, "keep_journals", "0", log=False)
         s = load_settings(cfg)
@@ -158,7 +158,7 @@ class SettingsTest(unittest.TestCase):
 
     def test_journal_dir(self):
         self.assertIsNone(resolve_journal_dir(None))
-        self.assertEqual(resolve_journal_dir(self.root), self.root / "wow-tools" / "screenshots" / "journal")
+        self.assertEqual(resolve_journal_dir(self.root), self.root / "wow-tools" / "screenshot-organizer" / "journal")
 
     def test_validate_dest(self):
         self.assertIsNone(validate_dest(None, self.install))
@@ -176,17 +176,17 @@ class SettingsTest(unittest.TestCase):
 
 - [ ] **Step 2: Run them; expect `ModuleNotFoundError`**
 
-Run: `python3 -m unittest tests.test_screenshots_naming tests.test_screenshots_settings -v`
+Run: `python3 -m unittest tests.test_screenshot_organizer_naming tests.test_screenshot_organizer_settings -v`
 
 - [ ] **Step 3: Implement**
 
-`wowtools/tools/screenshots/__init__.py`:
+`wowtools/tools/screenshot_organizer/__init__.py`:
 ```python
 """Screenshot Organizer: file WoW screenshots into YYYY/MM/DD folders, per flavor."""
-from wowtools.tools.screenshots import events as _events  # noqa: F401
+from wowtools.tools.screenshot_organizer import events as _events  # noqa: F401
 ```
 
-`wowtools/tools/screenshots/events.py`:
+`wowtools/tools/screenshot_organizer/events.py`:
 ```python
 """Events emitted by the Screenshot Organizer. Levels are fixed here; see docs/events.md.
 
@@ -195,7 +195,7 @@ from __future__ import annotations
 
 from wowtools.core.events import EventSpec, register_events
 
-TOOL_NAME = "screenshots"
+TOOL_NAME = "screenshot-organizer"
 
 EVENTS: dict[str, EventSpec] = {
     "shots.scan_started": EventSpec("info", "A scan of the chosen flavors' Screenshots folders started."),
@@ -225,7 +225,7 @@ EVENTS: dict[str, EventSpec] = {
 register_events(TOOL_NAME, EVENTS)
 ```
 
-`wowtools/tools/screenshots/naming.py`:
+`wowtools/tools/screenshot_organizer/naming.py`:
 ```python
 """WoW's screenshot file names: WoWScrnShot_MMDDYY_HHMMSS.<jpg|jpeg|png|tga>. The date comes from the name only."""
 from __future__ import annotations
@@ -253,9 +253,9 @@ def day_parts(day: date) -> tuple[str, str, str]:
     return f"{day.year:04d}", f"{day.month:02d}", f"{day.day:02d}"
 ```
 
-`wowtools/tools/screenshots/settings.py`:
+`wowtools/tools/screenshot_organizer/settings.py`:
 ```python
-"""The Screenshot Organizer's own settings: the [screenshots] section of config/screenshots.cfg, plus where
+"""The Screenshot Organizer's own settings: the [screenshot_organizer] section of config/screenshot-organizer.cfg, plus where
 things go (source folder, target root, journal folder)."""
 from __future__ import annotations
 
@@ -265,10 +265,10 @@ from pathlib import Path
 from wowtools.core.config import Config
 from wowtools.core.install import Flavor, WowInstall
 
-SECTION = "screenshots"
+SECTION = "screenshot_organizer"
 SCREENSHOTS_DIR = "Screenshots"
 DEFAULT_KEEP_JOURNALS = 10
-JOURNAL_SUBDIR = Path("wow-tools") / "screenshots" / "journal"
+JOURNAL_SUBDIR = Path("wow-tools") / "screenshot-organizer" / "journal"
 
 
 @dataclass
@@ -303,7 +303,7 @@ def target_root(flavor: Flavor, dest_dir: Path | None) -> Path:
 
 
 def resolve_journal_dir(wow_path: Path | None) -> Path | None:
-    """<WoW folder>/wow-tools/screenshots/journal: never inside the screenshot archive."""
+    """<WoW folder>/wow-tools/screenshot-organizer/journal: never inside the screenshot archive."""
     return wow_path / JOURNAL_SUBDIR if wow_path is not None else None
 
 
@@ -328,7 +328,7 @@ def validate_dest(dest: Path | None, install: WowInstall) -> str | None:
 
 - [ ] **Step 4: Run the tests; expect PASS**
 
-Run: `python3 -m unittest tests.test_screenshots_naming tests.test_screenshots_settings -v`
+Run: `python3 -m unittest tests.test_screenshot_organizer_naming tests.test_screenshot_organizer_settings -v`
 
 - [ ] **Step 5: Commit** with message `feat(screenshots): package, events, file-name parsing, settings`
 
@@ -338,8 +338,8 @@ Run: `python3 -m unittest tests.test_screenshots_naming tests.test_screenshots_s
 
 **Files:**
 - Modify: `tests/fixtures.py` (add `build_screenshot_tree`, `SHOT_BYTES`)
-- Create: `wowtools/tools/screenshots/planner.py`
-- Test: `tests/test_screenshots_planner.py`
+- Create: `wowtools/tools/screenshot_organizer/planner.py`
+- Test: `tests/test_screenshot_organizer_planner.py`
 
 **Interfaces:**
 - Consumes: Task 1 (`parse_shot_name`, `day_parts`, `source_dir`, `target_root`).
@@ -392,7 +392,7 @@ def build_screenshot_tree(root: Path) -> Path:
     return root
 ```
 
-- [ ] **Step 2: Write the failing tests** (`tests/test_screenshots_planner.py`)
+- [ ] **Step 2: Write the failing tests** (`tests/test_screenshot_organizer_planner.py`)
 
 ```python
 import tempfile
@@ -403,7 +403,7 @@ from pathlib import Path
 from tests.fixtures import SHOT_BYTES, build_screenshot_tree, build_wow_tree
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
-from wowtools.tools.screenshots.planner import CONFLICT, MAYBE_DUPLICATE, NEW, scan
+from wowtools.tools.screenshot_organizer.planner import CONFLICT, MAYBE_DUPLICATE, NEW, scan
 
 
 class PlannerTest(unittest.TestCase):
@@ -475,7 +475,7 @@ class PlannerTest(unittest.TestCase):
 
 - [ ] **Step 3: Run; expect `ModuleNotFoundError`**
 
-Run: `python3 -m unittest tests.test_screenshots_planner -v`
+Run: `python3 -m unittest tests.test_screenshot_organizer_planner -v`
 
 - [ ] **Step 4: Implement `planner.py`**
 
@@ -492,8 +492,8 @@ from typing import Callable
 
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor
-from wowtools.tools.screenshots.naming import day_parts, parse_shot_name
-from wowtools.tools.screenshots.settings import source_dir, target_root
+from wowtools.tools.screenshot_organizer.naming import day_parts, parse_shot_name
+from wowtools.tools.screenshot_organizer.settings import source_dir, target_root
 
 ScanProgress = Callable[[int, int, str], None]
 NEW = "new"
@@ -643,8 +643,8 @@ Note: a flavor in place whose `Screenshots/2019/07/31/` already holds a same-nam
 ### Task 3: Journal writer and organizer
 
 **Files:**
-- Create: `wowtools/tools/screenshots/journal.py`, `wowtools/tools/screenshots/organizer.py`
-- Test: `tests/test_screenshots_organizer.py`
+- Create: `wowtools/tools/screenshot_organizer/journal.py`, `wowtools/tools/screenshot_organizer/organizer.py`
+- Test: `tests/test_screenshot_organizer_organizer.py`
 
 **Interfaces:**
 - Consumes: Task 2 (`ShotItem`, `list_files`, `CONFLICT`, `MAYBE_DUPLICATE`), Task 1 (`source_dir`, `target_root`, `day_parts`, `parse_shot_name`).
@@ -663,7 +663,7 @@ Note: a flavor in place whose `Screenshots/2019/07/31/` already holds a same-nam
   - `sha256_file(path) -> str`; `copy_verified(src, dst) -> None` (via `<dst>.partial`, copystat, size and hash verify, refuses an existing `dst`; raises `OSError`); `move_file(src, dst, rename=os.rename) -> bool` (True if it fell back to copy across devices; the source is still there in that case and the caller deletes it)
   - `execute(items: list[ShotItem], *, dest_dir: Path | None, copy: bool, dry_run: bool, journal_dir: Path | None, keep_journals: int, progress: Callable[[str, int, int, str], None] | None = None, rename: Callable[[Path, Path], None] = os.rename) -> OrganizeResult`
 
-- [ ] **Step 1: Write the failing tests** (`tests/test_screenshots_organizer.py`)
+- [ ] **Step 1: Write the failing tests** (`tests/test_screenshot_organizer_organizer.py`)
 
 ```python
 import errno
@@ -676,11 +676,11 @@ from pathlib import Path
 from tests.fixtures import OLD_SHOT, build_screenshot_tree, build_wow_tree
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
-from wowtools.tools.screenshots.journal import latest_undoable, prune_journals, read_journal
-from wowtools.tools.screenshots.organizer import (ALREADY_FILED, CONFLICT_KEPT, COPIED, DUPLICATE_REMOVED, FAILED,
+from wowtools.tools.screenshot_organizer.journal import latest_undoable, prune_journals, read_journal
+from wowtools.tools.screenshot_organizer.organizer import (ALREADY_FILED, CONFLICT_KEPT, COPIED, DUPLICATE_REMOVED, FAILED,
                                                   MOVED, REFUSED, SKIPPED, SOURCE_LEFT, WOULD_COPY, WOULD_MOVE,
                                                   WOULD_REMOVE_DUPLICATE, OrganizeError, execute)
-from wowtools.tools.screenshots.planner import scan
+from wowtools.tools.screenshot_organizer.planner import scan
 
 A = "WoWScrnShot_073119_232713.jpg"
 B = "WoWScrnShot_073119_232800.jpg"
@@ -745,7 +745,7 @@ class OrganizerTest(unittest.TestCase):
                 raise PermissionError(errno.EACCES, "locked")
             return real_remove(path, *a, **k)
 
-        with unittest.mock.patch("wowtools.tools.screenshots.organizer.os.remove", no_remove):
+        with unittest.mock.patch("wowtools.tools.screenshot_organizer.organizer.os.remove", no_remove):
             _, result = self.run_plan(self.dest, rename=exdev)
         self.assertEqual(result.count(SOURCE_LEFT), 4)
         self.assertTrue((self.shots / A).exists())
@@ -885,12 +885,12 @@ Add `import unittest.mock` at the top.
 
 - [ ] **Step 2: Run; expect `ModuleNotFoundError`**
 
-Run: `python3 -m unittest tests.test_screenshots_organizer -v`
+Run: `python3 -m unittest tests.test_screenshot_organizer_organizer -v`
 
 - [ ] **Step 3: Implement `journal.py`**
 
 ```python
-"""Run journals: one JSON Lines file per real run, in <WoW>/wow-tools/screenshots/journal/.
+"""Run journals: one JSON Lines file per real run, in <WoW>/wow-tools/screenshot-organizer/journal/.
 
 Line 1 is a header. Each completed action appends one line, flushed at once, so the journal is accurate even if
 the run is cut short. A {"finished": ...} line closes a run and an {"undone": ...} line records an undo."""
@@ -1068,11 +1068,11 @@ from typing import Callable
 from wowtools import __version__
 from wowtools.core.events import log_event
 from wowtools.core.paths import to_stored
-from wowtools.tools.screenshots.journal import (A_COPIED, A_DUPLICATE, A_MOVED, A_SOURCE_LEFT, JournalWriter,
+from wowtools.tools.screenshot_organizer.journal import (A_COPIED, A_DUPLICATE, A_MOVED, A_SOURCE_LEFT, JournalWriter,
                                                 new_journal_path, prune_journals)
-from wowtools.tools.screenshots.naming import day_parts, parse_shot_name
-from wowtools.tools.screenshots.planner import CONFLICT, ShotItem, list_files
-from wowtools.tools.screenshots.settings import source_dir, target_root
+from wowtools.tools.screenshot_organizer.naming import day_parts, parse_shot_name
+from wowtools.tools.screenshot_organizer.planner import CONFLICT, ShotItem, list_files
+from wowtools.tools.screenshot_organizer.settings import source_dir, target_root
 
 Progress = Callable[[str, int, int, str], None]
 Rename = Callable[[Path, Path], None]
@@ -1337,8 +1337,8 @@ def execute(items: list[ShotItem], *, dest_dir: Path | None, copy: bool, dry_run
 ### Task 4: Undo
 
 **Files:**
-- Create: `wowtools/tools/screenshots/undo.py`
-- Test: `tests/test_screenshots_undo.py`
+- Create: `wowtools/tools/screenshot_organizer/undo.py`
+- Test: `tests/test_screenshot_organizer_undo.py`
 
 **Interfaces:**
 - Consumes: Task 3 (`read_journal`, `mark_undone`, `A_*`, `Outcome`, `OrganizeResult`, `RESTORED`, `COPY_REMOVED`, `UNDO_SKIPPED`, `FAILED`, `move_file`, `copy_verified`).
@@ -1355,7 +1355,7 @@ Rules:
 - `mark_undone(journal_path, restored, skipped)`, where restored counts `RESTORED` and `COPY_REMOVED`, and skipped counts `UNDO_SKIPPED` and `FAILED`.
 - Events: `shots.undo_started` (journal, entries), `shots.undo_restored`, `shots.undo_skipped` and `shots.undo_failed` per entry, then `shots.undo_completed` (counts).
 
-- [ ] **Step 1: Write the failing tests** (`tests/test_screenshots_undo.py`)
+- [ ] **Step 1: Write the failing tests** (`tests/test_screenshot_organizer_undo.py`)
 
 ```python
 import errno
@@ -1366,10 +1366,10 @@ from pathlib import Path
 from tests.fixtures import build_screenshot_tree, build_wow_tree
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
-from wowtools.tools.screenshots.journal import latest_undoable, read_journal
-from wowtools.tools.screenshots.organizer import (COPY_REMOVED, RESTORED, UNDO_SKIPPED, OrganizeError, execute)
-from wowtools.tools.screenshots.planner import scan
-from wowtools.tools.screenshots.undo import undo
+from wowtools.tools.screenshot_organizer.journal import latest_undoable, read_journal
+from wowtools.tools.screenshot_organizer.organizer import (COPY_REMOVED, RESTORED, UNDO_SKIPPED, OrganizeError, execute)
+from wowtools.tools.screenshot_organizer.planner import scan
+from wowtools.tools.screenshot_organizer.undo import undo
 
 A = "WoWScrnShot_073119_232713.jpg"
 
@@ -1501,7 +1501,7 @@ class UndoTest(unittest.TestCase):
 
 - [ ] **Step 2: Run; expect `ModuleNotFoundError`**
 
-Run: `python3 -m unittest tests.test_screenshots_undo -v`
+Run: `python3 -m unittest tests.test_screenshot_organizer_undo -v`
 
 - [ ] **Step 3: Implement `undo.py`**
 
@@ -1514,11 +1514,11 @@ import os
 from pathlib import Path
 
 from wowtools.core.events import log_event
-from wowtools.tools.screenshots.journal import (A_COPIED, A_DUPLICATE, A_MOVED, A_SOURCE_LEFT, mark_undone,
+from wowtools.tools.screenshot_organizer.journal import (A_COPIED, A_DUPLICATE, A_MOVED, A_SOURCE_LEFT, mark_undone,
                                                 read_journal)
-from wowtools.tools.screenshots.organizer import (COPY_REMOVED, FAILED, RESTORED, UNDO_SKIPPED, OrganizeResult,
+from wowtools.tools.screenshot_organizer.organizer import (COPY_REMOVED, FAILED, RESTORED, UNDO_SKIPPED, OrganizeResult,
                                                   Outcome, Progress, Rename, _safe, copy_verified, move_file)
-from wowtools.tools.screenshots.settings import SCREENSHOTS_DIR
+from wowtools.tools.screenshot_organizer.settings import SCREENSHOTS_DIR
 
 _DATE_PARTS = (4, 2, 2)  # YYYY, MM, DD
 
@@ -1761,9 +1761,9 @@ class FlavorScreen(Screen[Union[Flavor, str, None]]):
 ### Task 6: TUI (flow, settings, review, progress, result) and registration
 
 **Files:**
-- Create: `wowtools/tools/screenshots/report.py`, `app.py`, `review_screen.py`
+- Create: `wowtools/tools/screenshot_organizer/report.py`, `app.py`, `review_screen.py`
 - Modify: `wowtools/tools/__init__.py`, `README.md` (tools-table row and a short section, so `tests/test_docs.py` passes)
-- Test: `tests/test_screenshots_app.py`, `tests/test_screenshots_report.py`
+- Test: `tests/test_screenshot_organizer_app.py`, `tests/test_screenshot_organizer_report.py`
 
 **Interfaces:**
 - Consumes: everything above. Patterns to copy from `wowtools/tools/wtf_cleaner/app.py` and `review_screen.py` (read both first): the settings screen layout and validation, `ConfirmScreen` (import it from `wowtools.tools.wtf_cleaner.review_screen`; it is generic), the progress modal, the result screen, thread workers with `call_from_thread`, `app.busy`, and the `_after_review` dispatch.
@@ -1777,7 +1777,7 @@ class FlavorScreen(Screen[Union[Flavor, str, None]]):
   - `report.destination_label(dest_dir) -> str`: `"in place (<flavor>\\Screenshots\\YYYY\\MM\\DD)"` or `to_stored(dest) + "\\<flavor>\\YYYY\\MM\\DD"`
   - `app.ScreenshotsFlow(ToolFlow)` and `FLOW`, plus `app.ScreenshotSettingsScreen(Screen[bool])`
   - `review_screen.ShotReviewScreen(Screen[str])`, `ShotProgressScreen(ModalScreen[None])`, `ShotResultScreen(Screen[str])`
-  - Registration: `Tool("screenshots", "Screenshot Organizer", "File screenshots into year/month/day folders, per flavor.", "wowtools.tools.screenshots.app", "screenshots")`, second in `TOOLS`
+  - Registration: `Tool("screenshot-organizer", "Screenshot Organizer", "File screenshots into year/month/day folders, per flavor.", "wowtools.tools.screenshot_organizer.app", "screenshot_organizer")`, second in `TOOLS`
 
 Behaviour:
 
@@ -1843,14 +1843,14 @@ Behaviour:
 
 - [ ] **Step 1: Write the failing tests**
 
-`tests/test_screenshots_report.py`: build an `OrganizeResult` by hand and check `summary_rows` (Mode row, one row per non-zero kind, the Journal row for a dry run says "not written (dry run)"), `result_rows`, `destination_label(None)` and `destination_label(Path("/x"))`, and that `KIND_LABELS` covers every kind constant in `organizer`:
+`tests/test_screenshot_organizer_report.py`: build an `OrganizeResult` by hand and check `summary_rows` (Mode row, one row per non-zero kind, the Journal row for a dry run says "not written (dry run)"), `result_rows`, `destination_label(None)` and `destination_label(Path("/x"))`, and that `KIND_LABELS` covers every kind constant in `organizer`:
 ```python
 import unittest
 from pathlib import Path
 
-from wowtools.tools.screenshots import organizer
-from wowtools.tools.screenshots.organizer import MOVED, CONFLICT_KEPT, WOULD_MOVE, OrganizeResult, Outcome
-from wowtools.tools.screenshots.report import KIND_LABELS, destination_label, result_rows, summary_rows
+from wowtools.tools.screenshot_organizer import organizer
+from wowtools.tools.screenshot_organizer.organizer import MOVED, CONFLICT_KEPT, WOULD_MOVE, OrganizeResult, Outcome
+from wowtools.tools.screenshot_organizer.report import KIND_LABELS, destination_label, result_rows, summary_rows
 
 KINDS = [v for k, v in vars(organizer).items() if k.isupper() and isinstance(v, str)
          and k not in ("PARTIAL",)]
@@ -1882,7 +1882,7 @@ class ReportTest(unittest.TestCase):
 ```
 (Remove non-kind upper-case strings such as `CHUNK` from `KINDS` by checking `isinstance(v, str)`. `PARTIAL` is the only other string constant.)
 
-`tests/test_screenshots_app.py` (based on `tests/test_wtf_app.py`'s `AppTestCase`):
+`tests/test_screenshot_organizer_app.py` (based on `tests/test_wtf_app.py`'s `AppTestCase`):
 ```python
 import tempfile
 from pathlib import Path
@@ -1892,10 +1892,10 @@ from textual.widgets import Button, DataTable, Input, Tree
 from tests.fixtures import TuiTestCase, build_screenshot_tree, build_wow_tree, make_config
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
-from wowtools.tools.screenshots.app import ScreenshotSettingsScreen
-from wowtools.tools.screenshots.journal import latest_undoable
-from wowtools.tools.screenshots.review_screen import ShotResultScreen, ShotReviewScreen
-from wowtools.tools.screenshots.settings import load_settings
+from wowtools.tools.screenshot_organizer.app import ScreenshotSettingsScreen
+from wowtools.tools.screenshot_organizer.journal import latest_undoable
+from wowtools.tools.screenshot_organizer.review_screen import ShotResultScreen, ShotReviewScreen
+from wowtools.tools.screenshot_organizer.settings import load_settings
 from wowtools.tools.wtf_cleaner.review_screen import ConfirmScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
@@ -1916,9 +1916,9 @@ class ShotsAppTest(TuiTestCase):
         self.dest = self.tmp / "arch"
 
     def save_tool_cfg(self, **values):
-        tool_cfg = Config(self.config_dir / "screenshots.cfg")
+        tool_cfg = Config(self.config_dir / "screenshot-organizer.cfg")
         for key, value in values.items():
-            tool_cfg.set("screenshots", key, value, log=False)
+            tool_cfg.set("screenshot_organizer", key, value, log=False)
         tool_cfg.save()
 
     def make_app(self):
@@ -1958,7 +1958,7 @@ class ShotsAppTest(TuiTestCase):
             app.screen.query_one("#save", Button).press()
             await pilot.pause()
             self.assertIsInstance(app.screen, FlavorScreen)
-        self.assertEqual(load_settings(Config(self.config_dir / "screenshots.cfg").load()).dest_dir, self.dest)
+        self.assertEqual(load_settings(Config(self.config_dir / "screenshot-organizer.cfg").load()).dest_dir, self.dest)
 
     async def test_settings_refuse_destination_inside_screenshots(self):
         app = self.make_app()
@@ -1991,7 +1991,7 @@ class ShotsAppTest(TuiTestCase):
                 self.assertIsInstance(app.screen, ShotResultScreen)
                 self.assertTrue(app.screen.result.undo)
         self.assertTrue((self.shots / A).exists())
-        self.assertIsNone(latest_undoable(self.root / "wow-tools" / "screenshots" / "journal"))
+        self.assertIsNone(latest_undoable(self.root / "wow-tools" / "screenshot-organizer" / "journal"))
         names = [r["event"] for r in records]
         self.assertIn("shots.moved", names)
         self.assertIn("shots.undo_completed", names)
@@ -2036,7 +2036,7 @@ class ShotsAppTest(TuiTestCase):
             review = app.screen
             self.assertIsInstance(review, ShotReviewScreen)
             self.assertEqual(len(review.flavors), 1)
-        saved = load_settings(Config(self.config_dir / "screenshots.cfg").load())
+        saved = load_settings(Config(self.config_dir / "screenshot-organizer.cfg").load())
         self.assertEqual(saved.last_flavor_choice, review.flavors[0].folder)
 
     async def test_tools_key_returns_to_menu(self):
@@ -2058,7 +2058,7 @@ Expose `ShotReviewScreen.plan` (the last `Plan`, or None), `.flavors` and `.sele
 
 - [ ] **Step 2: Run; expect `ModuleNotFoundError`**
 
-Run: `python3 -m unittest tests.test_screenshots_report tests.test_screenshots_app -v`
+Run: `python3 -m unittest tests.test_screenshot_organizer_report tests.test_screenshot_organizer_app -v`
 
 - [ ] **Step 3: Implement** `report.py`, then `review_screen.py`, then `app.py`, following the behaviour above and the cleaner's code for layout and CSS. Register the tool in `wowtools/tools/__init__.py`. Add to `README.md` a tools-table row replacing "Coming later." with the description, and a `## Screenshot Organizer` section (expanded in Task 7).
 
@@ -2078,9 +2078,9 @@ Run: `python3 -m unittest tests.test_screenshots_report tests.test_screenshots_a
 - [ ] **Step 2: README**:
   - The tools-table row.
   - A `## Screenshot Organizer` section covering: what it does; both layouts (with `H:\Media\Screenshots\World of Warcraft\_retail_\2019\07\31\WoWScrnShot_073119_232713.jpg` as an example); the "All flavors" picker; the review tree and keys (`o`, `y`, `r`, `z`, `a`, `n`, Space, `f`, `t`, `q`); duplicates versus conflicts; copy mode; dry run; the journal folder `<WoW>\wow-tools\screenshots\journal`, undo and its rules; unrecognised names left alone; `config\screenshots.cfg` keys (`dest_dir`, `copy_mode`, `last_flavor_choice`, `keep_journals`); logs in `logs\screenshots\`.
-  - Add `"config\\screenshots.cfg"`, `"Undo last run"` and `"journal"` to the needles in `tests/test_docs.py::test_readme_covers_the_entry_point_tools_and_safety`.
+  - Add `"config\\screenshot-organizer.cfg"`, `"Undo last run"` and `"journal"` to the needles in `tests/test_docs.py::test_readme_covers_the_entry_point_tools_and_safety`.
 - [ ] **Step 3: `docs/architecture.md`**:
-  - Config schema: add `config/screenshots.cfg` `[screenshots]` with its four keys.
+  - Config schema: add `config/screenshot-organizer.cfg` `[screenshot_organizer]` with its four keys.
   - A "Screenshot Organizer data flow" section: `scan → Plan → TUI selection → execute → OrganizeResult`, then `undo(journal) → OrganizeResult`. Cover the journal format, the guard rules, the no-per-file-stat rule, and undo's one-level rule.
   - The UI table: the `FlavorScreen` `include_all`, `last` and `flavors` params, and the screenshot screens.
 - [ ] **Step 4: `docs/adding-a-tool.md`**: keep the walk-through, but make it match reality: events named `shots.*`, with a note that event names are global across tools so they need a tool prefix; `organizer.py` takes `ShotItem`s; module names as shipped.

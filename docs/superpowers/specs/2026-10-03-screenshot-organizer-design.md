@@ -24,8 +24,8 @@ it is, and adds the suite's guard rails, TUI, logging and tests.
 
 ## 3. Package layout
 
-`wowtools/tools/screenshots/`. Tool name `screenshots`, config `config/screenshots.cfg` with section
-`[screenshots]`, logs in `logs/screenshots/`. Menu entry: "Screenshot Organizer", "File screenshots into
+`wowtools/tools/screenshot_organizer/`. Tool name `screenshot-organizer`, config `config/screenshot-organizer.cfg` with section
+`[screenshot_organizer]`, logs in `logs/screenshot-organizer/`. Menu entry: "Screenshot Organizer", "File screenshots into
 year/month/day folders, per flavor."
 
 | Module | Job |
@@ -44,7 +44,7 @@ year/month/day folders, per flavor."
 
 Everything except `app.py` and `review_screen.py` is UI-free and never imports `textual`.
 
-## 4. Settings (`[screenshots]` in `config/screenshots.cfg`)
+## 4. Settings (`[screenshot_organizer]` in `config/screenshot-organizer.cfg`)
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -57,7 +57,7 @@ Validation (`validate_dest`): if set, the destination must not be inside any fla
 place covers that case) and must not be the WoW folder itself. It need not exist yet, because it is created on
 the first real run. Bad stored values fall back to defaults, as `Config` does.
 
-Journals live in `<WoW>/wow-tools/screenshots/journal/`, beside the WTF Cleaner's output folder and never in the
+Journals live in `<WoW>/wow-tools/screenshot-organizer/journal/`, beside the WTF Cleaner's output folder and never in the
 screenshot destination, which may hold other programs' files (e.g. digiKam databases).
 
 ## 5. Scan and plan (`planner.py`)
@@ -133,7 +133,7 @@ when empty and only if their names are digits of the right length. The journal g
 same path guard as execute, applied to the journal's `src`/`dst` pairs (the src parent must be a `Screenshots`
 folder of the configured install).
 
-## 8. Events (`events.py`, tool `screenshots`)
+## 8. Events (`events.py`, tool `screenshot-organizer`)
 
 Event names share one registry across tools, so every name has the `shots.` prefix (as in `events.py`).
 
@@ -207,17 +207,17 @@ settings, then this tool's settings. `t` goes back to the tool menu, and `Esc` o
 
 Tests also create an external destination holding a duplicate, a conflict and a foreign `digikam4.db`.
 
-- `test_screenshots_naming.py`: valid and invalid names, case, extensions, calendar validity.
-- `test_screenshots_planner.py`: in-place vs external targets, top-level only, duplicate/conflict states,
+- `test_screenshot_organizer_naming.py`: valid and invalid names, case, extensions, calendar validity.
+- `test_screenshot_organizer_planner.py`: in-place vs external targets, top-level only, duplicate/conflict states,
   flavors without Screenshots, progress calls.
-- `test_screenshots_organizer.py`: same-device move, cross-device move through an injected `move_fn` raising
+- `test_screenshot_organizer_organizer.py`: same-device move, cross-device move through an injected `move_fn` raising
   `EXDEV`, copy mode, dry run creates nothing, duplicate removed vs conflict kept, re-check skip, path-guard
   refusal, per-file `OSError`, journal lines written as it goes, journal pruning, foreign files untouched.
-- `test_screenshots_journal.py`: undo of each action kind, mismatch skips, empty date folder pruning (never a
+- `test_screenshot_organizer_journal.py`: undo of each action kind, mismatch skips, empty date folder pruning (never a
   non-date or non-empty folder), an undone journal is not offered again, a journal cut short by a crash still
   undoes.
-- `test_screenshots_settings.py`: round trip, defaults on bad values, `validate_dest`.
-- `test_screenshots_app.py` (`TuiTestCase`): menu → tool → first-run settings → All flavors → review → organize →
+- `test_screenshot_organizer_settings.py`: round trip, defaults on bad values, `validate_dest`.
+- `test_screenshot_organizer_app.py` (`TuiTestCase`): menu → tool → first-run settings → All flavors → review → organize →
   result; dry run; undo; single-flavor pick; the `FlavorScreen` "All flavors" option; the cleaner's flavor
   screen is unchanged.
 - `test_docs.py` / `test_events.py` keep passing (events.md regenerated, the README tools table).
@@ -251,5 +251,9 @@ only).
   `<WoW>/wow-tools/screenshots/` becomes `<WoW>/wow-tools/screenshot-organizer/`. When only the old one exists it
   is renamed; when both exist, entries that do not clash are moved into the new one and the old one is removed if
   it ends up empty (clashes are left and logged). Never overwrites.
+  For the config file, "both exist" means: keys the new file lacks are added (its own values win); the old file
+  is removed if all its values are now in the new file, else kept as `screenshots.cfg.migrated` (`-2`, … if
+  taken). The renames are one `ToolRename` line each in `wowtools.tools.RENAMED_TOOLS`, applied by
+  `core/migrate.py` (`config.renamed`, `folder.renamed` events).
 - The journal format and helpers move to `core/journal.py` (WTF Cleaner spec Addendum F); the organizer keeps its
   own entry fields and undo rules.

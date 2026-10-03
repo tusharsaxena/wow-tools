@@ -1,4 +1,4 @@
-"""Run journals: one JSON Lines file per real run, in <WoW>/wow-tools/screenshots/journal/.
+"""Run journals: one JSON Lines file per real run, in <WoW>/wow-tools/screenshot-organizer/journal/.
 
 Line 1 is a header. Each completed action appends one line, flushed at once, so the journal is accurate even if
 the run is cut short. A {"finished": ...} line closes a run and an {"undone": ...} line records an undo."""

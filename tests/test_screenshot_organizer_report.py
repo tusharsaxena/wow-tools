@@ -3,13 +3,13 @@ from datetime import date
 from pathlib import Path
 
 from wowtools.core.install import Flavor
-from wowtools.tools.screenshots import organizer
-from wowtools.tools.screenshots.organizer import (CONFLICT_KEPT, MOVED, RESTORED, WOULD_MOVE, OrganizeResult,
-                                                  Outcome)
-from wowtools.tools.screenshots.planner import NEW, FlavorPlan, Plan, ShotItem
-from wowtools.tools.screenshots.report import (KIND_LABELS, STAGE_TITLES, confirm_text, destination_label,
-                                               friendly_stamp, result_rows, stopped_text, summary_rows)
-from wowtools.tools.screenshots.settings import ShotSettings
+from wowtools.tools.screenshot_organizer import organizer
+from wowtools.tools.screenshot_organizer.organizer import (CONFLICT_KEPT, MOVED, RESTORED, WOULD_MOVE, OrganizeResult,
+                                                           Outcome)
+from wowtools.tools.screenshot_organizer.planner import NEW, FlavorPlan, Plan, ShotItem
+from wowtools.tools.screenshot_organizer.report import (KIND_LABELS, STAGE_TITLES, confirm_text, destination_label,
+                                                        friendly_stamp, result_rows, stopped_text, summary_rows)
+from wowtools.tools.screenshot_organizer.settings import ShotSettings
 
 # Outcome kinds: the upper-case string constants of organizer, minus the partial-file suffix and the journal
 # action names it imports (A_*), which are not outcome kinds.

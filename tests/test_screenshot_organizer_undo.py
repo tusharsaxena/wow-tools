@@ -8,11 +8,11 @@ from pathlib import Path
 from tests.fixtures import build_screenshot_tree, build_wow_tree
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
-from wowtools.tools.screenshots.journal import latest_undoable, read_journal
-from wowtools.tools.screenshots.organizer import (COPY_REMOVED, RESTORED, UNDO_SKIPPED, OrganizeError, execute)
-from wowtools.tools.screenshots.planner import scan
-from wowtools.tools.screenshots.report import stopped_text
-from wowtools.tools.screenshots.undo import undo
+from wowtools.tools.screenshot_organizer.journal import latest_undoable, read_journal
+from wowtools.tools.screenshot_organizer.organizer import (COPY_REMOVED, RESTORED, UNDO_SKIPPED, OrganizeError, execute)
+from wowtools.tools.screenshot_organizer.planner import scan
+from wowtools.tools.screenshot_organizer.report import stopped_text
+from wowtools.tools.screenshot_organizer.undo import undo
 
 A = "WoWScrnShot_073119_232713.jpg"
 
@@ -76,7 +76,7 @@ class UndoTest(unittest.TestCase):
                 raise PermissionError(errno.EACCES, "locked")
             return real_remove(path, *a, **k)
 
-        with unittest.mock.patch("wowtools.tools.screenshots.undo.os.remove", no_archive_remove):
+        with unittest.mock.patch("wowtools.tools.screenshot_organizer.undo.os.remove", no_archive_remove):
             back = undo(result.journal_path, wow_root=self.root, rename=exdev)
         self.assertEqual(back.count(RESTORED), 4)
         self.assertTrue(all("could not be deleted" in o.reason for o in back.outcomes))
@@ -138,7 +138,7 @@ class UndoTest(unittest.TestCase):
     def test_stopped_run_without_a_journal_does_not_offer_an_older_run(self):
         # Run A is journaled. Run B moves a file, then its journal cannot be written: B leaves no journal, and
         # Undo would offer run A, so the stop message must not point at Undo.
-        from wowtools.tools.screenshots import journal as journal_mod
+        from wowtools.tools.screenshot_organizer import journal as journal_mod
         first = self.organize(self.dest, copy=True)
         self.assertIsNotNone(first.journal_path)
         other = self.tmp / "arch2"

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from wowtools.core.events import EventSpec, register_events
 
-TOOL_NAME = "screenshots"
+TOOL_NAME = "screenshot-organizer"
 
 EVENTS: dict[str, EventSpec] = {
     "shots.scan_started": EventSpec("info", "A scan of the chosen flavors' Screenshots folders started."),

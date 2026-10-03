@@ -16,15 +16,15 @@ from textual.widgets import Button, DataTable, Footer, Header, Label, ProgressBa
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor
-from wowtools.tools.screenshots.journal import latest_undoable, read_journal
-from wowtools.tools.screenshots.naming import day_parts
-from wowtools.tools.screenshots.organizer import OrganizeError, OrganizeResult, execute
-from wowtools.tools.screenshots.planner import MAYBE_DUPLICATE, FlavorPlan, Plan, ShotItem, scan
-from wowtools.tools.screenshots.report import (RESULT_COLUMNS, STAGE_TITLES, confirm_text, destination_label,
-                                               friendly_stamp, kind_class, plural, result_rows, stopped_text,
-                                               summary_rows)
-from wowtools.tools.screenshots.settings import load_settings, resolve_journal_dir
-from wowtools.tools.screenshots.undo import undo
+from wowtools.tools.screenshot_organizer.journal import latest_undoable, read_journal
+from wowtools.tools.screenshot_organizer.naming import day_parts
+from wowtools.tools.screenshot_organizer.organizer import OrganizeError, OrganizeResult, execute
+from wowtools.tools.screenshot_organizer.planner import MAYBE_DUPLICATE, FlavorPlan, Plan, ShotItem, scan
+from wowtools.tools.screenshot_organizer.report import (RESULT_COLUMNS, STAGE_TITLES, confirm_text, destination_label,
+                                                        friendly_stamp, kind_class, plural, result_rows, stopped_text,
+                                                        summary_rows)
+from wowtools.tools.screenshot_organizer.settings import load_settings, resolve_journal_dir
+from wowtools.tools.screenshot_organizer.undo import undo
 from wowtools.tools.wtf_cleaner.review_screen import ConfirmScreen
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, NavHint, action_button
@@ -185,7 +185,7 @@ class ShotReviewScreen(Screen[str]):
     def __init__(self, cfg: Config, tool_cfg: Config, flavors: list[Flavor], scope_label: str) -> None:
         super().__init__()
         self.cfg = cfg  # the suite config (WoW folder)
-        self.tool_cfg = tool_cfg  # config/screenshots.cfg
+        self.tool_cfg = tool_cfg  # config/screenshot-organizer.cfg
         self.flavors = list(flavors)
         self.scope_label = scope_label
         self.settings = load_settings(tool_cfg)

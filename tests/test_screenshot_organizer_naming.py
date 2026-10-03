@@ -1,7 +1,7 @@
 import unittest
 from datetime import date
 
-from wowtools.tools.screenshots.naming import day_parts, parse_shot_name
+from wowtools.tools.screenshot_organizer.naming import day_parts, parse_shot_name
 
 
 class NamingTest(unittest.TestCase):

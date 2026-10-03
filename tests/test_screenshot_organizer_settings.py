@@ -7,10 +7,10 @@ from wowtools.core.config import Config
 from wowtools.core.events import REGISTRY
 from wowtools.core.install import WowInstall
 from wowtools.core.paths import to_native
-from wowtools.tools.screenshots import events
-from wowtools.tools.screenshots.settings import (DEFAULT_KEEP_JOURNALS, SECTION, ShotSettings, load_settings,
-                                                 resolve_journal_dir, save_settings, source_dir, target_root,
-                                                 validate_dest)
+from wowtools.tools.screenshot_organizer import events
+from wowtools.tools.screenshot_organizer.settings import (DEFAULT_KEEP_JOURNALS, SECTION, ShotSettings, load_settings,
+                                                          resolve_journal_dir, save_settings, source_dir, target_root,
+                                                          validate_dest)
 
 
 class SettingsTest(unittest.TestCase):
@@ -23,14 +23,14 @@ class SettingsTest(unittest.TestCase):
         self.retail = self.install.flavor("retail")
 
     def test_defaults_and_round_trip(self):
-        cfg = Config(self.tmp / "screenshots.cfg")
+        cfg = Config(self.tmp / "screenshot-organizer.cfg")
         self.assertEqual(load_settings(cfg), ShotSettings())
         save_settings(cfg, ShotSettings(self.tmp / "arch", True, "_retail_", 3))
         again = load_settings(Config(cfg.path).load())
         self.assertEqual(again, ShotSettings(self.tmp / "arch", True, "_retail_", 3))
 
     def test_bad_values_fall_back(self):
-        cfg = Config(self.tmp / "screenshots.cfg")
+        cfg = Config(self.tmp / "screenshot-organizer.cfg")
         cfg.set(SECTION, "copy_mode", "maybe", log=False)
         cfg.set(SECTION, "keep_journals", "0", log=False)
         s = load_settings(cfg)
@@ -46,7 +46,7 @@ class SettingsTest(unittest.TestCase):
 
     def test_journal_dir(self):
         self.assertIsNone(resolve_journal_dir(None))
-        self.assertEqual(resolve_journal_dir(self.root), self.root / "wow-tools" / "screenshots" / "journal")
+        self.assertEqual(resolve_journal_dir(self.root), self.root / "wow-tools" / "screenshot-organizer" / "journal")
 
     def test_validate_dest(self):
         self.assertIsNone(validate_dest(None, self.install))

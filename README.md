@@ -361,7 +361,7 @@ creates no folders, moves nothing and writes no journal. It's recorded in the lo
 
 ### Undo
 
-Every real run writes a **journal**, one file per run, in `<WoW folder>\wow-tools\screenshots\journal\`
+Every real run writes a **journal**, one file per run, in `<WoW folder>\wow-tools\screenshot-organizer\journal\`
 (`journal-<YYYYMMDD-HHMMSS>.jsonl`). It's kept beside the WTF Cleaner's folder and never in your screenshot
 archive. Each move, copy or removed duplicate is written to it the moment it happens, so it's accurate even if the
 run is cut short. If the journal can't be written, the run stops before it touches anything. A run that changed
@@ -399,11 +399,14 @@ Each tool keeps its own settings file, next to one shared file for the suite:
 |---|---|
 | `config\wow-tools.cfg` | `[general]`: the WoW folder, updates and logging, shared by every tool |
 | `config\wtf-cleaner.cfg` | `[wtf_cleaner]`: the WTF Cleaner's own settings |
-| `config\screenshots.cfg` | `[screenshots]`: the Screenshot Organizer's own settings |
+| `config\screenshot-organizer.cfg` | `[screenshot_organizer]`: the Screenshot Organizer's own settings |
 
 The files are created the first time they're needed. Press `s` in the app to change them, or edit them while
 the app is closed. A `wow-tools.cfg` from an older version (in the main folder) is split into `config\` on the
-next start, and the old file is removed.
+next start, and the old file is removed. The Screenshot Organizer was called `screenshots` before; on the next
+start its `config\screenshots.cfg`, `logs\screenshots\` and `<WoW folder>\wow-tools\screenshots\` are moved to
+the new `screenshot-organizer` names. Nothing is overwritten: if a new file or folder already exists, only what it
+lacks is moved across, and an old settings file whose values differ is kept as `screenshots.cfg.migrated`.
 
 | File · section / key | Default | Meaning |
 |---|---|---|
@@ -420,10 +423,10 @@ next start, and the old file is removed.
 | `wtf-cleaner.cfg` `[wtf_cleaner] keep_backups` | `5` | How many WTF backups (`backup\backup-<flavor>-*.zip`) to keep per flavor |
 | `wtf-cleaner.cfg` `[wtf_cleaner] last_account` | (empty = all accounts) | Pre-selected account |
 | `wtf-cleaner.cfg` `[wtf_cleaner] last_flavor_choice` | (empty = all flavors) | Pre-selected flavor choice, e.g. `_retail_`; until it is first saved, `[general] last_flavor` is pre-selected |
-| `screenshots.cfg` `[screenshots] dest_dir` | (empty = in place) | Archive root: screenshots go to `<dest_dir>\<flavor folder>\YYYY\MM\DD`. Stored as a Windows path. |
-| `screenshots.cfg` `[screenshots] copy_mode` | `false` | Copy instead of move |
-| `screenshots.cfg` `[screenshots] last_flavor_choice` | (empty = all flavors) | Pre-selected flavor choice, e.g. `_retail_` |
-| `screenshots.cfg` `[screenshots] keep_journals` | `10` | How many run journals to keep (at least 1) |
+| `screenshot-organizer.cfg` `[screenshot_organizer] dest_dir` | (empty = in place) | Archive root: screenshots go to `<dest_dir>\<flavor folder>\YYYY\MM\DD`. Stored as a Windows path. |
+| `screenshot-organizer.cfg` `[screenshot_organizer] copy_mode` | `false` | Copy instead of move |
+| `screenshot-organizer.cfg` `[screenshot_organizer] last_flavor_choice` | (empty = all flavors) | Pre-selected flavor choice, e.g. `_retail_` |
+| `screenshot-organizer.cfg` `[screenshot_organizer] keep_journals` | `10` | How many run journals to keep (at least 1) |
 
 ## Updates
 
@@ -442,7 +445,7 @@ Set `auto_update = true` to install updates on launch without asking.
 ## Logs
 
 Everything the tools do is logged, including settings changes, your choices, scan results, backups, and every
-file deleted, moved or skipped. Each tool has its own folder, `logs\wtf-cleaner\` and `logs\screenshots\`
+file deleted, moved or skipped. Each tool has its own folder, `logs\wtf-cleaner\` and `logs\screenshot-organizer\`
 (the launcher uses `logs\suite\`):
 
 - `logfile-YYYY-MM-DD.log` is readable.

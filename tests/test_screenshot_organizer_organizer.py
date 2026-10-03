@@ -9,11 +9,11 @@ from pathlib import Path
 from tests.fixtures import OLD_SHOT, build_screenshot_tree, build_wow_tree
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
-from wowtools.tools.screenshots.journal import latest_undoable, prune_journals, read_journal
-from wowtools.tools.screenshots.organizer import (ALREADY_FILED, CONFLICT_KEPT, COPIED, DUPLICATE_REMOVED, FAILED,
-                                                  MOVED, REFUSED, SKIPPED, SOURCE_LEFT, WOULD_COPY, WOULD_MOVE,
-                                                  WOULD_REMOVE_DUPLICATE, OrganizeError, execute)
-from wowtools.tools.screenshots.planner import scan
+from wowtools.tools.screenshot_organizer.journal import latest_undoable, prune_journals, read_journal
+from wowtools.tools.screenshot_organizer.organizer import (ALREADY_FILED, CONFLICT_KEPT, COPIED, DUPLICATE_REMOVED,
+                                                           FAILED, MOVED, REFUSED, SKIPPED, SOURCE_LEFT, WOULD_COPY,
+                                                           WOULD_MOVE, WOULD_REMOVE_DUPLICATE, OrganizeError, execute)
+from wowtools.tools.screenshot_organizer.planner import scan
 
 A = "WoWScrnShot_073119_232713.jpg"
 B = "WoWScrnShot_073119_232800.jpg"
@@ -78,7 +78,7 @@ class OrganizerTest(unittest.TestCase):
                 raise PermissionError(errno.EACCES, "locked")
             return real_remove(path, *a, **k)
 
-        with unittest.mock.patch("wowtools.tools.screenshots.organizer.os.remove", no_remove):
+        with unittest.mock.patch("wowtools.tools.screenshot_organizer.organizer.os.remove", no_remove):
             _, result = self.run_plan(self.dest, rename=exdev)
         self.assertEqual(result.count(SOURCE_LEFT), 4)
         self.assertTrue((self.shots / A).exists())
@@ -251,7 +251,7 @@ class OrganizerTest(unittest.TestCase):
         self.assertEqual(list(self.journals.iterdir()) if self.journals.exists() else [], [])
 
     def test_journal_write_failure_stops_the_run_and_reports_the_change(self):
-        from wowtools.tools.screenshots import journal as journal_mod
+        from wowtools.tools.screenshot_organizer import journal as journal_mod
         real_add = journal_mod.JournalWriter.add
         calls = []
 

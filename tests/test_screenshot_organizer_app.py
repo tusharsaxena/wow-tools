@@ -6,10 +6,10 @@ from textual.widgets import Button, DataTable, Input, OptionList, Static, Tree
 from tests.fixtures import TuiTestCase, build_screenshot_tree, build_wow_tree, make_config
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
-from wowtools.tools.screenshots.app import ScreenshotSettingsScreen
-from wowtools.tools.screenshots.journal import latest_undoable
-from wowtools.tools.screenshots.review_screen import ShotResultScreen, ShotReviewScreen
-from wowtools.tools.screenshots.settings import load_settings
+from wowtools.tools.screenshot_organizer.app import ScreenshotSettingsScreen
+from wowtools.tools.screenshot_organizer.journal import latest_undoable
+from wowtools.tools.screenshot_organizer.review_screen import ShotResultScreen, ShotReviewScreen
+from wowtools.tools.screenshot_organizer.settings import load_settings
 from wowtools.tools.wtf_cleaner.review_screen import ConfirmScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
@@ -30,9 +30,9 @@ class ShotsAppTest(TuiTestCase):
         self.dest = self.tmp / "arch"
 
     def save_tool_cfg(self, **values):
-        tool_cfg = Config(self.config_dir / "screenshots.cfg")
+        tool_cfg = Config(self.config_dir / "screenshot-organizer.cfg")
         for key, value in values.items():
-            tool_cfg.set("screenshots", key, value, log=False)
+            tool_cfg.set("screenshot_organizer", key, value, log=False)
         tool_cfg.save()
 
     def make_app(self):
@@ -72,7 +72,7 @@ class ShotsAppTest(TuiTestCase):
             app.screen.query_one("#save", Button).press()
             await pilot.pause()
             self.assertIsInstance(app.screen, FlavorScreen)
-        self.assertEqual(load_settings(Config(self.config_dir / "screenshots.cfg").load()).dest_dir, self.dest)
+        self.assertEqual(load_settings(Config(self.config_dir / "screenshot-organizer.cfg").load()).dest_dir, self.dest)
 
     async def test_settings_refuse_destination_inside_screenshots(self):
         app = self.make_app()
@@ -89,7 +89,7 @@ class ShotsAppTest(TuiTestCase):
             await pilot.pause()
             self.assertIsInstance(app.screen, ScreenshotSettingsScreen)
             self.assertIn("at least 1", app.screen.error_text)
-        self.assertFalse((self.config_dir / "screenshots.cfg").exists())
+        self.assertFalse((self.config_dir / "screenshot-organizer.cfg").exists())
 
     async def test_all_flavors_organize_then_undo(self):
         self.save_tool_cfg(dest_dir=str(self.dest))
@@ -115,7 +115,7 @@ class ShotsAppTest(TuiTestCase):
                 self.assertIsInstance(app.screen, ShotResultScreen)
                 self.assertTrue(app.screen.result.undo)
         self.assertTrue((self.shots / A).exists())
-        self.assertIsNone(latest_undoable(self.root / "wow-tools" / "screenshots" / "journal"))
+        self.assertIsNone(latest_undoable(self.root / "wow-tools" / "screenshot-organizer" / "journal"))
         names = [r["event"] for r in records]
         self.assertIn("shots.moved", names)
         self.assertIn("shots.undo_completed", names)
@@ -133,7 +133,7 @@ class ShotsAppTest(TuiTestCase):
             await self.run_action(app, pilot, "z", answer="n")
             self.assertIsInstance(app.screen, ShotReviewScreen)
         self.assertFalse((self.shots / A).exists())
-        self.assertIsNotNone(latest_undoable(self.root / "wow-tools" / "screenshots" / "journal"))
+        self.assertIsNotNone(latest_undoable(self.root / "wow-tools" / "screenshot-organizer" / "journal"))
 
     async def test_torn_multibyte_journal_still_opens_and_undoes(self):
         self.save_tool_cfg(dest_dir=str(self.dest))
@@ -141,7 +141,7 @@ class ShotsAppTest(TuiTestCase):
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
             await self.run_action(app, pilot, "o")
-            journal = latest_undoable(self.root / "wow-tools" / "screenshots" / "journal")
+            journal = latest_undoable(self.root / "wow-tools" / "screenshot-organizer" / "journal")
             with journal.open("ab") as handle:
                 handle.write(b'{"action": "moved", "src": "C:\\\\Jeux\\\\\xc3')
             await pilot.press("f")  # result screen -> another flavor: a fresh review screen reads the journal
@@ -264,7 +264,7 @@ class ShotsAppTest(TuiTestCase):
             await pilot.pause()
             self.assertIsInstance(app.screen, FlavorScreen)
             self.assertEqual(app.screen.last, review.flavors[0].folder)
-        saved = load_settings(Config(self.config_dir / "screenshots.cfg").load())
+        saved = load_settings(Config(self.config_dir / "screenshot-organizer.cfg").load())
         self.assertEqual(saved.last_flavor_choice, review.flavors[0].folder)
         self.assertEqual(self.cfg.last_flavor, review.flavors[0].folder)
 

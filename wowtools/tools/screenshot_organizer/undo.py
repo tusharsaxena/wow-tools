@@ -6,12 +6,12 @@ import os
 from pathlib import Path
 
 from wowtools.core.events import log_event
-from wowtools.tools.screenshots.journal import (A_COPIED, A_DUPLICATE, A_MOVED, A_SOURCE_LEFT, mark_undone,
-                                                read_journal)
-from wowtools.tools.screenshots.organizer import (COPY_REMOVED, FAILED, RESTORED, UNDO_SKIPPED, OrganizeResult,
-                                                  Outcome, Progress, Rename, copy_verified, move_file,
-                                                  safe_progress)
-from wowtools.tools.screenshots.settings import SCREENSHOTS_DIR
+from wowtools.tools.screenshot_organizer.journal import (A_COPIED, A_DUPLICATE, A_MOVED, A_SOURCE_LEFT, mark_undone,
+                                                         read_journal)
+from wowtools.tools.screenshot_organizer.organizer import (COPY_REMOVED, FAILED, RESTORED, UNDO_SKIPPED, OrganizeResult,
+                                                           Outcome, Progress, Rename, copy_verified, move_file,
+                                                           safe_progress)
+from wowtools.tools.screenshot_organizer.settings import SCREENSHOTS_DIR
 
 _DATE_PARTS = (4, 2, 2)  # YYYY, MM, DD
 

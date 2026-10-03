@@ -40,6 +40,10 @@ CORE_EVENTS: dict[str, EventSpec] = {
     "config.created": EventSpec("info", "A config file in config/ was written for the first time."),
     "config.changed": EventSpec("info", "A config value changed, or was overridden for one run."),
     "config.migrated": EventSpec("info", "The old shared wow-tools.cfg was split into config/ (one file per tool)."),
+    "config.renamed": EventSpec("info", "A renamed tool's config file was moved to its new name (merged into the new "
+                                        "file when both existed)."),
+    "folder.renamed": EventSpec("info", "A renamed tool's folder (logs/<tool>/ or <WoW>/wow-tools/<tool>/) was moved "
+                                        "to its new name; logged as a warning when entries clashed or failed to move."),
     "lock.conflict": EventSpec("warning", "Another copy of Ka0s WoW Tools appears to be running (its lock file exists)."),
     "lock.overridden": EventSpec("warning", "The user took over an existing lock file and carried on."),
     "ui.selection": EventSpec("info", "The user made a choice in the TUI or CLI."),

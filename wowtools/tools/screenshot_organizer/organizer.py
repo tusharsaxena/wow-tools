@@ -17,11 +17,11 @@ from typing import Callable
 from wowtools import __version__
 from wowtools.core.events import log_event
 from wowtools.core.paths import to_stored
-from wowtools.tools.screenshots.journal import (A_COPIED, A_DUPLICATE, A_MOVED, A_SOURCE_LEFT, JournalWriter,
-                                                new_journal_path, prune_journals)
-from wowtools.tools.screenshots.naming import day_parts, parse_shot_name
-from wowtools.tools.screenshots.planner import CONFLICT, ShotItem, list_files, list_names
-from wowtools.tools.screenshots.settings import source_dir, target_root
+from wowtools.tools.screenshot_organizer.journal import (A_COPIED, A_DUPLICATE, A_MOVED, A_SOURCE_LEFT, JournalWriter,
+                                                         new_journal_path, prune_journals)
+from wowtools.tools.screenshot_organizer.naming import day_parts, parse_shot_name
+from wowtools.tools.screenshot_organizer.planner import CONFLICT, ShotItem, list_files, list_names
+from wowtools.tools.screenshot_organizer.settings import source_dir, target_root
 
 Progress = Callable[[str, int, int, str], None]
 Rename = Callable[[Path, Path], None]

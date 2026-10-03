@@ -7,7 +7,7 @@ from pathlib import Path
 from tests.fixtures import SHOT_BYTES, build_screenshot_tree, build_wow_tree
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
-from wowtools.tools.screenshots.planner import CONFLICT, MAYBE_DUPLICATE, NEW, scan
+from wowtools.tools.screenshot_organizer.planner import CONFLICT, MAYBE_DUPLICATE, NEW, scan
 
 
 class PlannerTest(unittest.TestCase):
@@ -79,7 +79,7 @@ class PlannerTest(unittest.TestCase):
 
     def test_unreadable_folder_is_a_warning(self):
         self.assertEqual(scan([self.retail], None).warnings, [])
-        with unittest.mock.patch("wowtools.tools.screenshots.planner.list_files",
+        with unittest.mock.patch("wowtools.tools.screenshot_organizer.planner.list_files",
                                  side_effect=PermissionError(13, "denied")):
             with capture_events() as records:
                 plan = scan([self.retail, self.era], None)
@@ -101,7 +101,7 @@ class PlannerTest(unittest.TestCase):
             stats.append(Path(path).name)
             return real_stat(path, *a, **k)
 
-        with unittest.mock.patch("wowtools.tools.screenshots.planner.os.stat", counting_stat):
+        with unittest.mock.patch("wowtools.tools.screenshot_organizer.planner.os.stat", counting_stat):
             plan = scan([self.retail], None)
         item = next(i for i in plan.items if i.src.name == "WoWScrnShot_073119_232713.jpg")
         self.assertEqual(item.state, MAYBE_DUPLICATE)

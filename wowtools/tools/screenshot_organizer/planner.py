@@ -11,8 +11,8 @@ from typing import Callable
 
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor
-from wowtools.tools.screenshots.naming import day_parts, parse_shot_name
-from wowtools.tools.screenshots.settings import source_dir, target_root
+from wowtools.tools.screenshot_organizer.naming import day_parts, parse_shot_name
+from wowtools.tools.screenshot_organizer.settings import source_dir, target_root
 
 ScanProgress = Callable[[int, int, str], None]
 NEW = "new"

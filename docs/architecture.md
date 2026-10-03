@@ -26,6 +26,7 @@ stay thin.
 | `bootstrap` | `REPO_ROOT`, `VENDOR_DIR`, Python ≥ 3.10 check, `add_vendor_path()` |
 | `paths` | WSL detection; `to_native()` / `to_stored()` translate `G:\X` ⇄ `/mnt/g/X` |
 | `config` | `config/wow-tools.cfg` (`[general]`) plus `config/<tool>.cfg` per tool (`tool_config_path()`); typed accessors; `config.changed` events; `migrate_legacy_config()` splits the old root `wow-tools.cfg` |
+| `migrate` | Start-up moves for renamed tools (`wowtools.tools.RENAMED_TOOLS`, one `ToolRename` line each): `migrate_tool_config()` turns `config/<old>.cfg` into `config/<new>.cfg` with the section renamed; `merge_folder()` moves `logs/<old>/` and `<WoW>/wow-tools/<old>/` to the new name. Never overwrites (details below) |
 | `lock` | `InstanceLock` on `wow-tools.lock` (O_EXCL create; holder pid, host, start time, platform, token). `acquire()` returns the holder on conflict; `take_over()`; `release()` removes the file only if it is still ours. `LockInfo.stale` is known only on POSIX for a lock from this host |
 | `events` | Registry of event names with fixed levels; JSONL + text sinks; `log_event()`; `capture_events()` for tests |
 | `install` | `WowInstall` → `Flavor` → `Account` → `Character`; install auto-detection. A flavor is any `_name_` folder in the WoW folder, whatever it holds |
@@ -40,10 +41,26 @@ stay thin.
 Each tool owns one file with one section. `config/wtf-cleaner.cfg` `[wtf_cleaner]`: `max_age_days`, `criterion_*`, `backup_before_delete`,
 `backup_dir` (empty = `<wow_path>/wow-tools/wtf-cleaner`, resolved by `settings.resolve_backup_dir()`) and
 `last_account` (empty = all accounts), `keep_backups` and `last_flavor_choice` (empty = all flavors, else a flavor
-folder; absent until first chosen, and then the picker pre-selects `[general] last_flavor`). `config/screenshots.cfg` `[screenshots]`: `dest_dir` (empty = in place),
+folder; absent until first chosen, and then the picker pre-selects `[general] last_flavor`). `config/screenshot-organizer.cfg` `[screenshot_organizer]`: `dest_dir` (empty = in place),
 `copy_mode`, `last_flavor_choice` (empty = all flavors, else a flavor folder) and `keep_journals` (default 10, at
 least 1). The retired `[general] backup_dir` is dropped by the migration. Paths are stored in Windows form when they point at a
 Windows drive. Unknown keys are preserved, and bad values fall back to defaults.
+
+**Renamed tools.** `suite.run()` applies every `RENAMED_TOOLS` line on each start, after the suite config is
+loaded and before the lock and the app (the Screenshot Organizer was `screenshots` before it became
+`screenshot-organizer`):
+
+- `config/<old>.cfg`: if `config/<new>.cfg` does not exist, it is written with everything from the old file (the
+  tool's section renamed, other sections as they were) and the old file is removed. If it exists, only the keys it
+  lacks are added; its own values win. The old file is then removed if every one of its values is in the new
+  file, and otherwise kept as `<old>.cfg.migrated` (`-2`, `-3`, … if that name is taken). An unreadable old file
+  stops the start with the same "Fix or delete the file" message as a bad suite config. Logged as `config.renamed`.
+  A legacy root `wow-tools.cfg` with the old section is split to `config/<old>.cfg` first, then renamed.
+- `logs/<old>/` and `<WoW folder>/wow-tools/<old>/` (only when `wow_path` is set): if the new folder does not
+  exist, the old one is renamed. If both exist, entries that are not in the new folder are moved into it,
+  sub-folders (such as `journal/`) are merged the same way, entries already there are left in the old folder,
+  and the old folder is removed only if it ends up empty. Logged as `folder.renamed` (a warning when something
+  clashed or failed to move). A folder failure never stops the start.
 
 ## WTF Cleaner data flow
 
@@ -112,7 +129,7 @@ In `cleaner.execute`:
                       → OrganizeResult(outcomes[Outcome], journal_path, pruned)
     undo(journal_path, wow_root, progress=None) → OrganizeResult(undo=True)
 
-Modules in `tools/screenshots/` (all UI-free except `app.py` and `review_screen.py`): `naming` (`parse_shot_name`,
+Modules in `tools/screenshot_organizer/` (all UI-free except `app.py` and `review_screen.py`): `naming` (`parse_shot_name`,
 `day_parts`), `settings` (`ShotSettings`, `source_dir`, `target_root`, `resolve_journal_dir`, `validate_dest`),
 `planner`, `organizer`, `journal`, `undo` and `report` (labels, stage titles, rows and the confirm text).
 
@@ -148,7 +165,7 @@ writes no journal. A per-file `OSError` is `failed` and the run continues; anyth
 `KeyboardInterrupt`) raises `OrganizeError` with `.result`. Progress is `cb(stage, current, total, detail)` with
 the stages in `report.STAGE_TITLES` (`organize`, `prune`, `undo`), wrapped by `organizer.safe_progress`.
 
-**Journal** (`journal.py`). A real run writes `<WoW>/wow-tools/screenshots/journal/journal-<YYYYMMDD-HHMMSS>.jsonl`
+**Journal** (`journal.py`). A real run writes `<WoW>/wow-tools/screenshot_organizer/journal/journal-<YYYYMMDD-HHMMSS>.jsonl`
 (`-2`, `-3`… on a clash), JSON Lines:
 
     {"version": 1, "started": iso, "copy": bool, "dest_dir": stored path | null, "suite_version": "...", "flavors": [...]}
@@ -210,7 +227,7 @@ The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfC
 `MultiCleanResult` it shows Done / Stopped / Not started rows after a stop, one block of summary rows per finished
 flavor, and a Flavor column (`report.MULTI_RESULT_COLUMNS`).
 
-The Screenshot Organizer's screens live in `tools/screenshots/`. `app.py` holds `ScreenshotsFlow` (`FLOW`:
+The Screenshot Organizer's screens live in `tools/screenshot_organizer/`. `app.py` holds `ScreenshotsFlow` (`FLOW`:
 `require_install` → `ScreenshotSettingsScreen` on the tool's first open → `FlavorScreen(include_all=True,
 note=<"no Screenshots folder" where missing>)` → review; every flavor is listed) and `ScreenshotSettingsScreen` (destination, journals to
 keep, copy mode; `validate_dest` errors show inline). `review_screen.py` holds:
