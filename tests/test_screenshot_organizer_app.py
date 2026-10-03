@@ -72,6 +72,8 @@ class ShotsAppTest(TuiTestCase):
             app.screen.query_one("#save", Button).press()
             await pilot.pause()
             self.assertIsInstance(app.screen, FlavorScreen)
+            await settle(app, pilot)  # let the new screen finish mounting: on slow Windows CI, leaving run_test
+            # straight away raced the Header's title update (NoMatches: HeaderTitle)
         self.assertEqual(load_settings(Config(self.config_dir / "screenshot-organizer.cfg").load()).dest_dir, self.dest)
 
     async def test_settings_refuse_destination_inside_screenshots(self):
