@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 import json
-import os
 import zipfile
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from wowtools.core.fsutil import rename_no_replace
+from wowtools.core.fsutil import remove_quietly, rename_no_replace
 
 MANIFEST_NAME = "manifest.json"
 
@@ -79,10 +78,10 @@ def create_backup(entries: list[BackupEntry], base_dir: Path, dest_zip: Path, me
         verify_backup(partial, expected, progress=on_verify)
         rename_no_replace(partial, dest_zip)  # never replaces an existing backup
     except BackupError:
-        _discard(partial)
+        remove_quietly(partial)
         raise
     except (OSError, zipfile.BadZipFile, ValueError) as exc:
-        _discard(partial)
+        remove_quietly(partial)
         raise BackupError(f"backup failed: {exc}") from exc
     return dest_zip
 
@@ -104,10 +103,3 @@ def verify_backup(zip_path: Path, expected: dict[str, int],
         sizes = {info.filename: info.file_size for info in infos if info.filename != MANIFEST_NAME}
     if sizes != expected:
         raise BackupError("backup contents do not match the selected files")
-
-
-def _discard(path: Path) -> None:
-    try:
-        path.unlink()
-    except OSError:
-        pass

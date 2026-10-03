@@ -1,5 +1,7 @@
 """scripts/build_release.py (the zip + SHA256SUMS assets the updater verifies) and the hashed vendor lock in
 scripts/update_vendor.py (F-010). Temp git repos only; no network."""
+from __future__ import annotations
+
 import hashlib
 import importlib.util
 import shutil

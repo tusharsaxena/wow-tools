@@ -16,7 +16,7 @@ from typing import Callable
 
 from wowtools import __version__
 from wowtools.core.events import log_event
-from wowtools.core.fsutil import rename_no_replace
+from wowtools.core.fsutil import rename_no_replace, safe_progress
 from wowtools.core.paths import to_stored
 from wowtools.tools.screenshot_organizer.journal import (A_COPIED, A_DUPLICATE, A_MOVED, A_SOURCE_LEFT, JournalWriter,
                                                          new_journal_path, prune_journals)
@@ -161,17 +161,6 @@ def _guard(item: ShotItem, dest_dir: Path | None) -> str | None:
     return None
 
 
-def safe_progress(progress: Progress | None) -> Progress:
-    def call(stage: str, current: int, total: int, detail: str = "") -> None:
-        if progress is None:
-            return
-        try:
-            progress(stage, current, total, detail)
-        except Exception:  # noqa: BLE001 - a broken progress callback must never disturb a run
-            pass
-    return call
-
-
 class _Run:
     def __init__(self, dest_dir: Path | None, copy: bool, dry_run: bool, journal: JournalWriter | None,
                  rename: Rename) -> None:
@@ -267,7 +256,7 @@ def _log_outcome(result: OrganizeResult, outcome: Outcome, dry_run: bool) -> Non
 def execute(items: list[ShotItem], *, dest_dir: Path | None, copy: bool, dry_run: bool,
             journal_dir: Path | None, keep_journals: int, progress: Progress | None = None,
             rename: Rename = rename_no_replace) -> OrganizeResult:
-    report = safe_progress(progress)
+    report: Progress = safe_progress(progress)
     result = OrganizeResult(dry_run=dry_run, copy=copy)
     journal = None
     if not dry_run and journal_dir is not None:

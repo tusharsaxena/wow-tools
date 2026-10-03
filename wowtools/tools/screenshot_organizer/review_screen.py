@@ -9,7 +9,7 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.screen import ModalScreen, Screen
+from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Button, DataTable, Footer, Header, Label, ProgressBar, Static, Tree
 
@@ -21,60 +21,32 @@ from wowtools.core.journal import friendly_stamp
 from wowtools.tools.screenshot_organizer.journal import latest_undoable, read_journal
 from wowtools.tools.screenshot_organizer.naming import day_parts
 from wowtools.tools.screenshot_organizer.organizer import OrganizeError, OrganizeResult, execute
-from wowtools.tools.screenshot_organizer.planner import FILED, MAYBE_DUPLICATE, FlavorPlan, Plan, ShotItem, scan
+from wowtools.tools.screenshot_organizer.planner import MAYBE_DUPLICATE, Plan, ShotItem, scan
 from wowtools.tools.screenshot_organizer.report import (RESULT_COLUMNS, STAGE_TITLES, confirm_text, destination_label,
                                                         kind_class, plural, result_rows, stopped_text,
                                                         summary_rows)
 from wowtools.tools.screenshot_organizer.settings import load_settings, resolve_journal_dir, validate_dest
 from wowtools.tools.screenshot_organizer.undo import undo
-from wowtools.tools.wtf_cleaner.review_screen import ConfirmScreen
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, NavHint, action_button
+from wowtools.ui.dialogs import ConfirmScreen, ProgressScreen, TwoPaneFocus, relabel_branch, theme_colour, tick_mark
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 ACCENT = "bold #5CC8FF"
-SUCCESS_FALLBACK = "#4CC38A"
-CLASS_FALLBACK = {"success": SUCCESS_FALLBACK, "accent": "#5CC8FF", "warning": "#E8C547", "error": "#E5534B"}
 NAV_HINT = ("↑↓/Tab move · ←→ panes and buttons · Space tick · Enter/Space press · a all · n none · "
             "o organize · y dry run · r rescan · z undo · f flavors · t tools")
 READ_ONLY = ("conflicts", "skipped", "conflict", "skip")  # tree nodes that cannot be ticked
 
 
-class ShotProgressScreen(ModalScreen[None]):
-    """Shown while a run, dry run or undo runs: the stage, a progress bar and the current file."""
+class ShotProgressScreen(ProgressScreen):
+    """Shown while a run, dry run or undo runs (the widget ids keep their shots- prefix)."""
 
-    DEFAULT_CSS = """
-    ShotProgressScreen { align: center middle; }
-    ShotProgressScreen #shots-box { width: 80; height: auto; border: thick $accent; background: $panel;
-                                    padding: 1 2; }
-    ShotProgressScreen #shots-stage { color: $accent; text-style: bold; margin-bottom: 1; }
-    ShotProgressScreen #shots-progress { width: 1fr; }
-    ShotProgressScreen #shots-file { color: $text-muted; margin-top: 1; height: 2; overflow: hidden hidden; }
-    """
+    ID_PREFIX = "shots"
+    STAGE_TITLES = STAGE_TITLES
+    SIMULATED_STAGE = "organize"
 
     def __init__(self, stage_titles: dict[str, str] = STAGE_TITLES, dry_run: bool = False,
                  first_stage: str = "organize") -> None:
-        super().__init__()
-        self.stage_titles = stage_titles
-        self.dry_run = dry_run
-        self.stage = first_stage
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="shots-box"):
-            yield Static(Text(self.stage_title(self.stage)), id="shots-stage")
-            yield ProgressBar(id="shots-progress", show_eta=False)
-            yield Static("", id="shots-file")
-
-    def stage_title(self, stage: str) -> str:
-        if stage == "organize" and self.dry_run:
-            return "Simulating"
-        return self.stage_titles.get(stage, stage)
-
-    def update_progress(self, stage: str, current: int, total: int, detail: str = "") -> None:
-        self.stage = stage
-        self.query_one("#shots-stage", Static).update(Text(self.stage_title(stage)))
-        # A total of 0 means "not known" (pruning): the bar runs as indeterminate.
-        self.query_one("#shots-progress", ProgressBar).update(total=total if total > 0 else None, progress=current)
-        self.query_one("#shots-file", Static).update(Text(detail))
+        super().__init__(dry_run=dry_run, first_stage=first_stage, stage_titles=stage_titles)
 
 
 class ShotResultScreen(Screen[str]):
@@ -133,13 +105,7 @@ class ShotResultScreen(Screen[str]):
 
     def _kind_style(self, kind: str) -> str:
         name = kind_class(kind)
-        if not name:
-            return ""
-        try:
-            colour = getattr(self.app.current_theme, name, None)
-        except Exception:  # noqa: BLE001 - no theme yet: use the Ka0s colours
-            colour = None
-        return f"bold {colour or CLASS_FALLBACK[name]}"
+        return f"bold {theme_colour(self.app, name)}" if name else ""
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.action_choose(event.button.id or "quit")
@@ -155,7 +121,8 @@ class ShotTree(Tree):
     BINDINGS = [Binding("left", "screen.focus_filters", "Filters", show=False)]
 
 
-class ShotReviewScreen(Screen[str]):
+class ShotReviewScreen(TwoPaneFocus, Screen[str]):
+    TREE_SELECTOR = "#shots"
     DEFAULT_CSS = """
     ShotReviewScreen #body { height: 1fr; }
     ShotReviewScreen #filters { width: 50; padding: 1; border-right: solid $primary; }
@@ -241,26 +208,9 @@ class ShotReviewScreen(Screen[str]):
         busy = self._scanning or getattr(self.app, "busy", False)
         self.query_one("#btn-undo", Button).disabled = busy or latest_undoable(self._journal_dir()) is None
 
-    # --- panes (←/→) --------------------------------------------------------------------------------
-    def on_descendant_focus(self, event) -> None:
-        widget = event.widget
-        if any(ancestor.id == "filters" for ancestor in widget.ancestors):
-            self._last_filter = widget
-
-    def action_focus_filters(self) -> None:
-        focused = self.focused
-        if focused is not None and any(a.id == "filters" for a in focused.ancestors):
-            return  # already in the left panel
-        target = self._last_filter
-        if target is None or not target.is_attached or not target.focusable:
-            target = next((b for b in self.query("#actions Button").results(Button) if b.focusable), None)
-        if target is not None:
-            target.focus()
-
-    def action_focus_tree(self) -> None:
-        tree = self.query_one("#shots", Tree)
-        if tree.display and self.focused is not tree:
-            tree.focus()
+    # --- panes (←/→): TwoPaneFocus ------------------------------------------------------------------
+    def first_filter(self) -> Widget | None:
+        return next((b for b in self.query("#actions Button").results(Button) if b.focusable), None)
 
     # --- scanning ------------------------------------------------------------------------------
     def action_rescan(self) -> None:
@@ -435,16 +385,7 @@ class ShotReviewScreen(Screen[str]):
             node.add_leaf(self._label(data), data=data)
 
     def _mark(self, items: list[ShotItem]) -> tuple[str, str]:
-        unchecked = sum(1 for i in items if i.src in self.unchecked)
-        if items and unchecked == len(items):
-            return f"{CHECK_OFF} ", "dim"
-        if unchecked:
-            return "◩ ", "bold"
-        try:
-            success = self.app.current_theme.success or SUCCESS_FALLBACK
-        except Exception:  # noqa: BLE001 - no theme yet: use the Ka0s colour
-            success = SUCCESS_FALLBACK
-        return f"{CHECK_ON} ", f"bold {success}"
+        return tick_mark(items, self.unchecked, lambda i: i.src, success=theme_colour(self.app, "success"))
 
     def _label(self, data) -> Text:
         kind = data[0]
@@ -480,19 +421,7 @@ class ShotReviewScreen(Screen[str]):
 
     def _refresh_labels(self, node=None) -> None:
         """Relabel node's branch and its ancestors (everything a tick there can change), or the whole tree."""
-        tree = self.query_one("#shots", Tree)
-        if node is not None:
-            parent = node.parent
-            while parent is not None:
-                if parent.data is not None:
-                    parent.set_label(self._label(parent.data))
-                parent = parent.parent
-        stack = [node or tree.root]
-        while stack:
-            current = stack.pop()
-            if current.data is not None and current.data[0] not in READ_ONLY:
-                current.set_label(self._label(current.data))
-            stack.extend(current.children)
+        relabel_branch(self.query_one("#shots", Tree), node, self._label, skip=READ_ONLY)
         self._update_summary()
 
     def selection(self) -> list[ShotItem]:

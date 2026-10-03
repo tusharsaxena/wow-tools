@@ -4,6 +4,7 @@ from __future__ import annotations
 import errno
 import os
 from pathlib import Path
+from typing import Callable
 
 # os.link errors meaning "this file system (or this kind of file) has no hard links", not "the target exists".
 _NO_HARDLINK = {errno.EPERM, errno.EACCES, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EMLINK, errno.ENOSYS}
@@ -71,3 +72,25 @@ def free_name(folder: Path, stem: str, suffix: str) -> Path:
         path = folder / f"{stem}-{n}{suffix}"
         n += 1
     return path
+
+
+def remove_quietly(path: Path) -> None:
+    """Delete a file, ignoring any error (it is already gone, or cannot be removed): for clean-up of our own
+    temporary or partial files, where a failure must never hide the real outcome."""
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def safe_progress(progress: Callable[..., None] | None) -> Callable[..., None]:
+    """Wrap a progress callback (None means no progress) so an error inside it can never disturb, stop or roll
+    back the run that reports to it."""
+    def report(*args, **kwargs) -> None:
+        if progress is None:
+            return
+        try:
+            progress(*args, **kwargs)
+        except Exception:  # noqa: BLE001 - a broken progress display must never stop a run
+            pass
+    return report

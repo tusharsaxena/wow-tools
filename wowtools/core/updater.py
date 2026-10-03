@@ -396,7 +396,7 @@ def _copy(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
-def _remove(path: Path) -> None:
+def _remove_tree(path: Path) -> None:
     if path.is_dir() and not path.is_symlink():
         shutil.rmtree(path)
     elif path.exists():
@@ -407,7 +407,7 @@ def _rollback(root: Path, backup: Path, shipped: list[str]) -> None:
     saved = {p.name for p in backup.iterdir()}
     for name in set(_replaced_names(root, shipped)) | saved:
         try:
-            _remove(root / name)
+            _remove_tree(root / name)
         except OSError:
             pass
     for name in saved:
@@ -447,7 +447,7 @@ def _apply_zip(root: Path, release: ReleaseInfo, current: str, download: Callabl
             raise UpdateError(f"could not back up the current version: {exc}") from exc
         try:
             for name in old_names:
-                _remove(root / name)
+                _remove_tree(root / name)
             for name in shipped:
                 _copy(staging / name, root / name)
         except OSError as exc:

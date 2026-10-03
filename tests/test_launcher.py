@@ -1,5 +1,7 @@
 """wow-tools.cmd must be safe to replace while it runs (F-020): cmd.exe reads a batch file by byte offset, so after
 Python returns it must not read another line from the (possibly updated) file."""
+from __future__ import annotations
+
 import os
 import shutil
 import subprocess

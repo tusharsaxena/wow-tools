@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import errno
 import os
 import tempfile
@@ -7,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from wowtools.core import fsutil
-from wowtools.core.fsutil import atomic_write_text, free_name, rename_no_replace
+from wowtools.core.fsutil import atomic_write_text, free_name, remove_quietly, rename_no_replace, safe_progress
 
 
 class RenameNoReplaceTest(unittest.TestCase):
@@ -77,3 +79,25 @@ class AtomicWriteTest(unittest.TestCase):
             atomic_write_text(path, "two")
             self.assertEqual(path.read_text(encoding="utf-8"), "two")
             self.assertEqual([p.name for p in Path(tmp).iterdir()], ["x.cfg"])
+
+
+class SmallHelpersTest(unittest.TestCase):
+    def test_remove_quietly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "a.partial"
+            path.write_text("x", encoding="utf-8")
+            remove_quietly(path)
+            self.assertFalse(path.exists())
+            remove_quietly(path)  # already gone: no error
+            remove_quietly(Path(tmp))  # a folder cannot be removed this way: still no error
+            self.assertTrue(Path(tmp).is_dir())
+
+    def test_safe_progress_passes_calls_and_swallows_errors(self):
+        calls = []
+        safe_progress(lambda *a: calls.append(a))("stage", 1, 2, "file")
+        self.assertEqual(calls, [("stage", 1, 2, "file")])
+        safe_progress(None)("stage", 1, 2)
+
+        def broken(*_):
+            raise RuntimeError("display gone")
+        safe_progress(broken)("stage", 1, 2)  # never raises

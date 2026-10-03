@@ -222,7 +222,8 @@ def scan(flavors: list[Flavor], dest_dir: Path | None, progress: ScanProgress | 
                         state = MAYBE_DUPLICATE
             fp.items.append(ShotItem(flavor, src_dir / name, day_dir / name, day, st.st_size, st.st_mtime, state))
         summary[flavor.folder] = {"to_file": len(fp.new), "maybe_duplicates": len(fp.maybe_duplicates),
-                                  "conflicts": len(fp.conflicts), "already_filed": len(fp.filed), "unrecognised": len(fp.skipped),
+                                  "conflicts": len(fp.conflicts), "already_filed": len(fp.filed),
+                                  "unrecognised": len(fp.skipped),
                                   "unrecognised_sample": [s.path.name for s in fp.skipped[:SAMPLE]]}
     if progress:
         progress(total, total, "Done")

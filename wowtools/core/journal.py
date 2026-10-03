@@ -71,10 +71,6 @@ class JournalWriter:
         self._handle.write(json.dumps(record, ensure_ascii=False) + "\n")
         self._handle.flush()
 
-    @property
-    def is_open(self) -> bool:
-        return self._handle is not None
-
     def open(self) -> None:
         if self._handle is not None:
             return

@@ -15,7 +15,6 @@ from textual.widget import Widget
 from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, ProgressBar, Static, Tree
 
 from wowtools.core import activity
-from wowtools.core.backup import BackupError
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import ACCOUNT_WIDE, Flavor, WowInstall, validate_output_dir
@@ -27,100 +26,34 @@ from wowtools.tools.wtf_cleaner.multi import (FlavorScan, MultiCleanResult, exec
                                               scan_flavors)
 from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, STAGE_TITLES, age_days,
                                                flavor_name, format_size, locker_warning)
-from wowtools.tools.wtf_cleaner.result_screen import SUCCESS_FALLBACK, ResultScreen, reasons_text
+from wowtools.tools.wtf_cleaner.result_screen import ResultScreen, reasons_text
 from wowtools.tools.wtf_cleaner.rules import (CRITERIA, Proposal, ProposalItem, criterion_counts, evaluate,
                                              log_proposal_built, log_proposal_items)
 from wowtools.tools.wtf_cleaner.safety import SNAPSHOT_SUBDIR, Marker, clear_marker, read_marker, recovery_message
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir
 from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
+from wowtools.ui.dialogs import ConfirmScreen, ProgressScreen, TwoPaneFocus, relabel_branch, theme_colour, tick_mark
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
 ACCENT = "bold #5CC8FF"
 WARNING_STYLE = "#E8B04B"
 ALL_FLAVORS_LABEL = "All flavors"
+# ConfirmScreen now lives in wowtools.ui.dialogs; it stays importable from here for one release.
 __all__ = ["CleanProgressScreen", "ConfirmScreen", "RecoveryScreen", "ResultScreen", "ReviewScreen"]
 NAV_HINT = ("↑↓/Tab move · ←→ panes and buttons · Space tick · Enter/Space press · 1-4 criteria · c clean · "
             "y dry run · r rescan · z undo · t tools")
 
 
-class ConfirmScreen(ModalScreen[bool]):
-    DEFAULT_CSS = """
-    ConfirmScreen { align: center middle; }
-    ConfirmScreen #confirm-box { width: 80; height: auto; border: thick $accent; background: $panel; padding: 1 2; }
-    ConfirmScreen #confirm-title { color: $accent; text-style: bold; margin-bottom: 1; }
-    ConfirmScreen #confirm-buttons { height: auto; align-horizontal: right; margin-top: 1; }
-    ConfirmScreen Button { margin-left: 2; }
-    """
-    BINDINGS = [Binding("y", "answer(True)", "Yes"), Binding("n,escape", "answer(False)", "No"), *NAV_BINDINGS]
+class CleanProgressScreen(ProgressScreen):
+    """Shown while a clean, dry run or undo runs (the widget ids keep their clean- prefix)."""
 
-    def __init__(self, title: str, body: str, alerts: tuple[str, ...] = (), *, default_yes: bool = False) -> None:
-        super().__init__()
-        self.default_yes = default_yes
-        self.title_text = title
-        self.alerts = alerts
-        self.body_text = "\n".join([body, *alerts]) if alerts else body
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="confirm-box"):
-            yield Static(Text(self.title_text), id="confirm-title")
-            body = Text(self.body_text)
-            for alert in self.alerts:
-                body.highlight_words([alert], style="bold #E5534B")
-            yield Static(body)
-            with ButtonRow(id="confirm-buttons"):
-                yield action_button("Yes (y)", "confirm", id="yes")
-                yield action_button("No (n)", "neutral", id="no")
-            yield NavHint("←→ choose · Enter/Space press · y yes · n/Esc no")
-
-    def on_mount(self) -> None:
-        self.query_one("#yes" if self.default_yes else "#no", Button).focus()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        self.dismiss(event.button.id == "yes")
-
-    def action_answer(self, value: bool) -> None:
-        self.dismiss(value)
-
-
-class CleanProgressScreen(ModalScreen[None]):
-    """Shown while a clean or dry run runs: the stage, a progress bar and the current file."""
-
-    DEFAULT_CSS = """
-    CleanProgressScreen { align: center middle; }
-    CleanProgressScreen #clean-box { width: 80; height: auto; border: thick $accent; background: $panel;
-                                     padding: 1 2; }
-    CleanProgressScreen #clean-stage { color: $accent; text-style: bold; margin-bottom: 1; }
-    CleanProgressScreen #clean-progress { width: 1fr; }
-    CleanProgressScreen #clean-file { color: $text-muted; margin-top: 1; height: 2; overflow: hidden hidden; }
-    """
+    ID_PREFIX = "clean"
+    STAGE_TITLES = STAGE_TITLES
+    SIMULATED_STAGE = "delete"
 
     def __init__(self, dry_run: bool, first_stage: str = "check") -> None:
-        super().__init__()
-        self.dry_run = dry_run
-        self.first_stage = first_stage
-        self.stage = ""
-        self.flavor_label = ""  # set while cleaning several flavors: the stage title names the flavor
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="clean-box"):
-            yield Static(Text(self.stage_title(self.first_stage)), id="clean-stage")
-            yield ProgressBar(id="clean-progress", show_eta=False)
-            yield Static("", id="clean-file")
-
-    def stage_title(self, stage: str) -> str:
-        title = "Simulating" if stage == "delete" and self.dry_run else STAGE_TITLES.get(stage, stage)
-        return f"{self.flavor_label}: {title}" if self.flavor_label else title
-
-    def set_flavor(self, label: str) -> None:
-        self.flavor_label = label
-
-    def update_progress(self, stage: str, current: int, total: int, detail: str = "") -> None:
-        self.stage = stage
-        self.query_one("#clean-stage", Static).update(Text(self.stage_title(stage)))
-        # A total of 0 means "not known yet" (listing a folder): the bar runs as indeterminate.
-        self.query_one("#clean-progress", ProgressBar).update(total=total if total > 0 else None, progress=current)
-        self.query_one("#clean-file", Static).update(Text(detail))
+        super().__init__(dry_run=dry_run, first_stage=first_stage)
 
 
 class RecoveryScreen(ModalScreen[str]):
@@ -166,7 +99,8 @@ class ProposalTree(Tree):
     BINDINGS = [Binding("left", "screen.focus_filters", "Filters", show=False)]
 
 
-class ReviewScreen(Screen[str]):
+class ReviewScreen(TwoPaneFocus, Screen[str]):
+    TREE_SELECTOR = "#proposal"
     DEFAULT_CSS = """
     ReviewScreen #body { height: 1fr; }
     ReviewScreen #filters { width: 46; padding: 1; border-right: solid $primary; }
@@ -261,25 +195,9 @@ class ReviewScreen(Screen[str]):
         self.action_rescan()
         self._check_recovery()
 
-    # --- panes (←/→) --------------------------------------------------------------------------------
-    def on_descendant_focus(self, event) -> None:
-        widget = event.widget
-        if any(ancestor.id == "filters" for ancestor in widget.ancestors):
-            self._last_filter = widget
-
-    def action_focus_filters(self) -> None:
-        focused = self.focused
-        if focused is not None and any(a.id == "filters" for a in focused.ancestors):
-            return  # already in the filters panel
-        target = self._last_filter
-        if target is None or not target.is_attached or not target.focusable:
-            target = self.query_one(f"#crit_{CRITERIA[0]}", Ka0sCheckbox)
-        target.focus()
-
-    def action_focus_tree(self) -> None:
-        tree = self.query_one("#proposal", Tree)
-        if tree.display and self.focused is not tree:
-            tree.focus()
+    # --- panes (←/→): TwoPaneFocus ------------------------------------------------------------------
+    def first_filter(self) -> Widget:
+        return self.query_one(f"#crit_{CRITERIA[0]}", Ka0sCheckbox)
 
     # --- recovery notice (spec A.4.5: never restores on its own) -------------------------------------
     def _check_recovery(self) -> None:
@@ -464,16 +382,7 @@ class ReviewScreen(Screen[str]):
         return [f.path for item in data[1] for f in item.files]
 
     def _mark(self, paths: list[Path]) -> tuple[str, str]:
-        unchecked = sum(1 for p in paths if p in self.unchecked)
-        if paths and unchecked == len(paths):
-            return f"{CHECK_OFF} ", "dim"
-        if unchecked:
-            return "◩ ", "bold"
-        try:
-            success = self.app.current_theme.success or SUCCESS_FALLBACK
-        except Exception:  # noqa: BLE001 - no theme yet: use the Ka0s colour
-            success = SUCCESS_FALLBACK
-        return f"{CHECK_ON} ", f"bold {success}"
+        return tick_mark(paths, self.unchecked, success=theme_colour(self.app, "success"))
 
     @staticmethod
     def _reasons(reasons: list[str]) -> Text:
@@ -499,19 +408,7 @@ class ReviewScreen(Screen[str]):
 
     def _refresh_labels(self, node=None) -> None:
         """Relabel node's branch and its ancestors (everything a tick there can change), or the whole tree."""
-        tree = self.query_one("#proposal", Tree)
-        if node is not None:
-            parent = node.parent
-            while parent is not None:
-                if parent.data is not None:
-                    parent.set_label(self._label(parent.data))
-                parent = parent.parent
-        stack = [node or tree.root]
-        while stack:
-            node = stack.pop()
-            if node.data is not None:
-                node.set_label(self._label(node.data))
-            stack.extend(node.children)
+        relabel_branch(self.query_one("#proposal", Tree), node, self._label)
         self._update_summary()
 
     def _selection(self) -> list[ProposalItem]:

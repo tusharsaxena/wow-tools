@@ -60,10 +60,6 @@ class ProposalItem:
         return self.group.addon
 
     @property
-    def scope(self) -> str:
-        return self.group.scope
-
-    @property
     def owner_label(self) -> str:
         return self.group.owner_label
 

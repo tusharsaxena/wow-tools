@@ -36,6 +36,13 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
      `FlavorScreen` for the flavor (`include_all=True` adds "All flavors"), and put `Header()`, `BrandBar()` and
      `Footer()` on every screen. The organizer's screens are in `app.py` (`ScreenshotSettingsScreen`) and
      `review_screen.py` (`ShotReviewScreen`, `ShotProgressScreen`, `ShotResultScreen`).
+   - **Shared dialogs.** Take the confirm and progress dialogs from `wowtools/ui/dialogs.py`, never from another
+     tool (a tool imports nothing from another tool; `tests/test_structure.py` checks it):
+     `ConfirmScreen(title, body, alerts, default_yes=...)` (start on No for anything that changes files), and a
+     subclass of `ProgressScreen` with your own `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, fed by the
+     run's `progress(stage, current, total, detail)` through `app.call_from_thread`. Wrap that callback with
+     `core.fsutil.safe_progress` inside the run. A review tree can use `tick_mark`, `relabel_branch` and the
+     `TwoPaneFocus` mixin; `theme_colour(app, "success")` gives theme colours with the Ka0s fallback.
 2. **Register** it in `wowtools/tools/__init__.py`:
    `Tool("screenshot-organizer", "Screenshot Organizer", "File screenshots into year/month/day folders, per flavor.",
    "wowtools.tools.screenshot_organizer.app", "screenshot_organizer")`. It appears in the tool menu. There are no per-tool wrappers or command-line modes: every tool

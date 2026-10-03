@@ -19,7 +19,7 @@ from pathlib import Path, PurePosixPath
 from typing import Callable
 
 from wowtools.core.backup import BackupError, verify_backup
-from wowtools.core.fsutil import free_name, rename_no_replace
+from wowtools.core.fsutil import free_name, remove_quietly, rename_no_replace
 from wowtools.core.install import Flavor
 
 MARKER_NAME = "clean-in-progress.json"
@@ -89,13 +89,13 @@ def take_snapshot(flavor: Flavor, backup_dir: Path, now: datetime,
                       progress=None if progress is None else lambda i, n, name: progress("snapshot_verify", i, n, name))
         rename_no_replace(partial, dest)  # never replaces an existing backup
     except BackupError:
-        _remove(partial)
+        remove_quietly(partial)
         raise
     except (OSError, zipfile.BadZipFile, ValueError) as exc:
-        _remove(partial)
+        remove_quietly(partial)
         raise BackupError(f"the WTF backup failed: {exc}") from exc
     except BaseException:  # e.g. Ctrl+C while zipping: never leave a stray .partial behind
-        _remove(partial)
+        remove_quietly(partial)
         raise
     return dest
 
@@ -157,7 +157,7 @@ def read_marker(backup_dir: Path | None) -> Marker | None:
 
 
 def clear_marker(backup_dir: Path) -> None:
-    _remove(backup_dir / MARKER_NAME)
+    remove_quietly(backup_dir / MARKER_NAME)
 
 
 def restore_deleted(snapshot: Path, flavor: Flavor, rel_paths: list[str]) -> list[str]:
@@ -190,7 +190,7 @@ def restore_deleted(snapshot: Path, flavor: Flavor, rel_paths: list[str]) -> lis
                         while chunk := src.read(1 << 20):
                             out.write(chunk)
                 except BaseException:
-                    _remove(dest)
+                    remove_quietly(dest)
                     raise
                 mtime = time.mktime(info.date_time + (0, 0, -1))
                 os.utime(dest, (mtime, mtime))
@@ -241,10 +241,3 @@ def recovery_message(marker: Marker) -> str:
     return (f"The last clean of {marker.flavor} did not finish (it started {marker.started}).\n"
             f"A backup of the WTF folder from just before it is at: {marker.snapshot}\n"
             f"If files are missing: close WoW, then unzip it into {marker.flavor_path} to restore.")
-
-
-def _remove(path: Path) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        pass

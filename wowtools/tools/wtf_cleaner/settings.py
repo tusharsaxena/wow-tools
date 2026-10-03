@@ -5,11 +5,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from wowtools.core.config import Config
+from wowtools.core.journal import TOOLS_SUBDIR
+from wowtools.tools.wtf_cleaner.events import TOOL_NAME
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, Criteria
 from wowtools.tools.wtf_cleaner.safety import DEFAULT_KEEP_SNAPSHOTS
 
 SECTION = "wtf_cleaner"
-DEFAULT_BACKUP_SUBDIR = Path("wow-tools") / "wtf-cleaner"
+DEFAULT_BACKUP_SUBDIR = Path(TOOLS_SUBDIR) / TOOL_NAME
 DEFAULT_KEEP_JOURNALS = 10
 
 

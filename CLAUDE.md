@@ -13,7 +13,8 @@ Out-of-game WoW companion tools (Ka0s branded). Tools: WTF Cleaner (`wtf-cleaner
   `python3 scripts/build_release.py` (`docs/releasing.md`)
 
 Conventions:
-- Python 3.10 floor; `from __future__ import annotations` in every module; stdlib + `vendor/` only.
+- Python 3.10 floor; `from __future__ import annotations` in every module (`wowtools/`, `scripts/`, `tests/`);
+  stdlib + `vendor/` only.
 - `wowtools/core/*` and tool logic modules never import `textual`. Front ends are thin.
 - Config paths go through `core/paths.py` (stored in Windows form). Config lives in `config/`: `wow-tools.cfg`
   (`[general]`, shared) plus `<tool>.cfg` per tool. One instance at a time (`wow-tools.lock`, `core/lock.py`).
@@ -21,6 +22,8 @@ Conventions:
   `docs/events.md` after changing any registry.
 - One Textual app, `WowToolsApp` (`ui/suite_app.py`): tool menu first; each tool is a `ToolFlow` (`FLOW` in its
   `app.py`) that pushes its own screens and `close()`s back to the menu.
+- Shared dialogs (`ConfirmScreen`, `ProgressScreen`, tree tick helpers) live in `wowtools/ui/dialogs.py`; a tool
+  never imports another tool. `tests/test_structure.py` enforces this, the future import and import order.
 - Tests use `tests/fixtures.py` temp trees; never a real WoW install, never the network.
 - Textual tests subclass `tests.fixtures.TuiTestCase` (asyncio debug mode off; it made the suite ~10x slower).
 - Adding a tool: `docs/adding-a-tool.md`. Renaming one: a `ToolRename` line in `RENAMED_TOOLS`

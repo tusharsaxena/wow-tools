@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import tempfile
 import threading
 from pathlib import Path
@@ -10,12 +12,12 @@ from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.tools.screenshot_organizer import app as app_module
-from wowtools.tools.screenshot_organizer.app import ScreenshotSettingsScreen
 from wowtools.tools.screenshot_organizer import review_screen as review_module
+from wowtools.tools.screenshot_organizer.app import ScreenshotSettingsScreen
 from wowtools.tools.screenshot_organizer.journal import latest_undoable
 from wowtools.tools.screenshot_organizer.review_screen import ShotResultScreen, ShotReviewScreen
 from wowtools.tools.screenshot_organizer.settings import load_settings
-from wowtools.tools.wtf_cleaner.review_screen import ConfirmScreen
+from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 

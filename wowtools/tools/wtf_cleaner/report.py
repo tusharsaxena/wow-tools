@@ -5,9 +5,8 @@ from pathlib import Path
 
 from wowtools.core.install import ACCOUNT_WIDE, Flavor
 from wowtools.core.journal import friendly_stamp
+from wowtools.tools.wtf_cleaner.rules import DAY
 from wowtools.tools.wtf_cleaner.scanner import addon_name_for
-
-DAY = 86400.0
 
 CRITERION_LABELS = {
     "not_installed": "Addon is not installed",

@@ -7,15 +7,14 @@ from dataclasses import replace
 from pathlib import Path
 
 from wowtools.core.events import log_event
-from wowtools.core.fsutil import rename_no_replace
+from wowtools.core.fsutil import rename_no_replace, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.core.paths import to_native
 from wowtools.tools.screenshot_organizer.journal import (A_COPIED, A_DUPLICATE, A_MOVED, A_SOURCE_LEFT, mark_undone,
                                                          read_journal)
-from wowtools.tools.screenshot_organizer.organizer import (COPY_REMOVED, FAILED, RESTORED, UNDO_SKIPPED, OrganizeResult,
-                                                           Outcome, Progress, Rename, copy_verified, move_file,
-                                                           safe_progress)
 from wowtools.tools.screenshot_organizer.naming import day_parts, parse_shot_name
+from wowtools.tools.screenshot_organizer.organizer import (COPY_REMOVED, FAILED, RESTORED, UNDO_SKIPPED, OrganizeResult,
+                                                           Outcome, Progress, Rename, copy_verified, move_file)
 from wowtools.tools.screenshot_organizer.settings import SCREENSHOTS_DIR, target_root
 
 _DATE_PARTS = (4, 2, 2)  # YYYY, MM, DD
@@ -110,7 +109,7 @@ def _prune_date_folders(day_dirs: set[Path]) -> None:
 
 def undo(journal_path: Path, *, wow_root: Path, progress: Progress | None = None,
          rename: Rename = rename_no_replace) -> OrganizeResult:
-    report = safe_progress(progress)
+    report: Progress = safe_progress(progress)
     journal = read_journal(journal_path)
     result = OrganizeResult(dry_run=False, copy=bool(journal.header.get("copy")), journal_path=journal_path,
                             undo=True)

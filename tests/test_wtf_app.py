@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import tempfile
 import threading
@@ -10,28 +12,28 @@ from textual.widgets import Button, DataTable, Input, OptionList, ProgressBar, S
 
 from tests.fixtures import TuiTestCase, settle, build_wow_tree, make_config
 from wowtools.core import activity
-from wowtools.core.config import Config
 from wowtools.core.backup import BackupError
+from wowtools.core.config import Config
 from wowtools.core.events import capture_events
-from wowtools.tools.wtf_cleaner.app import CleanerSettingsScreen
 from wowtools.core.install import WowInstall
 from wowtools.tools.wtf_cleaner import multi
 from wowtools.tools.wtf_cleaner import review_screen as review_module
+from wowtools.tools.wtf_cleaner.app import CleanerSettingsScreen
 from wowtools.tools.wtf_cleaner.cleaner import CleanError, CleanResult, FileOutcome
+from wowtools.tools.wtf_cleaner.journal import clean_journal_dir, latest_undoable
 from wowtools.tools.wtf_cleaner.report import CRITERION_COLORS, RESULT_COLUMNS, result_rows
-from wowtools.tools.wtf_cleaner.review_screen import (CleanProgressScreen, ConfirmScreen, RecoveryScreen,
-                                                      ResultScreen, ReviewScreen)
+from wowtools.tools.wtf_cleaner.review_screen import CleanProgressScreen, RecoveryScreen, ResultScreen, ReviewScreen
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, criterion_counts
 from wowtools.tools.wtf_cleaner.safety import MARKER_NAME
 from wowtools.tools.wtf_cleaner.scanner import scan
-from wowtools.tools.wtf_cleaner.journal import clean_journal_dir, latest_undoable
 from wowtools.tools.wtf_cleaner.settings import load_settings
 from wowtools.tools.wtf_cleaner.undo import UndoResult
-from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
-from wowtools.ui.widgets import ButtonRow, Ka0sCheckbox, NavHint
 from wowtools.ui.account_screen import AccountScreen
+from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
+from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
+from wowtools.ui.widgets import ButtonRow, Ka0sCheckbox, NavHint
 
 SIZE = (140, 50)
 

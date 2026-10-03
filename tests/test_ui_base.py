@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import contextlib
 import tempfile
@@ -18,12 +20,12 @@ from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.core.updater import ReleaseInfo, UpdateError
+from wowtools.tools import TOOLS
+from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.base import Ka0sApp, UpdateProgressScreen, UpdateScreen
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
-from wowtools.tools import TOOLS
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.widgets import ButtonRow, NavHint
 

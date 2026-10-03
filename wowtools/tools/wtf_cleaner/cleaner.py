@@ -19,7 +19,7 @@ from typing import Callable
 from wowtools import __version__
 from wowtools.core.backup import BackupEntry, BackupError, create_backup
 from wowtools.core.events import log_event
-from wowtools.core.fsutil import free_name, rename_no_replace
+from wowtools.core.fsutil import free_name, rename_no_replace, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
 from wowtools.tools.wtf_cleaner.journal import CleanJournal
@@ -218,18 +218,6 @@ def _relative(path: Path, flavor: Flavor) -> str:
         return str(path)
 
 
-def _safe_progress(progress: CleanProgress | None) -> CleanProgress:
-    """Wrap a progress callback so an error inside it can never disturb (or roll back) a clean."""
-    def report(stage: str, current: int, total: int, detail: str = "") -> None:
-        if progress is None:
-            return
-        try:
-            progress(stage, current, total, detail)
-        except Exception:  # noqa: BLE001 - a broken progress display must not stop the clean
-            pass
-    return report
-
-
 def _take_safety_snapshot(flavor: Flavor, backup_dir: Path | None, now: datetime, rels: list[str],
                           report: CleanProgress) -> Path:
     """Snapshot the whole WTF folder and write the in-progress marker. Raises BackupError (nothing deleted)."""
@@ -291,7 +279,7 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
     """account is the scope of the clean (None = all accounts); it names the cleaned-files zip. journal (real
     cleans) is the run journal: opened before anything is touched, one entry after each delete."""
     now = now or datetime.now()
-    report = _safe_progress(progress)
+    report: CleanProgress = safe_progress(progress)
     selected = [(item, sv) for item in items for sv in item.files]
     log_event("clean.started", dry_run=dry_run, flavor=flavor.folder, items=len(items), files=len(selected),
               bytes=sum(sv.size for _, sv in selected), backup=backup)
