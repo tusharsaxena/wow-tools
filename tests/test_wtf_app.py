@@ -310,7 +310,7 @@ class RecoveryDialogTest(AppTestCase):
     def setUp(self):
         super().setUp()
         self.backup_dir.mkdir(parents=True)
-        self.snapshot = self.backup_dir / "backup" / "backup-20260101-000000.zip"
+        self.snapshot = self.backup_dir / "backup" / "backup-retail-20260101-000000.zip"
         self.snapshot.parent.mkdir(parents=True)
         self.snapshot.write_bytes(b"zip")
         (self.backup_dir / MARKER_NAME).write_text(json.dumps({

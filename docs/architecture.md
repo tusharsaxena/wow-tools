@@ -59,10 +59,11 @@ nothing; it takes no snapshot.
 
 ### Safety snapshot (`tools/wtf_cleaner/safety.py`)
 
-UI-free. `take_snapshot()` zips the whole `<flavor>/WTF` folder to `backup/backup-<stamp>.zip`
+UI-free. `take_snapshot()` zips the whole `<flavor>/WTF` folder to `backup/backup-<flavor>-<stamp>.zip`
 in the backup folder and verifies it; the user-facing name is "WTF backup". It is kept after the clean, and
-`prune_snapshots(backup_dir, keep)` deletes all but the newest `keep_backups` (`backup-<stamp>.zip` names only).
-The zip of the files a clean removes is `cleaned/cleaned-<account or all>-<stamp>.zip` (`cleaner.cleaned_zip_path`). `write_marker()` / `read_marker()` / `clear_marker()` manage
+`prune_snapshots(backup_dir, flavor_short, keep)` deletes all but that flavor's newest `keep_backups`
+(`backup-<flavor>-<stamp>.zip` names only).
+The zip of the files a clean removes is `cleaned/cleaned-<flavor>-<account or all>-<stamp>.zip` (`cleaner.cleaned_zip_path`). `write_marker()` / `read_marker()` / `clear_marker()` manage
 `clean-in-progress.json` (`Marker`: snapshot, flavor, flavor_path, started, pid, suite_version, files).
 `restore_deleted()` extracts exactly the given relative paths and never overwrites an existing file.
 `recovery_message()` is the text the TUI's `RecoveryScreen` shows for a leftover marker.

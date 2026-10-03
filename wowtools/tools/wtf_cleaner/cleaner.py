@@ -296,9 +296,10 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
 
     if snapshot is not None and backup_dir is not None:
         _finish_safety(result, snapshot, backup_dir, flavor, deleted, report)
-        result.pruned = prune_snapshots(backup_dir, keep_backups)
+        result.pruned = prune_snapshots(backup_dir, flavor.short_name, keep_backups)
         if result.pruned:
-            log_event("snapshot.pruned", keep=keep_backups, removed=[str(p) for p in result.pruned])
+            log_event("snapshot.pruned", flavor=flavor.folder, keep=keep_backups,
+                      removed=[str(p) for p in result.pruned])
 
     log_event("clean.completed", dry_run=dry_run, level="warning" if result.failed else None,
               deleted=len(result.deleted), would_delete=len(result.would_delete),
@@ -321,9 +322,10 @@ def _finish_safety(result: CleanResult, snapshot: Path, backup_dir: Path, flavor
         log_event("clean.validated", flavor=flavor.folder, deleted=len(deleted), zip=str(snapshot))
 
 
-def cleaned_zip_path(backup_dir: Path, account: str | None, now: datetime) -> Path:
-    """<backup folder>/cleaned/cleaned-<account or all>-<YYYYMMDD-HHMMSS>.zip"""
-    return backup_dir / CLEANED_SUBDIR / f"cleaned-{account or ALL_ACCOUNTS_LABEL}-{now:%Y%m%d-%H%M%S}.zip"
+def cleaned_zip_path(backup_dir: Path, flavor_short: str, account: str | None, now: datetime) -> Path:
+    """<backup folder>/cleaned/cleaned-<flavor>-<account or all>-<YYYYMMDD-HHMMSS>.zip"""
+    return (backup_dir / CLEANED_SUBDIR
+            / f"cleaned-{flavor_short}-{account or ALL_ACCOUNTS_LABEL}-{now:%Y%m%d-%H%M%S}.zip")
 
 
 def _selective_backup(result: CleanResult, ready: list[tuple[ProposalItem, SVFile]], flavor: Flavor,
@@ -331,7 +333,7 @@ def _selective_backup(result: CleanResult, ready: list[tuple[ProposalItem, SVFil
                       account: str | None) -> None:
     if backup_dir is None:
         raise BackupError("no backup folder is configured")
-    dest = cleaned_zip_path(backup_dir, account, now)
+    dest = cleaned_zip_path(backup_dir, flavor.short_name, account, now)
     ready_bytes = sum(sv.size for _, sv in ready)
     meta = {"tool": TOOL_NAME, "suite_version": __version__, "flavor": flavor.folder,
             "account": account, "created": now.isoformat(timespec="seconds")}

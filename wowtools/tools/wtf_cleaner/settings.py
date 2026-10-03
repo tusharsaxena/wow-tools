@@ -18,7 +18,7 @@ class CleanerSettings:
     backup_before_delete: bool = True
     backup_dir: Path | None = None
     last_account: str | None = None  # None (stored as empty) means all accounts
-    keep_backups: int = DEFAULT_KEEP_SNAPSHOTS  # how many WTF backups (backup/backup-<stamp>.zip) to keep
+    keep_backups: int = DEFAULT_KEEP_SNAPSHOTS  # WTF backups to keep per flavor (backup/backup-<flavor>-<stamp>.zip)
 
 
 def load_settings(cfg: Config) -> CleanerSettings:

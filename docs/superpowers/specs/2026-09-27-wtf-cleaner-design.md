@@ -574,12 +574,13 @@ either way.
 ## Addendum D: zip layout and keeping WTF backups (2026-10-03)
 
 - **Layout.** Under the backup folder (default `<WoW>/wow-tools/wtf-cleaner`):
-  - `backup/backup-<YYYYMMDD-HHMMSS>.zip` is the whole-WTF snapshot from A.4, called the "WTF backup" in the UI.
-  - `cleaned/cleaned-<account|all>-<YYYYMMDD-HHMMSS>.zip` is the selective zip from A.2, called the "cleaned-files
+  - `backup/backup-<flavor>-<YYYYMMDD-HHMMSS>.zip` is the whole-WTF snapshot from A.4, called the "WTF backup" in the UI.
+  - `cleaned/cleaned-<flavor>-<account|all>-<YYYYMMDD-HHMMSS>.zip` is the selective zip from A.2, called the "cleaned-files
     zip". Its manifest gains `account`.
 - **Keeping WTF backups.** They are no longer deleted after a clean, nor when the cleaned-files zip fails.
-  - After each real clean, `prune_snapshots()` keeps the newest `[wtf_cleaner] keep_backups` (default 5, at least 1),
-    which emits `snapshot.pruned`. Only `backup-<stamp>.zip` names are ever removed.
+  - After each real clean, `prune_snapshots()` keeps the flavor's newest `[wtf_cleaner] keep_backups` (default 5, at least 1),
+    which emits `snapshot.pruned`. Only `backup-<flavor>-<stamp>.zip` names of that flavor are ever removed. `<flavor>` is
+    `Flavor.short_name` (`retail`, `classic_era`, ...).
   - `snapshot.removed` and `snapshot.kept` are retired; a failed post-clean check emits `clean.check_failed`.
 - **Cleaned-files zips** are never deleted by the tool.
 - **Old names.** Zips from earlier versions (`wtf-cleaner_*.zip`, `wtf-snapshot_*.zip`) are left alone.

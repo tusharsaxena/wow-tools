@@ -74,9 +74,9 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `scan.completed` | info | A scan finished, with counts. |
 | `scan.started` | info | A scan of one flavor started. |
 | `scan.warning` | warning | Something was skipped during a scan (unreadable folder, bad AddOns.txt line). |
-| `snapshot.created` | info | The backup of the whole WTF folder (backup/backup-<stamp>.zip) was written and verified. |
+| `snapshot.created` | info | The backup of the whole WTF folder (backup/backup-<flavor>-<stamp>.zip) was written and verified. |
 | `snapshot.failed` | error | The WTF backup failed; nothing was deleted. |
-| `snapshot.pruned` | info | Older WTF backups were deleted to keep the newest N (keep_backups). |
+| `snapshot.pruned` | info | Older WTF backups of the flavor were deleted to keep its newest N (keep_backups). |
 | `sv.deleted` | info | A SavedVariables file was deleted. |
 | `sv.failed` | error | A SavedVariables file could not be deleted. |
 | `sv.skipped` | warning | A selected file was skipped because it vanished or changed after the scan. |

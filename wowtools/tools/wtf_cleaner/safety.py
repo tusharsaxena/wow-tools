@@ -1,7 +1,8 @@
 """Safety net for a real clean: a verified backup of the whole WTF folder plus a marker file (spec A.4, D).
 
 UI-free. The backup ("snapshot" in the code) is taken before anything is deleted, to
-<backup folder>/backup/backup-<YYYYMMDD-HHMMSS>.zip, and kept afterwards; prune_snapshots() keeps the newest N.
+<backup folder>/backup/backup-<flavor>-<YYYYMMDD-HHMMSS>.zip, and kept afterwards; prune_snapshots() keeps the
+newest N of each flavor.
 The marker says a clean is in progress. After an unexpected error the files this run deleted are put back from
 the snapshot. Nothing here ever restores on its own after a crash: a leftover marker only produces a notice.
 """
@@ -22,7 +23,7 @@ from wowtools.core.install import Flavor
 
 MARKER_NAME = "clean-in-progress.json"
 SNAPSHOT_SUBDIR = "backup"
-SNAPSHOT_NAME = re.compile(r"^backup-(\d{8}-\d{6})\.zip$")
+SNAPSHOT_NAME = re.compile(r"^backup-(?P<flavor>.+)-(?P<stamp>\d{8}-\d{6})\.zip$")
 DEFAULT_KEEP_SNAPSHOTS = 5
 
 SnapshotProgress = Callable[[str, int, int, str], None]
@@ -67,7 +68,7 @@ def wtf_files(flavor: Flavor, progress: SnapshotProgress | None = None, stage: s
 def take_snapshot(flavor: Flavor, backup_dir: Path, now: datetime,
                   progress: SnapshotProgress | None = None) -> Path:
     """Zip every regular file under <flavor>/WTF (stored as WTF/...), verify it, then move it into place."""
-    dest = snapshot_path(backup_dir, now)
+    dest = snapshot_path(backup_dir, flavor.short_name, now)
     partial = dest.with_name(dest.name + ".partial")
     try:
         if not flavor.wtf_dir.is_dir():
@@ -98,19 +99,21 @@ def take_snapshot(flavor: Flavor, backup_dir: Path, now: datetime,
     return dest
 
 
-def snapshot_path(backup_dir: Path, now: datetime) -> Path:
-    return backup_dir / SNAPSHOT_SUBDIR / f"backup-{now:%Y%m%d-%H%M%S}.zip"
+def snapshot_path(backup_dir: Path, flavor_short: str, now: datetime) -> Path:
+    """<backup folder>/backup/backup-<flavor>-<YYYYMMDD-HHMMSS>.zip, e.g. backup-retail-20261003-140311.zip"""
+    return backup_dir / SNAPSHOT_SUBDIR / f"backup-{flavor_short}-{now:%Y%m%d-%H%M%S}.zip"
 
 
-def prune_snapshots(backup_dir: Path, keep: int) -> list[Path]:
-    """Delete all but the newest `keep` (at least 1) WTF backups (backup-<stamp>.zip) in <backup_dir>/backup.
-    Other files are never touched. Returns what was removed."""
+def prune_snapshots(backup_dir: Path, flavor_short: str, keep: int) -> list[Path]:
+    """Delete all but the newest `keep` (at least 1) WTF backups of this flavor (backup-<flavor>-<stamp>.zip) in
+    <backup_dir>/backup. Other flavors' backups and other files are never touched. Returns what was removed."""
     folder = backup_dir / SNAPSHOT_SUBDIR
     try:
-        found = sorted((p for p in folder.iterdir() if SNAPSHOT_NAME.match(p.name) and p.is_file()),
-                       key=lambda p: p.name, reverse=True)
+        matches = [(m, p) for p in folder.iterdir() if (m := SNAPSHOT_NAME.match(p.name)) and p.is_file()]
     except OSError:
         return []
+    found = [p for m, p in sorted(matches, key=lambda mp: mp[0]["stamp"], reverse=True)
+             if m["flavor"] == flavor_short]
     removed: list[Path] = []
     for path in found[max(1, keep):]:
         try:

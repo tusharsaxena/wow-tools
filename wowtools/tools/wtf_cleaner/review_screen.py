@@ -673,7 +673,7 @@ class ReviewScreen(Screen[str]):
         if not dry_run:
             lines.append(f"The whole WTF folder is backed up first to: "
                          f"{backup_dir / SNAPSHOT_SUBDIR if backup_dir else '?'} "
-                         f"(the newest {self.settings.keep_backups} are kept)")
+                         f"(the newest {self.settings.keep_backups} of this flavor are kept)")
         if dry_run:
             lines.append(("DRY RUN: the cleaned-files zip is written, nothing is deleted." if backup
                           else "DRY RUN: nothing will be written or deleted."))

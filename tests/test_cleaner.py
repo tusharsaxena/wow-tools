@@ -18,8 +18,8 @@ from wowtools.tools.wtf_cleaner.safety import MARKER_NAME
 from wowtools.tools.wtf_cleaner.scanner import SVFile, scan
 
 WHEN = datetime(2026, 9, 27, 14, 3, 11)
-CLEANED = "cleaned/cleaned-all-20260927-140311.zip"
-SNAPSHOT = "backup/backup-20260927-140311.zip"
+CLEANED = "cleaned/cleaned-retail-all-20260927-140311.zip"
+SNAPSHOT = "backup/backup-retail-20260927-140311.zip"
 
 
 def files_under(folder: Path) -> list[str]:
@@ -431,7 +431,7 @@ class ZipLayoutTest(unittest.TestCase):
     def test_cleaned_zip_is_named_after_the_account(self):
         result = execute(self.proposal.items, self.retail, dry_run=True, backup=True, backup_dir=self.backup_dir,
                          now=WHEN, account="ACCT1")
-        self.assertEqual(result.backup_path, self.backup_dir / "cleaned" / "cleaned-ACCT1-20260927-140311.zip")
+        self.assertEqual(result.backup_path, self.backup_dir / "cleaned" / "cleaned-retail-ACCT1-20260927-140311.zip")
         with zipfile.ZipFile(result.backup_path) as zf:
             self.assertEqual(json.loads(zf.read("manifest.json"))["account"], "ACCT1")
 
@@ -439,14 +439,15 @@ class ZipLayoutTest(unittest.TestCase):
         folder = self.backup_dir / "backup"
         folder.mkdir(parents=True)
         for day in range(1, 7):
-            (folder / f"backup-202609{day:02d}-120000.zip").write_bytes(b"old")
+            (folder / f"backup-retail-202609{day:02d}-120000.zip").write_bytes(b"old")
+        (folder / "backup-classic_era-20260901-120000.zip").write_bytes(b"other flavor")
         (folder / "notes.txt").write_text("mine")
         with capture_events() as records:
             result = execute(self.proposal.items, self.retail, dry_run=False, backup=True,
                              backup_dir=self.backup_dir, now=WHEN, keep_backups=3)
         self.assertEqual(sorted(p.name for p in folder.iterdir()),
-                         ["backup-20260905-120000.zip", "backup-20260906-120000.zip", "backup-20260927-140311.zip",
-                          "notes.txt"])
+                         ["backup-classic_era-20260901-120000.zip", "backup-retail-20260905-120000.zip",
+                          "backup-retail-20260906-120000.zip", "backup-retail-20260927-140311.zip", "notes.txt"])
         self.assertEqual(len(result.pruned), 4)
         self.assertIn("snapshot.pruned", [r["event"] for r in records])
 
@@ -454,7 +455,7 @@ class ZipLayoutTest(unittest.TestCase):
         folder = self.backup_dir / "backup"
         folder.mkdir(parents=True)
         for day in range(1, 4):
-            (folder / f"backup-202609{day:02d}-120000.zip").write_bytes(b"old")
+            (folder / f"backup-retail-202609{day:02d}-120000.zip").write_bytes(b"old")
         execute(self.proposal.items, self.retail, dry_run=True, backup=True, backup_dir=self.backup_dir,
                 now=WHEN, keep_backups=1)
         self.assertEqual(len(list(folder.iterdir())), 3)

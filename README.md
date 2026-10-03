@@ -160,19 +160,20 @@ Everything the cleaner writes goes in its backup folder, a WTF Cleaner setting (
 
 ```
 wow-tools\wtf-cleaner\
-  backup\backup-<YYYYMMDD-HHMMSS>.zip                  the whole WTF folder, taken before each clean
-  cleaned\cleaned-<account>-<YYYYMMDD-HHMMSS>.zip      only the files that clean removed
+  backup\backup-<flavor>-<YYYYMMDD-HHMMSS>.zip                  the whole WTF folder, taken before each clean
+  cleaned\cleaned-<flavor>-<account>-<YYYYMMDD-HHMMSS>.zip      only the files that clean removed
 ```
 
-`<account>` is the account you picked, or `all` for "All accounts".
+`<flavor>` is the flavor folder's short name (`retail`, `classic_era`, …), and `<account>` is the account you
+picked, or `all` for "All accounts". For example `cleaned-retail-all-20261003-140311.zip`.
 
 - **Cleaned files** (`cleaned\`). Before deleting, the cleaner zips the files it is about to remove, then
   re-opens the zip and checks every file. **If it can't be written or verified, nothing is deleted.** Each zip has
   a `manifest.json` listing every file, its size and why it was removed. These zips are never deleted by the tool.
   You can turn them off in settings, but it isn't recommended.
-- **WTF backups** (`backup\`). See [Backup of the WTF folder](#backup-of-the-wtf-folder). The newest 5 are kept
-  (`keep_backups` in settings); older ones are deleted after each clean. Only files named `backup-<stamp>.zip`
-  are ever deleted.
+- **WTF backups** (`backup\`). See [Backup of the WTF folder](#backup-of-the-wtf-folder). The newest 5 **of each flavor**
+  are kept (`keep_backups` in settings); older ones of that flavor are deleted after each clean. Only files named
+  `backup-<flavor>-<stamp>.zip` are ever deleted.
 
 Zips from older versions (`wtf-cleaner_<flavor>_*.zip`, `wtf-snapshot_*.zip` in the folder itself) are left alone.
 
@@ -192,13 +193,13 @@ Dry runs skip both checks.
 
 A real clean (not a dry run) also protects you against a crash halfway through. Before deleting anything it:
 
-1. zips the **whole** `<flavor>\WTF` folder to `<backup folder>\backup\backup-<YYYYMMDD-HHMMSS>.zip` and
+1. zips the **whole** `<flavor>\WTF` folder to `<backup folder>\backup\backup-<flavor>-<YYYYMMDD-HHMMSS>.zip` and
    verifies it;
 2. writes a marker file, `<backup folder>\clean-in-progress.json`, that names that backup and the files about
    to be deleted.
 
 If the backup can't be written, the clean stops and nothing is deleted. The backup is **kept** after the clean
-(the newest `keep_backups`, default 5, are kept).
+(the newest `keep_backups` of each flavor, default 5, are kept).
 
 When the deleting is done (including when a few files could not be deleted), the cleaner checks the WTF folder
 against the backup:
@@ -228,7 +229,7 @@ cleaner **never restores on its own**. Instead:
 While that marker exists, new real cleans are refused, because they would lose track of the earlier backup.
 Dry runs still work. Use Dismiss, or delete `clean-in-progress.json`, to clean again.
 
-**To restore by hand:** close WoW, then unzip that `backup\backup-<stamp>.zip` **into the flavor folder** (for
+**To restore by hand:** close WoW, then unzip that `backup\backup-<flavor>-<stamp>.zip` **into the flavor folder** (for
 example `World of Warcraft\_retail_`), keeping the folder structure. The paths inside start with `WTF\`. This
 puts back the whole WTF folder as it was before that clean, so only do it if files are really missing.
 
@@ -274,7 +275,7 @@ next start, and the old file is removed.
 | `wtf-cleaner.cfg` `[wtf_cleaner] criterion_*` | `true` | Default on/off for each criterion |
 | `wtf-cleaner.cfg` `[wtf_cleaner] backup_before_delete` | `true` | Zip the files to clean (`cleaned\`) before deleting |
 | `wtf-cleaner.cfg` `[wtf_cleaner] backup_dir` | `<wow_path>\wow-tools\wtf-cleaner` | Holds `backup\` and `cleaned\` |
-| `wtf-cleaner.cfg` `[wtf_cleaner] keep_backups` | `5` | How many WTF backups (`backup\backup-*.zip`) to keep |
+| `wtf-cleaner.cfg` `[wtf_cleaner] keep_backups` | `5` | How many WTF backups (`backup\backup-<flavor>-*.zip`) to keep per flavor |
 | `wtf-cleaner.cfg` `[wtf_cleaner] last_account` | (empty = all accounts) | Pre-selected account |
 
 ## Updates
