@@ -127,9 +127,9 @@ the tree:
 | `q` | Quit |
 
 While a clean runs, a progress window shows the current stage, a percentage bar and the current file:
-checking the selected files, checking for locked files, listing the WTF folder, taking and verifying the safety
-snapshot, writing and verifying the backup, deleting, and checking the result. A dry run skips the lock check,
-the snapshot and the result check. When a criterion or the max age changes, the tree shows a loading spinner
+checking the selected files, checking for locked files, listing the WTF folder, backing up and verifying the WTF
+folder, zipping and verifying the files to clean, deleting, and checking the result. A dry run skips the lock
+check, the WTF backup and the result check. When a criterion or the max age changes, the tree shows a loading spinner
 and the summary bar says "Updating the list…" until the new list is ready. The results screen then shows a summary table and a table of every file
 with its status, account, character, addon, size and reasons.
 
@@ -149,20 +149,32 @@ leave them.
 
 ### Dry run
 
-A dry run (the **Dry run** button or `y`) writes and verifies the backup zip, exactly as a real
-clean would, and then deletes nothing. It reports what *would* be deleted, and it's recorded in the log. It
-takes no safety snapshot. If backups are turned off, a dry run writes nothing at all.
+A dry run (the **Dry run** button or `y`) writes and verifies the cleaned-files zip, exactly as a real clean
+would, and then deletes nothing. It reports what *would* be deleted, and it's recorded in the log. It takes no
+WTF backup. If zipping the cleaned files is turned off, a dry run writes nothing at all.
 
-### Backups
+### Where the zips go
 
-The backup folder is a WTF Cleaner setting (press `s`, then the WTF Cleaner settings screen). By default it is
-`<WoW folder>\wow-tools\wtf-cleaner`.
+Everything the cleaner writes goes in its backup folder, a WTF Cleaner setting (press `s`). By default that is
+`<WoW folder>\wow-tools\wtf-cleaner`:
 
-Before deleting, the cleaner writes
-`<backup folder>\wtf-cleaner_<flavor>_<YYYYMMDD-HHMMSS>.zip`, then re-opens it and checks every file.
-**If the backup can't be written or verified, nothing is deleted.** Each zip contains a
-`manifest.json` that lists every file, its size and why it was removed. You can turn backups off in settings, but it
-isn't recommended.
+```
+wow-tools\wtf-cleaner\
+  backup\backup-<YYYYMMDD-HHMMSS>.zip                  the whole WTF folder, taken before each clean
+  cleaned\cleaned-<account>-<YYYYMMDD-HHMMSS>.zip      only the files that clean removed
+```
+
+`<account>` is the account you picked, or `all` for "All accounts".
+
+- **Cleaned files** (`cleaned\`). Before deleting, the cleaner zips the files it is about to remove, then
+  re-opens the zip and checks every file. **If it can't be written or verified, nothing is deleted.** Each zip has
+  a `manifest.json` listing every file, its size and why it was removed. These zips are never deleted by the tool.
+  You can turn them off in settings, but it isn't recommended.
+- **WTF backups** (`backup\`). See [Backup of the WTF folder](#backup-of-the-wtf-folder). The newest 5 are kept
+  (`keep_backups` in settings); older ones are deleted after each clean. Only files named `backup-<stamp>.zip`
+  are ever deleted.
+
+Zips from older versions (`wtf-cleaner_<flavor>_*.zip`, `wtf-snapshot_*.zip` in the folder itself) are left alone.
 
 ### Locked files
 
@@ -170,61 +182,62 @@ Some companion apps hold SavedVariables files open, which stops Windows from del
 client is known to do this, and so is the WeakAuras Companion. Before a real clean:
 
 - the confirm dialog warns you if either app is running;
-- before the snapshot, each selected file is renamed aside and straight back. This is a lock test that fails
+- before the WTF backup, each selected file is renamed aside and straight back. This is a lock test that fails
   exactly when a delete would fail. If any file is locked, the clean stops with nothing deleted and names the
   locked files (`clean.locked`). Close the app and clean again.
 
 Dry runs skip both checks.
 
-### Safety snapshot
+### Backup of the WTF folder
 
 A real clean (not a dry run) also protects you against a crash halfway through. Before deleting anything it:
 
-1. zips the **whole** `<flavor>\WTF` folder to `<backup folder>\wtf-snapshot_<flavor>_<YYYYMMDD-HHMMSS>.zip`
-   and verifies it;
-2. writes a marker file, `<backup folder>\clean-in-progress.json`, that names the snapshot and the files about
+1. zips the **whole** `<flavor>\WTF` folder to `<backup folder>\backup\backup-<YYYYMMDD-HHMMSS>.zip` and
+   verifies it;
+2. writes a marker file, `<backup folder>\clean-in-progress.json`, that names that backup and the files about
    to be deleted.
 
-If the snapshot can't be written, the clean stops and nothing is deleted.
+If the backup can't be written, the clean stops and nothing is deleted. The backup is **kept** after the clean
+(the newest `keep_backups`, default 5, are kept).
 
 When the deleting is done (including when a few files could not be deleted), the cleaner checks the WTF folder
-against the snapshot before removing it:
+against the backup:
 
 - every file it deleted is really gone;
-- every other file in the snapshot is still on disk;
-- with backups on, the backup zip lists every deleted file at the right size.
+- every other file in the backup is still on disk;
+- with the cleaned-files zip on, it lists every deleted file at the right size.
 
-If the check passes, the snapshot and the marker are removed. If it finds anything, the **snapshot is kept**,
-the results screen shows "KEPT at <path>" with the first problem, and every problem is logged
-(`snapshot.kept`). The marker is cleared either way, because the clean did finish.
+The results screen shows the backup's path and the check's result. If the check finds anything, the first
+problem is shown there and every problem is logged (`clean.check_failed`). The marker is cleared either way,
+because the clean did finish.
 
 If something unexpected stops the clean partway (an error, or `Ctrl+C`), the cleaner puts back **only the files
-this run had already deleted**, taking them from the snapshot. It never overwrites a file that exists on
-disk. It then reports that the clean stopped and how many files were restored. If that restore fails, the marker and the snapshot are
-kept and the error names the snapshot.
+this run had already deleted**, taking them from the backup. It never overwrites a file that exists on disk. It
+then reports that the clean stopped and how many files were restored. If that restore fails, the marker is kept
+and the error names the backup.
 
 ### After an interrupted clean
 
 If the program itself was killed mid-clean (power cut, closed window), the marker is still there next time. The
 cleaner **never restores on its own**. Instead:
 
-- The TUI shows a warning with when the clean started, where the snapshot is and how to restore it by hand.
-  **Dismiss (keep the snapshot)** removes the marker and leaves the snapshot in place. **Remind me next time**
+- The app shows a warning with when the clean started, where its WTF backup is and how to restore it by hand.
+  **Dismiss (keep the backup)** removes the marker and leaves the backup in place. **Remind me next time**
   keeps both.
 
-While that marker exists, new real cleans are refused, because they would lose track of the earlier snapshot.
+While that marker exists, new real cleans are refused, because they would lose track of the earlier backup.
 Dry runs still work. Use Dismiss, or delete `clean-in-progress.json`, to clean again.
 
-**To restore by hand:** close WoW, then unzip `wtf-snapshot_<flavor>_*.zip` **into the flavor folder** (for
+**To restore by hand:** close WoW, then unzip that `backup\backup-<stamp>.zip` **into the flavor folder** (for
 example `World of Warcraft\_retail_`), keeping the folder structure. The paths inside start with `WTF\`. This
-puts back the whole WTF folder as it was before that clean, so only do it if files are really missing. Delete the
-snapshot once you no longer need it.
+puts back the whole WTF folder as it was before that clean, so only do it if files are really missing.
 
 ### Restoring a backup
 
-Close WoW, then unzip the backup **into the flavor folder** (for example `World of Warcraft\_retail_`), keeping
-the folder structure. The paths inside the zip start with `WTF\Account\…`, so the files land back where they
-were. You can ignore `manifest.json`.
+- **Some cleaned files:** close WoW, then unzip the `cleaned\cleaned-…zip` **into the flavor folder** (for example `World of Warcraft\_retail_`),
+  keeping the folder structure. The paths inside the zip start with `WTF\Account\…`, so the files land back where
+  they were. You can ignore `manifest.json`.
+- **The whole WTF folder:** the same, with a `backup\backup-…zip` (its paths start with `WTF\`).
 
 ### Is WoW running?
 
@@ -259,8 +272,9 @@ next start, and the old file is removed.
 | `wow-tools.cfg` `[general] log_retention_days` | `90` | Delete log files older than this |
 | `wtf-cleaner.cfg` `[wtf_cleaner] max_age_days` | `90` | Age limit for `older_than` |
 | `wtf-cleaner.cfg` `[wtf_cleaner] criterion_*` | `true` | Default on/off for each criterion |
-| `wtf-cleaner.cfg` `[wtf_cleaner] backup_before_delete` | `true` | Zip before deleting |
-| `wtf-cleaner.cfg` `[wtf_cleaner] backup_dir` | `<wow_path>\wow-tools\wtf-cleaner` | Where backup zips and safety snapshots go |
+| `wtf-cleaner.cfg` `[wtf_cleaner] backup_before_delete` | `true` | Zip the files to clean (`cleaned\`) before deleting |
+| `wtf-cleaner.cfg` `[wtf_cleaner] backup_dir` | `<wow_path>\wow-tools\wtf-cleaner` | Holds `backup\` and `cleaned\` |
+| `wtf-cleaner.cfg` `[wtf_cleaner] keep_backups` | `5` | How many WTF backups (`backup\backup-*.zip`) to keep |
 | `wtf-cleaner.cfg` `[wtf_cleaner] last_account` | (empty = all accounts) | Pre-selected account |
 
 ## Updates

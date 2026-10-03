@@ -59,8 +59,10 @@ nothing; it takes no snapshot.
 
 ### Safety snapshot (`tools/wtf_cleaner/safety.py`)
 
-UI-free. `take_snapshot()` zips the whole `<flavor>/WTF` folder to `wtf-snapshot_<flavor>_<stamp>.zip`
-in the backup folder and verifies it. `write_marker()` / `read_marker()` / `clear_marker()` manage
+UI-free. `take_snapshot()` zips the whole `<flavor>/WTF` folder to `backup/backup-<stamp>.zip`
+in the backup folder and verifies it; the user-facing name is "WTF backup". It is kept after the clean, and
+`prune_snapshots(backup_dir, keep)` deletes all but the newest `keep_backups` (`backup-<stamp>.zip` names only).
+The zip of the files a clean removes is `cleaned/cleaned-<account or all>-<stamp>.zip` (`cleaner.cleaned_zip_path`). `write_marker()` / `read_marker()` / `clear_marker()` manage
 `clean-in-progress.json` (`Marker`: snapshot, flavor, flavor_path, started, pid, suite_version, files).
 `restore_deleted()` extracts exactly the given relative paths and never overwrites an existing file.
 `recovery_message()` is the text the TUI's `RecoveryScreen` shows for a leftover marker.
@@ -71,8 +73,10 @@ In `cleaner.execute`:
 - A leftover marker from an earlier clean also refuses a real clean.
 - An unexpected exception while deleting (anything but a per-file `OSError`, including `KeyboardInterrupt`)
   restores only this run's deletions and raises `CleanError` (with `.restored`).
-- If that restore fails, the marker and snapshot are kept.
-- On success (including per-file failures) the snapshot and marker are removed.
+- If that restore fails, the marker is kept.
+- On success (including per-file failures) `check_clean()` compares the WTF folder with the snapshot
+  (`clean.validated`, or `clean.check_failed` with the problems in `CleanResult.check_problems`), the marker is
+  cleared, the snapshot is kept, and older snapshots are pruned (`snapshot.pruned`).
 - Nothing ever restores automatically at start-up.
 
 ### Progress callbacks

@@ -57,26 +57,26 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 
 | Event | Level | Description |
 |---|---|---|
-| `backup.created` | info | A backup zip was written and verified (a dry run writes it too). |
-| `backup.failed` | error | The backup failed; nothing was deleted. |
+| `backup.created` | info | The cleaned-files zip was written and verified (a dry run writes it too). |
+| `backup.failed` | error | The cleaned-files zip failed; nothing was deleted. |
+| `clean.check_failed` | warning | The post-clean check found problems; see the WTF backup it names. |
 | `clean.completed` | info | A clean finished (logged at warning if any file failed). |
-| `clean.locked` | error | A real clean stopped before the snapshot: selected files are locked by another program. |
+| `clean.locked` | error | A real clean stopped before the WTF backup: selected files are locked by another program. |
 | `clean.started` | info | A clean (or dry run) started. |
-| `clean.validated` | info | After a clean, the WTF folder matched its safety snapshot and backup zip. |
+| `clean.validated` | info | After a clean, the WTF folder matched the WTF backup and the cleaned-files zip. |
 | `locker.running_warning` | warning | A program known to lock WTF files (e.g. the Raider.IO client) appears to be running. |
 | `proposal.built` | info | The cleanup proposal was built from scan results and criteria. |
 | `proposal.item` | debug | One addon group in the proposal. |
 | `recovery.incomplete_clean` | warning | A marker from an unfinished clean was found at startup. |
 | `restore.completed` | warning | A clean stopped unexpectedly; the files it had deleted were restored. |
-| `restore.failed` | error | Restoring from the safety snapshot failed; the marker and snapshot were kept. |
+| `restore.failed` | error | Restoring from the WTF backup failed; the marker was kept. |
 | `scan.addons` | debug | Installed and enabled addon lists found by the scan. |
 | `scan.completed` | info | A scan finished, with counts. |
 | `scan.started` | info | A scan of one flavor started. |
 | `scan.warning` | warning | Something was skipped during a scan (unreadable folder, bad AddOns.txt line). |
-| `snapshot.created` | info | The safety snapshot of the whole WTF folder was written and verified. |
-| `snapshot.failed` | error | The safety snapshot failed; nothing was deleted. |
-| `snapshot.kept` | warning | The post-clean check found problems, so the safety snapshot was kept. |
-| `snapshot.removed` | info | The clean finished, so its safety snapshot and marker were removed. |
+| `snapshot.created` | info | The backup of the whole WTF folder (backup/backup-<stamp>.zip) was written and verified. |
+| `snapshot.failed` | error | The WTF backup failed; nothing was deleted. |
+| `snapshot.pruned` | info | Older WTF backups were deleted to keep the newest N (keep_backups). |
 | `sv.deleted` | info | A SavedVariables file was deleted. |
 | `sv.failed` | error | A SavedVariables file could not be deleted. |
 | `sv.skipped` | warning | A selected file was skipped because it vanished or changed after the scan. |
