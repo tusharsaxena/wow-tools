@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 
 from wowtools.core.bootstrap import REPO_ROOT
+from wowtools.core.paths import is_wsl
 
 LOCK_PATH = REPO_ROOT / "wow-tools.lock"
 
@@ -50,7 +51,9 @@ class LockInfo:
 
 
 def _platform() -> str:
-    return "wsl" if "microsoft" in platform.release().lower() else platform.system().lower()
+    """"wsl", "linux", "windows", "darwin", ... WSL is detected the one way the suite uses everywhere (paths.is_wsl),
+    so the stale check and the platform match never disagree with path handling."""
+    return "wsl" if is_wsl() else platform.system().lower()
 
 
 class InstanceLock:
