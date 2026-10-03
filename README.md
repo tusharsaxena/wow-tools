@@ -44,7 +44,8 @@ on their own.
 1. **Your World of Warcraft folder** (once, shared by every tool). This is the folder that contains `_retail_`,
    `_classic_` and so on. Common locations on every drive are detected for you.
 2. **That tool's settings.** For the WTF Cleaner: the age limit, which criteria to use, whether to back up before
-   deleting, and the **backup folder**. Leave the backup folder empty to use `<WoW folder>\wow-tools\wtf-cleaner`.
+   deleting, the **backup folder**, and how many WTF backups and run journals to keep. Leave the backup folder
+   empty to use `<WoW folder>\wow-tools\wtf-cleaner`.
    For the Screenshot Organizer: the destination folder (empty = organise in place), how many run journals to
    keep, and whether to copy instead of move.
 
@@ -105,7 +106,8 @@ is one more level on top: All flavors → flavor → account → …, and the ti
 age apply across every flavor.
 Every account in scope is listed; one with nothing to clean says so, and so does a flavor with nothing to clean. Everything starts ticked. A progress bar shows while the scan runs.
 
-The left panel holds the criteria, the max age box and three buttons: **Clean**, **Dry run** and **Rescan**.
+The left panel holds the criteria, the max age box and the buttons: **Clean**, **Dry run**, **Rescan** and, on
+its own row, **Undo last clean** (see [Undo last clean](#undo-last-clean)).
 Each criterion shows how many files it matches on its own, for example `1 Not installed (672 files)`. The counts
 update after each scan and whenever the max age changes. A ticked criterion shows a bright `✔` and an unticked
 one a dimmed `✘`. The tree uses the same marks.
@@ -129,6 +131,7 @@ the tree:
 | `c` | **Clean** the ticked files (asks for confirmation first; the dialog starts on **No**) |
 | `y` | **Dry run** on the ticked files (asks first; the dialog starts on **Yes**) |
 | `r` | Rescan |
+| `z` | **Undo last clean** (asks first; the dialog starts on **No**) |
 | `f` | Choose another flavor |
 | `s` | Settings |
 | `u` | Install an available update |
@@ -195,6 +198,31 @@ picked, or `all` for "All accounts". For example `cleaned-retail-all-20261003-14
   `backup-<flavor>-<stamp>.zip` are ever deleted.
 
 Zips from older versions (`wtf-cleaner_<flavor>_*.zip`, `wtf-snapshot_*.zip` in the folder itself) are left alone.
+
+### Undo last clean
+
+Every real clean (not a dry run) writes a **run journal**, one file per clean even with All flavors, in
+`<WoW folder>\wow-tools\wtf-cleaner\journal\` (`journal-<YYYYMMDD-HHMMSS>.jsonl`). It lists each file the moment
+it is deleted: its flavor, path, size and time, and which cleaned-files zip and WTF backup hold it. The journal is
+started before anything is deleted; **if it can't be written, nothing is deleted.** A clean that deleted nothing
+leaves no journal.
+
+**Undo last clean** (`z`, the amber button) puts back the files the newest clean deleted, newest first. The
+confirm dialog names when that clean ran, its flavors and how many files it deleted, and starts on **No**. Each
+file comes back from the cleaned-files zip, or from that flavor's WTF backup when zipping was off (or the zip is
+gone or lacks it), and its size must match the journal. The results screen ("undo result") lists every file as
+restored, skipped (with the reason) or failed.
+
+Undo is careful:
+
+- It never overwrites: a file that is back at its path (WoW may have written a new one) is **left alone**.
+- It never deletes anything and never touches the zips.
+- It only writes inside the flavors' `WTF` folders; a journal line that points anywhere else is left alone.
+- It goes back **one clean only**. Once a clean is undone the button stays disabled until the next real clean;
+  older journals are kept for reference, not offered. The button is also disabled while scanning or cleaning.
+
+Close WoW first; the confirm dialog warns you if it's running. The newest 10 journals are kept
+(`keep_journals` in settings, "Journals to keep"); older ones are deleted after each clean.
 
 ### Locked files
 
@@ -391,6 +419,21 @@ If a run stops partway (an error), the results screen shows what was done, and U
 the run left a journal. If it stopped before anything could be journaled, the message says so and Undo is not
 offered for it.
 
+## Run journals
+
+Every tool that changes files keeps a **run journal** of each real run, so its last run can be undone. Journals
+live in your WoW folder, one folder per tool, `<WoW folder>\wow-tools\<tool>\journal\`, as
+`journal-<YYYYMMDD-HHMMSS>.jsonl` (one JSON line per change, written the moment it happens):
+
+| Tool | Journal folder | Undo |
+|---|---|---|
+| WTF Cleaner | `wow-tools\wtf-cleaner\journal\` | **Undo last clean** (`z`): puts deleted files back from the zips ([details](#undo-last-clean)) |
+| Screenshot Organizer | `wow-tools\screenshot-organizer\journal\` | **Undo last run** (`z`): moves screenshots back ([details](#undo)) |
+
+In both tools the journal is started before anything changes, so if it can't be written nothing is changed; a dry
+run writes none; only the newest run can be undone, once; Undo never overwrites a file; and each tool keeps its
+newest `keep_journals` (default 10).
+
 ## Settings (`config\`)
 
 Each tool keeps its own settings file, next to one shared file for the suite:
@@ -421,6 +464,7 @@ lacks is moved across, and an old settings file whose values differ is kept as `
 | `wtf-cleaner.cfg` `[wtf_cleaner] backup_before_delete` | `true` | Zip the files to clean (`cleaned\`) before deleting |
 | `wtf-cleaner.cfg` `[wtf_cleaner] backup_dir` | `<wow_path>\wow-tools\wtf-cleaner` | Holds `backup\` and `cleaned\` |
 | `wtf-cleaner.cfg` `[wtf_cleaner] keep_backups` | `5` | How many WTF backups (`backup\backup-<flavor>-*.zip`) to keep per flavor |
+| `wtf-cleaner.cfg` `[wtf_cleaner] keep_journals` | `10` | How many run journals (`<wow_path>\wow-tools\wtf-cleaner\journal\`) to keep (at least 1) |
 | `wtf-cleaner.cfg` `[wtf_cleaner] last_account` | (empty = all accounts) | Pre-selected account |
 | `wtf-cleaner.cfg` `[wtf_cleaner] last_flavor_choice` | (empty = all flavors) | Pre-selected flavor choice, e.g. `_retail_`; until it is first saved, `[general] last_flavor` is pre-selected |
 | `screenshot-organizer.cfg` `[screenshot_organizer] dest_dir` | (empty = in place) | Archive root: screenshots go to `<dest_dir>\<flavor folder>\YYYY\MM\DD`. Stored as a Windows path. |

@@ -30,6 +30,7 @@ stay thin.
 | `lock` | `InstanceLock` on `wow-tools.lock` (O_EXCL create; holder pid, host, start time, platform, token). `acquire()` returns the holder on conflict; `take_over()`; `release()` removes the file only if it is still ours. `LockInfo.stale` is known only on POSIX for a lock from this host |
 | `events` | Registry of event names with fixed levels; JSONL + text sinks; `log_event()`; `capture_events()` for tests |
 | `install` | `WowInstall` → `Flavor` → `Account` → `Character`; install auto-detection. A flavor is any `_name_` folder in the WoW folder, whatever it holds |
+| `journal` | Run journals, the suite standard for any tool that changes files: JSON Lines (header, one line per completed change flushed at once, `{"finished"}`, `{"undone"}`). `journal_dir(wow_path, tool)` = `<WoW>/wow-tools/<tool>/journal/`; `new_journal_path`, `JournalWriter` (`open()` exclusive-creates and writes the header, `add_entry()`, `finish()`, `discard_if_empty()`), `read_journal(path, path_fields=)`, `list_journals` (newest first), `latest_undoable` (newest journal with entries, never past an undone one), `mark_undone`, `prune_journals(dir, keep)`, `friendly_stamp`. Path values go through `to_stored()` / `to_native()`. Tools add their own entry fields and undo rules |
 | `backup` | Zip + `manifest.json`, verified before it is moved into place; optional `on_file(current, total, name)` hook for progress |
 | `process` | Best-effort "is WoW running?" per flavor: `running_wow_processes()` returns `WowProcess(name, path)` (PowerShell `Get-CimInstance Win32_Process` on Windows/WSL, `/proc/<pid>/cmdline` on Linux, name-only `tasklist` fallback, `None` on macOS); `processes_for_flavor()` matches the executable's parent folder to the flavor folder, ignoring case and `\`/`/`; `wow_check_for(flavor)` is the check the review screen and CLI call |
 | `updater` | GitHub Releases check (24 h throttle), git fast-forward or zip replace with rollback; a zip update also removes `RETIRED_FILES` (the old `wtf-cleaner.cmd/.sh`) |
@@ -40,7 +41,8 @@ stay thin.
 `last_update_check`, `latest_seen_version`, `log_level`, `log_retention_days`.
 Each tool owns one file with one section. `config/wtf-cleaner.cfg` `[wtf_cleaner]`: `max_age_days`, `criterion_*`, `backup_before_delete`,
 `backup_dir` (empty = `<wow_path>/wow-tools/wtf-cleaner`, resolved by `settings.resolve_backup_dir()`) and
-`last_account` (empty = all accounts), `keep_backups` and `last_flavor_choice` (empty = all flavors, else a flavor
+`last_account` (empty = all accounts), `keep_backups`, `keep_journals` (run journals to keep, default 10, at least
+1) and `last_flavor_choice` (empty = all flavors, else a flavor
 folder; absent until first chosen, and then the picker pre-selects `[general] last_flavor`). `config/screenshot-organizer.cfg` `[screenshot_organizer]`: `dest_dir` (empty = in place),
 `copy_mode`, `last_flavor_choice` (empty = all flavors, else a flavor folder) and `keep_journals` (default 10, at
 least 1). The retired `[general] backup_dir` is dropped by the migration. Paths are stored in Windows form when they point at a
@@ -66,8 +68,9 @@ loaded and before the lock and the app (the Screenshot Organizer was `screenshot
 
     scan(flavor, account=None, progress=None) → ScanResult(installed, enabled, groups[SVGroup[SVFile]])
     evaluate(scan, Criteria) → Proposal(items[ProposalItem(group, files, reasons)])
-    TUI selection → execute(items, flavor, dry_run, backup, backup_dir, progress=None)
-                      → CleanResult(outcomes, backup_path, snapshot_path, restored)
+    TUI selection → execute(items, flavor, dry_run, backup, backup_dir, progress=None, journal=None)
+                      → CleanResult(outcomes, backup_path, snapshot_path, restored, journal_path)
+    undo_clean(journal_path, wow_root, progress=None) → UndoResult(outcomes[UndoOutcome])
 
 `scan(account=NAME)` is fully scoped: only that account's SavedVariables are read, and only its characters
 decide the enabled set. `account=None` is the whole flavor.
@@ -77,7 +80,8 @@ of them:
 
     scan_flavors(flavors, account=None, progress=None) → [FlavorScan(flavor, result | None, error | None)]
     execute_flavors([(flavor, items), ...], dry_run, backup, backup_dir, account, keep_backups,
-                    progress=None, on_flavor=None) → MultiCleanResult(dry_run, runs[FlavorRun])
+                    progress=None, on_flavor=None, journal_dir=None, keep_journals=10)
+                      → MultiCleanResult(dry_run, runs[FlavorRun], journal_path, journals_pruned)
 
 `scan_flavors` records a `ScanError` on that flavor and carries on (with several flavors the progress label
 starts with the flavor's name). `execute_flavors` calls `execute()` per flavor, so each flavor gets its own WTF
@@ -86,9 +90,37 @@ before the next flavor (`clean.flavors_stopped`), and each `FlavorRun.status` is
 `not_started`. The review screen uses both for one flavor too, so the single-flavor path is the same code.
 
 `execute` guards every path (it must resolve inside `<flavor>/WTF/Account/**/SavedVariables`) and re-checks
-size and mtime. For a real clean it then takes the safety snapshot and writes the marker (`safety.py`),
-writes and verifies the selective backup, and only then deletes. A dry run writes the backup and deletes
-nothing; it takes no snapshot.
+size and mtime. For a real clean it then opens the run journal (when given one), takes the safety snapshot and
+writes the marker (`safety.py`), writes and verifies the selective backup, and only then deletes, journaling each
+file right after it is deleted. A dry run writes the backup and deletes nothing; it takes no snapshot and writes
+no journal.
+
+### Run journal and Undo last clean (`tools/wtf_cleaner/journal.py`, `undo.py`)
+
+Both UI-free, built on `core/journal.py`. A real clean (the review screen passes
+`journal_dir = clean_journal_dir(wow_path)`, i.e. `<WoW>/wow-tools/wtf-cleaner/journal/`) writes one journal for
+the whole run, across All flavors:
+
+    {"version": 1, "started": iso, "tool": "wtf-cleaner", "suite_version": "...", "flavors": [...], "account": ..., "backup_dir": stored}
+    {"action": "deleted", "flavor": "_retail_", "path": stored, "rel": "WTF/Account/...", "size": n, "mtime": t, "zip": stored | null, "snapshot": stored}
+    {"finished": iso, "entries": n}
+    {"undone": iso, "restored": n, "skipped": n}
+
+`execute_flavors` creates the `CleanJournal` and passes it to each `execute()`. `execute` opens it (header
+written, once per run) before the lock check and the WTF backup; if that fails it raises `CleanError` and nothing
+is deleted (`clean.journal_failed`). An entry is appended after each delete; if that append fails the delete loop
+stops like any unexpected error, so that flavor's deletions are restored from its WTF backup. A journal with no
+entries is removed, and after a clean that wrote one `prune_journals` keeps the newest `keep_journals`
+(`clean.journal_pruned`).
+
+`latest_undoable(journal_dir)` is the only journal offered (never past an undone one). `undo_clean()` walks its
+entries newest first: the destination is `<wow_root>/<flavor>/<rel>`, refused (skipped) unless `flavor` is a plain
+folder name and `rel` starts with `WTF/` and has no `..`; a file that exists again is skipped; otherwise the entry
+is extracted, exclusive create, from the cleaned-files zip (by its name, which is `rel`) or, when there is no zip,
+the zip is gone or lacks it, or its size differs, from the WTF backup by `rel`. The written size must match the
+entry (else the partial file is removed and the entry fails) and the file's mtime is put back. Each zip is opened
+once. Afterwards the journal is marked undone (`clean.undo_started`, `clean.undo_restored`, `clean.undo_skipped`,
+`clean.undo_failed`, `clean.undo_completed`).
 
 ### Safety snapshot (`tools/wtf_cleaner/safety.py`)
 
@@ -165,7 +197,7 @@ writes no journal. A per-file `OSError` is `failed` and the run continues; anyth
 `KeyboardInterrupt`) raises `OrganizeError` with `.result`. Progress is `cb(stage, current, total, detail)` with
 the stages in `report.STAGE_TITLES` (`organize`, `prune`, `undo`), wrapped by `organizer.safe_progress`.
 
-**Journal** (`journal.py`). A real run writes `<WoW>/wow-tools/screenshot_organizer/journal/journal-<YYYYMMDD-HHMMSS>.jsonl`
+**Journal** (`journal.py`, the organizer's entries on top of `core/journal.py`). A real run writes `<WoW>/wow-tools/screenshot-organizer/journal/journal-<YYYYMMDD-HHMMSS>.jsonl`
 (`-2`, `-3`… on a clash), JSON Lines:
 
     {"version": 1, "started": iso, "copy": bool, "dest_dir": stored path | null, "suite_version": "...", "flavors": [...]}
@@ -209,23 +241,26 @@ Shared screens and widgets in `wowtools/ui/`:
 | `setup_screen` | General setup: the WoW folder only |
 | `flavor_screen` | `FlavorScreen(cfg, install, *, include_all=False, last=None, flavors=None)`: the flavor picker. `include_all` adds "All flavors" first (dismisses with `ALL_FLAVORS`); `last` is the folder to pre-select (`""` = All flavors, `None` = `[general] last_flavor`); `flavors` replaces `install.flavors()`. Picking one flavor saves `[general] last_flavor`. |
 | `account_screen` | `AccountScreen(cfg, flavor, last)`: "All accounts" plus each account. Dismisses with the name, `""` for all, or `None` for back. The WTF Cleaner shows it only when a flavor has more than one account and saves the choice as `[wtf_cleaner] last_account`. |
-| `widgets` | `action_button(label, action)` and `ACTION_VARIANTS` (one colour per kind of action in every tool: delete red, apply green, simulate blue, revert amber, confirm blue, neutral grey), `LIST_NAME_STYLE` / `LIST_CURSOR_BACKGROUND` (pick lists), `Ka0sCheckbox` (✔/✘ marks), `ButtonRow` (←/→ move focus between its buttons, Space presses the focused one), `NAV_BINDINGS` (↑/↓ move focus; not priority bindings, so a focused tree, list, table or input keeps its arrow keys), and `NavHint` (the one-line key hint every screen shows) |
+| `widgets` | `action_button(label, action)` and `ACTION_VARIANTS` (one colour per kind of action in every tool: delete red, apply green, simulate blue, revert amber, confirm blue, neutral grey), `LIST_NAME_STYLE` / `LIST_CURSOR_BACKGROUND` (pick lists), `Ka0sCheckbox` (✔/✘ marks), `ButtonRow` (←/→ move focus between its buttons, Space presses the focused one), `NAV_BINDINGS` (↑/↓ move focus; not priority bindings, so a focused tree, list, table or input keeps its arrow keys), and `NavHint` (the one-line key hint every screen shows), `FormScroll` (a scrolling form where ↑/↓ still move focus) |
 
 The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfCleanerFlow` (`FLOW`) and
-`CleanerSettingsScreen` (criteria, max age, backup on/off, backup folder). The flow shows `FlavorScreen` with
+`CleanerSettingsScreen` (criteria, max age, backup on/off, backup folder, WTF backups and journals to keep). The flow shows `FlavorScreen` with
 `include_all=True` and `last=last_flavor_choice`; All flavors skips the account screen. `review_screen.py` holds:
 
-- `ReviewScreen(cfg, tool_cfg, flavors, *, account, wow_check, locker_check)`: tree, criteria, and the Clean /
-  Dry run / Rescan buttons. `flavors` is one `Flavor` (root = the flavor, accounts below) or a list (root = All
+- `ReviewScreen(cfg, tool_cfg, flavors, *, account, wow_check, locker_check)`: tree, criteria, the Clean /
+  Dry run / Rescan buttons and **Undo last clean** (amber, key `z`, on its own row; disabled when nothing is
+  undoable, while scanning and while busy; its confirm starts on No and names the clean's time, flavors and file
+  count). `flavors` is one `Flavor` (root = the flavor, accounts below) or a list (root = All
   flavors, a node per flavor, a "not scanned" leaf for a flavor whose scan failed). `wow_check` covers every
   flavor (`core.process.wow_check_for(list)` lists the processes once);
 - `ConfirmScreen`: starts on No for a real clean and on Yes for a dry run; lists each flavor's counts;
-- `CleanProgressScreen`: with several flavors the stage title names the flavor;
+- `CleanProgressScreen`: with several flavors the stage title names the flavor; also shown for an undo;
 - `RecoveryScreen`: Dismiss or Remind me next time.
 
 `result_screen.py` holds `ResultScreen(result, flavor=None)`: a summary table plus a per-file `DataTable`. With a
 `MultiCleanResult` it shows Done / Stopped / Not started rows after a stop, one block of summary rows per finished
-flavor, and a Flavor column (`report.MULTI_RESULT_COLUMNS`).
+flavor, and a Flavor column (`report.MULTI_RESULT_COLUMNS`). A real clean adds a "Run journal" row. With an
+`UndoResult` it is titled "undo result" and shows `report.undo_summary_rows` and `report.UNDO_COLUMNS`.
 
 The Screenshot Organizer's screens live in `tools/screenshot_organizer/`. `app.py` holds `ScreenshotsFlow` (`FLOW`:
 `require_install` → `ScreenshotSettingsScreen` on the tool's first open → `FlavorScreen(include_all=True,

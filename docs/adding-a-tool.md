@@ -19,6 +19,15 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
      (parse the file name), `planner.py` (`scan(flavors, dest_dir, progress)` returns a `Plan` of `ShotItem`s),
      `organizer.py` (`execute(items, ...)` takes the ticked `ShotItem`s and returns an `OrganizeResult`),
      `journal.py`, `undo.py` and `report.py` (labels and table rows as plain strings).
+   - **Run journal.** A tool that changes or deletes files writes a run journal with `wowtools/core/journal.py`, the
+     suite standard: one JSON Lines file per real run in `journal_dir(wow_path, TOOL_NAME)`
+     (`<WoW>/wow-tools/<tool>/journal/`). Open the `JournalWriter` (header) before the first change and stop if it
+     cannot be written; `add_entry({"action": ..., ...})` after each change; `finish()` and `discard_if_empty()` at
+     the end; `prune_journals(dir, keep_journals)` with a `keep_journals` setting (default 10, at least 1). Keep the
+     tool's own entry fields, `read_journal` wrapper and undo rules in its own `journal.py` / `undo.py` (see
+     `screenshot_organizer/` and `wtf_cleaner/`), offer only `latest_undoable(dir)`, `mark_undone()` after an
+     undo, and give the review screen an amber Undo button (`action_button(..., "revert")`, key `z`, confirm
+     starting on No). A dry run writes no journal.
    - `settings.py` for the tool's own settings: the `[screenshot_organizer]` section of `config/screenshot-organizer.cfg`.
      Follow `wtf_cleaner/settings.py`; it takes the tool's `Config`, never the suite one.
    - `app.py` with `class ScreenshotsFlow(ToolFlow)` and `FLOW = ScreenshotsFlow`. `start()` pushes the first
