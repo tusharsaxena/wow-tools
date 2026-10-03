@@ -40,8 +40,9 @@ You choose this with the **destination folder** setting:
 ## Picking a game version
 
 The list shows every game version in your WoW folder, with **All flavors** at the top. Next to each one you see
-how many screenshots are waiting to be sorted. A version you've never taken a screenshot in says "no Screenshots
-folder". Your choice is remembered for next time.
+how many screenshots are waiting to be sorted. The counts take a moment to appear ("counting…"), but you can
+pick straight away. A version you've never taken a screenshot in says "no Screenshots folder". Your choice is
+remembered for next time.
 
 ## The review screen
 

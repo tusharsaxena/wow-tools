@@ -12,7 +12,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Label, Static
 
 from wowtools.core.config import GENERAL, Config
-from wowtools.core.events import log_event
+from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import WowInstall, detect_installs
 from wowtools.core.paths import to_native, to_stored
 from wowtools.ui.branding import Banner, BrandBar
@@ -36,7 +36,10 @@ class SetupScreen(Screen[bool]):
         self.cfg = cfg
         self.first_run = first_run
         self.error_text = ""
-        self._detected = [] if cfg.wow_path else detect()
+        self._detect = detect
+        self._detected: list[Path] = []
+        # Looking for installs checks every drive letter: it runs in a worker once the screen is up (F-005).
+        self._detecting = not cfg.wow_path
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -46,7 +49,7 @@ class SetupScreen(Screen[bool]):
             yield Label("World of Warcraft folder (the one that contains _retail_, _classic_ and so on)")
             yield Input(value=self._initial_wow_path(), placeholder=r"C:\Program Files (x86)\World of Warcraft",
                         id="wow_path")
-            yield Static(Text(self._detected_hint()), classes="hint")
+            yield Static(Text(self._detected_hint()), classes="hint", id="setup-hint")
             yield Static("", id="setup-error")
             with ButtonRow(classes="buttons"):
                 yield action_button("Save", "confirm", id="save")
@@ -58,6 +61,26 @@ class SetupScreen(Screen[bool]):
     def on_mount(self) -> None:
         self.sub_title = "Setup"
         self.query_one("#wow_path", Input).focus()
+        if self._detecting:
+            self.run_worker(self._detect_worker, thread=True, group="detect")
+
+    def _detect_worker(self) -> None:
+        try:
+            found = list(self._detect())
+        except Exception as exc:  # noqa: BLE001 - detection is a convenience: the folder can still be typed
+            log_exception("setup.detect", exc)
+            found = []
+        self.app.call_from_thread(self._detected_ready, found)
+
+    def _detected_ready(self, found: list[Path]) -> None:
+        self._detecting = False
+        self._detected = found
+        if not self.is_attached:
+            return
+        self.query_one("#setup-hint", Static).update(Text(self._detected_hint()))
+        path_input = self.query_one("#wow_path", Input)
+        if found and not path_input.value.strip():  # never replace what the user has started typing
+            path_input.value = to_stored(found[0])
 
     def _initial_wow_path(self) -> str:
         stored = self.cfg.get(GENERAL, "wow_path")
@@ -66,6 +89,8 @@ class SetupScreen(Screen[bool]):
         return to_stored(self._detected[0]) if self._detected else ""
 
     def _detected_hint(self) -> str:
+        if self._detecting:
+            return "Looking for World of Warcraft installations…"
         if self._detected:
             return "Found: " + "; ".join(to_stored(p) for p in self._detected)
         return "" if self.cfg.wow_path else "No installation was found automatically. Type or paste the folder."

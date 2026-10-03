@@ -1,20 +1,24 @@
+import asyncio
+import contextlib
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.widgets import Input, Label, OptionList
+from textual.worker import WorkerCancelled
+from textual.widgets import Input, Label, OptionList, Static
 
 from tests.fixtures import TuiTestCase, build_wow_tree
 from wowtools import __version__
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
-from wowtools.core.updater import ReleaseInfo
-from wowtools.ui.base import Ka0sApp, UpdateScreen
+from wowtools.core.updater import ReleaseInfo, UpdateError
+from wowtools.ui.base import Ka0sApp, UpdateProgressScreen, UpdateScreen
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.flavor_screen import FlavorScreen
@@ -76,6 +80,57 @@ class SuiteAppBaseTest(UiTestCase):
                 await pilot.click("#update-yes")
                 await pilot.pause()
         self.assertEqual([r.version for r in applied], ["9.9.9"])
+
+    async def test_update_applies_in_worker(self):
+        """F-005: the download and install run in a worker behind a progress popup; quitting is refused."""
+        app = self.make_app()
+        release = threading.Event()
+        self.addCleanup(release.set)
+        seen = []
+
+        def slow_apply(rel):
+            seen.append(threading.current_thread() is threading.main_thread())
+            release.wait(5)
+            return "Updated to 9.9.9"
+
+        with patch("wowtools.ui.base.apply_update", side_effect=slow_apply):
+            async with app.run_test(size=(120, 40)) as pilot:
+                await pilot.pause()
+                app._update_found(ReleaseInfo.from_version("9.9.9"))
+                await pilot.press("u")
+                await pilot.pause()
+                await pilot.click("#update-yes")
+                await pilot.pause()
+                self.assertTrue(app.busy)
+                self.assertIsInstance(app.screen, UpdateProgressScreen)
+                self.assertIn("9.9.9", str(app.screen.query_one(Label).render()))
+                exits = []
+                real_exit = app.exit
+                app.exit = lambda *a, **k: (exits.append(k.get("message")), real_exit(*a, **k))
+                release.set()
+                with contextlib.suppress(WorkerCancelled):  # the app exits as the worker ends
+                    await app.workers.wait_for_complete()
+                deadline = time.monotonic() + 5
+                while not exits and time.monotonic() < deadline:
+                    await asyncio.sleep(0.02)
+                self.assertFalse(app.busy)
+        self.assertEqual(seen, [False])
+        self.assertEqual(exits, ["Updated to 9.9.9"])
+
+    async def test_update_failure_in_worker_is_shown(self):
+        app = self.make_app()
+        with patch("wowtools.ui.base.apply_update", side_effect=UpdateError("no network")):
+            async with app.run_test(size=(120, 40)) as pilot:
+                await pilot.pause()
+                app._update_found(ReleaseInfo.from_version("9.9.9"))
+                await pilot.press("u")
+                await pilot.pause()
+                await pilot.click("#update-yes")
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+                self.assertFalse(app.busy)
+                self.assertIsInstance(app.screen, ToolMenuScreen)
+                self.assertTrue(any("no network" in str(n.message) for n in app._notifications))
 
     async def test_update_blocked_while_busy(self):
         app = self.make_app()
@@ -192,10 +247,50 @@ class SetupScreenTest(UiTestCase):
         changed = [r for r in records if r["event"] == "config.changed"]
         self.assertEqual(changed[0]["data"]["source"], "wizard")
 
+    async def test_detects_installs_in_background(self):
+        """F-005: the drive scan runs in a worker; the screen opens at once and fills in what it finds."""
+        release = threading.Event()
+        self.addCleanup(release.set)
+        threads = []
+
+        def slow_detect():
+            threads.append(threading.current_thread() is threading.main_thread())
+            release.wait(5)
+            return [self.root]
+
+        screen = SetupScreen(self.cfg, first_run=True, detect=slow_detect)
+        app = Host(self.cfg, screen)
+        async with app.run_test(size=(120, 50)) as pilot:
+            await pilot.pause()
+            hint = screen.query_one("#setup-hint", Static)
+            self.assertNotIn("Found:", str(hint.render()))
+            self.assertEqual(screen.query_one("#wow_path", Input).value, "")
+            release.set()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            self.assertTrue(str(hint.render()).startswith("Found:"))
+            self.assertEqual(screen.query_one("#wow_path", Input).value, str(self.root))
+        self.assertEqual(threads, [False])
+
+    async def test_background_detection_keeps_a_typed_path(self):
+        release = threading.Event()
+        self.addCleanup(release.set)
+        screen = SetupScreen(self.cfg, first_run=True, detect=lambda: (release.wait(5), [self.root])[1])
+        app = Host(self.cfg, screen)
+        async with app.run_test(size=(120, 50)) as pilot:
+            await pilot.pause()
+            screen.query_one("#wow_path", Input).value = "D:\\Games\\WoW"
+            release.set()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            self.assertEqual(screen.query_one("#wow_path", Input).value, "D:\\Games\\WoW")
+
     async def test_prefills_detected_install(self):
         screen = SetupScreen(self.cfg, first_run=True, detect=lambda: [self.root])
         app = Host(self.cfg, screen)
-        async with app.run_test(size=(120, 50)):
+        async with app.run_test(size=(120, 50)) as pilot:
+            await app.workers.wait_for_complete()
+            await pilot.pause()
             self.assertEqual(screen.query_one("#wow_path", Input).value, str(self.root))
             self.assertEqual(len(screen.query("#backup_dir")), 0)
 

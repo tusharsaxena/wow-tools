@@ -1,5 +1,7 @@
 import tempfile
+import threading
 from pathlib import Path
+from unittest.mock import patch
 
 from textual.widgets import Button, DataTable, Input, OptionList, Static, Tree
 
@@ -7,6 +9,7 @@ from tests.fixtures import TuiTestCase, settle, build_screenshot_tree, build_wow
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
+from wowtools.tools.screenshot_organizer import app as app_module
 from wowtools.tools.screenshot_organizer.app import ScreenshotSettingsScreen
 from wowtools.tools.screenshot_organizer import review_screen as review_module
 from wowtools.tools.screenshot_organizer.journal import latest_undoable
@@ -319,9 +322,41 @@ class ShotsAppTest(TuiTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_tool(app, pilot)
-            await pilot.pause()
+            await settle(app, pilot)  # the counts come from a worker, then the picker closes
             self.assertIsInstance(app.screen, ToolMenuScreen)
 
+
+    async def test_flavor_counts_fill_in_after_mount(self):
+        """F-005: the picker opens at once; the waiting counts are filled in by a worker."""
+        self.save_tool_cfg()
+        release = threading.Event()
+        self.addCleanup(release.set)
+        real = app_module.waiting_count
+        threads = []
+
+        def slow_count(flavor):
+            threads.append(threading.current_thread() is threading.main_thread())
+            release.wait(5)
+            return real(flavor)
+
+        app = self.make_app()
+        with patch.object(app_module, "waiting_count", slow_count):
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_tool(app, pilot)
+                picker = app.screen
+                self.assertIsInstance(picker, FlavorScreen)
+                options = picker.query_one("#flavors", OptionList)
+                labels = [str(options.get_option_at_index(n).prompt) for n in range(options.option_count)]
+                self.assertTrue(all("counting" in label for label in labels), labels)
+                release.set()
+                await settle(app, pilot)
+                ids = [options.get_option_at_index(i).id for i in range(options.option_count)]
+                labels = {i: str(options.get_option_at_index(n).prompt) for n, i in enumerate(ids)}
+                self.assertIn("4 screenshots to file", labels["_retail_"])
+                self.assertIn("6 screenshots to file", labels[ids[0]])
+                self.assertEqual(options.highlighted, 0)
+        self.assertTrue(threads)
+        self.assertFalse(any(threads))
 
     async def test_every_flavor_is_listed_and_empty_ones_are_marked(self):
         self.save_tool_cfg()
@@ -329,6 +364,7 @@ class ShotsAppTest(TuiTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_tool(app, pilot)
+            await settle(app, pilot)  # the counts come from a worker
             picker = app.screen
             self.assertIsInstance(picker, FlavorScreen)
             options = picker.query_one("#flavors", OptionList)

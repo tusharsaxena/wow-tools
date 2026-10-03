@@ -6,9 +6,10 @@ from textual.binding import Binding
 from textual.containers import Vertical, VerticalScroll
 from textual.reactive import reactive
 from textual.screen import ModalScreen
-from textual.widgets import Button, Label, Markdown
+from textual.widgets import Button, Label, LoadingIndicator, Markdown
 
 from wowtools import __version__
+from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.updater import (ReleaseInfo, UpdateError, apply_update, check_for_update,
@@ -50,6 +51,25 @@ class UpdateScreen(ModalScreen[bool]):
 
     def action_later(self) -> None:
         self.dismiss(False)
+
+
+class UpdateProgressScreen(ModalScreen[None]):
+    """Shown while an accepted update downloads and installs. It has no keys: it closes when the update ends."""
+    DEFAULT_CSS = """
+    UpdateProgressScreen { align: center middle; }
+    UpdateProgressScreen #update-progress-box { width: 64; height: auto; border: thick $accent;
+                                                background: $panel; padding: 1 2; }
+    UpdateProgressScreen LoadingIndicator { height: 1; margin-top: 1; }
+    """
+
+    def __init__(self, version: str) -> None:
+        super().__init__()
+        self.version = version
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="update-progress-box"):
+            yield Label(f"Updating Ka0s WoW Tools to v{self.version}… This can take a minute.")
+            yield LoadingIndicator()
 
 
 class Ka0sApp(App):
@@ -123,9 +143,33 @@ class Ka0sApp(App):
                   value="accepted" if accepted else "declined")
         if not accepted or self.release is None:
             return
+        # The download, git fetch and file copy can take a while: they run in a worker behind a popup, and
+        # quitting is refused until they finish (F-005).
+        release = self.release
+        self.busy = True
+        progress = UpdateProgressScreen(release.version)
+        self.push_screen(progress)
+        self.run_worker(lambda: self._apply_update_worker(release, progress), thread=True, group="update")
+
+    def _apply_update_worker(self, release: ReleaseInfo, progress: UpdateProgressScreen) -> None:
         try:
-            message = apply_update(self.release)
+            with activity.running():
+                message = apply_update(release)
         except UpdateError as exc:
-            self.notify(str(exc), title="Update failed", severity="error", timeout=15)
+            self.call_from_thread(self._update_failed, str(exc), progress)
             return
+        except Exception as exc:  # noqa: BLE001 - shown and logged, never a crash mid-update
+            log_exception("update", exc)
+            self.call_from_thread(self._update_failed, f"{type(exc).__name__}: {exc}", progress)
+            return
+        self.call_from_thread(self._update_done, message)
+
+    def _update_failed(self, message: str, progress: UpdateProgressScreen) -> None:
+        self.busy = False
+        if self.screen is progress:
+            self.pop_screen()
+        self.notify(message, title="Update failed", severity="error", timeout=15)
+
+    def _update_done(self, message: str) -> None:
+        self.busy = False
         self.exit(message=message)

@@ -249,9 +249,12 @@ again (the WTF Cleaner's rule).
 ## UI
 
 `Ka0sApp` registers the `ka0s` theme, starts the background update check, handles `u`, and exposes
-the `after_mount()` hook. Every screen shows a `Header`, the `BrandBar` and a `Footer`. Long-running work
-(scan, clean, organize, undo) runs in thread workers and reports back with `call_from_thread`. While a clean,
-organize or undo runs, `app.busy` is set: every key that would leave the screen is refused, and so is Ctrl+Q
+the `after_mount()` hook. Every screen shows a `Header`, the `BrandBar` and a `Footer`. Long-running or blocking work
+runs in thread workers and reports back with `call_from_thread`: scan, clean, organize, undo, and also the
+running-programs check before a clean or undo confirm (PowerShell/`tasklist`; the review screen shows "Checking for
+running programs…" and ignores `c`/`y`/`z`/`r` meanwhile), install detection on the setup screen, the organizer's
+per-flavor waiting counts (`FlavorScreen.set_notes()`), and an accepted in-app update (`UpdateProgressScreen`,
+with `app.busy` set). While a clean, organize or undo runs, `app.busy` is set: every key that would leave the screen is refused, and so is Ctrl+Q
 (`Ka0sApp.action_quit`, logged as `ui.quit_refused`).
 An unhandled exception in a handler or worker is logged as `error` with `where=ui` by `Ka0sApp._handle_exception`
 (a private Textual hook, pinned by a test) before Textual exits; `suite.run()` returns the app's `return_code`, so
@@ -264,7 +267,7 @@ Shared screens and widgets in `wowtools/ui/`:
 | `suite_app` | `WowToolsApp`, `ToolMenuScreen` (the first screen), `LockScreen` (another copy may be running: Quit, or Override and continue) |
 | `tool_flow` | `ToolFlow` base: `start()`, `open_settings()`, `close()`, `require_install()` (shared WoW-folder setup) |
 | `setup_screen` | General setup: the WoW folder only |
-| `flavor_screen` | `FlavorScreen(cfg, install, *, include_all=False, last=None, flavors=None)`: the flavor picker. `include_all` adds "All flavors" first (dismisses with `ALL_FLAVORS`); `last` is the folder to pre-select (`""` = All flavors, `None` = `[general] last_flavor`); `flavors` replaces `install.flavors()`. Picking one flavor saves `[general] last_flavor`. |
+| `flavor_screen` | `FlavorScreen(cfg, install, *, include_all=False, last=None, flavors=None)`: the flavor picker. `include_all` adds "All flavors" first (dismisses with `ALL_FLAVORS`); `last` is the folder to pre-select (`""` = All flavors, `None` = `[general] last_flavor`); `flavors` replaces `install.flavors()`; `note`/`all_note` fill the remarks column and `set_notes()` replaces them later. Picking one flavor saves `[general] last_flavor`. |
 | `account_screen` | `AccountScreen(cfg, flavor, last)`: "All accounts" plus each account. Dismisses with the name, `""` for all, or `None` for back. The WTF Cleaner shows it only when a flavor has more than one account and saves the choice as `[wtf_cleaner] last_account`. |
 | `widgets` | `action_button(label, action)` and `ACTION_VARIANTS` (one colour per kind of action in every tool: delete red, apply green, simulate blue, revert amber, confirm blue, neutral grey), `LIST_NAME_STYLE` / `LIST_CURSOR_BACKGROUND` (pick lists), `Ka0sCheckbox` (✔/✘ marks), `ButtonRow` (←/→ move focus between its buttons, Space presses the focused one), `NAV_BINDINGS` (↑/↓ move focus; not priority bindings, so a focused tree, list, table or input keeps its arrow keys), and `NavHint` (the one-line key hint every screen shows), `FormScroll` (a scrolling form where ↑/↓ still move focus) |
 

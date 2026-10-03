@@ -105,6 +105,9 @@ class ScreenshotSettingsScreen(Screen[bool]):
         self.dismiss(True)
 
 
+COUNTING = "counting…"
+
+
 def waiting_text(count: int | None) -> str:
     """The flavor picker's third column: how many screenshots are waiting to be filed."""
     if count is None:
@@ -138,16 +141,28 @@ class ScreenshotsFlow(ToolFlow):
             self.start()
             return
         self.flavors = install.flavors()
-        counts = {f.folder: waiting_count(f) for f in self.flavors}
+        settings = load_settings(self.tool_cfg)
+        # Counting lists every flavor's Screenshots folder: the picker opens at once and a worker fills the counts
+        # in (F-005).
+        picker = FlavorScreen(self.cfg, install, include_all=True, last=settings.last_flavor_choice,
+                              flavors=self.flavors, note=lambda f: COUNTING, all_note=COUNTING)
+        self.app.push_screen(picker, self._after_flavor)
+        flavors = list(self.flavors)
+        picker.run_worker(lambda: self._count_worker(picker, install, flavors), thread=True, group="counts")
+
+    def _count_worker(self, picker: FlavorScreen, install: WowInstall, flavors: list[Flavor]) -> None:
+        counts = {f.folder: waiting_count(f) for f in flavors}  # never raises: an unreadable folder is None
+        self.app.call_from_thread(self._counts_ready, picker, install, counts)
+
+    def _counts_ready(self, picker: FlavorScreen, install: WowInstall, counts: dict[str, int | None]) -> None:
+        if self.app.screen is not picker:
+            return  # a flavor was already chosen (or Esc pressed) before the counts were ready
         if all(count is None for count in counts.values()):
             self.app.notify(f"No Screenshots folders found in {to_stored(install.root)}.", severity="warning")
-            self.close()
+            picker.dismiss(None)  # back to the tool menu
             return
-        settings = load_settings(self.tool_cfg)
-        self.app.push_screen(FlavorScreen(self.cfg, install, include_all=True, last=settings.last_flavor_choice,
-                                          flavors=self.flavors, note=lambda f: waiting_text(counts[f.folder]),
-                                          all_note=waiting_text(sum(c or 0 for c in counts.values()))),
-                             self._after_flavor)
+        picker.set_notes(lambda f: waiting_text(counts.get(f.folder)),
+                         waiting_text(sum(c or 0 for c in counts.values())))
 
     def _after_flavor(self, choice: Union[Flavor, str, None]) -> None:
         if choice is None:

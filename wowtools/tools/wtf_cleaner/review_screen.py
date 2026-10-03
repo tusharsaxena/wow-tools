@@ -226,6 +226,7 @@ class ReviewScreen(Screen[str]):
         self._last_filter: Widget | None = None
         self._scanning = False
         self._log_next_build = False  # the first rebuild after a scan logs proposal.built
+        self._checking = False  # the running-programs check before a confirm is in a worker
 
     # --- layout -------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -295,6 +296,8 @@ class ReviewScreen(Screen[str]):
 
     # --- scanning ------------------------------------------------------------------------------
     def action_rescan(self) -> None:
+        if self._checking:
+            return
         self.settings = load_settings(self.tool_cfg)
         self.scans = []
         self._show_scan_progress(True)
@@ -647,7 +650,7 @@ class ReviewScreen(Screen[str]):
         return validate_output_dir(self.settings.backup_dir, WowInstall(wow_path), what="backup folder")
 
     def _start(self, dry_run: bool) -> None:
-        if self.proposal is None or self.app.busy:
+        if self.proposal is None or self.app.busy or self._checking:
             return
         log_event("ui.selection", screen="review", control="dry_run" if dry_run else "clean", value=True)
         self.settings = load_settings(self.tool_cfg)
@@ -660,9 +663,41 @@ class ReviewScreen(Screen[str]):
         if not plan:
             self.notify("Nothing is selected.")
             return
-        selection = [item for _, items in plan for item in items]
         check = self.wow_check or wow_check_for([flavor for flavor, _ in plan])
-        running = check()  # every flavor in the selection, one process listing
+        locker_check = None if dry_run else self.locker_check
+        self._run_preflight(check, locker_check, lambda running, lockers: self._show_confirm(plan, dry_run, running,
+                                                                                            lockers))
+
+    # --- running-programs check (PowerShell/tasklist can take seconds: never on the UI thread) ----------------
+    def _run_preflight(self, check: Callable[[], list[str] | None],
+                       locker_check: Callable[[], list[str] | None] | None,
+                       then: Callable[[list[str] | None, list[str] | None], None]) -> None:
+        self._checking = True
+        self.query_one("#summary", Static).update(Text("Checking for running programs…", style="bold #E8B04B"))
+        self.run_worker(lambda: self._preflight_worker(check, locker_check, then), thread=True, group="preflight")
+
+    def _preflight_worker(self, check: Callable[[], list[str] | None],
+                          locker_check: Callable[[], list[str] | None] | None,
+                          then: Callable[[list[str] | None, list[str] | None], None]) -> None:
+        running = lockers = None
+        try:
+            running = check()  # every flavor in the selection, one process listing
+            lockers = locker_check() if locker_check is not None else None
+        except Exception as exc:  # noqa: BLE001 - a failed check is "unknown", as when PowerShell is missing
+            log_exception("preflight", exc)
+        self.app.call_from_thread(self._preflight_done, running, lockers, then)
+
+    def _preflight_done(self, running: list[str] | None, lockers: list[str] | None,
+                        then: Callable[[list[str] | None, list[str] | None], None]) -> None:
+        self._checking = False
+        if not self.is_attached or self.app.screen is not self:
+            return  # the user left the screen while the check ran
+        self._update_summary()
+        then(running, lockers)
+
+    def _show_confirm(self, plan: list[tuple[Flavor, list[ProposalItem]]], dry_run: bool,
+                      running: list[str] | None, lockers: list[str] | None) -> None:
+        selection = [item for _, items in plan for item in items]
         if running:
             log_event("wow.running_warning", executables=running)
         backup = self.settings.backup_before_delete
@@ -690,7 +725,6 @@ class ReviewScreen(Screen[str]):
         if running:
             alerts.append(f"WoW appears to be running ({', '.join(running)}). Close it first: WoW rewrites "
                           "SavedVariables when you log out.")
-        lockers = None if dry_run else self.locker_check()
         if lockers:
             log_event("locker.running_warning", executables=lockers)
             alerts.append(locker_warning(lockers))
@@ -803,7 +837,7 @@ class ReviewScreen(Screen[str]):
 
     # --- undo last clean --------------------------------------------------------------------------
     def action_undo(self) -> None:
-        if self.app.busy or self._scanning:
+        if self.app.busy or self._scanning or self._checking:
             return
         log_event("ui.selection", screen="review", control="undo", value=True)
         path = latest_undoable(self._journal_dir())
@@ -822,14 +856,16 @@ class ReviewScreen(Screen[str]):
         body = (f"Put back {files} file{'' if files == 1 else 's'} deleted from {names}? Each comes back from the "
                 "cleaned-files zip, or from the WTF backup when there is no zip. A file that is back at its path "
                 "is left alone; nothing is overwritten.")
-        alerts: list[str] = []
+        title = f"Undo the clean from {friendly_stamp(journal.started)}?"
         check = self.wow_check or wow_check_for(folders)
-        running = check()
+        self._run_preflight(check, None, lambda running, _: self._show_undo_confirm(path, title, body, running))
+
+    def _show_undo_confirm(self, path: Path, title: str, body: str, running: list[str] | None) -> None:
+        alerts: list[str] = []
         if running:
             log_event("wow.running_warning", executables=running)
             alerts.append(f"WoW appears to be running ({', '.join(running)}). Close it first: WoW rewrites "
                           "SavedVariables when you log out.")
-        title = f"Undo the clean from {friendly_stamp(journal.started)}?"
         self.app.push_screen(ConfirmScreen(title, body, tuple(alerts), default_yes=False),
                              lambda ok: self._undo_confirmed(ok, path))
 
