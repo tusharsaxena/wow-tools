@@ -119,8 +119,11 @@ the tree:
 | `u` | Install an available update |
 | `q` | Quit |
 
-While a clean runs, a progress window shows the current stage (safety snapshot, backup, verify, delete), a
-percentage bar and the current file. The results screen then shows a summary table and a table of every file
+While a clean runs, a progress window shows the current stage, a percentage bar and the current file:
+checking the selected files, checking for locked files, listing the WTF folder, taking and verifying the safety
+snapshot, writing and verifying the backup, deleting, and checking the result. A dry run skips the lock check,
+the snapshot and the result check. When a criterion or the max age changes, the tree shows a loading spinner
+and the summary bar says "Updating the list…" until the new list is ready. The results screen then shows a summary table and a table of every file
 with its status, account, character, addon, size and reasons.
 
 #### Keyboard use
@@ -130,7 +133,7 @@ Every screen works without a mouse, and each one shows a one-line hint with its 
 | Key | Action |
 |---|---|
 | `↑` / `↓`, `Tab` / `Shift+Tab` | Move between fields and buttons |
-| `←` / `→` | Move between the buttons in a row |
+| `←` / `→` | Move between the buttons in a row. On the review screen they also switch panes: `←` from the tree goes to the filters (to the control you used last), `→` from the filters or the last button goes to the tree |
 | `Enter` or `Space` | Press the focused button, or tick the focused checkbox |
 | `Esc` | Go back or cancel |
 
@@ -154,6 +157,18 @@ Before deleting, the cleaner writes
 `manifest.json` that lists every file, its size and why it was removed. You can turn backups off in settings,
 or with `--no-backup --yes` on the command line, but it isn't recommended.
 
+### Locked files
+
+Some companion apps hold SavedVariables files open, which stops Windows from deleting them. The Raider.IO
+client is known to do this, and so is the WeakAuras Companion. Before a real clean:
+
+- the confirm dialog warns you if either app is running;
+- before the snapshot, each selected file is renamed aside and straight back. This is a lock test that fails
+  exactly when a delete would fail. If any file is locked, the clean stops with nothing deleted and names the
+  locked files (`clean.locked`). Close the app and clean again.
+
+Dry runs skip both checks.
+
 ### Safety snapshot
 
 A real clean (not a dry run) also protects you against a crash halfway through. Before deleting anything it:
@@ -163,8 +178,18 @@ A real clean (not a dry run) also protects you against a crash halfway through. 
 2. writes a marker file, `<backup folder>\clean-in-progress.json`, that names the snapshot and the files about
    to be deleted.
 
-If the snapshot can't be written, the clean stops and nothing is deleted. When the clean finishes, including
-when a few files could not be deleted, the snapshot and the marker are removed again.
+If the snapshot can't be written, the clean stops and nothing is deleted.
+
+When the deleting is done (including when a few files could not be deleted), the cleaner checks the WTF folder
+against the snapshot before removing it:
+
+- every file it deleted is really gone;
+- every other file in the snapshot is still on disk;
+- with backups on, the backup zip lists every deleted file at the right size.
+
+If the check passes, the snapshot and the marker are removed. If it finds anything, the **snapshot is kept**,
+the results screen shows "KEPT at <path>" with the first problem, and every problem is logged
+(`snapshot.kept`). The marker is cleared either way, because the clean did finish.
 
 If something unexpected stops the clean partway (an error, or `Ctrl+C`), the cleaner puts back **only the files
 this run had already deleted**, taking them from the snapshot. It never overwrites a file that exists on
@@ -272,11 +297,12 @@ Set `auto_update = true` to install updates on launch without asking.
 
 ## Logs
 
-Everything the tools do is logged in `logs\`, including settings changes, your choices, scan results, backups,
-and every file deleted or skipped:
+Everything the tools do is logged, including settings changes, your choices, scan results, backups, and every
+file deleted or skipped. Each tool has its own folder, e.g. `logs\wtf-cleaner\` (the launcher uses
+`logs\suite\`):
 
-- `wow-tools-YYYY-MM-DD.log` is readable.
-- `events-YYYY-MM-DD.jsonl` is structured, one JSON object per line.
+- `logfile-YYYY-MM-DD.log` is readable.
+- `events-YYYY-MM-DD.log` is structured, one JSON object per line.
 
 The format is described in [docs/events.md](docs/events.md).
 
@@ -290,6 +316,8 @@ The same folder works from both. Paths are stored in Windows form (`G:\Games\…
 - **"No WoW flavor folders were found"**: choose the `World of Warcraft` folder itself, not `_retail_`.
 - **"Refusing to scan"**: that flavor has no addons installed. Nothing is proposed, on purpose.
 - **Files come back after cleaning**: WoW was running. Close it and clean again.
+- **"files are locked by another program"**: close the Raider.IO client (or WeakAuras Companion), then clean
+  again. Nothing was deleted.
 - **"An earlier clean did not finish"**: see [After an interrupted clean](#after-an-interrupted-clean).
 - **Python not found on Windows**: install Python 3.10+ from python.org and tick "Add to PATH".
 

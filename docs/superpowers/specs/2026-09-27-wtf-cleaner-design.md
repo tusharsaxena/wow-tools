@@ -481,3 +481,56 @@ The results screen is built from tables.
   - If paths can't be read, the check falls back to name-only (`tasklist`) and the warning says so.
   - macOS returns "unknown".
 - The review screen warns only about processes of the chosen flavor. Processes with an unknown path are listed as "flavor unknown".
+
+## Addendum B: feedback round 2 (2026-10-03)
+
+Where this addendum and Addendum A disagree, this one wins.
+
+### B.1 Speed and progress for cleans
+- **Guard.** It resolves the account folder once and each SavedVariables parent folder once. A file that is itself
+  a link is resolved in full. One `lstat` per file is shared by the guard and the recheck. (On a Windows drive under
+  WSL, resolving costs about 13ms per file. Resolving every file three times was the ~30s silent wait.)
+- **Backup.** `BackupEntry` carries the size and mtime the recheck confirmed, so the backup stats nothing again.
+  Arcnames are computed lexically, with resolve only as a fallback (and always for paths containing `..`).
+- **Verify.** `verify_backup` reads every entry back (its CRC) and reports progress.
+- **Listing.** The WTF folder is listed from directory entries, with no per-file stat.
+- **Stages.** Progress stages, in order: `check`, `lock_check` (real clean only), `snapshot_list`, `snapshot`,
+  `snapshot_verify`, `backup`, `verify`, `delete`, `validate` (real clean only). A total of 0 means unknown; the
+  TUI then shows an indeterminate bar.
+- **Titles.** The titles live in `report.STAGE_TITLES`, shared by the TUI popup and the CLI stage lines.
+- **Popup.** Its file line is always exactly 2 lines high.
+
+### B.2 Locked files (real cleans only)
+- **Confirm-time warning.** It appears when a known WTF-locking app is running: `RaiderIO.exe` or
+  `WeakAurasCompanion.exe` (`core.process.WTF_LOCKERS`). It emits `locker.running_warning`.
+- **Lock test.** Before the snapshot, each selected file is renamed to `<name>.wowtools-lockcheck` and straight back.
+  Windows refuses the rename exactly when another process holds the file without allowing deletion.
+- **If any file is locked:** `CleanError`, `clean.locked`, and nothing is snapshotted or deleted.
+- **If a file cannot be renamed back:** the error names where it is.
+
+### B.3 Post-clean check before the snapshot is removed
+After deleting, `safety.check_clean` compares the WTF folder with the snapshot:
+- every deleted file is gone, and is in the snapshot;
+- every other snapshot file is still on disk;
+- with a backup, the backup zip lists every deleted file at the snapshot's size.
+
+If no problems are found, `clean.validated` is logged, then the snapshot and marker are removed. If there are
+problems, the snapshot is kept, `snapshot.kept` (warning) is logged, `CleanResult.snapshot_kept` and
+`check_problems` are set, and the results screen, the CLI and the JSON report show them. The marker is cleared
+either way.
+
+### B.4 Review screen
+- **Pane switching.** `←` in the tree focuses the filters panel (the filter used last, else criterion 1); `→` in the
+  filters panel focuses the tree. The review button row does not wrap: `→` on Rescan goes on to the tree. The
+  max-age input keeps its arrows.
+- **Rebuilding.** Changing a criterion or the max age sets `loading` on the tree and shows "Updating the list…" in
+  the summary bar. The rebuild then runs after the next refresh, and changes made before it runs are folded into one
+  rebuild. Labels are built once while adding nodes, and ticking an item relabels only its branch and its ancestors.
+- **Rescan** uses the warning (yellow) variant.
+
+### B.5 Logs per tool
+- **Layout.** Each tool logs to `logs/<tool>/events-YYYY-MM-DD.log` (JSON lines) and `logfile-YYYY-MM-DD.log`
+  (readable). The launcher and the tool picker use `logs/suite/`.
+- **Migration.** At start-up, the old flat files are split by each line's tool into those folders, with old lines
+  ahead of any new ones.
+- **Pruning** covers every tool folder.
