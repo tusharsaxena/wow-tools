@@ -718,7 +718,9 @@ class ReviewScreen(Screen[str]):
                          f"(the newest {self.settings.keep_backups} of {'each' if self.multi else 'this'} "
                          f"flavor are kept)")
         if dry_run:
-            lines.append(("DRY RUN: the cleaned-files zip is written, nothing is deleted." if backup
+            lines.append((f"DRY RUN: a dryrun-... zip of the files is written (the newest "
+                          f"{self.settings.keep_backups} of {'each' if self.multi else 'this'} flavor are kept), "
+                          "nothing is deleted." if backup
                           else "DRY RUN: nothing will be written or deleted."))
         else:
             lines.append("A run journal is written, so Undo last clean (z) can put the files back.")

@@ -144,8 +144,9 @@ new version. You can also update from a terminal in the app's folder:
   `./wow-tools.sh update --check`) tells you whether an update is available.
 - `wow-tools update` installs it.
 
-Updating never touches your settings, logs or backups. If an update fails partway, the app puts the old version
-back.
+Updating never touches your settings, logs or backups, or any other file you put in the app's folder. If an update
+fails partway, the app puts the old version back. A copy of the version you replaced is kept in the
+`.update-backup` folder; only the newest two are kept.
 
 If you cloned with git, the update is a fast-forward to the new version. It stops if you've edited the app's own
 files, but files you added yourself (notes, say) don't get in its way. It never waits for a password: if git

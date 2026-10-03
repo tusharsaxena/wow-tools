@@ -366,7 +366,7 @@ class SafetySnapshotCleanTest(unittest.TestCase):
     def test_dry_run_takes_no_snapshot(self):
         with capture_events() as records:
             result = self.run_clean(dry_run=True)
-        self.assertEqual(files_under(self.backup_dir), [CLEANED])
+        self.assertEqual(files_under(self.backup_dir), [CLEANED.replace("cleaned/cleaned-", "cleaned/dryrun-")])
         self.assertIsNone(result.snapshot_path)
         names = [r["event"] for r in records]
         self.assertNotIn("snapshot.created", names)
@@ -502,11 +502,51 @@ class ZipLayoutTest(unittest.TestCase):
     setUp = CleanerTest.setUp
 
     def test_cleaned_zip_is_named_after_the_account(self):
-        result = execute(self.proposal.items, self.retail, dry_run=True, backup=True, backup_dir=self.backup_dir,
+        result = execute(self.proposal.items, self.retail, dry_run=False, backup=True, backup_dir=self.backup_dir,
                          now=WHEN, account="ACCT1")
         self.assertEqual(result.backup_path, self.backup_dir / "cleaned" / "cleaned-retail-ACCT1-20260927-140311.zip")
         with zipfile.ZipFile(result.backup_path) as zf:
             self.assertEqual(json.loads(zf.read("manifest.json"))["account"], "ACCT1")
+
+    def test_dry_run_zip_has_its_own_name(self):
+        result = execute(self.proposal.items, self.retail, dry_run=True, backup=True, backup_dir=self.backup_dir,
+                         now=WHEN, account="ACCT1")
+        self.assertEqual(result.backup_path, self.backup_dir / "cleaned" / "dryrun-retail-ACCT1-20260927-140311.zip")
+
+    def test_dry_run_zips_are_pruned_per_flavor_and_cleaned_zips_never(self):
+        # F-018: dry runs are repeated often; keep the newest keep_backups dry-run zips of the flavor. Real
+        # cleaned-files zips stay forever (a documented promise), as do other flavors' and the user's files.
+        folder = self.backup_dir / "cleaned"
+        folder.mkdir(parents=True)
+        for day in range(1, 6):
+            (folder / f"dryrun-retail-all-202609{day:02d}-120000.zip").write_bytes(b"old")
+        (folder / "dryrun-retail-ACCT1-20260904-120000-2.zip").write_bytes(b"old, other account")
+        (folder / "dryrun-classic_era-all-20260901-120000.zip").write_bytes(b"other flavor")
+        for day in range(1, 4):
+            (folder / f"cleaned-retail-all-202609{day:02d}-120000.zip").write_bytes(b"real")
+        (folder / "notes.txt").write_text("mine")
+        with capture_events() as records:
+            result = execute(self.proposal.items, self.retail, dry_run=True, backup=True,
+                             backup_dir=self.backup_dir, now=WHEN, keep_backups=3)
+        self.assertEqual(sorted(p.name for p in folder.iterdir()), sorted([
+            "cleaned-retail-all-20260901-120000.zip", "cleaned-retail-all-20260902-120000.zip",
+            "cleaned-retail-all-20260903-120000.zip", "dryrun-classic_era-all-20260901-120000.zip",
+            "dryrun-retail-all-20260905-120000.zip", "dryrun-retail-ACCT1-20260904-120000-2.zip",
+            "dryrun-retail-all-20260927-140311.zip", "notes.txt"]))
+        self.assertEqual(len(result.dry_runs_pruned), 4)
+        pruned = [r for r in records if r["event"] == "backup.dry_runs_pruned"]
+        self.assertEqual(len(pruned), 1)
+        self.assertEqual(pruned[0]["data"]["keep"], 3)
+
+    def test_real_clean_prunes_no_dry_run_zips(self):
+        folder = self.backup_dir / "cleaned"
+        folder.mkdir(parents=True)
+        for day in range(1, 4):
+            (folder / f"dryrun-retail-all-202609{day:02d}-120000.zip").write_bytes(b"old")
+        result = execute(self.proposal.items, self.retail, dry_run=False, backup=True,
+                         backup_dir=self.backup_dir, now=WHEN, keep_backups=1)
+        self.assertEqual(result.dry_runs_pruned, [])
+        self.assertEqual(len([p for p in folder.iterdir() if p.name.startswith("dryrun-")]), 3)
 
     def test_only_the_newest_backups_are_kept(self):
         folder = self.backup_dir / "backup"

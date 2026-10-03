@@ -24,6 +24,7 @@ EVENTS: dict[str, EventSpec] = {
     "clean.completed": EventSpec("info", "A clean finished (logged at warning if any file failed)."),
     "clean.flavors_stopped": EventSpec("warning", "A clean of several flavors stopped at one flavor; the flavors after it were not started."),
     "snapshot.created": EventSpec("info", "The backup of the whole WTF folder (backup/backup-<flavor>-<stamp>.zip) was written and verified."),
+    "backup.dry_runs_pruned": EventSpec("info", "After a dry run, older dry-run zips of the flavor were deleted to keep its newest N (keep_backups)."),
     "snapshot.pruned": EventSpec("info", "Older WTF backups of the flavor were deleted to keep its newest N (keep_backups)."),
     "locker.running_warning": EventSpec("warning", "A program known to lock WTF files (e.g. the Raider.IO client) appears to be running."),
     "clean.probe_recovered": EventSpec("warning", "A real clean renamed back a SavedVariables file left as <name>.wowtools-lockcheck by an interrupted lock check."),

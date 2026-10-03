@@ -60,7 +60,7 @@ class CleanerSettingsScreen(Screen[bool]):
                         "Leave empty to use <WoW folder>/wow-tools/wtf-cleaner")
             yield Input(to_stored(self.settings.backup_dir) if self.settings.backup_dir else "",
                         placeholder=_default_backup_hint(self.wow_path), id="backup_dir")
-            yield Label("Keep this many WTF backups per flavor (older ones are deleted after each clean)")
+            yield Label("Keep this many WTF backups (and dry-run zips) per flavor; older ones are deleted")
             yield Input(str(self.settings.keep_backups), type="integer", id="keep_backups")
             yield Label("Journals to keep (each real clean writes one; Undo last clean uses the newest)")
             yield Input(str(self.settings.keep_journals), type="integer", id="keep_journals")

@@ -137,6 +137,7 @@ MANAGED_FILES = ("wow-tools.cmd", "wow-tools.sh", "requirements.txt", ".gitattri
 # Program files earlier versions shipped that no longer exist; a zip update removes them (and backs them up).
 RETIRED_FILES = ("wtf-cleaner.cmd", "wtf-cleaner.sh")
 BACKUP_DIR_NAME = ".update-backup"
+KEEP_UPDATE_BACKUPS = 2  # .update-backup/<version> folders kept after an update (the newest by version)
 _VERSION_RE = re.compile(r'^__version__\s*=\s*["\']([^"\']+)["\']', re.MULTILINE)
 
 
@@ -196,10 +197,43 @@ def _download(url: str, dest: Path) -> None:
         raise UpdateError(f"download failed: {exc}") from exc
 
 
-def _managed_names(folder: Path) -> list[str]:
-    names = [name for name in (*MANAGED_DIRS, *MANAGED_FILES, *RETIRED_FILES) if (folder / name).exists()]
-    names += sorted(p.name for p in folder.glob("*.md") if p.is_file())
+def _shipped_names(staging: Path) -> list[str]:
+    """What the release ships at its top level: the managed folders and files, plus its root *.md files."""
+    names = [name for name in (*MANAGED_DIRS, *MANAGED_FILES) if (staging / name).exists()]
+    names += sorted(p.name for p in staging.glob("*.md") if p.is_file())
     return names
+
+
+def _replaced_names(root: Path, shipped: list[str]) -> list[str]:
+    """The install's program files an update replaces: the managed and retired names, plus the root *.md files
+    the release ships. Other root *.md files are the user's (notes, a copied guide) and stay untouched (F-019)."""
+    fixed = [name for name in (*MANAGED_DIRS, *MANAGED_FILES, *RETIRED_FILES) if (root / name).exists()]
+    return fixed + [name for name in shipped if name not in fixed and (root / name).exists()]
+
+
+def prune_update_backups(backup_root: Path, keep: int = KEEP_UPDATE_BACKUPS) -> list[Path]:
+    """Delete all but the newest `keep` .update-backup/<version> folders (by version). Anything whose name is not
+    a version is left alone. Returns what was removed (F-018)."""
+    try:
+        found = [(parse_version(p.name), p) for p in backup_root.iterdir() if p.is_dir() and _is_version(p.name)]
+    except OSError:
+        return []
+    removed: list[Path] = []
+    for _, path in sorted(found, reverse=True)[max(1, keep):]:
+        try:
+            shutil.rmtree(path)
+            removed.append(path)
+        except OSError:
+            pass
+    return removed
+
+
+def _is_version(text: str) -> bool:
+    try:
+        parse_version(text)
+    except ValueError:
+        return False
+    return True
 
 
 def _copy(src: Path, dst: Path) -> None:
@@ -216,9 +250,9 @@ def _remove(path: Path) -> None:
         path.unlink()
 
 
-def _rollback(root: Path, backup: Path) -> None:
+def _rollback(root: Path, backup: Path, shipped: list[str]) -> None:
     saved = {p.name for p in backup.iterdir()}
-    for name in set(_managed_names(root)) | saved:
+    for name in set(_replaced_names(root, shipped)) | saved:
         try:
             _remove(root / name)
         except OSError:
@@ -252,7 +286,8 @@ def _apply_zip(root: Path, release: ReleaseInfo, current: str, download: Callabl
         if backup.exists():
             shutil.rmtree(backup)
         backup.mkdir(parents=True)
-        old_names = _managed_names(root)
+        shipped = _shipped_names(staging)
+        old_names = _replaced_names(root, shipped)
         try:
             for name in old_names:
                 _copy(root / name, backup / name)
@@ -261,15 +296,18 @@ def _apply_zip(root: Path, release: ReleaseInfo, current: str, download: Callabl
         try:
             for name in old_names:
                 _remove(root / name)
-            for name in _managed_names(staging):
+            for name in shipped:
                 _copy(staging / name, root / name)
         except OSError as exc:
             try:
-                _rollback(root, backup)
+                _rollback(root, backup, shipped)
             except OSError as rollback_exc:
                 raise UpdateError(f"update failed ({exc}) and the rollback also failed ({rollback_exc}). "
                                   f"Your previous version is saved in {backup}") from exc
             raise UpdateError(f"update failed and was rolled back: {exc}") from exc
+    removed = prune_update_backups(root / BACKUP_DIR_NAME)
+    if removed:
+        log_event("update.backups_pruned", keep=KEEP_UPDATE_BACKUPS, removed=[p.name for p in removed])
 
 
 def run_update_command(argv: list[str], cfg: Config, *, stdout=None, stderr=None,

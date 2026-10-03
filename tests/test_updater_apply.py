@@ -87,6 +87,49 @@ class ZipUpdateTest(unittest.TestCase):
         applied = [r for r in records if r["event"] == "update.applied"][0]["data"]
         self.assertEqual((applied["from"], applied["to"], applied["method"]), ("0.1.0", "0.2.0", "zip"))
 
+    def test_update_backup_keeps_newest_two(self):
+        # F-018: one .update-backup/<version> per update would grow forever.
+        for version in ("0.0.7", "0.0.8", "0.0.9"):
+            (self.root / ".update-backup" / version).mkdir(parents=True)
+        (self.root / ".update-backup" / "my-stuff").mkdir()
+        make_zipball(self.zipball, "0.2.0")
+        apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        self.assertEqual(sorted(p.name for p in (self.root / ".update-backup").iterdir()),
+                         ["0.0.9", "0.1.0", "my-stuff"])
+
+    def test_failed_update_prunes_no_backups(self):
+        for version in ("0.0.7", "0.0.8", "0.0.9"):
+            (self.root / ".update-backup" / version).mkdir(parents=True)
+        make_zipball(self.zipball, "0.3.0")
+        with self.assertRaises(UpdateError):
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        self.assertEqual(len(list((self.root / ".update-backup").iterdir())), 3)
+
+    def test_user_markdown_in_root_survives_zip_update(self):
+        # F-019: only the root *.md files the release ships are program files.
+        (self.root / "my-notes.md").write_text("my notes\n")
+        make_zipball(self.zipball, "0.2.0")
+        apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        self.assertEqual((self.root / "my-notes.md").read_text(), "my notes\n")
+        self.assertEqual((self.root / "README.md").read_text(), "readme 0.2.0\n")
+
+    def test_rollback_leaves_user_markdown_alone(self):
+        (self.root / "my-notes.md").write_text("my notes\n")
+        make_zipball(self.zipball, "0.2.0")
+        real_copy = updater._copy
+
+        def failing_copy(src, dst):
+            if TOP in str(src) and src.name == "vendor":
+                raise OSError("disk full")
+            real_copy(src, dst)
+
+        with patch.object(updater, "_copy", failing_copy):
+            with self.assertRaises(UpdateError):
+                apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0",
+                             download=self.download)
+        self.assertEqual((self.root / "my-notes.md").read_text(), "my notes\n")
+        self.assertEqual((self.root / "README.md").read_text(), "readme 0.1.0\n")
+
     def test_wrong_version_in_zip_is_rejected(self):
         make_zipball(self.zipball, "0.3.0")
         with capture_events() as records:

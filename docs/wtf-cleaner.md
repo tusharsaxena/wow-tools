@@ -141,7 +141,9 @@ From here, `r` scans again, `f` picks another game version, `t` goes back to the
 ### Dry run
 
 A **Dry run** does everything a clean does except the deleting. It still writes the zip of the files it *would*
-remove, and shows you the same results screen. When in doubt, do a dry run first.
+remove (named `dryrun-…zip`, so you can tell it from a real clean's zip), and shows you the same results screen.
+When in doubt, do a dry run first. Since dry runs tend to be repeated, only the newest few dry-run zips of each
+game version are kept (the same number as WTF backups, 5 unless you change it).
 
 ## Undo last clean
 
@@ -164,6 +166,7 @@ Everything the cleaner saves goes into its backup folder. Unless you change it i
 wow-tools\wtf-cleaner\
   backup\backup-<flavor>-<YYYYMMDD-HHMMSS>.zip                 your whole WTF folder, taken before each clean
   cleaned\cleaned-<flavor>-<account>-<YYYYMMDD-HHMMSS>.zip     just the files that clean removed
+  cleaned\dryrun-<flavor>-<account>-<YYYYMMDD-HHMMSS>.zip      the files a dry run would have removed
   journal\journal-<YYYYMMDD-HHMMSS>.jsonl                      the record Undo last clean uses
 ```
 
@@ -173,6 +176,8 @@ gets `-2` added before `.zip`, so no backup ever replaces another.
 
 - The **cleaned** zips are never deleted by the app.
 - Only the newest 5 **backups** of each game version are kept (you can change this in settings).
+- Only the newest 5 **dry-run** zips of each game version are kept (the same setting). Dry-run zips made by
+  older versions of the app are named `cleaned-…` like real ones, so they're kept until you delete them.
 - Only the newest 10 **journals** are kept.
 
 ## Restoring a backup
@@ -206,7 +211,7 @@ Press `s` in the cleaner. The settings are saved in `config\wtf-cleaner.cfg`.
 | The four rules | all on | Which rules are on when the review screen opens |
 | Zip the files before deleting | on | Keep a zip of everything a clean removes (recommended) |
 | Backup folder | empty | Where zips and backups go. Empty means `<WoW folder>\wow-tools\wtf-cleaner`. It must be a full path, and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
-| WTF backups to keep | 5 | How many whole-folder backups to keep for each game version |
+| WTF backups to keep | 5 | How many whole-folder backups to keep for each game version. Dry-run zips are kept to the same number |
 | Journals to keep | 10 | How many journals to keep for Undo |
 
 The file itself uses these names, if you edit it by hand: `max_age_days`, `criterion_not_installed`,
@@ -223,7 +228,7 @@ The file itself uses these names, if you edit it by hand: `max_age_days`, `crite
 | Does it touch my keybindings, macros or UI layout? | No. It only ever looks at addon settings files. Blizzard's own settings, keybindings, macros, chat setup, UI layout and your list of enabled addons are never touched. |
 | What's the difference between a Dry run and Clean? | A **Dry run** does every step except deleting, so you can see the full results first. **Clean** deletes the ticked files after backing them up. |
 | Can I clean one account only? | Yes. Pick a single game version; if it has more than one account, the next screen lets you pick one. |
-| How much space do the backups take? | Each WTF backup is a zip of your whole `WTF` folder, so it depends on how big that folder is (zipping shrinks these text files a lot). Only the newest 5 per game version are kept (you can change that in settings). The zips of cleaned files are kept until you delete them. |
+| How much space do the backups take? | Each WTF backup is a zip of your whole `WTF` folder, so it depends on how big that folder is (zipping shrinks these text files a lot). Only the newest 5 per game version are kept (you can change that in settings), and the same number of dry-run zips. The zips of cleaned files are kept until you delete them. |
 | Can I undo a clean from last week? | **Undo last clean** only goes back to the most recent clean. For an older one, unzip its files by hand; see [Restoring a backup](#restoring-a-backup). |
 
 ## Troubleshooting

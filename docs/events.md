@@ -52,6 +52,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ui.selection` | info | The user made a choice in the TUI or CLI. |
 | `update.applied` | info | The suite was updated. |
 | `update.available` | info | A newer suite release exists. |
+| `update.backups_pruned` | info | After a zip update, older .update-backup folders were deleted to keep the newest 2. |
 | `update.check_failed` | debug | The release check failed (offline, rate limited, bad data). |
 | `update.checked` | debug | The GitHub release check ran or was throttled. |
 | `update.failed` | error | Applying an update failed. |
@@ -62,6 +63,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | Event | Level | Description |
 |---|---|---|
 | `backup.created` | info | The cleaned-files zip was written and verified (a dry run writes it too). |
+| `backup.dry_runs_pruned` | info | After a dry run, older dry-run zips of the flavor were deleted to keep its newest N (keep_backups). |
 | `backup.failed` | error | The cleaned-files zip failed; nothing was deleted. |
 | `clean.check_failed` | warning | The post-clean check found problems; see the WTF backup it names. |
 | `clean.completed` | info | A clean finished (logged at warning if any file failed). |

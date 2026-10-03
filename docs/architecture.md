@@ -35,7 +35,7 @@ stay thin.
 | `journal` | Run journals, the suite standard for any tool that changes files: JSON Lines (header, one line per completed change flushed at once, `{"finished"}`, `{"undone"}`). `journal_dir(wow_path, tool)` = `<WoW>/wow-tools/<tool>/journal/`; `new_journal_path`, `JournalWriter` (`open()` exclusive-creates and writes the header, `add_entry()`, `finish()`, `discard_if_empty()`), `read_journal(path, path_fields=)`, `list_journals` (newest first), `latest_undoable` (newest journal with entries, never past an undone one), `mark_undone`, `prune_journals(dir, keep)`, `friendly_stamp`. Path values go through `to_stored()` / `to_native()`. Tools add their own entry fields and undo rules |
 | `backup` | Zip + `manifest.json`, verified before it is moved into place; optional `on_file(current, total, name)` hook for progress |
 | `process` | Best-effort "is WoW running?" per flavor: `running_wow_processes()` returns `WowProcess(name, path)` (PowerShell `Get-CimInstance Win32_Process` on Windows/WSL, `/proc/<pid>/cmdline` on Linux, name-only `tasklist` fallback, `None` on macOS); `processes_for_flavor()` matches the executable's parent folder to the flavor folder, ignoring case and `\`/`/`; `wow_check_for(flavor)` is the check the review screen and CLI call |
-| `updater` | GitHub Releases check (24 h throttle; a future stamp never throttles), git fast-forward (120 s timeout per step, no prompts, untracked files ignored) or zip replace with rollback; a zip update also removes `RETIRED_FILES` (the old `wtf-cleaner.cmd/.sh`) |
+| `updater` | GitHub Releases check (24 h throttle; a future stamp never throttles), git fast-forward (120 s timeout per step, no prompts, untracked files ignored) or zip replace with rollback (replaces the managed names plus only the root `*.md` files the release ships; keeps the newest 2 `.update-backup/<version>` folders); a zip update also removes `RETIRED_FILES` (the old `wtf-cleaner.cmd/.sh`) |
 
 ## Config schema
 
@@ -95,8 +95,9 @@ before the next flavor (`clean.flavors_stopped`), and each `FlavorRun.status` is
 `execute` guards every path (it must resolve inside `<flavor>/WTF/Account/**/SavedVariables`) and re-checks
 size and mtime. For a real clean it then opens the run journal (when given one), takes the safety snapshot and
 writes the marker (`safety.py`), writes and verifies the selective backup, and only then deletes, journaling each
-file right after it is deleted. A dry run writes the backup and deletes nothing; it takes no snapshot and writes
-no journal.
+file right after it is deleted. A dry run writes the backup (as `cleaned/dryrun-<flavor>-<account>-<stamp>.zip`) and deletes nothing; it takes
+no snapshot, writes no journal, and then prunes the flavor's dry-run zips to the newest `keep_backups`
+(`prune_dry_run_zips`). Real `cleaned-*.zip` files are never pruned.
 
 ### Run journal and Undo last clean (`tools/wtf_cleaner/journal.py`, `undo.py`)
 
