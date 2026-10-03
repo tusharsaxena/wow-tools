@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/assets/ka0s-logo.png" alt="Ka0s" width="220"></p>
+<img src="docs/assets/ka0s-logo.png" alt="Ka0s" width="220">
 
 # Ka0s WoW Tools
 
