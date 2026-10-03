@@ -12,6 +12,22 @@ from textual.widgets import Button, Checkbox, Static
 LIST_NAME_STYLE = "bold #F2C14E"
 LIST_CURSOR_BACKGROUND = "#1C4E8F"
 
+# One colour per kind of action, the same in every tool (Textual Button variants). Pick buttons by what they do:
+ACTION_VARIANTS = {
+    "delete": "error",      # removes files for good (Clean): red
+    "apply": "success",     # changes files, can be undone (Organize): green
+    "simulate": "primary",  # shows what would happen, changes nothing (Dry run): blue
+    "revert": "warning",    # puts a change back, or overrides a safeguard (Undo last run, Override): amber
+    "confirm": "primary",   # the expected next step of a dialog (Save, Yes, Update now, Remind me): blue
+    "neutral": "default",   # refresh, navigation and backing out (Rescan, Other flavor, Tools, Quit, Cancel, No)
+}
+
+
+def action_button(label: str, action: str, **kwargs) -> Button:
+    """A Button coloured by the kind of action it performs (see ACTION_VARIANTS)."""
+    return Button(label, variant=ACTION_VARIANTS[action], **kwargs)
+
+
 CHECK_ON = "✔"
 CHECK_OFF = "✘"
 

@@ -25,7 +25,7 @@ from wowtools.ui.base import Ka0sApp
 from wowtools.ui.branding import Banner, BrandBar
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.tool_flow import ToolFlow
-from wowtools.ui.widgets import LIST_CURSOR_BACKGROUND, LIST_NAME_STYLE, NAV_BINDINGS, ButtonRow, NavHint
+from wowtools.ui.widgets import LIST_CURSOR_BACKGROUND, LIST_NAME_STYLE, NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 
 class LockScreen(ModalScreen[bool]):
@@ -62,8 +62,8 @@ class LockScreen(ModalScreen[bool]):
             yield Static(Text("Ka0s WoW Tools may already be running"), id="lock-title")
             yield Static(Text(self.body()), id="lock-body")
             with ButtonRow(id="lock-buttons"):
-                yield Button("Override and continue (o)", variant="warning", id="lock-override")
-                yield Button("Quit (q)", variant="primary", id="lock-quit")
+                yield action_button("Override and continue (o)", "revert", id="lock-override")
+                yield action_button("Quit (q)", "neutral", id="lock-quit")
             yield NavHint("←→ choose · Enter/Space press · o override · q/Esc quit")
 
     def on_mount(self) -> None:

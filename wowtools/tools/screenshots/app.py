@@ -21,7 +21,7 @@ from wowtools.tools.screenshots.settings import (SECTION, ShotSettings, load_set
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.tool_flow import ToolFlow
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
 if TYPE_CHECKING:
     from wowtools.ui.suite_app import WowToolsApp
@@ -61,8 +61,8 @@ class ScreenshotSettingsScreen(Screen[bool]):
                                self.settings.copy_mode, id="sw_copy")
             yield Static("", id="settings-error")
             with ButtonRow(classes="buttons"):
-                yield Button("Save", variant="primary", id="save")
-                yield Button("Cancel", id="cancel")
+                yield action_button("Save", "confirm", id="save")
+                yield action_button("Cancel", "neutral", id="cancel")
             yield NavHint("↑↓/Tab move · ←→ buttons · Space/Enter tick · Enter/Space press · Esc cancel")
         yield BrandBar()
         yield Footer()

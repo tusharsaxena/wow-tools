@@ -28,7 +28,7 @@ from wowtools.tools.wtf_cleaner.rules import CRITERIA, Proposal, ProposalItem, c
 from wowtools.tools.wtf_cleaner.safety import SNAPSHOT_SUBDIR, Marker, clear_marker, read_marker, recovery_message
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint
+from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
 ACCENT = "bold #5CC8FF"
 WARNING_STYLE = "#E8B04B"
@@ -63,8 +63,8 @@ class ConfirmScreen(ModalScreen[bool]):
                 body.highlight_words([alert], style="bold #E5534B")
             yield Static(body)
             with ButtonRow(id="confirm-buttons"):
-                yield Button("Yes (y)", variant="primary", id="yes")
-                yield Button("No (n)", id="no")
+                yield action_button("Yes (y)", "confirm", id="yes")
+                yield action_button("No (n)", "neutral", id="no")
             yield NavHint("←→ choose · Enter/Space press · y yes · n/Esc no")
 
     def on_mount(self) -> None:
@@ -139,8 +139,8 @@ class RecoveryScreen(ModalScreen[str]):
             yield Static(Text("An earlier clean did not finish"), id="recovery-title")
             yield Static(Text(self.message))
             with ButtonRow(id="recovery-buttons"):
-                yield Button("Dismiss (keep the backup)", id="recovery-dismiss")
-                yield Button("Remind me next time", variant="primary", id="recovery-remind")
+                yield action_button("Dismiss (keep the backup)", "neutral", id="recovery-dismiss")
+                yield action_button("Remind me next time", "confirm", id="recovery-remind")
 
     def on_mount(self) -> None:
         self.query_one("#recovery-remind", Button).focus()
@@ -228,9 +228,9 @@ class ReviewScreen(Screen[str]):
                 yield Label("Max age in days (Enter)", classes="section")
                 yield Input(str(self.criteria.max_age_days), type="integer", id="max_age")
                 with ButtonRow(id="actions", wrap=False):
-                    yield Button("Clean", variant="error", id="btn-clean")
-                    yield Button("Dry run", variant="primary", id="btn-dry")
-                    yield Button("Rescan", variant="warning", id="btn-rescan")
+                    yield action_button("Clean", "delete", id="btn-clean")
+                    yield action_button("Dry run", "simulate", id="btn-dry")
+                    yield action_button("Rescan", "neutral", id="btn-rescan")
                 yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)

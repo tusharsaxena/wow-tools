@@ -27,7 +27,7 @@ from wowtools.tools.screenshots.settings import load_settings, resolve_journal_d
 from wowtools.tools.screenshots.undo import undo
 from wowtools.tools.wtf_cleaner.review_screen import ConfirmScreen
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, NavHint
+from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 ACCENT = "bold #5CC8FF"
 SUCCESS_FALLBACK = "#4CC38A"
@@ -103,10 +103,10 @@ class ShotResultScreen(Screen[str]):
             yield summary
             yield DataTable(id="result-files", cursor_type="row", zebra_stripes=True)
         with ButtonRow(classes="buttons"):
-            yield Button("Rescan (r)", variant="primary", id="review")
-            yield Button("Other flavor (f)", id="flavors")
-            yield Button("Tools (t)", id="tools")
-            yield Button("Quit (q)", id="quit")
+            yield action_button("Rescan (r)", "neutral", id="review")
+            yield action_button("Other flavor (f)", "neutral", id="flavors")
+            yield action_button("Tools (t)", "neutral", id="tools")
+            yield action_button("Quit (q)", "neutral", id="quit")
         yield NavHint("↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · r rescan · f other flavor · "
                       "t tools · q quit")
         yield BrandBar()
@@ -207,10 +207,10 @@ class ShotReviewScreen(Screen[str]):
                 yield Label("Mode", classes="section")
                 yield Static(Text(self._mode_text()), id="mode-label")
                 with ButtonRow(id="actions", wrap=False):
-                    yield Button("Organize", variant="success", id="btn-organize")
-                    yield Button("Dry run", variant="primary", id="btn-dry")
-                    yield Button("Rescan", variant="warning", id="btn-rescan")
-                    yield Button("Undo last run", id="btn-undo")
+                    yield action_button("Organize", "apply", id="btn-organize")
+                    yield action_button("Dry run", "simulate", id="btn-dry")
+                    yield action_button("Rescan", "neutral", id="btn-rescan")
+                    yield action_button("Undo last run", "revert", id="btn-undo")
                 yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)

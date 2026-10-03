@@ -16,7 +16,7 @@ from wowtools.tools.wtf_cleaner.cleaner import CleanResult
 from wowtools.tools.wtf_cleaner.multi import FlavorRun, MultiCleanResult, nothing_deleted
 from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, MULTI_RESULT_COLUMNS, RESULT_COLUMNS, format_size,
                                                multi_result_rows, result_rows)
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 SUCCESS_FALLBACK = "#4CC38A"
 BLOCK_STYLE = "bold #5CC8FF"
@@ -111,10 +111,10 @@ class ResultScreen(Screen[str]):
             yield summary
             yield DataTable(id="result-files", cursor_type="row", zebra_stripes=True)
         with ButtonRow(classes="buttons"):
-            yield Button("Rescan (r)", variant="primary", id="review")
-            yield Button("Other flavor (f)", id="flavors")
-            yield Button("Tools (t)", id="tools")
-            yield Button("Quit (q)", id="quit")
+            yield action_button("Rescan (r)", "neutral", id="review")
+            yield action_button("Other flavor (f)", "neutral", id="flavors")
+            yield action_button("Tools (t)", "neutral", id="tools")
+            yield action_button("Quit (q)", "neutral", id="quit")
         yield NavHint("↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · r rescan · f other flavor · "
                       "t tools · q quit")
         yield Footer()

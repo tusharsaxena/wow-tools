@@ -333,6 +333,17 @@ class ShotsAppTest(TuiTestCase):
             self.assertIn("no Screenshots folder", flavors["_anniversary_"])
             self.assertIn("4 shots", flavors["_retail_"])
 
+    async def test_action_buttons_share_the_suite_colours(self):
+        from wowtools.ui.widgets import ACTION_VARIANTS
+        self.save_tool_cfg()
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            variants = {i: review.query_one(f"#{i}", Button).variant
+                        for i in ("btn-organize", "btn-dry", "btn-rescan", "btn-undo")}
+        self.assertEqual(variants, {"btn-organize": ACTION_VARIANTS["apply"], "btn-dry": ACTION_VARIANTS["simulate"],
+                                    "btn-rescan": ACTION_VARIANTS["neutral"], "btn-undo": ACTION_VARIANTS["revert"]})
+
 def _walk(node):
     yield node
     for child in node.children:

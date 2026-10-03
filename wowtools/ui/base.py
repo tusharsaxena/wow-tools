@@ -13,7 +13,7 @@ from wowtools.core.config import Config
 from wowtools.core.events import log_event
 from wowtools.core.updater import ReleaseInfo, UpdateError, apply_update, check_for_update
 from wowtools.ui.theme import KA0S_THEME
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 
 class UpdateScreen(ModalScreen[bool]):
@@ -37,8 +37,8 @@ class UpdateScreen(ModalScreen[bool]):
             with VerticalScroll(id="update-notes"):
                 yield Markdown(self.release.notes or "_No release notes._")
             with ButtonRow(id="update-buttons"):
-                yield Button("Update now", variant="primary", id="update-yes")
-                yield Button("Later", id="update-no")
+                yield action_button("Update now", "confirm", id="update-yes")
+                yield action_button("Later", "neutral", id="update-no")
             yield NavHint("←→ buttons · ↑↓/Tab move · Enter/Space press · Esc later")
 
     def on_mount(self) -> None:

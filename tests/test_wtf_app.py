@@ -311,7 +311,7 @@ class ReviewFlowTest(AppTestCase):
             review = await self.open_review(app, pilot)
             self.assertEqual(review.query_one("#btn-clean", Button).variant, "error")
             self.assertEqual(review.query_one("#btn-dry", Button).variant, "primary")
-            self.assertEqual(review.query_one("#btn-rescan", Button).variant, "warning")
+            self.assertEqual(review.query_one("#btn-rescan", Button).variant, "default")  # neutral: same colour as Rescan everywhere
             self.assertFalse(review.query("#status"))
             self.assertFalse(hasattr(review, "dry_run"))
             review.query_one("#btn-clean", Button).focus()
