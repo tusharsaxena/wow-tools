@@ -303,7 +303,16 @@ class ShotsAppTest(TuiTestCase):
             self.assertEqual(ids[1:], ["_anniversary_", "_classic_beta_", "_classic_era_", "_retail_"])
             labels = {i: str(options.get_option_at_index(n).prompt) for n, i in enumerate(ids)}
             self.assertIn("no Screenshots folder", labels["_anniversary_"])
-            self.assertNotIn("no Screenshots folder", labels["_retail_"])
+            self.assertIn("4 screenshots to file", labels["_retail_"])
+            self.assertIn("2 screenshots to file", labels["_classic_era_"])
+            self.assertIn("6 screenshots to file", labels[ids[0]])
+            self.assertIn("(4 flavors)", labels[ids[0]])
+            # three aligned columns: every folder and every remark starts in the same place
+            plain = [labels[i] for i in ids]
+            self.assertEqual(len({p.index("(") for p in plain}), 1)
+            remarks = [p.index(r) for p, r in zip(plain, ["6 screenshots", "no Screenshots", "no Screenshots",
+                                                           "2 screenshots", "4 screenshots"])]
+            self.assertEqual(len(set(remarks)), 1)
             await pilot.press("down", "enter")  # Anniversary: no Screenshots folder
             await pilot.pause()
             await app.workers.wait_for_complete()

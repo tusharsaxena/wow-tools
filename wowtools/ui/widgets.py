@@ -7,6 +7,11 @@ from textual.containers import Horizontal
 from textual.content import Content
 from textual.widgets import Button, Checkbox, Static
 
+# Pick lists (tool menu, flavor picker): names in gold, in their own column, readable on the cursor row too, whose
+# background is a deeper blue than the default cursor for that reason.
+LIST_NAME_STYLE = "bold #F2C14E"
+LIST_CURSOR_BACKGROUND = "#1C4E8F"
+
 CHECK_ON = "✔"
 CHECK_OFF = "✘"
 

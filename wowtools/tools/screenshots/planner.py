@@ -111,6 +111,18 @@ def list_names(folder: Path) -> set[str]:
         return set()
 
 
+def waiting_count(flavor: Flavor) -> int | None:
+    """How many screenshots are waiting in a flavor's Screenshots folder (top level only: files already in date
+    folders are filed), or None if it has no Screenshots folder. One listing, no stat."""
+    folder = source_dir(flavor)
+    if not folder.is_dir():
+        return None
+    try:
+        return sum(1 for name in list_names(folder) if parse_shot_name(name) is not None)
+    except OSError:
+        return None
+
+
 def scan(flavors: list[Flavor], dest_dir: Path | None, progress: ScanProgress | None = None) -> Plan:
     log_event("shots.scan_started", flavors=[f.folder for f in flavors],
               dest_dir=str(dest_dir) if dest_dir else None)

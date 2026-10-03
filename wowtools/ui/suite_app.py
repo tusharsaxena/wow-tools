@@ -25,7 +25,7 @@ from wowtools.ui.base import Ka0sApp
 from wowtools.ui.branding import Banner, BrandBar
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.tool_flow import ToolFlow
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint
+from wowtools.ui.widgets import LIST_CURSOR_BACKGROUND, LIST_NAME_STYLE, NAV_BINDINGS, ButtonRow, NavHint
 
 
 class LockScreen(ModalScreen[bool]):
@@ -76,7 +76,7 @@ class LockScreen(ModalScreen[bool]):
         self.dismiss(value)
 
 
-TOOL_NAME_STYLE = "bold #F2C14E"  # gold: stands apart from the blue theme, on the cursor row too
+TOOL_NAME_STYLE = LIST_NAME_STYLE
 
 
 def tool_label(title: str, description: str, width: int) -> Text:
@@ -87,13 +87,12 @@ def tool_label(title: str, description: str, width: int) -> Text:
 class ToolMenuScreen(Screen[None]):
     """The first screen: every tool in the suite. It stays at the bottom of the stack while a tool runs."""
 
-    DEFAULT_CSS = """
-    ToolMenuScreen #pick-title { color: $accent; text-style: bold; padding: 0 2; }
-    ToolMenuScreen #tools { margin: 1 2; height: auto; border: tall $primary; }
-    /* A deeper blue than the default cursor, so the gold tool names stay readable on the highlighted row. */
-    ToolMenuScreen #tools > .option-list--option-highlighted { background: #1C4E8F; }
-    ToolMenuScreen #tools:focus > .option-list--option-highlighted { background: #1C4E8F; }
-    ToolMenuScreen NavHint { padding: 0 2; }
+    DEFAULT_CSS = f"""
+    ToolMenuScreen #pick-title {{ color: $accent; text-style: bold; padding: 0 2; }}
+    ToolMenuScreen #tools {{ margin: 1 2; height: auto; border: tall $primary; }}
+    ToolMenuScreen #tools > .option-list--option-highlighted {{ background: {LIST_CURSOR_BACKGROUND}; }}
+    ToolMenuScreen #tools:focus > .option-list--option-highlighted {{ background: {LIST_CURSOR_BACKGROUND}; }}
+    ToolMenuScreen NavHint {{ padding: 0 2; }}
     """
     BINDINGS = [Binding("q,escape", "app.quit", "Quit"), *NAV_BINDINGS]
 

@@ -14,8 +14,9 @@ from textual.widgets import Button, Footer, Header, Input, Label, Static
 from wowtools.core.config import Config
 from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.paths import to_native, to_stored
+from wowtools.tools.screenshots.planner import waiting_count
 from wowtools.tools.screenshots.review_screen import ShotReviewScreen
-from wowtools.tools.screenshots.settings import (SECTION, ShotSettings, load_settings, save_settings, source_dir,
+from wowtools.tools.screenshots.settings import (SECTION, ShotSettings, load_settings, save_settings,
                                                  validate_dest)
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
@@ -104,6 +105,15 @@ class ScreenshotSettingsScreen(Screen[bool]):
         self.dismiss(True)
 
 
+def waiting_text(count: int | None) -> str:
+    """The flavor picker's third column: how many screenshots are waiting to be filed."""
+    if count is None:
+        return "no Screenshots folder"
+    if count == 0:
+        return "nothing to file"
+    return f"{count} screenshot{'' if count == 1 else 's'} to file"
+
+
 class ScreenshotsFlow(ToolFlow):
     """The organizer's own workflow. Its settings live in config/screenshots.cfg; the WoW folder and the last
     single flavor are shared suite settings."""
@@ -128,15 +138,15 @@ class ScreenshotsFlow(ToolFlow):
             self.start()
             return
         self.flavors = install.flavors()
-        with_shots = {f.folder for f in self.flavors if source_dir(f).is_dir()}
-        if not with_shots:
+        counts = {f.folder: waiting_count(f) for f in self.flavors}
+        if all(count is None for count in counts.values()):
             self.app.notify(f"No Screenshots folders found in {to_stored(install.root)}.", severity="warning")
             self.close()
             return
         settings = load_settings(self.tool_cfg)
         self.app.push_screen(FlavorScreen(self.cfg, install, include_all=True, last=settings.last_flavor_choice,
-                                          flavors=self.flavors,
-                                          note=lambda f: None if f.folder in with_shots else "no Screenshots folder"),
+                                          flavors=self.flavors, note=lambda f: waiting_text(counts[f.folder]),
+                                          all_note=waiting_text(sum(c or 0 for c in counts.values()))),
                              self._after_flavor)
 
     def _after_flavor(self, choice: Union[Flavor, str, None]) -> None:

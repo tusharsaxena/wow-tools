@@ -14,38 +14,58 @@ from wowtools.core.config import GENERAL, Config
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor, WowInstall
 from wowtools.ui.branding import Banner, BrandBar
-from wowtools.ui.widgets import NAV_BINDINGS, NavHint
+from wowtools.ui.widgets import LIST_CURSOR_BACKGROUND, LIST_NAME_STYLE, NAV_BINDINGS, NavHint
 
 ALL_FLAVORS = "__all__"  # dismiss value for the "All flavors" entry (include_all=True only)
+
+
+COLUMN_GAP = 3
+
+
+def flavor_rows(rows: list[tuple[str, str, str]]) -> list[Text]:
+    """Pick-list rows as three aligned columns (name, folder, remark), like the tool menu: each column is as wide
+    as its longest entry plus a gap. Nothing is drawn between them."""
+    name_width = max(len(name) for name, _, _ in rows) + COLUMN_GAP
+    folder_width = max(len(folder) for _, folder, _ in rows) + COLUMN_GAP
+    return [Text.assemble((name.ljust(name_width), LIST_NAME_STYLE),
+                          folder.ljust(folder_width) if remark else folder, (remark, "dim"))
+            for name, folder, remark in rows]
 
 
 class FlavorScreen(Screen[Union[Flavor, str, None]]):
     """Dismisses with a Flavor, with ALL_FLAVORS (only when include_all), or with None (Esc).
 
     flavors overrides install.flavors(); last is the folder to highlight ("" means "All flavors"), and None falls
-    back to [general] last_flavor. note(flavor) may return a short dimmed remark shown after a flavor's name
-    (e.g. "no Screenshots folder")."""
-    DEFAULT_CSS = """
-    FlavorScreen .title { color: $accent; text-style: bold; padding: 0 2; }
-    FlavorScreen NavHint { padding: 0 2; }
-    FlavorScreen OptionList { margin: 1 2; height: auto; max-height: 20; border: tall $primary; }
+    back to [general] last_flavor. note(flavor) may return a short remark for a flavor's third column (e.g.
+    "12 screenshots to file"), and all_note the remark for the "All flavors" row."""
+    DEFAULT_CSS = f"""
+    FlavorScreen .title {{ color: $accent; text-style: bold; padding: 0 2; }}
+    FlavorScreen NavHint {{ padding: 0 2; }}
+    FlavorScreen OptionList {{ margin: 1 2; height: auto; max-height: 20; border: tall $primary; }}
+    FlavorScreen OptionList > .option-list--option-highlighted {{ background: {LIST_CURSOR_BACKGROUND}; }}
+    FlavorScreen OptionList:focus > .option-list--option-highlighted {{ background: {LIST_CURSOR_BACKGROUND}; }}
     """
     BINDINGS = [Binding("escape", "cancel", "Tools"), *NAV_BINDINGS]
 
     def __init__(self, cfg: Config, install: WowInstall, *, include_all: bool = False, last: str | None = None,
-                 flavors: list[Flavor] | None = None, note: Callable[[Flavor], str | None] | None = None) -> None:
+                 flavors: list[Flavor] | None = None, note: Callable[[Flavor], str | None] | None = None,
+                 all_note: str | None = None) -> None:
         super().__init__()
         self.cfg = cfg
         self.flavors = install.flavors() if flavors is None else list(flavors)
         self.include_all = include_all
         self.last = cfg.last_flavor if last is None else last
         self.note = note
+        self.all_note = all_note
 
     def compose(self) -> ComposeResult:
-        options = [Option(self._label(f), id=f.folder) for f in self.flavors]
+        ids = [f.folder for f in self.flavors]
+        rows = [(f.display_name, f"({f.folder})", (self.note(f) if self.note else None) or "") for f in self.flavors]
         if self.include_all:
-            options.insert(0, Option(Text.assemble(("All flavors", "bold"), f"  ({len(self.flavors)})"),
-                                     id=ALL_FLAVORS))
+            ids.insert(0, ALL_FLAVORS)
+            count = len(self.flavors)
+            rows.insert(0, ("All flavors", f"({count} flavor{'' if count == 1 else 's'})", self.all_note or ""))
+        options = [Option(label, id=option_id) for option_id, label in zip(ids, flavor_rows(rows))] if rows else []
         yield Header()
         yield Banner()
         yield Static("Choose a WoW flavor", classes="title")
@@ -53,10 +73,6 @@ class FlavorScreen(Screen[Union[Flavor, str, None]]):
         yield NavHint("↑↓ choose · Enter select · Esc back to tools")
         yield BrandBar()
         yield Footer()
-
-    def _label(self, flavor: Flavor) -> Text:
-        remark = self.note(flavor) if self.note is not None else None
-        return Text.assemble(f"{flavor.display_name}  ({flavor.folder})", (f"  · {remark}" if remark else "", "dim"))
 
     def on_mount(self) -> None:
         self.sub_title = "Choose flavor"
