@@ -705,11 +705,16 @@ class ReviewScreen(Screen[str]):
                 self.app.call_from_thread(progress_screen.set_flavor,
                                           f"{flavor.display_name} ({index + 1}/{count})")
 
-        with activity.running():
-            result = execute_flavors(plan, dry_run=dry_run, backup=backup, backup_dir=backup_dir,
-                                     account=self.account, keep_backups=self.settings.keep_backups,
-                                     progress=progress, on_flavor=on_flavor, journal_dir=self._journal_dir(),
-                                     keep_journals=self.settings.keep_journals)
+        try:
+            with activity.running():
+                result = execute_flavors(plan, dry_run=dry_run, backup=backup, backup_dir=backup_dir,
+                                         account=self.account, keep_backups=self.settings.keep_backups,
+                                         progress=progress, on_flavor=on_flavor, journal_dir=self._journal_dir(),
+                                         keep_journals=self.settings.keep_journals)
+        except Exception as exc:  # noqa: BLE001 - anything unexpected is shown and logged, never a crash
+            log_exception("clean", exc)
+            self.app.call_from_thread(self._clean_crashed, exc, dry_run, backup_dir if backup else None)
+            return
         stopped = result.stopped
         if stopped is not None and isinstance(stopped.error, CleanError):
             log_exception("clean", stopped.error)
@@ -733,6 +738,23 @@ class ReviewScreen(Screen[str]):
             if result.not_started:
                 message += f"\nNot started: {', '.join(r.flavor.display_name for r in result.not_started)}."
         self.notify(message, title="Clean stopped", severity="error", timeout=20)
+
+    def _clean_crashed(self, exc: Exception, dry_run: bool, backup_dir: Path | None) -> None:
+        """An error execute_flavors() does not handle. Unlike _clean_failed, nothing is known about what was
+        deleted, so the message never claims "Nothing was deleted" for a real clean."""
+        self.app.busy = False
+        self._close_progress()
+        self._refresh_undo()
+        what = "simulation" if dry_run else "clean"
+        message = f"The {what} stopped unexpectedly: {type(exc).__name__}: {exc}"
+        if dry_run:
+            message += "\nNothing was deleted (it was a dry run)."
+        else:
+            restore = "Undo last clean (z)"
+            if backup_dir is not None:
+                restore += f" or the WTF backup in {backup_dir / SNAPSHOT_SUBDIR}"
+            message += f"\nCheck the result with Rescan (r). If files are missing, {restore} can put them back."
+        self.notify(message, title="Clean stopped", severity="error", timeout=30)
 
     def _cleaned(self, result: MultiCleanResult) -> None:
         self.app.busy = False

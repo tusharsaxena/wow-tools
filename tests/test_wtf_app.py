@@ -169,6 +169,57 @@ class ReviewFlowTest(AppTestCase):
         self.assertEqual(seen, [("clean", False), ("undo", False)])
         self.assertTrue(activity.wait_idle(0))
 
+    async def test_unexpected_clean_error_is_shown_not_fatal(self):
+        def boom(*args, **kwargs):
+            raise RuntimeError("disk vanished")
+
+        real = review_module.execute_flavors
+        review_module.execute_flavors = boom
+        self.addCleanup(setattr, review_module, "execute_flavors", real)
+        app = self.make_app()
+        with capture_events() as records:
+            async with app.run_test(size=SIZE) as pilot:
+                review = await self.open_review(app, pilot)
+                messages = []
+                review.notify = lambda message, **kwargs: messages.append(message)
+                await pilot.press("c")
+                await pilot.pause()
+                await pilot.press("y")
+                await settle(app, pilot)
+                self.assertTrue(app.is_running)
+                self.assertFalse(app.busy)
+                self.assertIs(app.screen, review)
+                self.assertIsNone(app.return_code)
+        self.assertEqual(len(messages), 1)
+        self.assertIn("stopped unexpectedly", messages[0])
+        self.assertIn("disk vanished", messages[0])
+        self.assertIn(str(self.backup_dir / "backup"), messages[0])
+        self.assertNotIn("Nothing was deleted", messages[0])
+        errors = [r["data"] for r in records if r["event"] == "error"]
+        self.assertEqual([(e["where"], e["message"]) for e in errors], [("clean", "disk vanished")])
+
+    async def test_unexpected_dry_run_error_says_nothing_was_deleted(self):
+        def boom(*args, **kwargs):
+            raise RuntimeError("disk vanished")
+
+        real = review_module.execute_flavors
+        review_module.execute_flavors = boom
+        self.addCleanup(setattr, review_module, "execute_flavors", real)
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            messages = []
+            review.notify = lambda message, **kwargs: messages.append(message)
+            await pilot.press("y")  # dry run
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            await pilot.press("y")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+        self.assertEqual(len(messages), 1)
+        self.assertIn("stopped unexpectedly", messages[0])
+        self.assertIn("Nothing was deleted", messages[0])
+
     async def test_declining_confirm_changes_nothing(self):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
