@@ -4,6 +4,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-yellow)
 ![Platforms](https://img.shields.io/badge/Platforms-Windows_%7C_macOS_%7C_Linux-purple)
 ![Tests](https://img.shields.io/badge/Tests-405%2F405_passing-green)
+![License](https://img.shields.io/badge/License-MIT-orange)
 
 Ka0s WoW Tools is a small set of World of Warcraft helpers that run ***outside*** the game and tidy up the files WoW
 leaves lying around on your computer. It's a single app - you open it, pick a tool from the menu, and when you're done
@@ -228,3 +229,7 @@ The app's screens are built with [Textual](https://github.com/Textualize/textual
 [Rich](https://github.com/Textualize/rich) by Textualize (MIT license). They ship inside the app, together with
 the small libraries they use: Pygments (BSD 2-Clause), markdown-it-py, mdit-py-plugins, mdurl, linkify-it-py and
 platformdirs (all MIT), and typing_extensions (PSF license).
+
+## License
+
+Ka0s WoW Tools is released under the [MIT License](LICENSE). You're free to use, copy, change and share it.
