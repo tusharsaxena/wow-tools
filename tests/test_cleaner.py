@@ -241,6 +241,7 @@ class SafetySnapshotCleanTest(unittest.TestCase):
         self.assertFalse((self.backup_dir / MARKER_NAME).exists())
         self.assertIn("restored", str(ctx.exception))
         self.assertIn("3 deleted files", str(ctx.exception))
+        self.assertFalse(ctx.exception.files_missing)
         names = [r["event"] for r in records]
         self.assertIn("restore.completed", names)
         self.assertNotIn("restore.failed", names)
@@ -272,6 +273,7 @@ class SafetySnapshotCleanTest(unittest.TestCase):
         self.assertTrue((self.backup_dir / MARKER_NAME).exists())
         self.assertTrue(self.snapshot_path().exists())
         self.assertIn(str(self.snapshot_path()), str(ctx.exception))
+        self.assertTrue(ctx.exception.files_missing)  # deleted and not put back
         names = [r["event"] for r in records]
         self.assertIn("restore.failed", names)
         self.assertNotIn("restore.completed", names)

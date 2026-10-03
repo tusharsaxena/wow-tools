@@ -30,9 +30,11 @@ ALL_ACCOUNTS_LABEL = "all"
 
 
 class CleanError(Exception):
-    """The clean was refused or stopped. `restored` lists files put back from the snapshot, if any."""
+    """The clean was refused or stopped. `restored` lists files put back from the snapshot, if any.
+    `files_missing` is True when files were deleted and could not be put back (restore from the WTF backup)."""
 
     restored: list[str] = []
+    files_missing: bool = False
 
 
 @dataclass(frozen=True)
@@ -231,9 +233,11 @@ def _restore_after(exc: BaseException, snapshot: Path, backup_dir: Path, flavor:
     except Exception as restore_exc:  # noqa: BLE001 - any failure keeps the marker and the snapshot
         log_event("restore.failed", flavor=flavor.folder, snapshot=str(snapshot), files=len(deleted),
                   reason=reason, error=str(restore_exc))
-        return CleanError(f"Clean stopped ({reason}) and restoring the {len(deleted)} deleted files failed "
-                          f"({restore_exc}). The WTF backup is at {snapshot}: close WoW, then unzip "
-                          f"it into {flavor.path} to restore.")
+        error = CleanError(f"Clean stopped ({reason}) and restoring the {len(deleted)} deleted files failed "
+                           f"({restore_exc}). The WTF backup is at {snapshot}: close WoW, then unzip "
+                           f"it into {flavor.path} to restore.")
+        error.files_missing = bool(deleted)
+        return error
     log_event("restore.completed", flavor=flavor.folder, snapshot=str(snapshot), restored=len(restored),
               reason=reason, files=restored)
     clear_marker(backup_dir)

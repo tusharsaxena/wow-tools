@@ -124,3 +124,9 @@ def execute_flavors(plan: list[tuple[Flavor, list[ProposalItem]]], *, dry_run: b
                           not_started=[r.flavor.folder for r in result.not_started])
             break
     return result
+
+
+def nothing_deleted(error: BaseException | None) -> bool:
+    """True when a stopped flavor run left nothing deleted: a BackupError, or a CleanError that was a refusal or
+    whose deleted files were all restored. False when files were deleted and restoring them failed."""
+    return not getattr(error, "files_missing", False)

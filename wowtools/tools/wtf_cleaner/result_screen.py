@@ -13,7 +13,7 @@ from textual.widgets import Button, DataTable, Footer, Header
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor
 from wowtools.tools.wtf_cleaner.cleaner import CleanResult
-from wowtools.tools.wtf_cleaner.multi import FlavorRun, MultiCleanResult
+from wowtools.tools.wtf_cleaner.multi import FlavorRun, MultiCleanResult, nothing_deleted
 from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, MULTI_RESULT_COLUMNS, RESULT_COLUMNS, format_size,
                                                multi_result_rows, result_rows)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint
@@ -68,7 +68,8 @@ def multi_summary_rows(result: MultiCleanResult) -> list[tuple[str, str, bool]]:
     stopped = result.stopped
     if stopped is not None:
         rows.append(("Done", names(result.done), False))
-        rows.append(("Stopped", f"{stopped.flavor.display_name}: {stopped.error} (nothing deleted there)", False))
+        suffix = " (nothing deleted there)" if nothing_deleted(stopped.error) else ""
+        rows.append(("Stopped", f"{stopped.flavor.display_name}: {stopped.error}{suffix}", False))
         if result.not_started:
             rows.append(("Not started", names(result.not_started), False))
     for run in result.done:
@@ -104,7 +105,9 @@ class ResultScreen(Screen[str]):
         yield Header()
         with Vertical(id="result"):
             summary = DataTable(id="result-summary", cursor_type="none", zebra_stripes=True)
-            summary.can_focus = False  # read-only summary: not a focus stop
+            # Read-only summary: not a focus stop for one flavor. With several flavors it can outgrow its 50%
+            # cap, so it takes focus there and the arrow keys scroll it (no cursor).
+            summary.can_focus = isinstance(self.result, MultiCleanResult)
             yield summary
             yield DataTable(id="result-files", cursor_type="row", zebra_stripes=True)
         with ButtonRow(classes="buttons"):

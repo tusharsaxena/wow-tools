@@ -14,7 +14,8 @@ from wowtools.core.events import capture_events
 from wowtools.tools.wtf_cleaner.app import CleanerSettingsScreen
 from wowtools.core.install import WowInstall
 from wowtools.tools.wtf_cleaner import multi
-from wowtools.tools.wtf_cleaner.cleaner import CleanResult, FileOutcome
+from wowtools.tools.wtf_cleaner import review_screen as review_module
+from wowtools.tools.wtf_cleaner.cleaner import CleanError, CleanResult, FileOutcome
 from wowtools.tools.wtf_cleaner.report import CRITERION_COLORS, RESULT_COLUMNS, result_rows
 from wowtools.tools.wtf_cleaner.review_screen import (CleanProgressScreen, ConfirmScreen, RecoveryScreen,
                                                       ResultScreen, ReviewScreen)
@@ -970,6 +971,108 @@ class AllFlavorsTest(AppTestCase):
             self.assertIn("disk full", rows["Stopped"])
         self.assertFalse((self.era_sv / "Gone.lua").exists())
         self.assertTrue((self.sv / "Uninstalled.lua").exists())
+
+
+    async def test_stop_with_files_missing_does_not_claim_nothing_deleted(self):
+        real = multi.execute
+
+        def fake(items, flavor, **kwargs):
+            if flavor.folder == "_retail_":
+                error = CleanError("Clean stopped (boom) and restoring the 3 deleted files failed (bad zip)")
+                error.files_missing = True
+                raise error
+            return real(items, flavor, **kwargs)
+
+        multi.execute = fake
+        self.addCleanup(setattr, multi, "execute", real)
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_all(app, pilot)
+            await self.run_mode(app, pilot, "c")
+            screen = app.screen
+            self.assertIsInstance(screen, ResultScreen)
+            summary = screen.query_one("#result-summary", DataTable)
+            rows = {str(summary.get_row_at(i)[0]): str(summary.get_row_at(i)[1]) for i in range(summary.row_count)}
+            self.assertIn("restoring the 3 deleted files failed", rows["Stopped"])
+            self.assertNotIn("nothing deleted", rows["Stopped"])
+
+    async def test_first_flavor_stop_names_the_flavor_and_what_was_not_started(self):
+        def fake(items, flavor, **kwargs):
+            error = CleanError("Clean stopped (boom) and restoring the 2 deleted files failed (bad zip)")
+            error.files_missing = True
+            raise error
+
+        real = multi.execute
+        multi.execute = fake
+        self.addCleanup(setattr, multi, "execute", real)
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_all(app, pilot)
+            messages = []
+            review.notify = lambda message, **kwargs: messages.append(message)
+            await self.run_mode(app, pilot, "c")
+            self.assertIs(app.screen, review)
+        self.assertEqual(len(messages), 1)
+        self.assertTrue(messages[0].startswith("Classic Era: Clean stopped"), messages[0])
+        self.assertNotIn("Nothing was deleted", messages[0])
+        self.assertIn("Not started: Retail.", messages[0])
+
+    async def test_first_flavor_backup_error_still_says_nothing_deleted(self):
+        def fake(items, flavor, **kwargs):
+            raise BackupError("disk full")
+
+        real = multi.execute
+        multi.execute = fake
+        self.addCleanup(setattr, multi, "execute", real)
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_all(app, pilot)
+            messages = []
+            review.notify = lambda message, **kwargs: messages.append(message)
+            await self.run_mode(app, pilot, "c")
+        self.assertEqual(messages, ["Classic Era: Nothing was deleted: disk full\nNot started: Retail."])
+
+    async def test_summary_scrolls_from_the_keyboard_with_several_flavors(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 24)) as pilot:
+            await self.open_all(app, pilot)
+            await self.run_mode(app, pilot, "y")
+            screen = app.screen
+            self.assertIsInstance(screen, ResultScreen)
+            summary = screen.query_one("#result-summary", DataTable)
+            self.assertTrue(summary.can_focus)
+            self.assertGreater(summary.max_scroll_y, 0)  # clipped at this height
+            summary.focus()
+            await pilot.pause()
+            self.assertIs(app.focused, summary)
+            await pilot.press(*["down"] * 30)
+            await pilot.pause(0.5)
+            self.assertIs(app.focused, summary)  # the arrows scroll the summary, not move focus
+            self.assertEqual(summary.scroll_y, summary.max_scroll_y)
+
+    async def test_wow_check_covers_only_the_flavors_in_the_selection(self):
+        seen = []
+
+        def fake_check_for(flavors):
+            seen.append([f.folder for f in flavors])
+            return lambda: ["WowClassic.exe"] if any(f.folder != "_retail_" for f in flavors) else []
+
+        real = review_module.wow_check_for
+        review_module.wow_check_for = fake_check_for
+        self.addCleanup(setattr, review_module, "wow_check_for", real)
+        app = WowToolsApp(self.cfg, config_dir=self.cfg.path.parent, check_updates=False, detect=lambda: [],
+                          tool_options={"wtf-cleaner": {"locker_check": lambda: []}})
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_all(app, pilot)
+            full = review._selection_by_flavor()
+            review._selection_by_flavor = lambda: [(f, items) for f, items in full if f.folder == "_retail_"]
+            await pilot.press("c")
+            await pilot.pause()
+            confirm = app.screen
+            self.assertIsInstance(confirm, ConfirmScreen)
+            self.assertNotIn("WowClassic.exe", confirm.body_text)
+            await pilot.press("n")
+        self.assertEqual(seen, [["_retail_"]])
 
 
 class ResultRowsTest(unittest.TestCase):

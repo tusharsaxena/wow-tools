@@ -19,7 +19,8 @@ from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import ACCOUNT_WIDE, Flavor
 from wowtools.core.process import running_wtf_lockers, wow_check_for
 from wowtools.tools.wtf_cleaner.cleaner import CLEANED_SUBDIR, CleanError
-from wowtools.tools.wtf_cleaner.multi import FlavorScan, MultiCleanResult, execute_flavors, scan_flavors
+from wowtools.tools.wtf_cleaner.multi import (FlavorScan, MultiCleanResult, execute_flavors, nothing_deleted,
+                                              scan_flavors)
 from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, STAGE_TITLES, age_days,
                                                format_size, locker_warning)
 from wowtools.tools.wtf_cleaner.result_screen import SUCCESS_FALLBACK, ResultScreen, reasons_text
@@ -194,7 +195,7 @@ class ReviewScreen(Screen[str]):
                  account: str | None = None, wow_check: Callable[[], list[str] | None] | None = None,
                  locker_check: Callable[[], list[str] | None] | None = None) -> None:
         """flavors is one Flavor or several (All flavors: one tree node per flavor, every account in scope).
-        wow_check returns the WoW processes running for any of them."""
+        wow_check returns the WoW processes running (default: built per clean for the flavors in the selection)."""
         super().__init__()
         self.cfg = cfg  # the suite config (WoW folder)
         self.tool_cfg = tool_cfg  # config/wtf-cleaner.cfg
@@ -202,7 +203,7 @@ class ReviewScreen(Screen[str]):
         self.flavor = self.flavors[0]
         self.multi = len(self.flavors) > 1
         self.account = None if self.multi else (account or None)
-        self.wow_check = wow_check or wow_check_for(self.flavors)
+        self.wow_check = wow_check  # None: built per clean from the flavors in the selection
         self.locker_check = locker_check or running_wtf_lockers
         self.settings = load_settings(tool_cfg)
         self.criteria = self.settings.criteria.copy()
@@ -611,7 +612,8 @@ class ReviewScreen(Screen[str]):
             self.notify("Nothing is selected.")
             return
         selection = [item for _, items in plan for item in items]
-        running = self.wow_check()  # every flavor in the selection, one process listing
+        check = self.wow_check or wow_check_for([flavor for flavor, _ in plan])
+        running = check()  # every flavor in the selection, one process listing
         if running:
             log_event("wow.running_warning", executables=running)
         self.settings = load_settings(self.tool_cfg)
@@ -681,7 +683,7 @@ class ReviewScreen(Screen[str]):
         if stopped is not None and isinstance(stopped.error, CleanError):
             log_exception("clean", stopped.error)
         if stopped is not None and not result.done:
-            self.app.call_from_thread(self._clean_failed, stopped.error)
+            self.app.call_from_thread(self._clean_failed, stopped.error, result)
             return
         self.app.call_from_thread(self._cleaned, result)
 
@@ -690,10 +692,15 @@ class ReviewScreen(Screen[str]):
         if progress_screen is not None and self.app.screen is progress_screen:
             self.app.pop_screen()
 
-    def _clean_failed(self, exc: Exception) -> None:
+    def _clean_failed(self, exc: Exception, result: MultiCleanResult | None = None) -> None:
         self.app.busy = False
         self._close_progress()
-        self.notify(f"Nothing was deleted: {exc}", title="Clean stopped", severity="error", timeout=20)
+        message = f"Nothing was deleted: {exc}" if nothing_deleted(exc) else str(exc)
+        if self.multi and result is not None and result.stopped is not None:
+            message = f"{result.stopped.flavor.display_name}: {message}"
+            if result.not_started:
+                message += f"\nNot started: {', '.join(r.flavor.display_name for r in result.not_started)}."
+        self.notify(message, title="Clean stopped", severity="error", timeout=20)
 
     def _cleaned(self, result: MultiCleanResult) -> None:
         self.app.busy = False

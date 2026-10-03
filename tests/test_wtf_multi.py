@@ -8,7 +8,7 @@ from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.tools.wtf_cleaner import multi
 from wowtools.tools.wtf_cleaner.cleaner import CleanError
-from wowtools.tools.wtf_cleaner.multi import execute_flavors, scan_flavors
+from wowtools.tools.wtf_cleaner.multi import execute_flavors, nothing_deleted, scan_flavors
 from wowtools.tools.wtf_cleaner.rules import Criteria, evaluate
 
 
@@ -113,6 +113,14 @@ class MultiFlavorTest(unittest.TestCase):
         self.assertEqual(result.done, [])
         self.assertIsInstance(result.stopped.error, BackupError)
         self.assertTrue((self.retail_sv / "Uninstalled.lua").exists())
+
+
+    def test_nothing_deleted(self):
+        self.assertTrue(nothing_deleted(BackupError("disk full")))
+        self.assertTrue(nothing_deleted(CleanError("locked")))
+        missing = CleanError("restoring failed")
+        missing.files_missing = True
+        self.assertFalse(nothing_deleted(missing))
 
 
 if __name__ == "__main__":
