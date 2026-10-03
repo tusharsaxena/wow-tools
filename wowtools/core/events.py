@@ -1,8 +1,9 @@
 """Suite-wide structured event log. The reference is docs/events.md (generated).
 
-Every event name is registered once with a fixed level. log_event() writes one JSON line to
-logs/events-YYYY-MM-DD.jsonl (all levels) and one readable line to logs/wow-tools-YYYY-MM-DD.log
-(filtered by [general] log_level). Logging never raises into the caller because of I/O.
+Every event name is registered once with a fixed level. Each tool logs to its own folder,
+logs/<tool>/ (the launcher itself uses logs/suite/). log_event() writes one JSON line to
+events-YYYY-MM-DD.log (all levels) and one readable line to logfile-YYYY-MM-DD.log (filtered by
+[general] log_level). Logging never raises into the caller because of I/O.
 """
 from __future__ import annotations
 
@@ -51,7 +52,59 @@ CORE_EVENTS: dict[str, EventSpec] = {
 REGISTRY: dict[str, EventSpec] = dict(CORE_EVENTS)
 TOOL_REGISTRIES: dict[str, dict[str, EventSpec]] = {"core": dict(CORE_EVENTS)}
 
-_LOG_NAME = re.compile(r"^(?:events|wow-tools)-(\d{4}-\d{2}-\d{2})\.(?:jsonl|log)$")
+_LOG_NAME = re.compile(r"^(?:events|logfile)-(\d{4}-\d{2}-\d{2})\.log$")
+# The flat layout used before per-tool folders: logs/events-<day>.jsonl and logs/wow-tools-<day>.log.
+_FLAT_LOG_NAME = re.compile(r"^(events|wow-tools)-(\d{4}-\d{2}-\d{2})\.(jsonl|log)$")
+_TEXT_TOOL = re.compile(r"^\S+ \S+ \S+\s+\[([^\]]+)\] ")
+_SAFE_TOOL = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def log_paths(log_dir: Path, tool: str, day: str) -> tuple[Path, Path]:
+    """(events file, readable log file) for one tool and day: logs/<tool>/events-<day>.log, logfile-<day>.log."""
+    folder = log_dir / (tool if _SAFE_TOOL.match(tool or "") and tool not in (".", "..") else "suite")
+    return folder / f"events-{day}.log", folder / f"logfile-{day}.log"
+
+
+def migrate_flat_logs(log_dir: Path | None) -> list[Path]:
+    """Move logs from the old flat layout into per-tool folders, splitting each file by the tool on each line.
+
+    Old lines go before anything already in the new file. Returns the old files that were moved (and removed).
+    Never raises: a file that cannot be moved stays where it is."""
+    if log_dir is None or not log_dir.is_dir():
+        return []
+    moved: list[Path] = []
+    for path in sorted(log_dir.iterdir()):
+        match = _FLAT_LOG_NAME.match(path.name)
+        if not match or not path.is_file():
+            continue
+        kind, day = match.group(1), match.group(2)
+        try:
+            by_tool: dict[str, list[str]] = {}
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                tool = "suite"
+                if kind == "events":
+                    with contextlib.suppress(ValueError, TypeError, AttributeError):
+                        tool = str(json.loads(line).get("tool") or "suite")
+                else:
+                    found = _TEXT_TOOL.match(line)
+                    if found:
+                        tool = found.group(1)
+                by_tool.setdefault(tool, []).append(line)
+            for tool, lines in by_tool.items():
+                events_path, text_path = log_paths(log_dir, tool, day)
+                target = events_path if kind == "events" else text_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                existing = target.read_text(encoding="utf-8") if target.exists() else ""
+                partial = target.with_name(target.name + ".partial")
+                partial.write_text("\n".join(lines) + "\n" + existing, encoding="utf-8")
+                partial.replace(target)
+            path.unlink()
+            moved.append(path)
+        except (OSError, UnicodeDecodeError):
+            continue
+    return moved
 
 
 def register_events(owner: str, events: dict[str, EventSpec]) -> None:
@@ -142,11 +195,10 @@ class EventLog:
         if self.records is not None:
             self.records.append(record)
         if self.log_dir is not None:
-            day = now.strftime("%Y-%m-%d")
-            self._append("jsonl", self.log_dir / f"events-{day}.jsonl",
-                         json.dumps(record, default=_json_default, ensure_ascii=False))
+            events_path, text_path = log_paths(self.log_dir, self.tool, now.strftime("%Y-%m-%d"))
+            self._append("events", events_path, json.dumps(record, default=_json_default, ensure_ascii=False))
             if LEVELS[final_level] >= LEVELS[self.text_level]:
-                self._append("text", self.log_dir / f"wow-tools-{day}.log", format_text(record))
+                self._append("text", text_path, format_text(record))
         return record
 
     def _append(self, sink: str, path: Path, line: str) -> None:
@@ -161,12 +213,13 @@ class EventLog:
             self._on_sink_error(f"Ka0s WoW Tools: {sink} log disabled for this session ({exc})")
 
     def prune(self) -> list[Path]:
-        """Delete dated log files older than retention_days. Returns what was removed."""
+        """Delete dated log files older than retention_days in every tool folder. Returns what was removed."""
         if self.log_dir is None or not self.log_dir.is_dir():
             return []
         cutoff = (self._clock() - timedelta(days=self.retention_days)).date()
         removed: list[Path] = []
-        for path in sorted(self.log_dir.iterdir()):
+        files = sorted(p for folder in self.log_dir.iterdir() if folder.is_dir() for p in folder.iterdir())
+        for path in files:
             match = _LOG_NAME.match(path.name)
             if not match:
                 continue
@@ -187,9 +240,11 @@ _current = EventLog(strict=True)
 
 
 def init_event_log(log_dir: Path | None, **kwargs: Any) -> EventLog:
-    """Install the process-wide log (called once by the launcher) and prune old files."""
+    """Install the process-wide log (called once by the launcher), move any old flat-layout logs into the
+    per-tool folders, and prune old files."""
     global _current
     _current = EventLog(log_dir, **kwargs)
+    migrate_flat_logs(_current.log_dir)
     _current.prune()
     return _current
 

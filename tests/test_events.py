@@ -61,9 +61,9 @@ class SinkTest(unittest.TestCase):
         log = EventLog(self.dir, text_level="info", clock=lambda: FIXED)
         log.emit("update.checked", current="0.1.0", latest=None, throttled=False)
         log.emit("config.created", path="x.cfg")
-        lines = (self.dir / "events-2026-09-27.jsonl").read_text(encoding="utf-8").splitlines()
+        lines = (self.dir / "suite" / "events-2026-09-27.log").read_text(encoding="utf-8").splitlines()
         self.assertEqual([json.loads(line)["event"] for line in lines], ["update.checked", "config.created"])
-        text = (self.dir / "wow-tools-2026-09-27.log").read_text(encoding="utf-8")
+        text = (self.dir / "suite" / "logfile-2026-09-27.log").read_text(encoding="utf-8")
         self.assertNotIn("update.checked", text)
         self.assertIn("2026-09-27 14:03:11 INFO    [suite] config.created  path=x.cfg", text)
 
@@ -76,20 +76,56 @@ class SinkTest(unittest.TestCase):
     def test_paths_and_sets_serialise(self):
         log = EventLog(self.dir, clock=lambda: FIXED)
         log.emit("config.created", path=Path("/x/y.cfg"))
-        line = (self.dir / "events-2026-09-27.jsonl").read_text(encoding="utf-8").strip()
+        line = (self.dir / "suite" / "events-2026-09-27.log").read_text(encoding="utf-8").strip()
         self.assertEqual(json.loads(line)["data"]["path"], str(Path("/x/y.cfg")))
 
+    def test_each_tool_logs_to_its_own_folder(self):
+        log = EventLog(self.dir, tool="wtf-cleaner", clock=lambda: FIXED)
+        log.emit("config.created", path="a")
+        log.set_context(tool="suite")
+        log.emit("config.created", path="b")
+        self.assertEqual(sorted(p.relative_to(self.dir).as_posix() for p in self.dir.rglob("*.log")),
+                         ["suite/events-2026-09-27.log", "suite/logfile-2026-09-27.log",
+                          "wtf-cleaner/events-2026-09-27.log", "wtf-cleaner/logfile-2026-09-27.log"])
+        self.assertIn("path=a", (self.dir / "wtf-cleaner" / "logfile-2026-09-27.log").read_text(encoding="utf-8"))
+
+    def test_odd_tool_name_logs_to_suite(self):
+        EventLog(self.dir, tool="../x", clock=lambda: FIXED).emit("config.created", path="a")
+        self.assertTrue((self.dir / "suite" / "events-2026-09-27.log").exists())
+
     def test_prune_removes_only_old_log_files(self):
-        old = self.dir / "events-2026-01-01.jsonl"
+        (self.dir / "wtf-cleaner").mkdir()
+        old = self.dir / "wtf-cleaner" / "events-2026-01-01.log"
         old.write_text("{}\n")
-        keep = self.dir / "wow-tools-2026-09-20.log"
+        keep = self.dir / "wtf-cleaner" / "logfile-2026-09-20.log"
         keep.write_text("x\n")
-        other = self.dir / "notes-2020-01-01.txt"
+        other = self.dir / "wtf-cleaner" / "notes-2020-01-01.txt"
         other.write_text("x")
         removed = EventLog(self.dir, retention_days=90, clock=lambda: FIXED).prune()
         self.assertEqual(removed, [old])
         self.assertTrue(keep.exists())
         self.assertTrue(other.exists())
+
+    def test_flat_logs_are_split_into_tool_folders(self):
+        suite_rec = json.dumps({"tool": "suite", "event": "session.start"})
+        tool_rec = json.dumps({"tool": "wtf-cleaner", "event": "scan.started"})
+        (self.dir / "events-2026-09-20.jsonl").write_text(f"{suite_rec}\n{tool_rec}\nnot json\n", encoding="utf-8")
+        (self.dir / "wow-tools-2026-09-20.log").write_text(
+            "2026-09-20 10:00:00 INFO    [suite] session.start  argv=\n"
+            "2026-09-20 10:00:01 INFO    [wtf-cleaner] scan.started  flavor=_retail_\n", encoding="utf-8")
+        newer = self.dir / "wtf-cleaner" / "logfile-2026-09-20.log"
+        newer.parent.mkdir()
+        newer.write_text("already here\n", encoding="utf-8")
+        moved = events.migrate_flat_logs(self.dir)
+        self.assertEqual(len(moved), 2)
+        self.assertFalse(any(self.dir.glob("*.jsonl")))
+        self.assertEqual((self.dir / "suite" / "events-2026-09-20.log").read_text(encoding="utf-8"),
+                         f"{suite_rec}\nnot json\n")
+        self.assertEqual((self.dir / "wtf-cleaner" / "events-2026-09-20.log").read_text(encoding="utf-8"),
+                         f"{tool_rec}\n")
+        self.assertIn("[suite] session.start", (self.dir / "suite" / "logfile-2026-09-20.log").read_text())
+        self.assertEqual(newer.read_text(encoding="utf-8").splitlines(),
+                         ["2026-09-20 10:00:01 INFO    [wtf-cleaner] scan.started  flavor=_retail_", "already here"])
 
     def test_io_failure_disables_sinks_without_raising(self):
         blocker = self.dir / "logs"

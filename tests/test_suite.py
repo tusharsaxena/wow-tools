@@ -49,7 +49,7 @@ class SuiteTest(unittest.TestCase):
         code, out, _ = self.run_suite(["wtf-cleaner", "--flavor", "retail", "--json"])
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out)["totals"]["items"], 6)
-        records = [json.loads(line) for path in self.log_dir.glob("events-*.jsonl")
+        records = [json.loads(line) for path in self.log_dir.glob("wtf-cleaner/events-*.log")
                    for line in path.read_text(encoding="utf-8").splitlines()]
         names = [r["event"] for r in records]
         self.assertEqual(names[0], "session.start")
@@ -57,4 +57,4 @@ class SuiteTest(unittest.TestCase):
         self.assertEqual(records[-1]["data"]["exit_code"], 0)
         self.assertTrue(all(r["tool"] == "wtf-cleaner" for r in records))
         self.assertIn("scan.completed", names)
-        self.assertTrue(list(self.log_dir.glob("wow-tools-*.log")))
+        self.assertTrue(list(self.log_dir.glob("wtf-cleaner/logfile-*.log")))
