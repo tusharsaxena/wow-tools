@@ -163,11 +163,10 @@ def wow_check_for(flavor, *, lister: Callable[[], list[WowProcess] | None] = run
         processes = lister()
         if processes is None:
             return None
+        unknown = [proc for proc in processes if proc.path is None]
         matching: list[WowProcess] = []
-        unknown: list[WowProcess] = []
         for folder in folders:
-            found, unknown = processes_for_flavor(processes, folder)
-            matching += found
+            matching += processes_for_flavor(processes, folder)[0]
         labels = [proc.name for proc in matching] + [f"{proc.name} (flavor unknown)" for proc in unknown]
         return list(dict.fromkeys(labels))
     return check
