@@ -134,6 +134,19 @@ class AccountScopeTest(unittest.TestCase):
         warned = [r for r in records if r["event"] == "scan.warning"]
         self.assertEqual(len(warned), 1)
 
+    def test_lock_probe_leftover_is_not_a_stray_copy(self):
+        sv = self.retail.account_dir / "ACCT1" / "SavedVariables"
+        (sv / "Details.lua").rename(sv / "Details.lua.wowtools-lockcheck")  # a crash between the probe's renames
+        result = scan(self.retail)
+        names = [f.path.name for g in result.groups for f in g.files]
+        self.assertNotIn("Details.lua.wowtools-lockcheck", names)
+        leftovers = [w for w in result.warnings if w.path.endswith("Details.lua.wowtools-lockcheck")]
+        self.assertEqual(len(leftovers), 1)
+        self.assertIn("lock check", leftovers[0].message)
+        proposal = evaluate(result, Criteria(), now=NOW)
+        self.assertFalse(any(f.path.name.endswith(".wowtools-lockcheck")
+                             for item in proposal.items for f in item.files))
+
     def test_all_accounts_unchanged(self):
         with capture_events() as records:
             result = scan(self.retail, account=None, progress=None)

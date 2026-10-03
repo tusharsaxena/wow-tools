@@ -26,7 +26,7 @@ from wowtools.tools.wtf_cleaner.rules import ProposalItem
 from wowtools.tools.wtf_cleaner.safety import (DEFAULT_KEEP_SNAPSHOTS, MARKER_NAME, Marker, check_clean, clear_marker,
                                                prune_snapshots, read_marker, restore_deleted, take_snapshot,
                                                write_marker)
-from wowtools.tools.wtf_cleaner.scanner import SVFile
+from wowtools.tools.wtf_cleaner.scanner import LOCK_PROBE_SUFFIX, SVFile
 
 CleanProgress = Callable[[str, int, int, str], None]
 CLEANED_SUBDIR = "cleaned"
@@ -37,8 +37,10 @@ class CleanError(Exception):
     """The clean was refused or stopped. `restored` lists files put back from the snapshot, if any.
     `files_missing` is True when files were deleted and could not be put back (restore from the WTF backup)."""
 
-    restored: list[str] = []
-    files_missing: bool = False
+    def __init__(self, message: str, *, restored: list[str] | None = None, files_missing: bool = False) -> None:
+        super().__init__(message)
+        self.restored: list[str] = list(restored) if restored is not None else []
+        self.files_missing = files_missing
 
 
 @dataclass(frozen=True)
@@ -130,7 +132,25 @@ def _recheck(sv: SVFile, info: os.stat_result | None) -> str | None:
     return None
 
 
-LOCK_PROBE_SUFFIX = ".wowtools-lockcheck"
+def recover_probe_leftovers(folders: list[Path], flavor: Flavor) -> list[Path]:
+    """Rename back every <name>.wowtools-lockcheck left in these SavedVariables folders by a crash during an
+    earlier lock check, when <name> itself is absent (never overwriting). Runs before a real clean's lock check and
+    WTF backup. Returns the files put back; a leftover that cannot be renamed is left alone."""
+    recovered: list[Path] = []
+    for folder in folders:
+        try:
+            leftovers = sorted(p for p in folder.iterdir() if p.name.endswith(LOCK_PROBE_SUFFIX))
+        except OSError:
+            continue
+        for leftover in leftovers:
+            original = leftover.with_name(leftover.name[:-len(LOCK_PROBE_SUFFIX)])
+            try:
+                rename_no_replace(leftover, original)
+            except OSError:
+                continue  # the original exists again, or the rename failed: the scan keeps warning about it
+            recovered.append(original)
+            log_event("clean.probe_recovered", flavor=flavor.folder, path=_relative(original, flavor))
+    return recovered
 
 
 def _probe_lock(path: Path) -> str | None:
@@ -236,17 +256,14 @@ def _restore_after(exc: BaseException, snapshot: Path, backup_dir: Path, flavor:
     except Exception as restore_exc:  # noqa: BLE001 - any failure keeps the marker and the snapshot
         log_event("restore.failed", flavor=flavor.folder, snapshot=str(snapshot), files=len(deleted),
                   reason=reason, error=str(restore_exc))
-        error = CleanError(f"Clean stopped ({reason}) and restoring the {len(deleted)} deleted files failed "
-                           f"({restore_exc}). The WTF backup is at {snapshot}: close WoW, then unzip "
-                           f"it into {flavor.path} to restore.")
-        error.files_missing = bool(deleted)
-        return error
+        return CleanError(f"Clean stopped ({reason}) and restoring the {len(deleted)} deleted files failed "
+                          f"({restore_exc}). The WTF backup is at {snapshot}: close WoW, then unzip "
+                          f"it into {flavor.path} to restore.", files_missing=bool(deleted))
     log_event("restore.completed", flavor=flavor.folder, snapshot=str(snapshot), restored=len(restored),
               reason=reason, files=restored)
     clear_marker(backup_dir)
-    error = CleanError(f"Clean stopped ({reason}); {len(restored)} deleted files were restored from {snapshot}")
-    error.restored = restored
-    return error
+    return CleanError(f"Clean stopped ({reason}); {len(restored)} deleted files were restored from {snapshot}",
+                      restored=restored)
 
 
 def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup: bool,
@@ -282,6 +299,7 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
     if not dry_run and ready:
         if journal is not None:
             _open_journal(journal, flavor)
+        recover_probe_leftovers(sorted({sv.path.parent for _, sv in ready}), flavor)
         _refuse_locked(ready, flavor, report)
         snapshot = _take_safety_snapshot(flavor, backup_dir, now, [_relative(sv.path, flavor) for _, sv in ready],
                                          report)

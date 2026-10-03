@@ -109,7 +109,9 @@ Before anything is deleted, the cleaner:
 
 1. **Checks that no other program has the files open.** The Raider.IO client and the WeakAuras Companion are
    known to lock these files. If any file is locked, the clean stops with nothing deleted and tells you which
-   ones. Close that program and try again.
+   ones. Close that program and try again. (It checks by renaming each file to `<name>.wowtools-lockcheck` and
+   straight back. If the app is closed in that split second, the next clean puts the file back first, and the
+   scan warns about it until then.)
 2. **Backs up your whole `WTF` folder** into a zip file and checks the zip. If the backup fails, nothing is
    deleted.
 3. **Zips the files it's about to remove** and checks that zip too. If it fails, nothing is deleted.
@@ -228,6 +230,7 @@ The file itself uses these names, if you edit it by hand: `max_age_days`, `crite
 |---------|-----|
 | Files come back after cleaning | WoW was running. Close it and clean again. |
 | "files are locked by another program" | Close the Raider.IO client or the WeakAuras Companion, then clean again. Nothing was deleted. |
+| A warning about a `.wowtools-lockcheck` file | The app was closed during a lock check and left a settings file renamed. The next clean of that folder renames it back. To fix it now, close WoW and remove `.wowtools-lockcheck` from the end of the name. If the original file is there too, the leftover is an old copy you can delete. |
 | "Refusing to scan" | That game version has no addons installed, so there's nothing safe to suggest. |
 | "The clean stopped unexpectedly" | Something went wrong that the cleaner didn't expect. Press `r` to scan again and see what's left. If settings you wanted are missing, **Undo last clean** (`z`) or the WTF backup puts them back. Then follow [Reporting a bug](../README.md#reporting-a-bug); the details are in the log. |
 | "Backup folder not allowed" | The backup folder in settings is a relative path, your WoW folder, or inside a game version's `WTF`, `Interface` or `Screenshots` folder (a backup inside `WTF` would be zipped into every later backup). Press `s` and pick another folder, or leave it empty for the default. Nothing was cleaned. |

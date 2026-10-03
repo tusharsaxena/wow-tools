@@ -179,6 +179,57 @@ class CleanerTest(unittest.TestCase):
         self.assertIn("sv.failed", [r["event"] for r in records])
 
 
+class ProbeLeftoverTest(unittest.TestCase):
+    setUp = CleanerTest.setUp
+    item = CleanerTest.item
+
+    def test_execute_recovers_probe_leftover_before_snapshot(self):
+        canonical = self.sv / "Details.lua"
+        original = canonical.read_bytes()
+        canonical.rename(self.sv / "Details.lua.wowtools-lockcheck")  # left by a crash during an earlier probe
+        with capture_events() as records:
+            execute([self.item("Uninstalled")], self.retail, dry_run=False, backup=True,
+                    backup_dir=self.backup_dir, now=WHEN)
+        self.assertEqual(canonical.read_bytes(), original)
+        self.assertFalse((self.sv / "Details.lua.wowtools-lockcheck").exists())
+        recovered = [r for r in records if r["event"] == "clean.probe_recovered"]
+        self.assertEqual(len(recovered), 1)
+        self.assertTrue(recovered[0]["data"]["path"].endswith("Details.lua"))
+        names = [r["event"] for r in records]
+        self.assertLess(names.index("clean.probe_recovered"), names.index("snapshot.created"))
+        with zipfile.ZipFile(self.backup_dir / SNAPSHOT) as zf:
+            self.assertIn("WTF/Account/ACCT1/SavedVariables/Details.lua", zf.namelist())
+
+    def test_leftover_is_kept_when_the_original_exists_again(self):
+        leftover = self.sv / "Details.lua.wowtools-lockcheck"
+        leftover.write_bytes(b"old copy")
+        with capture_events() as records:
+            execute([self.item("Uninstalled")], self.retail, dry_run=False, backup=True,
+                    backup_dir=self.backup_dir, now=WHEN)
+        self.assertEqual(leftover.read_bytes(), b"old copy")
+        self.assertEqual((self.sv / "Details.lua").read_text(encoding="utf-8"), "-- saved variables\n")
+        self.assertNotIn("clean.probe_recovered", [r["event"] for r in records])
+
+    def test_dry_run_changes_no_leftover(self):
+        (self.sv / "Details.lua").rename(self.sv / "Details.lua.wowtools-lockcheck")
+        execute([self.item("Uninstalled")], self.retail, dry_run=True, backup=False, backup_dir=self.backup_dir,
+                now=WHEN)
+        self.assertTrue((self.sv / "Details.lua.wowtools-lockcheck").exists())
+        self.assertFalse((self.sv / "Details.lua").exists())
+
+
+class CleanErrorTest(unittest.TestCase):
+    def test_clean_error_instances_do_not_share_lists(self):
+        first, second = CleanError("a"), CleanError("b")
+        self.assertIsNot(first.restored, second.restored)
+        first.restored.append("x")
+        self.assertEqual(second.restored, [])
+        self.assertEqual(CleanError("c", restored=["y"], files_missing=True).restored, ["y"])
+        self.assertTrue(CleanError("c", files_missing=True).files_missing)
+        self.assertFalse(second.files_missing)
+        self.assertEqual(str(first), "a")
+
+
 class SafetySnapshotCleanTest(unittest.TestCase):
     """Safety snapshot, marker and restore around a real clean (spec A.4), and progress stages (A.5)."""
 

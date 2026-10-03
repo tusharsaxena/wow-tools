@@ -110,7 +110,10 @@ the whole run, across All flavors:
     {"undone": iso, "restored": n, "skipped": n}
 
 `execute_flavors` creates the `CleanJournal` and passes it to each `execute()`. `execute` opens it (header
-written, once per run) before the lock check and the WTF backup; if that fails it raises `CleanError` and nothing
+written, once per run) before the lock check and the WTF backup (the lock check is preceded by
+`recover_probe_leftovers`, which renames back any `<name>.wowtools-lockcheck` an interrupted probe left in the
+selected SavedVariables folders, never overwriting, `clean.probe_recovered`; the scanner never proposes such a file
+and adds a `ScanWarning` for it); if that fails it raises `CleanError` and nothing
 is deleted (`clean.journal_failed`). An entry is appended after each delete; if that append fails the delete loop
 stops like any unexpected error, so that flavor's deletions are restored from its WTF backup. A journal with no
 entries is removed, and after a clean that wrote one `prune_journals` keeps the newest `keep_journals`

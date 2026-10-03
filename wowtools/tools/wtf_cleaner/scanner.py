@@ -12,6 +12,10 @@ from wowtools.core.install import ACCOUNT_WIDE, Account, Character, Flavor
 
 PROTECTED_PREFIXES = ("blizzard_",)
 _LUA = re.compile(r"\.lua", re.IGNORECASE)
+# The cleaner's lock check renames each selected file to <name><LOCK_PROBE_SUFFIX> and straight back. A file still
+# carrying it was left by a crash between the two renames: never an addon file to propose, and the next real clean
+# renames it back (cleaner.recover_probe_leftovers).
+LOCK_PROBE_SUFFIX = ".wowtools-lockcheck"
 
 
 ScanProgress = Callable[[int, int, str], None]
@@ -171,6 +175,14 @@ def _scan_sv_dir(sv_dir: Path, account: Account, character: Character | None,
         return []
     groups: dict[str, SVGroup] = {}
     for path in entries:
+        if path.name.endswith(LOCK_PROBE_SUFFIX):
+            original = path.name[:-len(LOCK_PROBE_SUFFIX)]
+            if (sv_dir / original).exists():
+                note = f"{original} exists too, so this copy is left alone; delete it if you don't need it"
+            else:
+                note = f"the next clean of this folder renames it back to {original}, or rename it yourself"
+            warnings.append(ScanWarning(str(path), f"left over from an interrupted lock check: {note}"))
+            continue
         addon = addon_name_for(path.name)
         if addon is None or addon.casefold().startswith(PROTECTED_PREFIXES):
             continue
