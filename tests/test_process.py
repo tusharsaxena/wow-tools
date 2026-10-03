@@ -125,3 +125,21 @@ class WowProcessTest(unittest.TestCase):
         self.assertEqual(wow_check_for(retail, lister=lambda: mixed)(),
                          ["Wow.exe", "WowClassic.exe (flavor unknown)"])
         self.assertIsNone(wow_check_for(retail, lister=lambda: None)())
+
+    def test_wow_check_for_several_flavors_lists_processes_once(self):
+        retail = Flavor("_retail_", Path("/wow/_retail_"))
+        era = Flavor("_classic_era_", Path("/wow/_classic_era_"))
+        procs = [WowProcess("Wow.exe", "C:\\x\\_retail_\\Wow.exe"),
+                 WowProcess("WowClassic.exe", "C:\\x\\_classic_era_\\WowClassic.exe"),
+                 WowProcess("WowClassic.exe", "C:\\x\\_classic_\\WowClassic.exe"),
+                 WowProcess("WowB.exe", None)]
+        calls = []
+
+        def lister():
+            calls.append(1)
+            return procs
+        self.assertEqual(wow_check_for([retail, era], lister=lister)(),
+                         ["Wow.exe", "WowClassic.exe", "WowB.exe (flavor unknown)"])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(wow_check_for([era], lister=lambda: procs)(),
+                         ["WowClassic.exe", "WowB.exe (flavor unknown)"])
