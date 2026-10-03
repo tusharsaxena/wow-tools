@@ -284,3 +284,7 @@ keep, copy mode; `validate_dest` errors show inline). `review_screen.py` holds:
 unittest discover -s tests -t .` runs them in one process. Textual tests subclass `tests.fixtures.TuiTestCase`,
 which turns off asyncio debug mode. `tests/fixtures.py` builds a synthetic install in a temp
 folder, and TUI tests use Textual's `App.run_test()` pilot. No test touches a real WoW folder or the network.
+
+CI (`.github/workflows/tests.yml`) runs on every push and pull request: Ubuntu and Windows, Python 3.10 (the floor)
+and 3.13. Each job byte-compiles `wowtools`, `scripts` and `tests`, runs `gen_event_docs.py --check`, then
+`run_tests.py`.

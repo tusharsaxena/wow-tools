@@ -4,7 +4,8 @@ The updater reads the latest **published, non-prerelease** GitHub Release of `tu
 and its tag must be `vX.Y.Z` matching `wowtools/__init__.py`. Zip installs download that tag's zipball,
 and git installs fast-forward to the tag.
 
-1. Make sure `main`/`master` is green: `python3 scripts/run_tests.py`
+1. Make sure `main`/`master` is green: the `tests` workflow on GitHub Actions (`.github/workflows/tests.yml`)
+   passes on all four jobs (Linux and Windows, Python 3.10 and 3.13). Locally: `python3 scripts/run_tests.py`
    and `python3 scripts/gen_event_docs.py --check`.
 2. Bump `__version__` in `wowtools/__init__.py`, following semver.
 3. Commit: `git commit -am "release: vX.Y.Z"`.
