@@ -59,6 +59,9 @@ class OrganizeResult:
     journal_path: Path | None = None
     pruned: list[Path] = field(default_factory=list)
     undo: bool = False
+    # Undo only: False when nothing was put back and something failed (say the archive drive is unplugged), so
+    # the journal stays undoable and Undo can be tried again.
+    marked_undone: bool = False
 
     def of(self, kind: str) -> list[Outcome]:
         return [o for o in self.outcomes if o.kind == kind]

@@ -9,9 +9,11 @@ from tests.fixtures import build_screenshot_tree, build_wow_tree
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.tools.screenshot_organizer.journal import latest_undoable, read_journal
-from wowtools.tools.screenshot_organizer.organizer import (COPY_REMOVED, RESTORED, UNDO_SKIPPED, OrganizeError, execute)
+from wowtools.tools.screenshot_organizer.journal import JournalWriter, new_journal_path
+from wowtools.tools.screenshot_organizer.organizer import (COPY_REMOVED, FAILED, RESTORED, UNDO_SKIPPED, OrganizeError,
+                                                           execute)
 from wowtools.tools.screenshot_organizer.planner import scan
-from wowtools.tools.screenshot_organizer.report import stopped_text
+from wowtools.tools.screenshot_organizer.report import stopped_text, summary_rows
 from wowtools.tools.screenshot_organizer.undo import undo
 
 A = "WoWScrnShot_073119_232713.jpg"
@@ -213,3 +215,72 @@ class UndoTest(unittest.TestCase):
         undo(path, wow_root=self.root)
         self.assertIsNotNone(read_journal(path).undone)
         self.assertIsNone(latest_undoable(self.journals))
+
+    def write_journal(self, entries, dest_dir=None, copy=False):
+        self.journals.mkdir(parents=True, exist_ok=True)
+        writer = JournalWriter(new_journal_path(self.journals),
+                               {"copy": copy, "dest_dir": str(dest_dir) if dest_dir else None})
+        writer.open()
+        for entry in entries:
+            writer.add_entry(entry)
+        writer.finish()
+        return writer.path
+
+    def test_null_size_entry_is_skipped(self):
+        path = self.write_journal([
+            {"action": "moved", "src": self.shots / A, "dst": self.shots / "2019" / "07" / "31" / A, "size": 6},
+            {"action": "moved", "src": self.shots / "x.jpg", "dst": self.shots / "x.jpg", "size": None},
+            {"action": "moved", "src": self.shots / "y.jpg", "dst": self.shots / "y.jpg", "size": "big"},
+        ])
+        journal = read_journal(path)
+        self.assertEqual([e["src"].name for e in journal.entries], [A])
+        self.assertEqual(latest_undoable(self.journals), path)
+
+    def test_dst_outside_target_root_is_refused(self):
+        """A tampered journal must not make Undo delete a same-named, same-sized file anywhere."""
+        victim = self.tmp / "elsewhere" / "2019" / "07" / "31" / A
+        victim.parent.mkdir(parents=True)
+        victim.write_bytes(b"victim")  # same size as shot-a
+        path = self.write_journal([{"action": "copied", "src": self.shots / A, "dst": victim, "size": 6}],
+                                  dest_dir=self.dest, copy=True)
+        back = undo(path, wow_root=self.root)
+        self.assertEqual(back.count(UNDO_SKIPPED), 1)
+        self.assertIn("not where this run filed it", back.outcomes[0].reason)
+        self.assertEqual(victim.read_bytes(), b"victim")
+        in_place = self.write_journal([{"action": "copied", "src": self.shots / A, "dst": victim, "size": 6}],
+                                      dest_dir=None, copy=True)
+        self.assertEqual(undo(in_place, wow_root=self.root).count(UNDO_SKIPPED), 1)
+        self.assertTrue(victim.exists())
+
+    def test_dst_with_a_different_date_is_refused(self):
+        wrong_day = self.dest / "_retail_" / "2020" / "01" / "01" / A
+        wrong_day.parent.mkdir(parents=True)
+        wrong_day.write_bytes(b"shot-a")
+        path = self.write_journal([{"action": "copied", "src": self.shots / A, "dst": wrong_day, "size": 6}],
+                                  dest_dir=self.dest, copy=True)
+        back = undo(path, wow_root=self.root)
+        self.assertEqual(back.count(UNDO_SKIPPED), 1)
+        self.assertTrue(wrong_day.exists())
+
+    def test_all_failed_keeps_journal_undoable(self):
+        """Every filed copy is gone (say the archive drive is unplugged): Undo stays available to try again."""
+        result = self.organize(self.dest)
+        for path in (self.dest / "_retail_").rglob("*"):
+            if path.is_file():
+                path.unlink()
+        back = undo(result.journal_path, wow_root=self.root)
+        self.assertEqual(back.count(FAILED), 4)
+        self.assertFalse(back.marked_undone)
+        self.assertIsNone(read_journal(result.journal_path).undone)
+        self.assertEqual(latest_undoable(self.journals), result.journal_path)
+        self.assertIn(("Undo", "not finished: nothing was put back, so it can be tried again"), summary_rows(back))
+
+    def test_partial_success_marks_undone(self):
+        result = self.organize(self.dest)
+        (self.dest / "_retail_" / "2019" / "07" / "31" / A).unlink()
+        back = undo(result.journal_path, wow_root=self.root)
+        self.assertEqual(back.count(FAILED), 1)
+        self.assertEqual(back.count(RESTORED), 3)
+        self.assertTrue(back.marked_undone)
+        self.assertIsNone(latest_undoable(self.journals))
+        self.assertNotIn("Undo", [label for label, _ in summary_rows(back)])

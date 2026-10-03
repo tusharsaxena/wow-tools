@@ -26,10 +26,19 @@ class JournalWriter(core.JournalWriter):
 
 
 def read_journal(path: Path) -> Journal:
-    """A journal with only well-formed organizer entries (src and dst as native Paths, size an int)."""
+    """A journal with only well-formed organizer entries (src and dst as native Paths, size an int). An entry
+    with a missing or unreadable size (a hand edit, or corruption) is dropped, like one without paths."""
     journal = core.read_journal(path, path_fields=("src", "dst"))
-    journal.entries = [{**e, "size": int(e.get("size", -1))} for e in journal.entries
-                       if isinstance(e.get("src"), Path) and isinstance(e.get("dst"), Path)]
+    entries = []
+    for e in journal.entries:
+        if not (isinstance(e.get("src"), Path) and isinstance(e.get("dst"), Path)):
+            continue
+        try:
+            size = int(e["size"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        entries.append({**e, "size": size})
+    journal.entries = entries
     return journal
 
 

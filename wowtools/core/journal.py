@@ -180,7 +180,7 @@ def latest_undoable(folder: Path | None, reader: Callable[[Path], Journal] = rea
     for path in list_journals(folder):
         try:
             journal = reader(path)
-        except (OSError, ValueError):
+        except (OSError, ValueError, TypeError):  # unreadable: never offered, and never a crash
             continue
         if journal.undone is not None:
             return None

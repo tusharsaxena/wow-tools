@@ -139,9 +139,12 @@ Changed your mind? **Undo last run** (`z`, the amber button) reverses the most r
 
 Undo is careful too:
 
-- It only touches screenshots that haven't changed since the run. Anything else is left alone and listed.
+- It only touches screenshots that haven't changed since the run, and only where that run filed them. Anything
+  else is left alone and listed.
 - Dated folders that end up empty are removed; no other folders are.
 - Undo only goes back **one run**. After you undo, the button stays greyed out until your next run.
+- If nothing could be put back because the filed screenshots are missing (for example the archive drive isn't
+  connected), the undo doesn't count: connect the drive and press **Undo last run** again.
 
 Each run's record (its **journal**) is kept in `<your WoW folder>\wow-tools\screenshot-organizer\journal`, never
 in your screenshot archive. The newest 10 are kept.

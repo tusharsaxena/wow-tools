@@ -226,17 +226,22 @@ the newest `keep_journals` (undone ones count). `read_journal` skips torn lines 
 
 **Undo** (`undo.py`). `latest_undoable(journal_dir)` returns the newest journal with entries that is not undone,
 and never reaches back past an undone one: one level of undo only. `undo()` walks the entries newest first. Each
-entry passes a lexical guard (`src` directly in a `Screenshots` folder of a flavor under `wow_root`; `dst` ending
-in `YYYY/MM/DD/<src name>`), then:
+entry passes a guard: `src` directly in a `Screenshots` folder of a flavor under `wow_root`, with a WoW screenshot
+name; `dst` exactly `target_root(flavor, header dest_dir)/YYYY/MM/DD/<src name>`, the date from the name (so a
+tampered journal cannot point Undo at a file anywhere else). `read_journal` drops entries without paths or with a
+size that is not a number, and `latest_undoable` treats an unreadable journal as not offered. Then:
 
 - `moved`: if `dst` has the recorded size and `src` is free, move it back (`move_file`, copy-verify-delete across
   devices; a failed delete of the archive copy is still `restored`, with a reason);
 - `copied` / `copied_source_left`: delete `dst` if both `src` and `dst` have the recorded size (`copy_removed`);
 - `duplicate_removed`: if `src` is free and `dst` has the recorded size, `copy_verified(dst, src)`;
-- anything else, or a failed check, is `undo_skipped`; an `OSError` is `failed`.
+- a `dst` that is missing altogether is `failed` (it may be on an unplugged archive drive); anything else, or a
+  failed check, is `undo_skipped`; an `OSError` is `failed`.
 
 Then the `DD`, `MM` and `YYYY` folders it touched are removed bottom-up while empty and digit-named, and an
-`undone` line is appended (even when every entry was skipped).
+`undone` line is appended (even when every entry was skipped), unless nothing was put back and something failed:
+then `OrganizeResult.marked_undone` is False, the journal stays undoable and the result says Undo can be tried
+again (the WTF Cleaner's rule).
 
 ## UI
 

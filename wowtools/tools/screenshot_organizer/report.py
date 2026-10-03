@@ -102,6 +102,8 @@ def summary_rows(result: OrganizeResult) -> list[tuple[str, str]]:
     rows.append(("Journal", journal))
     if result.pruned:
         rows.append(("Older journals removed", str(len(result.pruned))))
+    if result.undo and not result.marked_undone:
+        rows.append(("Undo", "not finished: nothing was put back, so it can be tried again"))
     return rows
 
 
