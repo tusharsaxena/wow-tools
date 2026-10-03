@@ -236,8 +236,9 @@ class ShotReviewScreen(Screen[str]):
         return resolve_journal_dir(self.cfg.wow_path)
 
     def _refresh_undo(self) -> None:
-        # Never offered while a scan is reading the same folders the undo would move files in.
-        self.query_one("#btn-undo", Button).disabled = self._scanning or latest_undoable(self._journal_dir()) is None
+        # Never offered while a scan is reading the same folders the undo would move files in, or while busy.
+        busy = self._scanning or getattr(self.app, "busy", False)
+        self.query_one("#btn-undo", Button).disabled = busy or latest_undoable(self._journal_dir()) is None
 
     # --- panes (←/→) --------------------------------------------------------------------------------
     def on_descendant_focus(self, event) -> None:
@@ -579,6 +580,7 @@ class ShotReviewScreen(Screen[str]):
     def _run(self, progress_screen: ShotProgressScreen, job) -> None:
         """Run job(progress) in a worker thread behind the progress screen, then show its result."""
         self.app.busy = True
+        self._refresh_undo()
         self._progress_screen = progress_screen
         self.app.push_screen(progress_screen)
         self.run_worker(lambda: self._job_worker(job, progress_screen), thread=True, exclusive=True,
