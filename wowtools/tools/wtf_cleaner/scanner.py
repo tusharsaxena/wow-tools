@@ -135,8 +135,15 @@ def parse_addons_txt(path: Path, warnings: list[ScanWarning] | None = None) -> d
 
 
 def enabled_addons(characters: Iterable[Character], installed: dict[str, str],
-                   warnings: list[ScanWarning]) -> set[str]:
-    """Global union: enabled on any character. Unlisted or no AddOns.txt means WoW's default (on)."""
+                   warnings: list[ScanWarning], *, scope: str = "") -> set[str]:
+    """Global union: enabled on any character. Unlisted or no AddOns.txt means WoW's default (on).
+    With no characters at all there is no evidence either way, so every installed addon counts as
+    enabled (and a warning naming `scope` says the "not enabled" rule was not applied)."""
+    characters = list(characters)
+    if not characters:
+        warnings.append(ScanWarning(scope or "WTF/Account",
+                                    "no character folders: the 'not enabled' rule is not applied"))
+        return set(installed)
     enabled: set[str] = set()
     for character in characters:
         if not character.addons_txt.is_file():
@@ -213,7 +220,8 @@ def scan(flavor: Flavor, *, account: str | None = None, progress: ScanProgress |
         accounts = wanted[:1]
         account = accounts[0].name
     characters = [c for acct in accounts for c in acct.characters(on_error)]
-    enabled = enabled_addons(characters, installed, warnings)
+    scope = str(accounts[0].path) if account is not None else str(flavor.account_dir)
+    enabled = enabled_addons(characters, installed, warnings, scope=scope)
     log_event("scan.addons", installed=sorted(installed.values(), key=str.casefold), enabled=sorted(enabled))
 
     total = len(accounts) + len(characters)

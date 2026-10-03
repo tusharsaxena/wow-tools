@@ -83,7 +83,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `scan.addons` | debug | Installed and enabled addon lists found by the scan. |
 | `scan.completed` | info | A scan finished, with counts. |
 | `scan.started` | info | A scan of one flavor started. |
-| `scan.warning` | warning | Something was skipped during a scan (unreadable folder, bad AddOns.txt line). |
+| `scan.warning` | warning | Something was skipped during a scan (unreadable folder, bad AddOns.txt line, no characters to judge 'not enabled' by). |
 | `snapshot.created` | info | The backup of the whole WTF folder (backup/backup-<flavor>-<stamp>.zip) was written and verified. |
 | `snapshot.failed` | error | The WTF backup failed; nothing was deleted. |
 | `snapshot.pruned` | info | Older WTF backups of the flavor were deleted to keep its newest N (keep_backups). |

@@ -9,7 +9,8 @@ EVENTS: dict[str, EventSpec] = {
     "scan.started": EventSpec("info", "A scan of one flavor started."),
     "scan.addons": EventSpec("debug", "Installed and enabled addon lists found by the scan."),
     "scan.completed": EventSpec("info", "A scan finished, with counts."),
-    "scan.warning": EventSpec("warning", "Something was skipped during a scan (unreadable folder, bad AddOns.txt line)."),
+    "scan.warning": EventSpec("warning", "Something was skipped during a scan (unreadable folder, bad AddOns.txt "
+                                         "line, no characters to judge 'not enabled' by)."),
     "proposal.built": EventSpec("info", "The cleanup proposal was built from scan results and criteria."),
     "proposal.item": EventSpec("debug", "One addon group in the proposal."),
     "clean.started": EventSpec("info", "A clean (or dry run) started."),

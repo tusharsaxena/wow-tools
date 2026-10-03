@@ -103,6 +103,18 @@ def make_config(directory: Path, wow_root: Path, **general: str) -> Config:
     return cfg
 
 
+def build_solo_tree(root: Path) -> Path:
+    """A retail install whose only account, SOLO, has account-wide SavedVariables and no character folders.
+    Details and WeakAuras are installed; Gone is not."""
+    retail = root / "_retail_"
+    for name in ("Details", "WeakAuras"):
+        _addon(retail, name)
+    sv = retail / "WTF" / "Account" / "SOLO" / "SavedVariables"
+    for name in ("Details.lua", "WeakAuras.lua", "Gone.lua"):
+        _write(sv / name)
+    return root
+
+
 class TuiTestCase(unittest.IsolatedAsyncioTestCase):
     """Base for Textual tests. IsolatedAsyncioTestCase runs its loop in asyncio debug mode, which makes Textual
     about 15x slower (every callback is timed and logged); the tests do not need it, so it is switched off."""

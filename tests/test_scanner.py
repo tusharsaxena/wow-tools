@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.fixtures import NOW, build_wow_tree
+from tests.fixtures import NOW, build_solo_tree, build_wow_tree
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.tools.wtf_cleaner.rules import Criteria, evaluate
@@ -122,6 +122,17 @@ class AccountScopeTest(unittest.TestCase):
             scan(self.retail, account="nope")
         self.assertIn("Unknown account", str(ctx.exception))
         self.assertIn("available: ACCT1, ACCT2", str(ctx.exception))
+
+    def test_account_without_characters_enables_every_installed_addon(self):
+        solo = WowInstall(build_solo_tree(Path(self.install.root.parent) / "Solo WoW")).flavor("retail")
+        with capture_events() as records:
+            result = scan(solo, account="SOLO")
+        self.assertEqual(result.enabled, {"details", "weakauras"})
+        self.assertEqual(len(result.warnings), 1)
+        self.assertIn("no character folders", result.warnings[0].message)
+        self.assertIn("SOLO", result.warnings[0].path)
+        warned = [r for r in records if r["event"] == "scan.warning"]
+        self.assertEqual(len(warned), 1)
 
     def test_all_accounts_unchanged(self):
         with capture_events() as records:

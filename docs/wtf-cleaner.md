@@ -75,6 +75,10 @@ everything by mistake. With All flavors, that version shows "not scanned" and th
 A character that has never changed its addon list counts as having every addon enabled, because that's what WoW
 does.
 
+If there are no characters at all (an account, or a whole game version, with only account-wide settings), the
+cleaner can't tell what is switched off, so it counts every installed addon as enabled and the "Not enabled" rule
+suggests nothing there. The scan notes this in its warnings.
+
 ### Keys on the review screen
 
 | Key | Does |
