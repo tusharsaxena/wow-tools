@@ -7,7 +7,7 @@ from pathlib import Path
 
 from textual.widgets import Button
 
-from tests.fixtures import TuiTestCase, build_wow_tree, make_config
+from tests.fixtures import TuiTestCase, settle, build_wow_tree, make_config
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events, get_event_log
 from wowtools.core.lock import InstanceLock, LockInfo
@@ -66,8 +66,7 @@ class SuiteAppTest(TuiTestCase):
             await self.open_cleaner(app, pilot)
             await pilot.press("enter", "enter")  # flavor, all accounts
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             self.assertIsInstance(app.screen, ReviewScreen)
             await pilot.press("t")
             await pilot.pause()

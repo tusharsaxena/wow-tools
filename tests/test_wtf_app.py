@@ -7,7 +7,7 @@ from pathlib import Path
 from textual.app import App
 from textual.widgets import Button, DataTable, Input, OptionList, ProgressBar, Static, Tree
 
-from tests.fixtures import TuiTestCase, build_wow_tree, make_config
+from tests.fixtures import TuiTestCase, settle, build_wow_tree, make_config
 from wowtools.core.config import Config
 from wowtools.core.backup import BackupError
 from wowtools.core.events import capture_events
@@ -71,8 +71,7 @@ class AppTestCase(TuiTestCase):
         self.assertIsInstance(app.screen, AccountScreen)
         await pilot.press("enter")
         await pilot.pause()
-        await app.workers.wait_for_complete()
-        await pilot.pause()
+        await settle(app, pilot)
         review = app.screen
         self.assertIsInstance(review, ReviewScreen)
         self.assertIsNotNone(review.proposal)
@@ -93,8 +92,7 @@ class ReviewFlowTest(AppTestCase):
                 self.assertIsInstance(app.screen, ConfirmScreen)
                 await pilot.press("y")
                 await pilot.pause()
-                await app.workers.wait_for_complete()
-                await pilot.pause()
+                await settle(app, pilot)
                 self.assertIsInstance(app.screen, ResultScreen)
                 self.assertTrue(app.screen.result.dry_run)
                 self.assertEqual(len(app.screen.result.would_delete), 8)
@@ -122,8 +120,7 @@ class ReviewFlowTest(AppTestCase):
             self.assertIsInstance(app.screen, ConfirmScreen)
             await pilot.press("y")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             self.assertIsInstance(app.screen, ResultScreen)
             self.assertEqual(len(app.screen.result.deleted), 8)
             self.assertFalse(any(isinstance(s, CleanProgressScreen) for s in app.screen_stack))
@@ -197,8 +194,7 @@ class ReviewFlowTest(AppTestCase):
             self.assertIn("Simulate", app.screen.title_text)
             await pilot.press("y")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             self.assertTrue(app.screen.result.dry_run)
         self.assertTrue((self.sv / "Uninstalled.lua").exists())
 
@@ -345,8 +341,7 @@ class RecoveryDialogTest(AppTestCase):
         await pilot.pause()
         await pilot.press("enter")  # all accounts
         await pilot.pause()
-        await app.workers.wait_for_complete()
-        await pilot.pause()
+        await settle(app, pilot)
         self.assertIsInstance(app.screen, RecoveryScreen)
         self.assertIn(str(self.snapshot), app.screen.message)
         return app.screen
@@ -379,8 +374,7 @@ class RecoveryDialogTest(AppTestCase):
                 await pilot.pause()
                 await pilot.press("y")
                 await pilot.pause()
-                await app.workers.wait_for_complete()
-                await pilot.pause()
+                await settle(app, pilot)
                 self.assertIsInstance(app.screen, ReviewScreen)
         self.assertTrue((self.backup_dir / MARKER_NAME).exists())
         self.assertTrue(self.snapshot.exists())
@@ -400,8 +394,7 @@ class AccountScopeFlowTest(AppTestCase):
             self.assertIsInstance(app.screen, AccountScreen)
             await pilot.press("down", "down", "enter")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             review = app.screen
             self.assertIsInstance(review, ReviewScreen)
             self.assertEqual(review.account, "ACCT2")
@@ -438,8 +431,7 @@ class AccountScopeFlowTest(AppTestCase):
             self.assertIsInstance(app.screen, FlavorScreen)
             await pilot.press("enter")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             review = app.screen
             self.assertIsInstance(review, ReviewScreen)
             self.assertIsNone(review.account)
@@ -539,14 +531,12 @@ class KeyboardNavigationTest(AppTestCase):
             await pilot.pause()
             await pilot.press("space")  # Space on the focused Yes button: run the dry run
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             self.assertIsInstance(app.screen, ResultScreen)
             self.assertFalse(app.screen.query_one("#result-summary").can_focus)
             await pilot.press("escape")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             self.assertIs(app.screen, review)
         self.assertTrue((self.sv / "Uninstalled.lua").exists())
 
@@ -572,8 +562,7 @@ class KeyboardNavigationTest(AppTestCase):
             await pilot.pause()
             await pilot.press("y")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             screen = app.screen
             self.assertIsInstance(screen, ResultScreen)
             summary = screen.query_one("#result-summary", DataTable)
@@ -603,8 +592,7 @@ class KeyboardNavigationTest(AppTestCase):
             await pilot.pause()
             await pilot.press("y")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             summary = app.screen.query_one("#result-summary", DataTable)
             rows = {str(summary.get_row_at(i)[0]): str(summary.get_row_at(i)[1]) for i in range(summary.row_count)}
             self.assertEqual(rows["Mode"], "Clean")
@@ -778,8 +766,7 @@ class AllFlavorsTest(AppTestCase):
         picker.query_one("#flavors", OptionList).highlighted = 0
         await pilot.press("enter")
         await pilot.pause()
-        await app.workers.wait_for_complete()
-        await pilot.pause()
+        await settle(app, pilot)
         review = app.screen
         self.assertIsInstance(review, ReviewScreen)  # no account picker with All flavors
         self.assertIsNotNone(review.proposal)
@@ -791,8 +778,7 @@ class AllFlavorsTest(AppTestCase):
         self.assertIsInstance(app.screen, ConfirmScreen)
         await pilot.press("y")
         await pilot.pause()
-        await app.workers.wait_for_complete()
-        await pilot.pause()
+        await settle(app, pilot)
 
     async def test_undo_after_a_clean_across_flavors(self):
         app = self.make_app()
@@ -801,16 +787,14 @@ class AllFlavorsTest(AppTestCase):
             await self.run_mode(app, pilot, "c")
             await pilot.press("r")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             await pilot.press("z")
             await pilot.pause()
             self.assertIsInstance(app.screen, ConfirmScreen)
             self.assertIn("9 files deleted from Classic Era, Retail?", app.screen.body_text)
             await pilot.press("y")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             self.assertIsInstance(app.screen.result, UndoResult)
             self.assertEqual(len(app.screen.result.restored), 9)
         self.assertTrue((self.era_sv / "Gone.lua").exists())
@@ -846,8 +830,7 @@ class AllFlavorsTest(AppTestCase):
             options.highlighted = 2  # Classic Era (All, Anniversary, Classic Era, Retail)
             await pilot.press("enter")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             self.assertIsInstance(app.screen, ReviewScreen)
         self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).last_flavor_choice, "_classic_era_")
         self.assertEqual(Config(self.cfg.path).load().last_flavor, "_classic_era_")
@@ -893,8 +876,7 @@ class AllFlavorsTest(AppTestCase):
             app.screen.query_one("#flavors", OptionList).highlighted = 0
             await pilot.press("enter")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             review = app.screen
             self.assertIsInstance(review, ReviewScreen)
             self.assertIsNone(review.proposal)
@@ -1155,14 +1137,12 @@ class UndoLastCleanTest(AppTestCase):
         self.assertIsInstance(app.screen, ConfirmScreen)
         await pilot.press(answer)
         await pilot.pause()
-        await app.workers.wait_for_complete()
-        await pilot.pause()
+        await settle(app, pilot)
 
     async def back_to_review(self, app, pilot):
         await pilot.press("r")  # result screen -> review: rescans
         await pilot.pause()
-        await app.workers.wait_for_complete()
-        await pilot.pause()
+        await settle(app, pilot)
         self.assertIsInstance(app.screen, ReviewScreen)
         return app.screen
 
@@ -1194,8 +1174,7 @@ class UndoLastCleanTest(AppTestCase):
                 self.assertEqual(confirm.focused.id, "no")  # starts on No
                 await pilot.press("y")
                 await pilot.pause()
-                await app.workers.wait_for_complete()
-                await pilot.pause()
+                await settle(app, pilot)
                 result_screen = app.screen
                 self.assertIsInstance(result_screen, ResultScreen)
                 self.assertIsInstance(result_screen.result, UndoResult)

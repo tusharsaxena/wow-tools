@@ -3,7 +3,7 @@ from pathlib import Path
 
 from textual.widgets import Button, DataTable, Input, OptionList, Static, Tree
 
-from tests.fixtures import TuiTestCase, build_screenshot_tree, build_wow_tree, make_config
+from tests.fixtures import TuiTestCase, settle, build_screenshot_tree, build_wow_tree, make_config
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.tools.screenshot_organizer.app import ScreenshotSettingsScreen
@@ -49,8 +49,7 @@ class ShotsAppTest(TuiTestCase):
         self.assertIsInstance(app.screen, FlavorScreen)
         await pilot.press("enter")  # "All flavors" is highlighted by default
         await pilot.pause()
-        await app.workers.wait_for_complete()
-        await pilot.pause()
+        await settle(app, pilot)
         self.assertIsInstance(app.screen, ShotReviewScreen)
         return app.screen
 
@@ -60,8 +59,7 @@ class ShotsAppTest(TuiTestCase):
         self.assertIsInstance(app.screen, ConfirmScreen)
         await pilot.press(answer)
         await pilot.pause()
-        await app.workers.wait_for_complete()
-        await pilot.pause()
+        await settle(app, pilot)
 
     async def test_first_open_asks_for_settings(self):
         app = self.make_app()
@@ -105,8 +103,7 @@ class ShotsAppTest(TuiTestCase):
                 self.assertEqual(app.screen.query_one("#result-files", DataTable).row_count, 6)
                 await pilot.press("r")  # back to the review: rescans
                 await pilot.pause()
-                await app.workers.wait_for_complete()
-                await pilot.pause()
+                await settle(app, pilot)
                 self.assertIsInstance(app.screen, ShotReviewScreen)
                 self.assertTrue(app.screen.query_one("#btn-organize", Button).disabled)
                 self.assertIn("Nothing to file.", app.screen.summary_text)
@@ -128,8 +125,7 @@ class ShotsAppTest(TuiTestCase):
             await self.run_action(app, pilot, "o")
             await pilot.press("r")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             await self.run_action(app, pilot, "z", answer="n")
             self.assertIsInstance(app.screen, ShotReviewScreen)
         self.assertFalse((self.shots / A).exists())
@@ -149,8 +145,7 @@ class ShotsAppTest(TuiTestCase):
             self.assertIsInstance(app.screen, FlavorScreen)
             await pilot.press("enter")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             review = app.screen
             self.assertIsInstance(review, ShotReviewScreen)
             self.assertFalse(review.query_one("#btn-undo", Button).disabled)
@@ -161,8 +156,7 @@ class ShotsAppTest(TuiTestCase):
             self.assertIn("Put back 6 files?", app.screen.body_text)
             await pilot.press("y")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             self.assertIsInstance(app.screen, ShotResultScreen)
             self.assertTrue(app.screen.result.undo)
         self.assertTrue((self.shots / A).exists())
@@ -175,8 +169,7 @@ class ShotsAppTest(TuiTestCase):
             await self.run_action(app, pilot, "o")
             await pilot.press("r")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             review = app.screen
             self.assertFalse(review.query_one("#btn-undo", Button).disabled)
             review.action_rescan()  # the scan result can only arrive once the event loop runs again
@@ -184,8 +177,7 @@ class ShotsAppTest(TuiTestCase):
             review.action_undo()
             await pilot.pause()
             self.assertIs(app.screen, review)
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             self.assertFalse(review.query_one("#btn-undo", Button).disabled)
 
     async def test_dry_run_changes_nothing(self):
@@ -255,8 +247,7 @@ class ShotsAppTest(TuiTestCase):
             await self.open_tool(app, pilot)
             await pilot.press("down", "enter")  # first real flavor after "All flavors"
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             review = app.screen
             self.assertIsInstance(review, ShotReviewScreen)
             self.assertEqual(len(review.flavors), 1)
@@ -315,8 +306,7 @@ class ShotsAppTest(TuiTestCase):
             self.assertEqual(len(set(remarks)), 1)
             await pilot.press("down", "enter")  # Anniversary: no Screenshots folder
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             self.assertIsInstance(app.screen, ShotReviewScreen)
             self.assertIn("Nothing to file (no Screenshots folder)", app.screen.summary_text)
             self.assertTrue(app.screen.query_one("#btn-organize", Button).disabled)

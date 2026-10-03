@@ -112,6 +112,20 @@ class TuiTestCase(unittest.IsolatedAsyncioTestCase):
         asyncio.get_running_loop().set_debug(False)
 
 
+async def settle(app, pilot, timeout: float = 10.0) -> None:
+    """Wait until background workers are done and the screen has drawn what they produced. One pause after
+    `wait_for_complete()` is not always enough on a slow machine (CI on Windows): a worker may not have started
+    yet, or a list rebuild scheduled with `call_after_refresh` may still be pending."""
+    deadline = time.monotonic() + timeout
+    while True:
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        busy = (any(not worker.is_finished for worker in app.workers)
+                or getattr(app.screen, "_rebuild_pending", False))
+        if not busy or time.monotonic() > deadline:
+            return
+
+
 SHOT_BYTES = {
     "WoWScrnShot_073119_232713.jpg": b"shot-a",
     "WoWScrnShot_073119_232800.jpg": b"shot-b",

@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -59,6 +60,9 @@ class SettingsTest(unittest.TestCase):
         # A relative destination would be filed under whatever folder the suite was started from.
         for raw in ("Shots", "~/shots", "D:Shots"):
             self.assertIn("full path", validate_dest(Path(raw), self.install) or "", raw)
+
+    @unittest.skipIf(os.name == "nt", "simulates WSL: on Windows a UNC path is a full path")
+    def test_validate_dest_rejects_unc_under_wsl(self):
         unc = to_native(r"\\nas\share\Shots", wsl=True)  # a UNC path has no WSL form: it stays relative
         self.assertIn("full path", validate_dest(unc, self.install) or "")
 
