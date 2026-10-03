@@ -100,7 +100,8 @@ suggests nothing there. The scan notes this in its warnings.
 ## Cleaning
 
 When you press **Clean**, the bottom bar says "Checking for running programs…" for a moment while the cleaner
-looks for WoW and for programs that lock these files. Then it asks you to confirm. Once you do, a progress window
+looks for WoW and for programs that lock these files. Your ticks and filters can't be changed during that moment,
+so what you confirm is exactly what the list shows. Then it asks you to confirm. Once you do, a progress window
 shows each step and the file it's working on:
 
 **_A clean in progress_**

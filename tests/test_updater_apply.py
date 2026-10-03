@@ -1,8 +1,11 @@
 import hashlib
 import io
+import os
 import shutil
 import subprocess
+import sys
 import tempfile
+import time
 import unittest
 import zipfile
 from pathlib import Path
@@ -183,6 +186,14 @@ class ZipUpdateTest(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in (self.root / ".update-backup").iterdir()),
                          ["0.0.9", "0.1.0", "my-stuff"])
 
+    def test_backup_of_this_update_is_kept_after_a_downgrade(self):
+        # R2: pruning by version number deleted the backup the update had just made of an older version.
+        for version in ("0.1.2", "0.1.1"):
+            (self.root / ".update-backup" / version).mkdir(parents=True)
+        make_zipball(self.zipball, "0.2.0")
+        apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        self.assertEqual(sorted(p.name for p in (self.root / ".update-backup").iterdir()), ["0.1.0", "0.1.2"])
+
     def test_failed_update_prunes_no_backups(self):
         for version in ("0.0.7", "0.0.8", "0.0.9"):
             (self.root / ".update-backup" / version).mkdir(parents=True)
@@ -321,7 +332,7 @@ class GitRunnerTest(unittest.TestCase):
 
     def test_git_runner_gets_timeout_and_no_prompt_env(self):
         apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", runner=self.ok_runner)
-        self.assertEqual([c[0][1] for c in self.calls], ["status", "fetch", "merge"])
+        self.assertEqual([c[0][1] for c in self.calls], ["config", "status", "fetch", "merge"])
         for _args, kwargs in self.calls:
             self.assertEqual(kwargs["timeout"], updater.GIT_TIMEOUT_S)
             self.assertEqual(kwargs["env"]["GIT_TERMINAL_PROMPT"], "0")
@@ -332,7 +343,29 @@ class GitRunnerTest(unittest.TestCase):
         with patch.dict("os.environ", {"GIT_SSH_COMMAND": "ssh -i mykey"}):
             apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0",
                          runner=self.ok_runner)
-        self.assertEqual(self.calls[0][1]["env"]["GIT_SSH_COMMAND"], "ssh -i mykey")
+        for _args, kwargs in self.calls:
+            self.assertEqual(kwargs["env"]["GIT_SSH_COMMAND"], "ssh -i mykey")
+
+    def test_configured_ssh_program_is_not_overridden(self):
+        # R2: GIT_SSH_COMMAND outranks GIT_SSH and core.sshCommand; only add BatchMode when neither is set.
+        def configured(args, **kwargs):
+            self.calls.append((args, kwargs))
+            out = "ssh -i mykey" if args[1:4] == ["config", "--get", "core.sshCommand"] else ""
+            return subprocess.CompletedProcess(args, 0, stdout=out, stderr="")
+        with patch.dict("os.environ", {}, clear=False):
+            os.environ.pop("GIT_SSH_COMMAND", None)
+            os.environ.pop("GIT_SSH", None)
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", runner=configured)
+        for args, kwargs in self.calls:
+            self.assertNotIn("GIT_SSH_COMMAND", kwargs["env"], args)
+            self.assertEqual(kwargs["env"]["GIT_TERMINAL_PROMPT"], "0")
+        self.calls.clear()
+        with patch.dict("os.environ", {"GIT_SSH": "plink.exe"}):
+            os.environ.pop("GIT_SSH_COMMAND", None)
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", runner=self.ok_runner)
+        for _args, kwargs in self.calls:
+            self.assertNotIn("GIT_SSH_COMMAND", kwargs["env"])
+            self.assertEqual(kwargs["env"]["GIT_SSH"], "plink.exe")
 
     def test_git_timeout_becomes_update_error(self):
         def hanging(args, **kwargs):
@@ -345,7 +378,57 @@ class GitRunnerTest(unittest.TestCase):
 
     def test_untracked_files_do_not_block_update(self):
         apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", runner=self.ok_runner)
-        self.assertIn("--untracked-files=no", self.calls[0][0])
+        self.assertIn("--untracked-files=no", self.calls[1][0])
+
+
+GRANDCHILD = "import os, sys, time; open(sys.argv[1], 'w').write(str(os.getpid())); time.sleep(30)"
+CHILD = ("import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', sys.argv[1], sys.argv[2]]); "
+         "time.sleep(30)")
+
+
+class BoundedRunTest(unittest.TestCase):
+    """R2: a timed-out git is stopped with everything it started (git-remote-https holds the output pipes, so on
+    Windows subprocess.run waited for it long after the timeout)."""
+
+    def test_timeout_stops_the_whole_process_tree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pid_file = Path(tmp) / "grandchild.pid"
+            started = time.monotonic()
+            with self.assertRaises(subprocess.TimeoutExpired):
+                updater._run_bounded([sys.executable, "-c", CHILD, GRANDCHILD, str(pid_file)], cwd=tmp,
+                                     capture_output=True, text=True, check=False, timeout=3, env=dict(os.environ))
+            self.assertLess(time.monotonic() - started, 15)
+            self.assertTrue(pid_file.exists())
+            if os.name != "nt":  # on Windows the timing above is the point (no pipes left to drain)
+                pid = int(pid_file.read_text())
+                for _ in range(50):
+                    try:
+                        os.kill(pid, 0)
+                    except ProcessLookupError:
+                        break
+                    time.sleep(0.1)
+                else:
+                    os.kill(pid, 9)
+                    self.fail("the grandchild outlived the timeout")
+
+    def test_output_and_return_code(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = updater._run_bounded([sys.executable, "-c", "import sys; print('out'); "
+                                         "print('err', file=sys.stderr); sys.exit(3)"], cwd=tmp,
+                                        capture_output=True, text=True, check=False, timeout=30,
+                                        env=dict(os.environ))
+        self.assertEqual((proc.returncode, proc.stdout.strip(), proc.stderr.strip()), (3, "out", "err"))
+
+    def test_git_updates_use_the_bounded_runner_by_default(self):
+        calls = []
+
+        def fake(args, **kwargs):
+            calls.append(args)
+            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+        with tempfile.TemporaryDirectory() as tmp, patch.object(updater, "_run_bounded", fake):
+            (Path(tmp) / ".git").mkdir()
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=Path(tmp), current="0.1.0")
+        self.assertIn(["git", "merge", "--ff-only", "v0.2.0"], calls)
 
 
 class UpdateCommandTest(unittest.TestCase):

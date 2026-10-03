@@ -967,6 +967,33 @@ class PreflightWorkerTest(AppTestCase):
             self.assertIn("Undo the clean", app.screen.title_text)
             await pilot.press("n")
 
+    async def test_selection_cannot_change_while_the_check_runs(self):
+        """R2: the confirm and the clean use what the tree shows; unticking during the check must not be ignored."""
+        release = threading.Event()
+        self.addCleanup(release.set)
+        app = self.make_slow_app(release)
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            before = review._selection_by_flavor()
+            self.assertTrue(before)
+            await pilot.press("c")
+            await pilot.pause()
+            for key in ("n", "space", "1", "3"):  # select none, untick, two criteria: all ignored meanwhile
+                await pilot.press(key)
+                await pilot.pause()
+            self.assertEqual(review._selection_by_flavor(), before)
+            self.assertTrue(review.query_one("#max_age", Input).disabled)
+            release.set()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertIn(review._counts([i for _, items in before for i in items]), app.screen.body_text)
+            await pilot.press("n")
+            await settle(app, pilot)
+            self.assertFalse(review.query_one("#max_age", Input).disabled)
+            await pilot.press("n")  # select none works again after the check
+            await pilot.pause()
+            self.assertEqual(review._selection_by_flavor(), [])
+
     async def test_leaving_during_the_check_shows_no_confirm(self):
         release = threading.Event()
         self.addCleanup(release.set)

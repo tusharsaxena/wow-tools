@@ -52,7 +52,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ui.selection` | info | The user made a choice in the TUI or CLI. |
 | `update.applied` | info | The suite was updated. |
 | `update.available` | info | A newer suite release exists. |
-| `update.backups_pruned` | info | After a zip update, older .update-backup folders were deleted to keep the newest 2. |
+| `update.backups_pruned` | info | After a zip update, older .update-backup folders were deleted (kept: the one just made plus the newest other). |
 | `update.check_failed` | debug | The release check failed (offline, rate limited, bad data). |
 | `update.checked` | debug | The GitHub release check ran or was throttled. |
 | `update.failed` | error | Applying an update failed. |

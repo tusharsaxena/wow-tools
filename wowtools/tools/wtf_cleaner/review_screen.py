@@ -561,7 +561,7 @@ class ReviewScreen(Screen[str]):
         if isinstance(focused, Button):  # Space activates the focused button (§A.8), never the tree
             focused.press()
             return
-        if not isinstance(focused, Tree):
+        if not isinstance(focused, Tree) or self._checking:  # the selection is frozen while the check runs
             return
         node = self.query_one("#proposal", Tree).cursor_node
         if node is None or node.data is None:
@@ -578,17 +578,23 @@ class ReviewScreen(Screen[str]):
         self._refresh_labels(node)
 
     def action_select_all(self) -> None:
+        if self._checking:
+            return
         self.unchecked.clear()
         log_event("ui.selection", screen="review", control="select_all", value=True)
         self._refresh_labels()
 
     def action_select_none(self) -> None:
+        if self._checking:
+            return
         if self.proposal is not None:
             self.unchecked = {f.path for item in self.proposal.items for f in item.files}
         log_event("ui.selection", screen="review", control="select_none", value=True)
         self._refresh_labels()
 
     def action_criterion(self, index: int) -> None:
+        if self._checking:
+            return
         self.query_one(f"#crit_{CRITERIA[index]}", Checkbox).toggle()
 
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
@@ -600,7 +606,7 @@ class ReviewScreen(Screen[str]):
         self._schedule_rebuild()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id != "max_age":
+        if event.input.id != "max_age" or self._checking:
             return
         try:
             days = int(event.value)
@@ -665,16 +671,34 @@ class ReviewScreen(Screen[str]):
             return
         check = self.wow_check or wow_check_for([flavor for flavor, _ in plan])
         locker_check = None if dry_run else self.locker_check
-        self._run_preflight(check, locker_check, lambda running, lockers: self._show_confirm(plan, dry_run, running,
-                                                                                            lockers))
+        self._run_preflight(check, locker_check, lambda running, lockers: self._after_preflight(dry_run, running,
+                                                                                               lockers))
+
+    def _after_preflight(self, dry_run: bool, running: list[str] | None, lockers: list[str] | None) -> None:
+        # The selection is frozen while the check runs; it is read again here so the confirm and the clean always
+        # use what the tree shows.
+        plan = self._selection_by_flavor()
+        if not plan:
+            self.notify("Nothing is selected.")
+            return
+        self._show_confirm(plan, dry_run, running, lockers)
 
     # --- running-programs check (PowerShell/tasklist can take seconds: never on the UI thread) ----------------
     def _run_preflight(self, check: Callable[[], list[str] | None],
                        locker_check: Callable[[], list[str] | None] | None,
                        then: Callable[[list[str] | None, list[str] | None], None]) -> None:
-        self._checking = True
+        self._set_checking(True)
         self.query_one("#summary", Static).update(Text("Checking for running programs…", style="bold #E8B04B"))
         self.run_worker(lambda: self._preflight_worker(check, locker_check, then), thread=True, group="preflight")
+
+    def _set_checking(self, checking: bool) -> None:
+        """While the check runs the selection cannot change: the criteria and max age are disabled, and the
+        tick/untick keys are ignored."""
+        self._checking = checking
+        if not self.is_attached:
+            return
+        for widget in [*self.query(Ka0sCheckbox), *self.query("#max_age")]:
+            widget.disabled = checking
 
     def _preflight_worker(self, check: Callable[[], list[str] | None],
                           locker_check: Callable[[], list[str] | None] | None,
@@ -689,7 +713,7 @@ class ReviewScreen(Screen[str]):
 
     def _preflight_done(self, running: list[str] | None, lockers: list[str] | None,
                         then: Callable[[list[str] | None, list[str] | None], None]) -> None:
-        self._checking = False
+        self._set_checking(False)
         if not self.is_attached or self.app.screen is not self:
             return  # the user left the screen while the check ran
         self._update_summary()

@@ -170,14 +170,14 @@ def install_kind(root: Path = REPO_ROOT) -> str:
 
 
 def apply_update(release: ReleaseInfo, *, root: Path = REPO_ROOT, current: str = __version__,
-                 runner=subprocess.run, download: Callable[[str, Path], None] | None = None,
+                 runner=None, download: Callable[[str, Path], None] | None = None,
                  allow_unverified: bool = False) -> str:
     """allow_unverified ([general] allow_unverified_updates) lets a zip install update from a release that has no
     SHA256SUMS asset. A release that has one is always verified."""
     kind = install_kind(root)
     try:
         if kind == "git":
-            _apply_git(root, release.tag, runner)
+            _apply_git(root, release.tag, runner or _run_bounded)
         else:
             _apply_zip(root, release, current, download or _download, allow_unverified)
     except UpdateError as exc:
@@ -187,16 +187,70 @@ def apply_update(release: ReleaseInfo, *, root: Path = REPO_ROOT, current: str =
     return f"Updated Ka0s WoW Tools to v{release.version}. Restart to use the new version."
 
 
-def _git_env() -> dict[str, str]:
-    """Never let git wait for a password or passphrase nobody can see behind the TUI (F-011)."""
-    return {**os.environ, "GIT_TERMINAL_PROMPT": "0",
-            "GIT_SSH_COMMAND": os.environ.get("GIT_SSH_COMMAND") or "ssh -oBatchMode=yes"}
+def _run_bounded(args: list[str], *, cwd, capture_output: bool = True, text: bool = True, check: bool = False,
+                 timeout: float, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+    """subprocess.run for git, but a timeout really ends it: output goes to temp files (no pipes for a helper such as
+    git-remote-https to hold open; on Windows subprocess.run waits for those after a timeout) and the whole process
+    tree is killed. stdin is closed so nothing can wait for typed input. Same call shape as subprocess.run."""
+    del capture_output, check  # always captured, never raises on a non-zero exit (the caller checks returncode)
+    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        if os.name == "nt":
+            proc = subprocess.Popen(args, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=out, stderr=err,
+                                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+        else:
+            proc = subprocess.Popen(args, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=out, stderr=err,
+                                    start_new_session=True)
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _kill_tree(proc)
+            raise
+        outputs = []
+        for handle in (out, err):
+            handle.seek(0)
+            data = handle.read()
+            outputs.append(data.decode("utf-8", errors="replace") if text else data)
+    return subprocess.CompletedProcess(args, proc.returncode, stdout=outputs[0], stderr=outputs[1])
 
 
-def _git(root: Path, runner, *args: str) -> str:
+def _kill_tree(proc: subprocess.Popen) -> None:
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], stdin=subprocess.DEVNULL,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30, check=False)
+        else:
+            os.killpg(proc.pid, 9)  # start_new_session: the group is git and everything it started
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        proc.kill()
+        proc.wait(timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def _git_env(root: Path, runner) -> dict[str, str]:
+    """Never let git wait for a password or passphrase nobody can see behind the TUI (F-011). BatchMode is only
+    added when the user has no SSH program of their own (GIT_SSH_COMMAND, GIT_SSH or core.sshCommand): setting
+    GIT_SSH_COMMAND would override theirs (a specific key, or PuTTY's plink on Windows)."""
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    if env.get("GIT_SSH_COMMAND") or env.get("GIT_SSH"):
+        return env
+    try:
+        proc = runner(["git", "config", "--get", "core.sshCommand"], cwd=root, capture_output=True, text=True,
+                      check=False, timeout=GIT_TIMEOUT_S, env=env)
+        configured = proc.returncode == 0 and bool((proc.stdout or "").strip())
+    except (OSError, subprocess.SubprocessError):
+        configured = False  # the next git call reports the problem
+    if not configured:
+        env["GIT_SSH_COMMAND"] = "ssh -oBatchMode=yes"
+    return env
+
+
+def _git(root: Path, runner, env: dict[str, str], *args: str) -> str:
     try:
         proc = runner(["git", *args], cwd=root, capture_output=True, text=True, check=False,
-                      timeout=GIT_TIMEOUT_S, env=_git_env())
+                      timeout=GIT_TIMEOUT_S, env=env)
     except subprocess.TimeoutExpired as exc:
         raise UpdateError(f"git {args[0]} timed out after {GIT_TIMEOUT_S} seconds. "
                           "Check your network and git credentials, then update again.") from exc
@@ -209,10 +263,11 @@ def _git(root: Path, runner, *args: str) -> str:
 
 def _apply_git(root: Path, tag: str, runner) -> None:
     # Untracked files (notes, leftovers) never block: a fast-forward only fails if a tracked path conflicts.
-    if _git(root, runner, "status", "--porcelain", "--untracked-files=no").strip():
+    env = _git_env(root, runner)
+    if _git(root, runner, env, "status", "--porcelain", "--untracked-files=no").strip():
         raise UpdateError("You have local changes in the wow-tools folder. Commit or stash them, then update again.")
-    _git(root, runner, "fetch", "--tags", "--force", "origin")
-    _git(root, runner, "merge", "--ff-only", tag)
+    _git(root, runner, env, "fetch", "--tags", "--force", "origin")
+    _git(root, runner, env, "merge", "--ff-only", tag)
 
 
 def _download(url: str, dest: Path) -> None:
@@ -306,15 +361,18 @@ def _replaced_names(root: Path, shipped: list[str]) -> list[str]:
     return fixed + [name for name in shipped if name not in fixed and (root / name).exists()]
 
 
-def prune_update_backups(backup_root: Path, keep: int = KEEP_UPDATE_BACKUPS) -> list[Path]:
-    """Delete all but the newest `keep` .update-backup/<version> folders (by version). Anything whose name is not
-    a version is left alone. Returns what was removed (F-018)."""
+def prune_update_backups(backup_root: Path, keep: int = KEEP_UPDATE_BACKUPS, current: str | None = None) -> list[Path]:
+    """Delete all but `keep` .update-backup/<version> folders: the one this update just made (`current`, whatever
+    its version: after a downgrade it is the lowest) plus the highest other versions. Anything whose name is not a
+    version is left alone. Returns what was removed (F-018)."""
     try:
-        found = [(parse_version(p.name), p) for p in backup_root.iterdir() if p.is_dir() and _is_version(p.name)]
+        found = [(parse_version(p.name), p) for p in backup_root.iterdir()
+                 if p.is_dir() and _is_version(p.name) and p.name != current]
     except OSError:
         return []
+    keep_others = max(1, keep) - (1 if current is not None and (backup_root / current).is_dir() else 0)
     removed: list[Path] = []
-    for _, path in sorted(found, reverse=True)[max(1, keep):]:
+    for _, path in sorted(found, reverse=True)[keep_others:]:
         try:
             shutil.rmtree(path)
             removed.append(path)
@@ -399,7 +457,7 @@ def _apply_zip(root: Path, release: ReleaseInfo, current: str, download: Callabl
                 raise UpdateError(f"update failed ({exc}) and the rollback also failed ({rollback_exc}). "
                                   f"Your previous version is saved in {backup}") from exc
             raise UpdateError(f"update failed and was rolled back: {exc}") from exc
-    removed = prune_update_backups(root / BACKUP_DIR_NAME)
+    removed = prune_update_backups(root / BACKUP_DIR_NAME, current=current)
     if removed:
         log_event("update.backups_pruned", keep=KEEP_UPDATE_BACKUPS, removed=[p.name for p in removed])
 

@@ -150,9 +150,10 @@ has no `SHA256SUMS` file, the update is refused and you're pointed to the Releas
 If you'd rather update anyway in that case, add `allow_unverified_updates = true` under `[general]` in
 `config\wow-tools.cfg` (it starts as `false`; leaving it that way is safer).
 
-Updating never touches your settings, logs or backups, or any other file you put in the app's folder. If an update
-fails partway, the app puts the old version back. A copy of the version you replaced is kept in the
-`.update-backup` folder; only the newest two are kept.
+Updating never touches your settings, logs or backups, or files you put directly in the app's folder (notes, say).
+The app's own folders (`wowtools`, `vendor`, `scripts` and `docs`) are replaced as a whole, so don't keep your own
+files in them. If an update fails partway, the app puts the old version back. A copy of the version you replaced is
+kept in the `.update-backup` folder; only two are kept (the one this update made and the newest other one).
 
 If you cloned with git, the update is a fast-forward to the new version. It stops if you've edited the app's own
 files, but files you added yourself (notes, say) don't get in its way. It never waits for a password: if git
