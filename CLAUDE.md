@@ -3,15 +3,18 @@
 Out-of-game WoW companion tools (Ka0s branded). First tool: WTF Cleaner. Spec and plan: `docs/superpowers/`.
 
 - Tests: `python3 -m unittest discover -s tests -t . -v`
-- Run: `python3 -m wowtools [wtf-cleaner|update] [args]` (no args opens the tool menu)
+- Run: `./wow-tools.sh` (Windows: `wow-tools.cmd`); the tool menu opens. `./wow-tools.sh update [--check]`.
+  Tools never start on their own and have no CLI mode.
 - Rebuild vendored libs: `python3 scripts/update_vendor.py`. Event docs: `python3 scripts/gen_event_docs.py`
 
 Conventions:
 - Python 3.10 floor; `from __future__ import annotations` in every module; stdlib + `vendor/` only.
 - `wowtools/core/*` and tool logic modules never import `textual`. Front ends are thin.
-- Config paths go through `core/paths.py` (stored in Windows form); config lives in the repo root.
+- Config paths go through `core/paths.py` (stored in Windows form). Config lives in `config/`: `wow-tools.cfg`
+  (`[general]`, shared) plus `<tool>.cfg` per tool. One instance at a time (`wow-tools.lock`, `core/lock.py`).
 - Every log event is registered with a fixed level (`core/events.py` or `<tool>/events.py`); regenerate
   `docs/events.md` after changing any registry.
-- Textual apps subclass `Ka0sApp` and override `after_mount()`, not `on_mount()`.
+- One Textual app, `WowToolsApp` (`ui/suite_app.py`): tool menu first; each tool is a `ToolFlow` (`FLOW` in its
+  `app.py`) that pushes its own screens and `close()`s back to the menu.
 - Tests use `tests/fixtures.py` temp trees; never a real WoW install, never the network.
 - Adding a tool: `docs/adding-a-tool.md`.

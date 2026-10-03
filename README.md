@@ -2,13 +2,14 @@
 
 # Ka0s WoW Tools
 
-Out-of-game companion tools for World of Warcraft. The tools share one settings file, one set of
-bundled libraries and one look, and they run straight from this folder on Windows, Linux and WSL.
-There's no `pip install` and no virtualenv.
+Out-of-game companion tools for World of Warcraft, in one app. You start it with `wow-tools`, pick a tool from
+the menu, and come back to the menu when you're done. Each tool has its own workflow and settings file; they
+share the WoW folder, the bundled libraries and one look. It runs straight from this folder on Windows, Linux and
+WSL. There's no `pip install` and no virtualenv.
 
 | Tool | What it does |
 |---|---|
-| **WTF Cleaner** (`wtf-cleaner`) | Finds SavedVariables left behind by addons you no longer use, backs them up to a zip, and deletes them. |
+| **WTF Cleaner** | Finds SavedVariables left behind by addons you no longer use, backs them up to a zip, and deletes them. |
 | Screenshot Organizer | Coming later. |
 
 ## Requirements
@@ -26,21 +27,27 @@ There's no `pip install` and no virtualenv.
 
 ## Quick start
 
-| Platform | WTF Cleaner | Tool menu |
-|---|---|---|
-| Windows | double-click `wtf-cleaner.cmd` | `wow-tools.cmd` |
-| Linux / WSL | `./wtf-cleaner.sh` | `./wow-tools.sh` |
-| Anywhere | `python -m wowtools wtf-cleaner` (from this folder) | `python -m wowtools` |
+There is one way in:
 
-**First launch.** A short setup asks for:
+| Platform | Start |
+|---|---|
+| Windows | double-click `wow-tools.cmd` |
+| Linux / WSL | `./wow-tools.sh` |
 
-1. **Your World of Warcraft folder.** This is the folder that contains `_retail_`, `_classic_` and so on.
-   Common locations on every drive are detected for you.
-2. **WTF Cleaner settings.** These are the age limit, which criteria to use, whether to back up before deleting,
-   and the **backup folder**. Leave the backup folder empty to use `<WoW folder>\wow-tools\wtf-cleaner`.
+The first screen lists the tools. Pick one with `↑`/`↓` and `Enter`. Inside a tool, `Esc` on the flavor screen or
+`t` on the review and results screens takes you back to the menu; `q` quits. `s` opens the settings: on the menu
+the shared WoW folder, inside a tool the WoW folder and then that tool's own settings. The tools can't be started
+on their own.
 
-Your answers are saved in `wow-tools.cfg` next to this README. Then you pick a **flavor**, and the last one you
-used is pre-selected next time. If the flavor has more than one WoW account, you then pick an **account**, or
+**First time you open a tool.** It asks for:
+
+1. **Your World of Warcraft folder** (once, shared by every tool). This is the folder that contains `_retail_`,
+   `_classic_` and so on. Common locations on every drive are detected for you.
+2. **That tool's settings.** For the WTF Cleaner: the age limit, which criteria to use, whether to back up before
+   deleting, and the **backup folder**. Leave the backup folder empty to use `<WoW folder>\wow-tools\wtf-cleaner`.
+
+Your answers are saved in the `config\` folder (see [Settings](#settings-config)). Then you pick a **flavor**, and
+the last one you used is pre-selected next time. If the flavor has more than one WoW account, you then pick an **account**, or
 "All accounts". The last choice is pre-selected next time.
 
 > **Close WoW before cleaning.** WoW rewrites SavedVariables when you log out, and it can recreate files you
@@ -69,7 +76,7 @@ files are treated as one group.
 
 - **All accounts** (the default): "enabled" is judged across the whole flavor. If an addon is enabled on any
   character of any account, its SavedVariables are kept everywhere.
-- **One account** (picked on the account screen, or `--account NAME` on the command line): only that account's
+- **One account** (picked on the account screen): only that account's
   SavedVariables are scanned and proposed, and only that account's characters decide what counts as enabled.
   An addon enabled only on another account's characters counts as not enabled here.
 
@@ -142,20 +149,20 @@ leave them.
 
 ### Dry run
 
-A dry run (the **Dry run** button, `y`, or `--dry-run`) writes and verifies the backup zip, exactly as a real
+A dry run (the **Dry run** button or `y`) writes and verifies the backup zip, exactly as a real
 clean would, and then deletes nothing. It reports what *would* be deleted, and it's recorded in the log. It
 takes no safety snapshot. If backups are turned off, a dry run writes nothing at all.
 
 ### Backups
 
 The backup folder is a WTF Cleaner setting (press `s`, then the WTF Cleaner settings screen). By default it is
-`<WoW folder>\wow-tools\wtf-cleaner`. `--backup-dir PATH` overrides it for one command-line run.
+`<WoW folder>\wow-tools\wtf-cleaner`.
 
 Before deleting, the cleaner writes
 `<backup folder>\wtf-cleaner_<flavor>_<YYYYMMDD-HHMMSS>.zip`, then re-opens it and checks every file.
 **If the backup can't be written or verified, nothing is deleted.** Each zip contains a
-`manifest.json` that lists every file, its size and why it was removed. You can turn backups off in settings,
-or with `--no-backup --yes` on the command line, but it isn't recommended.
+`manifest.json` that lists every file, its size and why it was removed. You can turn backups off in settings, but it
+isn't recommended.
 
 ### Locked files
 
@@ -204,7 +211,6 @@ cleaner **never restores on its own**. Instead:
 - The TUI shows a warning with when the clean started, where the snapshot is and how to restore it by hand.
   **Dismiss (keep the snapshot)** removes the marker and leaves the snapshot in place. **Remind me next time**
   keeps both.
-- The command line prints the same message to stderr.
 
 While that marker exists, new real cleans are refused, because they would lose track of the earlier snapshot.
 Dry runs still work. Use Dismiss, or delete `clean-in-progress.json`, to clean again.
@@ -220,39 +226,6 @@ Close WoW, then unzip the backup **into the flavor folder** (for example `World 
 the folder structure. The paths inside the zip start with `WTF\Account\…`, so the files land back where they
 were. You can ignore `manifest.json`.
 
-### Command line
-
-Every flag also works through `wtf-cleaner.cmd` / `wtf-cleaner.sh`.
-
-```
-python -m wowtools wtf-cleaner --flavor retail                     # show the proposal (read-only)
-python -m wowtools wtf-cleaner --flavor retail --clean             # back up + delete, asks y/N
-python -m wowtools wtf-cleaner --flavor retail --clean --dry-run   # write the backup, delete nothing
-python -m wowtools wtf-cleaner --flavor retail --account ME        # one account only
-python -m wowtools wtf-cleaner --flavor classic_era --clean --yes  # no prompt (for scripts)
-python -m wowtools wtf-cleaner --flavor retail --json --criteria not_installed,stray_copies
-```
-
-| Flag | Meaning |
-|---|---|
-| `--flavor NAME` | `retail`, `classic`, `classic_era`, `anniversary`, … (default: last used) |
-| `--account NAME` | Scan and clean only this account (any case). Default: all accounts. |
-| `--clean` | Back up and delete the proposal (asks first) |
-| `--yes` | Don't ask |
-| `--dry-run` | Write and verify the backup zip, but delete nothing |
-| `--no-backup` | Skip the zip (only with `--yes`) |
-| `--max-age DAYS` | Override the age limit |
-| `--criteria LIST` | Comma list of `not_installed,not_enabled,older_than,stray_copies` |
-| `--wow-path PATH` / `--backup-dir PATH` | Override the configured folders for this run |
-| `--json` | Machine-readable output (`--clean --json` also needs `--yes` or `--dry-run`) |
-| `--tui` | Open the TUI even when other flags are given |
-
-The text proposal starts with a scope line, for example `Scope: Retail (_retail_) · all accounts`.
-
-Exit codes: `0` ok · `1` usage or config problem (including an unknown `--account`), or a clean stopped by an unexpected error · `2` scan refused
-(e.g. no addons installed) · `3` finished but some files could not be deleted · `4` backup or safety snapshot
-failed, or an earlier clean is unresolved (nothing deleted).
-
 ### Is WoW running?
 
 Before a clean, the cleaner looks for running WoW processes and warns only about the flavor you chose. A process
@@ -263,34 +236,43 @@ belongs to a flavor when its executable sits in that flavor's folder (`_retail_`
 - On Linux (Wine) it reads `/proc`.
 - On macOS it can't tell, so there is no warning.
 
-## Settings (`wow-tools.cfg`)
+## Settings (`config\`)
 
-The file is created on first launch. Press `s` in the TUI to change the common settings, or edit the file
-directly while no tool is running.
+Each tool keeps its own settings file, next to one shared file for the suite:
 
-| Section / key | Default | Meaning |
+| File | Holds |
+|---|---|
+| `config\wow-tools.cfg` | `[general]`: the WoW folder, updates and logging, shared by every tool |
+| `config\wtf-cleaner.cfg` | `[wtf_cleaner]`: the WTF Cleaner's own settings |
+
+The files are created the first time they're needed. Press `s` in the app to change them, or edit them while
+the app is closed. A `wow-tools.cfg` from an older version (in the main folder) is split into `config\` on the
+next start, and the old file is removed.
+
+| File · section / key | Default | Meaning |
 |---|---|---|
-| `[general] wow_path` | (asked) | WoW folder. Stored as a Windows path so it works from Windows **and** WSL. |
-| `[general] last_flavor` | | Pre-selected flavor |
-| `[general] check_for_updates` | `true` | Check GitHub for a new version (at most once a day) |
-| `[general] auto_update` | `false` | Install new versions automatically on launch |
-| `[general] log_level` | `info` | Detail level of the readable log (`debug`, `info`, `warning`, `error`) |
-| `[general] log_retention_days` | `90` | Delete log files older than this |
-| `[wtf_cleaner] max_age_days` | `90` | Age limit for `older_than` |
-| `[wtf_cleaner] criterion_*` | `true` | Default on/off for each criterion |
-| `[wtf_cleaner] backup_before_delete` | `true` | Zip before deleting |
-| `[wtf_cleaner] backup_dir` | `<wow_path>\wow-tools\wtf-cleaner` | Where backup zips and safety snapshots go |
-| `[wtf_cleaner] last_account` | (empty = all accounts) | Pre-selected account |
+| `wow-tools.cfg` `[general] wow_path` | (asked) | WoW folder. Stored as a Windows path so it works from Windows **and** WSL. |
+| `wow-tools.cfg` `[general] last_flavor` | | Pre-selected flavor |
+| `wow-tools.cfg` `[general] check_for_updates` | `true` | Check GitHub for a new version (at most once a day) |
+| `wow-tools.cfg` `[general] auto_update` | `false` | Install new versions automatically on launch |
+| `wow-tools.cfg` `[general] log_level` | `info` | Detail level of the readable log (`debug`, `info`, `warning`, `error`) |
+| `wow-tools.cfg` `[general] log_retention_days` | `90` | Delete log files older than this |
+| `wtf-cleaner.cfg` `[wtf_cleaner] max_age_days` | `90` | Age limit for `older_than` |
+| `wtf-cleaner.cfg` `[wtf_cleaner] criterion_*` | `true` | Default on/off for each criterion |
+| `wtf-cleaner.cfg` `[wtf_cleaner] backup_before_delete` | `true` | Zip before deleting |
+| `wtf-cleaner.cfg` `[wtf_cleaner] backup_dir` | `<wow_path>\wow-tools\wtf-cleaner` | Where backup zips and safety snapshots go |
+| `wtf-cleaner.cfg` `[wtf_cleaner] last_account` | (empty = all accounts) | Pre-selected account |
 
 ## Updates
 
 On launch the suite checks GitHub Releases in the background, at most once a day. If a newer version exists,
-the TUI shows it in the bottom bar (press `u`) and the command line prints a one-line notice.
+the app shows it in the bottom bar (press `u`).
 
-- `python -m wowtools update --check` reports whether an update is available.
-- `python -m wowtools update` installs it. A git clone is fast-forwarded to the release tag, and it refuses if
+- `wow-tools update --check` (`./wow-tools.sh update --check` or `wow-tools.cmd update --check`) reports whether
+  an update is available.
+- `wow-tools update` installs it. A git clone is fast-forwarded to the release tag, and it refuses if
   you have local changes. A zip install downloads the release and replaces the program files, keeping a copy
-  in `.update-backup\` and rolling back if anything fails. Your `wow-tools.cfg`, `logs\` and backups are never
+  in `.update-backup\` and rolling back if anything fails. Your `config\`, `logs\` and backups are never
   touched.
 
 Set `auto_update = true` to install updates on launch without asking.
@@ -306,6 +288,18 @@ file deleted or skipped. Each tool has its own folder, e.g. `logs\wtf-cleaner\` 
 
 The format is described in [docs/events.md](docs/events.md).
 
+## One copy at a time
+
+Only one copy of Ka0s WoW Tools runs at a time. While it's open it holds a lock file, `wow-tools.lock`, in this
+folder, and it removes the file when it closes. If you start a second copy (or the last one crashed and left the
+file behind), you get a warning naming the process that holds the lock, with two choices:
+
+- **Quit** (the default), if the other copy really is open.
+- **Override and continue**, if it isn't, for example after a crash. When the process is known to be gone, the
+  warning says so and this button is focused.
+
+`wow-tools update` asks the same question on the terminal.
+
 ## Windows and WSL together
 
 The same folder works from both. Paths are stored in Windows form (`G:\Games\…`) and translated to
@@ -318,6 +312,7 @@ The same folder works from both. Paths are stored in Windows form (`G:\Games\…
 - **Files come back after cleaning**: WoW was running. Close it and clean again.
 - **"files are locked by another program"**: close the Raider.IO client (or WeakAuras Companion), then clean
   again. Nothing was deleted.
+- **"Ka0s WoW Tools may already be running"**: see [One copy at a time](#one-copy-at-a-time).
 - **"An earlier clean did not finish"**: see [After an interrupted clean](#after-an-interrupted-clean).
 - **Python not found on Windows**: install Python 3.10+ from python.org and tick "Add to PATH".
 

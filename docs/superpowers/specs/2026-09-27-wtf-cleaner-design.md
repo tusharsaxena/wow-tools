@@ -534,3 +534,39 @@ either way.
 - **Migration.** At start-up, the old flat files are split by each line's tool into those folders, with old lines
   ahead of any new ones.
 - **Pruning** covers every tool folder.
+
+## Addendum C: one entry point, per-tool config, single instance (2026-10-03)
+
+### C.1 One app, menu first
+- `wow-tools.sh` / `wow-tools.cmd` are the only way in. `wtf-cleaner.sh/.cmd` are gone, and a zip update removes
+  them (`updater.RETIRED_FILES`).
+- With no arguments the suite app (`WowToolsApp`) opens on the tool menu. The other commands are `update [--check]`,
+  `--version` and `--help`. A tool name as an argument is refused ("Tools open from the menu").
+- The WTF Cleaner's command-line mode (`--flavor`, `--clean`, `--json`, ...) is removed, along with its text and
+  JSON renderers.
+- **Tools inside the app.** Each tool is a `ToolFlow` (`TOOLS[name].flow()`) running inside the one app, and its
+  screens are pushed over the menu.
+- **Leaving a tool.** `Esc` on the flavor screen, `t` on the review screen, and **Tools (t)** on the results screen
+  return to the menu. `q` quits.
+- **`s` (settings).** On the menu it opens the shared WoW-folder settings. Inside the cleaner it opens the WoW
+  folder, then the cleaner's own settings.
+- The event log's `tool` (and so its `logs/<tool>/` folder) follows the open tool; the menu logs as `suite`.
+
+### C.2 Config per tool
+- `config/wow-tools.cfg` holds `[general]`, shared. `config/<tool>.cfg` holds the tool's own section, e.g.
+  `config/wtf-cleaner.cfg` `[wtf_cleaner]`.
+- **First open.** The first time a tool is opened (its file does not exist yet), it shows its own settings screen
+  after the shared WoW-folder setup, if that was needed.
+- **Migration.** At start-up, a root `wow-tools.cfg` from an older version is split into `config/` (unless
+  `config/wow-tools.cfg` already exists) and then removed. The retired `[general] backup_dir` is dropped. The
+  migration emits `config.migrated`.
+
+### C.3 One instance
+- **Taking the lock.** `wow-tools.lock` in the program folder is created exclusively at start. It records the pid,
+  host, start time, platform and a random token.
+- **If it already exists** (`lock.conflict`), the app opens on `LockScreen`. It names the holder and offers
+  **Quit** or **Override and continue** (`lock.overridden`, which rewrites the file with this copy's details).
+  Override is focused only when the holder is known to be dead (POSIX, same host); otherwise Quit is.
+- **`update`** asks the same question on the terminal.
+- **Release.** On exit the file is removed only if its token is still ours.
+- Auto-update is skipped while another copy holds the lock.

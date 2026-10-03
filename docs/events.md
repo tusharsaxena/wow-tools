@@ -37,8 +37,11 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | Event | Level | Description |
 |---|---|---|
 | `config.changed` | info | A config value changed, or was overridden for one run. |
-| `config.created` | info | wow-tools.cfg was written for the first time. |
+| `config.created` | info | A config file in config/ was written for the first time. |
+| `config.migrated` | info | The old shared wow-tools.cfg was split into config/ (one file per tool). |
 | `error` | error | An unexpected or fatal error. |
+| `lock.conflict` | warning | Another copy of Ka0s WoW Tools appears to be running (its lock file exists). |
+| `lock.overridden` | warning | The user took over an existing lock file and carried on. |
 | `session.end` | info | The process is exiting. |
 | `session.start` | info | The launcher or a tool started. |
 | `ui.item_toggled` | debug | The user ticked or unticked a single item. |
