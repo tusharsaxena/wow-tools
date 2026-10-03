@@ -12,18 +12,26 @@ from typing import Callable
 from wowtools.core.paths import is_wsl
 
 WOW_EXECUTABLES = ("Wow.exe", "WowClassic.exe", "WowB.exe", "WowT.exe")
+# Companion apps known to hold SavedVariables files open, which makes deleting them fail on Windows.
+WTF_LOCKERS = ("RaiderIO.exe", "WeakAurasCompanion.exe")
 
 
-def names_in_tasklist(output: str) -> list[str]:
+def names_in_tasklist(output: str, names: tuple[str, ...] = WOW_EXECUTABLES) -> list[str]:
     """Parse `tasklist /FO CSV /NH` output."""
     lower = output.lower()
-    return [exe for exe in WOW_EXECUTABLES
+    return [exe for exe in names
             if re.search(rf'^"?{re.escape(exe.lower())}"?[\s,]', lower, re.MULTILINE)]
 
 
+def running_wtf_lockers(**kwargs) -> list[str] | None:
+    """Names of running companion apps that may lock WTF files, [] if none, None if we cannot tell."""
+    return running_wow_executables(names=WTF_LOCKERS, **kwargs)
+
+
 def running_wow_executables(*, use_tasklist: bool | None = None, runner=subprocess.run,
-                            proc_root: Path = Path("/proc")) -> list[str] | None:
-    """Names of running WoW executables, [] if none, None if we cannot tell."""
+                            proc_root: Path = Path("/proc"),
+                            names: tuple[str, ...] = WOW_EXECUTABLES) -> list[str] | None:
+    """Names of running executables from `names` (WoW by default), [] if none, None if we cannot tell."""
     if use_tasklist is None:
         use_tasklist = os.name == "nt" or is_wsl()
     if use_tasklist:
@@ -34,18 +42,19 @@ def running_wow_executables(*, use_tasklist: bool | None = None, runner=subproce
             return None
         if proc.returncode != 0:
             return None
-        return names_in_tasklist(proc.stdout or "")
+        return names_in_tasklist(proc.stdout or "", names)
     try:
         comm_files = list(proc_root.glob("[0-9]*/comm"))
     except OSError:
         return None
-    names = set()
+    running = set()
     for comm in comm_files:
         try:
-            names.add(comm.read_text(encoding="utf-8", errors="replace").strip().lower())
+            running.add(comm.read_text(encoding="utf-8", errors="replace").strip().lower())
         except OSError:
             continue
-    return [exe for exe in WOW_EXECUTABLES if exe.lower() in names]
+    # /proc/<pid>/comm is cut to 15 characters
+    return [exe for exe in names if exe.lower()[:15] in running]
 
 
 # --- flavor-aware check (spec §A.9) --------------------------------------------------------------

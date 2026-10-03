@@ -94,11 +94,33 @@ def format_proposal_text(proposal: Proposal, flavor: Flavor, *, account: str | N
     return "\n".join(lines)
 
 
+def locker_warning(running: list[str]) -> str:
+    """The confirm-time warning when a program known to lock WTF files is running (real cleans only)."""
+    return (f"{', '.join(running)} appears to be running. It can lock SavedVariables files, and then the clean "
+            "stops before deleting anything. Close it first.")
+
+
+# What each execute() progress stage is called on screen (TUI progress popup and CLI stage lines), in order.
+STAGE_TITLES = {
+    "check": "Checking selected files",
+    "lock_check": "Checking for locked files",
+    "snapshot_list": "Listing the WTF folder",
+    "snapshot": "Taking safety snapshot",
+    "snapshot_verify": "Verifying safety snapshot",
+    "backup": "Writing backup",
+    "verify": "Verifying backup",
+    "delete": "Deleting",
+    "validate": "Checking the result against the snapshot",
+}
+
+
 def result_to_dict(result) -> dict:
     return {
         "dry_run": result.dry_run,
         "backup": str(result.backup_path) if result.backup_path else None,
         "snapshot": str(result.snapshot_path) if result.snapshot_path else None,
+        "snapshot_kept": result.snapshot_kept,
+        "check_problems": list(result.check_problems),
         "restored": list(result.restored),
         "counts": {"deleted": len(result.deleted), "would_delete": len(result.would_delete),
                    "skipped": len(result.skipped), "failed": len(result.failed)},
@@ -127,6 +149,10 @@ def format_result_text(result) -> str:
     if result.failed:
         lines.append(f"Failed: {len(result.failed)} files")
         lines += [f"  {o.path}  ({o.detail})" for o in result.failed]
+    if result.snapshot_kept:
+        lines.append(f"The post-clean check found {len(result.check_problems)} problems, so the safety snapshot "
+                     f"was kept: {result.snapshot_path}")
+        lines += [f"  {problem}" for problem in result.check_problems]
     return "\n".join(lines)
 
 

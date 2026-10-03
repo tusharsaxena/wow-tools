@@ -111,9 +111,11 @@ class WtfCleanerApp(Ka0sApp):
 
     def __init__(self, cfg: Config, *, check_updates: bool = True,
                  wow_check: Callable[[], list[str] | None] | None = None,
+                 locker_check: Callable[[], list[str] | None] | None = None,
                  detect: Callable[[], list[Path]] = detect_installs) -> None:
         super().__init__(cfg, check_updates=check_updates)
         self._wow_check = wow_check
+        self._locker_check = locker_check
         self._detect = detect
 
     def after_mount(self) -> None:
@@ -163,7 +165,8 @@ class WtfCleanerApp(Ka0sApp):
         self._review(flavor, account)
 
     def _review(self, flavor: Flavor, account: str | None) -> None:
-        self.push_screen(ReviewScreen(self.cfg, flavor, account=account, wow_check=self._wow_check),
+        self.push_screen(ReviewScreen(self.cfg, flavor, account=account, wow_check=self._wow_check,
+                                     locker_check=self._locker_check),
                          self._after_review)
 
     def _after_review(self, choice: str | None) -> None:

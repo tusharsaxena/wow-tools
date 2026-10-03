@@ -317,12 +317,14 @@ class SafetySnapshotCleanTest(unittest.TestCase):
         for stage, *_ in calls:
             if not stages or stages[-1] != stage:
                 stages.append(stage)
-        self.assertEqual(stages, ["snapshot", "backup", "verify", "delete"])
+        self.assertEqual(stages, ["check", "lock_check", "snapshot_list", "snapshot", "snapshot_verify", "backup", "verify",
+                                  "delete", "validate"])
         for stage in stages:
             last = [c for c in calls if c[0] == stage][-1]
             self.assertEqual(last[1], last[2], stage)
         self.assertEqual(len([c for c in calls if c[0] == "backup"]), 8)
-        self.assertEqual(len([c for c in calls if c[0] == "verify"]), 1)
+        self.assertEqual(len([c for c in calls if c[0] == "check"]), 8)
+        self.assertEqual(len([c for c in calls if c[0] == "verify"]), 9)  # 8 files + manifest.json
         self.assertEqual(len([c for c in calls if c[0] == "delete"]), 8)
 
     def test_raising_progress_callback_changes_nothing(self):
@@ -338,3 +340,98 @@ class SafetySnapshotCleanTest(unittest.TestCase):
         names = [r["event"] for r in records]
         self.assertNotIn("restore.completed", names)
         self.assertNotIn("restore.failed", names)
+
+
+class LockAndCheckTest(unittest.TestCase):
+    """The lock check before a real clean, and the post-clean check against the snapshot."""
+
+    setUp = CleanerTest.setUp
+    paths = CleanerTest.paths
+    run_clean = SafetySnapshotCleanTest.run_clean
+    snapshot_path = SafetySnapshotCleanTest.snapshot_path
+    item = CleanerTest.item
+
+    def _lock(self, locked_name):
+        original = os.rename
+
+        def rename(src, dst, *args, **kwargs):
+            if Path(src).name == locked_name:
+                raise PermissionError(13, "The process cannot access the file because it is being used")
+            return original(src, dst, *args, **kwargs)
+        return patch.object(cleaner_module.os, "rename", rename)
+
+    def test_locked_file_stops_a_real_clean_before_anything(self):
+        before = snapshot(self.root)
+        with capture_events() as records:
+            with self._lock("Uninstalled.lua.bak"):
+                with self.assertRaises(CleanError) as ctx:
+                    self.run_clean()
+        self.assertIn("locked", str(ctx.exception))
+        self.assertIn("Uninstalled.lua.bak", str(ctx.exception))
+        self.assertEqual(snapshot(self.root), before)
+        self.assertFalse(self.backup_dir.exists() and any(self.backup_dir.iterdir()))
+        names = [r["event"] for r in records]
+        self.assertIn("clean.locked", names)
+        self.assertNotIn("snapshot.created", names)
+
+    def test_dry_run_skips_the_lock_check(self):
+        calls = []
+        with self._lock("Uninstalled.lua.bak"):
+            result = self.run_clean(dry_run=True, progress=lambda *a: calls.append(a[0]))
+        self.assertEqual(len(result.would_delete), 8)
+        self.assertNotIn("lock_check", calls)
+
+    def test_lock_probe_leaves_files_in_place(self):
+        before = snapshot(self.root)
+        for path in self.paths():
+            self.assertIsNone(cleaner_module._probe_lock(path))
+        self.assertEqual(snapshot(self.root), before)
+
+    def test_clean_is_validated_then_snapshot_removed(self):
+        with capture_events() as records:
+            result = self.run_clean()
+        self.assertFalse(result.snapshot_kept)
+        self.assertEqual(result.check_problems, [])
+        names = [r["event"] for r in records]
+        self.assertLess(names.index("clean.validated"), names.index("snapshot.removed"))
+
+    def test_unselected_file_going_missing_keeps_the_snapshot(self):
+        extra = self.sv / "Details.lua"
+        original = cleaner_module._delete_one
+
+        def delete_one(result, item, sv, flavor, dry_run, deleted):
+            original(result, item, sv, flavor, dry_run, deleted)
+            if extra.exists():
+                extra.unlink()  # something else removed a file that was not selected
+        with capture_events() as records:
+            with patch.object(cleaner_module, "_delete_one", delete_one):
+                result = self.run_clean()
+        self.assertTrue(result.snapshot_kept)
+        self.assertTrue(any("ACCT1/SavedVariables/Details.lua is missing" in p for p in result.check_problems))
+        self.assertTrue(self.snapshot_path().exists())
+        self.assertFalse((self.backup_dir / MARKER_NAME).exists())
+        names = [r["event"] for r in records]
+        self.assertIn("snapshot.kept", names)
+        self.assertNotIn("snapshot.removed", names)
+        self.assertTrue(result_to_dict(result)["snapshot_kept"])
+        self.assertIn("safety snapshot was kept", format_result_text(result))
+
+    def test_check_that_cannot_run_keeps_the_snapshot(self):
+        with patch.object(cleaner_module, "check_clean", return_value=["the check could not run: boom"]):
+            result = self.run_clean()
+        self.assertTrue(result.snapshot_kept)
+        self.assertTrue(self.snapshot_path().exists())
+
+    def test_guard_refuses_a_link_out_of_the_account_folder(self):
+        outside = self.tmp / "outside.lua"
+        outside.write_text("x")
+        link = self.sv / "Linked.lua"
+        try:
+            link.symlink_to(outside)
+        except OSError:
+            self.skipTest("symlinks not available")
+        item = self.item("Uninstalled")
+        stat = link.lstat()
+        bad = item.with_files([SVFile(link, stat.st_size, stat.st_mtime, False)])
+        with self.assertRaises(CleanError):
+            execute([bad], self.retail, dry_run=True, backup=False, backup_dir=None, now=WHEN)

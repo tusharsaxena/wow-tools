@@ -46,8 +46,12 @@ class SafetyTest(unittest.TestCase):
         self.assertIn("WTF/Account/ACCT1/config-cache.wtf", names)
         self.assertIn("WTF/Account/ACCT1/Realm1/CharA/AddOns.txt", names)
         self.assertTrue(calls)
-        self.assertTrue(all(c[0] == "snapshot" for c in calls))
-        self.assertEqual(calls[-1][1], calls[-1][2])
+        stages = list(dict.fromkeys(c[0] for c in calls))
+        self.assertEqual(stages, ["snapshot_list", "snapshot", "snapshot_verify"])
+        for stage in stages:
+            last = [c for c in calls if c[0] == stage][-1]
+            self.assertEqual(last[1], last[2], stage)
+        self.assertEqual(len([c for c in calls if c[0] == "snapshot"]), len(names))
 
     def test_snapshot_failure_raises_backup_error(self):
         blocker = self.tmp / "blocker"

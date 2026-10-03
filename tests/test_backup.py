@@ -67,6 +67,36 @@ class BackupTest(unittest.TestCase):
         with self.assertRaises(BackupError):
             create_backup([], self.flavor_dir, self.dest, {})
 
+    def test_verify_reports_every_entry(self):
+        calls = []
+        create_backup(self.entries, self.flavor_dir, self.dest, {}, on_verify=lambda *a: calls.append(a))
+        self.assertEqual([c[:2] for c in calls], [(1, 3), (2, 3), (3, 3)])
+
+    def test_verify_catches_a_corrupt_entry(self):
+        data = b"saved variables " * 200
+        self.dest.parent.mkdir(parents=True, exist_ok=True)
+        bad = self.dest.with_name("c.zip")
+        with zipfile.ZipFile(bad, "w", compression=zipfile.ZIP_STORED) as zf:
+            zf.writestr("a.lua", data)
+        raw = bytearray(bad.read_bytes())
+        offset = raw.index(data)
+        raw[offset + 10] ^= 0xFF  # flip a byte inside the stored data: the CRC no longer matches
+        bad.write_bytes(bytes(raw))
+        with self.assertRaises(BackupError):
+            backup.verify_backup(bad, {"a.lua": len(data)})
+
+    def test_known_size_and_mtime_skip_the_stat(self):
+        entry = BackupEntry(self.sv / "Uninstalled.lua", (), size=12345, mtime=1.0)
+        with patch.object(Path, "stat", side_effect=AssertionError("stat called")):
+            with self.assertRaises(BackupError):  # zip size differs from the given size: verify catches it
+                create_backup([entry], self.flavor_dir, self.dest, {})
+
+    def test_dotdot_path_is_resolved_and_rejected(self):
+        sneaky = self.flavor_dir / "WTF" / ".." / ".." / "elsewhere.lua"
+        (self.tmp / "World of Warcraft" / "elsewhere.lua").write_text("x")
+        with self.assertRaises(BackupError):
+            create_backup([BackupEntry(sneaky)], self.flavor_dir, self.dest, {})
+
     def test_backup_filename(self):
         self.assertEqual(backup_filename("wtf-cleaner", "retail", datetime(2026, 9, 27, 14, 3, 11)),
                          "wtf-cleaner_retail_20260927-140311.zip")

@@ -1,10 +1,12 @@
-"""Execute a selection: guard, recheck, safety snapshot, back up (verified), then delete.
+"""Execute a selection: guard, recheck, safety snapshot, back up (verified), delete, then check the result.
 
 A dry run writes the backup but takes no snapshot and deletes nothing.
 """
 from __future__ import annotations
 
 import os
+import stat
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -16,8 +18,8 @@ from wowtools.core.events import log_event
 from wowtools.core.install import Flavor
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
 from wowtools.tools.wtf_cleaner.rules import ProposalItem
-from wowtools.tools.wtf_cleaner.safety import (MARKER_NAME, Marker, clear_marker, read_marker, remove_snapshot,
-                                               restore_deleted, take_snapshot, write_marker)
+from wowtools.tools.wtf_cleaner.safety import (MARKER_NAME, Marker, check_clean, clear_marker, read_marker,
+                                               remove_snapshot, restore_deleted, take_snapshot, write_marker)
 from wowtools.tools.wtf_cleaner.scanner import SVFile
 
 CleanProgress = Callable[[str, int, int, str], None]
@@ -43,8 +45,10 @@ class CleanResult:
     dry_run: bool
     backup_path: Path | None
     outcomes: list[FileOutcome] = field(default_factory=list)
-    snapshot_path: Path | None = None  # the safety snapshot used; already removed when the result is returned
+    snapshot_path: Path | None = None  # the safety snapshot used; removed on return unless snapshot_kept
     restored: list[str] = field(default_factory=list)
+    snapshot_kept: bool = False  # the post-clean check found problems, so the snapshot was kept
+    check_problems: list[str] = field(default_factory=list)
 
     def _with(self, status: str) -> list[FileOutcome]:
         return [o for o in self.outcomes if o.status == status]
@@ -70,25 +74,94 @@ class CleanResult:
         return sum(o.size for o in self.outcomes if o.status in ("deleted", "would_delete"))
 
 
-def _guard(path: Path, flavor: Flavor) -> None:
-    root = flavor.account_dir.resolve()
-    resolved = path.resolve()
-    try:
-        resolved.relative_to(root)
-    except ValueError:
-        raise CleanError(f"Refusing to touch {path}: it is outside {flavor.account_dir}") from None
-    if resolved.parent.name != "SavedVariables":
-        raise CleanError(f"Refusing to touch {path}: it is not inside a SavedVariables folder")
+class _Guard:
+    """Refuses any path outside <flavor>/WTF/Account or not directly inside a SavedVariables folder.
+
+    Resolving a path is slow on some drives (about 13ms per file on a Windows drive under WSL), so the account
+    folder is resolved once and each parent folder once. A file that is itself a link is resolved in full.
+    """
+
+    def __init__(self, flavor: Flavor) -> None:
+        self.flavor = flavor
+        self.root = flavor.account_dir.resolve()
+        self.parents: dict[Path, Path] = {}
+
+    def check(self, path: Path, info: os.stat_result | None) -> None:
+        if info is not None and stat.S_ISLNK(info.st_mode):
+            resolved = path.resolve()
+        else:
+            parent = self.parents.get(path.parent)
+            if parent is None:
+                parent = self.parents[path.parent] = path.parent.resolve()
+            resolved = parent / path.name
+        try:
+            resolved.relative_to(self.root)
+        except ValueError:
+            raise CleanError(f"Refusing to touch {path}: it is outside {self.flavor.account_dir}") from None
+        if resolved.parent.name != "SavedVariables":
+            raise CleanError(f"Refusing to touch {path}: it is not inside a SavedVariables folder")
 
 
-def _recheck(sv: SVFile) -> str | None:
+def _lstat(path: Path) -> os.stat_result | None:
     try:
-        stat = sv.path.stat()
+        return os.lstat(path)
     except OSError:
+        return None
+
+
+def _recheck(sv: SVFile, info: os.stat_result | None) -> str | None:
+    if info is not None and stat.S_ISLNK(info.st_mode):
+        info = _lstat(sv.path.resolve())
+    if info is None:
         return "missing"
-    if stat.st_size != sv.size or stat.st_mtime != sv.mtime:
+    if info.st_size != sv.size or info.st_mtime != sv.mtime:
         return "changed"
     return None
+
+
+LOCK_PROBE_SUFFIX = ".wowtools-lockcheck"
+
+
+def _probe_lock(path: Path) -> str | None:
+    """Rename the file aside and straight back. Windows refuses the rename exactly when another process holds the
+    file open without allowing deletion, so a failure here means the delete would fail too. Returns the error, or
+    None if the file can be deleted (or is gone, which the recheck already reported)."""
+    aside = path.with_name(path.name + LOCK_PROBE_SUFFIX)
+    if aside.exists():
+        return None  # never overwrite anything; the delete itself will report a real problem
+    try:
+        os.rename(path, aside)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        return exc.strerror or str(exc)
+    for attempt in range(5):
+        try:
+            os.rename(aside, path)
+            return None
+        except OSError as exc:
+            if attempt == 4:
+                raise CleanError(f"Could not put {path.name} back after a lock check ({exc}). It is at {aside}: "
+                                 f"rename it back to {path.name}. Nothing was deleted.") from exc
+            time.sleep(0.1)
+    return None
+
+
+def _refuse_locked(ready: list[tuple[ProposalItem, SVFile]], flavor: Flavor, report: CleanProgress) -> None:
+    """A real clean stops before the snapshot if any selected file is locked by another process."""
+    locked: list[tuple[str, str]] = []
+    for index, (_, sv) in enumerate(ready, 1):
+        rel = _relative(sv.path, flavor)
+        error = _probe_lock(sv.path)
+        if error is not None:
+            locked.append((rel, error))
+        report("lock_check", index, len(ready), rel)
+    if locked:
+        log_event("clean.locked", flavor=flavor.folder, files=len(locked), details=[r for r, _ in locked[:20]])
+        names = "\n".join(f"  {rel} ({error})" for rel, error in locked[:10])
+        more = f"\n  …and {len(locked) - 10} more" if len(locked) > 10 else ""
+        raise CleanError(f"{len(locked)} files are locked by another program (the Raider.IO client and WeakAuras "
+                         f"Companion are known to do this). Close it and clean again.\n{names}{more}")
 
 
 def _relative(path: Path, flavor: Flavor) -> str:
@@ -178,13 +251,18 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
     selected = [(item, sv) for item in items for sv in item.files]
     log_event("clean.started", dry_run=dry_run, flavor=flavor.folder, items=len(items), files=len(selected),
               bytes=sum(sv.size for _, sv in selected), backup=backup)
-    for _, sv in selected:
-        _guard(sv.path, flavor)
+    guard = _Guard(flavor)
+    infos: list[os.stat_result | None] = []
+    for index, (_, sv) in enumerate(selected, 1):
+        info = _lstat(sv.path)  # one lstat per file, shared by the guard and the recheck
+        guard.check(sv.path, info)
+        infos.append(info)
+        report("check", index, len(selected), _relative(sv.path, flavor))
 
     result = CleanResult(dry_run=dry_run, backup_path=None)
     ready: list[tuple[ProposalItem, SVFile]] = []
-    for item, sv in selected:
-        problem = _recheck(sv)
+    for (item, sv), info in zip(selected, infos):
+        problem = _recheck(sv, info)
         if problem:
             result.outcomes.append(FileOutcome(sv.path, sv.size, "skipped", problem, tuple(item.reasons)))
             log_event("sv.skipped", dry_run=dry_run, path=_relative(sv.path, flavor), reason=problem)
@@ -193,6 +271,7 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
 
     snapshot: Path | None = None
     if not dry_run and ready:
+        _refuse_locked(ready, flavor, report)
         snapshot = _take_safety_snapshot(flavor, backup_dir, now, [_relative(sv.path, flavor) for _, sv in ready],
                                          report)
         result.snapshot_path = snapshot
@@ -216,14 +295,31 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
         raise _restore_after(exc, snapshot, backup_dir, flavor, deleted) from exc
 
     if snapshot is not None and backup_dir is not None:
-        _discard_safety(backup_dir, snapshot)
-        log_event("snapshot.removed", flavor=flavor.folder, zip=str(snapshot))
+        _finish_safety(result, snapshot, backup_dir, flavor, deleted, report)
 
     log_event("clean.completed", dry_run=dry_run, level="warning" if result.failed else None,
               deleted=len(result.deleted), would_delete=len(result.would_delete),
               skipped=len(result.skipped), failed=len(result.failed), bytes=result.bytes_freed,
               backup=str(result.backup_path) if result.backup_path else None)
     return result
+
+
+def _finish_safety(result: CleanResult, snapshot: Path, backup_dir: Path, flavor: Flavor, deleted: list[str],
+                   report: CleanProgress) -> None:
+    """Check the WTF folder against the snapshot; remove the snapshot only if the check found nothing wrong.
+
+    The marker is cleared either way: the clean did finish, and a kept snapshot is named in the result."""
+    problems = check_clean(snapshot, flavor, deleted, result.backup_path, report)
+    if problems:
+        clear_marker(backup_dir)
+        result.snapshot_kept = True
+        result.check_problems = problems
+        log_event("snapshot.kept", flavor=flavor.folder, zip=str(snapshot), problems=len(problems),
+                  details=problems[:20])
+        return
+    log_event("clean.validated", flavor=flavor.folder, deleted=len(deleted), zip=str(snapshot))
+    _discard_safety(backup_dir, snapshot)
+    log_event("snapshot.removed", flavor=flavor.folder, zip=str(snapshot))
 
 
 def _selective_backup(result: CleanResult, ready: list[tuple[ProposalItem, SVFile]], flavor: Flavor,
@@ -235,12 +331,13 @@ def _selective_backup(result: CleanResult, ready: list[tuple[ProposalItem, SVFil
     meta = {"tool": TOOL_NAME, "suite_version": __version__, "flavor": flavor.folder,
             "created": now.isoformat(timespec="seconds")}
     try:
-        create_backup([BackupEntry(sv.path, tuple(item.reasons)) for item, sv in ready],
-                      flavor.path, dest, meta, on_file=lambda i, n, name: report("backup", i, n, name))
+        # The recheck just confirmed each file's size and mtime, so the backup does not stat them again.
+        create_backup([BackupEntry(sv.path, tuple(item.reasons), sv.size, sv.mtime) for item, sv in ready],
+                      flavor.path, dest, meta, on_file=lambda i, n, name: report("backup", i, n, name),
+                      on_verify=lambda i, n, name: report("verify", i, n, name))
     except BackupError as exc:
         log_event("backup.failed", dry_run=dry_run, zip=str(dest), error=str(exc))
         raise
-    report("verify", 1, 1, dest.name)  # create_backup verified the zip before moving it into place
     log_event("backup.created", dry_run=dry_run, zip=str(dest), files=len(ready), bytes=ready_bytes,
               verified=True)
     result.backup_path = dest

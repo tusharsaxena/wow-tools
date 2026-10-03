@@ -10,11 +10,11 @@ from wowtools.core.config import Config
 from wowtools.core.events import get_event_log, log_event, log_exception
 from wowtools.core.install import WowInstall
 from wowtools.core.paths import to_native
-from wowtools.core.process import wow_check_for
+from wowtools.core.process import running_wtf_lockers, wow_check_for
 from wowtools.core.updater import UpdateCheck
 from wowtools.tools.wtf_cleaner.cleaner import CleanError, execute
 from wowtools.tools.wtf_cleaner.report import (format_proposal_text, format_result_text, format_size,
-                                               proposal_to_dict, result_to_dict)
+                                               STAGE_TITLES, locker_warning, proposal_to_dict, result_to_dict)
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, Criteria, evaluate
 from wowtools.tools.wtf_cleaner.safety import read_marker, recovery_message
 from wowtools.tools.wtf_cleaner.scanner import ScanError, scan
@@ -44,7 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str], *, cfg: Config | None = None, stdout=None, stderr=None, input_fn=input,
-         wow_check=None) -> int:
+         wow_check=None, locker_check=None) -> int:
     stdout = stdout or sys.stdout
     stderr = stderr or sys.stderr
     try:
@@ -63,7 +63,7 @@ def main(argv: list[str], *, cfg: Config | None = None, stdout=None, stderr=None
     get_event_log().set_context(mode="cli")
     checker = UpdateCheck(cfg).start() if cfg.check_for_updates and not args.json else None
     try:
-        return _run(args, cfg, stdout, stderr, input_fn, wow_check)
+        return _run(args, cfg, stdout, stderr, input_fn, wow_check, locker_check or running_wtf_lockers)
     finally:
         notice = checker.notice() if checker else None
         if notice:
@@ -74,7 +74,7 @@ def _override(section: str, key: str, old, new) -> None:
     log_event("config.changed", section=section, key=key, old=old, new=str(new), source="cli", persisted=False)
 
 
-def _run(args, cfg: Config, stdout, stderr, input_fn, wow_check) -> int:
+def _run(args, cfg: Config, stdout, stderr, input_fn, wow_check, locker_check) -> int:
     def out(text: str) -> None:
         print(text, file=stdout)
 
@@ -177,6 +177,10 @@ def _run(args, cfg: Config, stdout, stderr, input_fn, wow_check) -> int:
         log_event("wow.running_warning", executables=running)
         err(f"Warning: WoW appears to be running ({', '.join(running)}). Close it first: "
             "WoW rewrites SavedVariables when you log out.")
+    lockers = locker_check() if not args.dry_run else None
+    if lockers:
+        log_event("locker.running_warning", executables=lockers)
+        err(f"Warning: {locker_warning(lockers)}")
 
     if not args.yes and not args.dry_run:
         answer = input_fn(f"Back up and delete {proposal.total_files} files "
@@ -187,9 +191,9 @@ def _run(args, cfg: Config, stdout, stderr, input_fn, wow_check) -> int:
             out("Aborted. Nothing was changed.")
             return EXIT_OK
 
-    stage_lines = {"snapshot": "Taking safety snapshot…", "backup": "Writing backup…"}
-    if not args.dry_run:
-        stage_lines["delete"] = "Deleting…"
+    stage_lines = {stage: f"{title}…" for stage, title in STAGE_TITLES.items()}
+    if args.dry_run:
+        del stage_lines["delete"]
     last_stage: list[str] = []
 
     def on_progress(stage: str, current: int, total: int, detail: str) -> None:

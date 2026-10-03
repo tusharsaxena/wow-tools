@@ -25,7 +25,7 @@ class CliTest(unittest.TestCase):
         self.sv = self.root / "_retail_" / "WTF" / "Account" / "ACCT1" / "SavedVariables"
         self.backup_dir = self.tmp / "bk"
 
-    def cli(self, *argv, answer="n", cfg=None, wow_running=()):
+    def cli(self, *argv, answer="n", cfg=None, wow_running=(), lockers=()):
         out, err = io.StringIO(), io.StringIO()
 
         def ask(prompt):
@@ -34,7 +34,7 @@ class CliTest(unittest.TestCase):
             return answer
 
         code = main(list(argv), cfg=cfg or self.cfg, stdout=out, stderr=err, input_fn=ask,
-                    wow_check=lambda: list(wow_running))
+                    wow_check=lambda: list(wow_running), locker_check=lambda: list(lockers))
         return code, out.getvalue(), err.getvalue()
 
     def test_proposal_text_is_read_only(self):

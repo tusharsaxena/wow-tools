@@ -22,6 +22,7 @@ MARKER_NAME = "clean-in-progress.json"
 SNAPSHOT_PREFIX = "wtf-snapshot"
 
 SnapshotProgress = Callable[[str, int, int, str], None]
+LIST_REPORT_EVERY = 100
 
 
 @dataclass(frozen=True)
@@ -35,18 +36,27 @@ class Marker:
     files: list[str]
 
 
-def _wtf_files(flavor: Flavor) -> list[Path]:
+def wtf_files(flavor: Flavor, progress: SnapshotProgress | None = None, stage: str = "snapshot_list") -> list[Path]:
+    """Every regular file under <flavor>/WTF, sorted. Uses directory entries only (no per-file stat), so it stays
+    fast on slow drives. progress(stage, found, 0, label) is called every LIST_REPORT_EVERY files and once at the
+    end with found == total."""
     found: list[Path] = []
-
-    def fail(exc: OSError) -> None:
-        raise exc
-
-    for dirpath, dirnames, filenames in os.walk(flavor.wtf_dir, onerror=fail):
-        dirnames.sort()
-        for name in sorted(filenames):
-            path = Path(dirpath) / name
-            if path.is_file() and not path.is_symlink():
-                found.append(path)
+    pending = [flavor.wtf_dir]
+    while pending:
+        folder = pending.pop()
+        with os.scandir(folder) as entries:
+            children = sorted(entries, key=lambda e: e.name)
+        subdirs = []
+        for entry in children:
+            if entry.is_dir(follow_symlinks=False):
+                subdirs.append(Path(entry.path))
+            elif entry.is_file(follow_symlinks=False):
+                found.append(Path(entry.path))
+                if progress is not None and len(found) % LIST_REPORT_EVERY == 0:
+                    progress(stage, len(found), 0, f"{len(found)} files found")
+        pending.extend(reversed(subdirs))
+    if progress is not None:
+        progress(stage, len(found), len(found), f"{len(found)} files found")
     return found
 
 
@@ -58,18 +68,19 @@ def take_snapshot(flavor: Flavor, backup_dir: Path, now: datetime,
     try:
         if not flavor.wtf_dir.is_dir():
             raise BackupError(f"{flavor.wtf_dir} is not a folder")
-        files = _wtf_files(flavor)
+        files = wtf_files(flavor, progress)
         base = flavor.path
         expected: dict[str, int] = {}
         dest.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(partial, "w", compression=zipfile.ZIP_DEFLATED, strict_timestamps=False) as zf:
             for index, path in enumerate(files, 1):
                 arcname = path.relative_to(base).as_posix()
-                expected[arcname] = path.stat().st_size
                 zf.write(path, arcname)
+                expected[arcname] = zf.getinfo(arcname).file_size  # the bytes actually stored
                 if progress is not None:
                     progress("snapshot", index, len(files), arcname)
-        verify_backup(partial, expected)
+        verify_backup(partial, expected,
+                      progress=None if progress is None else lambda i, n, name: progress("snapshot_verify", i, n, name))
         os.replace(partial, dest)
     except BackupError:
         _remove(partial)
@@ -161,6 +172,41 @@ def restore_deleted(snapshot: Path, flavor: Flavor, rel_paths: list[str]) -> lis
     except (OSError, zipfile.BadZipFile, ValueError, KeyError) as exc:
         raise BackupError(f"could not restore from {snapshot}: {exc}") from exc
     return restored
+
+
+def check_clean(snapshot: Path, flavor: Flavor, deleted: list[str], backup_zip: Path | None,
+                progress: SnapshotProgress | None = None) -> list[str]:
+    """Compare the WTF folder after a clean with its safety snapshot. Returns the problems found (empty = good).
+
+    - every file this clean deleted is gone, and is in the snapshot;
+    - every other file in the snapshot is still on disk;
+    - with a backup zip, it lists every deleted file at the size the snapshot recorded.
+    Never raises: a check that cannot run is reported as a problem.
+    """
+    problems: list[str] = []
+    try:
+        with zipfile.ZipFile(snapshot) as zf:
+            in_snapshot = {info.filename: info.file_size for info in zf.infolist()}
+        on_disk = {path.relative_to(flavor.path).as_posix() for path in wtf_files(flavor, progress, "validate")}
+        gone = set(deleted)
+        for rel in sorted(gone):
+            if rel in on_disk:
+                problems.append(f"{rel} was reported deleted but is still on disk")
+            if rel not in in_snapshot:
+                problems.append(f"{rel} was deleted but is not in the safety snapshot")
+        for rel in sorted(set(in_snapshot) - gone - on_disk):
+            problems.append(f"{rel} is missing but was not selected for deletion")
+        if backup_zip is not None:
+            with zipfile.ZipFile(backup_zip) as zf:
+                in_backup = {info.filename: info.file_size for info in zf.infolist()}
+            for rel in sorted(gone):
+                if rel not in in_backup:
+                    problems.append(f"{rel} was deleted but is not in the backup zip")
+                elif rel in in_snapshot and in_backup[rel] != in_snapshot[rel]:
+                    problems.append(f"{rel} has a different size in the backup zip than in the snapshot")
+    except Exception as exc:  # noqa: BLE001 - a check that cannot run keeps the snapshot
+        problems.append(f"the check could not run: {exc}")
+    return problems
 
 
 def recovery_message(marker: Marker) -> str:
