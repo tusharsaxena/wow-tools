@@ -48,6 +48,8 @@ class FlavorPlan:
     target_root: Path
     items: list[ShotItem] = field(default_factory=list)
     skipped: list[Skipped] = field(default_factory=list)
+    missing: bool = False  # the flavor has no Screenshots folder: listed, but nothing to do
+    error: str | None = None  # the Screenshots folder could not be read
 
     def _state(self, state: str) -> list[ShotItem]:
         return [i for i in self.items if i.state == state]
@@ -135,16 +137,20 @@ def scan(flavors: list[Flavor], dest_dir: Path | None, progress: ScanProgress | 
         if progress:
             progress(index, total, label)
         src_dir = source_dir(flavor)
+        root = target_root(flavor, dest_dir)
+        fp = FlavorPlan(flavor, src_dir, root)
+        plan.flavors.append(fp)  # every chosen flavor is listed, even with nothing to do
         if not src_dir.is_dir():
+            fp.missing = True
+            summary[flavor.folder] = {"missing": True}
             continue
         try:
             files = list_files(src_dir)
         except OSError as exc:
+            fp.error = str(exc)
             plan.warnings.append(f"{src_dir}: {exc}")
             log_event("shots.scan_warning", path=str(src_dir), error=str(exc))
             continue
-        root = target_root(flavor, dest_dir)
-        fp = FlavorPlan(flavor, src_dir, root)
         for count, name in enumerate(sorted(files, key=str.casefold), start=1):
             if progress and count % TICK == 0:
                 progress(index, total, f"{label}: {count} files")
@@ -170,7 +176,6 @@ def scan(flavors: list[Flavor], dest_dir: Path | None, progress: ScanProgress | 
                 if existing_size is not None:
                     state = MAYBE_DUPLICATE if existing_size == st.st_size else CONFLICT
             fp.items.append(ShotItem(flavor, src_dir / name, day_dir / name, day, st.st_size, st.st_mtime, state))
-        plan.flavors.append(fp)
         summary[flavor.folder] = {"to_file": len(fp.new), "maybe_duplicates": len(fp.maybe_duplicates),
                                   "conflicts": len(fp.conflicts), "unrecognised": len(fp.skipped),
                                   "unrecognised_sample": [s.path.name for s in fp.skipped[:SAMPLE]]}

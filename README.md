@@ -97,7 +97,7 @@ If a flavor has no addons installed at all, the scan stops rather than proposing
 ### Using the TUI
 
 The review screen shows a tree: account → account-wide / each character → addon → files.
-Everything starts ticked. A progress bar shows while the scan runs.
+Every account in scope is listed; one with nothing to clean says so. Everything starts ticked. A progress bar shows while the scan runs.
 
 The left panel holds the criteria, the max age box and three buttons: **Clean**, **Dry run** and **Rescan**.
 Each criterion shows how many files it matches on its own, for example `1 Not installed (672 files)`. The counts
@@ -290,7 +290,8 @@ The review screen shows a tree: All flavors (or the flavor) → flavor → year 
 shows how many shots are under it, and everything starts ticked. A day's files appear when you expand it. A
 progress bar shows while the scan runs. The left panel shows the destination, the mode (Move or Copy) and four
 buttons: **Organize**, **Dry run**, **Rescan** and **Undo last run**. The bar at the bottom totals the ticked
-shots, possible duplicates, conflicts and skipped names.
+shots, possible duplicates, conflicts and skipped names. Every chosen flavor is listed; one with nothing to file says why ("no Screenshots folder" or "nothing to
+file").
 
 | Key | Action |
 |---|---|

@@ -391,6 +391,8 @@ class ShotReviewScreen(Screen[str]):
                 node = flavor_node.add(self._label(data), data=data)
                 for skipped in fp.skipped:
                     node.add_leaf(Text(skipped.path.name, style="dim"), data=("skip", skipped))
+            if not flavor_node.children:
+                flavor_node.allow_expand = False  # nothing under it: no expand arrow
         tree.root.expand()
         self._update_summary()
 
@@ -431,7 +433,12 @@ class ShotReviewScreen(Screen[str]):
         if kind == "root":
             name = self.scope_label
         elif kind == "flavor":
-            name = data[1].flavor.display_name
+            fp = data[1]
+            name = fp.flavor.display_name
+            if not items:  # nothing selectable: say why instead of a tick and "0 shots"
+                why = ("no Screenshots folder" if fp.missing else "could not be read (see the log)" if fp.error
+                       else "nothing to file")
+                return Text.assemble("  ", (name, ACCENT), (f"  {why}", "dim"))
         elif kind == "day":
             name = data[2].isoformat()
         else:
@@ -472,7 +479,7 @@ class ShotReviewScreen(Screen[str]):
         nothing = not plan.selectable
         if nothing:
             # Only worth saying when none of the chosen flavors has a Screenshots folder at all.
-            reason = "" if plan.flavors else " (no Screenshots folder)"
+            reason = "" if any(not fp.missing for fp in plan.flavors) else " (no Screenshots folder)"
             text = f"Nothing to file{reason}.    " + text
         for button_id in ("#btn-organize", "#btn-dry"):
             self.query_one(button_id, Button).disabled = nothing

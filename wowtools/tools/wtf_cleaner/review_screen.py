@@ -450,7 +450,7 @@ class ReviewScreen(Screen[str]):
         tree.clear()
         tree.root.data = ("group", self.proposal.items, self.flavor.display_name)
         tree.root.set_label(self._label(tree.root.data))
-        owners: dict[str, dict[str, list[ProposalItem]]] = {}
+        owners: dict[str, dict[str, list[ProposalItem]]] = {name: {} for name in self.scan_result.account_names}
         for item in self.proposal.items:
             owners.setdefault(item.account, {}).setdefault(item.owner_label, []).append(item)
         for account in sorted(owners, key=str.casefold):
@@ -467,6 +467,8 @@ class ReviewScreen(Screen[str]):
                     for sv in item.files:
                         data = ("file", item, sv)
                         item_node.add_leaf(self._label(data), data=data)
+            if not account_node.children:
+                account_node.allow_expand = False  # an account with nothing to clean
         tree.root.expand()
         self._update_summary()
 
@@ -514,6 +516,8 @@ class ReviewScreen(Screen[str]):
                                  (f"  {len(item.files)} files · {format_size(item.total_size)} · "
                                   f"{age_days(item.newest_mtime, now)}d", "dim"))
         items, name = data[1], data[2]
+        if not items and data is not self.query_one("#proposal", Tree).root.data:
+            return Text.assemble("  ", (name, ACCENT), ("  nothing to clean", "dim"))  # an account with no proposals
         return Text.assemble(mark, (name, ACCENT), (f"  {len(items)} items", "dim"))
 
     def _refresh_labels(self, node=None) -> None:

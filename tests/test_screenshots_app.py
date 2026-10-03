@@ -322,6 +322,17 @@ class ShotsAppTest(TuiTestCase):
             self.assertTrue(app.screen.query_one("#btn-organize", Button).disabled)
 
 
+    async def test_tree_lists_every_chosen_flavor(self):
+        self.save_tool_cfg()
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)  # All flavors
+            tree = review.query_one("#shots", Tree)
+            flavors = {n.data[1].flavor.folder: str(n.label) for n in tree.root.children}
+            self.assertEqual(sorted(flavors), ["_anniversary_", "_classic_era_", "_retail_"])
+            self.assertIn("no Screenshots folder", flavors["_anniversary_"])
+            self.assertIn("4 shots", flavors["_retail_"])
+
 def _walk(node):
     yield node
     for child in node.children:

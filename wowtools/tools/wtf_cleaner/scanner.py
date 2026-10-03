@@ -81,6 +81,7 @@ class ScanResult:
     characters: int
     warnings: list[ScanWarning]
     account: str | None = None
+    account_names: tuple[str, ...] = ()  # every account scanned, including ones with nothing to clean
 
     @property
     def sv_files(self) -> int:
@@ -230,7 +231,8 @@ def scan(flavor: Flavor, *, account: str | None = None, progress: ScanProgress |
 
     for warning in warnings:
         log_event("scan.warning", path=warning.path, message=warning.message)
-    result = ScanResult(flavor, installed, enabled, groups, len(accounts), len(characters), warnings, account)
+    result = ScanResult(flavor, installed, enabled, groups, len(accounts), len(characters), warnings, account,
+                        tuple(a.name for a in accounts))
     log_event("scan.completed", flavor=flavor.folder, account=account, installed=len(installed),
               enabled=len(enabled), accounts=len(accounts), characters=len(characters),
               sv_files=result.sv_files, groups=len(groups), duration_s=round(time.monotonic() - started, 3))

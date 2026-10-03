@@ -56,9 +56,14 @@ class PlannerTest(unittest.TestCase):
         self.assertEqual(states["WoWScrnShot_073119_232800.jpg"], CONFLICT)
         self.assertEqual(len(plan.selectable), len(plan.items) - 1)
 
-    def test_flavor_without_screenshots_contributes_nothing(self):
+    def test_flavor_without_screenshots_is_listed_with_nothing_to_do(self):
         anniversary = self.install.flavor("anniversary")
-        self.assertEqual(scan([anniversary], None).flavors, [])
+        plan = scan([anniversary, self.retail], None)
+        self.assertEqual([fp.flavor.folder for fp in plan.flavors], ["_anniversary_", "_retail_"])
+        self.assertTrue(plan.flavors[0].missing)
+        self.assertEqual((plan.flavors[0].items, plan.flavors[0].skipped), ([], []))
+        self.assertFalse(plan.flavors[1].missing)
+        self.assertEqual(len(plan.selectable), 4)
 
     def test_progress_and_events(self):
         calls = []
@@ -79,7 +84,8 @@ class PlannerTest(unittest.TestCase):
             with capture_events() as records:
                 plan = scan([self.retail, self.era], None)
         self.assertEqual(len(plan.warnings), 2)
-        self.assertEqual(plan.flavors, [])
+        self.assertEqual([fp.items for fp in plan.flavors], [[], []])
+        self.assertTrue(all(fp.error for fp in plan.flavors))
         self.assertIn("shots.scan_warning", [r["event"] for r in records])
 
     def test_target_day_folders_are_listed_by_name_only(self):

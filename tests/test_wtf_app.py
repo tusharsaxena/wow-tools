@@ -197,6 +197,22 @@ class ReviewFlowTest(AppTestCase):
             self.assertTrue(app.screen.result.dry_run)
         self.assertTrue((self.sv / "Uninstalled.lua").exists())
 
+    async def test_account_with_nothing_to_clean_is_listed(self):
+        (self.root / "_retail_" / "WTF" / "Account" / "ACCT3" / "SavedVariables").mkdir(parents=True)
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            accounts = {n.data[2]: str(n.label) for n in tree.root.children}
+            self.assertEqual(sorted(accounts), ["ACCT1", "ACCT2", "ACCT3"])
+            self.assertIn("nothing to clean", accounts["ACCT3"])
+            self.assertIn("items", accounts["ACCT1"])
+            tree.focus()
+            tree.move_cursor(next(n for n in tree.root.children if n.data[2] == "ACCT3"))
+            await pilot.press("space")  # ticking an empty account does nothing
+            await pilot.pause()
+            self.assertEqual(review.unchecked, set())
+
     async def test_odd_names_render_without_markup(self):
         (self.sv / "[Weird] Addon.lua").write_text("x")
         app = self.make_app()
