@@ -17,7 +17,7 @@ from wowtools.core.paths import to_native, to_stored
 from wowtools.tools.screenshot_organizer.planner import waiting_count
 from wowtools.tools.screenshot_organizer.review_screen import ShotReviewScreen
 from wowtools.tools.screenshot_organizer.settings import (SECTION, ShotSettings, load_settings, save_settings,
-                                                          validate_dest)
+                                                          source_dir, validate_dest)
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.tool_flow import ToolFlow
@@ -141,6 +141,10 @@ class ScreenshotsFlow(ToolFlow):
             self.start()
             return
         self.flavors = install.flavors()
+        if not any(source_dir(f).is_dir() for f in self.flavors):  # a few stats: cheap enough for the UI thread
+            # Decided before the picker opens: pushing it and dismissing it at once races the picker's Header.
+            self._no_screenshots(install)
+            return
         settings = load_settings(self.tool_cfg)
         # Counting lists every flavor's Screenshots folder: the picker opens at once and a worker fills the counts
         # in (F-005).
@@ -157,12 +161,16 @@ class ScreenshotsFlow(ToolFlow):
     def _counts_ready(self, picker: FlavorScreen, install: WowInstall, counts: dict[str, int | None]) -> None:
         if self.app.screen is not picker:
             return  # a flavor was already chosen (or Esc pressed) before the counts were ready
-        if all(count is None for count in counts.values()):
+        if all(count is None for count in counts.values()):  # every Screenshots folder is unreadable
             self.app.notify(f"No Screenshots folders found in {to_stored(install.root)}.", severity="warning")
             picker.dismiss(None)  # back to the tool menu
             return
         picker.set_notes(lambda f: waiting_text(counts.get(f.folder)),
                          waiting_text(sum(c or 0 for c in counts.values())))
+
+    def _no_screenshots(self, install: WowInstall) -> None:
+        self.app.notify(f"No Screenshots folders found in {to_stored(install.root)}.", severity="warning")
+        self.close()
 
     def _after_flavor(self, choice: Union[Flavor, str, None]) -> None:
         if choice is None:

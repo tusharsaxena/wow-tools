@@ -322,8 +322,10 @@ class ShotsAppTest(TuiTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_tool(app, pilot)
-            await settle(app, pilot)  # the counts come from a worker, then the picker closes
+            await settle(app, pilot)
+            # Decided before the picker opens (opening and dismissing it at once raced its Header).
             self.assertIsInstance(app.screen, ToolMenuScreen)
+            self.assertFalse(any(isinstance(s, FlavorScreen) for s in app.screen_stack))
 
 
     async def test_flavor_counts_fill_in_after_mount(self):
