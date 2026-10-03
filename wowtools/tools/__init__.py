@@ -22,4 +22,7 @@ TOOLS: dict[str, Tool] = {tool.name: tool for tool in (
     Tool("wtf-cleaner", "WTF Cleaner",
          "Find and remove stale addon SavedVariables, with zip backups.",
          "wowtools.tools.wtf_cleaner.app", "wtf_cleaner"),
+    Tool("screenshots", "Screenshot Organizer",
+         "File screenshots into year/month/day folders, per flavor.",
+         "wowtools.tools.screenshots.app", "screenshots"),
 )}

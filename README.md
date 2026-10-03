@@ -10,7 +10,7 @@ WSL. There's no `pip install` and no virtualenv.
 | Tool | What it does |
 |---|---|
 | **WTF Cleaner** | Finds SavedVariables left behind by addons you no longer use, backs them up to a zip, and deletes them. |
-| Screenshot Organizer | Coming later. |
+| **Screenshot Organizer** | Files screenshots into year/month/day folders, per flavor, in place or into an archive folder, with dry run and undo. |
 
 ## Requirements
 
@@ -249,6 +249,15 @@ belongs to a flavor when its executable sits in that flavor's folder (`_retail_`
   process names only, and those are listed as "flavor unknown".
 - On Linux (Wine) it reads `/proc`.
 - On macOS it can't tell, so there is no warning.
+
+## Screenshot Organizer
+
+Files each flavor's `WoWScrnShot_MMDDYY_HHMMSS.jpg` (also `.jpeg`, `.png`, `.tga`) into `YYYY\MM\DD` folders.
+With a destination folder set, screenshots go to `<destination>\<flavor folder>\YYYY\MM\DD`, for example
+`H:\Media\Screenshots\World of Warcraft\_retail_\2019\07\31\WoWScrnShot_073119_232713.jpg`. With it empty,
+each flavor's `Screenshots` folder is organised in place. Pick **All flavors** or one flavor, check the tree, then
+press `o` to organize, `y` for a dry run or `z` (**Undo last run**) to put the last run back from its journal.
+Nothing is ever overwritten. Settings live in `config\screenshots.cfg`.
 
 ## Settings (`config\`)
 
