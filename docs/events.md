@@ -64,8 +64,15 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `clean.check_failed` | warning | The post-clean check found problems; see the WTF backup it names. |
 | `clean.completed` | info | A clean finished (logged at warning if any file failed). |
 | `clean.flavors_stopped` | warning | A clean of several flavors stopped at one flavor; the flavors after it were not started. |
+| `clean.journal_failed` | error | The run journal could not be written; the clean stopped before deleting anything. |
+| `clean.journal_pruned` | info | Older clean journals were deleted to keep the newest N (keep_journals). |
 | `clean.locked` | error | A real clean stopped before the WTF backup: selected files are locked by another program. |
 | `clean.started` | info | A clean (or dry run) started. |
+| `clean.undo_completed` | info | Undo last clean finished (logged at warning if any file was skipped or failed). |
+| `clean.undo_failed` | error | Undo: a file could not be put back (no zip holds it, or the size did not match). |
+| `clean.undo_restored` | info | Undo: a deleted file was put back from the cleaned-files zip or the WTF backup. |
+| `clean.undo_skipped` | warning | Undo: a file was left alone (one is back at its path, or its journal entry is outside the WTF folder). |
+| `clean.undo_started` | info | Undo last clean started, from the newest clean journal. |
 | `clean.validated` | info | After a clean, the WTF folder matched the WTF backup and the cleaned-files zip. |
 | `locker.running_warning` | warning | A program known to lock WTF files (e.g. the Raider.IO client) appears to be running. |
 | `proposal.built` | info | The cleanup proposal was built from scan results and criteria. |

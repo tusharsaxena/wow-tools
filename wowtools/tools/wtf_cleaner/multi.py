@@ -9,10 +9,16 @@ from typing import Callable
 from wowtools.core.backup import BackupError
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor
+from wowtools import __version__
+from wowtools.core.journal import new_journal_path
+from wowtools.core.paths import to_stored
 from wowtools.tools.wtf_cleaner.cleaner import CleanError, CleanProgress, CleanResult, FileOutcome, execute
+from wowtools.tools.wtf_cleaner.events import TOOL_NAME
+from wowtools.tools.wtf_cleaner.journal import CleanJournal, prune_journals
 from wowtools.tools.wtf_cleaner.rules import ProposalItem
 from wowtools.tools.wtf_cleaner.safety import DEFAULT_KEEP_SNAPSHOTS
 from wowtools.tools.wtf_cleaner.scanner import ScanError, ScanProgress, ScanResult, scan
+from wowtools.tools.wtf_cleaner.settings import DEFAULT_KEEP_JOURNALS
 
 
 @dataclass
@@ -61,6 +67,8 @@ class MultiCleanResult:
     """A clean or dry run over several flavors. Counts add up the flavors that finished."""
     dry_run: bool
     runs: list[FlavorRun] = field(default_factory=list)
+    journal_path: Path | None = None  # the run journal (a real clean that deleted something)
+    journals_pruned: list[Path] = field(default_factory=list)  # older journals removed to keep the newest N
 
     @property
     def done(self) -> list[FlavorRun]:
@@ -105,24 +113,50 @@ class MultiCleanResult:
 def execute_flavors(plan: list[tuple[Flavor, list[ProposalItem]]], *, dry_run: bool, backup: bool,
                     backup_dir: Path | None, account: str | None = None,
                     keep_backups: int = DEFAULT_KEEP_SNAPSHOTS, progress: CleanProgress | None = None,
-                    on_flavor: Callable[[Flavor, int, int], None] | None = None) -> MultiCleanResult:
+                    on_flavor: Callable[[Flavor, int, int], None] | None = None, journal_dir: Path | None = None,
+                    keep_journals: int = DEFAULT_KEEP_JOURNALS) -> MultiCleanResult:
     """Run execute() for each (flavor, selection) in turn. A BackupError or CleanError stops the run before the
     next flavor starts; flavors already done keep their results. Any other exception propagates (execute() has
-    already restored what it deleted)."""
+    already restored what it deleted).
+
+    A real clean with a journal_dir writes one run journal for all the flavors (removed again if nothing was
+    deleted), then keeps the newest keep_journals journals."""
     result = MultiCleanResult(dry_run, [FlavorRun(flavor, items) for flavor, items in plan])
-    for index, run in enumerate(result.runs):
-        if on_flavor is not None:
-            on_flavor(run.flavor, index, len(result.runs))
-        try:
-            run.result = execute(run.items, run.flavor, dry_run=dry_run, backup=backup, backup_dir=backup_dir,
-                                 progress=progress, account=account, keep_backups=keep_backups)
-        except (BackupError, CleanError) as exc:
-            run.error = exc
-            if len(result.runs) > 1:
-                log_event("clean.flavors_stopped", dry_run=dry_run, flavor=run.flavor.folder, error=str(exc),
-                          done=[r.flavor.folder for r in result.done],
-                          not_started=[r.flavor.folder for r in result.not_started])
-            break
+    journal = None
+    if not dry_run and journal_dir is not None:
+        journal = CleanJournal(new_journal_path(journal_dir), {
+            "tool": TOOL_NAME, "suite_version": __version__, "flavors": [flavor.folder for flavor, _ in plan],
+            "account": account, "backup_dir": to_stored(backup_dir) if backup_dir else None})
+    completed = False
+    try:
+        for index, run in enumerate(result.runs):
+            if on_flavor is not None:
+                on_flavor(run.flavor, index, len(result.runs))
+            try:
+                run.result = execute(run.items, run.flavor, dry_run=dry_run, backup=backup, backup_dir=backup_dir,
+                                     progress=progress, account=account, keep_backups=keep_backups,
+                                     journal=journal)
+            except (BackupError, CleanError) as exc:
+                run.error = exc
+                if len(result.runs) > 1:
+                    log_event("clean.flavors_stopped", dry_run=dry_run, flavor=run.flavor.folder, error=str(exc),
+                              done=[r.flavor.folder for r in result.done],
+                              not_started=[r.flavor.folder for r in result.not_started])
+                break
+        completed = True
+    finally:
+        if journal is not None:
+            if completed:
+                try:
+                    journal.finish()
+                except OSError:
+                    pass  # the entries are already on disk; only the closing line is missing
+            journal.discard_if_empty()
+    if journal is not None and journal.opened:
+        result.journal_path = journal.path
+        for run in result.done:
+            run.result.journal_path = journal.path  # type: ignore[union-attr]
+        result.journals_pruned = prune_journals(journal_dir, keep_journals)
     return result
 
 

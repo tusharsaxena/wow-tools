@@ -10,6 +10,7 @@ from wowtools.tools.wtf_cleaner.safety import DEFAULT_KEEP_SNAPSHOTS
 
 SECTION = "wtf_cleaner"
 DEFAULT_BACKUP_SUBDIR = Path("wow-tools") / "wtf-cleaner"
+DEFAULT_KEEP_JOURNALS = 10
 
 
 @dataclass
@@ -22,6 +23,7 @@ class CleanerSettings:
     # The flavor picker's last choice: "" means All flavors, else a flavor folder such as _retail_. None means
     # never chosen (not stored); the picker then highlights [general] last_flavor.
     last_flavor_choice: str | None = None
+    keep_journals: int = DEFAULT_KEEP_JOURNALS  # run journals to keep (<WoW>/wow-tools/wtf-cleaner/journal)
 
 
 def load_settings(cfg: Config) -> CleanerSettings:
@@ -32,7 +34,8 @@ def load_settings(cfg: Config) -> CleanerSettings:
                            cfg.get_path(SECTION, "backup_dir"),
                            (cfg.get(SECTION, "last_account") or "").strip() or None,
                            max(1, cfg.get_int(SECTION, "keep_backups", DEFAULT_KEEP_SNAPSHOTS)),
-                           None if choice is None else choice.strip())
+                           None if choice is None else choice.strip(),
+                           max(1, cfg.get_int(SECTION, "keep_journals", DEFAULT_KEEP_JOURNALS)))
 
 
 def save_settings(cfg: Config, settings: CleanerSettings, *, source: str = "settings") -> None:
@@ -43,6 +46,7 @@ def save_settings(cfg: Config, settings: CleanerSettings, *, source: str = "sett
     cfg.set_path(SECTION, "backup_dir", settings.backup_dir, source=source)
     cfg.set(SECTION, "last_account", settings.last_account or "", source=source)
     cfg.set(SECTION, "keep_backups", settings.keep_backups, source=source)
+    cfg.set(SECTION, "keep_journals", settings.keep_journals, source=source)
     if settings.last_flavor_choice is not None:
         cfg.set(SECTION, "last_flavor_choice", settings.last_flavor_choice, source=source)
     cfg.save()

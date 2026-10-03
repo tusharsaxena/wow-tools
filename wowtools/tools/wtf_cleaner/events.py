@@ -30,6 +30,13 @@ EVENTS: dict[str, EventSpec] = {
     "snapshot.failed": EventSpec("error", "The WTF backup failed; nothing was deleted."),
     "restore.completed": EventSpec("warning", "A clean stopped unexpectedly; the files it had deleted were restored."),
     "restore.failed": EventSpec("error", "Restoring from the WTF backup failed; the marker was kept."),
+    "clean.journal_failed": EventSpec("error", "The run journal could not be written; the clean stopped before deleting anything."),
+    "clean.journal_pruned": EventSpec("info", "Older clean journals were deleted to keep the newest N (keep_journals)."),
+    "clean.undo_started": EventSpec("info", "Undo last clean started, from the newest clean journal."),
+    "clean.undo_restored": EventSpec("info", "Undo: a deleted file was put back from the cleaned-files zip or the WTF backup."),
+    "clean.undo_skipped": EventSpec("warning", "Undo: a file was left alone (one is back at its path, or its journal entry is outside the WTF folder)."),
+    "clean.undo_failed": EventSpec("error", "Undo: a file could not be put back (no zip holds it, or the size did not match)."),
+    "clean.undo_completed": EventSpec("info", "Undo last clean finished (logged at warning if any file was skipped or failed)."),
     "recovery.incomplete_clean": EventSpec("warning", "A marker from an unfinished clean was found at startup."),
 }
 
