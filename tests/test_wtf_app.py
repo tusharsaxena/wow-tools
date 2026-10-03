@@ -5,13 +5,15 @@ import unittest
 from pathlib import Path
 
 from textual.app import App
-from textual.widgets import Button, DataTable, Input, ProgressBar, Static, Tree
+from textual.widgets import Button, DataTable, Input, OptionList, ProgressBar, Static, Tree
 
 from tests.fixtures import TuiTestCase, build_wow_tree, make_config
 from wowtools.core.config import Config
+from wowtools.core.backup import BackupError
 from wowtools.core.events import capture_events
 from wowtools.tools.wtf_cleaner.app import CleanerSettingsScreen
 from wowtools.core.install import WowInstall
+from wowtools.tools.wtf_cleaner import multi
 from wowtools.tools.wtf_cleaner.cleaner import CleanResult, FileOutcome
 from wowtools.tools.wtf_cleaner.report import CRITERION_COLORS, RESULT_COLUMNS, result_rows
 from wowtools.tools.wtf_cleaner.review_screen import (CleanProgressScreen, ConfirmScreen, RecoveryScreen,
@@ -23,7 +25,7 @@ from wowtools.tools.wtf_cleaner.settings import load_settings
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.widgets import ButtonRow, Ka0sCheckbox, NavHint
 from wowtools.ui.account_screen import AccountScreen
-from wowtools.ui.flavor_screen import FlavorScreen
+from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
 
 SIZE = (140, 50)
@@ -757,6 +759,217 @@ class LockerWarningTest(AppTestCase):
                 await pilot.pause()
                 self.assertIn("RaiderIO.exe appears to be running", app.screen.body_text)
             self.assertIn("locker.running_warning", [r["event"] for r in records])
+
+
+class AllFlavorsTest(AppTestCase):
+    def setUp(self):
+        super().setUp()
+        self.era_sv = self.root / "_classic_era_" / "WTF" / "Account" / "ACCT1" / "SavedVariables"
+        (self.era_sv / "Gone.lua").write_text("x")  # not installed in Classic Era: something to clean there
+
+    async def open_all(self, app, pilot):
+        await self.enter_tool(app, pilot)
+        picker = app.screen
+        self.assertIsInstance(picker, FlavorScreen)
+        picker.query_one("#flavors", OptionList).highlighted = 0
+        await pilot.press("enter")
+        await pilot.pause()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        review = app.screen
+        self.assertIsInstance(review, ReviewScreen)  # no account picker with All flavors
+        self.assertIsNotNone(review.proposal)
+        return review
+
+    async def run_mode(self, app, pilot, key):
+        await pilot.press(key)
+        await pilot.pause()
+        self.assertIsInstance(app.screen, ConfirmScreen)
+        await pilot.press("y")
+        await pilot.pause()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    async def test_all_flavors_option_is_first_and_remembered(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.enter_tool(app, pilot)
+            options = app.screen.query_one("#flavors", OptionList)
+            self.assertEqual(options.get_option_at_index(0).id, ALL_FLAVORS)
+            self.assertIn("All flavors", str(options.get_option_at_index(0).prompt))
+            # never chosen before: [general] last_flavor (the current habit) is preselected
+            self.assertEqual(options.get_option_at_index(options.highlighted).id, "_retail_")
+            await pilot.press("escape")
+            await pilot.pause()
+            review = await self.open_all(app, pilot)
+            self.assertIsNone(review.account)
+            self.assertIn("All flavors · all accounts", review.sub_title)
+            await pilot.press("f")
+            await pilot.pause()
+            options = app.screen.query_one("#flavors", OptionList)
+            self.assertEqual(options.highlighted, 0)
+        self.assertEqual(Config(self.tool_cfg.path).load().get("wtf_cleaner", "last_flavor_choice"), "")
+        self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).last_flavor_choice, "")
+        self.assertEqual(Config(self.cfg.path).load().last_flavor, "_retail_")
+
+    async def test_one_flavor_is_remembered_and_updates_last_flavor(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.enter_tool(app, pilot)
+            options = app.screen.query_one("#flavors", OptionList)
+            options.highlighted = 2  # Classic Era (All, Anniversary, Classic Era, Retail)
+            await pilot.press("enter")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ReviewScreen)
+        self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).last_flavor_choice, "_classic_era_")
+        self.assertEqual(Config(self.cfg.path).load().last_flavor, "_classic_era_")
+
+    async def test_tree_has_a_node_per_flavor_and_failed_scans_say_why(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_all(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            self.assertIn("All flavors", str(tree.root.label))
+            flavors = {str(n.label).strip().lstrip("✔◩✘ ").split("  ")[0]: n for n in tree.root.children}
+            self.assertEqual(sorted(flavors), ["Anniversary", "Classic Era", "Retail"])
+            self.assertIn("No addons found", str(flavors["Anniversary"].label))
+            self.assertFalse(flavors["Anniversary"].children)
+            self.assertEqual([n.data[2] for n in flavors["Classic Era"].children], ["ACCT1"])
+            self.assertEqual([n.data[2] for n in flavors["Retail"].children], ["ACCT1", "ACCT2"])
+            self.assertEqual(len(review.proposal.items), 7)
+            self.assertEqual({f.folder for f, _ in review._selection_by_flavor()}, {"_classic_era_", "_retail_"})
+            await pilot.press("n")
+            self.assertEqual(review._selection(), [])
+            self.assertIn("✘", str(flavors["Retail"].label))
+            await pilot.press("a")
+            self.assertEqual(sum(len(i.files) for i in review._selection()), 9)
+
+    async def test_flavor_with_nothing_to_clean_says_so(self):
+        (self.era_sv / "Gone.lua").unlink()
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_all(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            era = next(n for n in tree.root.children if "Classic Era" in str(n.label))
+            self.assertIn("nothing to clean", str(era.label))
+
+    async def test_every_flavor_failing_shows_the_error(self):
+        for folder in ("_classic_era_", "_retail_"):
+            for addon in (self.root / folder / "Interface" / "AddOns").iterdir():
+                for f in addon.iterdir():
+                    f.unlink()
+                addon.rmdir()
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.enter_tool(app, pilot)
+            app.screen.query_one("#flavors", OptionList).highlighted = 0
+            await pilot.press("enter")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            review = app.screen
+            self.assertIsInstance(review, ReviewScreen)
+            self.assertIsNone(review.proposal)
+            self.assertIn("No addons found", review.summary_text)
+
+    async def test_confirm_lists_each_flavor_and_checks_wow_for_all(self):
+        app = self.make_app(running=["WowClassic.exe"])
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_all(app, pilot)
+            await pilot.press("c")
+            await pilot.pause()
+            confirm = app.screen
+            self.assertIsInstance(confirm, ConfirmScreen)
+            self.assertIn("Classic Era: 1 addon groups, 1 files", confirm.body_text)
+            self.assertIn("Retail: 6 addon groups, 8 files", confirm.body_text)
+            self.assertIn("WowClassic.exe", confirm.body_text)
+            self.assertNotIn("Anniversary", confirm.body_text)
+            await pilot.press("n")
+
+    async def test_dry_run_across_flavors_deletes_nothing(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_all(app, pilot)
+            await self.run_mode(app, pilot, "y")
+            screen = app.screen
+            self.assertIsInstance(screen, ResultScreen)
+            self.assertTrue(screen.result.dry_run)
+            self.assertEqual(len(screen.result.would_delete), 9)
+            files = screen.query_one("#result-files", DataTable)
+            self.assertEqual([str(c.label) for c in files.ordered_columns][:2], ["Status", "Flavor"])
+            self.assertEqual(files.row_count, 9)
+            summary = screen.query_one("#result-summary", DataTable)
+            cells = [str(summary.get_row_at(i)[0]) for i in range(summary.row_count)]
+            self.assertIn("Classic Era", cells)
+            self.assertIn("Retail", cells)
+            self.assertEqual(cells.count("Cleaned files zip"), 2)
+        self.assertTrue((self.era_sv / "Gone.lua").exists())
+        self.assertTrue((self.sv / "Uninstalled.lua").exists())
+        self.assertFalse(list(self.backup_dir.glob("backup/*.zip")))
+        self.assertEqual(len(list(self.backup_dir.glob("cleaned/*.zip"))), 2)
+
+    async def test_real_clean_across_flavors_backs_up_each_flavor(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_all(app, pilot)
+            await self.run_mode(app, pilot, "c")
+            screen = app.screen
+            self.assertIsInstance(screen, ResultScreen)
+            self.assertEqual(len(screen.result.deleted), 9)
+            summary = screen.query_one("#result-summary", DataTable)
+            values = [str(summary.get_row_at(i)[1]) for i in range(summary.row_count)]
+            self.assertEqual(values.count("passed"), 2)
+        self.assertEqual(len(list(self.backup_dir.glob("backup/backup-classic_era-*.zip"))), 1)
+        self.assertEqual(len(list(self.backup_dir.glob("backup/backup-retail-*.zip"))), 1)
+        self.assertFalse((self.era_sv / "Gone.lua").exists())
+        self.assertFalse((self.sv / "Uninstalled.lua").exists())
+        self.assertFalse((self.backup_dir / MARKER_NAME).exists())
+
+    async def test_backup_error_in_first_flavor_stops_before_the_second(self):
+        calls = []
+
+        def fake(items, flavor, **kwargs):
+            calls.append(flavor.folder)
+            raise BackupError("disk full")
+
+        real = multi.execute
+        multi.execute = fake
+        self.addCleanup(setattr, multi, "execute", real)
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_all(app, pilot)
+            await self.run_mode(app, pilot, "c")
+            self.assertIs(app.screen, review)
+        self.assertEqual(calls, ["_classic_era_"])
+        self.assertTrue((self.sv / "Uninstalled.lua").exists())
+        self.assertTrue((self.era_sv / "Gone.lua").exists())
+
+    async def test_stop_in_a_later_flavor_keeps_earlier_results(self):
+        real = multi.execute
+
+        def fake(items, flavor, **kwargs):
+            if flavor.folder == "_retail_":
+                raise BackupError("disk full")
+            return real(items, flavor, **kwargs)
+
+        multi.execute = fake
+        self.addCleanup(setattr, multi, "execute", real)
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_all(app, pilot)
+            await self.run_mode(app, pilot, "c")
+            screen = app.screen
+            self.assertIsInstance(screen, ResultScreen)
+            self.assertEqual(len(screen.result.deleted), 1)
+            summary = screen.query_one("#result-summary", DataTable)
+            rows = {str(summary.get_row_at(i)[0]): str(summary.get_row_at(i)[1]) for i in range(summary.row_count)}
+            self.assertIn("Classic Era", rows["Done"])
+            self.assertIn("Retail", rows["Stopped"])
+            self.assertIn("disk full", rows["Stopped"])
+        self.assertFalse((self.era_sv / "Gone.lua").exists())
+        self.assertTrue((self.sv / "Uninstalled.lua").exists())
 
 
 class ResultRowsTest(unittest.TestCase):

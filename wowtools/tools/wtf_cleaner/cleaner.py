@@ -301,7 +301,7 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
             log_event("snapshot.pruned", flavor=flavor.folder, keep=keep_backups,
                       removed=[str(p) for p in result.pruned])
 
-    log_event("clean.completed", dry_run=dry_run, level="warning" if result.failed else None,
+    log_event("clean.completed", dry_run=dry_run, flavor=flavor.folder, level="warning" if result.failed else None,
               deleted=len(result.deleted), would_delete=len(result.would_delete),
               skipped=len(result.skipped), failed=len(result.failed), bytes=result.bytes_freed,
               backup=str(result.backup_path) if result.backup_path else None)

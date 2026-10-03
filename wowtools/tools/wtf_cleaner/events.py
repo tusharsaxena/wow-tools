@@ -20,6 +20,7 @@ EVENTS: dict[str, EventSpec] = {
     "sv.skipped": EventSpec("warning", "A selected file was skipped because it vanished or changed after the scan."),
     "sv.failed": EventSpec("error", "A SavedVariables file could not be deleted."),
     "clean.completed": EventSpec("info", "A clean finished (logged at warning if any file failed)."),
+    "clean.flavors_stopped": EventSpec("warning", "A clean of several flavors stopped at one flavor; the flavors after it were not started."),
     "snapshot.created": EventSpec("info", "The backup of the whole WTF folder (backup/backup-<flavor>-<stamp>.zip) was written and verified."),
     "snapshot.pruned": EventSpec("info", "Older WTF backups of the flavor were deleted to keep its newest N (keep_backups)."),
     "locker.running_warning": EventSpec("warning", "A program known to lock WTF files (e.g. the Raider.IO client) appears to be running."),

@@ -60,6 +60,7 @@ STAGE_TITLES = {
 }
 
 RESULT_COLUMNS = ("Status", "Account", "Character", "Addon", "File", "Size", "Reasons")
+MULTI_RESULT_COLUMNS = ("Status", "Flavor", *RESULT_COLUMNS[1:])  # a clean across several flavors
 STATUS_LABELS = {"deleted": "Deleted", "would_delete": "Would delete", "skipped": "Skipped", "failed": "Failed"}
 
 
@@ -75,14 +76,25 @@ def _owner(path, flavor: Flavor) -> tuple[str, str]:
     return account, ACCOUNT_WIDE
 
 
+def outcome_row(outcome, flavor: Flavor) -> tuple[str, ...]:
+    """One outcome in RESULT_COLUMNS order. Skipped and failed rows carry their reason in Status."""
+    status = STATUS_LABELS.get(outcome.status, outcome.status)
+    if outcome.detail:
+        status = f"{status}: {outcome.detail}"
+    account, character = _owner(outcome.path, flavor)
+    return (status, account, character, addon_name_for(outcome.path.name) or "", outcome.path.name,
+            format_size(outcome.size), ", ".join(outcome.reasons))
+
+
 def result_rows(result, flavor: Flavor) -> list[tuple[str, ...]]:
-    """One row per outcome, in RESULT_COLUMNS order. Skipped and failed rows carry their reason in Status."""
+    """One row per outcome of a one-flavor result, in RESULT_COLUMNS order."""
+    return [outcome_row(outcome, flavor) for outcome in result.outcomes]
+
+
+def multi_result_rows(result) -> list[tuple[str, ...]]:
+    """One row per outcome of a MultiCleanResult, in MULTI_RESULT_COLUMNS order (the flavor after the status)."""
     rows = []
-    for outcome in result.outcomes:
-        status = STATUS_LABELS.get(outcome.status, outcome.status)
-        if outcome.detail:
-            status = f"{status}: {outcome.detail}"
-        account, character = _owner(outcome.path, flavor)
-        rows.append((status, account, character, addon_name_for(outcome.path.name) or "", outcome.path.name,
-                     format_size(outcome.size), ", ".join(outcome.reasons)))
+    for flavor, outcome in result.outcomes:
+        status, *rest = outcome_row(outcome, flavor)
+        rows.append((status, flavor.display_name, *rest))
     return rows

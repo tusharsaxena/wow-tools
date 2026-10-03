@@ -1,8 +1,10 @@
-"""The WTF Cleaner inside the suite app: (first run: settings) → flavor → account → review → confirm → result."""
+"""The WTF Cleaner inside the suite app: (first run: settings) → flavor (or All flavors) → account (one flavor
+only) → review → confirm → result."""
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Union
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -21,7 +23,7 @@ from wowtools.tools.wtf_cleaner.settings import (SECTION, CleanerSettings, load_
                                                  save_settings)
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.flavor_screen import FlavorScreen
+from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.tool_flow import ToolFlow
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint
 
@@ -107,9 +109,11 @@ class CleanerSettingsScreen(Screen[bool]):
         criteria = Criteria(**{name: self.query_one(f"#sw_{name}", Ka0sCheckbox).value for name in CRITERIA},
                             max_age_days=days)
         backup_raw = self.query_one("#backup_dir", Input).value.strip()
-        save_settings(self.tool_cfg, CleanerSettings(criteria, self.query_one("#sw_backup", Ka0sCheckbox).value,
-                                                     to_native(backup_raw) if backup_raw else None,
-                                                     load_settings(self.tool_cfg).last_account, keep),
+        stored = load_settings(self.tool_cfg)  # keeps the remembered flavor and account choices
+        save_settings(self.tool_cfg, replace(stored, criteria=criteria,
+                                             backup_before_delete=self.query_one("#sw_backup", Ka0sCheckbox).value,
+                                             backup_dir=to_native(backup_raw) if backup_raw else None,
+                                             keep_backups=keep),
                       source=self.source)
         self.dismiss(True)
 
@@ -129,6 +133,7 @@ class WtfCleanerFlow(ToolFlow):
         super().__init__(app, tool_cfg)
         self._wow_check = wow_check
         self._locker_check = locker_check
+        self.flavors: list[Flavor] = []
 
     def start(self) -> None:
         self.require_install(self._ready)
@@ -145,12 +150,25 @@ class WtfCleanerFlow(ToolFlow):
         if install is None:
             self.start()
             return
-        self.app.push_screen(FlavorScreen(self.cfg, install), self._after_flavor)
+        self.flavors = install.flavors()
+        # Never chosen yet (None): FlavorScreen highlights [general] last_flavor, the habit so far.
+        self.app.push_screen(FlavorScreen(self.cfg, install, include_all=True, flavors=self.flavors,
+                                          last=load_settings(self.tool_cfg).last_flavor_choice),
+                             self._after_flavor)
 
-    def _after_flavor(self, flavor: Flavor | None) -> None:
-        if flavor is None:
+    def _after_flavor(self, choice: Union[Flavor, str, None]) -> None:
+        if choice is None:
             self.close()
             return
+        stored = "" if choice == ALL_FLAVORS else choice.folder  # type: ignore[union-attr]
+        if self.tool_cfg.get(SECTION, "last_flavor_choice") != stored:
+            self.tool_cfg.set(SECTION, "last_flavor_choice", stored)
+            self.tool_cfg.save_if_exists()
+        if choice == ALL_FLAVORS:  # every account of every flavor: no account picker
+            self._review(list(self.flavors), None)
+            return
+        flavor = choice
+        assert isinstance(flavor, Flavor)
         if len(flavor.accounts()) > 1:
             self.app.push_screen(AccountScreen(self.cfg, flavor, load_settings(self.tool_cfg).last_account),
                                  lambda choice: self._after_account(flavor, choice))
@@ -167,8 +185,8 @@ class WtfCleanerFlow(ToolFlow):
             self.tool_cfg.save_if_exists()
         self._review(flavor, account)
 
-    def _review(self, flavor: Flavor, account: str | None) -> None:
-        self.app.push_screen(ReviewScreen(self.cfg, self.tool_cfg, flavor, account=account,
+    def _review(self, flavors: Union[Flavor, list[Flavor]], account: str | None) -> None:
+        self.app.push_screen(ReviewScreen(self.cfg, self.tool_cfg, flavors, account=account,
                                           wow_check=self._wow_check, locker_check=self._locker_check),
                              self._after_review)
 

@@ -1,0 +1,163 @@
+"""The outcome of a clean or dry run, for one flavor or several: a summary table and a per-file table."""
+from __future__ import annotations
+
+from typing import Union
+
+from rich.text import Text
+from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.containers import Vertical
+from textual.screen import Screen
+from textual.widgets import Button, DataTable, Footer, Header
+
+from wowtools.core.events import log_event
+from wowtools.core.install import Flavor
+from wowtools.tools.wtf_cleaner.cleaner import CleanResult
+from wowtools.tools.wtf_cleaner.multi import FlavorRun, MultiCleanResult
+from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, MULTI_RESULT_COLUMNS, RESULT_COLUMNS, format_size,
+                                               multi_result_rows, result_rows)
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint
+
+SUCCESS_FALLBACK = "#4CC38A"
+BLOCK_STYLE = "bold #5CC8FF"
+
+
+def reasons_text(reasons: list[str]) -> Text:
+    """Reasons, comma separated, each in its criterion's colour."""
+    text = Text()
+    for index, reason in enumerate(reasons):
+        if index:
+            text.append(", ")
+        text.append(reason, style=CRITERION_COLORS.get(reason, ""))
+    return text
+
+
+def summary_rows(result: CleanResult) -> list[tuple[str, str]]:
+    """The summary of one flavor's clean or dry run."""
+    done = result.would_delete if result.dry_run else result.deleted
+    if result.dry_run:
+        snapshot, check = "not taken (dry run)", "not run (dry run)"
+    elif result.snapshot_path is None:
+        snapshot, check = "not taken", "not run"
+    else:
+        snapshot = str(result.snapshot_path)
+        if result.pruned:
+            snapshot += f" ({len(result.pruned)} older backups removed)"
+        check = "passed"
+        if result.check_problems:
+            check = (f"{len(result.check_problems)} problems: {result.check_problems[0]}"
+                     + (" (more in the log)" if len(result.check_problems) > 1 else ""))
+    return [
+        ("Mode", "Dry run" if result.dry_run else "Clean"),
+        ("Cleaned files zip", str(result.backup_path) if result.backup_path else "none (turned off in settings)"),
+        ("WTF backup", snapshot),
+        ("Post-clean check", check),
+        ("Would delete" if result.dry_run else "Deleted", f"{len(done)} files"),
+        ("Size", format_size(result.bytes_freed)),
+        ("Skipped", f"{len(result.skipped)} files (changed or missing since the scan)"),
+        ("Failed", f"{len(result.failed)} files"),
+    ]
+
+
+def multi_summary_rows(result: MultiCleanResult) -> list[tuple[str, str, bool]]:
+    """(item, value, is a flavor heading): which flavors ran, then one block of rows per finished flavor."""
+    def names(runs: list[FlavorRun]) -> str:
+        return ", ".join(r.flavor.display_name for r in runs) or "none"
+
+    rows: list[tuple[str, str, bool]] = []
+    stopped = result.stopped
+    if stopped is not None:
+        rows.append(("Done", names(result.done), False))
+        rows.append(("Stopped", f"{stopped.flavor.display_name}: {stopped.error} (nothing deleted there)", False))
+        if result.not_started:
+            rows.append(("Not started", names(result.not_started), False))
+    for run in result.done:
+        rows.append((run.flavor.display_name, "", True))
+        rows += [(item, value, False) for item, value in summary_rows(run.result)]  # type: ignore[arg-type]
+    return rows
+
+
+class ResultScreen(Screen[str]):
+    """The outcome of a clean or dry run: a summary table, a per-file table and what to do next. `result` is a
+    CleanResult (with its flavor) or a MultiCleanResult (several flavors: one summary block each, and a Flavor
+    column)."""
+
+    DEFAULT_CSS = """
+    ResultScreen #result { height: 1fr; padding: 1 2; }
+    ResultScreen #result-summary { height: auto; max-height: 50%; margin-bottom: 1; }
+    ResultScreen #result-files { height: 1fr; }
+    ResultScreen .buttons { height: auto; padding: 0 2; }
+    ResultScreen Button { margin-right: 2; }
+    ResultScreen NavHint { padding: 0 2; margin-top: 0; }
+    """
+    BINDINGS = [Binding("r", "choose('review')", "Rescan"), Binding("f", "choose('flavors')", "Flavors"),
+                Binding("t", "choose('tools')", "Tools"), Binding("q", "choose('quit')", "Quit"),
+                Binding("escape", "choose('review')", "Back", show=False),
+                *NAV_BINDINGS]
+
+    def __init__(self, result: Union[CleanResult, MultiCleanResult], flavor: Flavor | None = None) -> None:
+        super().__init__()
+        self.result = result
+        self.flavor = flavor
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="result"):
+            summary = DataTable(id="result-summary", cursor_type="none", zebra_stripes=True)
+            summary.can_focus = False  # read-only summary: not a focus stop
+            yield summary
+            yield DataTable(id="result-files", cursor_type="row", zebra_stripes=True)
+        with ButtonRow(classes="buttons"):
+            yield Button("Rescan (r)", variant="primary", id="review")
+            yield Button("Other flavor (f)", id="flavors")
+            yield Button("Tools (t)", id="tools")
+            yield Button("Quit (q)", id="quit")
+        yield NavHint("↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · r rescan · f other flavor · "
+                      "t tools · q quit")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self.sub_title = "WTF Cleaner · dry run result" if self.result.dry_run else "WTF Cleaner · result"
+        summary = self.query_one("#result-summary", DataTable)
+        summary.add_columns("Item", "Value")
+        files = self.query_one("#result-files", DataTable)
+        if isinstance(self.result, MultiCleanResult):
+            summary.add_rows((Text(item, style=BLOCK_STYLE if heading else ""), Text(value))
+                             for item, value, heading in multi_summary_rows(self.result))
+            files.add_columns(*MULTI_RESULT_COLUMNS)
+            outcomes = [outcome for _, outcome in self.result.outcomes]
+            rows = multi_result_rows(self.result)
+        else:
+            assert self.flavor is not None
+            summary.add_rows((Text(item), Text(value)) for item, value in self.summary_rows())
+            files.add_columns(*RESULT_COLUMNS)
+            outcomes = self.result.outcomes
+            rows = result_rows(self.result, self.flavor)
+        for outcome, row in zip(outcomes, rows):
+            status, *middle, _ = row
+            files.add_row(Text(status, style=self._status_style(outcome.status)), *(Text(c) for c in middle),
+                          reasons_text(list(outcome.reasons)))
+        self.query_one("#review", Button).focus()
+
+    def summary_rows(self) -> list[tuple[str, str]]:
+        if isinstance(self.result, MultiCleanResult):
+            return [(item, value) for item, value, _ in multi_summary_rows(self.result)]
+        return summary_rows(self.result)
+
+    def _status_style(self, status: str) -> str:
+        try:
+            theme = self.app.current_theme
+            colours = {"deleted": theme.success, "would_delete": theme.accent, "skipped": theme.warning,
+                       "failed": theme.error}
+        except Exception:  # noqa: BLE001 - no theme yet: use the Ka0s colours
+            colours = {}
+        fallback = {"deleted": SUCCESS_FALLBACK, "would_delete": "#5CC8FF", "skipped": "#E8C547",
+                    "failed": "#E5534B"}
+        return f"bold {colours.get(status) or fallback.get(status, '')}".strip()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.action_choose(event.button.id or "quit")
+
+    def action_choose(self, choice: str) -> None:
+        log_event("ui.selection", screen="result", control="next", value=choice)
+        self.dismiss(choice)

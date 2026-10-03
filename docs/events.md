@@ -61,6 +61,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `backup.failed` | error | The cleaned-files zip failed; nothing was deleted. |
 | `clean.check_failed` | warning | The post-clean check found problems; see the WTF backup it names. |
 | `clean.completed` | info | A clean finished (logged at warning if any file failed). |
+| `clean.flavors_stopped` | warning | A clean of several flavors stopped at one flavor; the flavors after it were not started. |
 | `clean.locked` | error | A real clean stopped before the WTF backup: selected files are locked by another program. |
 | `clean.started` | info | A clean (or dry run) started. |
 | `clean.validated` | info | After a clean, the WTF folder matched the WTF backup and the cleaned-files zip. |
