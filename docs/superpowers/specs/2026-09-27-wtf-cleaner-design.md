@@ -585,3 +585,26 @@ either way.
 - **Cleaned-files zips** are never deleted by the tool.
 - **Old names.** Zips from earlier versions (`wtf-cleaner_*.zip`, `wtf-snapshot_*.zip`) are left alone.
 - **Settings screen** gains "Keep this many WTF backups".
+
+## Addendum E: All flavors (2026-10-03)
+
+- **Picker.** The cleaner's `FlavorScreen` gets `include_all=True`: **All flavors** first, then every flavor, in the
+  same aligned columns as the Screenshot Organizer. The choice is stored as `[wtf_cleaner] last_flavor_choice`
+  (empty = All flavors, otherwise a flavor folder) and pre-selected next time; picking one flavor still updates
+  `[general] last_flavor`.
+- **Accounts.** With All flavors there is no account picker: every account of every flavor is in scope (account
+  lists differ per flavor). One flavor keeps today's account picker and `last_account`.
+- **Scan.** Each flavor is scanned in turn (one worker; the progress label names the flavor). A flavor whose scan
+  fails (`ScanError`, e.g. no `Interface/AddOns`) is listed in the tree with the reason and is not cleaned; the
+  others carry on. If every flavor fails, the screen shows the error as today.
+- **Review tree.** All flavors → flavor → account → account-wide / character → addon → files. Ticks, `a`/`n`, the
+  criteria and max age apply across every flavor. A flavor with nothing to clean says so, like an empty account.
+- **Clean / dry run.** Flavors run one after another through the unchanged per-flavor `execute()`: each takes its
+  own WTF backup, marker, cleaned-files zip, post-clean check and `keep_backups` pruning. A `BackupError` or
+  `CleanError` in one flavor stops the run before the next flavor starts; flavors already done keep their results.
+  The confirm dialog lists each flavor with its file counts, and the WoW-running check covers every flavor in the
+  selection. A leftover marker (recovery notice) is still checked once per backup folder.
+- **Result.** One result screen: the summary table gains one block of rows per flavor (mode, cleaned-files zip,
+  WTF backup, post-clean check, counts), and the per-file table has a Flavor column. If a later flavor was stopped,
+  the screen says which flavors were done and which were not started.
+- One flavor behaves exactly as before.
