@@ -2,7 +2,8 @@
 
 ## Layers
 
-    wow-tools.sh / .cmd    the only entry point (runs python -m wowtools)
+    wow-tools.sh / .cmd    the only entry point (runs python -m wowtools). The .cmd starts Python and exits on its
+                           last line, so a zip update can replace it while it runs (tests/test_launcher.py)
     wowtools/__main__.py   Python check + vendor/ on sys.path, then suite.run()
     wowtools/suite.py      no args: config migration, instance lock, the suite app; or `update`, `--version`, `--help`
     wowtools/core/         UI-free framework shared by every tool (never imports textual)
