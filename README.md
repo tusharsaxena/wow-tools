@@ -80,7 +80,7 @@ That's the only thing you install. Everything else the tools need comes in the d
 ## Getting Ka0s WoW Tools
 
 1. Go to the [Releases page](https://github.com/tusharsaxena/wow-tools/releases).
-2. Under the newest version, download the **Source code (zip)** file.
+2. Under the newest version, download the **wow-tools-vX.Y.Z.zip** file (X.Y.Z is the version number).
 3. Unzip it anywhere you like, for example `Documents\wow-tools`.
 
 If you use git, you can clone it instead, which makes updates a single command:
@@ -143,6 +143,12 @@ new version. You can also update from a terminal in the app's folder:
 - `wow-tools update --check` (on Windows `wow-tools.cmd update --check`, on Mac and Linux
   `./wow-tools.sh update --check`) tells you whether an update is available.
 - `wow-tools update` installs it.
+
+Before installing, the app checks that the download is exactly the file that was published with that version
+(its checksum, listed in the release's `SHA256SUMS` file). If it doesn't match, nothing is changed. If a release
+has no `SHA256SUMS` file, the update is refused and you're pointed to the Releases page to download it yourself.
+If you'd rather update anyway in that case, add `allow_unverified_updates = true` under `[general]` in
+`config\wow-tools.cfg` (it starts as `false`; leaving it that way is safer).
 
 Updating never touches your settings, logs or backups, or any other file you put in the app's folder. If an update
 fails partway, the app puts the old version back. A copy of the version you replaced is kept in the

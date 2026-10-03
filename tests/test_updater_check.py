@@ -44,6 +44,20 @@ class FetchTest(unittest.TestCase):
             "zipball_url": "https://api.github.com/zip", "html_url": "https://github.com/r"}))
         self.assertEqual((release.version, release.tag, release.notes), ("0.2.0", "v0.2.0", "Notes"))
 
+    def test_fetch_latest_records_assets(self):
+        release = fetch_latest(opener=opener_for({
+            "tag_name": "v0.2.0", "draft": False, "prerelease": False,
+            "assets": [{"name": "wow-tools-v0.2.0.zip", "browser_download_url": "https://dl/zip"},
+                       {"name": "SHA256SUMS", "browser_download_url": "https://dl/sums"},
+                       {"name": "broken"}]}))
+        self.assertEqual(release.assets, {"wow-tools-v0.2.0.zip": "https://dl/zip", "SHA256SUMS": "https://dl/sums"})
+
+    def test_from_version_guesses_the_asset_urls(self):
+        release = ReleaseInfo.from_version("0.2.0")
+        base = "https://github.com/tusharsaxena/wow-tools/releases/download/v0.2.0/"
+        self.assertEqual(release.assets, {"wow-tools-v0.2.0.zip": base + "wow-tools-v0.2.0.zip",
+                                          "SHA256SUMS": base + "SHA256SUMS"})
+
     def test_404_means_no_release(self):
         def not_found(request, timeout):
             raise urllib.error.HTTPError("u", 404, "Not Found", {}, None)

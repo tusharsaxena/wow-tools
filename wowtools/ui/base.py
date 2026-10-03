@@ -154,7 +154,7 @@ class Ka0sApp(App):
     def _apply_update_worker(self, release: ReleaseInfo, progress: UpdateProgressScreen) -> None:
         try:
             with activity.running():
-                message = apply_update(release)
+                message = apply_update(release, allow_unverified=self.cfg.allow_unverified_updates)
         except UpdateError as exc:
             self.call_from_thread(self._update_failed, str(exc), progress)
             return

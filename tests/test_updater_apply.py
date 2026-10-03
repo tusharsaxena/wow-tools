@@ -1,3 +1,4 @@
+import hashlib
 import io
 import shutil
 import subprocess
@@ -56,9 +57,21 @@ class ZipUpdateTest(unittest.TestCase):
         (self.root / "logs" / "events-2026-09-27.jsonl").write_text("{}\n")
         (self.root / "my-notes.txt").write_text("mine")
         self.zipball = self.tmp / "release.zip"
+        self.downloaded = []
 
     def download(self, url, dest):
-        shutil.copy(self.zipball, dest)
+        """Serves the release's assets: the zip, and a SHA256SUMS that matches it."""
+        self.downloaded.append(url)
+        if url.endswith("/SHA256SUMS"):
+            tag = url.rsplit("/", 2)[-2]
+            digest = hashlib.sha256(self.zipball.read_bytes()).hexdigest()
+            Path(dest).write_text(f"{digest}  wow-tools-{tag}.zip\n")
+        else:
+            shutil.copy(self.zipball, dest)
+
+    def tree_digest(self):
+        return {p.relative_to(self.root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in sorted(self.root.rglob("*")) if p.is_file()}
 
     def version_on_disk(self):
         return (self.root / "wowtools" / "__init__.py").read_text()
@@ -86,6 +99,79 @@ class ZipUpdateTest(unittest.TestCase):
         self.assertIn("0.1.0", (self.root / ".update-backup" / "0.1.0" / "wowtools" / "__init__.py").read_text())
         applied = [r for r in records if r["event"] == "update.applied"][0]["data"]
         self.assertEqual((applied["from"], applied["to"], applied["method"]), ("0.1.0", "0.2.0", "zip"))
+
+    def test_zip_with_matching_checksum_applies(self):
+        make_zipball(self.zipball, "0.2.0")
+        apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        self.assertIn("0.2.0", self.version_on_disk())
+        self.assertEqual(self.downloaded, [
+            "https://github.com/tusharsaxena/wow-tools/releases/download/v0.2.0/SHA256SUMS",
+            "https://github.com/tusharsaxena/wow-tools/releases/download/v0.2.0/wow-tools-v0.2.0.zip"])
+
+    def test_zip_with_wrong_checksum_is_refused_and_tree_untouched(self):
+        # F-010: a tampered asset must never replace the program files.
+        make_zipball(self.zipball, "0.2.0")
+        before = self.tree_digest()
+
+        def tampered(url, dest):
+            self.download(url, dest)
+            if url.endswith("/SHA256SUMS"):
+                text = Path(dest).read_text()
+                Path(dest).write_text(("1" if text[0] != "1" else "2") + text[1:])
+
+        with capture_events() as records:
+            with self.assertRaises(UpdateError) as ctx:
+                apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=tampered)
+        self.assertIn("does not match its published checksum", str(ctx.exception))
+        self.assertEqual(self.tree_digest(), before)
+        self.assertFalse((self.root / ".update-backup").exists())
+        self.assertIn("update.failed", [r["event"] for r in records])
+
+    def test_sums_without_a_line_for_the_zip_is_refused(self):
+        make_zipball(self.zipball, "0.2.0")
+
+        def other_file(url, dest):
+            self.download(url, dest)
+            if url.endswith("/SHA256SUMS"):
+                Path(dest).write_text("0" * 64 + "  something-else.zip\n")
+
+        with self.assertRaises(UpdateError) as ctx:
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=other_file)
+        self.assertIn("SHA256SUMS", str(ctx.exception))
+        self.assertIn("0.1.0", self.version_on_disk())
+
+    def test_missing_assets_refused_unless_allowed(self):
+        make_zipball(self.zipball, "0.2.0")
+        bare = ReleaseInfo("0.2.0", "v0.2.0", "", "https://api.github.com/zipball/v0.2.0",
+                           "https://github.com/r/releases/tag/v0.2.0")
+        with self.assertRaises(UpdateError) as ctx:
+            apply_update(bare, root=self.root, current="0.1.0", download=self.download)
+        self.assertIn("allow_unverified_updates", str(ctx.exception))
+        self.assertIn("https://github.com/r/releases/tag/v0.2.0", str(ctx.exception))
+        self.assertEqual(self.downloaded, [])
+        self.assertIn("0.1.0", self.version_on_disk())
+        with capture_events() as records:
+            apply_update(bare, root=self.root, current="0.1.0", download=self.download, allow_unverified=True)
+        self.assertIn("0.2.0", self.version_on_disk())
+        self.assertEqual(self.downloaded, ["https://api.github.com/zipball/v0.2.0"])
+        self.assertIn("update.unverified", [r["event"] for r in records])
+
+    def test_unpublished_sums_asset_counts_as_missing(self):
+        # A cached release (from_version) guesses the asset URLs; a 404 on SHA256SUMS means none was published.
+        make_zipball(self.zipball, "0.2.0")
+
+        def no_sums(url, dest):
+            if url.endswith("/SHA256SUMS"):
+                raise updater.AssetMissing(url)
+            self.download(url, dest)
+
+        with self.assertRaises(UpdateError) as ctx:
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=no_sums)
+        self.assertIn("allow_unverified_updates", str(ctx.exception))
+        self.assertIn("0.1.0", self.version_on_disk())
+        apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=no_sums,
+                     allow_unverified=True)
+        self.assertIn("0.2.0", self.version_on_disk())
 
     def test_update_backup_keeps_newest_two(self):
         # F-018: one .update-backup/<version> per update would grow forever.
@@ -284,13 +370,19 @@ class UpdateCommandTest(unittest.TestCase):
         self.assertIn("up to date", out)
 
     def test_apply(self):
+        seen = []
         code, out, _ = self.run_cmd([], check=lambda cfg, **kw: ReleaseInfo.from_version("9.9.9"),
-                                    apply=lambda release: "Updated. Restart.")
+                                    apply=lambda release, **kw: seen.append(kw) or "Updated. Restart.")
         self.assertEqual(code, 0)
         self.assertIn("Updated", out)
+        self.assertEqual(seen, [{"allow_unverified": False}])
+        self.cfg.set("general", "allow_unverified_updates", "true", log=False)
+        self.run_cmd([], check=lambda cfg, **kw: ReleaseInfo.from_version("9.9.9"),
+                     apply=lambda release, **kw: seen.append(kw) or "Updated. Restart.")
+        self.assertEqual(seen[-1], {"allow_unverified": True})
 
     def test_apply_failure(self):
-        def broken(release):
+        def broken(release, **kw):
             raise UpdateError("nope")
         code, _, err = self.run_cmd([], check=lambda cfg, **kw: ReleaseInfo.from_version("9.9.9"), apply=broken)
         self.assertEqual(code, 1)

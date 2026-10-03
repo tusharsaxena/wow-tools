@@ -67,8 +67,9 @@ class SuiteAppBaseTest(UiTestCase):
 
     async def test_update_badge_and_prompt(self):
         app = self.make_app()
-        applied = []
-        with patch("wowtools.ui.base.apply_update", side_effect=lambda rel: applied.append(rel) or "Updated"):
+        applied, options = [], []
+        with patch("wowtools.ui.base.apply_update",
+                   side_effect=lambda rel, **kw: applied.append(rel) or options.append(kw) or "Updated"):
             async with app.run_test(size=(120, 40)) as pilot:
                 await pilot.pause()
                 app._update_found(ReleaseInfo.from_version("9.9.9"))
@@ -80,6 +81,7 @@ class SuiteAppBaseTest(UiTestCase):
                 await pilot.click("#update-yes")
                 await pilot.pause()
         self.assertEqual([r.version for r in applied], ["9.9.9"])
+        self.assertEqual(options, [{"allow_unverified": False}])  # [general] allow_unverified_updates (F-010)
 
     async def test_update_applies_in_worker(self):
         """F-005: the download and install run in a worker behind a progress popup; quitting is refused."""
@@ -88,7 +90,7 @@ class SuiteAppBaseTest(UiTestCase):
         self.addCleanup(release.set)
         seen = []
 
-        def slow_apply(rel):
+        def slow_apply(rel, **kw):
             seen.append(threading.current_thread() is threading.main_thread())
             release.wait(5)
             return "Updated to 9.9.9"

@@ -8,7 +8,9 @@ Out-of-game WoW companion tools (Ka0s branded). Tools: WTF Cleaner (`wtf-cleaner
   `python3 -m unittest discover -s tests -t . -v`
 - Run: `./wow-tools.sh` (Windows: `wow-tools.cmd`); the tool menu opens. `./wow-tools.sh update [--check]`.
   Tools never start on their own and have no CLI mode.
-- Rebuild vendored libs: `python3 scripts/update_vendor.py`. Event docs: `python3 scripts/gen_event_docs.py`
+- Rebuild vendored libs: `python3 scripts/update_vendor.py` (hashed, from `requirements.lock`; `--lock` after editing
+  `requirements.txt`). Event docs: `python3 scripts/gen_event_docs.py`. Release assets (zip + `SHA256SUMS`):
+  `python3 scripts/build_release.py` (`docs/releasing.md`)
 
 Conventions:
 - Python 3.10 floor; `from __future__ import annotations` in every module; stdlib + `vendor/` only.

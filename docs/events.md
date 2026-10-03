@@ -56,6 +56,8 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `update.check_failed` | debug | The release check failed (offline, rate limited, bad data). |
 | `update.checked` | debug | The GitHub release check ran or was throttled. |
 | `update.failed` | error | Applying an update failed. |
+| `update.unverified` | warning | A zip update was applied without a checksum (allow_unverified_updates = true and the release has no SHA256SUMS). |
+| `update.verified` | info | A zip update's download matched the release's published SHA-256 (SHA256SUMS). |
 | `wow.running_warning` | warning | World of Warcraft appears to be running. |
 
 ## `wtf-cleaner` events

@@ -31,6 +31,7 @@ class ConfigTest(unittest.TestCase):
         self.assertIsNone(cfg.last_flavor)
         self.assertTrue(cfg.check_for_updates)
         self.assertFalse(cfg.auto_update)
+        self.assertFalse(cfg.allow_unverified_updates)
         self.assertEqual(cfg.log_level, "info")
         self.assertEqual(cfg.log_retention_days, 90)
         self.assertIsNone(cfg.last_update_check)

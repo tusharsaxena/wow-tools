@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -12,7 +13,7 @@ import tempfile
 import urllib.error
 import urllib.request
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
@@ -31,6 +32,22 @@ GIT_TIMEOUT_S = 120  # a git step that takes longer is stuck (a prompt, a dead c
 
 class UpdateError(Exception):
     """Checking for or applying an update failed."""
+
+
+class AssetMissing(UpdateError):
+    """A release asset was not found (HTTP 404): the release did not publish it."""
+
+
+SUMS_ASSET = "SHA256SUMS"
+
+
+def release_zip_name(version: str) -> str:
+    """The release's program zip asset, built by scripts/build_release.py (docs/releasing.md)."""
+    return f"wow-tools-v{version}.zip"
+
+
+def _asset_url(tag: str, name: str) -> str:
+    return f"https://github.com/{REPO}/releases/download/{tag}/{name}"
 
 
 def parse_version(text: str) -> tuple[int, int, int]:
@@ -54,12 +71,16 @@ class ReleaseInfo:
     notes: str = ""
     zipball_url: str = ""
     html_url: str = ""
+    assets: dict[str, str] = field(default_factory=dict, compare=False, hash=False)  # name -> download URL
 
     @classmethod
     def from_version(cls, version: str) -> ReleaseInfo:
+        """A release known only by its version (the throttled check's cache). The asset URLs follow GitHub's fixed
+        pattern; if the release did not publish them, the download says so (AssetMissing)."""
         tag = f"v{version}"
+        assets = {name: _asset_url(tag, name) for name in (release_zip_name(version), SUMS_ASSET)}
         return cls(version, tag, "", f"https://api.github.com/repos/{REPO}/zipball/{tag}",
-                   f"https://github.com/{REPO}/releases/tag/{tag}")
+                   f"https://github.com/{REPO}/releases/tag/{tag}", assets)
 
 
 def fetch_latest(*, timeout: float = 3.0, opener=urllib.request.urlopen) -> ReleaseInfo | None:
@@ -78,8 +99,10 @@ def fetch_latest(*, timeout: float = 3.0, opener=urllib.request.urlopen) -> Rele
     tag = str(payload.get("tag_name", ""))
     version = tag[1:] if tag.startswith("v") else tag
     parse_version(version)
+    assets = {str(a["name"]): str(a["browser_download_url"]) for a in payload.get("assets") or []
+              if isinstance(a, dict) and a.get("name") and a.get("browser_download_url")}
     return ReleaseInfo(version, tag, payload.get("body") or "", payload.get("zipball_url") or "",
-                       payload.get("html_url") or "")
+                       payload.get("html_url") or "", assets)
 
 
 def persist_check_state(cfg: Config, values: dict[str, str]) -> None:
@@ -133,7 +156,8 @@ def check_for_update(cfg: Config, *, current: str = __version__, now: datetime |
 
 # --- applying an update ---------------------------------------------------------------------
 MANAGED_DIRS = ("wowtools", "vendor", "scripts", "docs")
-MANAGED_FILES = ("wow-tools.cmd", "wow-tools.sh", "requirements.txt", ".gitattributes", "LICENSE")
+MANAGED_FILES = ("wow-tools.cmd", "wow-tools.sh", "requirements.txt", "requirements.lock", ".gitattributes",
+                 "LICENSE")
 # Program files earlier versions shipped that no longer exist; a zip update removes them (and backs them up).
 RETIRED_FILES = ("wtf-cleaner.cmd", "wtf-cleaner.sh")
 BACKUP_DIR_NAME = ".update-backup"
@@ -146,13 +170,16 @@ def install_kind(root: Path = REPO_ROOT) -> str:
 
 
 def apply_update(release: ReleaseInfo, *, root: Path = REPO_ROOT, current: str = __version__,
-                 runner=subprocess.run, download: Callable[[str, Path], None] | None = None) -> str:
+                 runner=subprocess.run, download: Callable[[str, Path], None] | None = None,
+                 allow_unverified: bool = False) -> str:
+    """allow_unverified ([general] allow_unverified_updates) lets a zip install update from a release that has no
+    SHA256SUMS asset. A release that has one is always verified."""
     kind = install_kind(root)
     try:
         if kind == "git":
             _apply_git(root, release.tag, runner)
         else:
-            _apply_zip(root, release, current, download or _download)
+            _apply_zip(root, release, current, download or _download, allow_unverified)
     except UpdateError as exc:
         log_event("update.failed", method=kind, error=str(exc))
         raise
@@ -193,8 +220,76 @@ def _download(url: str, dest: Path) -> None:
     try:
         with urllib.request.urlopen(request, timeout=60) as response, dest.open("wb") as handle:
             shutil.copyfileobj(response, handle)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise AssetMissing(url) from exc
+        raise UpdateError(f"download failed: {exc}") from exc
     except (OSError, urllib.error.URLError) as exc:
         raise UpdateError(f"download failed: {exc}") from exc
+
+
+def _expected_sum(sums_text: str, name: str) -> str:
+    """The SHA-256 that SHA256SUMS (sha256sum format: '<hex>  <name>' or '<hex> *<name>') lists for name."""
+    for line in sums_text.splitlines():
+        parts = line.strip().split(None, 1)
+        if len(parts) == 2 and parts[1].lstrip("*") == name and re.fullmatch(r"[0-9a-fA-F]{64}", parts[0]):
+            return parts[0].lower()
+    raise UpdateError(f"the release's {SUMS_ASSET} does not list {name}, so the download can't be verified")
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _unverifiable(release: ReleaseInfo) -> UpdateError:
+    where = release.html_url or f"https://github.com/{REPO}/releases"
+    return UpdateError(f"v{release.version} has no published checksum ({SUMS_ASSET}), so the download can't be "
+                       f"verified and nothing was changed. Download it by hand from {where}, or set "
+                       f"allow_unverified_updates = true in config/wow-tools.cfg to update anyway.")
+
+
+def _download_release(release: ReleaseInfo, archive: Path, download: Callable[[str, Path], None],
+                      allow_unverified: bool) -> None:
+    """Download the release's program zip to archive and check it against SHA256SUMS (F-010). Without a SHA256SUMS
+    asset this refuses, unless allow_unverified (then the zip asset, or the source zipball, is used as is)."""
+    zip_name = release_zip_name(release.version)
+    zip_url, sums_url = release.assets.get(zip_name), release.assets.get(SUMS_ASSET)
+    expected = None
+    if zip_url and sums_url:
+        sums = archive.with_name(SUMS_ASSET)
+        try:
+            download(sums_url, sums)
+            expected = _expected_sum(sums.read_text(encoding="utf-8", errors="replace"), zip_name)
+        except AssetMissing:
+            expected = None
+    if expected is None:
+        if not allow_unverified:
+            raise _unverifiable(release)
+        url = zip_url or release.zipball_url
+        if not url:
+            raise UpdateError("the release has no download URL")
+        try:
+            download(url, archive)
+        except AssetMissing:
+            if url == release.zipball_url or not release.zipball_url:
+                raise UpdateError(f"the release's download was not found: {url}") from None
+            url = release.zipball_url
+            download(url, archive)
+        log_event("update.unverified", version=release.version, url=url)
+        return
+    try:
+        download(zip_url, archive)
+    except AssetMissing:
+        raise UpdateError(f"the release lists {zip_name} in {SUMS_ASSET} but does not publish it") from None
+    actual = _sha256(archive)
+    if actual != expected:
+        raise UpdateError(f"the download does not match its published checksum ({zip_name}: expected {expected}, "
+                          f"got {actual}). Nothing was changed.")
+    log_event("update.verified", version=release.version, asset=zip_name, sha256=actual)
 
 
 def _shipped_names(staging: Path) -> list[str]:
@@ -261,13 +356,12 @@ def _rollback(root: Path, backup: Path, shipped: list[str]) -> None:
         _copy(backup / name, root / name)
 
 
-def _apply_zip(root: Path, release: ReleaseInfo, current: str, download: Callable[[str, Path], None]) -> None:
-    if not release.zipball_url:
-        raise UpdateError("the release has no download URL")
+def _apply_zip(root: Path, release: ReleaseInfo, current: str, download: Callable[[str, Path], None],
+               allow_unverified: bool = False) -> None:
     with tempfile.TemporaryDirectory(prefix="wowtools-update-") as tmp:
         work = Path(tmp)
         archive = work / "release.zip"
-        download(release.zipball_url, archive)
+        _download_release(release, archive, download, allow_unverified)
         try:
             with zipfile.ZipFile(archive) as zf:
                 zf.extractall(work / "extract")
@@ -335,7 +429,7 @@ def run_update_command(argv: list[str], cfg: Config, *, stdout=None, stderr=None
         return 10
     log_event("ui.selection", screen="cli", control="update", value="accepted")
     try:
-        print(apply(release), file=stdout)
+        print(apply(release, allow_unverified=cfg.allow_unverified_updates), file=stdout)
     except UpdateError as exc:
         print(f"Update failed: {exc}", file=stderr)
         return 1

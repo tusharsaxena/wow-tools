@@ -165,6 +165,11 @@ class Config:
         return self.get_bool(GENERAL, "auto_update", False)
 
     @property
+    def allow_unverified_updates(self) -> bool:
+        """Let a zip install update from a release with no SHA256SUMS asset (off: such an update is refused)."""
+        return self.get_bool(GENERAL, "allow_unverified_updates", False)
+
+    @property
     def log_level(self) -> str:
         value = (self.get(GENERAL, "log_level") or "info").strip().lower()
         return value if value in LEVELS else "info"

@@ -64,6 +64,8 @@ CORE_EVENTS: dict[str, EventSpec] = {
     "update.available": EventSpec("info", "A newer suite release exists."),
     "update.applied": EventSpec("info", "The suite was updated."),
     "update.failed": EventSpec("error", "Applying an update failed."),
+    "update.verified": EventSpec("info", "A zip update's download matched the release's published SHA-256 (SHA256SUMS)."),
+    "update.unverified": EventSpec("warning", "A zip update was applied without a checksum (allow_unverified_updates = true and the release has no SHA256SUMS)."),
     "update.backups_pruned": EventSpec("info", "After a zip update, older .update-backup folders were deleted to keep the newest 2."),
     "wow.running_warning": EventSpec("warning", "World of Warcraft appears to be running."),
     "error": EventSpec("error", "An unexpected or fatal error."),

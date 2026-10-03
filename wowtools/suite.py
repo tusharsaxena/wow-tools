@@ -136,7 +136,7 @@ def _auto_update(cfg: Config) -> bool:
     if release is None:
         return False
     try:
-        print(apply_update(release))
+        print(apply_update(release, allow_unverified=cfg.allow_unverified_updates))
     except UpdateError as exc:
         print(f"Automatic update failed: {exc}", file=sys.stderr)
         return False
