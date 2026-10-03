@@ -211,15 +211,15 @@ class OrganizerTest(unittest.TestCase):
         self.assertEqual((day / A).read_bytes(), b"shot-a")
         self.assertFalse((day / (A + ".partial")).exists())
 
-    def test_journal_pruning(self):
+    def test_journal_pruning_logs_the_organizer_event(self):
+        # The pruning itself is tested in tests/test_journal.py; the organizer logs its own event.
         self.journals.mkdir()
-        for i in range(5):
+        for i in range(3):
             (self.journals / f"journal-2020010{i}-000000.jsonl").write_text('{"version": 1}\n')
-        (self.journals / "keep-me.txt").write_text("x")
-        removed = prune_journals(self.journals, 2)
-        self.assertEqual(len(removed), 3)
-        self.assertTrue((self.journals / "keep-me.txt").exists())
-        self.assertTrue((self.journals / "journal-20200104-000000.jsonl").exists())
+        with capture_events() as records:
+            removed = prune_journals(self.journals, 2)
+        self.assertEqual(len(removed), 1)
+        self.assertIn("shots.journal_pruned", [r["event"] for r in records])
 
     def test_progress_callback_errors_are_swallowed(self):
         def bad(*a):

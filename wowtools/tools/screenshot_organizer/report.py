@@ -1,7 +1,6 @@
 """Labels, stage titles and table rows for the Screenshot Organizer screens. UI-free (plain strings only)."""
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 
 from wowtools.core.paths import to_stored
@@ -52,16 +51,6 @@ def kind_class(kind: str) -> str:
 
 def plural(n: int, word: str) -> str:
     return f"{n} {word}" + ("" if n == 1 else "s")
-
-
-def friendly_stamp(stamp: str) -> str:
-    """A journal's ISO-8601 time as "YYYY-MM-DD HH:MM" (its own clock); anything unparsable is shown as is."""
-    if not stamp:
-        return "an unknown time"
-    try:
-        return datetime.fromisoformat(stamp).strftime("%Y-%m-%d %H:%M")
-    except ValueError:
-        return stamp
 
 
 def destination_label(dest_dir: Path | None) -> str:
