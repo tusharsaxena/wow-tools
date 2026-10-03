@@ -114,3 +114,12 @@ class CheckTest(unittest.TestCase):
                                    "latest_seen_version": "0.2.0"}])
         self.assertIsNone(self.cfg.latest_seen_version)
         self.assertIsNone(Config(self.cfg.path).load().latest_seen_version)
+
+    def test_future_last_check_is_ignored(self):
+        self.cfg.set("general", "last_update_check", (NOW + timedelta(days=2)).isoformat(), log=False)
+        self.cfg.save()
+        fetch = Mock(return_value=ReleaseInfo.from_version("0.2.0"))
+        release = check_for_update(self.cfg, current="0.1.0", now=NOW, fetch=fetch)
+        fetch.assert_called_once()
+        self.assertEqual(release.version, "0.2.0")
+        self.assertEqual(Config(self.cfg.path).load().last_update_check, NOW)

@@ -159,12 +159,64 @@ class GitUpdateTest(unittest.TestCase):
             apply_update(ReleaseInfo.from_version("0.2.0"), root=self.clone, current="0.1.0")
         self.assertIn("local changes", str(ctx.exception))
 
+    def test_untracked_file_does_not_block(self):
+        (self.origin / "wowtools" / "__init__.py").write_text('__version__ = "0.2.0"\n')
+        git(self.origin, "commit", "-q", "-am", "v0.2.0")
+        git(self.origin, "tag", "v0.2.0")
+        (self.clone / "my-notes.txt").write_text("mine\n")
+        apply_update(ReleaseInfo.from_version("0.2.0"), root=self.clone, current="0.1.0")
+        self.assertIn("0.2.0", (self.clone / "wowtools" / "__init__.py").read_text())
+        self.assertEqual((self.clone / "my-notes.txt").read_text(), "mine\n")
+
     def test_fast_forwards_to_tag(self):
         (self.origin / "wowtools" / "__init__.py").write_text('__version__ = "0.2.0"\n')
         git(self.origin, "commit", "-q", "-am", "v0.2.0")
         git(self.origin, "tag", "v0.2.0")
         apply_update(ReleaseInfo.from_version("0.2.0"), root=self.clone, current="0.1.0")
         self.assertIn("0.2.0", (self.clone / "wowtools" / "__init__.py").read_text())
+
+
+class GitRunnerTest(unittest.TestCase):
+    """The git path with a fake runner: bounded, never prompts, ignores untracked files (F-011)."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        (self.root / ".git").mkdir()
+        self.calls = []
+
+    def ok_runner(self, args, **kwargs):
+        self.calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    def test_git_runner_gets_timeout_and_no_prompt_env(self):
+        apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", runner=self.ok_runner)
+        self.assertEqual([c[0][1] for c in self.calls], ["status", "fetch", "merge"])
+        for _args, kwargs in self.calls:
+            self.assertEqual(kwargs["timeout"], updater.GIT_TIMEOUT_S)
+            self.assertEqual(kwargs["env"]["GIT_TERMINAL_PROMPT"], "0")
+            self.assertIn("BatchMode=yes", kwargs["env"]["GIT_SSH_COMMAND"])
+        self.assertEqual(updater.GIT_TIMEOUT_S, 120)
+
+    def test_user_ssh_command_is_kept(self):
+        with patch.dict("os.environ", {"GIT_SSH_COMMAND": "ssh -i mykey"}):
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0",
+                         runner=self.ok_runner)
+        self.assertEqual(self.calls[0][1]["env"]["GIT_SSH_COMMAND"], "ssh -i mykey")
+
+    def test_git_timeout_becomes_update_error(self):
+        def hanging(args, **kwargs):
+            raise subprocess.TimeoutExpired(args, kwargs.get("timeout"))
+        with capture_events() as records:
+            with self.assertRaises(UpdateError) as ctx:
+                apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", runner=hanging)
+        self.assertIn("timed out", str(ctx.exception))
+        self.assertIn("update.failed", [r["event"] for r in records])
+
+    def test_untracked_files_do_not_block_update(self):
+        apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", runner=self.ok_runner)
+        self.assertIn("--untracked-files=no", self.calls[0][0])
 
 
 class UpdateCommandTest(unittest.TestCase):

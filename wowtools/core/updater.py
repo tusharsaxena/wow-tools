@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -25,6 +26,7 @@ REPO = "tusharsaxena/wow-tools"
 LATEST_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 CHECK_INTERVAL = timedelta(hours=24)
 USER_AGENT = f"ka0s-wow-tools/{__version__}"
+GIT_TIMEOUT_S = 120  # a git step that takes longer is stuck (a prompt, a dead connection): give up
 
 
 class UpdateError(Exception):
@@ -100,7 +102,8 @@ def check_for_update(cfg: Config, *, current: str = __version__, now: datetime |
     now = now or datetime.now(timezone.utc)
     fetch = fetch or fetch_latest
     last = cfg.last_update_check
-    if not force and last is not None and now - last < CHECK_INTERVAL:
+    # A stamp in the future (clock skew, a hand edit, a config from another machine) never throttles (F-026).
+    if not force and last is not None and timedelta(0) <= now - last < CHECK_INTERVAL:
         cached = cfg.latest_seen_version
         log_event("update.checked", current=current, latest=cached, throttled=True)
         if cached and is_newer(cached, current):
@@ -156,9 +159,19 @@ def apply_update(release: ReleaseInfo, *, root: Path = REPO_ROOT, current: str =
     return f"Updated Ka0s WoW Tools to v{release.version}. Restart to use the new version."
 
 
+def _git_env() -> dict[str, str]:
+    """Never let git wait for a password or passphrase nobody can see behind the TUI (F-011)."""
+    return {**os.environ, "GIT_TERMINAL_PROMPT": "0",
+            "GIT_SSH_COMMAND": os.environ.get("GIT_SSH_COMMAND") or "ssh -oBatchMode=yes"}
+
+
 def _git(root: Path, runner, *args: str) -> str:
     try:
-        proc = runner(["git", *args], cwd=root, capture_output=True, text=True, check=False)
+        proc = runner(["git", *args], cwd=root, capture_output=True, text=True, check=False,
+                      timeout=GIT_TIMEOUT_S, env=_git_env())
+    except subprocess.TimeoutExpired as exc:
+        raise UpdateError(f"git {args[0]} timed out after {GIT_TIMEOUT_S} seconds. "
+                          "Check your network and git credentials, then update again.") from exc
     except OSError as exc:
         raise UpdateError("git is not available. Install git, or download the release zip instead.") from exc
     if proc.returncode != 0:
@@ -167,7 +180,8 @@ def _git(root: Path, runner, *args: str) -> str:
 
 
 def _apply_git(root: Path, tag: str, runner) -> None:
-    if _git(root, runner, "status", "--porcelain").strip():
+    # Untracked files (notes, leftovers) never block: a fast-forward only fails if a tracked path conflicts.
+    if _git(root, runner, "status", "--porcelain", "--untracked-files=no").strip():
         raise UpdateError("You have local changes in the wow-tools folder. Commit or stash them, then update again.")
     _git(root, runner, "fetch", "--tags", "--force", "origin")
     _git(root, runner, "merge", "--ff-only", tag)

@@ -147,6 +147,10 @@ new version. You can also update from a terminal in the app's folder:
 Updating never touches your settings, logs or backups. If an update fails partway, the app puts the old version
 back.
 
+If you cloned with git, the update is a fast-forward to the new version. It stops if you've edited the app's own
+files, but files you added yourself (notes, say) don't get in its way. It never waits for a password: if git
+would ask for one, or takes more than two minutes, the update stops and tells you why.
+
 ## Your settings
 
 Your answers are saved in the `config` folder inside the app's folder, one file per tool:
