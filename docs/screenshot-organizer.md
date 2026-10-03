@@ -44,6 +44,8 @@ folder". Your choice is remembered for next time.
 
 ## The review screen
 
+**_The Screenshot Organizer review screen_**
+
 ![The Screenshot Organizer review screen](assets/screenshot-05-screenshot-organizer-main.png)
 
 **On the right** is the list of screenshots waiting to be sorted:
@@ -81,9 +83,13 @@ If you change the settings, press `r` to scan again with them.
 
 When you press **Organize** and confirm, a progress window shows the file it's working on:
 
+**_Organizing in progress_**
+
 ![Organizing in progress](assets/screenshot-06-screenshot-organizer-in-progress.png)
 
 Then the results screen shows a summary and every screenshot with what happened to it and where it went:
+
+**_The results of a run_**
 
 ![The results of a run](assets/screenshot-07-screenshot-organizer-summary.png)
 
@@ -156,13 +162,25 @@ The file itself uses these names, if you edit it by hand: `dest_dir`, `copy_mode
 > `wow-tools\screenshots` folder to the new `screenshot-organizer` names automatically, and never overwrites
 > anything while doing so.
 
+## FAQ
+
+| Question | Answer |
+|----------|--------|
+| Do I need to close WoW first? | No. Sorting screenshots doesn't depend on the game. Just don't expect a screenshot you take mid-run to be in that run; press `r` to scan again. |
+| Will it rename my screenshots? | No. File names are never changed. |
+| Where does it get the date from? | From the name WoW gives every screenshot, `WoWScrnShot_MMDDYY_HHMMSS.jpg`, so the date is the day you took it, even if the file was copied later. |
+| Can I keep the originals where they are? | Yes. Turn on **Copy instead of move** in settings. |
+| Is it safe to point it at my photos drive? | Yes. In the destination folder it only creates year, month and day folders and adds screenshots. It never touches anything else there, such as a photo program's database. |
+| Does it handle Classic, PTR and Beta screenshots? | Yes, every game version in your WoW folder, each into its own set of folders. |
+| Can I undo a run from last week? | **Undo last run** only goes back to the most recent run. |
+
 ## Troubleshooting
 
-- **"No Screenshots folders found".** You haven't taken a screenshot in any game version yet. Take one in game
-  first (the Print Screen key).
-- **A screenshot stays in `Screenshots` after organizing.** Its name isn't a WoW screenshot name, or a different
-  file with the same name is already sorted (a conflict). Both are listed on the review and results screens.
-- **The destination is refused in settings.** It can't be your WoW folder itself or inside a `Screenshots`
-  folder. To sort in place, leave it empty.
-- **Undo last run is greyed out.** There's nothing to undo: you haven't run it yet, or you already undid the last
-  run.
+| Symptom | Fix |
+|---------|-----|
+| "No Screenshots folders found" | You haven't taken a screenshot in any game version yet. Take one in game first (the Print Screen key). |
+| A screenshot stays in `Screenshots` after organizing | Its name isn't a WoW screenshot name, or a different file with the same name is already sorted (a conflict). Both are listed on the review and results screens. |
+| The destination is refused in settings | It can't be your WoW folder itself or inside a `Screenshots` folder. To sort in place, leave it empty. |
+| **Undo last run** is greyed out | There's nothing to undo: you haven't run it yet, or you already undid the last run. |
+| Moving to another drive is slow | Each screenshot is copied and checked before the original is removed, so a big first run takes a while. Later runs only handle new screenshots. From WSL it's slower still; see the main [Troubleshooting](../README.md#troubleshooting). |
+| Something else looks wrong | Follow [Reporting a bug](../README.md#reporting-a-bug) in the main README. |

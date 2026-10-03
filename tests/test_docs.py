@@ -30,7 +30,7 @@ class DocsTest(unittest.TestCase):
             guide = f"docs/{tool.name}.md"
             self.assertIn(f"]({guide})", readme)
             self.assertTrue((REPO_ROOT / guide).is_file(), guide)
-        self.assertIn("## Version history", readme)
+        self.assertIn("## version history", readme.lower())
         self.assertNotIn("## For developers", readme)
 
     def test_user_docs_cover_the_entry_point_tools_and_safety(self):

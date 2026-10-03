@@ -1,8 +1,15 @@
 # Ka0s WoW Tools
 
-Ka0s WoW Tools is a small set of World of Warcraft helpers that run outside the game and tidy up the files WoW
-leaves lying around on your computer. It's one app. You open it, pick a tool from the menu, and when you're done
+![Version](https://img.shields.io/badge/Version-1.0.0-blue)
+![Python](https://img.shields.io/badge/Python-3.10%2B-yellow)
+![Platforms](https://img.shields.io/badge/Platforms-Windows_%7C_macOS_%7C_Linux-purple)
+![Tests](https://img.shields.io/badge/Tests-405%2F405_passing-green)
+
+Ka0s WoW Tools is a small set of World of Warcraft helpers that run ***outside*** the game and tidy up the files WoW
+leaves lying around on your computer. It's a single app - you open it, pick a tool from the menu, and when you're done
 you land back on the menu.
+
+**_The tool menu_**
 
 ![The tool menu](docs/assets/screenshot-01.png)
 
@@ -20,12 +27,24 @@ Neither tool changes anything until you say so. Each one shows you the full list
 touches a file. If you'd rather see what would happen first, do a practice run (a **Dry run**). And if you
 change your mind afterwards, you can undo the last run.
 
+## Screenshots
+
+**_WTF Cleaner: the list of leftover addon settings, ready to clean_**
+
+![WTF Cleaner review screen](docs/assets/screenshot-02-wtfcleaner-main.png)
+
+**_Screenshot Organizer: screenshots grouped by day, ready to sort_**
+
+![Screenshot Organizer review screen](docs/assets/screenshot-05-screenshot-organizer-main.png)
+
+More pictures of every screen are in each tool's guide.
+
 ## What you need
 
-You need two things:
+You need the following:
 
-1. **World of Warcraft**, installed in the usual way.
-2. **Python 3.10 or newer.** Python is a free program that runs these tools. You install it once.
+1. **World of Warcraft**, duh!
+2. **Python 3.10 or newer.** Python is a free program language and interpreter which runs these tools. You install it once.
 
 ### Installing Python
 
@@ -66,7 +85,9 @@ That's the only thing you install. Everything else the tools need comes in the d
 If you use git, you can clone it instead, which makes updates a single command:
 `git clone https://github.com/tusharsaxena/wow-tools.git`
 
-## Starting it
+## Getting started
+
+### Running the app
 
 | On | Do this |
 |---|---|
@@ -76,6 +97,8 @@ If you use git, you can clone it instead, which makes updates a single command:
 > **Tip for Windows:** make a shortcut so you don't have to open the folder every time. Right-click
 > `wow-tools.cmd`, choose **Show more options**, then **Send to → Desktop (create shortcut)**. Double-click the
 > shortcut to start the app. You can also right-click the shortcut and pick **Pin to Start**.
+
+### Navigating the app
 
 The app opens in a terminal window. You drive it with the keyboard:
 
@@ -146,31 +169,62 @@ The app writes down everything it does, down to every file it deletes or moves. 
 folder, one folder per tool, and the `logfile-<date>.log` files are plain text you can open in Notepad. They're
 kept for 90 days. If you ever need to report a problem, send these along.
 
-## One copy at a time
-
-Only one copy of the app can run at once. While it's open, it keeps a small file called `wow-tools.lock` in its
-folder. If you start it a second time, or it crashed last time, you'll see a warning with two buttons:
-
-- **Quit** if the app really is open somewhere else.
-- **Override and continue** if it isn't, for example after a crash.
-
 ## Windows and WSL
 
 If you use WSL (Linux inside Windows), the same folder works from both sides. Run `./wow-tools.sh` from WSL or
 `wow-tools.cmd` from Windows; your settings carry over.
 
+## FAQ
+
+| Question | Answer |
+|----------|--------|
+| Is it safe? Can I lose anything? | Both tools show you the full list and ask before they change anything. The WTF Cleaner backs up your whole `WTF` folder and zips every file before deleting it, and the Screenshot Organizer never overwrites a file. Both can undo their last run. If you're unsure, press **Dry run** first: it shows what would happen without changing anything. |
+| Does it change the game itself? | No. It never touches the game program or your addons. It only works on files the game leaves in your WoW folder: addon settings in `WTF` and pictures in `Screenshots`. |
+| Do I need to close WoW? | Close it before you clean with the WTF Cleaner: WoW rewrites those files when you log out and can bring deleted ones back. The cleaner warns you if WoW is running. The Screenshot Organizer doesn't mind if the game is open. |
+| Do I need to install anything besides Python? | No. Everything else the app needs comes in the download. |
+| Does it work on a Mac? | Yes, with `./wow-tools.sh`. The only thing missing on a Mac is the "WoW is running" warning, so close WoW yourself before cleaning. |
+| Why does it say another copy may already be running? | Only one copy of the app can run at once. While it's open it keeps a small file called `wow-tools.lock` in its folder. If you start it a second time, or it crashed last time, you get a warning with two buttons: **Quit** if the app really is open somewhere else, or **Override and continue** if it isn't (for example after a crash). When the app can tell the other copy is gone, it says so and puts you on **Override and continue**. |
+| Can I work on all my game versions at once? | Yes. Pick **All flavors** at the top of the list, in either tool. |
+| Where are my settings, backups and logs? | Settings are in the app's `config` folder and logs in its `logs` folder. Backups and undo journals are in your WoW folder, under `wow-tools`. See [Your settings](#your-settings) and the guides. |
+| How do I update? | The app tells you on its bottom bar when a new version is out; press `u`. See [Updates](#updates). |
+| How do I uninstall it? | Delete the app's folder. If you also want the backups and undo journals gone, delete the `wow-tools` folder inside your WoW folder. Nothing else is installed anywhere. |
+
 ## Troubleshooting
 
-- **"Python was not found" or nothing happens on Windows.** Python isn't installed, or **Add python.exe to PATH**
-  wasn't ticked. Run the Python installer again, choose **Modify**, and tick it.
-- **"No WoW flavor folders were found."** Pick the `World of Warcraft` folder itself, not `_retail_` inside it.
-- **"Ka0s WoW Tools may already be running."** See [One copy at a time](#one-copy-at-a-time).
-- **The window looks garbled or too small.** Make the terminal window bigger, or use Windows Terminal, which
-  is the default on Windows 11.
-- For tool-specific problems, see the troubleshooting section at the end of each guide.
+| Symptom | Fix |
+|---------|-----|
+| "Python was not found", or nothing happens when I double-click `wow-tools.cmd` | Python isn't installed, or **Add python.exe to PATH** wasn't ticked. Run the Python installer again, choose **Modify**, and tick it. |
+| "No WoW flavor folders were found" | Pick the `World of Warcraft` folder itself, not `_retail_` inside it. |
+| "Ka0s WoW Tools may already be running" | See *Why does it say another copy may already be running?* in the [FAQ](#faq). |
+| The window looks garbled or too small | Make the terminal window bigger, or use Windows Terminal (the default on Windows 11). |
+| It's very slow on WSL | WSL (Linux inside Windows) is slow at reading files on Windows drives such as `C:` or `G:`: every file takes a moment to check, and a WoW folder has thousands of them. Start the app from Windows instead, by double-clicking `wow-tools.cmd`. It uses the same settings, so nothing needs setting up again. If you stay on WSL, give the first scan time; the progress bar shows it's still working. |
+| A tool does something unexpected | See the troubleshooting table at the end of that tool's guide. |
+| Something looks wrong and I want to report it | Follow [Reporting a bug](#reporting-a-bug) below. |
 
-## Version history
+## Reporting a bug
 
-| Version | Date | What changed |
-|---|---|---|
-| 1.0.0 | 2026-10-03 | First release. The **WTF Cleaner** finds and removes old addon settings, with backups, a dry run, All flavors and **Undo last clean**. The new **Screenshot Organizer** sorts screenshots into year, month and day folders, with a dry run, copy mode, duplicate checks and **Undo last run**. Both tools work with every installed game version, and the app checks for updates and installs them. |
+- Note what you did and what you expected to happen.
+- Open the `logs` folder inside the app's folder, then the folder of the tool you were using (for example
+  `logs\wtf-cleaner`).
+- Attach that day's `logfile-<date>.log` and `events-<date>.log` to your report.
+
+The logs list every step the app took, so they usually show what went wrong.
+
+## Issues and feature requests
+
+Bugs, ideas and planned work all go in the GitHub issue tracker:
+[https://github.com/tusharsaxena/wow-tools/issues](https://github.com/tusharsaxena/wow-tools/issues).
+Please file reports there, so nothing gets lost.
+
+## Version History
+
+| Version | Date | Highlights |
+|---------|------|------------|
+| 1.0.0 | 2026-10-03 | - First release, with two tools in one app<br>- **WTF Cleaner**: finds settings left behind by addons you no longer use, shows them for review, backs them up and deletes them; works on one game version, one account or **All flavors**; **Dry run** and **Undo last clean**<br>- **Screenshot Organizer**: sorts screenshots into year, month and day folders, in place or into an archive folder; duplicate checks, copy mode, **Dry run** and **Undo last run**<br>- Works with every installed game version (Retail, Classic, Classic Era, Anniversary, PTR and Beta) on Windows, Mac, Linux and WSL<br>- Checks for updates and installs them for you |
+
+## Credits
+
+The app's screens are built with [Textual](https://github.com/Textualize/textual) and
+[Rich](https://github.com/Textualize/rich) by Textualize (MIT license). They ship inside the app, together with
+the small libraries they use: Pygments (BSD 2-Clause), markdown-it-py, mdit-py-plugins, mdurl, linkify-it-py and
+platformdirs (all MIT), and typing_extensions (PSF license).

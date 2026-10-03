@@ -27,6 +27,8 @@ ones you leave ticked. If you regret it later, you can undo the clean.
 
 ## The review screen
 
+**_The WTF Cleaner review screen_**
+
 ![The WTF Cleaner review screen](assets/screenshot-02-wtfcleaner-main.png)
 
 **On the right** is the list of files the cleaner suggests removing, grouped like this:
@@ -95,6 +97,8 @@ does.
 
 When you press **Clean** and confirm, a progress window shows each step and the file it's working on:
 
+**_A clean in progress_**
+
 ![A clean in progress](assets/screenshot-03-wtfcleaner-in-progress.png)
 
 Before anything is deleted, the cleaner:
@@ -115,6 +119,8 @@ With **All flavors**, the game versions are cleaned one after another, and each 
 version runs into a problem, the cleaner stops there, and the versions after it aren't touched.
 
 ### The results screen
+
+**_The results of a clean_**
 
 ![The results of a clean](assets/screenshot-04-wtfcleaner-summary.png)
 
@@ -198,18 +204,27 @@ The file itself uses these names, if you edit it by hand: `max_age_days`, `crite
 `criterion_not_enabled`, `criterion_older_than`, `criterion_stray_copies`, `backup_before_delete`, `backup_dir`,
 `keep_backups`, `keep_journals`, `last_account` and `last_flavor_choice`.
 
-## Is WoW running?
+## FAQ
 
-Before a clean, the cleaner checks whether WoW is running for the game versions you're cleaning, and warns you if
-so. This works on Windows, WSL and Linux. On a Mac it can't tell, so there's no warning; just make sure WoW is
-closed.
+| Question | Answer |
+|----------|--------|
+| What is a SavedVariables file? | The file an addon keeps its settings in, such as `Details.lua`. WoW writes them to the `WTF` folder when you log out. They're safe to delete for addons you no longer use; the addon simply starts with default settings if you ever install it again. |
+| Will it delete settings for addons I still use? | Not with the usual rules. Rule 1 only suggests addons that aren't installed, and rule 2 only addons switched off on every character. Rule 3 (older than the age limit) can catch an addon you still have but rarely load, so look through the list and untick anything you want to keep. |
+| Does it check whether WoW is running? | Yes, before every clean, for the game versions you're cleaning, and it warns you if WoW is open. This works on Windows, WSL and Linux. On a Mac it can't tell, so close WoW yourself first. |
+| Does it touch my keybindings, macros or UI layout? | No. It only ever looks at addon settings files. Blizzard's own settings, keybindings, macros, chat setup, UI layout and your list of enabled addons are never touched. |
+| What's the difference between a Dry run and Clean? | A **Dry run** does every step except deleting, so you can see the full results first. **Clean** deletes the ticked files after backing them up. |
+| Can I clean one account only? | Yes. Pick a single game version; if it has more than one account, the next screen lets you pick one. |
+| How much space do the backups take? | Each WTF backup is a zip of your whole `WTF` folder, so it depends on how big that folder is (zipping shrinks these text files a lot). Only the newest 5 per game version are kept (you can change that in settings). The zips of cleaned files are kept until you delete them. |
+| Can I undo a clean from last week? | **Undo last clean** only goes back to the most recent clean. For an older one, unzip its files by hand; see [Restoring a backup](#restoring-a-backup). |
 
 ## Troubleshooting
 
-- **Files come back after cleaning.** WoW was running. Close it and clean again.
-- **"files are locked by another program".** Close the Raider.IO client or the WeakAuras Companion, then clean
-  again. Nothing was deleted.
-- **"Refusing to scan".** That game version has no addons installed, so there's nothing safe to suggest.
-- **"An earlier clean did not finish".** See [If a clean was interrupted](#if-a-clean-was-interrupted).
-- **Undo last clean is greyed out.** There's nothing to undo: you haven't cleaned yet, or you already undid the
-  last clean.
+| Symptom | Fix |
+|---------|-----|
+| Files come back after cleaning | WoW was running. Close it and clean again. |
+| "files are locked by another program" | Close the Raider.IO client or the WeakAuras Companion, then clean again. Nothing was deleted. |
+| "Refusing to scan" | That game version has no addons installed, so there's nothing safe to suggest. |
+| "An earlier clean did not finish" | See [If a clean was interrupted](#if-a-clean-was-interrupted). |
+| **Undo last clean** is greyed out | There's nothing to undo: you haven't cleaned yet, or you already undid the last clean. |
+| The scan takes a long time | A big `WTF` folder takes a while, especially from WSL; see the main [Troubleshooting](../README.md#troubleshooting). The progress bar shows it's still working. |
+| Something else looks wrong | Follow [Reporting a bug](../README.md#reporting-a-bug) in the main README. |
