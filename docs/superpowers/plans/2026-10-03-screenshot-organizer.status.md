@@ -8,7 +8,7 @@ Checkpoint ledger for `2026-10-03-screenshot-organizer.md`. Work happens on bran
 | # | Task | Status | Commit | Notes |
 |---|---|---|---|---|
 | 0 | Spec + plan | done | 5e51887 | Spec approved in chat; event names get a `shots.` prefix (registry is global) |
-| 1 | Package, events, naming, settings | todo | | |
+| 1 | Package, events, naming, settings | done | 0335683 | Deviation: `scripts/gen_event_docs.py` now imports every `wowtools/tools/*` package and orders owners core, then `TOOLS`, then the rest sorted; the test suite imports `screenshots.events` before the tool is in `TOOLS`, so `test_docs` depended on import order. `docs/events.md` regenerated (screenshots section) |
 | 2 | Fixture + planner | todo | | |
 | 3 | Journal writer + organizer | todo | | |
 | 4 | Undo | todo | | |
