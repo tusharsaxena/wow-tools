@@ -10,7 +10,7 @@ from textual.widgets import Button, DataTable, Input, ProgressBar, Static, Tree
 from tests.fixtures import build_wow_tree, make_config
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
-from wowtools.tools.wtf_cleaner.app import CleanerSettingsScreen, WtfCleanerApp
+from wowtools.tools.wtf_cleaner.app import CleanerSettingsScreen
 from wowtools.core.install import WowInstall
 from wowtools.tools.wtf_cleaner.cleaner import CleanResult, FileOutcome
 from wowtools.tools.wtf_cleaner.report import CRITERION_COLORS, RESULT_COLUMNS, result_rows
@@ -20,6 +20,7 @@ from wowtools.tools.wtf_cleaner.rules import CRITERIA, criterion_counts
 from wowtools.tools.wtf_cleaner.safety import MARKER_NAME
 from wowtools.tools.wtf_cleaner.scanner import scan
 from wowtools.tools.wtf_cleaner.settings import load_settings
+from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.widgets import ButtonRow, Ka0sCheckbox, NavHint
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.flavor_screen import FlavorScreen
@@ -36,17 +37,27 @@ class AppTestCase(unittest.IsolatedAsyncioTestCase):
         self.root = build_wow_tree(self.tmp / "World of Warcraft")
         self.sv = self.root / "_retail_" / "WTF" / "Account" / "ACCT1" / "SavedVariables"
         self.backup_dir = self.tmp / "bk"
-        self.cfg = make_config(self.tmp, self.root)
-        self.cfg.set("wtf_cleaner", "backup_dir", str(self.backup_dir), log=False)
-        self.cfg.save()
+        self.config_dir = self.tmp / "config"
+        self.cfg = make_config(self.config_dir, self.root)
+        self.tool_cfg = Config(self.config_dir / "wtf-cleaner.cfg")
+        self.tool_cfg.set("wtf_cleaner", "backup_dir", str(self.backup_dir), log=False)
+        self.tool_cfg.save()
 
     def make_app(self, cfg=None, running=(), lockers=()):
-        return WtfCleanerApp(cfg or self.cfg, check_updates=False, wow_check=lambda: list(running),
-                             locker_check=lambda: list(lockers),
-                             detect=lambda: [])
+        cfg = cfg or self.cfg
+        return WowToolsApp(cfg, config_dir=cfg.path.parent, check_updates=False, detect=lambda: [],
+                           tool_options={"wtf-cleaner": {"wow_check": lambda: list(running),
+                                                         "locker_check": lambda: list(lockers)}})
+
+    async def enter_tool(self, app, pilot):
+        """The menu is the first screen; Enter opens the only tool, the WTF Cleaner."""
+        await pilot.pause()
+        self.assertIsInstance(app.screen, ToolMenuScreen)
+        await pilot.press("enter")
+        await pilot.pause()
 
     async def open_review(self, app, pilot):
-        await pilot.pause()
+        await self.enter_tool(app, pilot)
         self.assertIsInstance(app.screen, FlavorScreen)
         await pilot.press("enter")
         await pilot.pause()
@@ -164,7 +175,7 @@ class ReviewFlowTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
-            self.cfg.set("wtf_cleaner", "backup_before_delete", False)
+            app.flow.tool_cfg.set("wtf_cleaner", "backup_before_delete", False)
             await pilot.press("c")
             await pilot.pause()
             self.assertIsInstance(app.screen, ConfirmScreen)
@@ -307,7 +318,7 @@ class RecoveryDialogTest(AppTestCase):
             encoding="utf-8")
 
     async def open_recovery(self, app, pilot):
-        await pilot.pause()
+        await self.enter_tool(app, pilot)
         await pilot.press("enter")  # flavor
         await pilot.pause()
         await pilot.press("enter")  # all accounts
@@ -360,7 +371,7 @@ class AccountScopeFlowTest(AppTestCase):
     async def test_account_screen_scopes_the_review(self):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
-            await pilot.pause()
+            await self.enter_tool(app, pilot)
             self.assertIsInstance(app.screen, FlavorScreen)
             await pilot.press("enter")
             await pilot.pause()
@@ -375,7 +386,7 @@ class AccountScopeFlowTest(AppTestCase):
             self.assertTrue(review.proposal.items)
             self.assertEqual({i.account for i in review.proposal.items}, {"ACCT2"})
             self.assertIn("Retail · ACCT2", review.sub_title)
-        self.assertEqual(load_settings(Config(self.cfg.path).load()).last_account, "ACCT2")
+        self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).last_account, "ACCT2")
 
     async def test_all_accounts_scope_in_sub_title(self):
         app = self.make_app()
@@ -388,7 +399,7 @@ class AccountScopeFlowTest(AppTestCase):
     async def test_escape_on_account_screen_goes_back_to_flavors(self):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
-            await pilot.pause()
+            await self.enter_tool(app, pilot)
             await pilot.press("enter")
             await pilot.pause()
             self.assertIsInstance(app.screen, AccountScreen)
@@ -401,7 +412,7 @@ class AccountScopeFlowTest(AppTestCase):
         self.cfg.save()
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
-            await pilot.pause()
+            await self.enter_tool(app, pilot)
             self.assertIsInstance(app.screen, FlavorScreen)
             await pilot.press("enter")
             await pilot.pause()
@@ -415,10 +426,10 @@ class AccountScopeFlowTest(AppTestCase):
 
 class FirstRunTest(AppTestCase):
     async def test_setup_then_settings_then_flavor(self):
-        cfg = Config(self.tmp / "fresh.cfg")
+        cfg = Config(self.tmp / "fresh" / "wow-tools.cfg")
         app = self.make_app(cfg=cfg)
         async with app.run_test(size=SIZE) as pilot:
-            await pilot.pause()
+            await self.enter_tool(app, pilot)
             self.assertIsInstance(app.screen, SetupScreen)
             app.screen.query_one("#wow_path", Input).value = str(self.root)
             await pilot.click("#save")
@@ -428,15 +439,16 @@ class FirstRunTest(AppTestCase):
             await pilot.click("#save")
             await pilot.pause()
             self.assertIsInstance(app.screen, FlavorScreen)
-        saved = Config(cfg.path).load()
-        self.assertEqual(saved.wow_path, self.root)
+        self.assertEqual(Config(cfg.path).load().wow_path, self.root)
+        saved = Config(cfg.path.parent / "wtf-cleaner.cfg").load()  # the tool's own file
         self.assertEqual(saved.get("wtf_cleaner", "max_age_days"), "30")
+        self.assertIsNone(Config(cfg.path).load().get("wtf_cleaner", "max_age_days"))
 
     async def test_settings_rejects_bad_max_age(self):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await pilot.pause()
-            screen = CleanerSettingsScreen(self.cfg, source="settings")
+            screen = CleanerSettingsScreen(self.tool_cfg, self.root, source="settings")
             app.push_screen(screen)
             await pilot.pause()
             screen.query_one("#max_age", Input).value = "0"
@@ -450,7 +462,7 @@ class FirstRunTest(AppTestCase):
         target = self.tmp / "my backups"
         async with app.run_test(size=SIZE) as pilot:
             await pilot.pause()
-            screen = CleanerSettingsScreen(self.cfg, source="settings")
+            screen = CleanerSettingsScreen(self.tool_cfg, self.root, source="settings")
             app.push_screen(screen)
             await pilot.pause()
             self.assertEqual(screen.query_one("#backup_dir", Input).value, str(self.backup_dir))
@@ -458,7 +470,7 @@ class FirstRunTest(AppTestCase):
             await pilot.click("#save")
             await pilot.pause()
             self.assertIsNot(app.screen, screen)
-        self.assertEqual(load_settings(Config(self.cfg.path).load()).backup_dir, target)
+        self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).backup_dir, target)
 
 
 class KeyboardNavigationTest(AppTestCase):
@@ -558,7 +570,7 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertTrue(screen.query(ButtonRow))
             self.assertTrue(screen.query(NavHint))
             self.assertEqual(screen.focused.id, "review")
-            await pilot.press("right", "right")
+            await pilot.press("right", "right", "right")
             self.assertEqual(screen.focused.id, "quit")
 
     async def test_real_clean_result_summary(self):
@@ -579,10 +591,10 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertEqual(rows["Post-clean check"], "passed")
 
     async def test_setup_and_settings_keyboard_only(self):
-        cfg = Config(self.tmp / "fresh.cfg")
+        cfg = Config(self.tmp / "fresh" / "wow-tools.cfg")
         app = self.make_app(cfg=cfg)
         async with app.run_test(size=SIZE) as pilot:
-            await pilot.pause()
+            await self.enter_tool(app, pilot)
             setup = app.screen
             self.assertIsInstance(setup, SetupScreen)
             self.assertEqual(setup.focused.id, "wow_path")
@@ -614,7 +626,7 @@ class KeyboardNavigationTest(AppTestCase):
             await pilot.press("down", "enter")
             await pilot.pause()
             self.assertIsInstance(app.screen, FlavorScreen)
-        saved = load_settings(Config(cfg.path).load())
+        saved = load_settings(Config(cfg.path.parent / "wtf-cleaner.cfg").load())
         self.assertFalse(saved.backup_before_delete)
         self.assertEqual(Config(cfg.path).load().wow_path, self.root)
 

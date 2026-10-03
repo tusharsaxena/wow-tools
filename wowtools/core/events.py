@@ -37,8 +37,11 @@ class UnknownEventError(KeyError):
 CORE_EVENTS: dict[str, EventSpec] = {
     "session.start": EventSpec("info", "The launcher or a tool started."),
     "session.end": EventSpec("info", "The process is exiting."),
-    "config.created": EventSpec("info", "wow-tools.cfg was written for the first time."),
+    "config.created": EventSpec("info", "A config file in config/ was written for the first time."),
     "config.changed": EventSpec("info", "A config value changed, or was overridden for one run."),
+    "config.migrated": EventSpec("info", "The old shared wow-tools.cfg was split into config/ (one file per tool)."),
+    "lock.conflict": EventSpec("warning", "Another copy of Ka0s WoW Tools appears to be running (its lock file exists)."),
+    "lock.overridden": EventSpec("warning", "The user took over an existing lock file and carried on."),
     "ui.selection": EventSpec("info", "The user made a choice in the TUI or CLI."),
     "ui.item_toggled": EventSpec("debug", "The user ticked or unticked a single item."),
     "update.checked": EventSpec("debug", "The GitHub release check ran or was throttled."),

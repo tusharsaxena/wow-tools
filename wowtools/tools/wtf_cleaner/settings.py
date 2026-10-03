@@ -1,4 +1,4 @@
-"""The [wtf_cleaner] section of wow-tools.cfg."""
+"""The WTF Cleaner's own settings: the [wtf_cleaner] section of config/wtf-cleaner.cfg."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -37,11 +37,8 @@ def save_settings(cfg: Config, settings: CleanerSettings, *, source: str = "sett
     cfg.save()
 
 
-def resolve_backup_dir(cfg: Config, settings: CleanerSettings, override: Path | None = None) -> Path | None:
-    """Where backup zips go: the override, else the saved setting, else <WoW folder>/wow-tools/wtf-cleaner."""
-    if override is not None:
-        return override
+def resolve_backup_dir(settings: CleanerSettings, wow_path: Path | None) -> Path | None:
+    """Where backup zips go: the saved setting, else <WoW folder>/wow-tools/wtf-cleaner."""
     if settings.backup_dir is not None:
         return settings.backup_dir
-    wow = cfg.wow_path
-    return wow / DEFAULT_BACKUP_SUBDIR if wow is not None else None
+    return wow_path / DEFAULT_BACKUP_SUBDIR if wow_path is not None else None

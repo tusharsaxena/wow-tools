@@ -1,4 +1,6 @@
 wow-tools.cfg
+config/
+wow-tools.lock
 logs/
 __pycache__/
 *.pyc

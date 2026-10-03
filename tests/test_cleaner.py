@@ -12,7 +12,6 @@ from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.tools.wtf_cleaner import cleaner as cleaner_module
 from wowtools.tools.wtf_cleaner.cleaner import CleanError, execute
-from wowtools.tools.wtf_cleaner.report import format_result_text, result_to_dict
 from wowtools.tools.wtf_cleaner.rules import Criteria, ProposalItem, evaluate
 from wowtools.tools.wtf_cleaner.safety import MARKER_NAME
 from wowtools.tools.wtf_cleaner.scanner import SVFile, scan
@@ -87,8 +86,6 @@ class CleanerTest(unittest.TestCase):
         self.assertEqual(len(created), 1)
         self.assertIs(created[0]["dry_run"], True)
         self.assertNotIn("backup.would_create", [r["event"] for r in records])
-        text = format_result_text(result)
-        self.assertIn("DRY RUN: backup written, nothing was deleted.", text)
 
     def test_dry_run_without_backup_writes_nothing(self):
         before = snapshot(self.root)
@@ -98,7 +95,6 @@ class CleanerTest(unittest.TestCase):
         self.assertFalse(self.backup_dir.exists())
         self.assertIsNone(result.backup_path)
         self.assertEqual(len(result.would_delete), 8)
-        self.assertIn("DRY RUN: nothing was deleted (backup is off).", format_result_text(result))
 
     def test_changed_and_missing_files_are_skipped(self):
         (self.sv / "Uninstalled.lua").write_text("written by WoW after the scan, longer than before")
@@ -174,14 +170,6 @@ class CleanerTest(unittest.TestCase):
         completed = [r for r in records if r["event"] == "clean.completed"][0]
         self.assertEqual(completed["level"], "warning")
         self.assertIn("sv.failed", [r["event"] for r in records])
-
-    def test_result_dict(self):
-        result = execute(self.proposal.items, self.retail, dry_run=True, backup=True,
-                         backup_dir=self.backup_dir, now=WHEN)
-        data = result_to_dict(result)
-        self.assertTrue(data["dry_run"])
-        self.assertEqual(data["counts"]["would_delete"], 8)
-        self.assertEqual(len(data["outcomes"]), 8)
 
 
 class SafetySnapshotCleanTest(unittest.TestCase):
@@ -413,8 +401,6 @@ class LockAndCheckTest(unittest.TestCase):
         names = [r["event"] for r in records]
         self.assertIn("snapshot.kept", names)
         self.assertNotIn("snapshot.removed", names)
-        self.assertTrue(result_to_dict(result)["snapshot_kept"])
-        self.assertIn("safety snapshot was kept", format_result_text(result))
 
     def test_check_that_cannot_run_keeps_the_snapshot(self):
         with patch.object(cleaner_module, "check_clean", return_value=["the check could not run: boom"]):

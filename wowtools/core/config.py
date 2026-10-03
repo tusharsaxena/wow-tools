@@ -1,6 +1,7 @@
-"""wow-tools.cfg: one INI file in the repo root shared by every tool.
+"""Config files in config/: one for the suite and one per tool.
 
-[general] belongs to the suite; each tool owns one section named after it (e.g. [wtf_cleaner]).
+config/wow-tools.cfg holds [general] (WoW folder, updates, logging), shared by every tool. Each tool keeps its own
+settings in config/<tool>.cfg, in one section named after it (e.g. [wtf_cleaner] in config/wtf-cleaner.cfg).
 Unknown keys are preserved. Bad values fall back to defaults instead of failing.
 """
 from __future__ import annotations
@@ -14,14 +15,56 @@ from wowtools.core.bootstrap import REPO_ROOT
 from wowtools.core.events import LEVELS, log_event
 from wowtools.core.paths import to_native, to_stored
 
-DEFAULT_CONFIG_PATH = REPO_ROOT / "wow-tools.cfg"
+CONFIG_DIR = REPO_ROOT / "config"
+SUITE_CONFIG_NAME = "wow-tools.cfg"
+DEFAULT_CONFIG_PATH = CONFIG_DIR / SUITE_CONFIG_NAME
+LEGACY_CONFIG_PATH = REPO_ROOT / "wow-tools.cfg"  # the single shared file used before config/
 GENERAL = "general"
+# [general] keys that nothing reads any more; dropped when a legacy config is migrated.
+RETIRED_GENERAL_KEYS = ("backup_dir",)
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 
 
 class ConfigError(Exception):
-    """wow-tools.cfg exists but cannot be read."""
+    """A config file exists but cannot be read."""
+
+
+def tool_config_path(tool: str, config_dir: Path = CONFIG_DIR) -> Path:
+    """config/<tool>.cfg, e.g. config/wtf-cleaner.cfg."""
+    return config_dir / f"{tool}.cfg"
+
+
+def migrate_legacy_config(legacy: Path, config_dir: Path, tool_sections: dict[str, str]) -> list[Path]:
+    """Split the old shared wow-tools.cfg into config/: [general] to wow-tools.cfg, and each tool's section
+    (tool_sections maps section -> tool name) to config/<tool>.cfg. Other sections stay with [general].
+
+    Runs only when the legacy file exists and config/wow-tools.cfg does not. The legacy file is removed once
+    every new file is written. Returns the files written ([] if there was nothing to do). Raises ConfigError if
+    the legacy file cannot be read, or OSError if a new file cannot be written (the legacy file is then kept)."""
+    target = config_dir / SUITE_CONFIG_NAME
+    if not legacy.is_file() or target.exists():
+        return []
+    old = Config(legacy).load()
+    files: dict[Path, configparser.ConfigParser] = {}
+    for section in old._parser.sections():
+        tool = tool_sections.get(section)
+        path = tool_config_path(tool, config_dir) if tool else target
+        parser = files.setdefault(path, configparser.ConfigParser(interpolation=None))
+        parser.add_section(section)
+        for key, value in old._parser.items(section, raw=True):
+            if section == GENERAL and key in RETIRED_GENERAL_KEYS:
+                continue
+            parser.set(section, key, value)
+    files.setdefault(target, configparser.ConfigParser(interpolation=None))
+    config_dir.mkdir(parents=True, exist_ok=True)
+    for path, parser in files.items():
+        partial = path.with_name(path.name + ".partial")
+        with partial.open("w", encoding="utf-8") as handle:
+            parser.write(handle)
+        partial.replace(path)
+    legacy.unlink()
+    return sorted(files)
 
 
 def _to_text(value: Any) -> str:

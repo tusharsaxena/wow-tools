@@ -2,6 +2,7 @@ import importlib.util
 import unittest
 
 from wowtools.core.bootstrap import REPO_ROOT
+from wowtools.tools import TOOLS
 
 
 def load_generator():
@@ -22,9 +23,13 @@ class DocsTest(unittest.TestCase):
         for name in ("session.start", "config.changed", "sv.deleted", "backup.created", "update.available"):
             self.assertIn(f"`{name}`", text)
 
-    def test_readme_mentions_every_tool_and_cli_flag(self):
+    def test_readme_covers_the_entry_point_tools_and_safety(self):
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-        for needle in ("wtf-cleaner", "--dry-run", "--clean", "--no-backup", "--criteria", "--max-age",
-                       "--json", "python -m wowtools update", "stray_copies", "Restoring a backup",
-                       "--account", "wtf-snapshot", "Dry run"):
+        for tool in TOOLS.values():
+            self.assertIn(tool.title, readme)
+        for needle in ("wow-tools.cmd", "./wow-tools.sh", "wow-tools update", "config\\wtf-cleaner.cfg",
+                       "wow-tools.lock", "Override and continue", "stray_copies", "Restoring a backup",
+                       "wtf-snapshot", "Dry run"):
             self.assertIn(needle, readme)
+        for gone in ("wtf-cleaner.cmd", "wtf-cleaner.sh", "--flavor", "python -m wowtools"):
+            self.assertNotIn(gone, readme)

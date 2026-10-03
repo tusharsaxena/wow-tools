@@ -23,7 +23,7 @@ class FlavorScreen(Screen[Optional[Flavor]]):
     FlavorScreen NavHint { padding: 0 2; }
     FlavorScreen OptionList { margin: 1 2; height: auto; max-height: 20; border: tall $primary; }
     """
-    BINDINGS = [Binding("escape", "cancel", "Quit"), *NAV_BINDINGS]
+    BINDINGS = [Binding("escape", "cancel", "Tools"), *NAV_BINDINGS]
 
     def __init__(self, cfg: Config, install: WowInstall) -> None:
         super().__init__()
@@ -36,7 +36,7 @@ class FlavorScreen(Screen[Optional[Flavor]]):
         yield Static("Choose a WoW flavor", classes="title")
         yield OptionList(*[Option(Text(f"{f.display_name}  ({f.folder})"), id=f.folder) for f in self.flavors],
                          id="flavors")
-        yield NavHint("↑↓ choose · Enter select · Esc quit")
+        yield NavHint("↑↓ choose · Enter select · Esc back to tools")
         yield BrandBar()
         yield Footer()
 

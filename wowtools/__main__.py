@@ -1,4 +1,4 @@
-"""Suite entry point: python -m wowtools [tool] [args]."""
+"""Entry point used by wow-tools.sh / wow-tools.cmd: python -m wowtools [update|--version|--help]."""
 from __future__ import annotations
 
 import sys

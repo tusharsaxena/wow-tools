@@ -1,4 +1,3 @@
-import json
 import os
 import tempfile
 import unittest
@@ -8,7 +7,7 @@ from tests.fixtures import NOW, build_wow_tree
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
-from wowtools.tools.wtf_cleaner.report import format_proposal_text, format_size, proposal_to_dict
+from wowtools.tools.wtf_cleaner.report import format_size
 from wowtools.tools.wtf_cleaner.rules import Criteria, criterion_counts, evaluate
 from wowtools.tools.wtf_cleaner.scanner import scan
 from wowtools.tools.wtf_cleaner.settings import (DEFAULT_BACKUP_SUBDIR, SECTION, CleanerSettings, load_settings,
@@ -127,19 +126,15 @@ class SettingsTest(unittest.TestCase):
 
 
     def test_resolve_backup_dir_default(self):
-        cfg = Config(self.path)
-        cfg.set("general", "wow_path", "/games/wow")
         self.assertEqual(DEFAULT_BACKUP_SUBDIR, Path("wow-tools") / "wtf-cleaner")
-        self.assertEqual(resolve_backup_dir(cfg, load_settings(cfg)), Path("/games/wow") / "wow-tools" / "wtf-cleaner")
-        self.assertIsNone(resolve_backup_dir(Config(self.path), CleanerSettings()))
+        self.assertEqual(resolve_backup_dir(load_settings(Config(self.path)), Path("/games/wow")),
+                         Path("/games/wow") / "wow-tools" / "wtf-cleaner")
+        self.assertIsNone(resolve_backup_dir(CleanerSettings(), None))
 
-    def test_resolve_backup_dir_setting_and_override(self):
+    def test_resolve_backup_dir_setting(self):
         cfg = Config(self.path)
-        cfg.set("general", "wow_path", "/games/wow")
         cfg.set_path(SECTION, "backup_dir", Path("/elsewhere/bk"))
-        settings = load_settings(cfg)
-        self.assertEqual(resolve_backup_dir(cfg, settings), Path("/elsewhere/bk"))
-        self.assertEqual(resolve_backup_dir(cfg, settings, Path("/cli/bk")), Path("/cli/bk"))
+        self.assertEqual(resolve_backup_dir(load_settings(cfg), Path("/games/wow")), Path("/elsewhere/bk"))
 
     def test_settings_round_trip_backup_dir(self):
         cfg = Config(self.path)
@@ -165,11 +160,6 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(Config(self.path).load().get(SECTION, "last_account"), "")
         self.assertIsNone(load_settings(Config(self.path).load()).last_account)
 
-    def test_general_backup_dir_is_ignored(self):
-        self.path.write_text("[general]\nwow_path = /games/wow\nbackup_dir = /x\n", encoding="utf-8")
-        cfg = Config(self.path).load()
-        self.assertEqual(resolve_backup_dir(cfg, load_settings(cfg)), Path("/games/wow") / "wow-tools" / "wtf-cleaner")
-
 
 class ReportTest(unittest.TestCase):
     def setUp(self):
@@ -182,33 +172,3 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(format_size(1023), "1023 B")
         self.assertEqual(format_size(1536), "1.5 KB")
         self.assertEqual(format_size(5 * 1024 * 1024), "5.0 MB")
-
-    def test_proposal_text_and_json(self):
-        proposal = evaluate(scan(self.retail), Criteria(), now=NOW)
-        text = format_proposal_text(proposal, self.retail, now=NOW)
-        self.assertIn("ACCT1 · account-wide", text)
-        self.assertIn("ACCT1 · Realm1/CharA", text)
-        self.assertIn("Total: 6 items, 8 files", text)
-        data = proposal_to_dict(proposal, self.retail, now=NOW)
-        json.dumps(data)
-        self.assertEqual(data["flavor"], "_retail_")
-        self.assertEqual(data["totals"]["files"], 8)
-        self.assertEqual(len(data["items"]), 6)
-
-    def test_proposal_text_starts_with_scope_line(self):
-        proposal = evaluate(scan(self.retail), Criteria(), now=NOW)
-        text = format_proposal_text(proposal, self.retail, now=NOW)
-        self.assertEqual(text.splitlines()[0], "Scope: Retail (_retail_) · all accounts")
-        scoped = evaluate(scan(self.retail, account="ACCT2"), Criteria(), now=NOW)
-        text = format_proposal_text(scoped, self.retail, account="ACCT2", now=NOW)
-        self.assertEqual(text.splitlines()[0], "Scope: Retail (_retail_) · ACCT2")
-
-    def test_names_with_brackets_survive(self):
-        (self.retail.account_dir / "ACCT1" / "SavedVariables" / "[Weird] Addon.lua").write_text("x")
-        proposal = evaluate(scan(self.retail), Criteria(), now=NOW)
-        self.assertIn("[Weird] Addon", {i.addon for i in proposal.items})
-        self.assertIn("[Weird] Addon", format_proposal_text(proposal, self.retail, now=NOW))
-
-    def test_empty_proposal_text(self):
-        proposal = evaluate(scan(self.retail), Criteria.from_names([]), now=NOW)
-        self.assertIn("Nothing to clean.", format_proposal_text(proposal, self.retail, now=NOW))

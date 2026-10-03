@@ -1,5 +1,5 @@
 @echo off
-rem Ka0s WoW Tools: tool menu, `update`, or any tool by name. Needs Python 3.10+.
+rem Ka0s WoW Tools: the one way in. Opens the tool menu (or `update`). Needs Python 3.10+.
 setlocal
 set "PYTHONPATH=%~dp0;%PYTHONPATH%"
 where py >nul 2>nul

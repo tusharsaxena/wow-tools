@@ -31,7 +31,7 @@ from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, Ka
 ACCENT = "bold #5CC8FF"
 SUCCESS_FALLBACK = "#4CC38A"
 NAV_HINT = ("↑↓/Tab move · ←→ panes and buttons · Space tick · Enter/Space press · 1-4 criteria · c clean · "
-            "y dry run · r rescan")
+            "y dry run · r rescan · t tools")
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -158,7 +158,8 @@ class ResultScreen(Screen[str]):
     ResultScreen NavHint { padding: 0 2; margin-top: 0; }
     """
     BINDINGS = [Binding("r", "choose('review')", "Rescan"), Binding("f", "choose('flavors')", "Flavors"),
-                Binding("q", "choose('quit')", "Quit"), Binding("escape", "choose('review')", "Back", show=False),
+                Binding("t", "choose('tools')", "Tools"), Binding("q", "choose('quit')", "Quit"),
+                Binding("escape", "choose('review')", "Back", show=False),
                 *NAV_BINDINGS]
 
     def __init__(self, result: CleanResult, flavor: Flavor) -> None:
@@ -176,8 +177,10 @@ class ResultScreen(Screen[str]):
         with ButtonRow(classes="buttons"):
             yield Button("Rescan (r)", variant="primary", id="review")
             yield Button("Other flavor (f)", id="flavors")
+            yield Button("Tools (t)", id="tools")
             yield Button("Quit (q)", id="quit")
-        yield NavHint("↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · r rescan · f other flavor · q quit")
+        yield NavHint("↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · r rescan · f other flavor · "
+                      "t tools · q quit")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -263,6 +266,7 @@ class ReviewScreen(Screen[str]):
         Binding("y", "dry_run", "Dry run"),
         Binding("r", "rescan", "Rescan"),
         Binding("f", "flavors", "Flavors"),
+        Binding("t", "tools", "Tools"),
         Binding("q", "quit_tool", "Quit"),
         Binding("1", "criterion(0)", CRITERION_SHORT["not_installed"], show=False),
         Binding("2", "criterion(1)", CRITERION_SHORT["not_enabled"], show=False),
@@ -273,16 +277,17 @@ class ReviewScreen(Screen[str]):
         *NAV_BINDINGS,
     ]
 
-    def __init__(self, cfg: Config, flavor: Flavor, *, account: str | None = None,
+    def __init__(self, cfg: Config, tool_cfg: Config, flavor: Flavor, *, account: str | None = None,
                  wow_check: Callable[[], list[str] | None] | None = None,
                  locker_check: Callable[[], list[str] | None] | None = None) -> None:
         super().__init__()
-        self.cfg = cfg
+        self.cfg = cfg  # the suite config (WoW folder)
+        self.tool_cfg = tool_cfg  # config/wtf-cleaner.cfg
         self.flavor = flavor
         self.account = account or None
         self.wow_check = wow_check or wow_check_for(flavor)
         self.locker_check = locker_check or running_wtf_lockers
-        self.settings = load_settings(cfg)
+        self.settings = load_settings(tool_cfg)
         self.criteria = self.settings.criteria.copy()
         self.scan_result: ScanResult | None = None
         self.proposal = None
@@ -344,7 +349,7 @@ class ReviewScreen(Screen[str]):
 
     # --- recovery notice (spec A.4.5: never restores on its own) -------------------------------------
     def _check_recovery(self) -> None:
-        backup_dir = resolve_backup_dir(self.cfg, self.settings)
+        backup_dir = resolve_backup_dir(self.settings, self.cfg.wow_path)
         marker = read_marker(backup_dir)
         if marker is None or backup_dir is None:
             return
@@ -357,7 +362,7 @@ class ReviewScreen(Screen[str]):
 
     # --- scanning ------------------------------------------------------------------------------
     def action_rescan(self) -> None:
-        self.settings = load_settings(self.cfg)
+        self.settings = load_settings(self.tool_cfg)
         self.scan_result = None
         self._show_scan_progress(True)
         self.run_worker(self._scan_worker, thread=True, exclusive=True, group="scan")
@@ -619,6 +624,10 @@ class ReviewScreen(Screen[str]):
         if not self.app.busy:
             self.dismiss("flavors")
 
+    def action_tools(self) -> None:
+        if not self.app.busy:
+            self.dismiss("tools")
+
     def action_quit_tool(self) -> None:
         if not self.app.busy:
             self.dismiss("quit")
@@ -648,9 +657,9 @@ class ReviewScreen(Screen[str]):
         running = self.wow_check()
         if running:
             log_event("wow.running_warning", executables=running)
-        self.settings = load_settings(self.cfg)
+        self.settings = load_settings(self.tool_cfg)
         backup = self.settings.backup_before_delete
-        backup_dir = resolve_backup_dir(self.cfg, self.settings)
+        backup_dir = resolve_backup_dir(self.settings, self.cfg.wow_path)
         files = sum(len(i.files) for i in selection)
         size = format_size(sum(i.total_size for i in selection))
         lines = [f"{len(selection)} addon groups, {files} files, {size}."]
@@ -718,8 +727,8 @@ class ReviewScreen(Screen[str]):
         self.app.push_screen(ResultScreen(result, self.flavor), self._after_result)
 
     def _after_result(self, choice: str | None) -> None:
-        if choice == "flavors":
-            self.dismiss("flavors")
+        if choice in ("flavors", "tools"):
+            self.dismiss(choice)
         elif choice == "quit":
             self.dismiss("quit")
         else:

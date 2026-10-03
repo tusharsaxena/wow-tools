@@ -49,7 +49,9 @@ class ZipUpdateTest(unittest.TestCase):
         self.tmp = Path(tmp.name)
         self.root = self.tmp / "suite"
         make_install(self.root, "0.1.0")
-        (self.root / "wow-tools.cfg").write_text("[general]\n")
+        (self.root / "config").mkdir()
+        (self.root / "config" / "wow-tools.cfg").write_text("[general]\n")
+        (self.root / "wtf-cleaner.sh").write_text("old wrapper\n")
         (self.root / "logs").mkdir()
         (self.root / "logs" / "events-2026-09-27.jsonl").write_text("{}\n")
         (self.root / "my-notes.txt").write_text("mine")
@@ -76,7 +78,9 @@ class ZipUpdateTest(unittest.TestCase):
         self.assertEqual((self.root / "README.md").read_text(), "readme 0.2.0\n")
         self.assertFalse((self.root / "docs" / "only-in-0.1.0.md").exists())
         self.assertTrue((self.root / "scripts" / "x.py").exists())
-        self.assertEqual((self.root / "wow-tools.cfg").read_text(), "[general]\n")
+        self.assertEqual((self.root / "config" / "wow-tools.cfg").read_text(), "[general]\n")
+        self.assertFalse((self.root / "wtf-cleaner.sh").exists())  # retired wrapper removed, but backed up
+        self.assertTrue((self.root / ".update-backup" / "0.1.0" / "wtf-cleaner.sh").exists())
         self.assertTrue((self.root / "logs" / "events-2026-09-27.jsonl").exists())
         self.assertEqual((self.root / "my-notes.txt").read_text(), "mine")
         self.assertIn("0.1.0", (self.root / ".update-backup" / "0.1.0" / "wowtools" / "__init__.py").read_text())

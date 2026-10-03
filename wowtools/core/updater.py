@@ -8,7 +8,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import threading
 import urllib.error
 import urllib.request
 import zipfile
@@ -113,37 +112,11 @@ def check_for_update(cfg: Config, *, current: str = __version__, now: datetime |
     return None
 
 
-class UpdateCheck:
-    """Run check_for_update in a daemon thread so launch never waits on the network."""
-
-    def __init__(self, cfg: Config, *, check: Callable[[Config], ReleaseInfo | None] = check_for_update) -> None:
-        self.cfg = cfg
-        self.release: ReleaseInfo | None = None
-        self._check = check
-        self._thread = threading.Thread(target=self._run, name="wowtools-update-check", daemon=True)
-
-    def start(self) -> UpdateCheck:
-        self._thread.start()
-        return self
-
-    def _run(self) -> None:
-        try:
-            self.release = self._check(self.cfg)
-        except Exception:
-            self.release = None
-
-    def notice(self, timeout: float = 0.5) -> str | None:
-        self._thread.join(timeout)
-        if self.release is None:
-            return None
-        return (f"Ka0s WoW Tools v{self.release.version} is available (you have v{__version__}). "
-                "Update with: python -m wowtools update")
-
-
 # --- applying an update ---------------------------------------------------------------------
 MANAGED_DIRS = ("wowtools", "vendor", "scripts", "docs")
-MANAGED_FILES = ("wtf-cleaner.cmd", "wtf-cleaner.sh", "wow-tools.cmd", "wow-tools.sh",
-                 "requirements.txt", ".gitattributes")
+MANAGED_FILES = ("wow-tools.cmd", "wow-tools.sh", "requirements.txt", ".gitattributes")
+# Program files earlier versions shipped that no longer exist; a zip update removes them (and backs them up).
+RETIRED_FILES = ("wtf-cleaner.cmd", "wtf-cleaner.sh")
 BACKUP_DIR_NAME = ".update-backup"
 _VERSION_RE = re.compile(r'^__version__\s*=\s*["\']([^"\']+)["\']', re.MULTILINE)
 
@@ -194,7 +167,7 @@ def _download(url: str, dest: Path) -> None:
 
 
 def _managed_names(folder: Path) -> list[str]:
-    names = [name for name in (*MANAGED_DIRS, *MANAGED_FILES) if (folder / name).exists()]
+    names = [name for name in (*MANAGED_DIRS, *MANAGED_FILES, *RETIRED_FILES) if (folder / name).exists()]
     names += sorted(p.name for p in folder.glob("*.md") if p.is_file())
     return names
 
@@ -273,7 +246,7 @@ def run_update_command(argv: list[str], cfg: Config, *, stdout=None, stderr=None
                        check=check_for_update, apply=apply_update) -> int:
     stdout = stdout or sys.stdout
     stderr = stderr or sys.stderr
-    parser = argparse.ArgumentParser(prog="python -m wowtools update",
+    parser = argparse.ArgumentParser(prog="wow-tools update",
                                      description="Check for and apply Ka0s WoW Tools updates.")
     parser.add_argument("--check", action="store_true", help="only report whether an update is available")
     try:
@@ -290,7 +263,7 @@ def run_update_command(argv: list[str], cfg: Config, *, stdout=None, stderr=None
         return 0
     if args.check:
         print(f"Update available: v{release.version} (you have v{__version__}). "
-              "Run: python -m wowtools update", file=stdout)
+              "Run: wow-tools update", file=stdout)
         return 10
     log_event("ui.selection", screen="cli", control="update", value="accepted")
     try:

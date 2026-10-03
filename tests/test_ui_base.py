@@ -15,7 +15,8 @@ from wowtools.ui.branding import BrandBar
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
-from wowtools.ui.tool_picker import ToolPickerApp
+from wowtools.tools import TOOLS
+from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.widgets import ButtonRow, NavHint
 
 
@@ -40,24 +41,31 @@ class UiTestCase(unittest.IsolatedAsyncioTestCase):
         self.cfg = Config(self.tmp / "wow-tools.cfg")
 
 
-class ToolPickerTest(UiTestCase):
-    async def test_theme_branding_and_choice(self):
-        app = ToolPickerApp(self.cfg, check_updates=False)
+class SuiteAppBaseTest(UiTestCase):
+    def make_app(self):
+        return WowToolsApp(self.cfg, config_dir=self.tmp, check_updates=False, detect=lambda: [])
+
+    async def test_theme_branding_and_menu_first(self):
+        app = self.make_app()
         async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
             self.assertEqual(app.theme, "ka0s")
             self.assertEqual(app.title, "Ka0s · WoW Tools")
-            self.assertIn("Ka0s WoW Tools v0.1.0", app.query_one(BrandBar).text)
-            await pilot.press("enter")
-        self.assertEqual(app.return_value, "wtf-cleaner")
+            self.assertIsInstance(app.screen, ToolMenuScreen)
+            self.assertIn("Ka0s WoW Tools v0.1.0", app.screen.query_one(BrandBar).text)
+            options = app.screen.query_one("#tools", OptionList)
+            self.assertEqual([options.get_option_at_index(i).id for i in range(options.option_count)],
+                             list(TOOLS))
 
     async def test_update_badge_and_prompt(self):
-        app = ToolPickerApp(self.cfg, check_updates=False)
+        app = self.make_app()
         applied = []
         with patch("wowtools.ui.base.apply_update", side_effect=lambda rel: applied.append(rel) or "Updated"):
             async with app.run_test(size=(120, 40)) as pilot:
+                await pilot.pause()
                 app._update_found(ReleaseInfo.from_version("9.9.9"))
                 await pilot.pause()
-                self.assertIn("v9.9.9 available", app.query_one(BrandBar).text)
+                self.assertIn("v9.9.9 available", app.screen.query_one(BrandBar).text)
                 await pilot.press("u")
                 await pilot.pause()
                 self.assertIsInstance(app.screen, UpdateScreen)
@@ -66,7 +74,7 @@ class ToolPickerTest(UiTestCase):
         self.assertEqual([r.version for r in applied], ["9.9.9"])
 
     async def test_update_blocked_while_busy(self):
-        app = ToolPickerApp(self.cfg, check_updates=False)
+        app = self.make_app()
         async with app.run_test(size=(120, 40)) as pilot:
             app._update_found(ReleaseInfo.from_version("9.9.9"))
             app.busy = True

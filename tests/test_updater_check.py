@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
-from wowtools.core.updater import (ReleaseInfo, UpdateCheck, UpdateError, check_for_update, fetch_latest,
+from wowtools.core.updater import (ReleaseInfo, UpdateError, check_for_update, fetch_latest,
                                    is_newer, parse_version)
 
 NOW = datetime(2026, 9, 27, 12, 0, tzinfo=timezone.utc)
@@ -104,12 +104,3 @@ class CheckTest(unittest.TestCase):
         fresh = Config(self.tmp / "new.cfg")
         check_for_update(fresh, current="0.1.0", now=NOW, fetch=lambda: ReleaseInfo.from_version("0.2.0"))
         self.assertFalse(fresh.path.exists())
-
-    def test_background_check_notice(self):
-        found = UpdateCheck(self.cfg, check=lambda cfg: ReleaseInfo.from_version("9.9.9")).start()
-        self.assertIn("v9.9.9", found.notice(timeout=2))
-        self.assertIsNone(UpdateCheck(self.cfg, check=lambda cfg: None).start().notice(timeout=2))
-
-        def boom(cfg):
-            raise RuntimeError("x")
-        self.assertIsNone(UpdateCheck(self.cfg, check=boom).start().notice(timeout=2))

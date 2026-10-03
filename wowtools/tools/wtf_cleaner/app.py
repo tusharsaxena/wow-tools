@@ -1,8 +1,8 @@
-"""The WTF Cleaner TUI: setup → settings → flavor → review → confirm → result."""
+"""The WTF Cleaner inside the suite app: (first run: settings) → flavor → account → review → confirm → result."""
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -12,7 +12,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Label, Static
 
 from wowtools.core.config import Config
-from wowtools.core.install import Flavor, WowInstall, detect_installs
+from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.paths import to_native, to_stored
 from wowtools.tools.wtf_cleaner.report import CRITERION_LABELS
 from wowtools.tools.wtf_cleaner.review_screen import ReviewScreen
@@ -20,11 +20,13 @@ from wowtools.tools.wtf_cleaner.rules import CRITERIA, Criteria
 from wowtools.tools.wtf_cleaner.settings import (SECTION, CleanerSettings, load_settings, resolve_backup_dir,
                                                  save_settings)
 from wowtools.ui.account_screen import AccountScreen
-from wowtools.ui.base import Ka0sApp
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.flavor_screen import FlavorScreen
-from wowtools.ui.setup_screen import SetupScreen
+from wowtools.ui.tool_flow import ToolFlow
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint
+
+if TYPE_CHECKING:
+    from wowtools.ui.suite_app import WowToolsApp
 
 
 class CleanerSettingsScreen(Screen[bool]):
@@ -38,11 +40,12 @@ class CleanerSettingsScreen(Screen[bool]):
     """
     BINDINGS = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
 
-    def __init__(self, cfg: Config, *, source: str) -> None:
+    def __init__(self, tool_cfg: Config, wow_path: Path | None, *, source: str) -> None:
         super().__init__()
-        self.cfg = cfg
+        self.tool_cfg = tool_cfg
+        self.wow_path = wow_path
         self.source = source
-        self.settings = load_settings(cfg)
+        self.settings = load_settings(tool_cfg)
         self.error_text = ""
 
     def compose(self) -> ComposeResult:
@@ -54,7 +57,7 @@ class CleanerSettingsScreen(Screen[bool]):
             yield Input(str(criteria.max_age_days), type="integer", id="max_age")
             yield Label("Backup folder (leave empty to use <WoW folder>/wow-tools/wtf-cleaner)")
             yield Input(to_stored(self.settings.backup_dir) if self.settings.backup_dir else "",
-                        placeholder=_default_backup_hint(self.cfg), id="backup_dir")
+                        placeholder=_default_backup_hint(self.wow_path), id="backup_dir")
             yield Static("Propose SavedVariables when:", classes="title")
             for name in CRITERIA:
                 yield Ka0sCheckbox(CRITERION_LABELS[name], getattr(criteria, name), id=f"sw_{name}")
@@ -93,64 +96,53 @@ class CleanerSettingsScreen(Screen[bool]):
         criteria = Criteria(**{name: self.query_one(f"#sw_{name}", Ka0sCheckbox).value for name in CRITERIA},
                             max_age_days=days)
         backup_raw = self.query_one("#backup_dir", Input).value.strip()
-        save_settings(self.cfg, CleanerSettings(criteria, self.query_one("#sw_backup", Ka0sCheckbox).value,
-                                                to_native(backup_raw) if backup_raw else None,
-                                                load_settings(self.cfg).last_account),
+        save_settings(self.tool_cfg, CleanerSettings(criteria, self.query_one("#sw_backup", Ka0sCheckbox).value,
+                                                     to_native(backup_raw) if backup_raw else None,
+                                                     load_settings(self.tool_cfg).last_account),
                       source=self.source)
         self.dismiss(True)
 
 
-def _default_backup_hint(cfg: Config) -> str:
-    default = resolve_backup_dir(cfg, CleanerSettings())
+def _default_backup_hint(wow_path: Path | None) -> str:
+    default = resolve_backup_dir(CleanerSettings(), wow_path)
     return to_stored(default) if default is not None else ""
 
 
-class WtfCleanerApp(Ka0sApp):
-    SUB_TITLE = "WTF Cleaner"
-    BINDINGS = [Binding("s", "settings", "Settings")]
+class WtfCleanerFlow(ToolFlow):
+    """The cleaner's own workflow. Its settings live in config/wtf-cleaner.cfg; the WoW folder and the last
+    flavor are shared suite settings."""
 
-    def __init__(self, cfg: Config, *, check_updates: bool = True,
+    def __init__(self, app: WowToolsApp, tool_cfg: Config, *,
                  wow_check: Callable[[], list[str] | None] | None = None,
-                 locker_check: Callable[[], list[str] | None] | None = None,
-                 detect: Callable[[], list[Path]] = detect_installs) -> None:
-        super().__init__(cfg, check_updates=check_updates)
+                 locker_check: Callable[[], list[str] | None] | None = None) -> None:
+        super().__init__(app, tool_cfg)
         self._wow_check = wow_check
         self._locker_check = locker_check
-        self._detect = detect
 
-    def after_mount(self) -> None:
-        if self._install() is None:
-            self.push_screen(SetupScreen(self.cfg, first_run=True, detect=self._detect), self._after_setup)
+    def start(self) -> None:
+        self.require_install(self._ready)
+
+    def _ready(self, install: WowInstall, first_run: bool) -> None:
+        if not self.tool_cfg.exists:  # first time this tool is opened: ask for its settings once
+            self.app.push_screen(CleanerSettingsScreen(self.tool_cfg, self.cfg.wow_path, source="wizard"),
+                                 lambda _: self._pick_flavor())
         else:
             self._pick_flavor()
 
-    def _install(self) -> WowInstall | None:
-        path = self.cfg.wow_path
-        if path is None:
-            return None
-        install = WowInstall(path)
-        return install if install.is_valid() else None
-
-    def _after_setup(self, ok: bool | None) -> None:
-        if not ok:
-            self.exit()
-            return
-        self.push_screen(CleanerSettingsScreen(self.cfg, source="wizard"), lambda _: self._pick_flavor())
-
     def _pick_flavor(self) -> None:
-        install = self._install()
+        install = self.install()
         if install is None:
-            self.push_screen(SetupScreen(self.cfg, first_run=True, detect=self._detect), self._after_setup)
+            self.start()
             return
-        self.push_screen(FlavorScreen(self.cfg, install), self._after_flavor)
+        self.app.push_screen(FlavorScreen(self.cfg, install), self._after_flavor)
 
     def _after_flavor(self, flavor: Flavor | None) -> None:
         if flavor is None:
-            self.exit()
+            self.close()
             return
         if len(flavor.accounts()) > 1:
-            self.push_screen(AccountScreen(self.cfg, flavor, load_settings(self.cfg).last_account),
-                             lambda choice: self._after_account(flavor, choice))
+            self.app.push_screen(AccountScreen(self.cfg, flavor, load_settings(self.tool_cfg).last_account),
+                                 lambda choice: self._after_account(flavor, choice))
         else:
             self._review(flavor, None)
 
@@ -159,29 +151,35 @@ class WtfCleanerApp(Ka0sApp):
             self._pick_flavor()
             return
         account = choice or None
-        if self.cfg.get(SECTION, "last_account", "") != (account or ""):
-            self.cfg.set(SECTION, "last_account", account or "")
-            self.cfg.save_if_exists()
+        if self.tool_cfg.get(SECTION, "last_account", "") != (account or ""):
+            self.tool_cfg.set(SECTION, "last_account", account or "")
+            self.tool_cfg.save_if_exists()
         self._review(flavor, account)
 
     def _review(self, flavor: Flavor, account: str | None) -> None:
-        self.push_screen(ReviewScreen(self.cfg, flavor, account=account, wow_check=self._wow_check,
-                                     locker_check=self._locker_check),
-                         self._after_review)
+        self.app.push_screen(ReviewScreen(self.cfg, self.tool_cfg, flavor, account=account,
+                                          wow_check=self._wow_check, locker_check=self._locker_check),
+                             self._after_review)
 
     def _after_review(self, choice: str | None) -> None:
         if choice == "flavors":
             self._pick_flavor()
+        elif choice == "tools":
+            self.close()
         else:
-            self.exit()
+            self.app.exit()
 
-    def action_settings(self) -> None:
-        if self.busy or isinstance(self.screen, (SetupScreen, CleanerSettingsScreen)):
+    def open_settings(self) -> None:
+        """`s`: the shared WoW folder first, then this tool's own settings."""
+        if isinstance(self.app.screen, CleanerSettingsScreen):
             return
-        self.push_screen(SetupScreen(self.cfg, first_run=False, detect=self._detect),
-                         lambda _: self.push_screen(CleanerSettingsScreen(self.cfg, source="settings"),
-                                                    self._settings_done))
+        self.app.open_general_settings(
+            lambda _: self.app.push_screen(CleanerSettingsScreen(self.tool_cfg, self.cfg.wow_path, source="settings"),
+                                           self._settings_done))
 
     def _settings_done(self, saved: bool | None) -> None:
         if saved:
-            self.notify("Settings saved. Press r on the review screen to rescan with them.")
+            self.app.notify("Settings saved. Press r on the review screen to rescan with them.")
+
+
+FLOW = WtfCleanerFlow
