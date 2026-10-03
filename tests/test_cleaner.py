@@ -453,6 +453,27 @@ class ZipLayoutTest(unittest.TestCase):
         self.assertEqual(len(result.pruned), 4)
         self.assertIn("snapshot.pruned", [r["event"] for r in records])
 
+    def test_a_clean_that_deletes_nothing_prunes_no_backups(self):
+        # An earlier clean's Undo may need its WTF backup; a run whose every delete failed must not prune it.
+        folder = self.backup_dir / "backup"
+        folder.mkdir(parents=True)
+        (folder / "backup-retail-20260901-120000.zip").write_bytes(b"old")
+
+        original = Path.unlink
+
+        def locked(path, *args, **kwargs):
+            if "SavedVariables" in path.parts:
+                raise PermissionError("locked by another program")
+            return original(path, *args, **kwargs)
+
+        with patch.object(Path, "unlink", locked):
+            result = execute(self.proposal.items, self.retail, dry_run=False, backup=False,
+                             backup_dir=self.backup_dir, now=WHEN, keep_backups=1)
+        self.assertEqual(result.deleted, [])
+        self.assertTrue(result.failed)
+        self.assertEqual(result.pruned, [])
+        self.assertTrue((folder / "backup-retail-20260901-120000.zip").exists())
+
     def test_dry_run_prunes_nothing(self):
         folder = self.backup_dir / "backup"
         folder.mkdir(parents=True)

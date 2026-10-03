@@ -161,6 +161,28 @@ class SuiteTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("screenshots.cfg", err)
         self.assertEqual(FakeApp.made, [])
+        self.assertFalse(self.lock_path.exists())  # the lock taken first is released again
+
+    def test_renames_wait_while_another_copy_holds_the_lock(self):
+        self.lock_path.write_text(json.dumps({"pid": 1, "host": "pc", "started": "", "platform": "", "token": "x"}))
+        (self.config_dir / "screenshots.cfg").write_text("[screenshots]\ncopy_mode = true\n", encoding="utf-8")
+        _write_file(self.log_dir / "screenshots" / "events-2026-10-01.log", "old")
+        _write_file(self.root / "wow-tools" / "screenshots" / "journal" / "journal-1.jsonl", "j")
+        code, _, _ = self.run_suite([])
+        self.assertEqual(code, 0)
+        self.assertTrue((self.config_dir / "screenshots.cfg").is_file())
+        self.assertFalse((self.config_dir / "screenshot-organizer.cfg").exists())
+        self.assertTrue((self.log_dir / "screenshots" / "events-2026-10-01.log").is_file())
+        self.assertTrue((self.root / "wow-tools" / "screenshots" / "journal" / "journal-1.jsonl").is_file())
+        events_seen = {r["event"] for r in self.records()}
+        self.assertIn("lock.conflict", events_seen)
+        self.assertFalse({"config.renamed", "folder.renamed"} & events_seen)
+        self.assertEqual(json.loads(self.lock_path.read_text())["token"], "x")
+        # Once that copy is gone, the next start moves everything.
+        self.lock_path.unlink()
+        self.run_suite([])
+        self.assertFalse((self.config_dir / "screenshots.cfg").exists())
+        self.assertTrue((self.root / "wow-tools" / "screenshot-organizer" / "journal" / "journal-1.jsonl").is_file())
 
 
 def _write_file(path, text):

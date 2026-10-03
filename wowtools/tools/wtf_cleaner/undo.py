@@ -4,7 +4,8 @@ Entries are restored newest first. A file that exists again is left alone. Other
 create, from the cleaned-files zip (by its name in that zip), or from the flavor's WTF backup by rel when there is
 no zip or the zip lacks it; the restored size must match the entry. Undo never overwrites, never deletes anything
 but a restore it had just started and could not finish, and never writes outside the flavors' WTF folders (rel must
-start with WTF/ and contain no ..). The journal is marked undone afterwards.
+start with WTF/ and contain no ..). The journal is marked undone afterwards, unless nothing was restored and something failed
+(a missing source, e.g. an unplugged drive), so it can be tried again.
 """
 from __future__ import annotations
 
@@ -44,6 +45,7 @@ class UndoResult:
     flavors: list[str]
     outcomes: list[UndoOutcome] = field(default_factory=list)
     dry_run: bool = False  # never a dry run: lets the result screen treat it like a clean result
+    marked_undone: bool = False  # False when nothing was restored and something failed: it can be tried again
 
     def _with(self, status: str) -> list[UndoOutcome]:
         return [o for o in self.outcomes if o.status == status]
@@ -217,9 +219,14 @@ def undo_clean(journal_path: Path, *, wow_root: Path, progress: UndoProgress | N
     finally:
         zips.close()
     not_restored = len(result.skipped) + len(result.failed)
-    mark_undone(journal_path, len(result.restored), not_restored)
+    # Nothing put back and something failed (say the backup drive is unplugged): leave the journal undoable so
+    # the user can try again once the source is back.
+    result.marked_undone = bool(result.restored) or not result.failed
+    if result.marked_undone:
+        mark_undone(journal_path, len(result.restored), not_restored)
     log_event("clean.undo_completed", level="warning" if not_restored else None, journal=str(journal_path),
-              restored=len(result.restored), skipped=len(result.skipped), failed=len(result.failed))
+              restored=len(result.restored), skipped=len(result.skipped), failed=len(result.failed),
+              marked_undone=result.marked_undone)
     return result
 
 

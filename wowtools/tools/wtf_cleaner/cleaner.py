@@ -307,11 +307,15 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
     except BaseException as exc:
         if snapshot is None or backup_dir is None:
             raise
-        raise _restore_after(exc, snapshot, backup_dir, flavor, deleted) from exc
+        error = _restore_after(exc, snapshot, backup_dir, flavor, deleted)
+        if journal is not None and not getattr(error, "files_missing", False):
+            _journal_rolled_back(journal, flavor, deleted)
+        raise error from exc
 
     if snapshot is not None and backup_dir is not None:
         _finish_safety(result, snapshot, backup_dir, flavor, deleted, report)
-        result.pruned = prune_snapshots(backup_dir, flavor.short_name, keep_backups)
+        # Nothing deleted: keep every older WTF backup (an earlier clean's Undo may need it).
+        result.pruned = prune_snapshots(backup_dir, flavor.short_name, keep_backups) if deleted else []
         if result.pruned:
             log_event("snapshot.pruned", flavor=flavor.folder, keep=keep_backups,
                       removed=[str(p) for p in result.pruned])
@@ -321,6 +325,14 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
               skipped=len(result.skipped), failed=len(result.failed), bytes=result.bytes_freed,
               backup=str(result.backup_path) if result.backup_path else None)
     return result
+
+
+def _journal_rolled_back(journal: CleanJournal, flavor: Flavor, deleted: list[str]) -> None:
+    """Every file this flavor deleted is back on disk: tell the journal, so Undo never offers them."""
+    try:
+        journal.add_rolled_back(flavor=flavor.folder, rels=deleted)
+    except OSError as exc:
+        log_event("clean.journal_failed", flavor=flavor.folder, journal=str(journal.path), error=str(exc))
 
 
 def _open_journal(journal: CleanJournal, flavor: Flavor) -> None:

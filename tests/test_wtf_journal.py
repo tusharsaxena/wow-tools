@@ -120,7 +120,48 @@ class CleanJournalTest(unittest.TestCase):
         self.assertEqual([r.status for r in result.runs], ["done", "stopped"])
         self.assertTrue((self.retail_sv / "Uninstalled.lua").exists())
         self.assertFalse((self.era_sv / "Gone.lua").exists())
-        self.assertEqual(len(read_journal(result.journal_path).entries), 2)
+        # Retail's journaled delete was rolled back: only Classic Era's entry is left to undo.
+        entries = read_journal(result.journal_path).entries
+        self.assertEqual([e["flavor"] for e in entries], ["_classic_era_"])
+        self.assertIn('"rolled_back"', result.journal_path.read_text(encoding="utf-8"))
+
+    def _second_clean_rolled_back(self, flavors):
+        """A first clean of Retail, then a clean of `flavors` whose 3rd delete hits an unexpected error."""
+        (self.retail_sv / "Another.lua").write_text("x")
+        first_plan = self.plan([self.install.flavor("retail")])
+        keep = next(item for item in first_plan[0][1] if any(sv.path.name == "Another.lua" for sv in item.files))
+        first = self.clean([(first_plan[0][0], [i for i in first_plan[0][1] if i is not keep])])
+        self.assertEqual(latest_undoable(self.journals), first.journal_path)
+        real = Path.unlink
+        calls = []
+
+        def flaky(path, *a, **k):
+            if path.parent == self.retail_sv:
+                calls.append(path)
+                if len(calls) == 1:
+                    return real(path, *a, **k)
+                raise RuntimeError("boom")
+            return real(path, *a, **k)
+
+        (self.retail_sv / "Third.lua").write_text("x")
+        with unittest.mock.patch.object(Path, "unlink", flaky):
+            second = self.clean(self.plan(flavors))
+        self.assertEqual(second.stopped.flavor.folder, "_retail_")
+        self.assertTrue((self.retail_sv / "Another.lua").exists())
+        self.assertTrue((self.retail_sv / "Third.lua").exists())
+        return first, second
+
+    def test_a_rolled_back_clean_does_not_hide_the_clean_before_it(self):
+        first, second = self._second_clean_rolled_back([self.install.flavor("retail")])
+        self.assertIsNone(second.journal_path)  # every delete was put back: no journal kept
+        self.assertEqual(list_journals(self.journals), [first.journal_path])
+        self.assertEqual(latest_undoable(self.journals), first.journal_path)
+
+    def test_a_partly_rolled_back_clean_offers_only_what_stayed_deleted(self):
+        first, second = self._second_clean_rolled_back(self.install.flavors())
+        self.assertEqual(latest_undoable(self.journals), second.journal_path)
+        entries = read_journal(second.journal_path).entries
+        self.assertEqual([e["rel"] for e in entries], ["WTF/Account/ACCT1/SavedVariables/Gone.lua"])
 
     def test_nothing_deleted_leaves_no_journal(self):
         plan = self.plan([self.install.flavor("retail")])

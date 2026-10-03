@@ -48,9 +48,10 @@ folder; absent until first chosen, and then the picker pre-selects `[general] la
 least 1). The retired `[general] backup_dir` is dropped by the migration. Paths are stored in Windows form when they point at a
 Windows drive. Unknown keys are preserved, and bad values fall back to defaults.
 
-**Renamed tools.** `suite.run()` applies every `RENAMED_TOOLS` line on each start, after the suite config is
-loaded and before the lock and the app (the Screenshot Organizer was `screenshots` before it became
-`screenshot-organizer`):
+**Renamed tools.** `suite.run()` applies every `RENAMED_TOOLS` line on each start, after the instance lock is
+taken and the suite config is loaded, before the app (the Screenshot Organizer was `screenshots` before it became
+`screenshot-organizer`). When another copy holds the lock (not known to be stale) they are skipped until a later
+start, so nothing is moved under a running copy:
 
 - `config/<old>.cfg`: if `config/<new>.cfg` does not exist, it is written with everything from the old file (the
   tool's section renamed, other sections as they were) and the old file is removed. If it exists, only the keys it
@@ -111,7 +112,10 @@ written, once per run) before the lock check and the WTF backup; if that fails i
 is deleted (`clean.journal_failed`). An entry is appended after each delete; if that append fails the delete loop
 stops like any unexpected error, so that flavor's deletions are restored from its WTF backup. A journal with no
 entries is removed, and after a clean that wrote one `prune_journals` keeps the newest `keep_journals`
-(`clean.journal_pruned`).
+(`clean.journal_pruned`). When a flavor's deletions are put back after an error, `execute` appends
+`{"action": "rolled_back", "flavor", "rels"}`; `read_journal` drops those entries, and a journal left with none is
+removed, so a rolled-back clean never hides the clean before it. A flavor that deleted nothing does not prune WTF
+backups (an earlier clean's Undo may need them).
 
 `latest_undoable(journal_dir)` is the only journal offered (never past an undone one). `undo_clean()` walks its
 entries newest first: the destination is `<wow_root>/<flavor>/<rel>`, refused (skipped) unless `flavor` is a plain
@@ -119,7 +123,8 @@ folder name and `rel` starts with `WTF/` and has no `..`; a file that exists aga
 is extracted, exclusive create, from the cleaned-files zip (by its name, which is `rel`) or, when there is no zip,
 the zip is gone or lacks it, or its size differs, from the WTF backup by `rel`. The written size must match the
 entry (else the partial file is removed and the entry fails) and the file's mtime is put back. Each zip is opened
-once. Afterwards the journal is marked undone (`clean.undo_started`, `clean.undo_restored`, `clean.undo_skipped`,
+once. Afterwards the journal is marked undone, unless nothing was restored and something failed (a source
+that is missing for now, such as an unplugged backup drive), so Undo can be tried again (`clean.undo_started`, `clean.undo_restored`, `clean.undo_skipped`,
 `clean.undo_failed`, `clean.undo_completed`).
 
 ### Safety snapshot (`tools/wtf_cleaner/safety.py`)

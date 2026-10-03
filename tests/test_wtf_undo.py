@@ -100,6 +100,24 @@ class UndoCleanTest(unittest.TestCase):
         back = undo_clean(result.journal_path, wow_root=self.root)
         self.assertEqual(len(back.failed), 9)
         self.assertFalse((self.era_sv / "Gone.lua").exists())
+        # Nothing came back: the journal stays undoable, so the user can retry once the source is back.
+        self.assertFalse(back.marked_undone)
+        self.assertIsNone(read_journal(result.journal_path).undone)
+        self.assertEqual(latest_undoable(self.journals), result.journal_path)
+
+    def test_undo_can_be_retried_after_the_backup_drive_comes_back(self):
+        result = self.clean()
+        moved = self.tmp / "unplugged"
+        self.backup_dir.rename(moved)
+        first = undo_clean(result.journal_path, wow_root=self.root)
+        self.assertEqual((len(first.restored), len(first.failed)), (0, 9))
+        moved.rename(self.backup_dir)
+        self.assertEqual(latest_undoable(self.journals), result.journal_path)
+        second = undo_clean(result.journal_path, wow_root=self.root)
+        self.assertEqual(len(second.restored), 9)
+        self.assertTrue(second.marked_undone)
+        self.assert_restored()
+        self.assertIsNone(latest_undoable(self.journals))
 
     def test_undo_fails_on_a_size_mismatch_and_leaves_nothing_behind(self):
         result = self.clean(backup=False)

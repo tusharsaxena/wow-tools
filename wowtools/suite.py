@@ -52,14 +52,24 @@ def run(argv: list[str], *, cfg: Config | None = None, log_dir: Path | None = LO
         return 1
     migrated: list[Path] = []
     renamed: list[ConfigMigration] = []
+    # The lock comes first: the renamed-tool moves below must never run under another copy that is using them.
+    lock = InstanceLock(lock_path)
+    try:
+        conflict = lock.acquire()
+    except OSError as exc:
+        print(f"Could not create the lock file {lock_path}: {exc}", file=sys.stderr)
+        return 1
+    may_migrate = conflict is None or conflict.stale is True
     try:
         if cfg is None:
             # A legacy file may still use a renamed tool's old section: split it under the old name first.
             sections = {r.old_section: r.old for r in RENAMED_TOOLS} | {t.section: t.name for t in TOOLS.values()}
             migrated = migrate_legacy_config(legacy_config, config_dir, sections)
             cfg = Config(config_dir / SUITE_CONFIG_NAME).load()
-        renamed = [m for r in RENAMED_TOOLS if (m := migrate_tool_config(config_dir, r)) is not None]
+        if may_migrate:
+            renamed = [m for r in RENAMED_TOOLS if (m := migrate_tool_config(config_dir, r)) is not None]
     except (ConfigError, OSError) as exc:
+        lock.release()
         print(f"{exc}\nFix or delete the file, then run again.", file=sys.stderr)
         return 1
     init_event_log(log_dir, tool="suite", mode="tui" if not argv else "cli",
@@ -69,14 +79,13 @@ def run(argv: list[str], *, cfg: Config | None = None, log_dir: Path | None = LO
     for m in renamed:
         log_event("config.renamed", old=str(m.old), new=str(m.new), merged=m.merged, added=m.added,
                   kept_old=str(m.kept_old) if m.kept_old else None)
-    _migrate_renamed_folders(log_dir, cfg.wow_path)
+    if may_migrate:
+        _migrate_renamed_folders(log_dir, cfg.wow_path)
     log_event("session.start", argv=argv, platform=platform.platform(), is_wsl=is_wsl(),
               python=platform.python_version(), suite_version=__version__)
     started = time.monotonic()
     code = 1
-    lock = InstanceLock(lock_path)
     try:
-        conflict = lock.acquire()
         if conflict is not None:
             log_event("lock.conflict", holder=conflict.describe(), stale=conflict.stale)
         code = _dispatch(argv, cfg, config_dir, lock, conflict, app_factory, input_fn)
