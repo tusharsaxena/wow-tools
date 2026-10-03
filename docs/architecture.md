@@ -28,7 +28,7 @@ stay thin.
 | `config` | `config/wow-tools.cfg` (`[general]`) plus `config/<tool>.cfg` per tool (`tool_config_path()`); typed accessors; `config.changed` events; `migrate_legacy_config()` splits the old root `wow-tools.cfg`. `save()` is atomic and runs on the UI thread only (the background update check hands its values back through `check_for_update(persist=...)`) |
 | `migrate` | Start-up moves for renamed tools (`wowtools.tools.RENAMED_TOOLS`, one `ToolRename` line each): `migrate_tool_config()` turns `config/<old>.cfg` into `config/<new>.cfg` with the section renamed; `merge_folder()` moves `logs/<old>/` and `<WoW>/wow-tools/<old>/` to the new name. Never overwrites (details below) |
 | `lock` | `InstanceLock` on `wow-tools.lock` (O_EXCL create; holder pid, host, start time, platform, token). `acquire()` returns the holder on conflict; `take_over()`; `release()` removes the file only if it is still ours. `LockInfo.stale` is known only on POSIX for a lock from this host |
-| `fsutil` | `atomic_write_text()` (write `<name>.partial`, then `os.replace`), used for every config write |
+| `fsutil` | `atomic_write_text()` (write `<name>.partial`, then `os.replace`), used for every config write; `rename_no_replace()` (refuses an existing target with no check-then-act window: a hard link then unlink on POSIX, `os.rename` on Windows; falls back to check + rename where hard links are unsupported); `free_name(folder, stem, suffix)` (`-2`, `-3`, ... for same-second names: journals, WTF backups, cleaned zips) |
 | `activity` | `running()` context manager that file-changing workers (clean, organize, undo) enter; `wait_idle(timeout)`. `suite.run()` waits on it before releasing the lock, so a worker still writing never shares its folders with a second copy |
 | `events` | Registry of event names with fixed levels; JSONL + text sinks; `log_event()`; `capture_events()` for tests |
 | `install` | `WowInstall` → `Flavor` → `Account` → `Character`; install auto-detection. A flavor is any `_name_` folder in the WoW folder, whatever it holds. `validate_output_dir()` refuses a tool output folder that is relative, the WoW folder, or inside a flavor's `WTF`/`Interface`/`Screenshots` (both tools use it on save and before use) |
@@ -134,8 +134,8 @@ that is missing for now, such as an unplugged backup drive), so Undo can be trie
 UI-free. `take_snapshot()` zips the whole `<flavor>/WTF` folder to `backup/backup-<flavor>-<stamp>.zip`
 in the backup folder and verifies it; the user-facing name is "WTF backup". It is kept after the clean, and
 `prune_snapshots(backup_dir, flavor_short, keep)` deletes all but that flavor's newest `keep_backups`
-(`backup-<flavor>-<stamp>.zip` names only).
-The zip of the files a clean removes is `cleaned/cleaned-<flavor>-<account or all>-<stamp>.zip` (`cleaner.cleaned_zip_path`). `write_marker()` / `read_marker()` / `clear_marker()` manage
+(`backup-<flavor>-<stamp>[-N].zip` names only, newest by stamp then N).
+The zip of the files a clean removes is `cleaned/cleaned-<flavor>-<account or all>-<stamp>.zip` (`cleaner.cleaned_zip_path`). Both names get `-2`, `-3`, ... (`fsutil.free_name`) when a run in the same second already used them, and finished zips are moved into place with `fsutil.rename_no_replace`, so a backup is never replaced. `write_marker()` / `read_marker()` / `clear_marker()` manage
 `clean-in-progress.json` (`Marker`: snapshot, flavor, flavor_path, started, pid, suite_version, files).
 `restore_deleted()` extracts exactly the given relative paths and never overwrites an existing file.
 `recovery_message()` is the text the TUI's `RecoveryScreen` shows for a leftover marker.
@@ -197,7 +197,8 @@ refuse every file.
 
 **Filing.** A same-name file at the target is hashed (SHA-256): identical means `duplicate_removed` (move: the
 source is deleted) or `already_filed` (copy); different means `conflict`, and neither file is touched. A move is
-`os.rename`; on `EXDEV` (and always in copy mode) `copy_verified` copies to `<name>.partial`, checks size and
+`fsutil.rename_no_replace` (POSIX: hard link then unlink, so a file that appears at the target is never
+replaced; Windows: `os.rename`); on `EXDEV` (and always in copy mode) `copy_verified` copies to `<name>.partial`, checks size and
 SHA-256, then renames into place. After a cross-device move a failed source delete is `source_left`, a warning. A
 `FileExistsError` from the last check is `conflict`. Nothing is ever overwritten. A dry run walks the same checks,
 hashing included, and reports `would_move` / `would_copy` / `would_remove_duplicate`; it creates no folders and

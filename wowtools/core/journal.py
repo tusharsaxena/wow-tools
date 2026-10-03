@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import IO, Any, Callable, Iterable
 
+from wowtools.core.fsutil import free_name
 from wowtools.core.paths import to_native, to_stored
 
 JOURNAL_VERSION = 1
@@ -46,13 +47,7 @@ def friendly_stamp(stamp: str) -> str:
 
 def new_journal_path(folder: Path, now: datetime | None = None) -> Path:
     """journal-<stamp>.jsonl in folder, with -2, -3, ... when that name is taken."""
-    stamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
-    path = folder / f"journal-{stamp}.jsonl"
-    n = 2
-    while path.exists():
-        path = folder / f"journal-{stamp}-{n}.jsonl"
-        n += 1
-    return path
+    return free_name(folder, f"journal-{(now or datetime.now()):%Y%m%d-%H%M%S}", ".jsonl")
 
 
 def _stored(value: Any) -> Any:

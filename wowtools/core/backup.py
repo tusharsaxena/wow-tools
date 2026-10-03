@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from wowtools.core.fsutil import rename_no_replace
+
 MANIFEST_NAME = "manifest.json"
 
 
@@ -75,7 +77,7 @@ def create_backup(entries: list[BackupEntry], base_dir: Path, dest_zip: Path, me
                     on_file(index, len(files), info["path"])
             zf.writestr(MANIFEST_NAME, json.dumps({**meta, "files": files}, indent=2, ensure_ascii=False))
         verify_backup(partial, expected, progress=on_verify)
-        os.replace(partial, dest_zip)
+        rename_no_replace(partial, dest_zip)  # never replaces an existing backup
     except BackupError:
         _discard(partial)
         raise

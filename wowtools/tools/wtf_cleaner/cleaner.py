@@ -18,6 +18,7 @@ from typing import Callable
 from wowtools import __version__
 from wowtools.core.backup import BackupEntry, BackupError, create_backup
 from wowtools.core.events import log_event
+from wowtools.core.fsutil import free_name, rename_no_replace
 from wowtools.core.install import Flavor
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
 from wowtools.tools.wtf_cleaner.journal import CleanJournal
@@ -137,20 +138,18 @@ def _probe_lock(path: Path) -> str | None:
     file open without allowing deletion, so a failure here means the delete would fail too. Returns the error, or
     None if the file can be deleted (or is gone, which the recheck already reported)."""
     aside = path.with_name(path.name + LOCK_PROBE_SUFFIX)
-    if aside.exists():
-        return None  # never overwrite anything; the delete itself will report a real problem
     try:
-        os.rename(path, aside)
-    except FileNotFoundError:
-        return None
+        rename_no_replace(path, aside)
+    except (FileNotFoundError, FileExistsError):
+        return None  # gone (the recheck reported it), or never overwrite anything; the delete reports real problems
     except OSError as exc:
         return exc.strerror or str(exc)
     for attempt in range(5):
         try:
-            os.rename(aside, path)
+            rename_no_replace(aside, path)
             return None
         except OSError as exc:
-            if attempt == 4:
+            if attempt == 4 or isinstance(exc, FileExistsError):  # a new file at path: never replace it
                 raise CleanError(f"Could not put {path.name} back after a lock check ({exc}). It is at {aside}: "
                                  f"rename it back to {path.name}. Nothing was deleted.") from exc
             time.sleep(0.1)
@@ -360,9 +359,10 @@ def _finish_safety(result: CleanResult, snapshot: Path, backup_dir: Path, flavor
 
 
 def cleaned_zip_path(backup_dir: Path, flavor_short: str, account: str | None, now: datetime) -> Path:
-    """<backup folder>/cleaned/cleaned-<flavor>-<account or all>-<YYYYMMDD-HHMMSS>.zip"""
-    return (backup_dir / CLEANED_SUBDIR
-            / f"cleaned-{flavor_short}-{account or ALL_ACCOUNTS_LABEL}-{now:%Y%m%d-%H%M%S}.zip")
+    """<backup folder>/cleaned/cleaned-<flavor>-<account or all>-<YYYYMMDD-HHMMSS>.zip, with -2, -3, ... before
+    .zip when that name is taken (two runs in the same second)."""
+    return free_name(backup_dir / CLEANED_SUBDIR,
+                     f"cleaned-{flavor_short}-{account or ALL_ACCOUNTS_LABEL}-{now:%Y%m%d-%H%M%S}", ".zip")
 
 
 def _selective_backup(result: CleanResult, ready: list[tuple[ProposalItem, SVFile]], flavor: Flavor,

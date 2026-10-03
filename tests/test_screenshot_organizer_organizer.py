@@ -159,6 +159,27 @@ class OrganizerTest(unittest.TestCase):
         self.assertEqual((day / B).read_bytes(), b"late!!")
         self.assertEqual((self.shots / B).read_bytes(), b"shot-b")
 
+    def test_target_created_between_check_and_rename_is_not_overwritten(self):
+        """The last check before writing and the rename are two steps; a file that appears between them must not
+        be replaced (on POSIX a plain rename would)."""
+        target = self.dest / "_retail_" / "2019" / "07" / "31" / A
+        real_lexists = os.path.lexists
+
+        def racing_lexists(path):
+            exists = real_lexists(path)
+            if Path(path) == target and not exists:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"late!!")  # appears right after the check
+            return exists
+
+        plan = scan([self.retail], self.dest)
+        with unittest.mock.patch("os.path.lexists", racing_lexists):
+            result = execute(plan.selectable, dest_dir=self.dest, copy=False, dry_run=False,
+                             journal_dir=self.journals, keep_journals=10)
+        self.assertEqual(result.count(CONFLICT_KEPT), 1)
+        self.assertEqual(target.read_bytes(), b"late!!")
+        self.assertEqual((self.shots / A).read_bytes(), b"shot-a")
+
     def test_path_guard_refuses(self):
         plan = scan([self.retail], self.dest)
         item = plan.selectable[0]

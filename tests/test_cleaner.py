@@ -344,13 +344,14 @@ class LockAndCheckTest(unittest.TestCase):
     item = CleanerTest.item
 
     def _lock(self, locked_name):
-        original = os.rename
+        """Windows refuses to rename a file another program holds open; simulate that for one file."""
+        original = cleaner_module.rename_no_replace
 
-        def rename(src, dst, *args, **kwargs):
+        def rename(src, dst):
             if Path(src).name == locked_name:
                 raise PermissionError(13, "The process cannot access the file because it is being used")
-            return original(src, dst, *args, **kwargs)
-        return patch.object(cleaner_module.os, "rename", rename)
+            return original(src, dst)
+        return patch.object(cleaner_module, "rename_no_replace", rename)
 
     def test_locked_file_stops_a_real_clean_before_anything(self):
         before = snapshot(self.root)

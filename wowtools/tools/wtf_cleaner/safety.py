@@ -19,11 +19,12 @@ from pathlib import Path, PurePosixPath
 from typing import Callable
 
 from wowtools.core.backup import BackupError, verify_backup
+from wowtools.core.fsutil import free_name, rename_no_replace
 from wowtools.core.install import Flavor
 
 MARKER_NAME = "clean-in-progress.json"
 SNAPSHOT_SUBDIR = "backup"
-SNAPSHOT_NAME = re.compile(r"^backup-(?P<flavor>.+)-(?P<stamp>\d{8}-\d{6})\.zip$")
+SNAPSHOT_NAME = re.compile(r"^backup-(?P<flavor>.+?)-(?P<stamp>\d{8}-\d{6})(?:-(?P<n>\d+))?\.zip$")
 DEFAULT_KEEP_SNAPSHOTS = 5
 
 SnapshotProgress = Callable[[str, int, int, str], None]
@@ -86,7 +87,7 @@ def take_snapshot(flavor: Flavor, backup_dir: Path, now: datetime,
                     progress("snapshot", index, len(files), arcname)
         verify_backup(partial, expected,
                       progress=None if progress is None else lambda i, n, name: progress("snapshot_verify", i, n, name))
-        os.replace(partial, dest)
+        rename_no_replace(partial, dest)  # never replaces an existing backup
     except BackupError:
         _remove(partial)
         raise
@@ -100,8 +101,9 @@ def take_snapshot(flavor: Flavor, backup_dir: Path, now: datetime,
 
 
 def snapshot_path(backup_dir: Path, flavor_short: str, now: datetime) -> Path:
-    """<backup folder>/backup/backup-<flavor>-<YYYYMMDD-HHMMSS>.zip, e.g. backup-retail-20261003-140311.zip"""
-    return backup_dir / SNAPSHOT_SUBDIR / f"backup-{flavor_short}-{now:%Y%m%d-%H%M%S}.zip"
+    """<backup folder>/backup/backup-<flavor>-<YYYYMMDD-HHMMSS>.zip, e.g. backup-retail-20261003-140311.zip, with
+    -2, -3, ... before .zip when that name is taken (two cleans in the same second)."""
+    return free_name(backup_dir / SNAPSHOT_SUBDIR, f"backup-{flavor_short}-{now:%Y%m%d-%H%M%S}", ".zip")
 
 
 def prune_snapshots(backup_dir: Path, flavor_short: str, keep: int) -> list[Path]:
@@ -112,7 +114,7 @@ def prune_snapshots(backup_dir: Path, flavor_short: str, keep: int) -> list[Path
         matches = [(m, p) for p in folder.iterdir() if (m := SNAPSHOT_NAME.match(p.name)) and p.is_file()]
     except OSError:
         return []
-    found = [p for m, p in sorted(matches, key=lambda mp: mp[0]["stamp"], reverse=True)
+    found = [p for m, p in sorted(matches, key=lambda mp: (mp[0]["stamp"], int(mp[0]["n"] or 1)), reverse=True)
              if m["flavor"] == flavor_short]
     removed: list[Path] = []
     for path in found[max(1, keep):]:

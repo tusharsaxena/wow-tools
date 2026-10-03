@@ -164,7 +164,8 @@ wow-tools\wtf-cleaner\
 ```
 
 `<flavor>` is the game version (`retail`, `classic_era` and so on) and `<account>` is the account you picked, or
-`all`. For example: `cleaned-retail-all-20261003-140311.zip`.
+`all`. For example: `cleaned-retail-all-20261003-140311.zip`. If two cleans start in the same second, the second
+gets `-2` added before `.zip`, so no backup ever replaces another.
 
 - The **cleaned** zips are never deleted by the app.
 - Only the newest 5 **backups** of each game version are kept (you can change this in settings).
