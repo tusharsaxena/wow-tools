@@ -239,6 +239,9 @@ the `after_mount()` hook. Every screen shows a `Header`, the `BrandBar` and a `F
 (scan, clean, organize, undo) runs in thread workers and reports back with `call_from_thread`. While a clean,
 organize or undo runs, `app.busy` is set: every key that would leave the screen is refused, and so is Ctrl+Q
 (`Ka0sApp.action_quit`, logged as `ui.quit_refused`).
+An unhandled exception in a handler or worker is logged as `error` with `where=ui` by `Ka0sApp._handle_exception`
+(a private Textual hook, pinned by a test) before Textual exits; `suite.run()` returns the app's `return_code`, so
+`session.end` and the process exit status show the crash.
 
 Shared screens and widgets in `wowtools/ui/`:
 

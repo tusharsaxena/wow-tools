@@ -175,4 +175,5 @@ def _dispatch(argv: list[str], cfg: Config, config_dir: Path, lock: InstanceLock
         app_factory = WowToolsApp
     app = app_factory(cfg, config_dir=config_dir, lock=lock, conflict=conflict)
     app.run()
-    return 0
+    # Textual returns normally after an unhandled exception; it sets return_code = 1 (logged by Ka0sApp).
+    return getattr(app, "return_code", None) or 0

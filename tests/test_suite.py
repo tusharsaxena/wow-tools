@@ -49,6 +49,13 @@ class WorkerApp(FakeApp):
         time.sleep(0.02)  # let the worker enter running()
 
 
+class CrashedApp(FakeApp):
+    """Textual sets return_code = 1 after an unhandled exception, and run() still returns normally."""
+
+    def run(self):
+        self.return_code = 1
+
+
 class ActivityTest(unittest.TestCase):
     def test_running_marks_busy_until_every_run_ends(self):
         self.assertTrue(activity.wait_idle(0))
@@ -138,6 +145,16 @@ class SuiteTest(unittest.TestCase):
         self.assertGreaterEqual(released[-1] - WorkerApp.started, 0.2)
         end = [r for r in self.records() if r["event"] == "session.end"][-1]
         self.assertIs(end["data"]["waited_for_worker"], True)
+
+    def test_app_return_code_is_propagated(self):
+        code, _, _ = self.run_suite([], app_factory=CrashedApp)
+        self.assertEqual(code, 1)
+        end = [r for r in self.records() if r["event"] == "session.end"][-1]
+        self.assertEqual((end["level"], end["data"]["exit_code"]), ("warning", 1))
+
+    def test_clean_app_exit_returns_zero(self):
+        code, _, _ = self.run_suite([])  # FakeApp has no return_code at all
+        self.assertEqual(code, 0)
 
     def test_existing_lock_is_passed_to_the_app(self):
         self.lock_path.write_text(json.dumps({"pid": 1, "host": "pc", "started": "", "platform": "", "token": "x"}))

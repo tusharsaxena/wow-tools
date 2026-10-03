@@ -10,7 +10,7 @@ from textual.widgets import Button, Label, Markdown
 
 from wowtools import __version__
 from wowtools.core.config import Config
-from wowtools.core.events import log_event
+from wowtools.core.events import log_event, log_exception
 from wowtools.core.updater import ReleaseInfo, UpdateError, apply_update, check_for_update
 from wowtools.ui.theme import KA0S_THEME
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
@@ -73,6 +73,16 @@ class Ka0sApp(App):
 
     def after_mount(self) -> None:
         """Hook for subclasses."""
+
+    def _handle_exception(self, error: Exception) -> None:
+        """Textual's (private) hook for an unhandled exception in a handler or worker: it sets return_code = 1,
+        prints the traceback and exits. Log it first, so a crash reaches logs/ (a test pins that the hook is
+        still called). Worker errors arrive wrapped in WorkerFailed; the original is logged."""
+        try:
+            log_exception("ui", getattr(error, "error", None) or error)
+        except Exception:  # noqa: BLE001 - logging must never stop Textual's own handling
+            pass
+        super()._handle_exception(error)
 
     async def action_quit(self) -> None:
         """Ctrl+Q (Textual's priority binding). Refused while a clean, organize or undo is running: quitting

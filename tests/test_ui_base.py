@@ -3,7 +3,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from textual.widgets import Input, OptionList
+from textual.binding import Binding
+from textual.screen import Screen
+from textual.widgets import Input, Label, OptionList
 
 from tests.fixtures import TuiTestCase, build_wow_tree
 from wowtools import __version__
@@ -99,6 +101,50 @@ class QuitWhileBusyTest(UiTestCase):
             await pilot.press("ctrl+q")
             await pilot.pause()
             self.assertEqual(app.return_code, 0)
+
+
+class Boom(Screen):
+    BINDINGS = [Binding("x", "boom", "Boom"), Binding("w", "boom_in_worker", "Boom in a worker")]
+
+    def compose(self):
+        yield Label("boom")
+
+    def action_boom(self):
+        raise RuntimeError("boom")
+
+    def action_boom_in_worker(self):
+        def work():
+            raise RuntimeError("worker boom")
+
+        self.run_worker(work, thread=True)
+
+
+class CrashLoggingTest(UiTestCase):
+    async def test_unhandled_ui_exception_is_logged(self):
+        app = Host(self.cfg, Boom())
+        with capture_events() as records:
+            with self.assertRaises(RuntimeError):
+                async with app.run_test(size=(80, 24)) as pilot:
+                    await pilot.pause()
+                    await pilot.press("x")
+                    await pilot.pause()
+        errors = [r["data"] for r in records if r["event"] == "error"]
+        self.assertEqual([(e["where"], e["type"], e["message"]) for e in errors], [("ui", "RuntimeError", "boom")])
+        self.assertIn("action_boom", errors[0]["traceback"])
+        self.assertEqual(app.return_code, 1)
+
+    async def test_worker_exception_is_logged_unwrapped(self):
+        app = Host(self.cfg, Boom())
+        with capture_events() as records:
+            with self.assertRaises(Exception):
+                async with app.run_test(size=(80, 24)) as pilot:
+                    await pilot.pause()
+                    await pilot.press("w")
+                    await app.workers.wait_for_complete()
+                    await pilot.pause()
+        errors = [r["data"] for r in records if r["event"] == "error"]
+        self.assertEqual([(e["where"], e["type"], e["message"]) for e in errors],
+                         [("ui", "RuntimeError", "worker boom")])
 
 
 class SetupScreenTest(UiTestCase):
