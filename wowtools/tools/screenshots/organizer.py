@@ -1,14 +1,15 @@
 """File planned screenshots into their date folders: guard, re-check, move or copy, journal.
 
-Never overwrites. One listing per source folder and per target day folder; per-file stat only where a hash
-or copy needs it. A dry run walks the same checks (hashing included) and changes nothing."""
+Never overwrites. One listing per source folder and one names-only listing per target day folder; beyond that a
+stat only where a hash, a copy or the no-overwrite check before a rename needs it. A dry run walks the same checks
+(hashing included) and changes nothing."""
 from __future__ import annotations
 
 import errno
 import hashlib
 import os
 import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -19,7 +20,7 @@ from wowtools.core.paths import to_stored
 from wowtools.tools.screenshots.journal import (A_COPIED, A_DUPLICATE, A_MOVED, A_SOURCE_LEFT, JournalWriter,
                                                 new_journal_path, prune_journals)
 from wowtools.tools.screenshots.naming import day_parts, parse_shot_name
-from wowtools.tools.screenshots.planner import CONFLICT, ShotItem, list_files
+from wowtools.tools.screenshots.planner import CONFLICT, ShotItem, list_files, list_names
 from wowtools.tools.screenshots.settings import source_dir, target_root
 
 Progress = Callable[[str, int, int, str], None]
@@ -77,6 +78,16 @@ class OrganizeError(Exception):
     def __init__(self, message: str, result: OrganizeResult) -> None:
         super().__init__(message)
         self.result = result
+
+
+class JournalWriteError(Exception):
+    """A change was made but could not be journaled. `outcome` is that change; the run must stop, because
+    every further change would be one Undo cannot reverse."""
+
+    def __init__(self, outcome: "Outcome", cause: BaseException) -> None:
+        super().__init__(f"the journal could not be written after {outcome.src.name} was {outcome.kind}: "
+                         f"{type(cause).__name__}: {cause}")
+        self.outcome = outcome
 
 
 def sha256_file(path: Path) -> str:
@@ -179,13 +190,21 @@ class _Run:
     def _target_exists(self, item: ShotItem) -> bool:
         folder = item.dst.parent
         if folder not in self.targets:
-            self.targets[folder] = set(list_files(folder))
+            self.targets[folder] = list_names(folder)
         # The listing is taken at execute time; move_file/copy_verified check once more right before writing.
         return item.dst.name in self.targets[folder]
 
-    def _record(self, action: str, item: ShotItem) -> None:
+    def _record(self, action: str, item: ShotItem, outcome: Outcome) -> Outcome:
+        """Journal a change that has already happened. A journal failure is not a per-file error (the change
+        is done): it raises JournalWriteError, which stops the run."""
         if self.journal is not None:
-            self.journal.add(action, item.src, item.dst, item.size)
+            try:
+                self.journal.add(action, item.src, item.dst, item.size)
+            except Exception as exc:  # noqa: BLE001 - OSError, or e.g. UnicodeEncodeError from an odd path
+                note = f"not journaled ({type(exc).__name__}: {exc}); Undo cannot reverse it"
+                reason = f"{outcome.reason}; {note}" if outcome.reason else note
+                raise JournalWriteError(replace(outcome, reason=reason), exc) from exc
+        return outcome
 
     def file_one(self, item: ShotItem) -> Outcome:
         def out(kind: str, reason: str = "") -> Outcome:
@@ -209,8 +228,7 @@ class _Run:
             if self.dry_run:
                 return out(WOULD_REMOVE_DUPLICATE, "identical file already at the target")
             os.remove(item.src)
-            self._record(A_DUPLICATE, item)
-            return out(DUPLICATE_REMOVED, "identical file already at the target")
+            return self._record(A_DUPLICATE, item, out(DUPLICATE_REMOVED, "identical file already at the target"))
         if self.dry_run:
             return out(WOULD_COPY if self.copy else WOULD_MOVE)
         if item.dst.parent not in self.made:
@@ -225,17 +243,21 @@ class _Run:
             return out(CONFLICT_KEPT, "a file with this name appeared at the target")
         if self.copy:
             self.targets.setdefault(item.dst.parent, set()).add(item.dst.name)
-            self._record(A_COPIED, item)
-            return out(COPIED)
+            return self._record(A_COPIED, item, out(COPIED))
         self.targets.setdefault(item.dst.parent, set()).add(item.dst.name)
         if copied:
             try:
                 os.remove(item.src)
             except OSError as exc:
-                self._record(A_SOURCE_LEFT, item)
-                return out(SOURCE_LEFT, f"copied, but the source could not be deleted: {exc}")
-        self._record(A_MOVED, item)
-        return out(MOVED)
+                return self._record(A_SOURCE_LEFT, item,
+                                    out(SOURCE_LEFT, f"copied, but the source could not be deleted: {exc}"))
+        return self._record(A_MOVED, item, out(MOVED))
+
+
+def _log_outcome(result: OrganizeResult, outcome: Outcome, dry_run: bool) -> None:
+    result.outcomes.append(outcome)
+    log_event(_EVENTS[outcome.kind], dry_run=dry_run, flavor=outcome.flavor, src=str(outcome.src),
+              dst=str(outcome.dst), reason=outcome.reason or None)
 
 
 def execute(items: list[ShotItem], *, dest_dir: Path | None, copy: bool, dry_run: bool,
@@ -251,6 +273,13 @@ def execute(items: list[ShotItem], *, dest_dir: Path | None, copy: bool, dry_run
             "flavors": sorted({i.flavor.folder for i in items})})
     log_event("shots.organize_started", dry_run=dry_run, copy=copy, files=len(items),
               dest_dir=str(dest_dir) if dest_dir else None)
+    if journal is not None:
+        try:
+            journal.open()  # before anything is touched: no change is ever made that Undo cannot see
+        except Exception as exc:  # noqa: BLE001
+            log_event("shots.organize_stopped", error=f"{type(exc).__name__}: {exc}", done=0, journal=None)
+            raise OrganizeError(f"The run journal could not be written, so nothing was filed: {exc}",
+                                result) from exc
     run = _Run(dest_dir, copy, dry_run, journal, rename)
     total = len(items)
     try:
@@ -258,24 +287,25 @@ def execute(items: list[ShotItem], *, dest_dir: Path | None, copy: bool, dry_run
             report("organize", index, total, item.src.name)
             try:
                 outcome = run.file_one(item)
+            except JournalWriteError as exc:
+                _log_outcome(result, exc.outcome, dry_run)
+                raise
             except OSError as exc:
                 outcome = Outcome(item.flavor.folder, item.src, item.dst, FAILED, str(exc))
-            result.outcomes.append(outcome)
-            log_event(_EVENTS[outcome.kind], dry_run=dry_run, flavor=outcome.flavor, src=str(outcome.src),
-                      dst=str(outcome.dst), reason=outcome.reason or None)
+            _log_outcome(result, outcome, dry_run)
         report("organize", total, total, "")
         if journal is not None:
             journal.finish()
     except (Exception, KeyboardInterrupt) as exc:
         if journal is not None:
-            journal.close()
+            journal.discard_if_empty()
             result.journal_path = journal.path if journal.opened else None
         log_event("shots.organize_stopped", error=f"{type(exc).__name__}: {exc}", done=len(result.outcomes),
                   journal=str(result.journal_path) if result.journal_path else None)
         raise OrganizeError(f"The run stopped: {exc}", result) from exc
     finally:
         if journal is not None:
-            journal.close()
+            journal.discard_if_empty()
     if journal is not None and journal.opened:
         result.journal_path = journal.path
         report("prune", 0, 0, "")

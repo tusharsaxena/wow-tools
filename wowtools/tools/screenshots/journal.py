@@ -37,7 +37,9 @@ def new_journal_path(journal_dir: Path, now: datetime | None = None) -> Path:
 
 
 class JournalWriter:
-    """Opens the file on the first entry, so a run that changes nothing leaves no journal."""
+    """`open()` creates the file and writes the header before the run touches anything, so a journal that
+    cannot be written stops the run first. `discard_if_empty()` removes a header-only journal, so a run that
+    changes nothing leaves none."""
 
     def __init__(self, path: Path, header: dict[str, Any]) -> None:
         self.path = path
@@ -50,11 +52,19 @@ class JournalWriter:
         self._handle.write(json.dumps(record, ensure_ascii=False) + "\n")
         self._handle.flush()
 
+    def open(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._handle = self.path.open("x", encoding="utf-8")
+        try:
+            self._write(self.header)
+        except BaseException:
+            self.close()
+            self.path.unlink(missing_ok=True)
+            raise
+
     def add(self, action: str, src: Path, dst: Path, size: int) -> None:
         if self._handle is None:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            self._handle = self.path.open("x", encoding="utf-8")
-            self._write(self.header)
+            self.open()
         self._write({"action": action, "src": to_stored(src), "dst": to_stored(dst), "size": size})
         self.count += 1
 
@@ -66,6 +76,15 @@ class JournalWriter:
         if self._handle is not None:
             self._handle.close()
             self._handle = None
+
+    def discard_if_empty(self) -> None:
+        """Close, and delete the file if no entry was written (a run that changed nothing)."""
+        self.close()
+        if self.count == 0:
+            try:
+                self.path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     @property
     def opened(self) -> bool:
@@ -136,8 +155,15 @@ def latest_undoable(journal_dir: Path | None) -> Path | None:
 
 
 def mark_undone(path: Path, restored: int, skipped: int) -> None:
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"undone": _now(), "restored": restored, "skipped": skipped}) + "\n")
+    record = json.dumps({"undone": _now(), "restored": restored, "skipped": skipped}) + "\n"
+    with path.open("a+b") as handle:
+        handle.seek(0, 2)
+        if handle.tell():
+            handle.seek(-1, 2)
+            if handle.read(1) != b"\n":
+                record = "\n" + record  # the last line was torn by a crash: start the record on its own line
+        handle.seek(0, 2)
+        handle.write(record.encode("utf-8"))
 
 
 def prune_journals(journal_dir: Path | None, keep: int) -> list[Path]:

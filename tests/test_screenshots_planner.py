@@ -81,3 +81,23 @@ class PlannerTest(unittest.TestCase):
         self.assertEqual(len(plan.warnings), 2)
         self.assertEqual(plan.flavors, [])
         self.assertIn("shots.scan_warning", [r["event"] for r in records])
+
+    def test_target_day_folders_are_listed_by_name_only(self):
+        day = self.shots / "2019" / "07" / "31"
+        day.mkdir(parents=True)
+        for n in range(5):
+            (day / f"WoWScrnShot_073119_10000{n}.jpg").write_bytes(b"old")
+        (day / "WoWScrnShot_073119_232713.jpg").write_bytes(b"shot-a")
+        real_stat = __import__("os").stat
+        stats = []
+
+        def counting_stat(path, *a, **k):
+            stats.append(Path(path).name)
+            return real_stat(path, *a, **k)
+
+        with unittest.mock.patch("wowtools.tools.screenshots.planner.os.stat", counting_stat):
+            plan = scan([self.retail], None)
+        item = next(i for i in plan.items if i.src.name == "WoWScrnShot_073119_232713.jpg")
+        self.assertEqual(item.state, MAYBE_DUPLICATE)
+        shot_stats = [n for n in stats if n.startswith("WoWScrnShot")]
+        self.assertEqual(shot_stats, ["WoWScrnShot_073119_232713.jpg"])  # only the name already at the target

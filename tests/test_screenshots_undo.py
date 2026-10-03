@@ -154,3 +154,12 @@ class UndoTest(unittest.TestCase):
         undo(second.journal_path, wow_root=self.root)
         self.assertIsNone(latest_undoable(self.journals))
         self.assertIsNotNone(first.journal_path)
+
+    def test_undo_of_journal_with_torn_last_line_is_not_offered_again(self):
+        result = self.organize(self.dest)
+        path = result.journal_path
+        data = path.read_bytes()
+        path.write_bytes(data[:-15])  # cut the "finished" line short, as a crash mid-write would
+        undo(path, wow_root=self.root)
+        self.assertIsNotNone(read_journal(path).undone)
+        self.assertIsNone(latest_undoable(self.journals))

@@ -1,5 +1,6 @@
 """Scan Screenshots folders and plan where each screenshot goes. Reads only: one listing per source folder and
-one per target day folder, no per-file stat or resolve (slow on WSL drvfs)."""
+one names-only listing per target day folder; a stat only for a name already at the target, no resolve (slow on
+WSL drvfs)."""
 from __future__ import annotations
 
 import os
@@ -100,11 +101,21 @@ def list_files(folder: Path) -> dict[str, os.stat_result]:
     return files
 
 
+def list_names(folder: Path) -> set[str]:
+    """Names of the regular files directly in folder (set() if it does not exist). No stat per entry: the type
+    comes from the directory listing itself."""
+    try:
+        with os.scandir(folder) as entries:
+            return {entry.name for entry in entries if entry.is_file(follow_symlinks=False)}
+    except FileNotFoundError:
+        return set()
+
+
 def scan(flavors: list[Flavor], dest_dir: Path | None, progress: ScanProgress | None = None) -> Plan:
     log_event("shots.scan_started", flavors=[f.folder for f in flavors],
               dest_dir=str(dest_dir) if dest_dir else None)
     plan = Plan([], dest_dir)
-    targets: dict[Path, dict[str, os.stat_result]] = {}
+    targets: dict[Path, set[str]] = {}
     total = len(flavors)
     summary: dict[str, dict] = {}
     for index, flavor in enumerate(flavors):
@@ -133,13 +144,19 @@ def scan(flavors: list[Flavor], dest_dir: Path | None, progress: ScanProgress | 
             day_dir = root.joinpath(*day_parts(day))
             if day_dir not in targets:
                 try:
-                    targets[day_dir] = list_files(day_dir)
+                    targets[day_dir] = list_names(day_dir)
                 except OSError as exc:
                     plan.warnings.append(f"{day_dir}: {exc}")
                     log_event("shots.scan_warning", path=str(day_dir), error=str(exc))
-                    targets[day_dir] = {}
-            existing = targets[day_dir].get(name)
-            state = NEW if existing is None else (MAYBE_DUPLICATE if existing.st_size == st.st_size else CONFLICT)
+                    targets[day_dir] = set()
+            state = NEW
+            if name in targets[day_dir]:  # stat only the names already at the target, not the whole day folder
+                try:
+                    existing_size = os.stat(day_dir / name, follow_symlinks=False).st_size
+                except FileNotFoundError:
+                    existing_size = None
+                if existing_size is not None:
+                    state = MAYBE_DUPLICATE if existing_size == st.st_size else CONFLICT
             fp.items.append(ShotItem(flavor, src_dir / name, day_dir / name, day, st.st_size, st.st_mtime, state))
         plan.flavors.append(fp)
         summary[flavor.folder] = {"to_file": len(fp.new), "maybe_duplicates": len(fp.maybe_duplicates),

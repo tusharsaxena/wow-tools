@@ -227,3 +227,49 @@ class OrganizerTest(unittest.TestCase):
 
         _, result = self.run_plan(self.dest, progress=bad)
         self.assertEqual(result.count(MOVED), 4)
+
+    def test_unwritable_journal_stops_before_anything_moves(self):
+        blocker = self.tmp / "blocker"
+        blocker.write_text("a file where the journal folder should go")
+        plan = scan([self.retail], None)
+        with self.assertRaises(OrganizeError) as ctx:
+            execute(plan.selectable, dest_dir=None, copy=False, dry_run=False,
+                    journal_dir=blocker / "journal", keep_journals=10)
+        self.assertEqual(ctx.exception.result.outcomes, [])
+        self.assertIsNone(ctx.exception.result.journal_path)
+        self.assertTrue((self.shots / A).is_file())
+        self.assertFalse((self.shots / "2019").exists())
+
+    def test_run_that_changes_nothing_leaves_no_journal(self):
+        plan = scan([self.retail], None)
+        for item in plan.selectable:
+            item.src.unlink()
+        result = execute(plan.selectable, dest_dir=None, copy=False, dry_run=False,
+                         journal_dir=self.journals, keep_journals=10)
+        self.assertEqual(result.count(SKIPPED), 4)
+        self.assertIsNone(result.journal_path)
+        self.assertEqual(list(self.journals.iterdir()) if self.journals.exists() else [], [])
+
+    def test_journal_write_failure_stops_the_run_and_reports_the_change(self):
+        from wowtools.tools.screenshots import journal as journal_mod
+        real_add = journal_mod.JournalWriter.add
+        calls = []
+
+        def failing_add(writer, *a, **k):
+            calls.append(a)
+            if len(calls) == 2:
+                raise OSError(errno.ENOSPC, "No space left on device")
+            return real_add(writer, *a, **k)
+
+        with unittest.mock.patch.object(journal_mod.JournalWriter, "add", failing_add):
+            with self.assertRaises(OrganizeError) as ctx:
+                self.run_plan(self.dest)
+        result = ctx.exception.result
+        # The first file is moved and journaled; the second is moved but could not be journaled: it is reported
+        # as moved (with the journal error) rather than failed, and the run stops there.
+        self.assertEqual([o.kind for o in result.outcomes], [MOVED, MOVED])
+        self.assertIn("journal", result.outcomes[1].reason)
+        self.assertEqual(len(read_journal(result.journal_path).entries), 1)
+        moved = [o for o in result.outcomes if not o.src.exists() and o.dst.is_file()]
+        self.assertEqual(len(moved), 2)
+        self.assertEqual(len(list((self.dest / "_retail_").rglob("WoWScrnShot*"))), 2)  # nothing after the stop
