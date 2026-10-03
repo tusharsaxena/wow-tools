@@ -11,8 +11,9 @@ EVENTS: dict[str, EventSpec] = {
     "scan.completed": EventSpec("info", "A scan finished, with counts."),
     "scan.warning": EventSpec("warning", "Something was skipped during a scan (unreadable folder, bad AddOns.txt "
                                          "line, no characters to judge 'not enabled' by)."),
-    "proposal.built": EventSpec("info", "The cleanup proposal was built from scan results and criteria."),
-    "proposal.item": EventSpec("debug", "One addon group in the proposal."),
+    "proposal.built": EventSpec("info", "The cleanup proposal was built from scan results and criteria (once per "
+                                       "scan and flavor; changing criteria does not log it again)."),
+    "proposal.item": EventSpec("debug", "One addon group in a clean or dry run the user confirmed."),
     "clean.started": EventSpec("info", "A clean (or dry run) started."),
     "backup.created": EventSpec("info", "The cleaned-files zip was written and verified (a dry run writes it too)."),
     "backup.failed": EventSpec("error", "The cleaned-files zip failed; nothing was deleted."),

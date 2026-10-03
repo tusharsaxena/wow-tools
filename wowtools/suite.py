@@ -16,7 +16,7 @@ from wowtools.core import activity
 from wowtools.core.bootstrap import REPO_ROOT
 from wowtools.core.config import (CONFIG_DIR, LEGACY_CONFIG_PATH, SUITE_CONFIG_NAME, Config, ConfigError,
                                   migrate_legacy_config)
-from wowtools.core.events import init_event_log, log_event, log_exception
+from wowtools.core.events import get_event_log, init_event_log, log_event, log_exception
 from wowtools.core.lock import LOCK_PATH, InstanceLock, LockInfo
 from wowtools.core.migrate import ConfigMigration, merge_folder, migrate_tool_config, tool_folder_pairs
 from wowtools.core.paths import is_wsl
@@ -108,6 +108,7 @@ def run(argv: list[str], *, cfg: Config | None = None, log_dir: Path | None = LO
         extra = {"waited_for_worker": True, "worker_finished": idle} if waited else {}
         log_event("session.end", level="warning" if code not in (0, 10) or (waited and not idle) else None,
                   exit_code=code, duration_s=round(time.monotonic() - started, 3), **extra)
+        get_event_log().close()
 
 
 def _migrate_renamed_folders(log_dir: Path | None, wow_path: Path | None) -> None:

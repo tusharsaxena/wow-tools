@@ -111,6 +111,12 @@ class SuiteTest(unittest.TestCase):
         self.assertIn("wow-tools.sh", out)
         self.assertFalse(self.log_dir.exists())
 
+    def test_run_closes_its_log_files(self):
+        code, _, _ = self.run_suite([])
+        self.assertEqual(code, 0)
+        self.assertTrue(self.records())
+        self.assertEqual(events.get_event_log()._handles, {})  # Windows could not delete or prune them otherwise
+
     def test_tools_cannot_be_started_directly(self):
         code, _, err = self.run_suite(["wtf-cleaner", "--flavor", "retail"])
         self.assertEqual(code, 1)

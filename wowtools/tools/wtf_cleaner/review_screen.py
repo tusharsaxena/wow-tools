@@ -28,7 +28,8 @@ from wowtools.tools.wtf_cleaner.multi import (FlavorScan, MultiCleanResult, exec
 from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, STAGE_TITLES, age_days,
                                                flavor_name, format_size, locker_warning)
 from wowtools.tools.wtf_cleaner.result_screen import SUCCESS_FALLBACK, ResultScreen, reasons_text
-from wowtools.tools.wtf_cleaner.rules import CRITERIA, Proposal, ProposalItem, criterion_counts, evaluate
+from wowtools.tools.wtf_cleaner.rules import (CRITERIA, Proposal, ProposalItem, criterion_counts, evaluate,
+                                             log_proposal_built, log_proposal_items)
 from wowtools.tools.wtf_cleaner.safety import SNAPSHOT_SUBDIR, Marker, clear_marker, read_marker, recovery_message
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir
 from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
@@ -224,6 +225,7 @@ class ReviewScreen(Screen[str]):
         self._rebuild_pending = False
         self._last_filter: Widget | None = None
         self._scanning = False
+        self._log_next_build = False  # the first rebuild after a scan logs proposal.built
 
     # --- layout -------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -345,6 +347,7 @@ class ReviewScreen(Screen[str]):
 
     def _scanned(self, scans: list[FlavorScan]) -> None:
         self.scans = scans
+        self._log_next_build = True
         self._show_scan_progress(False)
         self._update_criterion_labels()
         self._schedule_rebuild()
@@ -394,7 +397,14 @@ class ReviewScreen(Screen[str]):
     def _rebuild(self) -> None:
         if not self._scanned_ok():
             return
-        self.proposals = [(s.flavor, evaluate(s.result, self.criteria)) for s in self._scanned_ok()]  # type: ignore[arg-type]
+        # Interactive rebuilds (criterion toggles, max age) log nothing: proposal.built once per scan, and the
+        # proposal.item events only for a run the user confirms (F-006).
+        self.proposals = [(s.flavor, evaluate(s.result, self.criteria, log=False))  # type: ignore[arg-type]
+                          for s in self._scanned_ok()]
+        if self._log_next_build:
+            self._log_next_build = False
+            for flavor, proposal in self.proposals:
+                log_proposal_built(proposal, flavor.folder)
         if self.multi:
             self.proposal = Proposal([i for _, p in self.proposals for i in p.items], self.criteria.copy(),
                                      [w for _, p in self.proposals for w in p.warnings])
@@ -698,6 +708,7 @@ class ReviewScreen(Screen[str]):
         log_event("ui.selection", screen="confirm", control="confirm", value=bool(ok), dry_run=dry_run)
         if not ok:
             return
+        log_proposal_items([item for _, items in plan for item in items], dry_run=dry_run)
         self.app.busy = True
         self._refresh_undo()
         progress_screen = CleanProgressScreen(dry_run)

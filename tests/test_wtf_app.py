@@ -835,6 +835,71 @@ class RebuildIndicatorTest(AppTestCase):
             self.assertTrue(str(tree.root.label).startswith("◩"))
 
 
+class ProposalLoggingTest(AppTestCase):
+    """F-006: interactive rebuilds log nothing per item; the scan logs one summary, a confirmed run the items."""
+
+    async def test_scan_logs_one_proposal_summary_and_no_items(self):
+        app = self.make_app()
+        with capture_events() as records:
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_review(app, pilot)
+        built = [r for r in records if r["event"] == "proposal.built"]
+        self.assertEqual(len(built), 1)
+        self.assertEqual(built[0]["data"]["items"], 6)
+        self.assertEqual([r for r in records if r["event"] == "proposal.item"], [])
+
+    async def test_criterion_toggle_logs_no_proposal_items(self):
+        app = self.make_app()
+        with capture_events() as records:
+            async with app.run_test(size=SIZE) as pilot:
+                review = await self.open_review(app, pilot)
+                records.clear()
+                await pilot.press("1")
+                await settle(app, pilot)
+                self.assertFalse(review.criteria.not_installed)
+                review.query_one("#max_age", Input).value = "30"
+                review.query_one("#max_age", Input).focus()
+                await pilot.press("enter")
+                await settle(app, pilot)
+        names = [r["event"] for r in records]
+        self.assertNotIn("proposal.item", names)
+        self.assertNotIn("proposal.built", names)
+
+    async def test_confirmed_clean_logs_selected_items(self):
+        app = self.make_app()
+        with capture_events() as records:
+            async with app.run_test(size=SIZE) as pilot:
+                review = await self.open_review(app, pilot)
+                tree = review.query_one(Tree)
+                node = next(n for n in _walk(tree.root)
+                            if n.data and n.data[0] == "item" and n.data[1].addon == "DisabledAddon")
+                tree.focus()
+                tree.move_cursor(node)
+                await pilot.press("space")
+                await pilot.press("y")  # dry run
+                await pilot.pause()
+                self.assertIsInstance(app.screen, ConfirmScreen)
+                self.assertEqual([r for r in records if r["event"] == "proposal.item"], [])
+                await pilot.press("y")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, ResultScreen)
+        items = [r for r in records if r["event"] == "proposal.item"]
+        self.assertEqual(len(items), 5)  # one per selected addon group, the unticked one left out
+        self.assertNotIn("DisabledAddon", {r["data"]["addon"] for r in items})
+        self.assertTrue(all(r["dry_run"] is True for r in items))
+
+    async def test_declined_confirm_logs_no_items(self):
+        app = self.make_app()
+        with capture_events() as records:
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_review(app, pilot)
+                await pilot.press("c")
+                await pilot.pause()
+                await pilot.press("n")
+                await pilot.pause()
+        self.assertEqual([r for r in records if r["event"] == "proposal.item"], [])
+
+
 class ProgressPopupTest(AppTestCase):
     async def test_every_stage_has_a_title_and_unknown_totals_are_indeterminate(self):
         app = self.make_app()

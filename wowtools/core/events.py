@@ -4,19 +4,26 @@ Every event name is registered once with a fixed level. Each tool logs to its ow
 logs/<tool>/ (the launcher itself uses logs/suite/). log_event() writes one JSON line to
 events-YYYY-MM-DD.log (all levels) and one readable line to logfile-YYYY-MM-DD.log (filtered by
 [general] log_level). Logging never raises into the caller because of I/O.
+
+Each log file stays open while it is in use and every line is flushed as it is written: opening and closing the
+file per event cost about 2.75 ms on a Windows drive under WSL. Moving to a new day closes the previous day's
+files; close() (also run at exit) closes the rest.
 """
 from __future__ import annotations
 
+import atexit
 import contextlib
 import json
 import re
 import secrets
 import sys
+import threading
 import traceback
+import weakref
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import IO, Any, Callable, Iterator
 
 from wowtools import __version__
 
@@ -173,6 +180,9 @@ class EventLog:
         self._clock = clock or (lambda: datetime.now().astimezone())
         self._on_sink_error = on_sink_error or (lambda message: print(message, file=sys.stderr))
         self._disabled: set[str] = set()
+        self._handles: dict[Path, IO[str]] = {}
+        self._lock = threading.Lock()  # workers log too
+        _OPEN_LOGS.add(self)
 
     def set_context(self, *, tool: str | None = None, mode: str | None = None) -> None:
         if tool is not None:
@@ -213,15 +223,40 @@ class EventLog:
         return record
 
     def _append(self, sink: str, path: Path, line: str) -> None:
-        if sink in self._disabled:
-            return
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with path.open("a", encoding="utf-8") as handle:
+        with self._lock:
+            if sink in self._disabled:
+                return
+            try:
+                handle = self._handles.get(path)
+                if handle is None:
+                    self._close_other_days(path)
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    handle = self._handles[path] = path.open("a", encoding="utf-8")
                 handle.write(line + "\n")
-        except OSError as exc:
-            self._disabled.add(sink)
-            self._on_sink_error(f"Ka0s WoW Tools: {sink} log disabled for this session ({exc})")
+                handle.flush()  # each line reaches the file at once, as before
+            except (OSError, ValueError) as exc:
+                self._disabled.add(sink)
+                stale = self._handles.pop(path, None)
+                if stale is not None:
+                    with contextlib.suppress(OSError, ValueError):
+                        stale.close()
+                self._on_sink_error(f"Ka0s WoW Tools: {sink} log disabled for this session ({exc})")
+
+    def _close_other_days(self, path: Path) -> None:
+        """A new file is being opened: close the ones from another day (yesterday's, after midnight)."""
+        match = _LOG_NAME.match(path.name)
+        day = match.group(1) if match else None
+        for other in [p for p in self._handles if (m := _LOG_NAME.match(p.name)) is None or m.group(1) != day]:
+            with contextlib.suppress(OSError, ValueError):
+                self._handles.pop(other).close()
+
+    def close(self) -> None:
+        """Close every open log file. Logging again reopens them."""
+        with self._lock:
+            handles, self._handles = list(self._handles.values()), {}
+        for handle in handles:
+            with contextlib.suppress(OSError, ValueError):
+                handle.close()
 
     def prune(self) -> list[Path]:
         """Delete dated log files older than retention_days in every tool folder. Returns what was removed."""
@@ -247,6 +282,16 @@ class EventLog:
         return removed
 
 
+_OPEN_LOGS: weakref.WeakSet[EventLog] = weakref.WeakSet()
+
+
+def close_all_logs() -> None:
+    """Close the files of every EventLog in this process (at exit, and in tests before a temp folder goes)."""
+    for log in list(_OPEN_LOGS):
+        log.close()
+
+
+atexit.register(close_all_logs)
 _current = EventLog(strict=True)
 
 
@@ -254,6 +299,7 @@ def init_event_log(log_dir: Path | None, **kwargs: Any) -> EventLog:
     """Install the process-wide log (called once by the launcher), move any old flat-layout logs into the
     per-tool folders, and prune old files."""
     global _current
+    _current.close()
     _current = EventLog(log_dir, **kwargs)
     migrate_flat_logs(_current.log_dir)
     _current.prune()

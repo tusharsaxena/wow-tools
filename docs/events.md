@@ -78,8 +78,8 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `clean.undo_started` | info | Undo last clean started, from the newest clean journal. |
 | `clean.validated` | info | After a clean, the WTF folder matched the WTF backup and the cleaned-files zip. |
 | `locker.running_warning` | warning | A program known to lock WTF files (e.g. the Raider.IO client) appears to be running. |
-| `proposal.built` | info | The cleanup proposal was built from scan results and criteria. |
-| `proposal.item` | debug | One addon group in the proposal. |
+| `proposal.built` | info | The cleanup proposal was built from scan results and criteria (once per scan and flavor; changing criteria does not log it again). |
+| `proposal.item` | debug | One addon group in a clean or dry run the user confirmed. |
 | `recovery.incomplete_clean` | warning | A marker from an unfinished clean was found at startup. |
 | `restore.completed` | warning | A clean stopped unexpectedly; the files it had deleted were restored. |
 | `restore.failed` | error | Restoring from the WTF backup failed; the marker was kept. |
