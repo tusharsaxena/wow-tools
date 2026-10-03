@@ -277,9 +277,11 @@ no 31 February), is **left where it is** and listed under "Skipped (n): name not
 
 ### Picking flavors
 
-The flavor screen lists only the flavors that have a `Screenshots` folder, with **All flavors** first. Your
-choice (All flavors or one flavor) is pre-selected next time. If no flavor has a `Screenshots` folder, the tool
-says so and goes back to the menu.
+The flavor screen lists every flavor in your WoW folder (every `_name_` folder: `_retail_`, `_classic_`,
+`_classic_era_`, `_anniversary_`, `_classic_beta_`, ...), with **All flavors** first. A flavor that has no
+`Screenshots` folder yet is marked "no Screenshots folder" and adds nothing to a run. Your choice (All flavors or
+one flavor) is pre-selected next time. If no flavor has a `Screenshots` folder, the tool says so and goes back to
+the menu.
 
 ### Using the TUI
 

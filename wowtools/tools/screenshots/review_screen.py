@@ -471,7 +471,9 @@ class ShotReviewScreen(Screen[str]):
                 f"{plural(conflicts, 'conflict')} · {len(plan.skipped)} skipped (name not recognised)")
         nothing = not plan.selectable
         if nothing:
-            text = "Nothing to file.    " + text
+            # Only worth saying when none of the chosen flavors has a Screenshots folder at all.
+            reason = "" if plan.flavors else " (no Screenshots folder)"
+            text = f"Nothing to file{reason}.    " + text
         for button_id in ("#btn-organize", "#btn-dry"):
             self.query_one(button_id, Button).disabled = nothing
         if plan.warnings:

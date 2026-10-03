@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 
-from textual.widgets import Button, DataTable, Input, Static, Tree
+from textual.widgets import Button, DataTable, Input, OptionList, Static, Tree
 
 from tests.fixtures import TuiTestCase, build_screenshot_tree, build_wow_tree, make_config
 from wowtools.core.config import Config
@@ -290,7 +290,31 @@ class ShotsAppTest(TuiTestCase):
             self.assertIsInstance(app.screen, ToolMenuScreen)
 
 
+    async def test_every_flavor_is_listed_and_empty_ones_are_marked(self):
+        self.save_tool_cfg()
+        (self.root / "_classic_beta_").mkdir()
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_tool(app, pilot)
+            picker = app.screen
+            self.assertIsInstance(picker, FlavorScreen)
+            options = picker.query_one("#flavors", OptionList)
+            ids = [options.get_option_at_index(i).id for i in range(options.option_count)]
+            self.assertEqual(ids[1:], ["_anniversary_", "_classic_beta_", "_classic_era_", "_retail_"])
+            labels = {i: str(options.get_option_at_index(n).prompt) for n, i in enumerate(ids)}
+            self.assertIn("no Screenshots folder", labels["_anniversary_"])
+            self.assertNotIn("no Screenshots folder", labels["_retail_"])
+            await pilot.press("down", "enter")  # Anniversary: no Screenshots folder
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ShotReviewScreen)
+            self.assertIn("Nothing to file (no Screenshots folder)", app.screen.summary_text)
+            self.assertTrue(app.screen.query_one("#btn-organize", Button).disabled)
+
+
 def _walk(node):
     yield node
     for child in node.children:
         yield from _walk(child)
+

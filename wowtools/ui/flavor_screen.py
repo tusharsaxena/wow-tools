@@ -1,7 +1,7 @@
 """Choose which WoW flavor (_retail_, _classic_era_, ...) to work on."""
 from __future__ import annotations
 
-from typing import Union
+from typing import Callable, Union
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -22,8 +22,9 @@ ALL_FLAVORS = "__all__"  # dismiss value for the "All flavors" entry (include_al
 class FlavorScreen(Screen[Union[Flavor, str, None]]):
     """Dismisses with a Flavor, with ALL_FLAVORS (only when include_all), or with None (Esc).
 
-    flavors overrides install.flavors() (e.g. only flavors with a Screenshots folder); last is the folder to
-    highlight ("" means "All flavors"), and None falls back to [general] last_flavor."""
+    flavors overrides install.flavors(); last is the folder to highlight ("" means "All flavors"), and None falls
+    back to [general] last_flavor. note(flavor) may return a short dimmed remark shown after a flavor's name
+    (e.g. "no Screenshots folder")."""
     DEFAULT_CSS = """
     FlavorScreen .title { color: $accent; text-style: bold; padding: 0 2; }
     FlavorScreen NavHint { padding: 0 2; }
@@ -32,15 +33,16 @@ class FlavorScreen(Screen[Union[Flavor, str, None]]):
     BINDINGS = [Binding("escape", "cancel", "Tools"), *NAV_BINDINGS]
 
     def __init__(self, cfg: Config, install: WowInstall, *, include_all: bool = False, last: str | None = None,
-                 flavors: list[Flavor] | None = None) -> None:
+                 flavors: list[Flavor] | None = None, note: Callable[[Flavor], str | None] | None = None) -> None:
         super().__init__()
         self.cfg = cfg
         self.flavors = install.flavors() if flavors is None else list(flavors)
         self.include_all = include_all
         self.last = cfg.last_flavor if last is None else last
+        self.note = note
 
     def compose(self) -> ComposeResult:
-        options = [Option(Text(f"{f.display_name}  ({f.folder})"), id=f.folder) for f in self.flavors]
+        options = [Option(self._label(f), id=f.folder) for f in self.flavors]
         if self.include_all:
             options.insert(0, Option(Text.assemble(("All flavors", "bold"), f"  ({len(self.flavors)})"),
                                      id=ALL_FLAVORS))
@@ -51,6 +53,10 @@ class FlavorScreen(Screen[Union[Flavor, str, None]]):
         yield NavHint("↑↓ choose · Enter select · Esc back to tools")
         yield BrandBar()
         yield Footer()
+
+    def _label(self, flavor: Flavor) -> Text:
+        remark = self.note(flavor) if self.note is not None else None
+        return Text.assemble(f"{flavor.display_name}  ({flavor.folder})", (f"  · {remark}" if remark else "", "dim"))
 
     def on_mount(self) -> None:
         self.sub_title = "Choose flavor"

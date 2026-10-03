@@ -127,14 +127,17 @@ class ScreenshotsFlow(ToolFlow):
         if install is None:
             self.start()
             return
-        self.flavors = [f for f in install.flavors() if source_dir(f).is_dir()]
-        if not self.flavors:
+        self.flavors = install.flavors()
+        with_shots = {f.folder for f in self.flavors if source_dir(f).is_dir()}
+        if not with_shots:
             self.app.notify(f"No Screenshots folders found in {to_stored(install.root)}.", severity="warning")
             self.close()
             return
         settings = load_settings(self.tool_cfg)
         self.app.push_screen(FlavorScreen(self.cfg, install, include_all=True, last=settings.last_flavor_choice,
-                                          flavors=self.flavors), self._after_flavor)
+                                          flavors=self.flavors,
+                                          note=lambda f: None if f.folder in with_shots else "no Screenshots folder"),
+                             self._after_flavor)
 
     def _after_flavor(self, choice: Union[Flavor, str, None]) -> None:
         if choice is None:

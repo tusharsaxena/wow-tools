@@ -28,7 +28,7 @@ stay thin.
 | `config` | `config/wow-tools.cfg` (`[general]`) plus `config/<tool>.cfg` per tool (`tool_config_path()`); typed accessors; `config.changed` events; `migrate_legacy_config()` splits the old root `wow-tools.cfg` |
 | `lock` | `InstanceLock` on `wow-tools.lock` (O_EXCL create; holder pid, host, start time, platform, token). `acquire()` returns the holder on conflict; `take_over()`; `release()` removes the file only if it is still ours. `LockInfo.stale` is known only on POSIX for a lock from this host |
 | `events` | Registry of event names with fixed levels; JSONL + text sinks; `log_event()`; `capture_events()` for tests |
-| `install` | `WowInstall` → `Flavor` → `Account` → `Character`; install auto-detection |
+| `install` | `WowInstall` → `Flavor` → `Account` → `Character`; install auto-detection. A flavor is any `_name_` folder in the WoW folder, whatever it holds |
 | `backup` | Zip + `manifest.json`, verified before it is moved into place; optional `on_file(current, total, name)` hook for progress |
 | `process` | Best-effort "is WoW running?" per flavor: `running_wow_processes()` returns `WowProcess(name, path)` (PowerShell `Get-CimInstance Win32_Process` on Windows/WSL, `/proc/<pid>/cmdline` on Linux, name-only `tasklist` fallback, `None` on macOS); `processes_for_flavor()` matches the executable's parent folder to the flavor folder, ignoring case and `\`/`/`; `wow_check_for(flavor)` is the check the review screen and CLI call |
 | `updater` | GitHub Releases check (24 h throttle), git fast-forward or zip replace with rollback; a zip update also removes `RETIRED_FILES` (the old `wtf-cleaner.cmd/.sh`) |
@@ -191,7 +191,7 @@ The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfC
 
 The Screenshot Organizer's screens live in `tools/screenshots/`. `app.py` holds `ScreenshotsFlow` (`FLOW`:
 `require_install` → `ScreenshotSettingsScreen` on the tool's first open → `FlavorScreen(include_all=True,
-flavors=<flavors with a Screenshots folder>)` → review) and `ScreenshotSettingsScreen` (destination, journals to
+note=<"no Screenshots folder" where missing>)` → review; every flavor is listed) and `ScreenshotSettingsScreen` (destination, journals to
 keep, copy mode; `validate_dest` errors show inline). `review_screen.py` holds:
 
 - `ShotReviewScreen`: the flavor → year → month → day → file tree (day files load on expand; read-only
