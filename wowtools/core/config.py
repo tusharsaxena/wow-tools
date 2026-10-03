@@ -7,12 +7,14 @@ Unknown keys are preserved. Bad values fall back to defaults instead of failing.
 from __future__ import annotations
 
 import configparser
+import io
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from wowtools.core.bootstrap import REPO_ROOT
 from wowtools.core.events import LEVELS, log_event
+from wowtools.core.fsutil import atomic_write_text
 from wowtools.core.paths import to_native, to_stored
 
 CONFIG_DIR = REPO_ROOT / "config"
@@ -59,12 +61,15 @@ def migrate_legacy_config(legacy: Path, config_dir: Path, tool_sections: dict[st
     files.setdefault(target, configparser.ConfigParser(interpolation=None))
     config_dir.mkdir(parents=True, exist_ok=True)
     for path, parser in files.items():
-        partial = path.with_name(path.name + ".partial")
-        with partial.open("w", encoding="utf-8") as handle:
-            parser.write(handle)
-        partial.replace(path)
+        atomic_write_text(path, _render(parser))
     legacy.unlink()
     return sorted(files)
+
+
+def _render(parser: configparser.ConfigParser) -> str:
+    buffer = io.StringIO()
+    parser.write(buffer)
+    return buffer.getvalue()
 
 
 def _to_text(value: Any) -> str:
@@ -90,9 +95,10 @@ class Config:
         return self
 
     def save(self) -> None:
+        """Write the file atomically (a crash or a concurrent reader never sees a half-written config).
+        Call it from one thread only: the UI thread in the app (see Ka0sApp._persist_update_state)."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("w", encoding="utf-8") as handle:
-            self._parser.write(handle)
+        atomic_write_text(self.path, _render(self._parser))
         if not self.exists:
             self.exists = True
             log_event("config.created", path=str(self.path))

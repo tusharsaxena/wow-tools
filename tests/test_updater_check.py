@@ -104,3 +104,13 @@ class CheckTest(unittest.TestCase):
         fresh = Config(self.tmp / "new.cfg")
         check_for_update(fresh, current="0.1.0", now=NOW, fetch=lambda: ReleaseInfo.from_version("0.2.0"))
         self.assertFalse(fresh.path.exists())
+
+    def test_persist_callback_receives_values_and_config_is_untouched(self):
+        handed = []
+        release = check_for_update(self.cfg, current="0.1.0", now=NOW,
+                                   fetch=lambda: ReleaseInfo.from_version("0.2.0"), persist=handed.append)
+        self.assertEqual(release.version, "0.2.0")
+        self.assertEqual(handed, [{"last_update_check": NOW.isoformat(timespec="seconds"),
+                                   "latest_seen_version": "0.2.0"}])
+        self.assertIsNone(self.cfg.latest_seen_version)
+        self.assertIsNone(Config(self.cfg.path).load().latest_seen_version)

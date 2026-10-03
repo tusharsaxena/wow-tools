@@ -1,4 +1,5 @@
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -84,6 +85,29 @@ class SuiteAppBaseTest(UiTestCase):
             await pilot.press("u")
             await pilot.pause()
             self.assertNotIsInstance(app.screen, UpdateScreen)
+
+
+class BackgroundUpdateCheckTest(UiTestCase):
+    async def test_background_check_persists_on_ui_thread(self):
+        """The update check runs in a worker thread, but the config is changed and saved on the UI thread only."""
+        self.cfg.save()
+        threads = []
+        real_save = Config.save
+
+        def save(cfg):
+            threads.append((threading.current_thread() is threading.main_thread(),
+                            cfg.latest_seen_version))
+            real_save(cfg)
+
+        app = WowToolsApp(self.cfg, config_dir=self.tmp, check_updates=True, detect=lambda: [])
+        with patch("wowtools.core.updater.fetch_latest", return_value=ReleaseInfo.from_version("9.9.9")), \
+                patch.object(Config, "save", save):
+            async with app.run_test(size=(120, 40)) as pilot:
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+                self.assertEqual(app.release.version, "9.9.9")
+        self.assertEqual(threads, [(True, "9.9.9")])
+        self.assertEqual(Config(self.cfg.path).load().latest_seen_version, "9.9.9")
 
 
 class QuitWhileBusyTest(UiTestCase):

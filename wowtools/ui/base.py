@@ -11,7 +11,8 @@ from textual.widgets import Button, Label, Markdown
 from wowtools import __version__
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
-from wowtools.core.updater import ReleaseInfo, UpdateError, apply_update, check_for_update
+from wowtools.core.updater import (ReleaseInfo, UpdateError, apply_update, check_for_update,
+                                   persist_check_state)
 from wowtools.ui.theme import KA0S_THEME
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
@@ -94,9 +95,14 @@ class Ka0sApp(App):
         await super().action_quit()
 
     def _check_update(self) -> None:
-        release = check_for_update(self.cfg)
+        """Worker thread. The config is changed and saved on the UI thread only (see _persist_update_state)."""
+        release = check_for_update(self.cfg, persist=lambda values: self.call_from_thread(
+            self._persist_update_state, values))
         if release is not None:
             self.call_from_thread(self._update_found, release)
+
+    def _persist_update_state(self, values: dict[str, str]) -> None:
+        persist_check_state(self.cfg, values)
 
     def _update_found(self, release: ReleaseInfo) -> None:
         self.release = release

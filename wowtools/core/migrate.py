@@ -12,11 +12,13 @@ are left where they are, and the old folder is removed only if it ends up empty.
 from __future__ import annotations
 
 import configparser
+import io
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from wowtools.core.config import Config, tool_config_path
+from wowtools.core.fsutil import atomic_write_text
 
 WOW_TOOLS_DIR = "wow-tools"  # <WoW folder>/wow-tools/<tool>/: where tools keep their data next to the game
 
@@ -141,10 +143,9 @@ def migrate_tool_config(config_dir: Path, rename: ToolRename) -> ConfigMigration
 
 
 def _write(path: Path, parser: configparser.ConfigParser) -> None:
-    partial = path.with_name(path.name + ".partial")
-    with partial.open("w", encoding="utf-8") as handle:
-        parser.write(handle)
-    partial.replace(path)
+    buffer = io.StringIO()
+    parser.write(buffer)
+    atomic_write_text(path, buffer.getvalue())
 
 
 def _free_name(path: Path) -> Path:

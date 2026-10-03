@@ -1,7 +1,10 @@
+import os
 import tempfile
+import threading
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from wowtools.core.bootstrap import REPO_ROOT
 from wowtools.core.config import (CONFIG_DIR, DEFAULT_CONFIG_PATH, LEGACY_CONFIG_PATH, Config, ConfigError,
@@ -95,6 +98,56 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(cfg.last_update_check, when)
         cfg.set("general", "last_update_check", "2026-09-27T12:00:00")
         self.assertEqual(cfg.last_update_check, when)
+
+    def test_save_is_atomic(self):
+        cfg = Config(self.path)
+        cfg.set("general", "wow_path", "/games/wow")
+        cfg.save()
+        before = self.path.read_bytes()
+        cfg.set("general", "last_flavor", "_retail_")
+        with patch("wowtools.core.fsutil.os.replace", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                cfg.save()
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_save_leaves_no_partial_on_success(self):
+        cfg = Config(self.path)
+        cfg.set("general", "wow_path", "/games/wow")
+        cfg.save()
+        cfg.save()
+        self.assertEqual(sorted(p.name for p in self.path.parent.iterdir()), ["wow-tools.cfg"])
+
+    @unittest.skipIf(os.name == "nt", "Windows refuses to replace a file another thread has open; the app never "
+                                      "reads its config while saving it")
+    def test_concurrent_set_and_save_never_corrupts(self):
+        """One thread keeps saving (as the UI thread does); another keeps loading. Every load must see a whole
+        file: a truncate-and-rewrite save lets a reader see an empty or half-written file."""
+        cfg = Config(self.path)
+        cfg.set("general", "wow_path", "/games/wow", log=False)
+        cfg.save()
+        stop = threading.Event()
+        bad: list[str] = []
+
+        def reader():
+            while not stop.is_set():
+                try:
+                    loaded = Config(self.path).load()
+                except ConfigError as exc:
+                    bad.append(str(exc))
+                    continue
+                if loaded.wow_path is None:
+                    bad.append("empty or partial file")
+
+        thread = threading.Thread(target=reader)
+        thread.start()
+        try:
+            for n in range(1000):
+                cfg.set("general", "counter", n, log=False)
+                cfg.save()
+        finally:
+            stop.set()
+            thread.join()
+        self.assertEqual(bad, [])
 
     def test_unreadable_config_raises_config_error(self):
         self.path.write_text("this is not an ini file [[[", encoding="utf-8")

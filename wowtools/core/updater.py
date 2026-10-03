@@ -80,10 +80,23 @@ def fetch_latest(*, timeout: float = 3.0, opener=urllib.request.urlopen) -> Rele
                        payload.get("html_url") or "")
 
 
+def persist_check_state(cfg: Config, values: dict[str, str]) -> None:
+    """Store what an update check learned ([general] last_update_check, latest_seen_version) and save the file
+    if it already exists (the check never creates a config before setup)."""
+    for key, value in values.items():
+        cfg.set(GENERAL, key, value, log=False)
+    cfg.save_if_exists()
+
+
 def check_for_update(cfg: Config, *, current: str = __version__, now: datetime | None = None,
                      fetch: Callable[[], ReleaseInfo | None] | None = None, force: bool = False,
-                     raise_errors: bool = False) -> ReleaseInfo | None:
-    """Return the newer release, if any. Throttled to once per CHECK_INTERVAL unless force=True."""
+                     raise_errors: bool = False,
+                     persist: Callable[[dict[str, str]], None] | None = None) -> ReleaseInfo | None:
+    """Return the newer release, if any. Throttled to once per CHECK_INTERVAL unless force=True.
+
+    What the check learned is stored with persist(values). The default stores it in cfg right away, which is
+    right for single-threaded callers; a check running in a worker thread passes a persist that hands the values
+    to the UI thread, so the config is only ever changed and saved on one thread."""
     now = now or datetime.now(timezone.utc)
     fetch = fetch or fetch_latest
     last = cfg.last_update_check
@@ -101,10 +114,13 @@ def check_for_update(cfg: Config, *, current: str = __version__, now: datetime |
         if raise_errors:
             raise UpdateError(f"could not reach GitHub: {exc}") from exc
         return None
-    cfg.set(GENERAL, "last_update_check", now.isoformat(timespec="seconds"), log=False)
+    values = {"last_update_check": now.isoformat(timespec="seconds")}
     if release is not None:
-        cfg.set(GENERAL, "latest_seen_version", release.version, log=False)
-    cfg.save_if_exists()
+        values["latest_seen_version"] = release.version
+    if persist is None:
+        persist_check_state(cfg, values)
+    else:
+        persist(values)
     log_event("update.checked", current=current, latest=release.version if release else None, throttled=False)
     if release is not None and is_newer(release.version, current):
         log_event("update.available", current=current, latest=release.version)
