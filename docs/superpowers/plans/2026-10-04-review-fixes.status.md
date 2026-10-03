@@ -18,7 +18,7 @@ Decisions taken on the review's open questions (by the maintainer's delegate, 20
 
 | Milestone | Findings | Status | Commits | Notes |
 |---|---|---|---|---|
-| M6 CI | F-012 | todo | | |
+| M6 CI | F-012 | done | 17e2ad3, 11d9399 | `.github/workflows/tests.yml` (ubuntu/windows x 3.10/3.13: compileall, gen_event_docs --check, run_tests). Run 37149064710 green on all four jobs (2nd attempt; the 1st failed only on Windows). Fixes: two WSL-simulation tests now skip on Windows (POSIX-only paths; a UNC path is a full path there); new `tests.fixtures.settle()` replaces wait_for_complete+pause in the TUI tests (Windows raced the review scan rebuild); run_tests.py pins shard pipes to UTF-8. vermin scan: nothing newer than 3.10. Linux 3.10/3.13 passed first time. |
 | M1 Safety and lifecycle | F-001..F-004 | todo | | |
 | M2 Durability and file ops | F-007, F-008, F-013..F-017, F-021, F-022, F-028, F-029 | todo | | |
 | R1 Review M1-M2 + fixes, push | | todo | | |
