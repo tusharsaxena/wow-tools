@@ -14,7 +14,7 @@ Checkpoint ledger for `2026-10-03-screenshot-organizer.md`. Work happens on bran
 | 4 | Undo | done | 3d5f956 | `organizer._safe` renamed to public `safe_progress` (the plan allowed this). After a cross-drive restore, a failed delete of the archive copy is `restored` with a reason, not `failed` (added `test_undo_cross_device_keeps_restore_when_archive_copy_is_locked`). Note: undo marks the journal undone even when every entry was skipped (spec §7 as written) |
 | 4r | Review fixes (Tasks 1-4) | done | 138791d | Journal is opened (header written) before the first file is touched; an unwritable journal stops the run with `OrganizeError` and nothing moves; a header-only journal is deleted, so a run that changes nothing still leaves none. A journal append failure after a change raises `JournalWriteError`: the change is reported as done with a "not journaled" reason (never `failed`) and the run stops. `mark_undone` starts on a new line after a torn last line. Planner and execute list target day folders names-only (`list_names`) and stat only names already at the target. Not changed: case-insensitive target matching (nothing is overwritten; a case-only clash shows as conflict) - candidate for review R |
 | M1 | Push (logic) | done | 138791d | Pushed after review fixes |
-| 5 | FlavorScreen "All flavors" | todo | | |
+| 5 | FlavorScreen "All flavors" | done | e78b910 | Plan code as written. Tests also cover `last=None` falling back to `[general] last_flavor`, Esc, and the `ui.selection` value `all` (event fields sit under `data`) |
 | 6 | TUI + registration | todo | | |
 | M2 | Push (UI) | todo | | |
 | 7 | Docs | todo | | |
