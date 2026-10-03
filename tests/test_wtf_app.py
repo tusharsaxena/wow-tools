@@ -40,8 +40,9 @@ class AppTestCase(unittest.IsolatedAsyncioTestCase):
         self.cfg.set("wtf_cleaner", "backup_dir", str(self.backup_dir), log=False)
         self.cfg.save()
 
-    def make_app(self, cfg=None, running=()):
+    def make_app(self, cfg=None, running=(), lockers=()):
         return WtfCleanerApp(cfg or self.cfg, check_updates=False, wow_check=lambda: list(running),
+                             locker_check=lambda: list(lockers),
                              detect=lambda: [])
 
     async def open_review(self, app, pilot):
@@ -113,7 +114,7 @@ class ReviewFlowTest(AppTestCase):
         progress = [s for s in pushed if isinstance(s, CleanProgressScreen)]
         self.assertEqual(len(progress), 1)
         self.assertFalse(progress[0].dry_run)
-        self.assertEqual(progress[0].stage, "delete")
+        self.assertEqual(progress[0].stage, "validate")  # the post-clean check is the last stage
         self.assertFalse((self.backup_dir / MARKER_NAME).exists())
         self.assertFalse((self.sv / "Uninstalled.lua").exists())
         self.assertTrue((self.sv / "Auctionator.lua").exists())
@@ -280,7 +281,7 @@ class ReviewFlowTest(AppTestCase):
             review = await self.open_review(app, pilot)
             self.assertEqual(review.query_one("#btn-clean", Button).variant, "error")
             self.assertEqual(review.query_one("#btn-dry", Button).variant, "primary")
-            review.query_one("#btn-rescan", Button)
+            self.assertEqual(review.query_one("#btn-rescan", Button).variant, "warning")
             self.assertFalse(review.query("#status"))
             self.assertFalse(hasattr(review, "dry_run"))
             review.query_one("#btn-clean", Button).focus()
@@ -289,6 +290,8 @@ class ReviewFlowTest(AppTestCase):
             await pilot.press("right")
             self.assertEqual(review.focused.id, "btn-rescan")
             await pilot.press("left", "left")
+            self.assertEqual(review.focused.id, "btn-clean")
+            await pilot.press("left")  # no wrap round: stays in the row
             self.assertEqual(review.focused.id, "btn-clean")
 
 
@@ -572,7 +575,8 @@ class KeyboardNavigationTest(AppTestCase):
             rows = {str(summary.get_row_at(i)[0]): str(summary.get_row_at(i)[1]) for i in range(summary.row_count)}
             self.assertEqual(rows["Mode"], "Clean")
             self.assertIn("8", rows["Deleted"])
-            self.assertEqual(rows["Safety snapshot"], "taken and removed after success")
+            self.assertEqual(rows["Safety snapshot"], "taken and removed after the check passed")
+            self.assertEqual(rows["Post-clean check"], "passed")
 
     async def test_setup_and_settings_keyboard_only(self):
         cfg = Config(self.tmp / "fresh.cfg")
@@ -625,6 +629,99 @@ class KeyboardNavigationTest(AppTestCase):
             await pilot.pause()
             self.assertIs(review.focused, tree)
             self.assertEqual(tree.cursor_line, before + 1)
+
+
+    async def test_left_and_right_switch_panes(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            self.assertIs(review.focused, tree)
+            await pilot.press("left")
+            self.assertEqual(review.focused.id, f"crit_{CRITERIA[0]}")
+            await pilot.press("down")
+            self.assertEqual(review.focused.id, f"crit_{CRITERIA[1]}")
+            await pilot.press("right")
+            self.assertIs(review.focused, tree)
+            await pilot.press("left")  # back to the filter used last
+            self.assertEqual(review.focused.id, f"crit_{CRITERIA[1]}")
+            review.query_one("#btn-rescan", Button).focus()
+            await pilot.press("right")  # past the last button: on to the tree
+            self.assertIs(review.focused, tree)
+            review.query_one("#max_age", Input).focus()
+            await pilot.press("right")  # the input keeps its arrows
+            self.assertEqual(review.focused.id, "max_age")
+
+
+class RebuildIndicatorTest(AppTestCase):
+    async def test_criterion_change_shows_indicator_then_rebuilds_once(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            calls = []
+            original = review._rebuild
+            review._rebuild = lambda: (calls.append(tree.loading), original())
+            review.criteria.not_installed = False
+            review._schedule_rebuild()
+            review._schedule_rebuild()  # a second change before the rebuild runs is folded into it
+            self.assertTrue(tree.loading)
+            self.assertIn("Updating the list", str(review.query_one("#summary", Static).render()))
+            await pilot.pause()
+            await pilot.pause()
+            self.assertEqual(calls, [True])  # one rebuild, run while the indicator was showing
+            self.assertFalse(tree.loading)
+            self.assertNotIn("Uninstalled", {i.addon for i in review.proposal.items})
+
+    async def test_toggle_relabels_only_the_branch_and_ancestors(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            node = next(n for n in _walk(tree.root) if n.data and n.data[0] == "item")
+            tree.move_cursor(node)
+            await pilot.press("space")
+            self.assertTrue(str(node.label).startswith("✘"))
+            self.assertTrue(str(tree.root.label).startswith("◩"))
+
+
+class ProgressPopupTest(AppTestCase):
+    async def test_every_stage_has_a_title_and_unknown_totals_are_indeterminate(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            screen = CleanProgressScreen(dry_run=False)
+            await app.push_screen(screen)
+            await pilot.pause()
+            self.assertEqual(str(screen.query_one("#clean-stage", Static).render()), "Checking selected files")
+            for stage in ("check", "lock_check", "snapshot_list", "snapshot", "snapshot_verify", "backup",
+                          "verify", "delete", "validate"):
+                screen.update_progress(stage, 1, 2, "x")
+                self.assertNotEqual(screen.stage_title(stage), stage)
+            screen.update_progress("snapshot_list", 300, 0, "300 files found")
+            self.assertIsNone(screen.query_one("#clean-progress", ProgressBar).total)
+            screen.update_progress("delete", 1, 1, "WTF/" + "a" * 300)
+            await pilot.pause()
+            self.assertEqual(screen.query_one("#clean-file", Static).size.height, 2)
+            screen.update_progress("delete", 1, 1, "short")
+            await pilot.pause()
+            self.assertEqual(screen.query_one("#clean-file", Static).size.height, 2)
+
+
+class LockerWarningTest(AppTestCase):
+    async def test_clean_confirm_warns_about_raider_io_but_dry_run_does_not(self):
+        app = self.make_app(lockers=("RaiderIO.exe",))
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            with capture_events() as records:
+                await pilot.press("y")
+                await pilot.pause()
+                self.assertNotIn("RaiderIO", app.screen.body_text)
+                await pilot.press("n")
+                await pilot.pause()
+                await pilot.press("c")
+                await pilot.pause()
+                self.assertIn("RaiderIO.exe appears to be running", app.screen.body_text)
+            self.assertIn("locker.running_warning", [r["event"] for r in records])
 
 
 class ResultRowsTest(unittest.TestCase):

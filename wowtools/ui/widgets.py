@@ -1,6 +1,7 @@
 """Small shared widgets: a checkbox with ✔/✘ marks, a button row with ←/→ focus, arrow-key focus bindings."""
 from __future__ import annotations
 
+from textual.actions import SkipAction
 from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.content import Content
@@ -32,7 +33,10 @@ class Ka0sCheckbox(Checkbox):
 
 
 class ButtonRow(Horizontal):
-    """A row of buttons; ← and → move focus between them."""
+    """A row of buttons; ← and → move focus between them.
+
+    With wrap=False the keys do not wrap round at either end: they fall through to the screen instead (the
+    review screen uses → at the last button to jump to the tree)."""
 
     DEFAULT_CSS = """
     ButtonRow { height: auto; }
@@ -42,6 +46,10 @@ class ButtonRow(Horizontal):
         Binding("right", "move(1)", "Next button", show=False),
         Binding("space", "press_focused", "Press", show=False),
     ]
+
+    def __init__(self, *children, wrap: bool = True, **kwargs) -> None:
+        super().__init__(*children, **kwargs)
+        self.wrap = wrap
 
     def action_press_focused(self) -> None:
         """Space activates the focused button, like Enter (Textual's Button only binds Enter)."""
@@ -54,7 +62,10 @@ class ButtonRow(Horizontal):
         focused = self.screen.focused
         if not buttons or focused not in buttons:
             return
-        buttons[(buttons.index(focused) + step) % len(buttons)].focus()
+        index = buttons.index(focused) + step
+        if not self.wrap and not 0 <= index < len(buttons):
+            raise SkipAction()
+        buttons[index % len(buttons)].focus()
 
 
 class NavHint(Static):

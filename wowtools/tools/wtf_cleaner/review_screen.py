@@ -10,16 +10,17 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
+from textual.widget import Widget
 from textual.widgets import Button, Checkbox, DataTable, Footer, Header, Input, Label, ProgressBar, Static, Tree
 
 from wowtools.core.backup import BackupError
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import ACCOUNT_WIDE, Flavor
-from wowtools.core.process import wow_check_for
+from wowtools.core.process import running_wtf_lockers, wow_check_for
 from wowtools.tools.wtf_cleaner.cleaner import CleanError, CleanResult, execute
-from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, RESULT_COLUMNS, age_days,
-                                               format_size, result_rows)
+from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, RESULT_COLUMNS, STAGE_TITLES,
+                                               age_days, format_size, locker_warning, result_rows)
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, ProposalItem, criterion_counts, evaluate
 from wowtools.tools.wtf_cleaner.safety import Marker, clear_marker, read_marker, recovery_message
 from wowtools.tools.wtf_cleaner.scanner import ScanError, ScanResult, scan
@@ -29,10 +30,8 @@ from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, Ka
 
 ACCENT = "bold #5CC8FF"
 SUCCESS_FALLBACK = "#4CC38A"
-NAV_HINT = ("↑↓/Tab move · ←→ buttons · Space tick · Enter/Space press · 1-4 criteria · c clean · y dry run · "
-            "r rescan")
-STAGE_TITLES = {"snapshot": "Taking safety snapshot", "backup": "Writing backup", "verify": "Verifying backup",
-                "delete": "Deleting"}
+NAV_HINT = ("↑↓/Tab move · ←→ panes and buttons · Space tick · Enter/Space press · 1-4 criteria · c clean · "
+            "y dry run · r rescan")
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -83,7 +82,7 @@ class CleanProgressScreen(ModalScreen[None]):
                                      padding: 1 2; }
     CleanProgressScreen #clean-stage { color: $accent; text-style: bold; margin-bottom: 1; }
     CleanProgressScreen #clean-progress { width: 1fr; }
-    CleanProgressScreen #clean-file { color: $text-muted; margin-top: 1; }
+    CleanProgressScreen #clean-file { color: $text-muted; margin-top: 1; height: 2; overflow: hidden hidden; }
     """
 
     def __init__(self, dry_run: bool) -> None:
@@ -93,7 +92,7 @@ class CleanProgressScreen(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="clean-box"):
-            yield Static(Text("Simulating" if self.dry_run else "Starting"), id="clean-stage")
+            yield Static(Text(self.stage_title("check")), id="clean-stage")
             yield ProgressBar(id="clean-progress", show_eta=False)
             yield Static("", id="clean-file")
 
@@ -105,7 +104,8 @@ class CleanProgressScreen(ModalScreen[None]):
     def update_progress(self, stage: str, current: int, total: int, detail: str = "") -> None:
         self.stage = stage
         self.query_one("#clean-stage", Static).update(Text(self.stage_title(stage)))
-        self.query_one("#clean-progress", ProgressBar).update(total=total, progress=current)
+        # A total of 0 means "not known yet" (listing a folder): the bar runs as indeterminate.
+        self.query_one("#clean-progress", ProgressBar).update(total=total if total > 0 else None, progress=current)
         self.query_one("#clean-file", Static).update(Text(detail))
 
 
@@ -197,15 +197,20 @@ class ResultScreen(Screen[str]):
         result = self.result
         done = result.would_delete if result.dry_run else result.deleted
         if result.dry_run:
-            snapshot = "not taken (dry run)"
+            snapshot, check = "not taken (dry run)", "not run (dry run)"
+        elif result.snapshot_kept:
+            snapshot = f"KEPT at {result.snapshot_path}"
+            check = (f"{len(result.check_problems)} problems: {result.check_problems[0]}"
+                     + (" (more in the log)" if len(result.check_problems) > 1 else ""))
         elif result.snapshot_path is not None:
-            snapshot = "taken and removed after success"
+            snapshot, check = "taken and removed after the check passed", "passed"
         else:
-            snapshot = "not taken"
+            snapshot, check = "not taken", "not run"
         return [
             ("Mode", "Dry run" if result.dry_run else "Clean"),
             ("Backup zip", str(result.backup_path) if result.backup_path else "none (backup is off)"),
             ("Safety snapshot", snapshot),
+            ("Post-clean check", check),
             ("Would delete" if result.dry_run else "Deleted", f"{len(done)} files"),
             ("Size", format_size(result.bytes_freed)),
             ("Skipped", f"{len(result.skipped)} files (changed or missing since the scan)"),
@@ -229,6 +234,12 @@ class ResultScreen(Screen[str]):
     def action_choose(self, choice: str) -> None:
         log_event("ui.selection", screen="result", control="next", value=choice)
         self.dismiss(choice)
+
+
+class ProposalTree(Tree):
+    """The proposal tree. ← jumps to the filters panel (instead of scrolling sideways)."""
+
+    BINDINGS = [Binding("left", "screen.focus_filters", "Filters", show=False)]
 
 
 class ReviewScreen(Screen[str]):
@@ -257,16 +268,20 @@ class ReviewScreen(Screen[str]):
         Binding("2", "criterion(1)", CRITERION_SHORT["not_enabled"], show=False),
         Binding("3", "criterion(2)", CRITERION_SHORT["older_than"], show=False),
         Binding("4", "criterion(3)", CRITERION_SHORT["stray_copies"], show=False),
+        Binding("left", "focus_filters", "Filters", show=False),
+        Binding("right", "focus_tree", "Tree", show=False),
         *NAV_BINDINGS,
     ]
 
     def __init__(self, cfg: Config, flavor: Flavor, *, account: str | None = None,
-                 wow_check: Callable[[], list[str] | None] | None = None) -> None:
+                 wow_check: Callable[[], list[str] | None] | None = None,
+                 locker_check: Callable[[], list[str] | None] | None = None) -> None:
         super().__init__()
         self.cfg = cfg
         self.flavor = flavor
         self.account = account or None
         self.wow_check = wow_check or wow_check_for(flavor)
+        self.locker_check = locker_check or running_wtf_lockers
         self.settings = load_settings(cfg)
         self.criteria = self.settings.criteria.copy()
         self.scan_result: ScanResult | None = None
@@ -274,6 +289,8 @@ class ReviewScreen(Screen[str]):
         self.unchecked: set[Path] = set()
         self.summary_text = ""
         self._progress_screen: CleanProgressScreen | None = None
+        self._rebuild_pending = False
+        self._last_filter: Widget | None = None
 
     # --- layout -------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -286,15 +303,15 @@ class ReviewScreen(Screen[str]):
                                        id=f"crit_{name}")
                 yield Label("Max age in days (Enter)", classes="section")
                 yield Input(str(self.criteria.max_age_days), type="integer", id="max_age")
-                with ButtonRow(id="actions"):
+                with ButtonRow(id="actions", wrap=False):
                     yield Button("Clean", variant="error", id="btn-clean")
                     yield Button("Dry run", variant="primary", id="btn-dry")
-                    yield Button("Rescan", id="btn-rescan")
+                    yield Button("Rescan", variant="warning", id="btn-rescan")
                 yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)
                 yield Static("", id="scan-label")
-            yield Tree(Text(self.flavor.display_name), id="proposal")
+            yield ProposalTree(Text(self.flavor.display_name), id="proposal")
         yield Static("", id="summary")
         yield BrandBar()
         yield Footer()
@@ -304,6 +321,26 @@ class ReviewScreen(Screen[str]):
         self.query_one("#proposal", Tree).focus()
         self.action_rescan()
         self._check_recovery()
+
+    # --- panes (←/→) --------------------------------------------------------------------------------
+    def on_descendant_focus(self, event) -> None:
+        widget = event.widget
+        if any(ancestor.id == "filters" for ancestor in widget.ancestors):
+            self._last_filter = widget
+
+    def action_focus_filters(self) -> None:
+        focused = self.focused
+        if focused is not None and any(a.id == "filters" for a in focused.ancestors):
+            return  # already in the filters panel
+        target = self._last_filter
+        if target is None or not target.is_attached or not target.focusable:
+            target = self.query_one(f"#crit_{CRITERIA[0]}", Ka0sCheckbox)
+        target.focus()
+
+    def action_focus_tree(self) -> None:
+        tree = self.query_one("#proposal", Tree)
+        if tree.display and self.focused is not tree:
+            tree.focus()
 
     # --- recovery notice (spec A.4.5: never restores on its own) -------------------------------------
     def _check_recovery(self) -> None:
@@ -361,7 +398,7 @@ class ReviewScreen(Screen[str]):
         self.scan_result = result
         self._show_scan_progress(False)
         self._update_criterion_labels()
-        self._rebuild()
+        self._schedule_rebuild()
         self.query_one("#proposal", Tree).focus()
 
     # --- criteria -------------------------------------------------------------------------------------
@@ -380,6 +417,24 @@ class ReviewScreen(Screen[str]):
             self.query_one(f"#crit_{name}", Ka0sCheckbox).label = self._criterion_label(index, name, counts[name])
 
     # --- tree ------------------------------------------------------------------------------------
+    def _schedule_rebuild(self) -> None:
+        """Show that the list is being rebuilt, then rebuild once that has been drawn. Toggles made before the
+        rebuild runs are folded into it."""
+        if self.scan_result is None:
+            return
+        self.query_one("#proposal", Tree).loading = True
+        self.query_one("#summary", Static).update(Text("Updating the list…", style="bold #E8B04B"))
+        if not self._rebuild_pending:
+            self._rebuild_pending = True
+            self.call_after_refresh(self._run_scheduled_rebuild)
+
+    def _run_scheduled_rebuild(self) -> None:
+        self._rebuild_pending = False
+        try:
+            self._rebuild()
+        finally:
+            self.query_one("#proposal", Tree).loading = False
+
     def _rebuild(self) -> None:
         if self.scan_result is None:
             return
@@ -387,21 +442,26 @@ class ReviewScreen(Screen[str]):
         tree = self.query_one("#proposal", Tree)
         tree.clear()
         tree.root.data = ("group", self.proposal.items, self.flavor.display_name)
+        tree.root.set_label(self._label(tree.root.data))
         owners: dict[str, dict[str, list[ProposalItem]]] = {}
         for item in self.proposal.items:
             owners.setdefault(item.account, {}).setdefault(item.owner_label, []).append(item)
         for account in sorted(owners, key=str.casefold):
             account_items = [i for items in owners[account].values() for i in items]
-            account_node = tree.root.add("", data=("group", account_items, account), expand=True)
+            data = ("group", account_items, account)
+            account_node = tree.root.add(self._label(data), data=data, expand=True)
             for owner in sorted(owners[account], key=lambda o: (o != ACCOUNT_WIDE, o.casefold())):
                 items = sorted(owners[account][owner], key=lambda i: i.addon.casefold())
-                owner_node = account_node.add("", data=("group", items, owner), expand=True)
+                data = ("group", items, owner)
+                owner_node = account_node.add(self._label(data), data=data, expand=True)
                 for item in items:
-                    item_node = owner_node.add("", data=("item", item))
+                    data = ("item", item)
+                    item_node = owner_node.add(self._label(data), data=data)
                     for sv in item.files:
-                        item_node.add_leaf("", data=("file", item, sv))
+                        data = ("file", item, sv)
+                        item_node.add_leaf(self._label(data), data=data)
         tree.root.expand()
-        self._refresh_labels()
+        self._update_summary()
 
     @staticmethod
     def _paths(data) -> list[Path]:
@@ -449,9 +509,16 @@ class ReviewScreen(Screen[str]):
         items, name = data[1], data[2]
         return Text.assemble(mark, (name, ACCENT), (f"  {len(items)} items", "dim"))
 
-    def _refresh_labels(self) -> None:
+    def _refresh_labels(self, node=None) -> None:
+        """Relabel node's branch and its ancestors (everything a tick there can change), or the whole tree."""
         tree = self.query_one("#proposal", Tree)
-        stack = [tree.root]
+        if node is not None:
+            parent = node.parent
+            while parent is not None:
+                if parent.data is not None:
+                    parent.set_label(self._label(parent.data))
+                parent = parent.parent
+        stack = [node or tree.root]
         while stack:
             node = stack.pop()
             if node.data is not None:
@@ -508,7 +575,7 @@ class ReviewScreen(Screen[str]):
         key = str(paths[0]) if node.data[0] == "file" else (
             node.data[1].key if node.data[0] == "item" else node.data[2])
         log_event("ui.item_toggled", screen="review", key=key, checked=check)
-        self._refresh_labels()
+        self._refresh_labels(node)
 
     def action_select_all(self) -> None:
         self.unchecked.clear()
@@ -530,7 +597,7 @@ class ReviewScreen(Screen[str]):
             return
         setattr(self.criteria, name, event.value)
         log_event("ui.selection", screen="review", control=f"criterion.{name}", value=event.value)
-        self._rebuild()
+        self._schedule_rebuild()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id != "max_age":
@@ -545,7 +612,7 @@ class ReviewScreen(Screen[str]):
         self.criteria.max_age_days = days
         log_event("ui.selection", screen="review", control="max_age_days", value=days)
         self._update_criterion_labels()
-        self._rebuild()
+        self._schedule_rebuild()
         self.query_one("#proposal", Tree).focus()
 
     def action_flavors(self) -> None:
@@ -598,6 +665,10 @@ class ReviewScreen(Screen[str]):
         if running:
             alerts.append(f"WoW appears to be running ({', '.join(running)}). Close it first: WoW rewrites "
                           "SavedVariables when you log out.")
+        lockers = None if dry_run else self.locker_check()
+        if lockers:
+            log_event("locker.running_warning", executables=lockers)
+            alerts.append(locker_warning(lockers))
         title = "Simulate this clean?" if dry_run else "Back up and delete these files?"
         self.app.push_screen(ConfirmScreen(title, "\n".join(lines), tuple(alerts), default_yes=dry_run),
                              lambda ok: self._confirmed(ok, selection, backup, backup_dir, dry_run))
