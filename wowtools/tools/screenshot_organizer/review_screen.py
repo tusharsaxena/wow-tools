@@ -21,7 +21,7 @@ from wowtools.core.journal import friendly_stamp
 from wowtools.tools.screenshot_organizer.journal import latest_undoable, read_journal
 from wowtools.tools.screenshot_organizer.naming import day_parts
 from wowtools.tools.screenshot_organizer.organizer import OrganizeError, OrganizeResult, execute
-from wowtools.tools.screenshot_organizer.planner import MAYBE_DUPLICATE, FlavorPlan, Plan, ShotItem, scan
+from wowtools.tools.screenshot_organizer.planner import FILED, MAYBE_DUPLICATE, FlavorPlan, Plan, ShotItem, scan
 from wowtools.tools.screenshot_organizer.report import (RESULT_COLUMNS, STAGE_TITLES, confirm_text, destination_label,
                                                         kind_class, plural, result_rows, stopped_text,
                                                         summary_rows)
@@ -313,13 +313,13 @@ class ShotReviewScreen(Screen[str]):
         self.query_one("#scan-label", Static).update(Text(label))
 
     def _scan_worker(self) -> None:
-        dest_dir = self.settings.dest_dir
+        dest_dir, copy = self.settings.dest_dir, self.settings.copy_mode
 
         def progress(current: int, total: int, label: str) -> None:
             self.app.call_from_thread(self._scan_progress, current, total, label)
 
         try:
-            plan = scan(self.flavors, dest_dir, progress)
+            plan = scan(self.flavors, dest_dir, progress, copy=copy)
         except Exception as exc:  # noqa: BLE001 - shown to the user, never a crash
             log_exception("shots.scan", exc)
             self.app.call_from_thread(self._scan_failed, f"The scan failed: {exc}")
@@ -335,6 +335,7 @@ class ShotReviewScreen(Screen[str]):
 
     def _scanned(self, plan: Plan) -> None:
         self.plan = plan
+        self.unchecked = {i.src for i in plan.filed}  # copy mode: already filed, so they start unticked
         self._show_scan_progress(False)
         self._rebuild()
         self._refresh_undo()
@@ -353,15 +354,19 @@ class ShotReviewScreen(Screen[str]):
             return ("year", folder, data[2])
         if kind == "month":
             return ("month", folder, data[2], data[3])
+        if kind == "filed":
+            return ("filed", folder)
         return ("day", folder, data[2])
 
     def _index(self, plan: Plan) -> None:
-        """Precompute the selectable items under every flavor, year, month and day, so marks stay cheap."""
+        """Precompute the items to file under every flavor, year, month and day, and each flavor's already-filed
+        group (copy mode), so marks stay cheap."""
         index: dict[tuple, list[ShotItem]] = {("root",): []}
         for fp in plan.flavors:
             folder = fp.flavor.folder
             index.setdefault(("flavor", folder), [])
-            for item in sorted(fp.selectable, key=lambda i: (i.day, i.src.name.casefold())):
+            index[("filed", folder)] = sorted(fp.filed, key=lambda i: (i.day, i.src.name.casefold()))
+            for item in sorted(fp.to_file, key=lambda i: (i.day, i.src.name.casefold())):
                 year, month, _ = day_parts(item.day)
                 for key in (("root",), ("flavor", folder), ("year", folder, year), ("month", folder, year, month),
                             ("day", folder, item.day)):
@@ -402,6 +407,9 @@ class ShotReviewScreen(Screen[str]):
                     for day in years[year][month]:
                         data = ("day", fp, day)
                         month_node.add(self._label(data), data=data, allow_expand=True)  # files load on expand
+            if fp.filed:
+                data = ("filed", fp)
+                flavor_node.add(self._label(data), data=data, allow_expand=True)  # files load on expand
             if fp.conflicts:
                 data = ("conflicts", fp)
                 node = flavor_node.add(self._label(data), data=data)
@@ -420,7 +428,7 @@ class ShotReviewScreen(Screen[str]):
 
     def on_tree_node_expanded(self, event: Tree.NodeExpanded) -> None:
         node = event.node
-        if node.data is None or node.data[0] != "day" or node.children:
+        if node.data is None or node.data[0] not in ("day", "filed") or node.children:
             return
         for item in self._items(node.data):
             data = ("file", item)
@@ -452,6 +460,9 @@ class ShotReviewScreen(Screen[str]):
             item = data[1]
             extra = ("  possible duplicate", "dim") if item.state == MAYBE_DUPLICATE else ""
             return Text.assemble(mark, item.src.name, extra)
+        if kind == "filed":
+            return Text.assemble(mark, (f"Already filed ({len(items)})", ACCENT),
+                                 ("  an identical copy is already in its date folder", "dim"))
         if kind == "root":
             name = self.scope_label
         elif kind == "flavor":
@@ -498,13 +509,14 @@ class ShotReviewScreen(Screen[str]):
         conflicts = sum(len(fp.conflicts) for fp in plan.flavors)
         text = (f"Selected: {plural(len(selection), 'shot')} · {plural(dupes, 'possible duplicate')} · "
                 f"{plural(conflicts, 'conflict')} · {len(plan.skipped)} skipped (name not recognised)")
-        nothing = not plan.selectable
-        if nothing:
+        if plan.filed:
+            text += f" · {len(plan.filed)} already filed"
+        if not plan.to_file:
             # Only worth saying when none of the chosen flavors has a Screenshots folder at all.
             reason = "" if any(not fp.missing for fp in plan.flavors) else " (no Screenshots folder)"
             text = f"Nothing to file{reason}.    " + text
-        for button_id in ("#btn-organize", "#btn-dry"):
-            self.query_one(button_id, Button).disabled = nothing
+        for button_id in ("#btn-organize", "#btn-dry"):  # already-filed copies can still be ticked by hand
+            self.query_one(button_id, Button).disabled = not plan.selectable
         if plan.warnings:
             text += f"    ⚠ {plural(len(plan.warnings), 'folder')} could not be read (see the log)"
         self.summary_text = text
@@ -537,7 +549,9 @@ class ShotReviewScreen(Screen[str]):
         return (str(data[1].src),) if data[0] == "file" else self._key(data)
 
     def action_select_all(self) -> None:
-        self.unchecked.clear()
+        # Everything to file; already-filed copies (copy mode) keep whatever the user chose for them.
+        filed = {i.src for i in self.plan.filed} if self.plan is not None else set()
+        self.unchecked &= filed
         log_event("ui.selection", screen="shots_review", control="select_all", value=True)
         self._refresh_labels()
 

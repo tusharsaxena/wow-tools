@@ -152,10 +152,13 @@ class ScreenshotsFlow(ToolFlow):
                               flavors=self.flavors, note=lambda f: COUNTING, all_note=COUNTING)
         self.app.push_screen(picker, self._after_flavor)
         flavors = list(self.flavors)
-        picker.run_worker(lambda: self._count_worker(picker, install, flavors), thread=True, group="counts")
+        picker.run_worker(lambda: self._count_worker(picker, install, flavors, settings), thread=True,
+                          group="counts")
 
-    def _count_worker(self, picker: FlavorScreen, install: WowInstall, flavors: list[Flavor]) -> None:
-        counts = {f.folder: waiting_count(f) for f in flavors}  # never raises: an unreadable folder is None
+    def _count_worker(self, picker: FlavorScreen, install: WowInstall, flavors: list[Flavor],
+                      settings: ShotSettings) -> None:
+        # Never raises: an unreadable folder is None. Copy mode leaves out what an earlier copy already filed.
+        counts = {f.folder: waiting_count(f, settings.dest_dir, copy=settings.copy_mode) for f in flavors}
         self.app.call_from_thread(self._counts_ready, picker, install, counts)
 
     def _counts_ready(self, picker: FlavorScreen, install: WowInstall, counts: dict[str, int | None]) -> None:

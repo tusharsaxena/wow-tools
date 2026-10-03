@@ -336,10 +336,10 @@ class ShotsAppTest(TuiTestCase):
         real = app_module.waiting_count
         threads = []
 
-        def slow_count(flavor):
+        def slow_count(flavor, *args, **kwargs):
             threads.append(threading.current_thread() is threading.main_thread())
             release.wait(5)
-            return real(flavor)
+            return real(flavor, *args, **kwargs)
 
         app = self.make_app()
         with patch.object(app_module, "waiting_count", slow_count):
@@ -359,6 +359,51 @@ class ShotsAppTest(TuiTestCase):
                 self.assertEqual(options.highlighted, 0)
         self.assertTrue(threads)
         self.assertFalse(any(threads))
+
+    async def test_copy_mode_filed_copies_are_not_waiting(self):
+        """F-027: copy mode in place: screenshots already copied are not counted, show as already filed and
+        start unticked."""
+        from wowtools.core.install import WowInstall
+        from wowtools.tools.screenshot_organizer.organizer import execute
+        from wowtools.tools.screenshot_organizer.planner import scan
+        self.save_tool_cfg(copy_mode=True)
+        install = WowInstall(self.root)
+        plan = scan(install.flavors(), None, copy=True)
+        execute(plan.selectable, dest_dir=None, copy=True, dry_run=False, journal_dir=None, keep_journals=10)
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_tool(app, pilot)
+            await settle(app, pilot)
+            options = app.screen.query_one("#flavors", OptionList)
+            ids = [options.get_option_at_index(i).id for i in range(options.option_count)]
+            labels = {i: str(options.get_option_at_index(n).prompt) for n, i in enumerate(ids)}
+            self.assertIn("nothing to file", labels["_retail_"])
+            self.assertIn("nothing to file", labels[ids[0]])
+            await pilot.press("enter")
+            await pilot.pause()
+            await settle(app, pilot)
+            review = app.screen
+            self.assertIsInstance(review, ShotReviewScreen)
+            self.assertEqual(review.selection(), [])
+            self.assertIn("Nothing to file", review.summary_text)
+            self.assertIn("6 already filed", review.summary_text)
+            tree = review.query_one("#shots", Tree)
+            groups = [n for n in _walk(tree.root) if n.data and n.data[0] == "filed"]
+            self.assertEqual(len(groups), 2)
+            retail = next(g for g in groups if g.data[1].flavor.folder == "_retail_")
+            self.assertIn("Already filed (4)", str(retail.label))
+            self.assertFalse([n for n in _walk(tree.root) if n.data and n.data[0] == "day"])
+            tree.focus()
+            tree.move_cursor(retail)
+            await pilot.press("space")  # tickable by hand
+            await pilot.pause()
+            self.assertEqual(len(review.selection()), 4)
+            await pilot.press("a")  # ticks everything to file; leaves the already-filed choice alone
+            await pilot.pause()
+            self.assertEqual(len(review.selection()), 4)
+            await pilot.press("n")
+            await pilot.pause()
+            self.assertEqual(review.selection(), [])
 
     async def test_every_flavor_is_listed_and_empty_ones_are_marked(self):
         self.save_tool_cfg()

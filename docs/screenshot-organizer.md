@@ -41,8 +41,8 @@ You choose this with the **destination folder** setting:
 
 The list shows every game version in your WoW folder, with **All flavors** at the top. Next to each one you see
 how many screenshots are waiting to be sorted. The counts take a moment to appear ("counting…"), but you can
-pick straight away. A version you've never taken a screenshot in says "no Screenshots folder". Your choice is
-remembered for next time.
+pick straight away. A version you've never taken a screenshot in says "no Screenshots folder". In copy mode,
+screenshots you've already copied aren't counted. Your choice is remembered for next time.
 
 ## The review screen
 
@@ -68,7 +68,7 @@ explained below).
 | Key | Does |
 |---|---|
 | `Space` | Tick or untick the highlighted line |
-| `a` / `n` | Tick everything / untick everything |
+| `a` / `n` | Tick everything to sort / untick everything |
 | `o` | **Organize** the ticked screenshots (asks first; the answer starts on **No**) |
 | `y` | **Dry run** (asks first; the answer starts on **Yes**) |
 | `r` | Scan again |
@@ -129,6 +129,11 @@ name not recognised".
 
 Turn on **Copy instead of move** in settings to copy screenshots into the dated folders and keep the originals in
 `Screenshots` too. Every copy is checked before it counts.
+
+Next time you scan, the originals you've already copied aren't "waiting" any more. When the same file (same
+size and date) is already in its dated folder, the review screen lists it under "Already filed" for that game
+version, unticked, and the game version list doesn't count it. You can still tick it by hand (`a` leaves these
+alone); the run then compares the two files and says "Already filed" or "Conflict".
 
 ## Undo last run
 

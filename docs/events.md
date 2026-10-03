@@ -114,7 +114,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `shots.organize_started` | info | A run (or dry run) started: mode, destination and file count. |
 | `shots.organize_stopped` | error | A run stopped unexpectedly; the journal holds what was done so far. |
 | `shots.refused` | error | The path guard refused a screenshot (its source or target is not where it should be). |
-| `shots.scan_completed` | info | A scan finished: per flavor, files to file, possible duplicates, conflicts and unrecognised names. |
+| `shots.scan_completed` | info | A scan finished: per flavor, files to file, possible duplicates, conflicts, copies already filed (copy mode) and unrecognised names. |
 | `shots.scan_started` | info | A scan of the chosen flavors' Screenshots folders started. |
 | `shots.scan_warning` | warning | A Screenshots or target folder could not be read during a scan. |
 | `shots.skipped` | warning | A screenshot was skipped because it vanished or changed after the scan. |

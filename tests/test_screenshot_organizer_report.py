@@ -6,7 +6,7 @@ from wowtools.core.install import Flavor
 from wowtools.tools.screenshot_organizer import organizer
 from wowtools.tools.screenshot_organizer.organizer import (CONFLICT_KEPT, MOVED, RESTORED, WOULD_MOVE, OrganizeResult,
                                                            Outcome)
-from wowtools.tools.screenshot_organizer.planner import NEW, FlavorPlan, Plan, ShotItem
+from wowtools.tools.screenshot_organizer.planner import FILED, NEW, FlavorPlan, Plan, ShotItem
 from wowtools.tools.screenshot_organizer.report import (KIND_LABELS, STAGE_TITLES, confirm_text, destination_label,
                                                         result_rows, stopped_text, summary_rows)
 from wowtools.tools.screenshot_organizer.settings import ShotSettings
@@ -82,3 +82,13 @@ class ReportTest(unittest.TestCase):
         self.assertTrue(title.startswith("Dry run"))
         self.assertIn("Copy 2 screenshots", title)
         self.assertIn("in place", body)  # the scanned plan's destination wins over changed settings
+
+    def test_confirm_text_mentions_ticked_already_filed_copies(self):
+        flavor = Flavor("_retail_", Path("/w/_retail_"))
+        item = ShotItem(flavor, Path("/w/_retail_/Screenshots/a.jpg"), Path("/w/_retail_/Screenshots/2019/07/31/a.jpg"),
+                        date(2019, 7, 31), 1, 0.0, FILED)
+        plan = Plan([FlavorPlan(flavor, Path("/w/_retail_/Screenshots"), Path("/w/_retail_/Screenshots"), [item])],
+                    None)
+        _, body = confirm_text([item], plan, ShotSettings(copy_mode=True), False)
+        self.assertIn("_retail_: 1 screenshot (1 already filed)", body)
+        self.assertIn("compared by content", body)

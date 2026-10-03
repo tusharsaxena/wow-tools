@@ -185,7 +185,12 @@ again in `action_rescan`, which refuses to scan a hand-edited bad `dest_dir`.
 
 **Scan.** One listing per `Screenshots` folder (top-level files only) and one names-only listing
 (`planner.list_names`) per target day folder. Only a name already at the target is stat'ed, to set the state:
-`new`, `maybe_duplicate` (same size) or `conflict` (other size). Unparsable names become `Skipped`. Progress is
+`new`, `maybe_duplicate` (same size) or `conflict` (other size). In copy mode (`scan(..., copy=True)`) a same-size
+target whose modified time is within 2 s (copies keep it; FAT stores 2-second steps) is `filed` instead: the
+original stays in `Screenshots` after a copy, so it is not "to file" (`FlavorPlan.to_file` leaves it out), the review
+screen lists it in an unticked Already filed group, and `execute` still compares hashes if it is ticked.
+`waiting_count(flavor, dest_dir, copy=)` (the flavor picker's counts) lists names only; in copy mode it also lists
+each target day folder and leaves out names already there. Unparsable names become `Skipped`. Progress is
 `cb(current, total, label)` once per flavor, plus a tick every 500 files.
 
 **No per-file resolve or stat.** `resolve()` and per-entry `stat` are slow over WSL drvfs, so neither the scan
@@ -298,7 +303,7 @@ note=<"no Screenshots folder" where missing>)` → review; every flavor is liste
 keep, copy mode; `validate_dest` errors show inline). `review_screen.py` holds:
 
 - `ShotReviewScreen`: the flavor → year → month → day → file tree (day files load on expand; read-only
-  Conflicts and Skipped nodes) and the Organize / Dry run / Rescan / Undo last run buttons. It reuses the
+  Conflicts and Skipped nodes; in copy mode an Already filed node, unticked, that `a` leaves alone) and the Organize / Dry run / Rescan / Undo last run buttons. It reuses the
   cleaner's `ConfirmScreen`;
 - `ShotProgressScreen`: stage, bar and current file for a run, dry run or undo;
 - `ShotResultScreen`: a summary table plus a per-file `DataTable`.

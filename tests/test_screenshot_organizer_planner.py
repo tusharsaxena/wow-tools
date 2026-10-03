@@ -7,7 +7,8 @@ from pathlib import Path
 from tests.fixtures import SHOT_BYTES, build_screenshot_tree, build_wow_tree
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
-from wowtools.tools.screenshot_organizer.planner import CONFLICT, MAYBE_DUPLICATE, NEW, scan
+from wowtools.tools.screenshot_organizer.organizer import execute
+from wowtools.tools.screenshot_organizer.planner import CONFLICT, FILED, MAYBE_DUPLICATE, NEW, scan, waiting_count
 
 
 class PlannerTest(unittest.TestCase):
@@ -107,3 +108,50 @@ class PlannerTest(unittest.TestCase):
         self.assertEqual(item.state, MAYBE_DUPLICATE)
         shot_stats = [n for n in stats if n.startswith("WoWScrnShot")]
         self.assertEqual(shot_stats, ["WoWScrnShot_073119_232713.jpg"])  # only the name already at the target
+
+    def copy_all(self, dest):
+        plan = scan([self.retail, self.era], dest, copy=True)
+        result = execute(plan.selectable, dest_dir=dest, copy=True, dry_run=False, journal_dir=self.tmp / "j",
+                         keep_journals=10)
+        self.assertEqual(result.count("copied"), 6)
+
+    def test_copy_mode_in_place_filed_copies_are_not_waiting(self):
+        """F-027: in copy mode the originals stay; their identical filed copies make them already filed."""
+        self.assertEqual(waiting_count(self.retail, None, copy=True), 4)
+        self.copy_all(None)
+        plan = scan([self.retail, self.era], None, copy=True)
+        self.assertEqual({i.state for i in plan.items}, {FILED})
+        self.assertEqual([len(fp.filed) for fp in plan.flavors], [4, 2])
+        self.assertEqual([fp.to_file for fp in plan.flavors], [[], []])
+        self.assertEqual(len(plan.selectable), 6)  # can still be ticked by hand
+        self.assertEqual(waiting_count(self.retail, None, copy=True), 0)
+        self.assertEqual(waiting_count(self.era, None, copy=True), 0)
+        self.assertEqual(waiting_count(self.retail), 4)  # move mode counts names only, as before
+
+    def test_copy_mode_with_destination_filed_copies_are_not_waiting(self):
+        dest = self.tmp / "arch"
+        self.copy_all(dest)
+        plan = scan([self.retail], dest, copy=True)
+        self.assertEqual({i.state for i in plan.items}, {FILED})
+        self.assertEqual(waiting_count(self.retail, dest, copy=True), 0)
+
+    def test_filed_needs_same_size_and_time_and_copy_mode(self):
+        self.copy_all(None)
+        filed = self.shots / "2019" / "07" / "31" / "WoWScrnShot_073119_232713.jpg"
+        __import__("os").utime(filed, (1_000_000_000, 1_000_000_000))  # same size, other time
+        states = {i.src.name: i.state for i in scan([self.retail], None, copy=True).items}
+        self.assertEqual(states["WoWScrnShot_073119_232713.jpg"], MAYBE_DUPLICATE)
+        self.assertEqual(states["WoWScrnShot_073119_232800.jpg"], FILED)
+        # Move mode: a same-name file at the target is a possible duplicate to remove, never "filed".
+        self.assertEqual({i.state for i in scan([self.retail], None).items}, {MAYBE_DUPLICATE})
+        # A filed copy of another size is a conflict and is not waiting either.
+        (self.shots / "2019" / "08" / "01" / "WoWScrnShot_080119_101010.PNG").write_bytes(b"other size")
+        self.assertEqual(waiting_count(self.retail, None, copy=True), 0)
+
+    def test_scan_completed_counts_filed(self):
+        self.copy_all(None)
+        with capture_events() as records:
+            scan([self.retail], None, copy=True)
+        done = next(r for r in records if r["event"] == "shots.scan_completed")
+        self.assertEqual(done["data"]["flavors"]["_retail_"]["already_filed"], 4)
+        self.assertEqual(done["data"]["flavors"]["_retail_"]["to_file"], 0)
