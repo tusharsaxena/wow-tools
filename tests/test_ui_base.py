@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from textual.widgets import Input, OptionList
 
-from tests.fixtures import build_wow_tree
+from tests.fixtures import TuiTestCase, build_wow_tree
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
@@ -32,7 +32,7 @@ class Host(Ka0sApp):
         self.push_screen(self._screen, self.results.append)
 
 
-class UiTestCase(unittest.IsolatedAsyncioTestCase):
+class UiTestCase(TuiTestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)

@@ -24,7 +24,8 @@ This walks through adding the Screenshot Organizer (`screenshots`) as an example
    "screenshots")`. It appears in the tool menu. There are no per-tool wrappers or command-line modes: every tool
    opens from the menu of `wow-tools.sh` / `wow-tools.cmd`.
 3. **Events**: run `python3 scripts/gen_event_docs.py` and commit `docs/events.md`.
-4. **Tests**: add `tests/test_screenshots_*.py`. Use temp folders, `capture_events()` for logging assertions
+4. **Tests**: add `tests/test_screenshots_*.py`. Use temp folders, `tests.fixtures.TuiTestCase` as the base for TUI tests, `capture_events()` for logging
+   assertions
    and `WowToolsApp(..., tool_options={"screenshots": {...}}).run_test()` for the TUI (open the tool from the menu
    with Enter). Never touch a real install.
 5. **Docs**: add a section to `README.md` and a row to its tools table.

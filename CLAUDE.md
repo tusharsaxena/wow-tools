@@ -17,4 +17,5 @@ Conventions:
 - One Textual app, `WowToolsApp` (`ui/suite_app.py`): tool menu first; each tool is a `ToolFlow` (`FLOW` in its
   `app.py`) that pushes its own screens and `close()`s back to the menu.
 - Tests use `tests/fixtures.py` temp trees; never a real WoW install, never the network.
+- Textual tests subclass `tests.fixtures.TuiTestCase` (asyncio debug mode off; it made the suite ~10x slower).
 - Adding a tool: `docs/adding-a-tool.md`.

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from textual.widgets import Button
 
-from tests.fixtures import build_wow_tree, make_config
+from tests.fixtures import TuiTestCase, build_wow_tree, make_config
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events, get_event_log
 from wowtools.core.lock import InstanceLock, LockInfo
@@ -19,7 +19,7 @@ from wowtools.ui.suite_app import LockScreen, ToolMenuScreen, WowToolsApp
 SIZE = (140, 50)
 
 
-class SuiteAppTest(unittest.IsolatedAsyncioTestCase):
+class SuiteAppTest(TuiTestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)

@@ -7,7 +7,7 @@ from pathlib import Path
 from textual.app import App
 from textual.widgets import Button, DataTable, Input, ProgressBar, Static, Tree
 
-from tests.fixtures import build_wow_tree, make_config
+from tests.fixtures import TuiTestCase, build_wow_tree, make_config
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.tools.wtf_cleaner.app import CleanerSettingsScreen
@@ -29,7 +29,7 @@ from wowtools.ui.setup_screen import SetupScreen
 SIZE = (140, 50)
 
 
-class AppTestCase(unittest.IsolatedAsyncioTestCase):
+class AppTestCase(TuiTestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)

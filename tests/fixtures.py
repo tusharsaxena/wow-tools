@@ -23,8 +23,10 @@ _notaflavor: not a flavor folder
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import time
+import unittest
 from pathlib import Path
 
 from wowtools.core.config import Config
@@ -96,3 +98,12 @@ def make_config(directory: Path, wow_root: Path, **general: str) -> Config:
         cfg.set("general", key, value, log=False)
     cfg.save()
     return cfg
+
+
+class TuiTestCase(unittest.IsolatedAsyncioTestCase):
+    """Base for Textual tests. IsolatedAsyncioTestCase runs its loop in asyncio debug mode, which makes Textual
+    about 15x slower (every callback is timed and logged); the tests do not need it, so it is switched off."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        asyncio.get_running_loop().set_debug(False)
