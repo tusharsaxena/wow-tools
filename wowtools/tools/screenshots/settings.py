@@ -1,0 +1,69 @@
+"""The Screenshot Organizer's own settings: the [screenshots] section of config/screenshots.cfg, plus where
+things go (source folder, target root, journal folder)."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from wowtools.core.config import Config
+from wowtools.core.install import Flavor, WowInstall
+
+SECTION = "screenshots"
+SCREENSHOTS_DIR = "Screenshots"
+DEFAULT_KEEP_JOURNALS = 10
+JOURNAL_SUBDIR = Path("wow-tools") / "screenshots" / "journal"
+
+
+@dataclass
+class ShotSettings:
+    dest_dir: Path | None = None  # None (stored as empty) means organise in place
+    copy_mode: bool = False
+    last_flavor_choice: str = ""  # "" means all flavors, else a flavor folder such as _retail_
+    keep_journals: int = DEFAULT_KEEP_JOURNALS
+
+
+def load_settings(cfg: Config) -> ShotSettings:
+    return ShotSettings(cfg.get_path(SECTION, "dest_dir"), cfg.get_bool(SECTION, "copy_mode", False),
+                        (cfg.get(SECTION, "last_flavor_choice") or "").strip(),
+                        max(1, cfg.get_int(SECTION, "keep_journals", DEFAULT_KEEP_JOURNALS)))
+
+
+def save_settings(cfg: Config, settings: ShotSettings, *, source: str = "settings") -> None:
+    cfg.set_path(SECTION, "dest_dir", settings.dest_dir, source=source)
+    cfg.set(SECTION, "copy_mode", settings.copy_mode, source=source)
+    cfg.set(SECTION, "last_flavor_choice", settings.last_flavor_choice, source=source)
+    cfg.set(SECTION, "keep_journals", settings.keep_journals, source=source)
+    cfg.save()
+
+
+def source_dir(flavor: Flavor) -> Path:
+    return flavor.path / SCREENSHOTS_DIR
+
+
+def target_root(flavor: Flavor, dest_dir: Path | None) -> Path:
+    """Where a flavor's YYYY/MM/DD folders go: <dest>/<flavor folder>, or in place in its Screenshots folder."""
+    return dest_dir / flavor.folder if dest_dir is not None else source_dir(flavor)
+
+
+def resolve_journal_dir(wow_path: Path | None) -> Path | None:
+    """<WoW folder>/wow-tools/screenshots/journal: never inside the screenshot archive."""
+    return wow_path / JOURNAL_SUBDIR if wow_path is not None else None
+
+
+def _key(path: Path) -> str:
+    return str(path.resolve()).casefold()  # a handful of paths, once, on the settings screen
+
+
+def validate_dest(dest: Path | None, install: WowInstall) -> str | None:
+    """Why a destination folder is not allowed, or None if it is fine (None itself means in place)."""
+    if dest is None:
+        return None
+    key = _key(dest)
+    if key == _key(install.root):
+        return "The destination cannot be the WoW folder itself."
+    for flavor in install.flavors():
+        shots = _key(source_dir(flavor))
+        if key == shots or key.startswith(shots.rstrip("/\\") + ("\\" if "\\" in shots else "/")):
+            return (f"The destination cannot be inside {flavor.folder}\\Screenshots. "
+                    "Leave it empty to organise in place.")
+    return None

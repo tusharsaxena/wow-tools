@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import pkgutil
 import sys
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from wowtools.core.bootstrap import add_vendor_path  # noqa: E402
 add_vendor_path()
 
 from wowtools.core.events import LEVELS, SCHEMA_VERSION, TOOL_REGISTRIES  # noqa: E402
+import wowtools.tools  # noqa: E402
 from wowtools.tools import TOOLS  # noqa: E402
 
 TARGET = ROOT / "docs" / "events.md"
@@ -55,10 +57,17 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 
 
 def render() -> str:
-    for tool in TOOLS.values():
-        importlib.import_module(tool.module.rsplit(".", 1)[0])
+    # Import every tool package (registered or still being built), so the output never depends on which
+    # modules happened to be imported first; then list owners in a fixed order.
+    for module in pkgutil.iter_modules(wowtools.tools.__path__):
+        if module.ispkg:
+            importlib.import_module(f"wowtools.tools.{module.name}")
+    order = ["core", *(tool.name for tool in TOOLS.values())]  # a tool registers its events under its name
+    owners = [o for o in order if o in TOOL_REGISTRIES]
+    owners += sorted(o for o in TOOL_REGISTRIES if o not in owners)
     parts = [HEADER]
-    for owner, events in TOOL_REGISTRIES.items():
+    for owner in owners:
+        events = TOOL_REGISTRIES[owner]
         if owner.startswith("test-"):
             continue
         parts.append(f"\n## `{owner}` events\n\n| Event | Level | Description |\n|---|---|---|\n")

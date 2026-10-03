@@ -81,3 +81,30 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `sv.failed` | error | A SavedVariables file could not be deleted. |
 | `sv.skipped` | warning | A selected file was skipped because it vanished or changed after the scan. |
 | `sv.would_delete` | info | Dry run: a SavedVariables file that would have been deleted. |
+
+## `screenshots` events
+
+| Event | Level | Description |
+|---|---|---|
+| `shots.already_filed` | info | Copy mode: an identical file was already at the target. |
+| `shots.conflict` | warning | A different file with the same name is already at the target; both were left alone. |
+| `shots.copied` | info | A screenshot was copied into its date folder (copy mode). |
+| `shots.duplicate_removed` | info | The source was identical to the file already at the target and was removed. |
+| `shots.failed` | error | A screenshot could not be filed. |
+| `shots.journal_pruned` | info | Older run journals were deleted to keep the newest N (keep_journals). |
+| `shots.moved` | info | A screenshot was moved into its date folder. |
+| `shots.organize_completed` | info | A run finished, with totals (logged at warning if any file failed). |
+| `shots.organize_started` | info | A run (or dry run) started: mode, destination and file count. |
+| `shots.organize_stopped` | error | A run stopped unexpectedly; the journal holds what was done so far. |
+| `shots.refused` | error | The path guard refused a screenshot (its source or target is not where it should be). |
+| `shots.scan_completed` | info | A scan finished: per flavor, files to file, possible duplicates, conflicts and unrecognised names. |
+| `shots.scan_started` | info | A scan of the chosen flavors' Screenshots folders started. |
+| `shots.scan_warning` | warning | A Screenshots or target folder could not be read during a scan. |
+| `shots.skipped` | warning | A screenshot was skipped because it vanished or changed after the scan. |
+| `shots.source_left` | warning | A screenshot was copied across drives but the source could not be deleted. |
+| `shots.undo_completed` | info | Undo finished, with totals. |
+| `shots.undo_failed` | error | Undo hit an error on one entry. |
+| `shots.undo_restored` | info | Undo put one screenshot back (or removed one copy). |
+| `shots.undo_skipped` | warning | Undo left an entry alone because it could not be reversed safely. |
+| `shots.undo_started` | info | Undo of a run journal started. |
+| `shots.would_file` | info | Dry run: a screenshot that would have been filed. |
