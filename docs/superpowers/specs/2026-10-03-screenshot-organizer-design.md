@@ -33,10 +33,11 @@ year/month/day folders, per flavor."
 | `__init__.py` | imports `events` |
 | `events.py` | the tool's event registry (§8) |
 | `naming.py` | `SHOT_RE`, `parse_shot_name(name) -> date \| None`, `day_parts(date) -> (YYYY, MM, DD)` |
-| `settings.py` | `ShotSettings`, `load_settings`, `save_settings`, `target_root(flavor, settings)`, `resolve_journal_dir(wow_path)`, `validate_dest(dest, install)` |
-| `planner.py` | `scan(flavors, settings, progress) -> Plan` |
-| `organizer.py` | `execute(plan, *, copy, dry_run, journal_dir, keep_journals, progress) -> OrganizeResult` |
-| `journal.py` | write/read/list journals, `undo(journal, progress) -> OrganizeResult`, `prune_journals` |
+| `settings.py` | `ShotSettings`, `load_settings`, `save_settings`, `source_dir(flavor)`, `target_root(flavor, dest_dir)`, `resolve_journal_dir(wow_path)`, `validate_dest(dest, install)` |
+| `planner.py` | `scan(flavors, dest_dir, progress) -> Plan` |
+| `organizer.py` | `execute(items, *, dest_dir, copy, dry_run, journal_dir, keep_journals, progress, rename) -> OrganizeResult`; `copy_verified`, `move_file`, `safe_progress` |
+| `journal.py` | `JournalWriter`, `read_journal`, `list_journals`, `latest_undoable`, `mark_undone`, `prune_journals` |
+| `undo.py` | `undo(journal_path, *, wow_root, progress, rename) -> OrganizeResult` |
 | `report.py` | labels, stage titles, result rows (UI-free text helpers) |
 | `app.py` | (UI) `ScreenshotsFlow` (`FLOW`), `ScreenshotSettingsScreen` |
 | `review_screen.py` | (UI) `ShotReviewScreen`, `ShotProgressScreen`, `ShotResultScreen` |
@@ -85,9 +86,10 @@ scan reads `os.scandir` entries, whose `stat` is cached on Windows, and never ca
 `execute(items, *, copy, dry_run, journal_dir, keep_journals, progress=None, move_fn=None)` runs over the items
 the user left ticked:
 
-1. **Path guard.** `src.parent` must equal the flavor's `Screenshots` folder, and `dst` must sit lexically under
-   `target_root` (with no `..` parts) as `YYYY/MM/DD/<src.name>`. The roots are resolved once per run. A failed
-   guard gives a `refused` outcome; the file is not touched.
+1. **Path guard.** `src.parent` must equal the flavor's `Screenshots` folder, the name must parse to the planned
+   day, and `dst` must equal exactly the expected path `target_root(flavor, dest_dir)/YYYY/MM/DD/<src.name>`
+   (with no `..` parts). It is a plain path comparison: nothing is resolved. A failed guard gives a `refused`
+   outcome; the file is not touched.
 2. **Re-check.** The source must still exist with the scanned size, else the outcome is `skipped` ("changed since
    scan").
 3. **Target exists.** Hash both files. If they are identical, a move deletes the source (`duplicate_removed`) and
@@ -113,7 +115,7 @@ the user left ticked:
 `Outcome(flavor, src, dst, kind, reason)`. Progress: `progress(stage, current, total, detail)` with stages
 `organize` and `prune`. An exception inside the callback is swallowed.
 
-## 7. Undo (`journal.py`)
+## 7. Undo (`undo.py`)
 
 `latest_undoable(journal_dir)` returns the newest journal without an `undone` record. `undo(path, progress=None)`
 walks its entries in reverse:
@@ -133,27 +135,32 @@ folder of the configured install).
 
 ## 8. Events (`events.py`, tool `screenshots`)
 
+Event names share one registry across tools, so every name has the `shots.` prefix (as in `events.py`).
+
 | Event | Level | When |
 |---|---|---|
-| `scan.started` | info | a scan of the chosen flavors started |
-| `scan.completed` | info | counts per flavor (to file, duplicates, conflicts, skipped) |
-| `scan.warning` | warning | an unreadable Screenshots folder |
-| `organize.started` | info | a run (or dry run) started: mode, dest, count |
-| `shot.moved` / `shot.copied` | info | one file filed |
-| `shot.would_file` | info | dry run: one file that would be filed |
-| `shot.duplicate_removed` | info | the source was identical to the filed copy and was removed |
-| `shot.already_filed` | info | copy mode: an identical file was already at the target |
-| `shot.conflict` | warning | a different file with the same name is at the target |
-| `shot.skipped` | warning | the source vanished or changed after the scan |
-| `shot.source_left` | warning | copied across drives, but the source could not be deleted |
-| `shot.refused` | error | the path guard refused a file |
-| `shot.failed` | error | a file could not be filed |
-| `organize.completed` | info | totals (warning if any file failed) |
-| `journal.pruned` | info | older journals were deleted |
-| `undo.started` / `undo.completed` | info | undo of a journal |
-| `undo.skipped` | warning | an entry could not be undone safely |
+| `shots.scan_started` | info | a scan of the chosen flavors started |
+| `shots.scan_completed` | info | counts per flavor (to file, duplicates, conflicts, unrecognised) |
+| `shots.scan_warning` | warning | a Screenshots or target folder could not be read |
+| `shots.organize_started` | info | a run (or dry run) started: mode, dest, count |
+| `shots.moved` / `shots.copied` | info | one file filed |
+| `shots.would_file` | info | dry run: one file that would be filed |
+| `shots.duplicate_removed` | info | the source was identical to the filed copy and was removed |
+| `shots.already_filed` | info | copy mode: an identical file was already at the target |
+| `shots.conflict` | warning | a different file with the same name is at the target |
+| `shots.skipped` | warning | the source vanished or changed after the scan |
+| `shots.source_left` | warning | copied across drives, but the source could not be deleted |
+| `shots.refused` | error | the path guard refused a file |
+| `shots.failed` | error | a file could not be filed |
+| `shots.organize_completed` | info | totals (warning if any file failed) |
+| `shots.organize_stopped` | error | a run stopped unexpectedly; the journal holds what was done |
+| `shots.journal_pruned` | info | older journals were deleted |
+| `shots.undo_started` / `shots.undo_completed` | info | undo of a journal |
+| `shots.undo_restored` | info | undo put one file back (or removed one copy) |
+| `shots.undo_skipped` | warning | an entry could not be undone safely |
+| `shots.undo_failed` | error | undo hit an error on one entry |
 
-Unrecognised file names are counted in `scan.completed` (with up to 20 sample names) rather than logged one by
+Unrecognised file names are counted in `shots.scan_completed` (with up to 20 sample names) rather than logged one by
 one. `docs/events.md` is regenerated.
 
 ## 9. TUI
