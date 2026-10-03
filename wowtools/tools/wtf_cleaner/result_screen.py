@@ -1,4 +1,5 @@
-"""The outcome of a clean or dry run, for one flavor or several: a summary table and a per-file table."""
+"""The outcome of a clean or dry run, for one flavor or several, or of Undo last clean: a summary table and a
+per-file table."""
 from __future__ import annotations
 
 from typing import Union
@@ -14,8 +15,10 @@ from wowtools.core.events import log_event
 from wowtools.core.install import Flavor
 from wowtools.tools.wtf_cleaner.cleaner import CleanResult
 from wowtools.tools.wtf_cleaner.multi import FlavorRun, MultiCleanResult, nothing_deleted
-from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, MULTI_RESULT_COLUMNS, RESULT_COLUMNS, format_size,
-                                               multi_result_rows, result_rows)
+from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, MULTI_RESULT_COLUMNS, RESULT_COLUMNS, UNDO_COLUMNS,
+                                               format_size, multi_result_rows, result_rows, undo_row,
+                                               undo_summary_rows)
+from wowtools.tools.wtf_cleaner.undo import UndoResult
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 SUCCESS_FALLBACK = "#4CC38A"
@@ -47,7 +50,7 @@ def summary_rows(result: CleanResult) -> list[tuple[str, str]]:
         if result.check_problems:
             check = (f"{len(result.check_problems)} problems: {result.check_problems[0]}"
                      + (" (more in the log)" if len(result.check_problems) > 1 else ""))
-    return [
+    rows = [
         ("Mode", "Dry run" if result.dry_run else "Clean"),
         ("Cleaned files zip", str(result.backup_path) if result.backup_path else "none (turned off in settings)"),
         ("WTF backup", snapshot),
@@ -57,6 +60,9 @@ def summary_rows(result: CleanResult) -> list[tuple[str, str]]:
         ("Skipped", f"{len(result.skipped)} files (changed or missing since the scan)"),
         ("Failed", f"{len(result.failed)} files"),
     ]
+    if result.journal_path is not None:
+        rows.insert(4, ("Run journal", f"{result.journal_path} (Undo last clean (z) puts these files back)"))
+    return rows
 
 
 def multi_summary_rows(result: MultiCleanResult) -> list[tuple[str, str, bool]]:
@@ -72,6 +78,8 @@ def multi_summary_rows(result: MultiCleanResult) -> list[tuple[str, str, bool]]:
         rows.append(("Stopped", f"{stopped.flavor.display_name}: {stopped.error}{suffix}", False))
         if result.not_started:
             rows.append(("Not started", names(result.not_started), False))
+    if result.journal_path is not None:
+        rows.append(("Run journal", str(result.journal_path), False))
     for run in result.done:
         rows.append((run.flavor.display_name, "", True))
         rows += [(item, value, False) for item, value in summary_rows(run.result)]  # type: ignore[arg-type]
@@ -80,8 +88,8 @@ def multi_summary_rows(result: MultiCleanResult) -> list[tuple[str, str, bool]]:
 
 class ResultScreen(Screen[str]):
     """The outcome of a clean or dry run: a summary table, a per-file table and what to do next. `result` is a
-    CleanResult (with its flavor) or a MultiCleanResult (several flavors: one summary block each, and a Flavor
-    column)."""
+    CleanResult (with its flavor), a MultiCleanResult (several flavors: one summary block each, and a Flavor
+    column) or an UndoResult (Undo last clean: the same layout, titled "undo result")."""
 
     DEFAULT_CSS = """
     ResultScreen #result { height: 1fr; padding: 1 2; }
@@ -96,7 +104,7 @@ class ResultScreen(Screen[str]):
                 Binding("escape", "choose('review')", "Back", show=False),
                 *NAV_BINDINGS]
 
-    def __init__(self, result: Union[CleanResult, MultiCleanResult], flavor: Flavor | None = None) -> None:
+    def __init__(self, result: Union[CleanResult, MultiCleanResult, UndoResult], flavor: Flavor | None = None) -> None:
         super().__init__()
         self.result = result
         self.flavor = flavor
@@ -120,10 +128,19 @@ class ResultScreen(Screen[str]):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.sub_title = "WTF Cleaner · dry run result" if self.result.dry_run else "WTF Cleaner · result"
         summary = self.query_one("#result-summary", DataTable)
         summary.add_columns("Item", "Value")
         files = self.query_one("#result-files", DataTable)
+        if isinstance(self.result, UndoResult):
+            self.sub_title = "WTF Cleaner · undo result"
+            summary.add_rows((Text(item), Text(value)) for item, value in undo_summary_rows(self.result))
+            files.add_columns(*UNDO_COLUMNS)
+            for outcome in self.result.outcomes:
+                status, *rest = undo_row(outcome)
+                files.add_row(Text(status, style=self._status_style(outcome.status)), *(Text(c) for c in rest))
+            self.query_one("#review", Button).focus()
+            return
+        self.sub_title = "WTF Cleaner · dry run result" if self.result.dry_run else "WTF Cleaner · result"
         if isinstance(self.result, MultiCleanResult):
             summary.add_rows((Text(item, style=BLOCK_STYLE if heading else ""), Text(value))
                              for item, value, heading in multi_summary_rows(self.result))
@@ -143,6 +160,8 @@ class ResultScreen(Screen[str]):
         self.query_one("#review", Button).focus()
 
     def summary_rows(self) -> list[tuple[str, str]]:
+        if isinstance(self.result, UndoResult):
+            return undo_summary_rows(self.result)
         if isinstance(self.result, MultiCleanResult):
             return [(item, value) for item, value, _ in multi_summary_rows(self.result)]
         return summary_rows(self.result)
@@ -150,11 +169,11 @@ class ResultScreen(Screen[str]):
     def _status_style(self, status: str) -> str:
         try:
             theme = self.app.current_theme
-            colours = {"deleted": theme.success, "would_delete": theme.accent, "skipped": theme.warning,
-                       "failed": theme.error}
+            colours = {"deleted": theme.success, "restored": theme.success, "would_delete": theme.accent,
+                       "skipped": theme.warning, "failed": theme.error}
         except Exception:  # noqa: BLE001 - no theme yet: use the Ka0s colours
             colours = {}
-        fallback = {"deleted": SUCCESS_FALLBACK, "would_delete": "#5CC8FF", "skipped": "#E8C547",
+        fallback = {"deleted": SUCCESS_FALLBACK, "restored": SUCCESS_FALLBACK, "would_delete": "#5CC8FF", "skipped": "#E8C547",
                     "failed": "#E5534B"}
         return f"bold {colours.get(status) or fallback.get(status, '')}".strip()
 

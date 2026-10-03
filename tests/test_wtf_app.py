@@ -22,7 +22,9 @@ from wowtools.tools.wtf_cleaner.review_screen import (CleanProgressScreen, Confi
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, criterion_counts
 from wowtools.tools.wtf_cleaner.safety import MARKER_NAME
 from wowtools.tools.wtf_cleaner.scanner import scan
+from wowtools.tools.wtf_cleaner.journal import clean_journal_dir, latest_undoable
 from wowtools.tools.wtf_cleaner.settings import load_settings
+from wowtools.tools.wtf_cleaner.undo import UndoResult
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.widgets import ButtonRow, Ka0sCheckbox, NavHint
 from wowtools.ui.account_screen import AccountScreen
@@ -637,10 +639,11 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertTrue(settings.query(NavHint))
             self.assertFalse(settings.query("Switch"))
             order = [settings.focused.id]
-            for _ in range(8):
+            for _ in range(9):
                 await pilot.press("down")
                 order.append(settings.focused.id)
-            self.assertEqual(order, ["max_age", "backup_dir", "keep_backups", *[f"sw_{n}" for n in CRITERIA],
+            self.assertEqual(order, ["max_age", "backup_dir", "keep_backups", "keep_journals",
+                                     *[f"sw_{n}" for n in CRITERIA],
                                      "sw_backup", "save"])
             for name in (*[f"sw_{n}" for n in CRITERIA], "sw_backup"):
                 self.assertIsInstance(settings.query_one(f"#{name}"), Ka0sCheckbox)
@@ -790,6 +793,28 @@ class AllFlavorsTest(AppTestCase):
         await pilot.pause()
         await app.workers.wait_for_complete()
         await pilot.pause()
+
+    async def test_undo_after_a_clean_across_flavors(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_all(app, pilot)
+            await self.run_mode(app, pilot, "c")
+            await pilot.press("r")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            await pilot.press("z")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertIn("9 files deleted from Classic Era, Retail?", app.screen.body_text)
+            await pilot.press("y")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            self.assertIsInstance(app.screen.result, UndoResult)
+            self.assertEqual(len(app.screen.result.restored), 9)
+        self.assertTrue((self.era_sv / "Gone.lua").exists())
+        self.assertTrue((self.sv / "Uninstalled.lua").exists())
 
     async def test_all_flavors_option_is_first_and_remembered(self):
         app = self.make_app()
@@ -1121,3 +1146,144 @@ def _walk(node):
     yield node
     for child in node.children:
         yield from _walk(child)
+
+
+class UndoLastCleanTest(AppTestCase):
+    async def run_key(self, app, pilot, key, answer="y"):
+        await pilot.press(key)
+        await pilot.pause()
+        self.assertIsInstance(app.screen, ConfirmScreen)
+        await pilot.press(answer)
+        await pilot.pause()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    async def back_to_review(self, app, pilot):
+        await pilot.press("r")  # result screen -> review: rescans
+        await pilot.pause()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        self.assertIsInstance(app.screen, ReviewScreen)
+        return app.screen
+
+    async def test_undo_last_clean_puts_the_files_back(self):
+        journals = clean_journal_dir(self.root)
+        app = self.make_app()
+        with capture_events() as records:
+            async with app.run_test(size=SIZE) as pilot:
+                review = await self.open_review(app, pilot)
+                button = review.query_one("#btn-undo", Button)
+                self.assertEqual(str(button.label), "Undo last clean")
+                self.assertEqual(button.variant, "warning")  # amber: puts a change back
+                self.assertTrue(button.disabled)  # nothing to undo yet
+                await pilot.press("z")
+                await pilot.pause()
+                self.assertIs(app.screen, review)
+                await self.run_key(app, pilot, "c")
+                self.assertIsInstance(app.screen, ResultScreen)
+                rows = dict(app.screen.summary_rows())
+                self.assertIn("Undo last clean (z)", rows["Run journal"])
+                review = await self.back_to_review(app, pilot)
+                self.assertFalse(review.query_one("#btn-undo", Button).disabled)
+                await pilot.press("z")
+                await pilot.pause()
+                confirm = app.screen
+                self.assertIsInstance(confirm, ConfirmScreen)
+                self.assertRegex(confirm.title_text, r"^Undo the clean from \d{4}-\d\d-\d\d \d\d:\d\d\?$")
+                self.assertIn("Put back 8 files deleted from Retail?", confirm.body_text)
+                self.assertEqual(confirm.focused.id, "no")  # starts on No
+                await pilot.press("y")
+                await pilot.pause()
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+                result_screen = app.screen
+                self.assertIsInstance(result_screen, ResultScreen)
+                self.assertIsInstance(result_screen.result, UndoResult)
+                self.assertEqual(result_screen.sub_title, "WTF Cleaner · undo result")
+                self.assertEqual(len(result_screen.result.restored), 8)
+                self.assertEqual(result_screen.query_one("#result-files", DataTable).row_count, 8)
+                self.assertEqual(dict(result_screen.summary_rows())["Restored"], "8 files")
+                review = await self.back_to_review(app, pilot)
+                self.assertTrue(review.query_one("#btn-undo", Button).disabled)  # undone: nothing left to undo
+        self.assertTrue((self.sv / "Uninstalled.lua").exists())
+        self.assertIsNone(latest_undoable(journals))
+        names = [r["event"] for r in records]
+        self.assertIn("clean.undo_completed", names)
+        self.assertIn({"screen": "review", "control": "undo", "value": True},
+                      [r["data"] for r in records if r["event"] == "ui.selection"])
+
+    async def test_undo_confirm_no_changes_nothing(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await self.run_key(app, pilot, "c")
+            await self.back_to_review(app, pilot)
+            await self.run_key(app, pilot, "z", answer="n")
+            self.assertIsInstance(app.screen, ReviewScreen)
+        self.assertFalse((self.sv / "Uninstalled.lua").exists())
+        self.assertIsNotNone(latest_undoable(clean_journal_dir(self.root)))
+
+    async def test_dry_run_offers_no_undo(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await self.run_key(app, pilot, "y")
+            self.assertNotIn("Run journal", dict(app.screen.summary_rows()))
+            review = await self.back_to_review(app, pilot)
+            self.assertTrue(review.query_one("#btn-undo", Button).disabled)
+        self.assertFalse(clean_journal_dir(self.root).exists())
+
+    async def test_undo_is_disabled_while_scanning_or_busy(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await self.run_key(app, pilot, "c")
+            review = await self.back_to_review(app, pilot)
+            button = review.query_one("#btn-undo", Button)
+            self.assertFalse(button.disabled)
+            review._show_scan_progress(True)
+            self.assertTrue(button.disabled)
+            await pilot.press("z")
+            await pilot.pause()
+            self.assertIs(app.screen, review)  # no confirm while scanning
+            review._show_scan_progress(False)
+            self.assertFalse(button.disabled)
+            app.busy = True
+            review._refresh_undo()
+            self.assertTrue(button.disabled)
+            await pilot.press("z")
+            await pilot.pause()
+            self.assertIs(app.screen, review)
+            app.busy = False
+            review._refresh_undo()
+            self.assertFalse(button.disabled)
+
+    async def test_undo_confirm_warns_when_wow_is_running(self):
+        app = self.make_app(running=["Wow.exe (pid 1)"])
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await self.run_key(app, pilot, "c")
+            await self.back_to_review(app, pilot)
+            await pilot.press("z")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertIn("WoW appears to be running", app.screen.body_text)
+
+    async def test_settings_keep_journals(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            screen = CleanerSettingsScreen(self.tool_cfg, self.root, source="settings")
+            app.push_screen(screen)
+            await pilot.pause()
+            self.assertEqual(screen.query_one("#keep_journals", Input).value, "10")
+            screen.query_one("#keep_journals", Input).value = "0"
+            screen.query_one("#save", Button).press()
+            await pilot.pause()
+            self.assertIs(app.screen, screen)
+            self.assertEqual(screen.error_text, "Keep at least 1 journal.")
+            screen.query_one("#keep_journals", Input).value = "3"
+            screen.query_one("#save", Button).press()
+            await pilot.pause()
+            self.assertIsNot(app.screen, screen)
+        self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).keep_journals, 3)

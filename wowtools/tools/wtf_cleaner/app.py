@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Callable, Union
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Label, Static
 
@@ -25,7 +24,7 @@ from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.tool_flow import ToolFlow
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, FormScroll, Ka0sCheckbox, NavHint, action_button
 
 if TYPE_CHECKING:
     from wowtools.ui.suite_app import WowToolsApp
@@ -53,7 +52,7 @@ class CleanerSettingsScreen(Screen[bool]):
     def compose(self) -> ComposeResult:
         criteria = self.settings.criteria
         yield Header()
-        with VerticalScroll(id="settings", can_focus=False):
+        with FormScroll(id="settings", can_focus=False):
             yield Static("WTF Cleaner settings", classes="title")
             yield Label("Propose SavedVariables older than this many days")
             yield Input(str(criteria.max_age_days), type="integer", id="max_age")
@@ -63,6 +62,8 @@ class CleanerSettingsScreen(Screen[bool]):
                         placeholder=_default_backup_hint(self.wow_path), id="backup_dir")
             yield Label("Keep this many WTF backups per flavor (older ones are deleted after each clean)")
             yield Input(str(self.settings.keep_backups), type="integer", id="keep_backups")
+            yield Label("Journals to keep (each real clean writes one; Undo last clean uses the newest)")
+            yield Input(str(self.settings.keep_journals), type="integer", id="keep_journals")
             yield Static("Propose SavedVariables when:", classes="title")
             for name in CRITERIA:
                 yield Ka0sCheckbox(CRITERION_LABELS[name], getattr(criteria, name), id=f"sw_{name}")
@@ -106,6 +107,14 @@ class CleanerSettingsScreen(Screen[bool]):
             self.error_text = "Keep at least 1 WTF backup."
             self.query_one("#settings-error", Static).update(Text(self.error_text))
             return
+        try:
+            keep_journals = int(self.query_one("#keep_journals", Input).value)
+        except ValueError:
+            keep_journals = 0
+        if keep_journals < 1:
+            self.error_text = "Keep at least 1 journal."
+            self.query_one("#settings-error", Static).update(Text(self.error_text))
+            return
         criteria = Criteria(**{name: self.query_one(f"#sw_{name}", Ka0sCheckbox).value for name in CRITERIA},
                             max_age_days=days)
         backup_raw = self.query_one("#backup_dir", Input).value.strip()
@@ -113,7 +122,7 @@ class CleanerSettingsScreen(Screen[bool]):
         save_settings(self.tool_cfg, replace(stored, criteria=criteria,
                                              backup_before_delete=self.query_one("#sw_backup", Ka0sCheckbox).value,
                                              backup_dir=to_native(backup_raw) if backup_raw else None,
-                                             keep_backups=keep),
+                                             keep_backups=keep, keep_journals=keep_journals),
                       source=self.source)
         self.dismiss(True)
 

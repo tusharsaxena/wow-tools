@@ -1,4 +1,5 @@
-"""Review the proposal as a tree, tick/untick, toggle criteria, then clean or dry run (with a progress screen)."""
+"""Review the proposal as a tree, tick/untick, toggle criteria, then clean, dry run or undo the last clean (with a
+progress screen and a result screen)."""
 from __future__ import annotations
 
 import time
@@ -17,16 +18,19 @@ from wowtools.core.backup import BackupError
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import ACCOUNT_WIDE, Flavor
+from wowtools.core.journal import friendly_stamp
 from wowtools.core.process import running_wtf_lockers, wow_check_for
 from wowtools.tools.wtf_cleaner.cleaner import CLEANED_SUBDIR, CleanError
+from wowtools.tools.wtf_cleaner.journal import clean_journal_dir, latest_undoable, read_journal
 from wowtools.tools.wtf_cleaner.multi import (FlavorScan, MultiCleanResult, execute_flavors, nothing_deleted,
                                               scan_flavors)
 from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, STAGE_TITLES, age_days,
-                                               format_size, locker_warning)
+                                               flavor_name, format_size, locker_warning)
 from wowtools.tools.wtf_cleaner.result_screen import SUCCESS_FALLBACK, ResultScreen, reasons_text
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, Proposal, ProposalItem, criterion_counts, evaluate
 from wowtools.tools.wtf_cleaner.safety import SNAPSHOT_SUBDIR, Marker, clear_marker, read_marker, recovery_message
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir
+from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
@@ -35,7 +39,7 @@ WARNING_STYLE = "#E8B04B"
 ALL_FLAVORS_LABEL = "All flavors"
 __all__ = ["CleanProgressScreen", "ConfirmScreen", "RecoveryScreen", "ResultScreen", "ReviewScreen"]
 NAV_HINT = ("↑↓/Tab move · ←→ panes and buttons · Space tick · Enter/Space press · 1-4 criteria · c clean · "
-            "y dry run · r rescan · t tools")
+            "y dry run · r rescan · z undo · t tools")
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -89,15 +93,16 @@ class CleanProgressScreen(ModalScreen[None]):
     CleanProgressScreen #clean-file { color: $text-muted; margin-top: 1; height: 2; overflow: hidden hidden; }
     """
 
-    def __init__(self, dry_run: bool) -> None:
+    def __init__(self, dry_run: bool, first_stage: str = "check") -> None:
         super().__init__()
         self.dry_run = dry_run
+        self.first_stage = first_stage
         self.stage = ""
         self.flavor_label = ""  # set while cleaning several flavors: the stage title names the flavor
 
     def compose(self) -> ComposeResult:
         with Vertical(id="clean-box"):
-            yield Static(Text(self.stage_title("check")), id="clean-stage")
+            yield Static(Text(self.stage_title(self.first_stage)), id="clean-stage")
             yield ProgressBar(id="clean-progress", show_eta=False)
             yield Static("", id="clean-file")
 
@@ -164,7 +169,8 @@ class ReviewScreen(Screen[str]):
     ReviewScreen #body { height: 1fr; }
     ReviewScreen #filters { width: 46; padding: 1; border-right: solid $primary; }
     ReviewScreen #actions { margin-top: 1; }
-    ReviewScreen #actions Button { min-width: 0; width: auto; margin-right: 1; }
+    ReviewScreen #actions Button, ReviewScreen #undo-row Button { min-width: 0; width: auto; margin-right: 1; }
+    ReviewScreen #undo-row { margin-top: 1; }
     ReviewScreen .section { color: $accent; text-style: bold; margin: 1 0 0 0; }
     ReviewScreen #proposal { width: 1fr; padding: 0 1; }
     ReviewScreen #scan-box { width: 1fr; height: auto; padding: 1 2; }
@@ -179,6 +185,7 @@ class ReviewScreen(Screen[str]):
         Binding("c", "clean", "Clean"),
         Binding("y", "dry_run", "Dry run"),
         Binding("r", "rescan", "Rescan"),
+        Binding("z", "undo", "Undo"),
         Binding("f", "flavors", "Flavors"),
         Binding("t", "tools", "Tools"),
         Binding("q", "quit_tool", "Quit"),
@@ -215,6 +222,7 @@ class ReviewScreen(Screen[str]):
         self._progress_screen: CleanProgressScreen | None = None
         self._rebuild_pending = False
         self._last_filter: Widget | None = None
+        self._scanning = False
 
     # --- layout -------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -231,6 +239,8 @@ class ReviewScreen(Screen[str]):
                     yield action_button("Clean", "delete", id="btn-clean")
                     yield action_button("Dry run", "simulate", id="btn-dry")
                     yield action_button("Rescan", "neutral", id="btn-rescan")
+                with ButtonRow(id="undo-row", wrap=False):
+                    yield action_button("Undo last clean", "revert", id="btn-undo")
                 yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)
@@ -243,6 +253,7 @@ class ReviewScreen(Screen[str]):
     def on_mount(self) -> None:
         self.sub_title = f"WTF Cleaner · {self._scope()}"
         self.query_one("#proposal", Tree).focus()
+        self._refresh_undo()
         self.action_rescan()
         self._check_recovery()
 
@@ -288,6 +299,7 @@ class ReviewScreen(Screen[str]):
 
     def _show_scan_progress(self, scanning: bool) -> None:
         """While scanning, the tree is replaced by a progress bar and the folder being read."""
+        self._scanning = scanning
         bar = self.query_one("#scan-progress", ProgressBar)
         if scanning:
             bar.update(total=None, progress=0)
@@ -295,6 +307,18 @@ class ReviewScreen(Screen[str]):
         for selector in ("#scan-box", "#scan-progress", "#scan-label"):
             self.query_one(selector).display = scanning
         self.query_one("#proposal", Tree).display = not scanning
+        if scanning:
+            self.query_one("#btn-undo", Button).disabled = True
+        else:
+            self._refresh_undo()
+
+    def _journal_dir(self) -> Path | None:
+        return clean_journal_dir(self.cfg.wow_path)
+
+    def _refresh_undo(self) -> None:
+        """Undo last clean is offered only when there is a clean to undo, and never while scanning or busy."""
+        busy = self._scanning or getattr(self.app, "busy", False)
+        self.query_one("#btn-undo", Button).disabled = busy or latest_undoable(self._journal_dir()) is None
 
     def _scan_progress(self, current: int, total: int, label: str) -> None:
         self.query_one("#scan-progress", ProgressBar).update(total=total, progress=current)
@@ -590,7 +614,8 @@ class ReviewScreen(Screen[str]):
             self.dismiss("quit")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        actions = {"btn-clean": self.action_clean, "btn-dry": self.action_dry_run, "btn-rescan": self.action_rescan}
+        actions = {"btn-clean": self.action_clean, "btn-dry": self.action_dry_run, "btn-rescan": self.action_rescan,
+                   "btn-undo": self.action_undo}
         action = actions.get(event.button.id or "")
         if action is not None:
             event.stop()
@@ -637,6 +662,8 @@ class ReviewScreen(Screen[str]):
         if dry_run:
             lines.append(("DRY RUN: the cleaned-files zip is written, nothing is deleted." if backup
                           else "DRY RUN: nothing will be written or deleted."))
+        else:
+            lines.append("A run journal is written, so Undo last clean (z) can put the files back.")
         if running:
             alerts.append(f"WoW appears to be running ({', '.join(running)}). Close it first: WoW rewrites "
                           "SavedVariables when you log out.")
@@ -659,6 +686,7 @@ class ReviewScreen(Screen[str]):
         if not ok:
             return
         self.app.busy = True
+        self._refresh_undo()
         progress_screen = CleanProgressScreen(dry_run)
         self._progress_screen = progress_screen
         self.app.push_screen(progress_screen)
@@ -678,7 +706,8 @@ class ReviewScreen(Screen[str]):
 
         result = execute_flavors(plan, dry_run=dry_run, backup=backup, backup_dir=backup_dir,
                                  account=self.account, keep_backups=self.settings.keep_backups,
-                                 progress=progress, on_flavor=on_flavor)
+                                 progress=progress, on_flavor=on_flavor, journal_dir=self._journal_dir(),
+                                 keep_journals=self.settings.keep_journals)
         stopped = result.stopped
         if stopped is not None and isinstance(stopped.error, CleanError):
             log_exception("clean", stopped.error)
@@ -695,6 +724,7 @@ class ReviewScreen(Screen[str]):
     def _clean_failed(self, exc: Exception, result: MultiCleanResult | None = None) -> None:
         self.app.busy = False
         self._close_progress()
+        self._refresh_undo()
         message = f"Nothing was deleted: {exc}" if nothing_deleted(exc) else str(exc)
         if self.multi and result is not None and result.stopped is not None:
             message = f"{result.stopped.flavor.display_name}: {message}"
@@ -705,6 +735,7 @@ class ReviewScreen(Screen[str]):
     def _cleaned(self, result: MultiCleanResult) -> None:
         self.app.busy = False
         self._close_progress()
+        self._refresh_undo()
         self.unchecked.clear()
         stopped = result.stopped
         if stopped is not None:  # a later flavor stopped: the earlier ones are done
@@ -722,3 +753,72 @@ class ReviewScreen(Screen[str]):
             self.dismiss("quit")
         else:
             self.action_rescan()
+
+    # --- undo last clean --------------------------------------------------------------------------
+    def action_undo(self) -> None:
+        if self.app.busy or self._scanning:
+            return
+        log_event("ui.selection", screen="review", control="undo", value=True)
+        path = latest_undoable(self._journal_dir())
+        if path is None:
+            self.notify("Nothing to undo.")
+            self._refresh_undo()
+            return
+        try:
+            journal = read_journal(path)
+        except (OSError, ValueError) as exc:
+            self.notify(f"The journal could not be read: {exc}", severity="error")
+            return
+        folders = [str(f) for f in journal.header.get("flavors") or []]
+        names = ", ".join(flavor_name(folder) for folder in folders) or "unknown flavors"
+        files = len(journal.entries)
+        body = (f"Put back {files} file{'' if files == 1 else 's'} deleted from {names}? Each comes back from the "
+                "cleaned-files zip, or from the WTF backup when there is no zip. A file that is back at its path "
+                "is left alone; nothing is overwritten.")
+        alerts: list[str] = []
+        check = self.wow_check or wow_check_for(folders)
+        running = check()
+        if running:
+            log_event("wow.running_warning", executables=running)
+            alerts.append(f"WoW appears to be running ({', '.join(running)}). Close it first: WoW rewrites "
+                          "SavedVariables when you log out.")
+        title = f"Undo the clean from {friendly_stamp(journal.started)}?"
+        self.app.push_screen(ConfirmScreen(title, body, tuple(alerts), default_yes=False),
+                             lambda ok: self._undo_confirmed(ok, path))
+
+    def _undo_confirmed(self, ok: bool | None, path: Path) -> None:
+        log_event("ui.selection", screen="confirm", control="undo_confirm", value=bool(ok))
+        wow_root = self.cfg.wow_path
+        if not ok or wow_root is None:
+            return
+        self.app.busy = True
+        self._refresh_undo()
+        progress_screen = CleanProgressScreen(False, first_stage="undo")
+        self._progress_screen = progress_screen
+        self.app.push_screen(progress_screen)
+        self.run_worker(lambda: self._undo_worker(path, wow_root, progress_screen), thread=True, exclusive=True,
+                        group="clean")
+
+    def _undo_worker(self, path: Path, wow_root: Path, progress_screen: CleanProgressScreen) -> None:
+        def progress(*args) -> None:
+            self.app.call_from_thread(progress_screen.update_progress, *args)
+
+        try:
+            result = undo_clean(path, wow_root=wow_root, progress=progress)
+        except Exception as exc:  # noqa: BLE001 - e.g. an unreadable journal: shown, never a crash
+            log_exception("clean.undo", exc)
+            self.app.call_from_thread(self._undo_failed, exc)
+            return
+        self.app.call_from_thread(self._undone, result)
+
+    def _undo_failed(self, exc: Exception) -> None:
+        self.app.busy = False
+        self._close_progress()
+        self._refresh_undo()
+        self.notify(f"{type(exc).__name__}: {exc}", title="Undo stopped", severity="error", timeout=20)
+
+    def _undone(self, result: UndoResult) -> None:
+        self.app.busy = False
+        self._close_progress()
+        self._refresh_undo()
+        self.app.push_screen(ResultScreen(result), self._after_result)

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from textual.actions import SkipAction
 from textual.binding import Binding
-from textual.containers import Horizontal
+from textual.containers import Horizontal, VerticalScroll
 from textual.content import Content
 from textual.widgets import Button, Checkbox, Static
 
@@ -37,6 +37,13 @@ NAV_BINDINGS = [
     Binding("up", "app.focus_previous", "Previous", show=False),
     Binding("down", "app.focus_next", "Next", show=False),
 ]
+
+
+class FormScroll(VerticalScroll):
+    """A scrolling form. ↑/↓ move focus (the focused field scrolls into view) instead of scrolling, so the keys
+    keep working once the form is taller than the screen."""
+
+    BINDINGS = list(NAV_BINDINGS)
 
 
 class Ka0sCheckbox(Checkbox):

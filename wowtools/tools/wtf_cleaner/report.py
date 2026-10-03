@@ -1,7 +1,10 @@
 """Labels, colours and table rows for the WTF Cleaner screens."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from wowtools.core.install import ACCOUNT_WIDE, Flavor
+from wowtools.core.journal import friendly_stamp
 from wowtools.tools.wtf_cleaner.scanner import addon_name_for
 
 DAY = 86400.0
@@ -57,6 +60,7 @@ STAGE_TITLES = {
     "verify": "Verifying the cleaned-files zip",
     "delete": "Deleting",
     "validate": "Checking the result against the WTF backup",
+    "undo": "Undoing the last clean",
 }
 
 RESULT_COLUMNS = ("Status", "Account", "Character", "Addon", "File", "Size", "Reasons")
@@ -98,3 +102,38 @@ def multi_result_rows(result) -> list[tuple[str, ...]]:
         status, *rest = outcome_row(outcome, flavor)
         rows.append((status, flavor.display_name, *rest))
     return rows
+
+
+def flavor_name(folder: str) -> str:
+    """A flavor folder's display name (e.g. _retail_ -> Retail), for flavors known only by folder (journals)."""
+    return Flavor(folder, Path(folder)).display_name
+
+
+UNDO_COLUMNS = ("Status", "Flavor", "Account", "Character", "Addon", "File", "Size", "Restored from")
+UNDO_STATUS_LABELS = {"restored": "Restored", "skipped": "Skipped", "failed": "Failed"}
+UNDO_SOURCES = {"zip": "cleaned-files zip", "backup": "WTF backup", "": ""}
+
+
+def undo_row(outcome) -> tuple[str, ...]:
+    """One UndoOutcome in UNDO_COLUMNS order. Skipped and failed rows carry their reason in Status."""
+    status = UNDO_STATUS_LABELS.get(outcome.status, outcome.status)
+    if outcome.detail:
+        status = f"{status}: {outcome.detail}"
+    parts = outcome.rel.split("/")  # WTF/Account/<account>/[<realm>/<character>/]SavedVariables/<file>
+    account = parts[2] if len(parts) > 3 and parts[1] == "Account" else ""
+    character = f"{parts[3]}/{parts[4]}" if account and len(parts) >= 7 else (ACCOUNT_WIDE if account else "")
+    name = parts[-1]
+    return (status, flavor_name(outcome.flavor), account, character, addon_name_for(name) or "", name, format_size(max(0, outcome.size)),
+            UNDO_SOURCES.get(outcome.source, outcome.source))
+
+
+def undo_summary_rows(result) -> list[tuple[str, str]]:
+    flavors = ", ".join(flavor_name(f) for f in result.flavors) or "unknown"
+    return [
+        ("Mode", "Undo last clean"),
+        ("Clean undone", f"{friendly_stamp(result.started)} ({flavors})"),
+        ("Journal", str(result.journal_path)),
+        ("Restored", f"{len(result.restored)} files"),
+        ("Skipped", f"{len(result.skipped)} files (back at their path, or outside the WTF folder)"),
+        ("Failed", f"{len(result.failed)} files"),
+    ]
