@@ -146,7 +146,7 @@ def _guard(item: ShotItem, dest_dir: Path | None) -> str | None:
     return None
 
 
-def _safe(progress: Progress | None) -> Progress:
+def safe_progress(progress: Progress | None) -> Progress:
     def call(stage: str, current: int, total: int, detail: str = "") -> None:
         if progress is None:
             return
@@ -241,7 +241,7 @@ class _Run:
 def execute(items: list[ShotItem], *, dest_dir: Path | None, copy: bool, dry_run: bool,
             journal_dir: Path | None, keep_journals: int, progress: Progress | None = None,
             rename: Rename = os.rename) -> OrganizeResult:
-    report = _safe(progress)
+    report = safe_progress(progress)
     result = OrganizeResult(dry_run=dry_run, copy=copy)
     journal = None
     if not dry_run and journal_dir is not None:
