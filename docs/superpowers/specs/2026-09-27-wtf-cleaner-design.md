@@ -608,3 +608,33 @@ either way.
   WTF backup, post-clean check, counts), and the per-file table has a Flavor column. If a later flavor was stopped,
   the screen says which flavors were done and which were not started.
 - One flavor behaves exactly as before.
+
+## Addendum F: run journals and Undo last clean (2026-10-03)
+
+Run journals are a suite standard (shared with the Screenshot Organizer).
+
+- **Core.** `core/journal.py` holds the tool-agnostic journal: JSON Lines, a header line, one line per completed
+  change (flushed at once, so it survives a crash), `{"finished": ...}` at the end and `{"undone": ...}` after an
+  undo. `journal_dir(wow_path, tool)` is the standard location `<WoW>/wow-tools/<tool>/journal/`. Helpers:
+  `new_journal_path`, `JournalWriter`, `read_journal`, `list_journals` (newest first), `latest_undoable` (the newest
+  journal with entries that was not undone; never reaches back past an undone one), `mark_undone`,
+  `prune_journals(dir, keep)`. Paths are written with `to_stored()` and read with `to_native()`. Tools add their own
+  entry fields and undo rules.
+- **Cleaner journal.** A real clean (not a dry run) writes one journal per run, even across All flavors
+  (`<WoW>/wow-tools/wtf-cleaner/journal/journal-<stamp>.jsonl`). The header lists the flavors, the backup folder
+  and the suite version. After each file is deleted, one entry: `action "deleted"`, `flavor` (folder), `path`
+  (native file), `rel` (path inside the flavor folder, as in the WTF backup), `size`, `mtime`, `zip` (the
+  cleaned-files zip that holds it, or null when backups are off) and `snapshot` (that flavor's WTF backup). The
+  journal is opened (header written) before the first delete; if it cannot be written, nothing is deleted. A
+  journal with no entries is removed. `[wtf_cleaner] keep_journals` (default 10, at least 1) prunes after each
+  clean.
+- **Undo last clean.** On the review screen: **Undo last clean** (amber, key `z`; disabled when nothing is
+  undoable, while scanning and while busy). Confirm (starts on No) names the run's time, flavors and file count.
+  Entries are restored newest first: a file that exists again is left alone (`undo skipped: a file is back at
+  this path`); otherwise it is extracted, exclusive-create, from the cleaned-files zip (by its name in that zip),
+  or from the WTF backup by `rel` when there is no zip or the zip lacks it; the restored size must match the
+  entry. Each file reports restored / skipped (reason) / failed. The journal is marked undone afterwards. Undo
+  never overwrites, never deletes, and never touches files outside the flavors' WTF folders (`rel` must start
+  with `WTF/` and contain no `..`). Events: `clean.undo_started`, `clean.undo_restored`, `clean.undo_skipped`,
+  `clean.undo_failed`, `clean.undo_completed`, `clean.journal_pruned`.
+- **Result.** The undo result reuses the result screen layout (summary + per-file table), titled "undo result".

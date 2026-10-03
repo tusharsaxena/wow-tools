@@ -237,3 +237,19 @@ No test touches a real install, the real archive or the network.
 Date from EXIF or file times, renaming files, deduplicating within the archive, thumbnails or a gallery, a
 WoW-running check, and more than one level of undo history in the UI (older journals are kept for reference
 only).
+
+## Addendum A: tool name screenshot-organizer, shared journal (2026-10-03)
+
+- The tool name is `screenshot-organizer` everywhere: `config/screenshot-organizer.cfg` with section
+  `[screenshot_organizer]`, `logs/screenshot-organizer/`, the event log's `tool` field, and
+  `<WoW>/wow-tools/screenshot-organizer/journal/`. The package is `wowtools/tools/screenshot_organizer/` (Python
+  names cannot hold `-`), and tests are `tests/test_screenshot_organizer_*.py`. Event names keep the `shots.`
+  prefix.
+- **Migration at start-up** (`suite.run`, after the config is loaded, logged as `config.migrated`-style events):
+  `config/screenshots.cfg` becomes `config/screenshot-organizer.cfg` with `[screenshots]` renamed to
+  `[screenshot_organizer]`; `logs/screenshots/` becomes `logs/screenshot-organizer/`; and
+  `<WoW>/wow-tools/screenshots/` becomes `<WoW>/wow-tools/screenshot-organizer/`. When only the old one exists it
+  is renamed; when both exist, entries that do not clash are moved into the new one and the old one is removed if
+  it ends up empty (clashes are left and logged). Never overwrites.
+- The journal format and helpers move to `core/journal.py` (WTF Cleaner spec Addendum F); the organizer keeps its
+  own entry fields and undo rules.
