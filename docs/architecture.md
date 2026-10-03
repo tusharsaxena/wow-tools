@@ -39,7 +39,8 @@ stay thin.
 `last_update_check`, `latest_seen_version`, `log_level`, `log_retention_days`.
 Each tool owns one file with one section. `config/wtf-cleaner.cfg` `[wtf_cleaner]`: `max_age_days`, `criterion_*`, `backup_before_delete`,
 `backup_dir` (empty = `<wow_path>/wow-tools/wtf-cleaner`, resolved by `settings.resolve_backup_dir()`) and
-`last_account` (empty = all accounts). `config/screenshots.cfg` `[screenshots]`: `dest_dir` (empty = in place),
+`last_account` (empty = all accounts), `keep_backups` and `last_flavor_choice` (empty = all flavors, else a flavor
+folder; absent until first chosen, and then the picker pre-selects `[general] last_flavor`). `config/screenshots.cfg` `[screenshots]`: `dest_dir` (empty = in place),
 `copy_mode`, `last_flavor_choice` (empty = all flavors, else a flavor folder) and `keep_journals` (default 10, at
 least 1). The retired `[general] backup_dir` is dropped by the migration. Paths are stored in Windows form when they point at a
 Windows drive. Unknown keys are preserved, and bad values fall back to defaults.
@@ -53,6 +54,19 @@ Windows drive. Unknown keys are preserved, and bad values fall back to defaults.
 
 `scan(account=NAME)` is fully scoped: only that account's SavedVariables are read, and only its characters
 decide the enabled set. `account=None` is the whole flavor.
+
+All flavors (`tools/wtf_cleaner/multi.py`, UI-free) runs the same per-flavor functions in turn and changes none
+of them:
+
+    scan_flavors(flavors, account=None, progress=None) → [FlavorScan(flavor, result | None, error | None)]
+    execute_flavors([(flavor, items), ...], dry_run, backup, backup_dir, account, keep_backups,
+                    progress=None, on_flavor=None) → MultiCleanResult(dry_run, runs[FlavorRun])
+
+`scan_flavors` records a `ScanError` on that flavor and carries on (with several flavors the progress label
+starts with the flavor's name). `execute_flavors` calls `execute()` per flavor, so each flavor gets its own WTF
+backup, marker, cleaned-files zip, post-clean check and pruning; a `BackupError` or `CleanError` stops the run
+before the next flavor (`clean.flavors_stopped`), and each `FlavorRun.status` is `done`, `stopped` or
+`not_started`. The review screen uses both for one flavor too, so the single-flavor path is the same code.
 
 `execute` guards every path (it must resolve inside `<flavor>/WTF/Account/**/SavedVariables`) and re-checks
 size and mtime. For a real clean it then takes the safety snapshot and writes the marker (`safety.py`),
@@ -181,13 +195,20 @@ Shared screens and widgets in `wowtools/ui/`:
 | `widgets` | `Ka0sCheckbox` (✔/✘ marks), `ButtonRow` (←/→ move focus between its buttons, Space presses the focused one), `NAV_BINDINGS` (↑/↓ move focus; not priority bindings, so a focused tree, list, table or input keeps its arrow keys), and `NavHint` (the one-line key hint every screen shows) |
 
 The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfCleanerFlow` (`FLOW`) and
-`CleanerSettingsScreen` (criteria, max age, backup on/off, backup folder). `review_screen.py` holds:
+`CleanerSettingsScreen` (criteria, max age, backup on/off, backup folder). The flow shows `FlavorScreen` with
+`include_all=True` and `last=last_flavor_choice`; All flavors skips the account screen. `review_screen.py` holds:
 
-- `ReviewScreen`: tree, criteria, and the Clean / Dry run / Rescan buttons;
-- `ConfirmScreen`: starts on No for a real clean and on Yes for a dry run;
-- `CleanProgressScreen`;
-- `RecoveryScreen`: Dismiss or Remind me next time;
-- `ResultScreen`: a summary table plus a per-file `DataTable`.
+- `ReviewScreen(cfg, tool_cfg, flavors, *, account, wow_check, locker_check)`: tree, criteria, and the Clean /
+  Dry run / Rescan buttons. `flavors` is one `Flavor` (root = the flavor, accounts below) or a list (root = All
+  flavors, a node per flavor, a "not scanned" leaf for a flavor whose scan failed). `wow_check` covers every
+  flavor (`core.process.wow_check_for(list)` lists the processes once);
+- `ConfirmScreen`: starts on No for a real clean and on Yes for a dry run; lists each flavor's counts;
+- `CleanProgressScreen`: with several flavors the stage title names the flavor;
+- `RecoveryScreen`: Dismiss or Remind me next time.
+
+`result_screen.py` holds `ResultScreen(result, flavor=None)`: a summary table plus a per-file `DataTable`. With a
+`MultiCleanResult` it shows Done / Stopped / Not started rows after a stop, one block of summary rows per finished
+flavor, and a Flavor column (`report.MULTI_RESULT_COLUMNS`).
 
 The Screenshot Organizer's screens live in `tools/screenshots/`. `app.py` holds `ScreenshotsFlow` (`FLOW`:
 `require_install` → `ScreenshotSettingsScreen` on the tool's first open → `FlavorScreen(include_all=True,

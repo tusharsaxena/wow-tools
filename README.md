@@ -48,12 +48,13 @@ on their own.
    For the Screenshot Organizer: the destination folder (empty = organise in place), how many run journals to
    keep, and whether to copy instead of move.
 
-Your answers are saved in the `config\` folder (see [Settings](#settings-config)). Then you pick a **flavor**, and
-the last one you used is pre-selected next time. If the flavor has more than one WoW account, you then pick an **account**, or
-"All accounts". The last choice is pre-selected next time.
+Your answers are saved in the `config\` folder (see [Settings](#settings-config)). Then you pick a **flavor**, or
+**All flavors** (the first row), and the last choice is pre-selected next time. In the WTF Cleaner, if the one
+flavor you picked has more than one WoW account, you then pick an **account**, or "All accounts". The last choice
+is pre-selected next time. With All flavors there is no account screen: every account of every flavor is in scope.
 
 > **Close WoW before cleaning.** WoW rewrites SavedVariables when you log out, and it can recreate files you
-> just removed. The tool warns you if it sees WoW running for the flavor you chose (see
+> just removed. The tool warns you if it sees WoW running for the flavor you chose, or any of them with All flavors (see
 > [Is WoW running?](#is-wow-running)).
 
 ## WTF Cleaner
@@ -78,6 +79,7 @@ files are treated as one group.
 
 - **All accounts** (the default): "enabled" is judged across the whole flavor. If an addon is enabled on any
   character of any account, its SavedVariables are kept everywhere.
+- **All flavors**: every flavor is scanned in turn, each with all its accounts, judged on its own as above.
 - **One account** (picked on the account screen): only that account's
   SavedVariables are scanned and proposed, and only that account's characters decide what counts as enabled.
   An addon enabled only on another account's characters counts as not enabled here.
@@ -90,14 +92,18 @@ WoW does.
 - `Blizzard_*` SavedVariables.
 - Everything outside `SavedVariables` folders: `config-cache.wtf`, keybindings, macros, `AddOns.txt`,
   layouts, chat settings.
-- Anything outside the chosen flavor's `WTF\Account` folder.
+- Anything outside the chosen flavor's `WTF\Account` folder (with All flavors, each flavor's own).
 
-If a flavor has no addons installed at all, the scan stops rather than proposing everything.
+If a flavor has no addons installed at all, the scan stops rather than proposing everything. With All flavors,
+such a flavor is listed in the tree with the reason ("not scanned: No addons found in …") and is not cleaned; the
+other flavors carry on.
 
 ### Using the TUI
 
-The review screen shows a tree: account → account-wide / each character → addon → files.
-Every account in scope is listed; one with nothing to clean says so. Everything starts ticked. A progress bar shows while the scan runs.
+The review screen shows a tree: account → account-wide / each character → addon → files. With All flavors there
+is one more level on top: All flavors → flavor → account → …, and the ticks, `a`/`n`, the criteria and the max
+age apply across every flavor.
+Every account in scope is listed; one with nothing to clean says so, and so does a flavor with nothing to clean. Everything starts ticked. A progress bar shows while the scan runs.
 
 The left panel holds the criteria, the max age box and three buttons: **Clean**, **Dry run** and **Rescan**.
 Each criterion shows how many files it matches on its own, for example `1 Not installed (672 files)`. The counts
@@ -134,6 +140,17 @@ folder, zipping and verifying the files to clean, deleting, and checking the res
 check, the WTF backup and the result check. When a criterion or the max age changes, the tree shows a loading spinner
 and the summary bar says "Updating the list…" until the new list is ready. The results screen then shows a summary table and a table of every file
 with its status, account, character, addon, size and reasons.
+
+#### Cleaning across flavors
+
+With All flavors, Clean and Dry run work through the flavors one after another, and each flavor is cleaned
+exactly as if you had picked it alone: its own WTF backup (`backup-<flavor>-…zip`), cleaned-files zip, post-clean
+check and `keep_backups` pruning. The confirm dialog lists each flavor with its file counts and warns if WoW is
+running for any of them; the progress window names the flavor it is working on. If a flavor's clean is refused or
+stopped (a failed backup, locked files), the run stops there: flavors already done keep their results, the ones
+after it are not started. The results screen has one block of summary rows per flavor, a **Flavor** column in the
+file table, and, after a stop, rows saying which flavors were done, which one stopped and why, and which were not
+started.
 
 #### Keyboard use
 
@@ -402,6 +419,7 @@ next start, and the old file is removed.
 | `wtf-cleaner.cfg` `[wtf_cleaner] backup_dir` | `<wow_path>\wow-tools\wtf-cleaner` | Holds `backup\` and `cleaned\` |
 | `wtf-cleaner.cfg` `[wtf_cleaner] keep_backups` | `5` | How many WTF backups (`backup\backup-<flavor>-*.zip`) to keep per flavor |
 | `wtf-cleaner.cfg` `[wtf_cleaner] last_account` | (empty = all accounts) | Pre-selected account |
+| `wtf-cleaner.cfg` `[wtf_cleaner] last_flavor_choice` | (empty = all flavors) | Pre-selected flavor choice, e.g. `_retail_`; until it is first saved, `[general] last_flavor` is pre-selected |
 | `screenshots.cfg` `[screenshots] dest_dir` | (empty = in place) | Archive root: screenshots go to `<dest_dir>\<flavor folder>\YYYY\MM\DD`. Stored as a Windows path. |
 | `screenshots.cfg` `[screenshots] copy_mode` | `false` | Copy instead of move |
 | `screenshots.cfg` `[screenshots] last_flavor_choice` | (empty = all flavors) | Pre-selected flavor choice, e.g. `_retail_` |
