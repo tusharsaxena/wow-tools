@@ -221,7 +221,7 @@ Please file reports there, so nothing gets lost.
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| 1.0.0 | 2026-10-03 | - First release, with two tools in one app<br>- **WTF Cleaner**: finds settings left behind by addons you no longer use, shows them for review, backs them up and deletes them; works on one game version, one account or **All flavors**; **Dry run** and **Undo last clean**<br>- **Screenshot Organizer**: sorts screenshots into year, month and day folders, in place or into an archive folder; duplicate checks, copy mode, **Dry run** and **Undo last run**<br>- Works with every installed game version (Retail, Classic, Classic Era, Anniversary, PTR and Beta) on Windows, Mac, Linux and WSL<br>- Checks for updates and installs them for you |
+| 1.0.0 | 2026-10-04 | - First release, with two tools in one app<br>- **WTF Cleaner**: finds settings left behind by addons you no longer use, shows them for review, backs them up and deletes them; works on one game version, one account or **All flavors**; **Dry run** and **Undo last clean**<br>- **Screenshot Organizer**: sorts screenshots into year, month and day folders, in place or into an archive folder; duplicate checks, copy mode, **Dry run** and **Undo last run**<br>- Works with every installed game version (Retail, Classic, Classic Era, Anniversary, PTR and Beta) on Windows, Mac, Linux and WSL<br>- Checks for updates and installs them for you |
 
 ## Credits
 
