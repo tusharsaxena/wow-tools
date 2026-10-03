@@ -20,6 +20,9 @@ _retail_/WTF/Account/ACCT2/Realm2/Chârb: AddOns.txt (Details/DisabledAddon/OldA
 _classic_era_: Questie installed; ACCT1 account SV Questie.lua; Realm1/NoTxt (no AddOns.txt)
 _anniversary_: WTF only, no Interface/AddOns (scanning it must abort)
 _notaflavor: not a flavor folder
+
+build_screenshot_tree(root) adds Screenshots folders (see its docstring); SHOT_BYTES maps each valid shot
+name to its bytes.
 """
 from __future__ import annotations
 
@@ -107,3 +110,40 @@ class TuiTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         asyncio.get_running_loop().set_debug(False)
+
+
+SHOT_BYTES = {
+    "WoWScrnShot_073119_232713.jpg": b"shot-a",
+    "WoWScrnShot_073119_232800.jpg": b"shot-b",
+    "WoWScrnShot_080119_101010.PNG": b"shot-c",
+    "WoWScrnShot_010224_000001.tga": b"shot-d",
+    "WoWScrnShot_120520_111111.jpg": b"era-1",
+    "WoWScrnShot_120520_111112.jpg": b"era-2",
+}
+OLD_SHOT = NOW - 30 * DAY
+
+
+def _write_bytes(path: Path, data: bytes, mtime: float = OLD_SHOT) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    os.utime(path, (mtime, mtime))
+    return path
+
+
+def build_screenshot_tree(root: Path) -> Path:
+    """Screenshots for the synthetic install (call after build_wow_tree):
+
+    _retail_/Screenshots: 4 shots (2 on 2019-07-31, 1 on 2019-08-01 with .PNG, 1 on 2024-01-02 with .tga),
+        WoWScrnShot_023119_120000.jpg (bad date), notes.txt, and 2025/01/02/WoWScrnShot_010225_090000.jpg
+        (already filed in place; never rescanned)
+    _classic_era_/Screenshots: 2 shots on 2020-12-05
+    _anniversary_: no Screenshots folder
+    """
+    retail = root / "_retail_" / "Screenshots"
+    era = root / "_classic_era_" / "Screenshots"
+    for name, data in SHOT_BYTES.items():
+        _write_bytes((era if data.startswith(b"era") else retail) / name, data)
+    _write_bytes(retail / "WoWScrnShot_023119_120000.jpg", b"bad-date")
+    _write_bytes(retail / "notes.txt", b"notes")
+    _write_bytes(retail / "2025" / "01" / "02" / "WoWScrnShot_010225_090000.jpg", b"filed")
+    return root

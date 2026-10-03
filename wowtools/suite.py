@@ -17,9 +17,10 @@ from wowtools.core.config import (CONFIG_DIR, LEGACY_CONFIG_PATH, SUITE_CONFIG_N
                                   migrate_legacy_config)
 from wowtools.core.events import init_event_log, log_event, log_exception
 from wowtools.core.lock import LOCK_PATH, InstanceLock, LockInfo
+from wowtools.core.migrate import ConfigMigration, merge_folder, migrate_tool_config, tool_folder_pairs
 from wowtools.core.paths import is_wsl
 from wowtools.core.updater import UpdateError, apply_update, check_for_update, run_update_command
-from wowtools.tools import TOOLS
+from wowtools.tools import RENAMED_TOOLS, TOOLS
 
 LOG_DIR = REPO_ROOT / "logs"
 
@@ -50,24 +51,41 @@ def run(argv: list[str], *, cfg: Config | None = None, log_dir: Path | None = LO
         print(f"Unknown command: {argv[0]}.{hint}\n\n{usage()}", file=sys.stderr)
         return 1
     migrated: list[Path] = []
-    if cfg is None:
-        try:
-            migrated = migrate_legacy_config(legacy_config, config_dir, {t.section: t.name for t in TOOLS.values()})
+    renamed: list[ConfigMigration] = []
+    # The lock comes first: the renamed-tool moves below must never run under another copy that is using them.
+    lock = InstanceLock(lock_path)
+    try:
+        conflict = lock.acquire()
+    except OSError as exc:
+        print(f"Could not create the lock file {lock_path}: {exc}", file=sys.stderr)
+        return 1
+    may_migrate = conflict is None or conflict.stale is True
+    try:
+        if cfg is None:
+            # A legacy file may still use a renamed tool's old section: split it under the old name first.
+            sections = {r.old_section: r.old for r in RENAMED_TOOLS} | {t.section: t.name for t in TOOLS.values()}
+            migrated = migrate_legacy_config(legacy_config, config_dir, sections)
             cfg = Config(config_dir / SUITE_CONFIG_NAME).load()
-        except (ConfigError, OSError) as exc:
-            print(f"{exc}\nFix or delete the file, then run again.", file=sys.stderr)
-            return 1
+        if may_migrate:
+            renamed = [m for r in RENAMED_TOOLS if (m := migrate_tool_config(config_dir, r)) is not None]
+    except (ConfigError, OSError) as exc:
+        lock.release()
+        print(f"{exc}\nFix or delete the file, then run again.", file=sys.stderr)
+        return 1
     init_event_log(log_dir, tool="suite", mode="tui" if not argv else "cli",
                    text_level=cfg.log_level, retention_days=cfg.log_retention_days)
     if migrated:
         log_event("config.migrated", legacy=str(legacy_config), files=[str(p) for p in migrated])
+    for m in renamed:
+        log_event("config.renamed", old=str(m.old), new=str(m.new), merged=m.merged, added=m.added,
+                  kept_old=str(m.kept_old) if m.kept_old else None)
+    if may_migrate:
+        _migrate_renamed_folders(log_dir, cfg.wow_path)
     log_event("session.start", argv=argv, platform=platform.platform(), is_wsl=is_wsl(),
               python=platform.python_version(), suite_version=__version__)
     started = time.monotonic()
     code = 1
-    lock = InstanceLock(lock_path)
     try:
-        conflict = lock.acquire()
         if conflict is not None:
             log_event("lock.conflict", holder=conflict.describe(), stale=conflict.stale)
         code = _dispatch(argv, cfg, config_dir, lock, conflict, app_factory, input_fn)
@@ -82,6 +100,23 @@ def run(argv: list[str], *, cfg: Config | None = None, log_dir: Path | None = LO
         lock.release()
         log_event("session.end", level="warning" if code not in (0, 10) else None,
                   exit_code=code, duration_s=round(time.monotonic() - started, 3))
+
+
+def _migrate_renamed_folders(log_dir: Path | None, wow_path: Path | None) -> None:
+    """Move renamed tools' folders (logs/<old>/, <WoW>/wow-tools/<old>/) to the new name. Never fatal."""
+    for rename in RENAMED_TOOLS:
+        for old, new in tool_folder_pairs(rename, log_dir, wow_path):
+            try:
+                result = merge_folder(old, new)
+            except OSError as exc:
+                log_event("folder.renamed", level="error", old=str(old), new=str(new), error=str(exc))
+                continue
+            if result is None:
+                continue
+            level = "warning" if result.clashes or result.errors else None
+            log_event("folder.renamed", level=level, old=str(old), new=str(new), renamed=result.renamed,
+                      moved=len(result.moved), clashes=result.clashes, errors=result.errors,
+                      old_removed=result.old_removed)
 
 
 def _auto_update(cfg: Config) -> bool:

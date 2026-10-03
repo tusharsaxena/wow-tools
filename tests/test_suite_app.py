@@ -165,3 +165,17 @@ class InstanceLockTest(unittest.TestCase):
         if os.name != "posix":
             self.skipTest("POSIX only")
         self.assertIs(lock.info.stale, False)
+
+
+class ToolMenuLabelTest(unittest.TestCase):
+    def test_names_line_up_and_are_coloured(self):
+        from wowtools.tools import TOOLS
+        from wowtools.ui.suite_app import TOOL_NAME_STYLE, tool_label
+
+        width = max(len(t.title) for t in TOOLS.values()) + 3
+        labels = [tool_label(t.title, t.description, width) for t in TOOLS.values()]
+        starts = {label.plain.index(tool.description) for label, tool in zip(labels, TOOLS.values())}
+        self.assertEqual(starts, {width})  # every description starts in the same column
+        for label, tool in zip(labels, TOOLS.values()):
+            self.assertEqual(str(label.spans[0].style), TOOL_NAME_STYLE)
+            self.assertEqual(label.spans[0].end, width)

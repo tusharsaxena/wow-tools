@@ -127,8 +127,8 @@ class WowInstall:
         self.root = Path(root)
 
     def flavors(self) -> list[Flavor]:
-        return [Flavor(p.name, p) for p in _subdirs(self.root)
-                if _FLAVOR_DIR.match(p.name) and ((p / "WTF").is_dir() or (p / "Interface").is_dir())]
+        """Every _name_ folder in the WoW folder (_retail_, _classic_beta_, ...), whatever it holds yet."""
+        return [Flavor(p.name, p) for p in _subdirs(self.root) if _FLAVOR_DIR.match(p.name)]
 
     def is_valid(self) -> bool:
         return self.root.is_dir() and bool(self.flavors())

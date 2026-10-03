@@ -1,7 +1,9 @@
 """Execute a selection: guard, recheck, back up the WTF folder, zip the files to clean (verified), delete, then
 check the result.
 
-A dry run writes the backup but takes no snapshot and deletes nothing.
+A dry run writes the backup but takes no snapshot and deletes nothing. A real clean given a run journal opens it
+(header written) before anything else, so a journal that cannot be written stops the clean with nothing deleted,
+and journals each file right after deleting it.
 """
 from __future__ import annotations
 
@@ -18,6 +20,7 @@ from wowtools.core.backup import BackupEntry, BackupError, create_backup
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
+from wowtools.tools.wtf_cleaner.journal import CleanJournal
 from wowtools.tools.wtf_cleaner.rules import ProposalItem
 from wowtools.tools.wtf_cleaner.safety import (DEFAULT_KEEP_SNAPSHOTS, MARKER_NAME, Marker, check_clean, clear_marker,
                                                prune_snapshots, read_marker, restore_deleted, take_snapshot,
@@ -30,9 +33,11 @@ ALL_ACCOUNTS_LABEL = "all"
 
 
 class CleanError(Exception):
-    """The clean was refused or stopped. `restored` lists files put back from the snapshot, if any."""
+    """The clean was refused or stopped. `restored` lists files put back from the snapshot, if any.
+    `files_missing` is True when files were deleted and could not be put back (restore from the WTF backup)."""
 
     restored: list[str] = []
+    files_missing: bool = False
 
 
 @dataclass(frozen=True)
@@ -53,6 +58,7 @@ class CleanResult:
     restored: list[str] = field(default_factory=list)
     check_problems: list[str] = field(default_factory=list)  # what the post-clean check found ([] = passed)
     pruned: list[Path] = field(default_factory=list)  # older WTF backups removed to keep the newest N
+    journal_path: Path | None = None  # the run journal this clean wrote to (set by execute_flavors)
 
     def _with(self, status: str) -> list[FileOutcome]:
         return [o for o in self.outcomes if o.status == status]
@@ -231,9 +237,11 @@ def _restore_after(exc: BaseException, snapshot: Path, backup_dir: Path, flavor:
     except Exception as restore_exc:  # noqa: BLE001 - any failure keeps the marker and the snapshot
         log_event("restore.failed", flavor=flavor.folder, snapshot=str(snapshot), files=len(deleted),
                   reason=reason, error=str(restore_exc))
-        return CleanError(f"Clean stopped ({reason}) and restoring the {len(deleted)} deleted files failed "
-                          f"({restore_exc}). The WTF backup is at {snapshot}: close WoW, then unzip "
-                          f"it into {flavor.path} to restore.")
+        error = CleanError(f"Clean stopped ({reason}) and restoring the {len(deleted)} deleted files failed "
+                           f"({restore_exc}). The WTF backup is at {snapshot}: close WoW, then unzip "
+                           f"it into {flavor.path} to restore.")
+        error.files_missing = bool(deleted)
+        return error
     log_event("restore.completed", flavor=flavor.folder, snapshot=str(snapshot), restored=len(restored),
               reason=reason, files=restored)
     clear_marker(backup_dir)
@@ -244,8 +252,10 @@ def _restore_after(exc: BaseException, snapshot: Path, backup_dir: Path, flavor:
 
 def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup: bool,
             backup_dir: Path | None, now: datetime | None = None, progress: CleanProgress | None = None,
-            account: str | None = None, keep_backups: int = DEFAULT_KEEP_SNAPSHOTS) -> CleanResult:
-    """account is the scope of the clean (None = all accounts); it names the cleaned-files zip."""
+            account: str | None = None, keep_backups: int = DEFAULT_KEEP_SNAPSHOTS,
+            journal: CleanJournal | None = None) -> CleanResult:
+    """account is the scope of the clean (None = all accounts); it names the cleaned-files zip. journal (real
+    cleans) is the run journal: opened before anything is touched, one entry after each delete."""
     now = now or datetime.now()
     report = _safe_progress(progress)
     selected = [(item, sv) for item in items for sv in item.files]
@@ -271,6 +281,8 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
 
     snapshot: Path | None = None
     if not dry_run and ready:
+        if journal is not None:
+            _open_journal(journal, flavor)
         _refuse_locked(ready, flavor, report)
         snapshot = _take_safety_snapshot(flavor, backup_dir, now, [_relative(sv.path, flavor) for _, sv in ready],
                                          report)
@@ -288,24 +300,49 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
     try:
         for index, (item, sv) in enumerate(ready, 1):
             _delete_one(result, item, sv, flavor, dry_run, deleted)
+            if journal is not None and result.outcomes[-1].status == "deleted":
+                journal.add_deleted(flavor=flavor.folder, path=sv.path, rel=deleted[-1], size=sv.size,
+                                    mtime=sv.mtime, zip_path=result.backup_path, snapshot=snapshot)
             report("delete", index, len(ready), _relative(sv.path, flavor))
     except BaseException as exc:
         if snapshot is None or backup_dir is None:
             raise
-        raise _restore_after(exc, snapshot, backup_dir, flavor, deleted) from exc
+        error = _restore_after(exc, snapshot, backup_dir, flavor, deleted)
+        if journal is not None and not getattr(error, "files_missing", False):
+            _journal_rolled_back(journal, flavor, deleted)
+        raise error from exc
 
     if snapshot is not None and backup_dir is not None:
         _finish_safety(result, snapshot, backup_dir, flavor, deleted, report)
-        result.pruned = prune_snapshots(backup_dir, flavor.short_name, keep_backups)
+        # Nothing deleted: keep every older WTF backup (an earlier clean's Undo may need it).
+        result.pruned = prune_snapshots(backup_dir, flavor.short_name, keep_backups) if deleted else []
         if result.pruned:
             log_event("snapshot.pruned", flavor=flavor.folder, keep=keep_backups,
                       removed=[str(p) for p in result.pruned])
 
-    log_event("clean.completed", dry_run=dry_run, level="warning" if result.failed else None,
+    log_event("clean.completed", dry_run=dry_run, flavor=flavor.folder, level="warning" if result.failed else None,
               deleted=len(result.deleted), would_delete=len(result.would_delete),
               skipped=len(result.skipped), failed=len(result.failed), bytes=result.bytes_freed,
               backup=str(result.backup_path) if result.backup_path else None)
     return result
+
+
+def _journal_rolled_back(journal: CleanJournal, flavor: Flavor, deleted: list[str]) -> None:
+    """Every file this flavor deleted is back on disk: tell the journal, so Undo never offers them."""
+    try:
+        journal.add_rolled_back(flavor=flavor.folder, rels=deleted)
+    except OSError as exc:
+        log_event("clean.journal_failed", flavor=flavor.folder, journal=str(journal.path), error=str(exc))
+
+
+def _open_journal(journal: CleanJournal, flavor: Flavor) -> None:
+    """Write the journal's header (once per run). If it cannot be written, nothing is deleted."""
+    try:
+        journal.open()
+    except OSError as exc:
+        log_event("clean.journal_failed", flavor=flavor.folder, journal=str(journal.path), error=str(exc))
+        raise CleanError(f"The run journal could not be written ({journal.path}: {exc}), so nothing was deleted "
+                         f"(Undo last clean needs it).") from exc
 
 
 def _finish_safety(result: CleanResult, snapshot: Path, backup_dir: Path, flavor: Flavor, deleted: list[str],

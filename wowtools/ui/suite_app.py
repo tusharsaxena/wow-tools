@@ -25,7 +25,7 @@ from wowtools.ui.base import Ka0sApp
 from wowtools.ui.branding import Banner, BrandBar
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.tool_flow import ToolFlow
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint
+from wowtools.ui.widgets import LIST_CURSOR_BACKGROUND, LIST_NAME_STYLE, NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 
 class LockScreen(ModalScreen[bool]):
@@ -62,8 +62,8 @@ class LockScreen(ModalScreen[bool]):
             yield Static(Text("Ka0s WoW Tools may already be running"), id="lock-title")
             yield Static(Text(self.body()), id="lock-body")
             with ButtonRow(id="lock-buttons"):
-                yield Button("Override and continue (o)", variant="warning", id="lock-override")
-                yield Button("Quit (q)", variant="primary", id="lock-quit")
+                yield action_button("Override and continue (o)", "revert", id="lock-override")
+                yield action_button("Quit (q)", "neutral", id="lock-quit")
             yield NavHint("←→ choose · Enter/Space press · o override · q/Esc quit")
 
     def on_mount(self) -> None:
@@ -76,21 +76,32 @@ class LockScreen(ModalScreen[bool]):
         self.dismiss(value)
 
 
+TOOL_NAME_STYLE = LIST_NAME_STYLE
+
+
+def tool_label(title: str, description: str, width: int) -> Text:
+    """A menu row: the tool name padded to `width`, then its description, so both line up as columns."""
+    return Text.assemble((title.ljust(width), TOOL_NAME_STYLE), description)
+
+
 class ToolMenuScreen(Screen[None]):
     """The first screen: every tool in the suite. It stays at the bottom of the stack while a tool runs."""
 
-    DEFAULT_CSS = """
-    ToolMenuScreen #pick-title { color: $accent; text-style: bold; padding: 0 2; }
-    ToolMenuScreen #tools { margin: 1 2; height: auto; border: tall $primary; }
-    ToolMenuScreen NavHint { padding: 0 2; }
+    DEFAULT_CSS = f"""
+    ToolMenuScreen #pick-title {{ color: $accent; text-style: bold; padding: 0 2; }}
+    ToolMenuScreen #tools {{ margin: 1 2; height: auto; border: tall $primary; }}
+    ToolMenuScreen #tools > .option-list--option-highlighted {{ background: {LIST_CURSOR_BACKGROUND}; }}
+    ToolMenuScreen #tools:focus > .option-list--option-highlighted {{ background: {LIST_CURSOR_BACKGROUND}; }}
+    ToolMenuScreen NavHint {{ padding: 0 2; }}
     """
     BINDINGS = [Binding("q,escape", "app.quit", "Quit"), *NAV_BINDINGS]
 
     def compose(self) -> ComposeResult:
+        width = max(len(t.title) for t in TOOLS.values()) + 3  # names in one column, descriptions in the next
         yield Header()
         yield Banner()
         yield Static("Choose a tool", id="pick-title")
-        yield OptionList(*[Option(Text.assemble((t.title, "bold"), "  ·  ", t.description), id=t.name)
+        yield OptionList(*[Option(tool_label(t.title, t.description, width), id=t.name)
                            for t in TOOLS.values()], id="tools")
         yield NavHint("↑↓ choose · Enter open · s settings · q/Esc quit")
         yield BrandBar()

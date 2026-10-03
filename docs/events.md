@@ -39,7 +39,9 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `config.changed` | info | A config value changed, or was overridden for one run. |
 | `config.created` | info | A config file in config/ was written for the first time. |
 | `config.migrated` | info | The old shared wow-tools.cfg was split into config/ (one file per tool). |
+| `config.renamed` | info | A renamed tool's config file was moved to its new name (merged into the new file when both existed). |
 | `error` | error | An unexpected or fatal error. |
+| `folder.renamed` | info | A renamed tool's folder (logs/<tool>/ or <WoW>/wow-tools/<tool>/) was moved to its new name; logged as a warning when entries clashed or failed to move. |
 | `lock.conflict` | warning | Another copy of Ka0s WoW Tools appears to be running (its lock file exists). |
 | `lock.overridden` | warning | The user took over an existing lock file and carried on. |
 | `session.end` | info | The process is exiting. |
@@ -61,8 +63,16 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `backup.failed` | error | The cleaned-files zip failed; nothing was deleted. |
 | `clean.check_failed` | warning | The post-clean check found problems; see the WTF backup it names. |
 | `clean.completed` | info | A clean finished (logged at warning if any file failed). |
+| `clean.flavors_stopped` | warning | A clean of several flavors stopped at one flavor; the flavors after it were not started. |
+| `clean.journal_failed` | error | The run journal could not be written; the clean stopped before deleting anything. |
+| `clean.journal_pruned` | info | Older clean journals were deleted to keep the newest N (keep_journals). |
 | `clean.locked` | error | A real clean stopped before the WTF backup: selected files are locked by another program. |
 | `clean.started` | info | A clean (or dry run) started. |
+| `clean.undo_completed` | info | Undo last clean finished (logged at warning if any file was skipped or failed). |
+| `clean.undo_failed` | error | Undo: a file could not be put back (no zip holds it, or the size did not match). |
+| `clean.undo_restored` | info | Undo: a deleted file was put back from the cleaned-files zip or the WTF backup. |
+| `clean.undo_skipped` | warning | Undo: a file was left alone (one is back at its path, or its journal entry is outside the WTF folder). |
+| `clean.undo_started` | info | Undo last clean started, from the newest clean journal. |
 | `clean.validated` | info | After a clean, the WTF folder matched the WTF backup and the cleaned-files zip. |
 | `locker.running_warning` | warning | A program known to lock WTF files (e.g. the Raider.IO client) appears to be running. |
 | `proposal.built` | info | The cleanup proposal was built from scan results and criteria. |
@@ -81,3 +91,30 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `sv.failed` | error | A SavedVariables file could not be deleted. |
 | `sv.skipped` | warning | A selected file was skipped because it vanished or changed after the scan. |
 | `sv.would_delete` | info | Dry run: a SavedVariables file that would have been deleted. |
+
+## `screenshot-organizer` events
+
+| Event | Level | Description |
+|---|---|---|
+| `shots.already_filed` | info | Copy mode: an identical file was already at the target. |
+| `shots.conflict` | warning | A different file with the same name is already at the target; both were left alone. |
+| `shots.copied` | info | A screenshot was copied into its date folder (copy mode). |
+| `shots.duplicate_removed` | info | The source was identical to the file already at the target and was removed. |
+| `shots.failed` | error | A screenshot could not be filed. |
+| `shots.journal_pruned` | info | Older run journals were deleted to keep the newest N (keep_journals). |
+| `shots.moved` | info | A screenshot was moved into its date folder. |
+| `shots.organize_completed` | info | A run finished, with totals (logged at warning if any file failed). |
+| `shots.organize_started` | info | A run (or dry run) started: mode, destination and file count. |
+| `shots.organize_stopped` | error | A run stopped unexpectedly; the journal holds what was done so far. |
+| `shots.refused` | error | The path guard refused a screenshot (its source or target is not where it should be). |
+| `shots.scan_completed` | info | A scan finished: per flavor, files to file, possible duplicates, conflicts and unrecognised names. |
+| `shots.scan_started` | info | A scan of the chosen flavors' Screenshots folders started. |
+| `shots.scan_warning` | warning | A Screenshots or target folder could not be read during a scan. |
+| `shots.skipped` | warning | A screenshot was skipped because it vanished or changed after the scan. |
+| `shots.source_left` | warning | A screenshot was copied across drives but the source could not be deleted. |
+| `shots.undo_completed` | info | Undo finished, with totals. |
+| `shots.undo_failed` | error | Undo hit an error on one entry. |
+| `shots.undo_restored` | info | Undo put one screenshot back (or removed one copy). |
+| `shots.undo_skipped` | warning | Undo left an entry alone because it could not be reversed safely. |
+| `shots.undo_started` | info | Undo of a run journal started. |
+| `shots.would_file` | info | Dry run: a screenshot that would have been filed. |

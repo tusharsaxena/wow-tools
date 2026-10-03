@@ -3,9 +3,30 @@ from __future__ import annotations
 
 from textual.actions import SkipAction
 from textual.binding import Binding
-from textual.containers import Horizontal
+from textual.containers import Horizontal, VerticalScroll
 from textual.content import Content
 from textual.widgets import Button, Checkbox, Static
+
+# Pick lists (tool menu, flavor picker): names in gold, in their own column, readable on the cursor row too, whose
+# background is a deeper blue than the default cursor for that reason.
+LIST_NAME_STYLE = "bold #F2C14E"
+LIST_CURSOR_BACKGROUND = "#1C4E8F"
+
+# One colour per kind of action, the same in every tool (Textual Button variants). Pick buttons by what they do:
+ACTION_VARIANTS = {
+    "delete": "error",      # removes files for good (Clean): red
+    "apply": "success",     # changes files, can be undone (Organize): green
+    "simulate": "primary",  # shows what would happen, changes nothing (Dry run): blue
+    "revert": "warning",    # puts a change back, or overrides a safeguard (Undo last run, Override): amber
+    "confirm": "primary",   # the expected next step of a dialog (Save, Yes, Update now, Remind me): blue
+    "neutral": "default",   # refresh, navigation and backing out (Rescan, Other flavor, Tools, Quit, Cancel, No)
+}
+
+
+def action_button(label: str, action: str, **kwargs) -> Button:
+    """A Button coloured by the kind of action it performs (see ACTION_VARIANTS)."""
+    return Button(label, variant=ACTION_VARIANTS[action], **kwargs)
+
 
 CHECK_ON = "✔"
 CHECK_OFF = "✘"
@@ -16,6 +37,13 @@ NAV_BINDINGS = [
     Binding("up", "app.focus_previous", "Previous", show=False),
     Binding("down", "app.focus_next", "Next", show=False),
 ]
+
+
+class FormScroll(VerticalScroll):
+    """A scrolling form. ↑/↓ move focus (the focused field scrolls into view) instead of scrolling, so the keys
+    keep working once the form is taller than the screen."""
+
+    BINDINGS = list(NAV_BINDINGS)
 
 
 class Ka0sCheckbox(Checkbox):

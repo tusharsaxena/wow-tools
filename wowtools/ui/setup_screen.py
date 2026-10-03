@@ -16,7 +16,7 @@ from wowtools.core.events import log_event
 from wowtools.core.install import WowInstall, detect_installs
 from wowtools.core.paths import to_native, to_stored
 from wowtools.ui.branding import Banner, BrandBar
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 
 class SetupScreen(Screen[bool]):
@@ -49,8 +49,8 @@ class SetupScreen(Screen[bool]):
             yield Static(Text(self._detected_hint()), classes="hint")
             yield Static("", id="setup-error")
             with ButtonRow(classes="buttons"):
-                yield Button("Save", variant="primary", id="save")
-                yield Button("Cancel", id="cancel")
+                yield action_button("Save", "confirm", id="save")
+                yield action_button("Cancel", "neutral", id="cancel")
             yield NavHint("↑↓/Tab move · ←→ buttons · Enter save/press · Esc cancel")
         yield BrandBar()
         yield Footer()

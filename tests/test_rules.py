@@ -114,6 +114,19 @@ class SettingsTest(unittest.TestCase):
         self.assertFalse(again.criteria.not_enabled)
         self.assertEqual(again.criteria.max_age_days, 30)
 
+    def test_last_flavor_choice(self):
+        cfg = Config(self.path)
+        self.assertIsNone(load_settings(cfg).last_flavor_choice)  # never chosen: the picker falls back
+        save_settings(cfg, load_settings(cfg))
+        self.assertIsNone(load_settings(Config(self.path).load()).last_flavor_choice)
+        cfg.set(SECTION, "last_flavor_choice", "")
+        self.assertEqual(load_settings(cfg).last_flavor_choice, "")  # All flavors
+        cfg.set(SECTION, "last_flavor_choice", " _retail_ ")
+        settings = load_settings(cfg)
+        self.assertEqual(settings.last_flavor_choice, "_retail_")
+        save_settings(cfg, settings)
+        self.assertEqual(load_settings(Config(self.path).load()).last_flavor_choice, "_retail_")
+
     def test_bad_values_fall_back(self):
         cfg = Config(self.path)
         cfg.set(SECTION, "max_age_days", "0")

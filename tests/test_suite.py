@@ -111,3 +111,80 @@ class SuiteTest(unittest.TestCase):
         self.assertEqual(Config(self.config_dir / "wtf-cleaner.cfg").load().get("wtf_cleaner", "max_age_days"), "45")
         self.assertEqual(FakeApp.made[0].cfg.wow_path, self.root)
         self.assertIn("config.migrated", [r["event"] for r in self.records()])
+
+    def test_renamed_tool_config_and_folders_move_on_start(self):
+        (self.config_dir / "screenshots.cfg").write_text("[screenshots]\ncopy_mode = true\n", encoding="utf-8")
+        _write_file(self.log_dir / "screenshots" / "events-2026-10-01.log", "old")
+        _write_file(self.root / "wow-tools" / "screenshots" / "journal" / "journal-1.jsonl", "j")
+        code, _, _ = self.run_suite([])
+        self.assertEqual(code, 0)
+        self.assertFalse((self.config_dir / "screenshots.cfg").exists())
+        self.assertEqual(Config(self.config_dir / "screenshot-organizer.cfg").load()
+                         .get("screenshot_organizer", "copy_mode"), "true")
+        self.assertFalse((self.log_dir / "screenshots").exists())
+        self.assertTrue((self.log_dir / "screenshot-organizer" / "events-2026-10-01.log").is_file())
+        self.assertFalse((self.root / "wow-tools" / "screenshots").exists())
+        self.assertTrue((self.root / "wow-tools" / "screenshot-organizer" / "journal" / "journal-1.jsonl").is_file())
+        records = self.records()
+        self.assertEqual([r["event"] for r in records].count("folder.renamed"), 2)
+        config_event = next(r for r in records if r["event"] == "config.renamed")
+        self.assertEqual(config_event["data"]["new"], str(self.config_dir / "screenshot-organizer.cfg"))
+
+    def test_renamed_tool_with_legacy_config_section(self):
+        legacy = self.tmp / "wow-tools.cfg"
+        legacy.write_text(f"[general]\nwow_path = {self.root}\ncheck_for_updates = false\n\n"
+                          "[screenshots]\nkeep_journals = 4\n", encoding="utf-8")
+        (self.config_dir / "wow-tools.cfg").unlink()
+        code, _, _ = self.run_suite([], cfg=None)
+        self.assertEqual(code, 0)
+        cfg = Config(self.config_dir / "screenshot-organizer.cfg").load()
+        self.assertEqual(cfg.get("screenshot_organizer", "keep_journals"), "4")
+        self.assertIsNone(Config(self.config_dir / "wow-tools.cfg").load().get("screenshots", "keep_journals"))
+
+    def test_folder_clash_is_logged_as_a_warning_and_start_carries_on(self):
+        _write_file(self.root / "wow-tools" / "screenshots" / "journal" / "a.jsonl", "old")
+        _write_file(self.root / "wow-tools" / "screenshot-organizer" / "journal" / "a.jsonl", "new")
+        code, _, _ = self.run_suite([])
+        self.assertEqual(code, 0)
+        event = next(r for r in self.records() if r["event"] == "folder.renamed")
+        self.assertEqual((event["level"], event["data"]["clashes"]), ("warning", ["journal/a.jsonl"]))
+        self.assertEqual((self.root / "wow-tools" / "screenshot-organizer" / "journal" / "a.jsonl")
+                         .read_text(encoding="utf-8"), "new")
+
+    def test_no_renamed_data_logs_nothing(self):
+        self.run_suite([])
+        self.assertFalse({"config.renamed", "folder.renamed"} & {r["event"] for r in self.records()})
+
+    def test_unreadable_old_tool_config_stops_start(self):
+        (self.config_dir / "screenshots.cfg").write_text("not ini\n", encoding="utf-8")
+        code, _, err = self.run_suite([])
+        self.assertEqual(code, 1)
+        self.assertIn("screenshots.cfg", err)
+        self.assertEqual(FakeApp.made, [])
+        self.assertFalse(self.lock_path.exists())  # the lock taken first is released again
+
+    def test_renames_wait_while_another_copy_holds_the_lock(self):
+        self.lock_path.write_text(json.dumps({"pid": 1, "host": "pc", "started": "", "platform": "", "token": "x"}))
+        (self.config_dir / "screenshots.cfg").write_text("[screenshots]\ncopy_mode = true\n", encoding="utf-8")
+        _write_file(self.log_dir / "screenshots" / "events-2026-10-01.log", "old")
+        _write_file(self.root / "wow-tools" / "screenshots" / "journal" / "journal-1.jsonl", "j")
+        code, _, _ = self.run_suite([])
+        self.assertEqual(code, 0)
+        self.assertTrue((self.config_dir / "screenshots.cfg").is_file())
+        self.assertFalse((self.config_dir / "screenshot-organizer.cfg").exists())
+        self.assertTrue((self.log_dir / "screenshots" / "events-2026-10-01.log").is_file())
+        self.assertTrue((self.root / "wow-tools" / "screenshots" / "journal" / "journal-1.jsonl").is_file())
+        events_seen = {r["event"] for r in self.records()}
+        self.assertIn("lock.conflict", events_seen)
+        self.assertFalse({"config.renamed", "folder.renamed"} & events_seen)
+        self.assertEqual(json.loads(self.lock_path.read_text())["token"], "x")
+        # Once that copy is gone, the next start moves everything.
+        self.lock_path.unlink()
+        self.run_suite([])
+        self.assertFalse((self.config_dir / "screenshots.cfg").exists())
+        self.assertTrue((self.root / "wow-tools" / "screenshot-organizer" / "journal" / "journal-1.jsonl").is_file())
+
+
+def _write_file(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")

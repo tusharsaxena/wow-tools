@@ -19,6 +19,10 @@ class InstallTest(unittest.TestCase):
         self.assertEqual([f.folder for f in self.install.flavors()],
                          ["_anniversary_", "_classic_era_", "_retail_"])
 
+    def test_any_flavor_folder_counts_even_when_empty(self):
+        (self.root / "_classic_beta_").mkdir()  # installed but never launched: no WTF or Interface yet
+        self.assertIn("_classic_beta_", [f.folder for f in self.install.flavors()])
+
     def test_display_and_short_names(self):
         self.assertEqual(Flavor("_classic_era_", self.root).display_name, "Classic Era")
         self.assertEqual(Flavor("_retail_", self.root).display_name, "Retail")

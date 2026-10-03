@@ -1,6 +1,8 @@
 # wow-tools: notes for Claude
 
-Out-of-game WoW companion tools (Ka0s branded). First tool: WTF Cleaner. Spec and plan: `docs/superpowers/`.
+Out-of-game WoW companion tools (Ka0s branded). Tools: WTF Cleaner (`wtf-cleaner`), Screenshot Organizer
+(`screenshot-organizer`, package `tools/screenshot_organizer`). Specs and plans:
+`docs/superpowers/`.
 
 - Tests: `python3 scripts/run_tests.py` (parallel, ~10s; `-k TEXT` to filter, `-j N` processes). Serial, verbose:
   `python3 -m unittest discover -s tests -t . -v`
@@ -19,4 +21,5 @@ Conventions:
   `app.py`) that pushes its own screens and `close()`s back to the menu.
 - Tests use `tests/fixtures.py` temp trees; never a real WoW install, never the network.
 - Textual tests subclass `tests.fixtures.TuiTestCase` (asyncio debug mode off; it made the suite ~10x slower).
-- Adding a tool: `docs/adding-a-tool.md`.
+- Adding a tool: `docs/adding-a-tool.md`. Renaming one: a `ToolRename` line in `RENAMED_TOOLS`
+  (`wowtools/tools/__init__.py`); `core/migrate.py` moves its config, logs and `<WoW>/wow-tools/<tool>/` at start-up.

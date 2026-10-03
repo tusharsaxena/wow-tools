@@ -10,7 +10,7 @@ WSL. There's no `pip install` and no virtualenv.
 | Tool | What it does |
 |---|---|
 | **WTF Cleaner** | Finds SavedVariables left behind by addons you no longer use, backs them up to a zip, and deletes them. |
-| Screenshot Organizer | Coming later. |
+| **Screenshot Organizer** | Files screenshots into year/month/day folders, per flavor, in place or into an archive folder, with dry run and undo. |
 
 ## Requirements
 
@@ -44,14 +44,18 @@ on their own.
 1. **Your World of Warcraft folder** (once, shared by every tool). This is the folder that contains `_retail_`,
    `_classic_` and so on. Common locations on every drive are detected for you.
 2. **That tool's settings.** For the WTF Cleaner: the age limit, which criteria to use, whether to back up before
-   deleting, and the **backup folder**. Leave the backup folder empty to use `<WoW folder>\wow-tools\wtf-cleaner`.
+   deleting, the **backup folder**, and how many WTF backups and run journals to keep. Leave the backup folder
+   empty to use `<WoW folder>\wow-tools\wtf-cleaner`.
+   For the Screenshot Organizer: the destination folder (empty = organise in place), how many run journals to
+   keep, and whether to copy instead of move.
 
-Your answers are saved in the `config\` folder (see [Settings](#settings-config)). Then you pick a **flavor**, and
-the last one you used is pre-selected next time. If the flavor has more than one WoW account, you then pick an **account**, or
-"All accounts". The last choice is pre-selected next time.
+Your answers are saved in the `config\` folder (see [Settings](#settings-config)). Then you pick a **flavor**, or
+**All flavors** (the first row), and the last choice is pre-selected next time. In the WTF Cleaner, if the one
+flavor you picked has more than one WoW account, you then pick an **account**, or "All accounts". The last choice
+is pre-selected next time. With All flavors there is no account screen: every account of every flavor is in scope.
 
 > **Close WoW before cleaning.** WoW rewrites SavedVariables when you log out, and it can recreate files you
-> just removed. The tool warns you if it sees WoW running for the flavor you chose (see
+> just removed. The tool warns you if it sees WoW running for the flavor you chose, or any of them with All flavors (see
 > [Is WoW running?](#is-wow-running)).
 
 ## WTF Cleaner
@@ -76,6 +80,7 @@ files are treated as one group.
 
 - **All accounts** (the default): "enabled" is judged across the whole flavor. If an addon is enabled on any
   character of any account, its SavedVariables are kept everywhere.
+- **All flavors**: every flavor is scanned in turn, each with all its accounts, judged on its own as above.
 - **One account** (picked on the account screen): only that account's
   SavedVariables are scanned and proposed, and only that account's characters decide what counts as enabled.
   An addon enabled only on another account's characters counts as not enabled here.
@@ -88,16 +93,21 @@ WoW does.
 - `Blizzard_*` SavedVariables.
 - Everything outside `SavedVariables` folders: `config-cache.wtf`, keybindings, macros, `AddOns.txt`,
   layouts, chat settings.
-- Anything outside the chosen flavor's `WTF\Account` folder.
+- Anything outside the chosen flavor's `WTF\Account` folder (with All flavors, each flavor's own).
 
-If a flavor has no addons installed at all, the scan stops rather than proposing everything.
+If a flavor has no addons installed at all, the scan stops rather than proposing everything. With All flavors,
+such a flavor is listed in the tree with the reason ("not scanned: No addons found in …") and is not cleaned; the
+other flavors carry on.
 
 ### Using the TUI
 
-The review screen shows a tree: account → account-wide / each character → addon → files.
-Everything starts ticked. A progress bar shows while the scan runs.
+The review screen shows a tree: account → account-wide / each character → addon → files. With All flavors there
+is one more level on top: All flavors → flavor → account → …, and the ticks, `a`/`n`, the criteria and the max
+age apply across every flavor.
+Every account in scope is listed; one with nothing to clean says so, and so does a flavor with nothing to clean. Everything starts ticked. A progress bar shows while the scan runs.
 
-The left panel holds the criteria, the max age box and three buttons: **Clean**, **Dry run** and **Rescan**.
+The left panel holds the criteria, the max age box and the buttons: **Clean**, **Dry run**, **Rescan** and, on
+its own row, **Undo last clean** (see [Undo last clean](#undo-last-clean)).
 Each criterion shows how many files it matches on its own, for example `1 Not installed (672 files)`. The counts
 update after each scan and whenever the max age changes. A ticked criterion shows a bright `✔` and an unticked
 one a dimmed `✘`. The tree uses the same marks.
@@ -121,6 +131,7 @@ the tree:
 | `c` | **Clean** the ticked files (asks for confirmation first; the dialog starts on **No**) |
 | `y` | **Dry run** on the ticked files (asks first; the dialog starts on **Yes**) |
 | `r` | Rescan |
+| `z` | **Undo last clean** (asks first; the dialog starts on **No**) |
 | `f` | Choose another flavor |
 | `s` | Settings |
 | `u` | Install an available update |
@@ -132,6 +143,17 @@ folder, zipping and verifying the files to clean, deleting, and checking the res
 check, the WTF backup and the result check. When a criterion or the max age changes, the tree shows a loading spinner
 and the summary bar says "Updating the list…" until the new list is ready. The results screen then shows a summary table and a table of every file
 with its status, account, character, addon, size and reasons.
+
+#### Cleaning across flavors
+
+With All flavors, Clean and Dry run work through the flavors one after another, and each flavor is cleaned
+exactly as if you had picked it alone: its own WTF backup (`backup-<flavor>-…zip`), cleaned-files zip, post-clean
+check and `keep_backups` pruning. The confirm dialog lists each flavor with its file counts and warns if WoW is
+running for any of them; the progress window names the flavor it is working on. If a flavor's clean is refused or
+stopped (a failed backup, locked files), the run stops there: flavors already done keep their results, the ones
+after it are not started. The results screen has one block of summary rows per flavor, a **Flavor** column in the
+file table, and, after a stop, rows saying which flavors were done, which one stopped and why, and which were not
+started.
 
 #### Keyboard use
 
@@ -177,6 +199,31 @@ picked, or `all` for "All accounts". For example `cleaned-retail-all-20261003-14
 
 Zips from older versions (`wtf-cleaner_<flavor>_*.zip`, `wtf-snapshot_*.zip` in the folder itself) are left alone.
 
+### Undo last clean
+
+Every real clean (not a dry run) writes a **run journal**, one file per clean even with All flavors, in
+`<WoW folder>\wow-tools\wtf-cleaner\journal\` (`journal-<YYYYMMDD-HHMMSS>.jsonl`). It lists each file the moment
+it is deleted: its flavor, path, size and time, and which cleaned-files zip and WTF backup hold it. The journal is
+started before anything is deleted; **if it can't be written, nothing is deleted.** A clean that deleted nothing
+leaves no journal.
+
+**Undo last clean** (`z`, the amber button) puts back the files the newest clean deleted, newest first. The
+confirm dialog names when that clean ran, its flavors and how many files it deleted, and starts on **No**. Each
+file comes back from the cleaned-files zip, or from that flavor's WTF backup when zipping was off (or the zip is
+gone or lacks it), and its size must match the journal. The results screen ("undo result") lists every file as
+restored, skipped (with the reason) or failed.
+
+Undo is careful:
+
+- It never overwrites: a file that is back at its path (WoW may have written a new one) is **left alone**.
+- It never deletes anything and never touches the zips.
+- It only writes inside the flavors' `WTF` folders; a journal line that points anywhere else is left alone.
+- It goes back **one clean only**. Once a clean is undone the button stays disabled until the next real clean;
+  older journals are kept for reference, not offered. The button is also disabled while scanning or cleaning.
+
+Close WoW first; the confirm dialog warns you if it's running. The newest 10 journals are kept
+(`keep_journals` in settings, "Journals to keep"); older ones are deleted after each clean.
+
 ### Locked files
 
 Some companion apps hold SavedVariables files open, which stops Windows from deleting them. The Raider.IO
@@ -212,7 +259,7 @@ The results screen shows the backup's path and the check's result. If the check 
 problem is shown there and every problem is logged (`clean.check_failed`). The marker is cleared either way,
 because the clean did finish.
 
-If something unexpected stops the clean partway (an error, or `Ctrl+C`), the cleaner puts back **only the files
+If something unexpected stops the clean partway (an error), the cleaner puts back **only the files
 this run had already deleted**, taking them from the backup. It never overwrites a file that exists on disk. It
 then reports that the clean stopped and how many files were restored. If that restore fails, the marker is kept
 and the error names the backup.
@@ -250,6 +297,143 @@ belongs to a flavor when its executable sits in that flavor's folder (`_retail_`
 - On Linux (Wine) it reads `/proc`.
 - On macOS it can't tell, so there is no warning.
 
+## Screenshot Organizer
+
+WoW drops every screenshot into one flat `Screenshots` folder per flavor. The organizer files them into
+`YYYY\MM\DD` folders, separately for each flavor. The date comes from the file name only.
+
+### Where screenshots go
+
+There are two layouts, picked by the **destination folder** setting (press `s`):
+
+| Destination folder | Screenshots go to | Example |
+|---|---|---|
+| Set (an archive folder) | `<destination>\<flavor folder>\YYYY\MM\DD` | `H:\Media\Screenshots\World of Warcraft\_retail_\2019\07\31\WoWScrnShot_073119_232713.jpg` |
+| Empty (the default) | in place: `<flavor>\Screenshots\YYYY\MM\DD` | `World of Warcraft\_retail_\Screenshots\2019\07\31\WoWScrnShot_073119_232713.jpg` |
+
+File names are never changed. Only files lying directly in a flavor's `Screenshots` folder are looked at; date
+folders made by earlier runs are not read again. The destination can't be the WoW folder itself or anything
+inside a flavor's `Screenshots` folder (leave it empty for that). It doesn't have to exist yet: it's created on
+the first real run.
+
+**Recognised names.** `WoWScrnShot_MMDDYY_HHMMSS` with `.jpg`, `.jpeg`, `.png` or `.tga`, in any case, and a
+real calendar date (the year is `20YY`). Anything else, such as `notes.txt` or `WoWScrnShot_023119_…` (there is
+no 31 February), is **left where it is** and listed under "Skipped (n): name not recognised".
+
+### Picking flavors
+
+The flavor screen lists every flavor in your WoW folder (every `_name_` folder: `_retail_`, `_classic_`,
+`_classic_era_`, `_anniversary_`, `_classic_beta_`, ...), with **All flavors** first. Each row shows the flavor, its
+folder, and how many screenshots are waiting to be filed ("12 screenshots to file"); a flavor that has no
+`Screenshots` folder yet says "no Screenshots folder" and adds nothing to a run. Your choice (All flavors or
+one flavor) is pre-selected next time. If no flavor has a `Screenshots` folder, the tool says so and goes back to
+the menu.
+
+### Using the TUI
+
+The review screen shows a tree: All flavors (or the flavor) → flavor → year → month → day → files. Every node
+shows how many shots are under it, and everything starts ticked. A day's files appear when you expand it. A
+progress bar shows while the scan runs. The left panel shows the destination, the mode (Move or Copy) and four
+buttons: **Organize**, **Dry run**, **Rescan** and **Undo last run**. The bar at the bottom totals the ticked
+shots, possible duplicates, conflicts and skipped names. Every chosen flavor is listed; one with nothing to file says why ("no Screenshots folder" or "nothing to
+file").
+
+| Key | Action |
+|---|---|
+| `space` | Tick or untick the highlighted flavor, year, month, day or file (on a button, press it) |
+| `a` / `n` | Tick all / none |
+| `o` | **Organize** the ticked shots (asks for confirmation first; the dialog starts on **No**) |
+| `y` | **Dry run** on the ticked shots (asks first; the dialog starts on **Yes**) |
+| `r` | Rescan |
+| `z` | **Undo last run** (asks first; the dialog starts on **No**) |
+| `f` | Choose another flavor |
+| `t` | Back to the tool menu |
+| `s` | Settings |
+| `q` | Quit |
+
+`←` and `→` switch between the tree and the left panel, as on the WTF Cleaner's review screen. If nothing is
+left to file, the bar says "Nothing to file." and Organize and Dry run are disabled. Settings you change take
+effect at the next rescan (`r`).
+
+While a run goes, a progress window shows the stage and the current file. The results screen then shows a
+summary table (the mode, a count per outcome, and the journal) and a table of every file with its outcome,
+flavor, target folder and reason. From there `r` rescans, `f` picks another flavor, `t` goes back to the tool
+menu and `q` quits.
+
+### Duplicates and conflicts
+
+When a file with the same name is already at the target:
+
+- **Same size** shows as a "possible duplicate" in the tree. At run time both files are compared by content
+  (SHA-256). If they're identical, the screenshot in `Screenshots` is removed, because it's already filed
+  ("Duplicate removed"). In copy mode it's left alone ("Already filed"). If the content differs after all, it's a
+  conflict.
+- **Different size** is a **conflict**. Conflicts are listed under their own read-only "Conflicts (n)" node and
+  can't be ticked. Both files are left alone and you sort them out by hand.
+
+**Nothing is ever overwritten.** The target is checked again right before each move or copy, so a file that
+appears there during the run is a conflict too.
+
+### Copy mode
+
+With "Copy instead of move" on (in settings), screenshots are copied into the date folders and stay in
+`Screenshots` as well. Every copy goes through a temporary `<name>.partial` file and is checked (size and
+SHA-256) before it's renamed into place. A move to another drive works the same way, and the original is deleted
+only after the copy checks out. If that delete fails, the result says "Copied, source left".
+
+### Dry run
+
+A dry run (the **Dry run** button or `y`) walks exactly the same checks, comparing possible duplicates by content
+too, and reports what *would* happen: "Would move", "Would copy", "Would remove duplicate" or a conflict. It
+creates no folders, moves nothing and writes no journal. It's recorded in the log.
+
+### Undo
+
+Every real run writes a **journal**, one file per run, in `<WoW folder>\wow-tools\screenshot-organizer\journal\`
+(`journal-<YYYYMMDD-HHMMSS>.jsonl`). It's kept beside the WTF Cleaner's folder and never in your screenshot
+archive. Each move, copy or removed duplicate is written to it the moment it happens, so it's accurate even if the
+run is cut short. If the journal can't be written, the run stops before it touches anything. A run that changed
+nothing leaves no journal.
+
+**Undo last run** (`z`) reverses the newest run, newest file first:
+
+- moved screenshots go back to their `Screenshots` folder;
+- copies are deleted (only while the original is still there, at the same size);
+- removed duplicates are copied back from the archive.
+
+Undo is careful:
+
+- It only touches a file that still matches the journal (same size). Anything that changed since, or a file of
+  the same name back in `Screenshots`, is **left alone** and listed as such. Nothing is ever overwritten.
+- Afterwards, `YYYY`, `MM` and `DD` folders that the run filed into are removed if they're now empty. Other
+  folders are never removed.
+- It goes back **one run only**. Once a run is undone, the button stays disabled until the next real run that files something; older
+  journals are kept for reference, not offered.
+- A journal line that doesn't point from a `Screenshots` folder in your WoW folder to a `YYYY\MM\DD` folder is
+  left alone.
+
+The newest 10 journals are kept (`keep_journals` in settings); older ones are deleted after each run. Undone
+journals count towards that.
+
+If a run stops partway (an error), the results screen shows what was done, and Undo last run can put it back when
+the run left a journal. If it stopped before anything could be journaled, the message says so and Undo is not
+offered for it.
+
+## Run journals
+
+Every tool that changes files keeps a **run journal** of each real run, so its last run can be undone. Journals
+live in your WoW folder, one folder per tool, `<WoW folder>\wow-tools\<tool>\journal\`, as
+`journal-<YYYYMMDD-HHMMSS>.jsonl` (one JSON line per change, written the moment it happens):
+
+| Tool | Journal folder | Undo |
+|---|---|---|
+| WTF Cleaner | `wow-tools\wtf-cleaner\journal\` | **Undo last clean** (`z`): puts deleted files back from the zips ([details](#undo-last-clean)) |
+| Screenshot Organizer | `wow-tools\screenshot-organizer\journal\` | **Undo last run** (`z`): moves screenshots back ([details](#undo)) |
+
+In both tools the journal is started before anything changes, so if it can't be written nothing is changed; a dry
+run writes none; only the newest run can be undone, once; Undo never overwrites a file; and each tool keeps its
+newest `keep_journals` (default 10).
+
 ## Settings (`config\`)
 
 Each tool keeps its own settings file, next to one shared file for the suite:
@@ -258,10 +442,14 @@ Each tool keeps its own settings file, next to one shared file for the suite:
 |---|---|
 | `config\wow-tools.cfg` | `[general]`: the WoW folder, updates and logging, shared by every tool |
 | `config\wtf-cleaner.cfg` | `[wtf_cleaner]`: the WTF Cleaner's own settings |
+| `config\screenshot-organizer.cfg` | `[screenshot_organizer]`: the Screenshot Organizer's own settings |
 
 The files are created the first time they're needed. Press `s` in the app to change them, or edit them while
 the app is closed. A `wow-tools.cfg` from an older version (in the main folder) is split into `config\` on the
-next start, and the old file is removed.
+next start, and the old file is removed. The Screenshot Organizer was called `screenshots` before; on the next
+start its `config\screenshots.cfg`, `logs\screenshots\` and `<WoW folder>\wow-tools\screenshots\` are moved to
+the new `screenshot-organizer` names. Nothing is overwritten: if a new file or folder already exists, only what it
+lacks is moved across, and an old settings file whose values differ is kept as `screenshots.cfg.migrated`.
 
 | File · section / key | Default | Meaning |
 |---|---|---|
@@ -276,7 +464,13 @@ next start, and the old file is removed.
 | `wtf-cleaner.cfg` `[wtf_cleaner] backup_before_delete` | `true` | Zip the files to clean (`cleaned\`) before deleting |
 | `wtf-cleaner.cfg` `[wtf_cleaner] backup_dir` | `<wow_path>\wow-tools\wtf-cleaner` | Holds `backup\` and `cleaned\` |
 | `wtf-cleaner.cfg` `[wtf_cleaner] keep_backups` | `5` | How many WTF backups (`backup\backup-<flavor>-*.zip`) to keep per flavor |
+| `wtf-cleaner.cfg` `[wtf_cleaner] keep_journals` | `10` | How many run journals (`<wow_path>\wow-tools\wtf-cleaner\journal\`) to keep (at least 1) |
 | `wtf-cleaner.cfg` `[wtf_cleaner] last_account` | (empty = all accounts) | Pre-selected account |
+| `wtf-cleaner.cfg` `[wtf_cleaner] last_flavor_choice` | (empty = all flavors) | Pre-selected flavor choice, e.g. `_retail_`; until it is first saved, `[general] last_flavor` is pre-selected |
+| `screenshot-organizer.cfg` `[screenshot_organizer] dest_dir` | (empty = in place) | Archive root: screenshots go to `<dest_dir>\<flavor folder>\YYYY\MM\DD`. Stored as a Windows path. |
+| `screenshot-organizer.cfg` `[screenshot_organizer] copy_mode` | `false` | Copy instead of move |
+| `screenshot-organizer.cfg` `[screenshot_organizer] last_flavor_choice` | (empty = all flavors) | Pre-selected flavor choice, e.g. `_retail_` |
+| `screenshot-organizer.cfg` `[screenshot_organizer] keep_journals` | `10` | How many run journals to keep (at least 1) |
 
 ## Updates
 
@@ -295,8 +489,8 @@ Set `auto_update = true` to install updates on launch without asking.
 ## Logs
 
 Everything the tools do is logged, including settings changes, your choices, scan results, backups, and every
-file deleted or skipped. Each tool has its own folder, e.g. `logs\wtf-cleaner\` (the launcher uses
-`logs\suite\`):
+file deleted, moved or skipped. Each tool has its own folder, `logs\wtf-cleaner\` and `logs\screenshot-organizer\`
+(the launcher uses `logs\suite\`):
 
 - `logfile-YYYY-MM-DD.log` is readable.
 - `events-YYYY-MM-DD.log` is structured, one JSON object per line.
@@ -329,6 +523,9 @@ The same folder works from both. Paths are stored in Windows form (`G:\Games\…
   again. Nothing was deleted.
 - **"Ka0s WoW Tools may already be running"**: see [One copy at a time](#one-copy-at-a-time).
 - **"An earlier clean did not finish"**: see [After an interrupted clean](#after-an-interrupted-clean).
+- **"No Screenshots folders found"**: no flavor has a `Screenshots` folder yet. Take a screenshot in game first.
+- **A screenshot stays in `Screenshots` after organizing**: its name isn't a WoW screenshot name, or a different
+  file with the same name is already filed (a conflict). Both show in the tree and on the results screen.
 - **Python not found on Windows**: install Python 3.10+ from python.org and tick "Add to PATH".
 
 ## For developers

@@ -154,14 +154,20 @@ def processes_for_flavor(processes: list[WowProcess],
 
 def wow_check_for(flavor, *, lister: Callable[[], list[WowProcess] | None] = running_wow_processes
                   ) -> Callable[[], list[str] | None]:
-    """The check the review screen and CLI run: display strings for WoW processes of this flavor."""
-    folder = getattr(flavor, "folder", flavor)
+    """The check the review screen runs: display strings for WoW processes of this flavor, or of any of several
+    flavors (a list). The processes are listed once per check, whatever the number of flavors."""
+    flavors = flavor if isinstance(flavor, (list, tuple)) else [flavor]
+    folders = [getattr(f, "folder", f) for f in flavors]
 
     def check() -> list[str] | None:
         processes = lister()
         if processes is None:
             return None
-        matching, unknown = processes_for_flavor(processes, folder)
+        matching: list[WowProcess] = []
+        unknown: list[WowProcess] = []
+        for folder in folders:
+            found, unknown = processes_for_flavor(processes, folder)
+            matching += found
         labels = [proc.name for proc in matching] + [f"{proc.name} (flavor unknown)" for proc in unknown]
         return list(dict.fromkeys(labels))
     return check

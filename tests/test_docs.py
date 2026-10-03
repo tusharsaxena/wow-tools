@@ -29,7 +29,8 @@ class DocsTest(unittest.TestCase):
             self.assertIn(tool.title, readme)
         for needle in ("wow-tools.cmd", "./wow-tools.sh", "wow-tools update", "config\\wtf-cleaner.cfg",
                        "wow-tools.lock", "Override and continue", "stray_copies", "Restoring a backup",
-                       "backup\\backup-<flavor>-<YYYYMMDD-HHMMSS>.zip", "cleaned\\cleaned-<flavor>-<account>-", "keep_backups", "Dry run"):
+                       "backup\\backup-<flavor>-<YYYYMMDD-HHMMSS>.zip", "cleaned\\cleaned-<flavor>-<account>-", "keep_backups", "Dry run",
+                       "config\\screenshot-organizer.cfg", "Undo last run", "journal"):
             self.assertIn(needle, readme)
         for gone in ("wtf-cleaner.cmd", "wtf-cleaner.sh", "--flavor", "python -m wowtools"):
             self.assertNotIn(gone, readme)
