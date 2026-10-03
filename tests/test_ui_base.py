@@ -84,6 +84,23 @@ class SuiteAppBaseTest(UiTestCase):
             self.assertNotIsInstance(app.screen, UpdateScreen)
 
 
+class QuitWhileBusyTest(UiTestCase):
+    async def test_ctrl_q_is_refused_while_busy(self):
+        app = WowToolsApp(self.cfg, config_dir=self.tmp, check_updates=False, detect=lambda: [])
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app.busy = True
+            await pilot.press("ctrl+q")
+            await pilot.pause()
+            self.assertTrue(app.is_running)
+            self.assertIsNone(app.return_code)
+            self.assertTrue(any("A run is in progress" in n.message for n in app._notifications))
+            app.busy = False
+            await pilot.press("ctrl+q")
+            await pilot.pause()
+            self.assertEqual(app.return_code, 0)
+
+
 class SetupScreenTest(UiTestCase):
     async def test_rejects_invalid_folder_then_saves(self):
         screen = SetupScreen(self.cfg, first_run=True, detect=lambda: [])

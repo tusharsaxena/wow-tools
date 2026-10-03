@@ -13,6 +13,7 @@ from textual.screen import ModalScreen, Screen
 from textual.widget import Widget
 from textual.widgets import Button, DataTable, Footer, Header, Label, ProgressBar, Static, Tree
 
+from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor
@@ -592,7 +593,8 @@ class ShotReviewScreen(Screen[str]):
             self.app.call_from_thread(progress_screen.update_progress, *args)
 
         try:
-            result = job(progress)
+            with activity.running():
+                result = job(progress)
         except OrganizeError as exc:
             self.app.call_from_thread(self._job_stopped, exc)
             return

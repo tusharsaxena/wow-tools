@@ -44,9 +44,11 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `folder.renamed` | info | A renamed tool's folder (logs/<tool>/ or <WoW>/wow-tools/<tool>/) was moved to its new name; logged as a warning when entries clashed or failed to move. |
 | `lock.conflict` | warning | Another copy of Ka0s WoW Tools appears to be running (its lock file exists). |
 | `lock.overridden` | warning | The user took over an existing lock file and carried on. |
-| `session.end` | info | The process is exiting. |
+| `session.end` | info | The process is exiting (waited_for_worker is set when it first waited for a running clean, organize or undo to finish). |
 | `session.start` | info | The launcher or a tool started. |
+| `session.waiting_for_worker` | warning | The app closed while a clean, organize or undo was still running; the lock is kept until it finishes. |
 | `ui.item_toggled` | debug | The user ticked or unticked a single item. |
+| `ui.quit_refused` | info | Ctrl+Q was pressed while a run was in progress and was refused. |
 | `ui.selection` | info | The user made a choice in the TUI or CLI. |
 | `update.applied` | info | The suite was updated. |
 | `update.available` | info | A newer suite release exists. |

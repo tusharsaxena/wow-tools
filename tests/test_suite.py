@@ -1,14 +1,18 @@
 import io
 import json
 import tempfile
+import threading
+import time
 import unittest
+import unittest.mock
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 from tests.fixtures import build_wow_tree, make_config
 from wowtools import __version__
-from wowtools.core import events
+from wowtools.core import activity, events
 from wowtools.core.config import Config
+from wowtools.core.lock import InstanceLock
 from wowtools.suite import run
 from wowtools.tools import TOOLS
 
@@ -25,6 +29,40 @@ class FakeApp:
 
     def run(self):
         self.lock_held_while_running = self.kwargs["lock"].held
+
+
+class WorkerApp(FakeApp):
+    """Leaves a file-changing worker running when run() returns, as a quit during a clean would."""
+
+    started = None
+
+    def run(self):
+        def work():
+            with activity.running():
+                time.sleep(0.2)
+
+        entered = threading.Event()
+        thread = threading.Thread(target=lambda: (entered.set(), work()))
+        WorkerApp.started = time.monotonic()
+        thread.start()
+        entered.wait()
+        time.sleep(0.02)  # let the worker enter running()
+
+
+class ActivityTest(unittest.TestCase):
+    def test_running_marks_busy_until_every_run_ends(self):
+        self.assertTrue(activity.wait_idle(0))
+        with activity.running():
+            with activity.running():
+                self.assertFalse(activity.wait_idle(0))
+            self.assertFalse(activity.wait_idle(0))
+        self.assertTrue(activity.wait_idle(0))
+
+    def test_running_ends_even_when_the_work_raises(self):
+        with self.assertRaises(RuntimeError):
+            with activity.running():
+                raise RuntimeError("boom")
+        self.assertTrue(activity.wait_idle(0))
 
 
 class SuiteTest(unittest.TestCase):
@@ -46,7 +84,7 @@ class SuiteTest(unittest.TestCase):
         with redirect_stdout(out), redirect_stderr(err):
             code = run(argv, cfg=self.cfg if cfg == "default" else cfg, log_dir=self.log_dir,
                        config_dir=self.config_dir, legacy_config=self.tmp / "wow-tools.cfg",
-                       lock_path=self.lock_path, app_factory=FakeApp, input_fn=lambda prompt: answer, **kwargs)
+                       lock_path=self.lock_path, app_factory=kwargs.pop("app_factory", FakeApp), input_fn=lambda prompt: answer, **kwargs)
         return code, out.getvalue(), err.getvalue()
 
     def records(self, tool="suite"):
@@ -84,6 +122,22 @@ class SuiteTest(unittest.TestCase):
         self.assertFalse(self.lock_path.exists())  # released on exit
         names = [r["event"] for r in self.records()]
         self.assertEqual((names[0], names[-1]), ("session.start", "session.end"))
+
+    def test_lock_released_only_after_worker_finishes(self):
+        released = []
+        real_release = InstanceLock.release
+
+        def release(lock):
+            released.append(time.monotonic())
+            return real_release(lock)
+
+        with unittest.mock.patch.object(InstanceLock, "release", release):
+            code, _, _ = self.run_suite([], app_factory=WorkerApp)
+        self.assertEqual(code, 0)
+        self.assertTrue(activity.wait_idle(0))
+        self.assertGreaterEqual(released[-1] - WorkerApp.started, 0.2)
+        end = [r for r in self.records() if r["event"] == "session.end"][-1]
+        self.assertIs(end["data"]["waited_for_worker"], True)
 
     def test_existing_lock_is_passed_to_the_app(self):
         self.lock_path.write_text(json.dumps({"pid": 1, "host": "pc", "started": "", "platform": "", "token": "x"}))

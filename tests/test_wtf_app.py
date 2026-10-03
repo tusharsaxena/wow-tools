@@ -8,6 +8,7 @@ from textual.app import App
 from textual.widgets import Button, DataTable, Input, OptionList, ProgressBar, Static, Tree
 
 from tests.fixtures import TuiTestCase, settle, build_wow_tree, make_config
+from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.backup import BackupError
 from wowtools.core.events import capture_events
@@ -132,6 +133,41 @@ class ReviewFlowTest(AppTestCase):
         self.assertFalse((self.sv / "Uninstalled.lua").exists())
         self.assertTrue((self.sv / "Auctionator.lua").exists())
         self.assertEqual(len(list(self.backup_dir.glob("cleaned/*.zip"))), 1)
+
+    async def test_clean_and_undo_run_inside_activity_running(self):
+        seen = []
+        real_execute, real_undo = multi.execute, review_module.undo_clean
+
+        def execute(*args, **kwargs):
+            seen.append(("clean", activity.wait_idle(0)))
+            return real_execute(*args, **kwargs)
+
+        def undo_clean(*args, **kwargs):
+            seen.append(("undo", activity.wait_idle(0)))
+            return real_undo(*args, **kwargs)
+
+        multi.execute = execute
+        review_module.undo_clean = undo_clean
+        self.addCleanup(setattr, multi, "execute", real_execute)
+        self.addCleanup(setattr, review_module, "undo_clean", real_undo)
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await pilot.press("c")
+            await pilot.pause()
+            await pilot.press("y")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ResultScreen)
+            await pilot.press("r")  # back to the review (rescans)
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ReviewScreen)
+            await pilot.press("z")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            await pilot.press("y")
+            await settle(app, pilot)
+        self.assertEqual(seen, [("clean", False), ("undo", False)])
+        self.assertTrue(activity.wait_idle(0))
 
     async def test_declining_confirm_changes_nothing(self):
         app = self.make_app()

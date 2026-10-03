@@ -14,6 +14,7 @@ from textual.screen import ModalScreen, Screen
 from textual.widget import Widget
 from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, ProgressBar, Static, Tree
 
+from wowtools.core import activity
 from wowtools.core.backup import BackupError
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
@@ -704,10 +705,11 @@ class ReviewScreen(Screen[str]):
                 self.app.call_from_thread(progress_screen.set_flavor,
                                           f"{flavor.display_name} ({index + 1}/{count})")
 
-        result = execute_flavors(plan, dry_run=dry_run, backup=backup, backup_dir=backup_dir,
-                                 account=self.account, keep_backups=self.settings.keep_backups,
-                                 progress=progress, on_flavor=on_flavor, journal_dir=self._journal_dir(),
-                                 keep_journals=self.settings.keep_journals)
+        with activity.running():
+            result = execute_flavors(plan, dry_run=dry_run, backup=backup, backup_dir=backup_dir,
+                                     account=self.account, keep_backups=self.settings.keep_backups,
+                                     progress=progress, on_flavor=on_flavor, journal_dir=self._journal_dir(),
+                                     keep_journals=self.settings.keep_journals)
         stopped = result.stopped
         if stopped is not None and isinstance(stopped.error, CleanError):
             log_exception("clean", stopped.error)
@@ -804,7 +806,8 @@ class ReviewScreen(Screen[str]):
             self.app.call_from_thread(progress_screen.update_progress, *args)
 
         try:
-            result = undo_clean(path, wow_root=wow_root, progress=progress)
+            with activity.running():
+                result = undo_clean(path, wow_root=wow_root, progress=progress)
         except Exception as exc:  # noqa: BLE001 - e.g. an unreadable journal: shown, never a crash
             log_exception("clean.undo", exc)
             self.app.call_from_thread(self._undo_failed, exc)

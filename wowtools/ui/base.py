@@ -74,6 +74,15 @@ class Ka0sApp(App):
     def after_mount(self) -> None:
         """Hook for subclasses."""
 
+    async def action_quit(self) -> None:
+        """Ctrl+Q (Textual's priority binding). Refused while a clean, organize or undo is running: quitting
+        would end the session and release the lock while the worker thread is still changing files."""
+        if self.busy:
+            log_event("ui.quit_refused")
+            self.notify("A run is in progress. Wait for it to finish before quitting.", severity="warning")
+            return
+        await super().action_quit()
+
     def _check_update(self) -> None:
         release = check_for_update(self.cfg)
         if release is not None:

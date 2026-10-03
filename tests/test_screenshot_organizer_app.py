@@ -4,9 +4,11 @@ from pathlib import Path
 from textual.widgets import Button, DataTable, Input, OptionList, Static, Tree
 
 from tests.fixtures import TuiTestCase, settle, build_screenshot_tree, build_wow_tree, make_config
+from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.tools.screenshot_organizer.app import ScreenshotSettingsScreen
+from wowtools.tools.screenshot_organizer import review_screen as review_module
 from wowtools.tools.screenshot_organizer.journal import latest_undoable
 from wowtools.tools.screenshot_organizer.review_screen import ShotResultScreen, ShotReviewScreen
 from wowtools.tools.screenshot_organizer.settings import load_settings
@@ -190,6 +192,25 @@ class ShotsAppTest(TuiTestCase):
             self.assertEqual(app.screen.result.count("would_move"), 6)
         self.assertFalse(self.dest.exists())
         self.assertTrue((self.shots / A).exists())
+
+    async def test_runs_happen_inside_activity_running(self):
+        self.save_tool_cfg(dest_dir=str(self.dest))
+        seen = []
+        real = review_module.execute
+
+        def execute(*args, **kwargs):
+            seen.append(activity.wait_idle(0))
+            return real(*args, **kwargs)
+
+        review_module.execute = execute
+        self.addCleanup(setattr, review_module, "execute", real)
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await self.run_action(app, pilot, "y")
+            self.assertTrue(app.screen.result.dry_run)
+        self.assertEqual(seen, [False])
+        self.assertTrue(activity.wait_idle(0))
 
     async def test_unticking_a_day_excludes_it(self):
         self.save_tool_cfg()  # in place

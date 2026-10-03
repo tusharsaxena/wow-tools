@@ -111,7 +111,8 @@ The app opens in a terminal window. You drive it with the keyboard:
 | `s` | Settings |
 | `q` | Quit |
 
-Each screen lists its keys along the bottom, so you don't have to remember them. A mouse works too.
+Each screen lists its keys along the bottom, so you don't have to remember them. A mouse works too. While a clean, organize or
+undo is running, the app won't quit until it has finished.
 
 ### The first time
 
