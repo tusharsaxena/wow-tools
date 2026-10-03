@@ -1,13 +1,15 @@
-"""Safety net for a real clean: a verified snapshot of the whole WTF folder plus a marker file (spec A.4).
+"""Safety net for a real clean: a verified backup of the whole WTF folder plus a marker file (spec A.4, D).
 
-UI-free. The snapshot is taken before anything is deleted; the marker says a clean is in progress. After an
-unexpected error the files this run deleted are put back from the snapshot. Nothing here ever restores on its
-own after a crash: a leftover marker only produces a notice (recovery_message).
+UI-free. The backup ("snapshot" in the code) is taken before anything is deleted, to
+<backup folder>/backup/backup-<YYYYMMDD-HHMMSS>.zip, and kept afterwards; prune_snapshots() keeps the newest N.
+The marker says a clean is in progress. After an unexpected error the files this run deleted are put back from
+the snapshot. Nothing here ever restores on its own after a crash: a leftover marker only produces a notice.
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import zipfile
 from dataclasses import asdict, dataclass
@@ -15,11 +17,13 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Callable
 
-from wowtools.core.backup import BackupError, backup_filename, verify_backup
+from wowtools.core.backup import BackupError, verify_backup
 from wowtools.core.install import Flavor
 
 MARKER_NAME = "clean-in-progress.json"
-SNAPSHOT_PREFIX = "wtf-snapshot"
+SNAPSHOT_SUBDIR = "backup"
+SNAPSHOT_NAME = re.compile(r"^backup-(\d{8}-\d{6})\.zip$")
+DEFAULT_KEEP_SNAPSHOTS = 5
 
 SnapshotProgress = Callable[[str, int, int, str], None]
 LIST_REPORT_EVERY = 100
@@ -63,7 +67,7 @@ def wtf_files(flavor: Flavor, progress: SnapshotProgress | None = None, stage: s
 def take_snapshot(flavor: Flavor, backup_dir: Path, now: datetime,
                   progress: SnapshotProgress | None = None) -> Path:
     """Zip every regular file under <flavor>/WTF (stored as WTF/...), verify it, then move it into place."""
-    dest = backup_dir / backup_filename(SNAPSHOT_PREFIX, flavor.short_name, now)
+    dest = snapshot_path(backup_dir, now)
     partial = dest.with_name(dest.name + ".partial")
     try:
         if not flavor.wtf_dir.is_dir():
@@ -87,11 +91,34 @@ def take_snapshot(flavor: Flavor, backup_dir: Path, now: datetime,
         raise
     except (OSError, zipfile.BadZipFile, ValueError) as exc:
         _remove(partial)
-        raise BackupError(f"safety snapshot failed: {exc}") from exc
+        raise BackupError(f"the WTF backup failed: {exc}") from exc
     except BaseException:  # e.g. Ctrl+C while zipping: never leave a stray .partial behind
         _remove(partial)
         raise
     return dest
+
+
+def snapshot_path(backup_dir: Path, now: datetime) -> Path:
+    return backup_dir / SNAPSHOT_SUBDIR / f"backup-{now:%Y%m%d-%H%M%S}.zip"
+
+
+def prune_snapshots(backup_dir: Path, keep: int) -> list[Path]:
+    """Delete all but the newest `keep` (at least 1) WTF backups (backup-<stamp>.zip) in <backup_dir>/backup.
+    Other files are never touched. Returns what was removed."""
+    folder = backup_dir / SNAPSHOT_SUBDIR
+    try:
+        found = sorted((p for p in folder.iterdir() if SNAPSHOT_NAME.match(p.name) and p.is_file()),
+                       key=lambda p: p.name, reverse=True)
+    except OSError:
+        return []
+    removed: list[Path] = []
+    for path in found[max(1, keep):]:
+        try:
+            path.unlink()
+            removed.append(path)
+        except OSError:
+            pass
+    return removed
 
 
 def write_marker(backup_dir: Path, marker: Marker) -> None:
@@ -128,10 +155,6 @@ def clear_marker(backup_dir: Path) -> None:
     _remove(backup_dir / MARKER_NAME)
 
 
-def remove_snapshot(snapshot: Path) -> None:
-    _remove(snapshot)
-
-
 def restore_deleted(snapshot: Path, flavor: Flavor, rel_paths: list[str]) -> list[str]:
     """Extract exactly rel_paths from the snapshot into the flavor folder. Existing files are never overwritten.
 
@@ -143,7 +166,7 @@ def restore_deleted(snapshot: Path, flavor: Flavor, rel_paths: list[str]) -> lis
             names = set(zf.namelist())
             missing = [rel for rel in rel_paths if rel not in names]
             if missing:
-                raise BackupError(f"the snapshot {snapshot} has no entry for {', '.join(missing)}")
+                raise BackupError(f"the WTF backup {snapshot} has no entry for {', '.join(missing)}")
             for rel in rel_paths:
                 parts = PurePosixPath(rel).parts
                 if PurePosixPath(rel).is_absolute() or ".." in parts:
@@ -193,7 +216,7 @@ def check_clean(snapshot: Path, flavor: Flavor, deleted: list[str], backup_zip: 
             if rel in on_disk:
                 problems.append(f"{rel} was reported deleted but is still on disk")
             if rel not in in_snapshot:
-                problems.append(f"{rel} was deleted but is not in the safety snapshot")
+                problems.append(f"{rel} was deleted but is not in the WTF backup")
         for rel in sorted(set(in_snapshot) - gone - on_disk):
             problems.append(f"{rel} is missing but was not selected for deletion")
         if backup_zip is not None:
@@ -201,17 +224,17 @@ def check_clean(snapshot: Path, flavor: Flavor, deleted: list[str], backup_zip: 
                 in_backup = {info.filename: info.file_size for info in zf.infolist()}
             for rel in sorted(gone):
                 if rel not in in_backup:
-                    problems.append(f"{rel} was deleted but is not in the backup zip")
+                    problems.append(f"{rel} was deleted but is not in the cleaned-files zip")
                 elif rel in in_snapshot and in_backup[rel] != in_snapshot[rel]:
-                    problems.append(f"{rel} has a different size in the backup zip than in the snapshot")
-    except Exception as exc:  # noqa: BLE001 - a check that cannot run keeps the snapshot
+                    problems.append(f"{rel} has a different size in the cleaned-files zip than in the WTF backup")
+    except Exception as exc:  # noqa: BLE001 - a check that cannot run is a problem
         problems.append(f"the check could not run: {exc}")
     return problems
 
 
 def recovery_message(marker: Marker) -> str:
     return (f"The last clean of {marker.flavor} did not finish (it started {marker.started}).\n"
-            f"A safety snapshot of the WTF folder is at: {marker.snapshot}\n"
+            f"A backup of the WTF folder from just before it is at: {marker.snapshot}\n"
             f"If files are missing: close WoW, then unzip it into {marker.flavor_path} to restore.")
 
 

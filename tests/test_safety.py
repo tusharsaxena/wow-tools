@@ -36,7 +36,7 @@ class SafetyTest(unittest.TestCase):
     def test_snapshot_contains_whole_wtf_and_verifies(self):
         calls = []
         snap = take_snapshot(self.retail, self.backup_dir, WHEN, progress=lambda *a: calls.append(a))
-        self.assertEqual(snap, self.backup_dir / "wtf-snapshot_retail_20260927-140311.zip")
+        self.assertEqual(snap, self.backup_dir / "backup" / "backup-20260927-140311.zip")
         self.assertTrue(snap.exists())
         self.assertFalse(snap.with_name(snap.name + ".partial").exists())
         with zipfile.ZipFile(snap) as zf:
@@ -61,7 +61,7 @@ class SafetyTest(unittest.TestCase):
 
     def test_marker_round_trip_and_unreadable_marker_returns_none(self):
         self.assertIsNone(read_marker(self.backup_dir))
-        marker = Marker(snapshot=self.backup_dir / "wtf-snapshot_retail_20260927-140311.zip", flavor="_retail_",
+        marker = Marker(snapshot=self.backup_dir / "backup/backup-20260927-140311.zip", flavor="_retail_",
                         flavor_path=self.retail.path, started="2026-09-27T14:03:11", pid=1234,
                         suite_version="0.1.0", files=["WTF/Account/ACCT1/SavedVariables/Uninstalled.lua"])
         write_marker(self.backup_dir, marker)
@@ -100,7 +100,7 @@ class SafetyTest(unittest.TestCase):
             restore_deleted(self.tmp / "missing.zip", self.retail, ["WTF/x.lua"])
 
     def test_recovery_message(self):
-        marker = Marker(snapshot=Path("/b/wtf-snapshot_retail_20260927-140311.zip"), flavor="_retail_",
+        marker = Marker(snapshot=Path("/b/backup/backup-20260927-140311.zip"), flavor="_retail_",
                         flavor_path=Path("/wow/_retail_"), started="2026-09-27T14:03:11", pid=1,
                         suite_version="0.1.0", files=[])
         text = recovery_message(marker)
@@ -121,7 +121,7 @@ class UnresolvedMarkerTest(unittest.TestCase):
         self.retail = WowInstall(self.root).flavor("retail")
         self.backup_dir = self.tmp / "bk"
         self.proposal = evaluate(scan(self.retail), Criteria(), now=NOW)
-        self.earlier = Marker(snapshot=self.backup_dir / "wtf-snapshot_retail_20260101-000000.zip",
+        self.earlier = Marker(snapshot=self.backup_dir / "backup/backup-20260101-000000.zip",
                               flavor="_retail_", flavor_path=self.retail.path, started="2026-01-01T00:00:00",
                               pid=1, suite_version="0.1.0", files=["WTF/x.lua"])
         write_marker(self.backup_dir, self.earlier)
@@ -134,7 +134,7 @@ class UnresolvedMarkerTest(unittest.TestCase):
         for item in self.proposal.items:
             for sv in item.files:
                 self.assertTrue(sv.path.exists())
-        self.assertEqual(list(self.backup_dir.glob("wtf-snapshot_retail_2026092*")), [])
+        self.assertEqual(list(self.backup_dir.glob("backup/backup-2026092*")), [])
 
     def test_dry_run_still_allowed(self):
         result = execute(self.proposal.items, self.retail, dry_run=True, backup=True, backup_dir=self.backup_dir)

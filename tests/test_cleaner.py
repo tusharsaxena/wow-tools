@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -17,6 +18,13 @@ from wowtools.tools.wtf_cleaner.safety import MARKER_NAME
 from wowtools.tools.wtf_cleaner.scanner import SVFile, scan
 
 WHEN = datetime(2026, 9, 27, 14, 3, 11)
+CLEANED = "cleaned/cleaned-all-20260927-140311.zip"
+SNAPSHOT = "backup/backup-20260927-140311.zip"
+
+
+def files_under(folder: Path) -> list[str]:
+    return sorted(p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file()) \
+        if folder.exists() else []
 
 
 def snapshot(root: Path) -> dict:
@@ -53,7 +61,7 @@ class CleanerTest(unittest.TestCase):
         self.assertEqual(len(result.deleted), 8)
         for path in self.paths():
             self.assertFalse(path.exists(), path)
-        self.assertEqual(result.backup_path, self.backup_dir / "wtf-cleaner_retail_20260927-140311.zip")
+        self.assertEqual(result.backup_path, self.backup_dir / CLEANED)
         with zipfile.ZipFile(result.backup_path) as zf:
             self.assertEqual(len(zf.namelist()), 9)
         for kept in ("Auctionator.lua", "Auctionator.lua.bak", "Details.lua", "Blizzard_Foo.lua"):
@@ -71,7 +79,7 @@ class CleanerTest(unittest.TestCase):
             result = execute(self.proposal.items, self.retail, dry_run=True, backup=True,
                              backup_dir=self.backup_dir, now=WHEN)
         self.assertEqual(snapshot(self.root), before)
-        zips = list(self.backup_dir.glob("*.zip"))
+        zips = list(self.backup_dir.rglob("*.zip"))
         self.assertEqual(len(zips), 1)
         self.assertEqual(result.backup_path, zips[0])
         with zipfile.ZipFile(zips[0]) as zf:
@@ -124,8 +132,7 @@ class CleanerTest(unittest.TestCase):
                          backup_dir=self.backup_dir, now=WHEN)
         self.assertIsNone(result.backup_path)
         self.assertEqual(len(result.deleted), 8)
-        # The safety snapshot lives in backup_dir while deleting, so the folder may exist, but it ends empty.
-        self.assertEqual(list(self.backup_dir.iterdir()) if self.backup_dir.exists() else [], [])
+        self.assertEqual(files_under(self.backup_dir), [SNAPSHOT])  # only the WTF backup, which is kept
 
     def test_empty_selection_makes_no_backup(self):
         result = execute([], self.retail, dry_run=False, backup=True, backup_dir=self.backup_dir, now=WHEN)
@@ -184,20 +191,18 @@ class SafetySnapshotCleanTest(unittest.TestCase):
         return execute(self.proposal.items, self.retail, **options)
 
     def snapshot_path(self):
-        return self.backup_dir / "wtf-snapshot_retail_20260927-140311.zip"
+        return self.backup_dir / SNAPSHOT
 
-    def test_clean_success_removes_snapshot_and_marker(self):
+    def test_clean_success_keeps_the_wtf_backup_and_clears_the_marker(self):
         with capture_events() as records:
             result = self.run_clean()
-        self.assertEqual(sorted(p.name for p in self.backup_dir.iterdir()),
-                         ["wtf-cleaner_retail_20260927-140311.zip"])
+        self.assertEqual(files_under(self.backup_dir), [SNAPSHOT, CLEANED])
         self.assertEqual(result.snapshot_path, self.snapshot_path())
         self.assertEqual(result.restored, [])
         names = [r["event"] for r in records]
         self.assertIn("snapshot.created", names)
-        self.assertIn("snapshot.removed", names)
+        self.assertNotIn("snapshot.removed", names)
         self.assertLess(names.index("snapshot.created"), names.index("backup.created"))
-        self.assertLess(names.index("sv.deleted"), names.index("snapshot.removed"))
 
     def test_snapshot_failure_deletes_nothing(self):
         def boom(*args, **kwargs):
@@ -270,7 +275,6 @@ class SafetySnapshotCleanTest(unittest.TestCase):
         names = [r["event"] for r in records]
         self.assertIn("restore.failed", names)
         self.assertNotIn("restore.completed", names)
-        self.assertNotIn("snapshot.removed", names)
 
     def test_selective_backup_failure_after_snapshot_deletes_nothing(self):
         def boom(*args, **kwargs):
@@ -282,7 +286,7 @@ class SafetySnapshotCleanTest(unittest.TestCase):
                     self.run_clean()
         for path in self.paths():
             self.assertTrue(path.exists(), path)
-        self.assertEqual(list(self.backup_dir.iterdir()), [])  # snapshot and marker cleaned up
+        self.assertEqual(files_under(self.backup_dir), [SNAPSHOT])  # the WTF backup is kept; no marker
         names = [r["event"] for r in records]
         self.assertIn("snapshot.created", names)
         self.assertIn("backup.failed", names)
@@ -290,8 +294,7 @@ class SafetySnapshotCleanTest(unittest.TestCase):
     def test_dry_run_takes_no_snapshot(self):
         with capture_events() as records:
             result = self.run_clean(dry_run=True)
-        self.assertEqual(sorted(p.name for p in self.backup_dir.iterdir()),
-                         ["wtf-cleaner_retail_20260927-140311.zip"])
+        self.assertEqual(files_under(self.backup_dir), [CLEANED])
         self.assertIsNone(result.snapshot_path)
         names = [r["event"] for r in records]
         self.assertNotIn("snapshot.created", names)
@@ -323,8 +326,7 @@ class SafetySnapshotCleanTest(unittest.TestCase):
             result = self.run_clean(progress=bad)
         self.assertEqual(len(result.deleted), 8)
         self.assertEqual(result.failed, [])
-        self.assertEqual(sorted(p.name for p in self.backup_dir.iterdir()),
-                         ["wtf-cleaner_retail_20260927-140311.zip"])
+        self.assertEqual(files_under(self.backup_dir), [SNAPSHOT, CLEANED])
         names = [r["event"] for r in records]
         self.assertNotIn("restore.completed", names)
         self.assertNotIn("restore.failed", names)
@@ -375,15 +377,14 @@ class LockAndCheckTest(unittest.TestCase):
             self.assertIsNone(cleaner_module._probe_lock(path))
         self.assertEqual(snapshot(self.root), before)
 
-    def test_clean_is_validated_then_snapshot_removed(self):
+    def test_clean_is_validated_and_backup_kept(self):
         with capture_events() as records:
             result = self.run_clean()
-        self.assertFalse(result.snapshot_kept)
         self.assertEqual(result.check_problems, [])
-        names = [r["event"] for r in records]
-        self.assertLess(names.index("clean.validated"), names.index("snapshot.removed"))
+        self.assertTrue(self.snapshot_path().exists())
+        self.assertIn("clean.validated", [r["event"] for r in records])
 
-    def test_unselected_file_going_missing_keeps_the_snapshot(self):
+    def test_unselected_file_going_missing_is_reported(self):
         extra = self.sv / "Details.lua"
         original = cleaner_module._delete_one
 
@@ -394,18 +395,17 @@ class LockAndCheckTest(unittest.TestCase):
         with capture_events() as records:
             with patch.object(cleaner_module, "_delete_one", delete_one):
                 result = self.run_clean()
-        self.assertTrue(result.snapshot_kept)
         self.assertTrue(any("ACCT1/SavedVariables/Details.lua is missing" in p for p in result.check_problems))
         self.assertTrue(self.snapshot_path().exists())
         self.assertFalse((self.backup_dir / MARKER_NAME).exists())
         names = [r["event"] for r in records]
-        self.assertIn("snapshot.kept", names)
-        self.assertNotIn("snapshot.removed", names)
+        self.assertIn("clean.check_failed", names)
+        self.assertNotIn("clean.validated", names)
 
-    def test_check_that_cannot_run_keeps_the_snapshot(self):
+    def test_check_that_cannot_run_is_reported(self):
         with patch.object(cleaner_module, "check_clean", return_value=["the check could not run: boom"]):
             result = self.run_clean()
-        self.assertTrue(result.snapshot_kept)
+        self.assertEqual(result.check_problems, ["the check could not run: boom"])
         self.assertTrue(self.snapshot_path().exists())
 
     def test_guard_refuses_a_link_out_of_the_account_folder(self):
@@ -421,3 +421,40 @@ class LockAndCheckTest(unittest.TestCase):
         bad = item.with_files([SVFile(link, stat.st_size, stat.st_mtime, False)])
         with self.assertRaises(CleanError):
             execute([bad], self.retail, dry_run=True, backup=False, backup_dir=None, now=WHEN)
+
+
+class ZipLayoutTest(unittest.TestCase):
+    """cleaned/cleaned-<account>-<stamp>.zip, backup/backup-<stamp>.zip, and keeping the newest N backups."""
+
+    setUp = CleanerTest.setUp
+
+    def test_cleaned_zip_is_named_after_the_account(self):
+        result = execute(self.proposal.items, self.retail, dry_run=True, backup=True, backup_dir=self.backup_dir,
+                         now=WHEN, account="ACCT1")
+        self.assertEqual(result.backup_path, self.backup_dir / "cleaned" / "cleaned-ACCT1-20260927-140311.zip")
+        with zipfile.ZipFile(result.backup_path) as zf:
+            self.assertEqual(json.loads(zf.read("manifest.json"))["account"], "ACCT1")
+
+    def test_only_the_newest_backups_are_kept(self):
+        folder = self.backup_dir / "backup"
+        folder.mkdir(parents=True)
+        for day in range(1, 7):
+            (folder / f"backup-202609{day:02d}-120000.zip").write_bytes(b"old")
+        (folder / "notes.txt").write_text("mine")
+        with capture_events() as records:
+            result = execute(self.proposal.items, self.retail, dry_run=False, backup=True,
+                             backup_dir=self.backup_dir, now=WHEN, keep_backups=3)
+        self.assertEqual(sorted(p.name for p in folder.iterdir()),
+                         ["backup-20260905-120000.zip", "backup-20260906-120000.zip", "backup-20260927-140311.zip",
+                          "notes.txt"])
+        self.assertEqual(len(result.pruned), 4)
+        self.assertIn("snapshot.pruned", [r["event"] for r in records])
+
+    def test_dry_run_prunes_nothing(self):
+        folder = self.backup_dir / "backup"
+        folder.mkdir(parents=True)
+        for day in range(1, 4):
+            (folder / f"backup-202609{day:02d}-120000.zip").write_bytes(b"old")
+        execute(self.proposal.items, self.retail, dry_run=True, backup=True, backup_dir=self.backup_dir,
+                now=WHEN, keep_backups=1)
+        self.assertEqual(len(list(folder.iterdir())), 3)

@@ -6,7 +6,6 @@ import os
 import zipfile
 import zlib
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
@@ -25,10 +24,6 @@ class BackupEntry:
     reasons: tuple[str, ...] = ()
     size: int | None = None
     mtime: float | None = None
-
-
-def backup_filename(tool: str, flavor_short: str, when: datetime) -> str:
-    return f"{tool}_{flavor_short}_{when:%Y%m%d-%H%M%S}.zip"
 
 
 def _arcname(path: Path, base_dir: Path, resolved_base: list[Path]) -> str:

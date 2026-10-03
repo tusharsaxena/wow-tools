@@ -136,6 +136,16 @@ class SettingsTest(unittest.TestCase):
         cfg.set_path(SECTION, "backup_dir", Path("/elsewhere/bk"))
         self.assertEqual(resolve_backup_dir(load_settings(cfg), Path("/games/wow")), Path("/elsewhere/bk"))
 
+    def test_keep_backups_round_trip_and_floor(self):
+        cfg = Config(self.path)
+        self.assertEqual(load_settings(cfg).keep_backups, 5)
+        settings = load_settings(cfg)
+        settings.keep_backups = 8
+        save_settings(cfg, settings)
+        self.assertEqual(load_settings(Config(self.path).load()).keep_backups, 8)
+        cfg.set(SECTION, "keep_backups", "0")
+        self.assertEqual(load_settings(cfg).keep_backups, 1)
+
     def test_settings_round_trip_backup_dir(self):
         cfg = Config(self.path)
         settings = load_settings(cfg)

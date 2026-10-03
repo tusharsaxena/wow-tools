@@ -51,12 +51,12 @@ STAGE_TITLES = {
     "check": "Checking selected files",
     "lock_check": "Checking for locked files",
     "snapshot_list": "Listing the WTF folder",
-    "snapshot": "Taking safety snapshot",
-    "snapshot_verify": "Verifying safety snapshot",
-    "backup": "Writing backup",
-    "verify": "Verifying backup",
+    "snapshot": "Backing up the WTF folder",
+    "snapshot_verify": "Verifying the WTF backup",
+    "backup": "Zipping the files to clean",
+    "verify": "Verifying the cleaned-files zip",
     "delete": "Deleting",
-    "validate": "Checking the result against the snapshot",
+    "validate": "Checking the result against the WTF backup",
 }
 
 RESULT_COLUMNS = ("Status", "Account", "Character", "Addon", "File", "Size", "Reasons")

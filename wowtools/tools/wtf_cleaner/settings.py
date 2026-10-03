@@ -6,6 +6,7 @@ from pathlib import Path
 
 from wowtools.core.config import Config
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, Criteria
+from wowtools.tools.wtf_cleaner.safety import DEFAULT_KEEP_SNAPSHOTS
 
 SECTION = "wtf_cleaner"
 DEFAULT_BACKUP_SUBDIR = Path("wow-tools") / "wtf-cleaner"
@@ -17,6 +18,7 @@ class CleanerSettings:
     backup_before_delete: bool = True
     backup_dir: Path | None = None
     last_account: str | None = None  # None (stored as empty) means all accounts
+    keep_backups: int = DEFAULT_KEEP_SNAPSHOTS  # how many WTF backups (backup/backup-<stamp>.zip) to keep
 
 
 def load_settings(cfg: Config) -> CleanerSettings:
@@ -24,7 +26,8 @@ def load_settings(cfg: Config) -> CleanerSettings:
                         max_age_days=max(1, cfg.get_int(SECTION, "max_age_days", 90)))
     return CleanerSettings(criteria, cfg.get_bool(SECTION, "backup_before_delete", True),
                            cfg.get_path(SECTION, "backup_dir"),
-                           (cfg.get(SECTION, "last_account") or "").strip() or None)
+                           (cfg.get(SECTION, "last_account") or "").strip() or None,
+                           max(1, cfg.get_int(SECTION, "keep_backups", DEFAULT_KEEP_SNAPSHOTS)))
 
 
 def save_settings(cfg: Config, settings: CleanerSettings, *, source: str = "settings") -> None:
@@ -34,11 +37,13 @@ def save_settings(cfg: Config, settings: CleanerSettings, *, source: str = "sett
     cfg.set(SECTION, "backup_before_delete", settings.backup_before_delete, source=source)
     cfg.set_path(SECTION, "backup_dir", settings.backup_dir, source=source)
     cfg.set(SECTION, "last_account", settings.last_account or "", source=source)
+    cfg.set(SECTION, "keep_backups", settings.keep_backups, source=source)
     cfg.save()
 
 
 def resolve_backup_dir(settings: CleanerSettings, wow_path: Path | None) -> Path | None:
-    """Where backup zips go: the saved setting, else <WoW folder>/wow-tools/wtf-cleaner."""
+    """The cleaner's output folder (backup/ and cleaned/ live in it): the saved setting, else
+    <WoW folder>/wow-tools/wtf-cleaner."""
     if settings.backup_dir is not None:
         return settings.backup_dir
     return wow_path / DEFAULT_BACKUP_SUBDIR if wow_path is not None else None

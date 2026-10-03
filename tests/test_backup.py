@@ -2,13 +2,12 @@ import json
 import tempfile
 import unittest
 import zipfile
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
 from tests.fixtures import build_wow_tree
 from wowtools.core import backup
-from wowtools.core.backup import BackupEntry, BackupError, backup_filename, create_backup
+from wowtools.core.backup import BackupEntry, BackupError, create_backup
 
 
 class BackupTest(unittest.TestCase):
@@ -96,7 +95,3 @@ class BackupTest(unittest.TestCase):
         (self.tmp / "World of Warcraft" / "elsewhere.lua").write_text("x")
         with self.assertRaises(BackupError):
             create_backup([BackupEntry(sneaky)], self.flavor_dir, self.dest, {})
-
-    def test_backup_filename(self):
-        self.assertEqual(backup_filename("wtf-cleaner", "retail", datetime(2026, 9, 27, 14, 3, 11)),
-                         "wtf-cleaner_retail_20260927-140311.zip")

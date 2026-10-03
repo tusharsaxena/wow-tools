@@ -94,7 +94,7 @@ class ReviewFlowTest(AppTestCase):
                 self.assertTrue(app.screen.result.dry_run)
                 self.assertEqual(len(app.screen.result.would_delete), 8)
         self.assertTrue((self.sv / "Uninstalled.lua").exists())
-        self.assertEqual(len(list(self.backup_dir.glob("*.zip"))), 1)
+        self.assertEqual(len(list(self.backup_dir.glob("cleaned/*.zip"))), 1)
         names = [r["event"] for r in records]
         self.assertIn("sv.would_delete", names)
         self.assertIn({"screen": "review", "control": "dry_run", "value": True},
@@ -129,7 +129,7 @@ class ReviewFlowTest(AppTestCase):
         self.assertFalse((self.backup_dir / MARKER_NAME).exists())
         self.assertFalse((self.sv / "Uninstalled.lua").exists())
         self.assertTrue((self.sv / "Auctionator.lua").exists())
-        self.assertEqual(len(list(self.backup_dir.glob("*.zip"))), 1)
+        self.assertEqual(len(list(self.backup_dir.glob("cleaned/*.zip"))), 1)
 
     async def test_declining_confirm_changes_nothing(self):
         app = self.make_app()
@@ -179,7 +179,7 @@ class ReviewFlowTest(AppTestCase):
             await pilot.press("c")
             await pilot.pause()
             self.assertIsInstance(app.screen, ConfirmScreen)
-            self.assertIn("No backup will be made", app.screen.alerts[0])
+            self.assertIn("will not be zipped", app.screen.alerts[0])
             await pilot.press("n")
 
     async def test_dry_run_key_runs_a_simulation(self):
@@ -310,7 +310,8 @@ class RecoveryDialogTest(AppTestCase):
     def setUp(self):
         super().setUp()
         self.backup_dir.mkdir(parents=True)
-        self.snapshot = self.backup_dir / "wtf-snapshot-retail-20260101-000000.zip"
+        self.snapshot = self.backup_dir / "backup" / "backup-20260101-000000.zip"
+        self.snapshot.parent.mkdir(parents=True)
         self.snapshot.write_bytes(b"zip")
         (self.backup_dir / MARKER_NAME).write_text(json.dumps({
             "snapshot": str(self.snapshot), "flavor": "_retail_", "flavor_path": str(self.root / "_retail_"),
@@ -501,7 +502,7 @@ class KeyboardNavigationTest(AppTestCase):
             await pilot.pause()
             self.assertIs(app.screen, review)
         self.assertTrue((self.sv / "Uninstalled.lua").exists())
-        self.assertFalse(list(self.backup_dir.glob("*.zip")))
+        self.assertFalse(list(self.backup_dir.glob("cleaned/*.zip")))
 
     async def test_space_presses_buttons_and_esc_leaves_results(self):
         app = self.make_app()
@@ -560,8 +561,8 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertIn("Would delete", rows)
             self.assertIn("8", rows["Would delete"])
             self.assertEqual(rows["Mode"], "Dry run")
-            self.assertEqual(rows["Safety snapshot"], "not taken (dry run)")
-            for key in ("Backup zip", "Size", "Skipped", "Failed"):
+            self.assertEqual(rows["WTF backup"], "not taken (dry run)")
+            for key in ("Cleaned files zip", "Size", "Skipped", "Failed"):
                 self.assertIn(key, rows)
             files = screen.query_one("#result-files", DataTable)
             self.assertEqual(files.row_count, 8)
@@ -587,7 +588,8 @@ class KeyboardNavigationTest(AppTestCase):
             rows = {str(summary.get_row_at(i)[0]): str(summary.get_row_at(i)[1]) for i in range(summary.row_count)}
             self.assertEqual(rows["Mode"], "Clean")
             self.assertIn("8", rows["Deleted"])
-            self.assertEqual(rows["Safety snapshot"], "taken and removed after the check passed")
+            self.assertTrue(rows["WTF backup"].endswith(".zip"))
+            self.assertIn("backup-", rows["WTF backup"])
             self.assertEqual(rows["Post-clean check"], "passed")
 
     async def test_setup_and_settings_keyboard_only(self):
@@ -612,10 +614,11 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertTrue(settings.query(NavHint))
             self.assertFalse(settings.query("Switch"))
             order = [settings.focused.id]
-            for _ in range(7):
+            for _ in range(8):
                 await pilot.press("down")
                 order.append(settings.focused.id)
-            self.assertEqual(order, ["max_age", "backup_dir", *[f"sw_{n}" for n in CRITERIA], "sw_backup", "save"])
+            self.assertEqual(order, ["max_age", "backup_dir", "keep_backups", *[f"sw_{n}" for n in CRITERIA],
+                                     "sw_backup", "save"])
             for name in (*[f"sw_{n}" for n in CRITERIA], "sw_backup"):
                 self.assertIsInstance(settings.query_one(f"#{name}"), Ka0sCheckbox)
             await pilot.press("up")  # back to the backup toggle

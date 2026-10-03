@@ -1,4 +1,5 @@
-"""Execute a selection: guard, recheck, safety snapshot, back up (verified), delete, then check the result.
+"""Execute a selection: guard, recheck, back up the WTF folder, zip the files to clean (verified), delete, then
+check the result.
 
 A dry run writes the backup but takes no snapshot and deletes nothing.
 """
@@ -13,16 +14,19 @@ from pathlib import Path
 from typing import Callable
 
 from wowtools import __version__
-from wowtools.core.backup import BackupEntry, BackupError, backup_filename, create_backup
+from wowtools.core.backup import BackupEntry, BackupError, create_backup
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
 from wowtools.tools.wtf_cleaner.rules import ProposalItem
-from wowtools.tools.wtf_cleaner.safety import (MARKER_NAME, Marker, check_clean, clear_marker, read_marker,
-                                               remove_snapshot, restore_deleted, take_snapshot, write_marker)
+from wowtools.tools.wtf_cleaner.safety import (DEFAULT_KEEP_SNAPSHOTS, MARKER_NAME, Marker, check_clean, clear_marker,
+                                               prune_snapshots, read_marker, restore_deleted, take_snapshot,
+                                               write_marker)
 from wowtools.tools.wtf_cleaner.scanner import SVFile
 
 CleanProgress = Callable[[str, int, int, str], None]
+CLEANED_SUBDIR = "cleaned"
+ALL_ACCOUNTS_LABEL = "all"
 
 
 class CleanError(Exception):
@@ -45,10 +49,10 @@ class CleanResult:
     dry_run: bool
     backup_path: Path | None
     outcomes: list[FileOutcome] = field(default_factory=list)
-    snapshot_path: Path | None = None  # the safety snapshot used; removed on return unless snapshot_kept
+    snapshot_path: Path | None = None  # the backup of the whole WTF folder taken before deleting (kept)
     restored: list[str] = field(default_factory=list)
-    snapshot_kept: bool = False  # the post-clean check found problems, so the snapshot was kept
-    check_problems: list[str] = field(default_factory=list)
+    check_problems: list[str] = field(default_factory=list)  # what the post-clean check found ([] = passed)
+    pruned: list[Path] = field(default_factory=list)  # older WTF backups removed to keep the newest N
 
     def _with(self, status: str) -> list[FileOutcome]:
         return [o for o in self.outcomes if o.status == status]
@@ -183,24 +187,19 @@ def _safe_progress(progress: CleanProgress | None) -> CleanProgress:
     return report
 
 
-def _discard_safety(backup_dir: Path, snapshot: Path) -> None:
-    remove_snapshot(snapshot)
-    clear_marker(backup_dir)
-
-
 def _take_safety_snapshot(flavor: Flavor, backup_dir: Path | None, now: datetime, rels: list[str],
                           report: CleanProgress) -> Path:
     """Snapshot the whole WTF folder and write the in-progress marker. Raises BackupError (nothing deleted)."""
     if backup_dir is None:
         log_event("snapshot.failed", flavor=flavor.folder, error="no backup folder is configured")
-        raise BackupError("no backup folder is configured (the safety snapshot needs one)")
+        raise BackupError("no backup folder is configured (the WTF backup needs one)")
     earlier = read_marker(backup_dir)
     if earlier is not None:
         # Starting a new clean would overwrite the only pointer to the earlier snapshot.
         log_event("snapshot.failed", flavor=flavor.folder, error="an earlier clean did not finish",
                   earlier_snapshot=str(earlier.snapshot))
-        raise BackupError(f"an earlier clean (started {earlier.started}) did not finish. Its safety snapshot is "
-                          f"kept at {earlier.snapshot}. Dismiss that notice in the TUI (the snapshot is kept) or "
+        raise BackupError(f"an earlier clean (started {earlier.started}) did not finish. The WTF backup taken "
+                          f"before it is at {earlier.snapshot}. Dismiss that notice (the backup is kept) or "
                           f"delete {backup_dir / MARKER_NAME}, then clean again.")
     try:
         snapshot = take_snapshot(flavor, backup_dir, now, progress=report)
@@ -214,11 +213,11 @@ def _take_safety_snapshot(flavor: Flavor, backup_dir: Path | None, now: datetime
     try:
         write_marker(backup_dir, marker)
     except OSError as exc:
-        _discard_safety(backup_dir, snapshot)
+        clear_marker(backup_dir)  # the backup itself stays: it is a good backup, nothing was deleted
         log_event("snapshot.failed", flavor=flavor.folder, error=f"could not write the clean marker: {exc}")
         raise BackupError(f"could not write the clean marker: {exc}") from exc
-    except BaseException:  # interrupted before deleting anything: the snapshot is not needed
-        _discard_safety(backup_dir, snapshot)
+    except BaseException:  # interrupted before deleting anything
+        clear_marker(backup_dir)
         raise
     return snapshot
 
@@ -233,7 +232,7 @@ def _restore_after(exc: BaseException, snapshot: Path, backup_dir: Path, flavor:
         log_event("restore.failed", flavor=flavor.folder, snapshot=str(snapshot), files=len(deleted),
                   reason=reason, error=str(restore_exc))
         return CleanError(f"Clean stopped ({reason}) and restoring the {len(deleted)} deleted files failed "
-                          f"({restore_exc}). The safety snapshot is kept at {snapshot}: close WoW, then unzip "
+                          f"({restore_exc}). The WTF backup is at {snapshot}: close WoW, then unzip "
                           f"it into {flavor.path} to restore.")
     log_event("restore.completed", flavor=flavor.folder, snapshot=str(snapshot), restored=len(restored),
               reason=reason, files=restored)
@@ -244,8 +243,9 @@ def _restore_after(exc: BaseException, snapshot: Path, backup_dir: Path, flavor:
 
 
 def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup: bool,
-            backup_dir: Path | None, now: datetime | None = None,
-            progress: CleanProgress | None = None) -> CleanResult:
+            backup_dir: Path | None, now: datetime | None = None, progress: CleanProgress | None = None,
+            account: str | None = None, keep_backups: int = DEFAULT_KEEP_SNAPSHOTS) -> CleanResult:
+    """account is the scope of the clean (None = all accounts); it names the cleaned-files zip."""
     now = now or datetime.now()
     report = _safe_progress(progress)
     selected = [(item, sv) for item in items for sv in item.files]
@@ -278,10 +278,10 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
 
     try:
         if backup and ready:
-            _selective_backup(result, ready, flavor, backup_dir, now, dry_run, report)
+            _selective_backup(result, ready, flavor, backup_dir, now, dry_run, report, account)
     except BaseException:
         if snapshot is not None and backup_dir is not None:
-            _discard_safety(backup_dir, snapshot)  # nothing was deleted, so the snapshot is not needed
+            clear_marker(backup_dir)  # nothing was deleted; the WTF backup is kept like any other
         raise
 
     deleted: list[str] = []
@@ -296,6 +296,9 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
 
     if snapshot is not None and backup_dir is not None:
         _finish_safety(result, snapshot, backup_dir, flavor, deleted, report)
+        result.pruned = prune_snapshots(backup_dir, keep_backups)
+        if result.pruned:
+            log_event("snapshot.pruned", keep=keep_backups, removed=[str(p) for p in result.pruned])
 
     log_event("clean.completed", dry_run=dry_run, level="warning" if result.failed else None,
               deleted=len(result.deleted), would_delete=len(result.would_delete),
@@ -306,30 +309,32 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
 
 def _finish_safety(result: CleanResult, snapshot: Path, backup_dir: Path, flavor: Flavor, deleted: list[str],
                    report: CleanProgress) -> None:
-    """Check the WTF folder against the snapshot; remove the snapshot only if the check found nothing wrong.
-
-    The marker is cleared either way: the clean did finish, and a kept snapshot is named in the result."""
+    """Check the WTF folder against the backup taken before deleting, then clear the marker (the clean finished).
+    The backup is kept either way."""
     problems = check_clean(snapshot, flavor, deleted, result.backup_path, report)
+    clear_marker(backup_dir)
+    result.check_problems = problems
     if problems:
-        clear_marker(backup_dir)
-        result.snapshot_kept = True
-        result.check_problems = problems
-        log_event("snapshot.kept", flavor=flavor.folder, zip=str(snapshot), problems=len(problems),
+        log_event("clean.check_failed", flavor=flavor.folder, zip=str(snapshot), problems=len(problems),
                   details=problems[:20])
-        return
-    log_event("clean.validated", flavor=flavor.folder, deleted=len(deleted), zip=str(snapshot))
-    _discard_safety(backup_dir, snapshot)
-    log_event("snapshot.removed", flavor=flavor.folder, zip=str(snapshot))
+    else:
+        log_event("clean.validated", flavor=flavor.folder, deleted=len(deleted), zip=str(snapshot))
+
+
+def cleaned_zip_path(backup_dir: Path, account: str | None, now: datetime) -> Path:
+    """<backup folder>/cleaned/cleaned-<account or all>-<YYYYMMDD-HHMMSS>.zip"""
+    return backup_dir / CLEANED_SUBDIR / f"cleaned-{account or ALL_ACCOUNTS_LABEL}-{now:%Y%m%d-%H%M%S}.zip"
 
 
 def _selective_backup(result: CleanResult, ready: list[tuple[ProposalItem, SVFile]], flavor: Flavor,
-                      backup_dir: Path | None, now: datetime, dry_run: bool, report: CleanProgress) -> None:
+                      backup_dir: Path | None, now: datetime, dry_run: bool, report: CleanProgress,
+                      account: str | None) -> None:
     if backup_dir is None:
         raise BackupError("no backup folder is configured")
-    dest = backup_dir / backup_filename(TOOL_NAME, flavor.short_name, now)
+    dest = cleaned_zip_path(backup_dir, account, now)
     ready_bytes = sum(sv.size for _, sv in ready)
     meta = {"tool": TOOL_NAME, "suite_version": __version__, "flavor": flavor.folder,
-            "created": now.isoformat(timespec="seconds")}
+            "account": account, "created": now.isoformat(timespec="seconds")}
     try:
         # The recheck just confirmed each file's size and mtime, so the backup does not stat them again.
         create_backup([BackupEntry(sv.path, tuple(item.reasons), sv.size, sv.mtime) for item, sv in ready],

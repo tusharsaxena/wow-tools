@@ -18,11 +18,11 @@ from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import ACCOUNT_WIDE, Flavor
 from wowtools.core.process import running_wtf_lockers, wow_check_for
-from wowtools.tools.wtf_cleaner.cleaner import CleanError, CleanResult, execute
+from wowtools.tools.wtf_cleaner.cleaner import CLEANED_SUBDIR, CleanError, CleanResult, execute
 from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, RESULT_COLUMNS, STAGE_TITLES,
                                                age_days, format_size, locker_warning, result_rows)
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, ProposalItem, criterion_counts, evaluate
-from wowtools.tools.wtf_cleaner.safety import Marker, clear_marker, read_marker, recovery_message
+from wowtools.tools.wtf_cleaner.safety import SNAPSHOT_SUBDIR, Marker, clear_marker, read_marker, recovery_message
 from wowtools.tools.wtf_cleaner.scanner import ScanError, ScanResult, scan
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir
 from wowtools.ui.branding import BrandBar
@@ -110,7 +110,7 @@ class CleanProgressScreen(ModalScreen[None]):
 
 
 class RecoveryScreen(ModalScreen[str]):
-    """An earlier clean did not finish: say where its safety snapshot is. Never restores anything itself."""
+    """An earlier clean did not finish: say where its WTF backup is. Never restores anything itself."""
 
     DEFAULT_CSS = """
     RecoveryScreen { align: center middle; }
@@ -132,7 +132,7 @@ class RecoveryScreen(ModalScreen[str]):
             yield Static(Text("An earlier clean did not finish"), id="recovery-title")
             yield Static(Text(self.message))
             with ButtonRow(id="recovery-buttons"):
-                yield Button("Dismiss (keep the snapshot)", id="recovery-dismiss")
+                yield Button("Dismiss (keep the backup)", id="recovery-dismiss")
                 yield Button("Remind me next time", variant="primary", id="recovery-remind")
 
     def on_mount(self) -> None:
@@ -201,18 +201,20 @@ class ResultScreen(Screen[str]):
         done = result.would_delete if result.dry_run else result.deleted
         if result.dry_run:
             snapshot, check = "not taken (dry run)", "not run (dry run)"
-        elif result.snapshot_kept:
-            snapshot = f"KEPT at {result.snapshot_path}"
-            check = (f"{len(result.check_problems)} problems: {result.check_problems[0]}"
-                     + (" (more in the log)" if len(result.check_problems) > 1 else ""))
-        elif result.snapshot_path is not None:
-            snapshot, check = "taken and removed after the check passed", "passed"
-        else:
+        elif result.snapshot_path is None:
             snapshot, check = "not taken", "not run"
+        else:
+            snapshot = str(result.snapshot_path)
+            if result.pruned:
+                snapshot += f" ({len(result.pruned)} older backups removed)"
+            check = "passed"
+            if result.check_problems:
+                check = (f"{len(result.check_problems)} problems: {result.check_problems[0]}"
+                         + (" (more in the log)" if len(result.check_problems) > 1 else ""))
         return [
             ("Mode", "Dry run" if result.dry_run else "Clean"),
-            ("Backup zip", str(result.backup_path) if result.backup_path else "none (backup is off)"),
-            ("Safety snapshot", snapshot),
+            ("Cleaned files zip", str(result.backup_path) if result.backup_path else "none (turned off in settings)"),
+            ("WTF backup", snapshot),
             ("Post-clean check", check),
             ("Would delete" if result.dry_run else "Deleted", f"{len(done)} files"),
             ("Size", format_size(result.bytes_freed)),
@@ -665,11 +667,15 @@ class ReviewScreen(Screen[str]):
         lines = [f"{len(selection)} addon groups, {files} files, {size}."]
         alerts: list[str] = []
         if backup:
-            lines.append(f"Backup zip goes to: {backup_dir}")
+            lines.append(f"The files to clean are zipped to: {backup_dir / CLEANED_SUBDIR if backup_dir else '?'}")
         else:
-            alerts.append("No backup will be made (backup is off in settings).")
+            alerts.append("The files to clean will not be zipped (turned off in settings).")
+        if not dry_run:
+            lines.append(f"The whole WTF folder is backed up first to: "
+                         f"{backup_dir / SNAPSHOT_SUBDIR if backup_dir else '?'} "
+                         f"(the newest {self.settings.keep_backups} are kept)")
         if dry_run:
-            lines.append(("DRY RUN: the backup zip is written, nothing is deleted." if backup
+            lines.append(("DRY RUN: the cleaned-files zip is written, nothing is deleted." if backup
                           else "DRY RUN: nothing will be written or deleted."))
         if running:
             alerts.append(f"WoW appears to be running ({', '.join(running)}). Close it first: WoW rewrites "
@@ -702,7 +708,7 @@ class ReviewScreen(Screen[str]):
 
         try:
             result = execute(selection, self.flavor, dry_run=dry_run, backup=backup, backup_dir=backup_dir,
-                             progress=progress)
+                             progress=progress, account=self.account, keep_backups=self.settings.keep_backups)
         except (BackupError, CleanError) as exc:
             if isinstance(exc, CleanError):
                 log_exception("clean", exc)

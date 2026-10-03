@@ -55,13 +55,16 @@ class CleanerSettingsScreen(Screen[bool]):
             yield Static("WTF Cleaner settings", classes="title")
             yield Label("Propose SavedVariables older than this many days")
             yield Input(str(criteria.max_age_days), type="integer", id="max_age")
-            yield Label("Backup folder (leave empty to use <WoW folder>/wow-tools/wtf-cleaner)")
+            yield Label("Backup folder: holds backup/ (whole WTF folder) and cleaned/ (the files removed). "
+                        "Leave empty to use <WoW folder>/wow-tools/wtf-cleaner")
             yield Input(to_stored(self.settings.backup_dir) if self.settings.backup_dir else "",
                         placeholder=_default_backup_hint(self.wow_path), id="backup_dir")
+            yield Label("Keep this many WTF backups (older ones are deleted after each clean)")
+            yield Input(str(self.settings.keep_backups), type="integer", id="keep_backups")
             yield Static("Propose SavedVariables when:", classes="title")
             for name in CRITERIA:
                 yield Ka0sCheckbox(CRITERION_LABELS[name], getattr(criteria, name), id=f"sw_{name}")
-            yield Ka0sCheckbox("Back up files to a timestamped zip before deleting (recommended)",
+            yield Ka0sCheckbox("Zip the files to clean before deleting them (recommended)",
                                self.settings.backup_before_delete, id="sw_backup")
             yield Static("", id="settings-error")
             with ButtonRow(classes="buttons"):
@@ -93,12 +96,20 @@ class CleanerSettingsScreen(Screen[bool]):
             self.error_text = "Max age must be a whole number of days, at least 1."
             self.query_one("#settings-error", Static).update(Text(self.error_text))
             return
+        try:
+            keep = int(self.query_one("#keep_backups", Input).value)
+        except ValueError:
+            keep = 0
+        if keep < 1:
+            self.error_text = "Keep at least 1 WTF backup."
+            self.query_one("#settings-error", Static).update(Text(self.error_text))
+            return
         criteria = Criteria(**{name: self.query_one(f"#sw_{name}", Ka0sCheckbox).value for name in CRITERIA},
                             max_age_days=days)
         backup_raw = self.query_one("#backup_dir", Input).value.strip()
         save_settings(self.tool_cfg, CleanerSettings(criteria, self.query_one("#sw_backup", Ka0sCheckbox).value,
                                                      to_native(backup_raw) if backup_raw else None,
-                                                     load_settings(self.tool_cfg).last_account),
+                                                     load_settings(self.tool_cfg).last_account, keep),
                       source=self.source)
         self.dismiss(True)
 
