@@ -91,6 +91,25 @@ class ShotsAppTest(TuiTestCase):
             self.assertIn("at least 1", app.screen.error_text)
         self.assertFalse((self.config_dir / "screenshot-organizer.cfg").exists())
 
+    async def test_rescan_refuses_invalid_stored_dest(self):
+        self.save_tool_cfg(dest_dir=str(self.root / "_retail_" / "WTF" / "shots"))
+        scans = []
+        real_scan = review_module.scan
+        app = self.make_app()
+        try:
+            review_module.scan = lambda *args, **kwargs: scans.append(args) or real_scan(*args, **kwargs)
+            async with app.run_test(size=SIZE) as pilot:
+                review = await self.open_review(app, pilot)
+                self.assertIsNone(review.plan)
+                self.assertTrue(any("Fix the folder in settings" in n.message for n in app._notifications))
+                await pilot.press("o")
+                await pilot.pause()
+                self.assertIs(app.screen, review)
+        finally:
+            review_module.scan = real_scan
+        self.assertEqual(scans, [])
+        self.assertFalse((self.root / "_retail_" / "WTF" / "shots").exists())
+
     async def test_all_flavors_organize_then_undo(self):
         self.save_tool_cfg(dest_dir=str(self.dest))
         app = self.make_app()

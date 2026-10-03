@@ -18,7 +18,7 @@ from wowtools.core import activity
 from wowtools.core.backup import BackupError
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
-from wowtools.core.install import ACCOUNT_WIDE, Flavor
+from wowtools.core.install import ACCOUNT_WIDE, Flavor, WowInstall, validate_output_dir
 from wowtools.core.journal import friendly_stamp
 from wowtools.core.process import running_wtf_lockers, wow_check_for
 from wowtools.tools.wtf_cleaner.cleaner import CLEANED_SUBDIR, CleanError
@@ -629,10 +629,23 @@ class ReviewScreen(Screen[str]):
     def action_dry_run(self) -> None:
         self._start(dry_run=True)
 
+    def _backup_dir_problem(self) -> str | None:
+        """The saved backup folder is checked again before it is used: the file may have been edited by hand."""
+        wow_path = self.cfg.wow_path
+        if wow_path is None:
+            return None
+        return validate_output_dir(self.settings.backup_dir, WowInstall(wow_path), what="backup folder")
+
     def _start(self, dry_run: bool) -> None:
         if self.proposal is None or self.app.busy:
             return
         log_event("ui.selection", screen="review", control="dry_run" if dry_run else "clean", value=True)
+        self.settings = load_settings(self.tool_cfg)
+        problem = self._backup_dir_problem()
+        if problem:
+            self.notify(f"{problem} Fix the folder in settings (s).", title="Backup folder not allowed",
+                        severity="error", timeout=15)
+            return
         plan = self._selection_by_flavor()
         if not plan:
             self.notify("Nothing is selected.")
@@ -642,7 +655,6 @@ class ReviewScreen(Screen[str]):
         running = check()  # every flavor in the selection, one process listing
         if running:
             log_event("wow.running_warning", executables=running)
-        self.settings = load_settings(self.tool_cfg)
         backup = self.settings.backup_before_delete
         backup_dir = resolve_backup_dir(self.settings, self.cfg.wow_path)
         lines = [self._counts(selection) + "."]

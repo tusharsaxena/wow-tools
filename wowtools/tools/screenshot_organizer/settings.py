@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from wowtools.core.config import Config
-from wowtools.core.install import Flavor, WowInstall
+from wowtools.core.install import Flavor, WowInstall, validate_output_dir
 from wowtools.core.journal import journal_dir
 from wowtools.tools.screenshot_organizer.events import TOOL_NAME
 
@@ -51,22 +51,9 @@ def resolve_journal_dir(wow_path: Path | None) -> Path | None:
     return journal_dir(wow_path, TOOL_NAME)
 
 
-def _key(path: Path) -> str:
-    return str(path.resolve()).casefold()  # a handful of paths, once, on the settings screen
-
-
 def validate_dest(dest: Path | None, install: WowInstall) -> str | None:
     """Why a destination folder is not allowed, or None if it is fine (None itself means in place)."""
-    if dest is None:
-        return None
-    if not dest.is_absolute():  # e.g. "Shots", "~/shots", "D:Shots", or a UNC path under WSL
-        return "Use a full path for the destination, e.g. D:\\Screenshots."
-    key = _key(dest)
-    if key == _key(install.root):
-        return "The destination cannot be the WoW folder itself."
-    for flavor in install.flavors():
-        shots = _key(source_dir(flavor))
-        if key == shots or key.startswith(shots.rstrip("/\\") + ("\\" if "\\" in shots else "/")):
-            return (f"The destination cannot be inside {flavor.folder}\\Screenshots. "
-                    "Leave it empty to organise in place.")
-    return None
+    problem = validate_output_dir(dest, install, what="destination", example="D:\\Screenshots")
+    if problem and problem.endswith("\\Screenshots."):
+        problem += " Leave it empty to organise in place."
+    return problem

@@ -574,6 +574,40 @@ class FirstRunTest(AppTestCase):
         self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).backup_dir, target)
 
 
+class BackupFolderValidationTest(AppTestCase):
+    async def test_settings_reject_backup_dir_inside_wtf_or_relative(self):
+        app = self.make_app()
+        before = self.tool_cfg.path.read_bytes()
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            screen = CleanerSettingsScreen(self.tool_cfg, self.root, source="settings")
+            app.push_screen(screen)
+            await pilot.pause()
+            for raw, expected in ((str(self.root / "_retail_" / "WTF" / "bk"), "WTF"), ("backups", "full path")):
+                screen.query_one("#backup_dir", Input).value = raw
+                screen.query_one("#save", Button).press()
+                await pilot.pause()
+                self.assertIs(app.screen, screen)
+                self.assertIn(expected, screen.error_text)
+                self.assertIn(expected, str(screen.query_one("#settings-error", Static).render()))
+        self.assertEqual(self.tool_cfg.path.read_bytes(), before)
+
+    async def test_clean_and_dry_run_refuse_invalid_stored_backup_dir(self):
+        self.tool_cfg.set("wtf_cleaner", "backup_dir", str(self.root / "_retail_" / "WTF" / "bk"), log=False)
+        self.tool_cfg.save()
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            for key in ("c", "y"):
+                app._notifications.clear()
+                await pilot.press(key)
+                await pilot.pause()
+                self.assertIs(app.screen, review)
+                self.assertTrue(any("Fix the folder in settings" in n.message for n in app._notifications))
+        self.assertTrue((self.sv / "Uninstalled.lua").exists())
+        self.assertFalse((self.root / "_retail_" / "WTF" / "bk").exists())
+
+
 class KeyboardNavigationTest(AppTestCase):
     async def test_confirm_keyboard_navigation(self):
         app = self.make_app()

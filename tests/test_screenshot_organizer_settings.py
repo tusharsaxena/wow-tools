@@ -55,6 +55,8 @@ class SettingsTest(unittest.TestCase):
         self.assertIsNotNone(validate_dest(self.root, self.install))
         self.assertIsNotNone(validate_dest(self.root / "_retail_" / "Screenshots", self.install))
         self.assertIsNotNone(validate_dest(self.root / "_retail_" / "Screenshots" / "x", self.install))
+        self.assertIsNotNone(validate_dest(self.root / "_retail_" / "WTF" / "x", self.install))
+        self.assertIsNotNone(validate_dest(self.root / "_retail_" / "Interface" / "AddOns" / "x", self.install))
 
     def test_validate_dest_needs_a_full_path(self):
         # A relative destination would be filed under whatever folder the suite was started from.

@@ -16,7 +16,7 @@ from textual.widgets import Button, DataTable, Footer, Header, Label, ProgressBa
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
-from wowtools.core.install import Flavor
+from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.journal import friendly_stamp
 from wowtools.tools.screenshot_organizer.journal import latest_undoable, read_journal
 from wowtools.tools.screenshot_organizer.naming import day_parts
@@ -25,7 +25,7 @@ from wowtools.tools.screenshot_organizer.planner import MAYBE_DUPLICATE, FlavorP
 from wowtools.tools.screenshot_organizer.report import (RESULT_COLUMNS, STAGE_TITLES, confirm_text, destination_label,
                                                         kind_class, plural, result_rows, stopped_text,
                                                         summary_rows)
-from wowtools.tools.screenshot_organizer.settings import load_settings, resolve_journal_dir
+from wowtools.tools.screenshot_organizer.settings import load_settings, resolve_journal_dir, validate_dest
 from wowtools.tools.screenshot_organizer.undo import undo
 from wowtools.tools.wtf_cleaner.review_screen import ConfirmScreen
 from wowtools.ui.branding import BrandBar
@@ -271,8 +271,27 @@ class ShotReviewScreen(Screen[str]):
         self.query_one("#mode-label", Static).update(Text(self._mode_text()))
         self.plan = None
         self.unchecked.clear()  # a new scan means new items
+        problem = self._dest_problem()
+        if problem:  # checked again before use: the file may have been edited by hand
+            self._show_scan_progress(False)
+            tree = self.query_one("#shots", Tree)
+            tree.clear()
+            message = f"{problem} Fix the folder in settings (s)."
+            self.summary_text = message
+            self.query_one("#summary", Static).update(Text(message))
+            for button_id in ("#btn-organize", "#btn-dry"):
+                self.query_one(button_id, Button).disabled = True
+            self._refresh_undo()
+            self.notify(message, title="Destination not allowed", severity="error", timeout=15)
+            return
         self._show_scan_progress(True)
         self.run_worker(self._scan_worker, thread=True, exclusive=True, group="scan")
+
+    def _dest_problem(self) -> str | None:
+        wow_path = self.cfg.wow_path
+        if wow_path is None:
+            return None
+        return validate_dest(self.settings.dest_dir, WowInstall(wow_path))
 
     def _show_scan_progress(self, scanning: bool) -> None:
         """While scanning, the tree is replaced by a progress bar and the folder being read."""

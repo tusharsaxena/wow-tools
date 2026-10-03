@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from tests.fixtures import build_wow_tree
-from wowtools.core.install import Account, Flavor, WowInstall, detect_installs
+from wowtools.core.install import Account, Flavor, WowInstall, detect_installs, validate_output_dir
 
 
 class InstallTest(unittest.TestCase):
@@ -67,3 +67,32 @@ class InstallTest(unittest.TestCase):
     def test_detect_installs(self):
         self.assertEqual(detect_installs([self.tmp]), [self.root])
         self.assertEqual(detect_installs([self.tmp / "empty"]), [])
+
+
+class ValidateOutputDirTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+        self.root = build_wow_tree(self.tmp / "World of Warcraft")
+        self.install = WowInstall(self.root)
+
+    def test_allowed(self):
+        for path in (None, self.root / "wow-tools" / "wtf-cleaner", self.tmp / "elsewhere"):
+            with self.subTest(path=path):
+                self.assertIsNone(validate_output_dir(path, self.install))
+
+    def test_relative_path_needs_a_full_path(self):
+        self.assertIn("full path", validate_output_dir(Path("backups"), self.install) or "")
+
+    def test_wow_folder_and_game_folders_are_refused(self):
+        retail = self.root / "_retail_"
+        for path in (self.root, retail / "WTF", retail / "WTF" / "x", retail / "Interface" / "AddOns" / "x",
+                     retail / "Screenshots" / "x", self.root / "_classic_era_" / "wtf" / "x"):
+            with self.subTest(path=path):
+                self.assertIsNotNone(validate_output_dir(path, self.install))
+
+    def test_message_names_the_folder(self):
+        problem = validate_output_dir(self.root / "_retail_" / "WTF" / "x", self.install, what="backup folder")
+        self.assertIn("backup folder", problem)
+        self.assertIn("_retail_\\WTF", problem)

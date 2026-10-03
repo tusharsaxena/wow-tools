@@ -200,7 +200,7 @@ Press `s` in the cleaner. The settings are saved in `config\wtf-cleaner.cfg`.
 | Max age in days | 90 | The age limit for rule 3 |
 | The four rules | all on | Which rules are on when the review screen opens |
 | Zip the files before deleting | on | Keep a zip of everything a clean removes (recommended) |
-| Backup folder | empty | Where zips and backups go. Empty means `<WoW folder>\wow-tools\wtf-cleaner` |
+| Backup folder | empty | Where zips and backups go. Empty means `<WoW folder>\wow-tools\wtf-cleaner`. It must be a full path, and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
 | WTF backups to keep | 5 | How many whole-folder backups to keep for each game version |
 | Journals to keep | 10 | How many journals to keep for Undo |
 
@@ -229,6 +229,7 @@ The file itself uses these names, if you edit it by hand: `max_age_days`, `crite
 | "files are locked by another program" | Close the Raider.IO client or the WeakAuras Companion, then clean again. Nothing was deleted. |
 | "Refusing to scan" | That game version has no addons installed, so there's nothing safe to suggest. |
 | "The clean stopped unexpectedly" | Something went wrong that the cleaner didn't expect. Press `r` to scan again and see what's left. If settings you wanted are missing, **Undo last clean** (`z`) or the WTF backup puts them back. Then follow [Reporting a bug](../README.md#reporting-a-bug); the details are in the log. |
+| "Backup folder not allowed" | The backup folder in settings is a relative path, your WoW folder, or inside a game version's `WTF`, `Interface` or `Screenshots` folder (a backup inside `WTF` would be zipped into every later backup). Press `s` and pick another folder, or leave it empty for the default. Nothing was cleaned. |
 | "An earlier clean did not finish" | See [If a clean was interrupted](#if-a-clean-was-interrupted). |
 | **Undo last clean** is greyed out | There's nothing to undo: you haven't cleaned yet, or you already undid the last clean. |
 | The scan takes a long time | A big `WTF` folder takes a while, especially from WSL; see the main [Troubleshooting](../README.md#troubleshooting). The progress bar shows it's still working. |

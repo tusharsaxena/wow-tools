@@ -33,6 +33,7 @@ You choose this with the **destination folder** setting:
 - File names are never changed.
 - The date comes from the file name WoW gives each screenshot, `WoWScrnShot_MMDDYY_HHMMSS.jpg`.
 - The destination folder doesn't need to exist yet; it's created the first time.
+- It can't be your WoW folder itself, or inside a game version's `Screenshots`, `WTF` or `Interface` folder.
 - The organizer only adds dated folders and screenshots there. It never touches anything else in that folder,
   such as a photo program's own files.
 
@@ -180,7 +181,7 @@ The file itself uses these names, if you edit it by hand: `dest_dir`, `copy_mode
 |---------|-----|
 | "No Screenshots folders found" | You haven't taken a screenshot in any game version yet. Take one in game first (the Print Screen key). |
 | A screenshot stays in `Screenshots` after organizing | Its name isn't a WoW screenshot name, or a different file with the same name is already sorted (a conflict). Both are listed on the review and results screens. |
-| The destination is refused in settings | It can't be your WoW folder itself or inside a `Screenshots` folder. To sort in place, leave it empty. |
+| The destination is refused | It must be a full path (such as `D:\Screenshots`), and it can't be your WoW folder itself or inside a game version's `Screenshots`, `WTF` or `Interface` folder. To sort in place, leave it empty. The organizer checks this when you save the settings and again before each scan, in case the file was edited by hand. |
 | **Undo last run** is greyed out | There's nothing to undo: you haven't run it yet, or you already undid the last run. |
 | Moving to another drive is slow | Each screenshot is copied and checked before the original is removed, so a big first run takes a while. Later runs only handle new screenshots. From WSL it's slower still; see the main [Troubleshooting](../README.md#troubleshooting). |
 | Something else looks wrong | Follow [Reporting a bug](../README.md#reporting-a-bug) in the main README. |

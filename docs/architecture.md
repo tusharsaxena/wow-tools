@@ -31,7 +31,7 @@ stay thin.
 | `fsutil` | `atomic_write_text()` (write `<name>.partial`, then `os.replace`), used for every config write |
 | `activity` | `running()` context manager that file-changing workers (clean, organize, undo) enter; `wait_idle(timeout)`. `suite.run()` waits on it before releasing the lock, so a worker still writing never shares its folders with a second copy |
 | `events` | Registry of event names with fixed levels; JSONL + text sinks; `log_event()`; `capture_events()` for tests |
-| `install` | `WowInstall` → `Flavor` → `Account` → `Character`; install auto-detection. A flavor is any `_name_` folder in the WoW folder, whatever it holds |
+| `install` | `WowInstall` → `Flavor` → `Account` → `Character`; install auto-detection. A flavor is any `_name_` folder in the WoW folder, whatever it holds. `validate_output_dir()` refuses a tool output folder that is relative, the WoW folder, or inside a flavor's `WTF`/`Interface`/`Screenshots` (both tools use it on save and before use) |
 | `journal` | Run journals, the suite standard for any tool that changes files: JSON Lines (header, one line per completed change flushed at once, `{"finished"}`, `{"undone"}`). `journal_dir(wow_path, tool)` = `<WoW>/wow-tools/<tool>/journal/`; `new_journal_path`, `JournalWriter` (`open()` exclusive-creates and writes the header, `add_entry()`, `finish()`, `discard_if_empty()`), `read_journal(path, path_fields=)`, `list_journals` (newest first), `latest_undoable` (newest journal with entries, never past an undone one), `mark_undone`, `prune_journals(dir, keep)`, `friendly_stamp`. Path values go through `to_stored()` / `to_native()`. Tools add their own entry fields and undo rules |
 | `backup` | Zip + `manifest.json`, verified before it is moved into place; optional `on_file(current, total, name)` hook for progress |
 | `process` | Best-effort "is WoW running?" per flavor: `running_wow_processes()` returns `WowProcess(name, path)` (PowerShell `Get-CimInstance Win32_Process` on Windows/WSL, `/proc/<pid>/cmdline` on Linux, name-only `tasklist` fallback, `None` on macOS); `processes_for_flavor()` matches the executable's parent folder to the flavor folder, ignoring case and `\`/`/`; `wow_check_for(flavor)` is the check the review screen and CLI call |
@@ -174,8 +174,9 @@ Modules in `tools/screenshot_organizer/` (all UI-free except `app.py` and `revie
 
 **Targets.** `target_root(flavor, dest_dir)` is `<dest_dir>/<flavor folder>`, or the flavor's `Screenshots`
 folder when `dest_dir` is `None` (in place). A shot goes to `target_root/YYYY/MM/DD/<name>`; the day comes from
-`WoWScrnShot_MMDDYY_HHMMSS.<jpg|jpeg|png|tga>` only. `validate_dest` (settings screen only) refuses the WoW folder
-itself and anything inside a flavor's `Screenshots` folder.
+`WoWScrnShot_MMDDYY_HHMMSS.<jpg|jpeg|png|tga>` only. `validate_dest` wraps `install.validate_output_dir` (a full path, not
+the WoW folder, not inside any flavor's `WTF`, `Interface` or `Screenshots`); it runs on the settings screen and
+again in `action_rescan`, which refuses to scan a hand-edited bad `dest_dir`.
 
 **Scan.** One listing per `Screenshots` folder (top-level files only) and one names-only listing
 (`planner.list_names`) per target day folder. Only a name already at the target is stat'ed, to set the state:

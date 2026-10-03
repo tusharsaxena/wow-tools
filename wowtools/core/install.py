@@ -159,3 +159,39 @@ def detect_installs(roots: list[Path] | None = None) -> list[Path]:
             if candidate not in found and WowInstall(candidate).is_valid():
                 found.append(candidate)
     return found
+
+
+# Folders inside a game version folder that no tool may write its own output into: the cleaner backs up the whole
+# WTF folder (backups inside it would grow every snapshot), WoW owns Interface, and Screenshots is the organizer's
+# source.
+PROTECTED_FLAVOR_DIRS = ("WTF", "Interface", "Screenshots")
+
+
+def _key(path: Path) -> str:
+    """A comparable form of a path: absolute, symlinks resolved, case folded (Windows folders ignore case)."""
+    return str(path.resolve()).casefold()
+
+
+def _is_within(key: str, parent: str) -> bool:
+    sep = "\\" if "\\" in parent else "/"
+    return key == parent or key.startswith(parent.rstrip("/\\") + sep)
+
+
+def validate_output_dir(path: Path | None, install: WowInstall, *, what: str = "folder",
+                        example: str = "D:\\WoW backups") -> str | None:
+    """Why a folder a tool writes into (a backup folder, a screenshot archive) is not allowed, or None if it is
+    fine. None itself is fine: it means the tool's default. Refused: a relative path (it would depend on the folder
+    the app was started from), the WoW folder itself, and anything inside a game version's WTF, Interface or
+    Screenshots folder. Checked when the setting is saved and again before the folder is used."""
+    if path is None:
+        return None
+    if not path.is_absolute():  # e.g. "backups", "~/x", "D:x", or a UNC path under WSL
+        return f"Use a full path for the {what}, e.g. {example}."
+    key = _key(path)
+    if key == _key(install.root):
+        return f"The {what} cannot be the WoW folder itself."
+    for flavor in install.flavors():
+        for sub in PROTECTED_FLAVOR_DIRS:
+            if _is_within(key, _key(flavor.path / sub)):
+                return f"The {what} cannot be inside {flavor.folder}\\{sub}."
+    return None
