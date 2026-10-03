@@ -6,6 +6,7 @@ from unittest.mock import patch
 from textual.widgets import Input, OptionList
 
 from tests.fixtures import TuiTestCase, build_wow_tree
+from wowtools import __version__
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
@@ -52,7 +53,7 @@ class SuiteAppBaseTest(UiTestCase):
             self.assertEqual(app.theme, "ka0s")
             self.assertEqual(app.title, "Ka0s · WoW Tools")
             self.assertIsInstance(app.screen, ToolMenuScreen)
-            self.assertIn("Ka0s WoW Tools v0.1.0", app.screen.query_one(BrandBar).text)
+            self.assertIn(f"Ka0s WoW Tools v{__version__}", app.screen.query_one(BrandBar).text)
             options = app.screen.query_one("#tools", OptionList)
             self.assertEqual([options.get_option_at_index(i).id for i in range(options.option_count)],
                              list(TOOLS))

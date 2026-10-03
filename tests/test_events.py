@@ -4,6 +4,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from wowtools import __version__
 from wowtools.core import events
 from wowtools.core.events import (EventLog, EventSpec, UnknownEventError, capture_events,
                                   log_event, register_events)
@@ -18,7 +19,7 @@ class EnvelopeTest(unittest.TestCase):
         self.assertEqual(record["v"], 1)
         self.assertEqual(record["ts"], "2026-09-27T14:03:11.482+10:00")
         self.assertEqual(len(record["session"]), 8)
-        self.assertEqual(record["suite_version"], "0.1.0")
+        self.assertEqual(record["suite_version"], __version__)
         self.assertEqual((record["tool"], record["mode"]), ("wtf-cleaner", "tui"))
         self.assertEqual(record["event"], "wow.running_warning")
         self.assertEqual(record["level"], "warning")

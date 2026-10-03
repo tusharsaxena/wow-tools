@@ -46,9 +46,11 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
    assertions
    and `WowToolsApp(..., tool_options={"screenshot-organizer": {...}}).run_test()` for the TUI (open the tool from the menu
    with Enter). Never touch a real install.
-5. **Docs**: add a section to `README.md`, a row to its tools table and the tool's config file and keys to its
-   Settings tables; add the config section, data flow and screens to `docs/architecture.md`. `tests/test_docs.py`
-   checks the README names every tool.
+5. **Docs**: write a user guide, `docs/<tool name>.md` (for example `docs/screenshot-organizer.md`), in the same
+   plain style as the other guides, with screenshots from `docs/assets/`, its settings and its troubleshooting.
+   Add a row to the README's tools table and a link under "Tool guides", plus the tool's config file in "Your
+   settings", and a line in "Version history". Add the config section, data flow and screens to
+   `docs/architecture.md`. `tests/test_docs.py` checks that the README names and links a guide for every tool.
 6. **Renaming a tool later**: change the name in `TOOLS`, the tool's `TOOL_NAME` and `SECTION`, and add one line
    to `RENAMED_TOOLS` in `wowtools/tools/__init__.py`, e.g.
    `ToolRename("screenshots", "screenshot-organizer", "screenshots", "screenshot_organizer")`. On the next start

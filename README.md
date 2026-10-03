@@ -1,536 +1,235 @@
-<img src="docs/assets/ka0s-logo.png" alt="Ka0s" width="220">
-
 # Ka0s WoW Tools
 
-Out-of-game companion tools for World of Warcraft, in one app. You start it with `wow-tools`, pick a tool from
-the menu, and come back to the menu when you're done. Each tool has its own workflow and settings file; they
-share the WoW folder, the bundled libraries and one look. It runs straight from this folder on Windows, Linux and
-WSL. There's no `pip install` and no virtualenv.
+![Version](https://img.shields.io/badge/Version-1.0.0-blue)
+![Python](https://img.shields.io/badge/Python-3.10%2B-yellow)
+![Platforms](https://img.shields.io/badge/Platforms-Windows_%7C_macOS_%7C_Linux-purple)
+![Tests](https://img.shields.io/badge/Tests-405%2F405_passing-green)
+![License](https://img.shields.io/badge/License-MIT-orange)
 
-| Tool | What it does |
-|---|---|
-| **WTF Cleaner** | Finds SavedVariables left behind by addons you no longer use, backs them up to a zip, and deletes them. |
-| **Screenshot Organizer** | Files screenshots into year/month/day folders, per flavor, in place or into an archive folder, with dry run and undo. |
+Ka0s WoW Tools is a small set of World of Warcraft helpers that run ***outside*** the game and tidy up the files WoW
+leaves lying around on your computer. It's a single app - you open it, pick a tool from the menu, and when you're done
+you land back on the menu.
 
-## Requirements
+**_The tool menu_**
 
-- **Python 3.10 or newer.** On Windows, install it from python.org (tick "Add python.exe to PATH") or the
-  Microsoft Store. The `py` launcher is used when present.
-- World of Warcraft, in any flavor: Retail, Classic, Classic Era, Anniversary, PTR or Beta.
+![The tool menu](docs/assets/screenshot-01.png)
 
-## Getting it
+## The tools
 
-- **With git (recommended, so updates are one command):**
-  `git clone https://github.com/tusharsaxena/wow-tools.git`
-- **As a zip:** download the latest release from
-  [Releases](https://github.com/tusharsaxena/wow-tools/releases) and unzip it anywhere.
-
-## Quick start
-
-There is one way in:
-
-| Platform | Start |
-|---|---|
-| Windows | double-click `wow-tools.cmd` |
-| Linux / WSL | `./wow-tools.sh` |
-
-The first screen lists the tools. Pick one with `↑`/`↓` and `Enter`. Inside a tool, `Esc` on the flavor screen or
-`t` on the review and results screens takes you back to the menu; `q` quits. `s` opens the settings: on the menu
-the shared WoW folder, inside a tool the WoW folder and then that tool's own settings. The tools can't be started
-on their own.
-
-**First time you open a tool.** It asks for:
-
-1. **Your World of Warcraft folder** (once, shared by every tool). This is the folder that contains `_retail_`,
-   `_classic_` and so on. Common locations on every drive are detected for you.
-2. **That tool's settings.** For the WTF Cleaner: the age limit, which criteria to use, whether to back up before
-   deleting, the **backup folder**, and how many WTF backups and run journals to keep. Leave the backup folder
-   empty to use `<WoW folder>\wow-tools\wtf-cleaner`.
-   For the Screenshot Organizer: the destination folder (empty = organise in place), how many run journals to
-   keep, and whether to copy instead of move.
-
-Your answers are saved in the `config\` folder (see [Settings](#settings-config)). Then you pick a **flavor**, or
-**All flavors** (the first row), and the last choice is pre-selected next time. In the WTF Cleaner, if the one
-flavor you picked has more than one WoW account, you then pick an **account**, or "All accounts". The last choice
-is pre-selected next time. With All flavors there is no account screen: every account of every flavor is in scope.
-
-> **Close WoW before cleaning.** WoW rewrites SavedVariables when you log out, and it can recreate files you
-> just removed. The tool warns you if it sees WoW running for the flavor you chose, or any of them with All flavors (see
-> [Is WoW running?](#is-wow-running)).
-
-## WTF Cleaner
-
-### What gets proposed
-
-Each rule can be switched on or off. By default **all four are on**, and a file is proposed if **any**
-rule matches.
-
-| Criterion | Proposes… | Example |
+| Tool | What it does | Guide |
 |---|---|---|
-| `not_installed` | SavedVariables for addons no longer in `Interface\AddOns` | `WTF\Account\ME\SavedVariables\OldBagAddon.lua` |
-| `not_enabled` | SavedVariables for installed addons that **no character in scope** has enabled | Addon disabled on every character |
-| `older_than` | Addons whose newest SavedVariables file is older than the age limit (default 90 days) | `Recount.lua` untouched since last expansion |
-| `stray_copies` | Hand-made copies next to real files: anything but `<Addon>.lua` / `<Addon>.lua.bak` | `Details.lua - Copy.bak`, `Plater.lua.pre-update` |
+| **WTF Cleaner** | Finds settings files left behind by addons you no longer use, backs them up, and deletes them. | [WTF Cleaner guide](docs/wtf-cleaner.md) |
+| **Screenshot Organizer** | Sorts your WoW screenshots into folders by year, month and day, one set per game version. | [Screenshot Organizer guide](docs/screenshot-organizer.md) |
 
-It looks in every account in scope, both account-wide (`WTF\Account\<ACCOUNT>\SavedVariables`) and
-per character (`WTF\Account\<ACCOUNT>\<Realm>\<Character>\SavedVariables`). An addon's `.lua` and `.lua.bak`
-files are treated as one group.
+Both tools work with every version of the game you have installed: Retail, Classic, Classic Era, Anniversary,
+and the PTR and Beta clients. You can work on one version at a time or all of them at once.
 
-### Account scope
+Neither tool changes anything until you say so. Each one shows you the full list first and asks before it
+touches a file. If you'd rather see what would happen first, do a practice run (a **Dry run**). And if you
+change your mind afterwards, you can undo the last run.
 
-- **All accounts** (the default): "enabled" is judged across the whole flavor. If an addon is enabled on any
-  character of any account, its SavedVariables are kept everywhere.
-- **All flavors**: every flavor is scanned in turn, each with all its accounts, judged on its own as above.
-- **One account** (picked on the account screen): only that account's
-  SavedVariables are scanned and proposed, and only that account's characters decide what counts as enabled.
-  An addon enabled only on another account's characters counts as not enabled here.
+## Screenshots
 
-A character with no `AddOns.txt`, or an addon that isn't listed in it, counts as enabled, because that's what
-WoW does.
+**_WTF Cleaner: the list of leftover addon settings, ready to clean_**
 
-### What is never touched
+![WTF Cleaner review screen](docs/assets/screenshot-02-wtfcleaner-main.png)
 
-- `Blizzard_*` SavedVariables.
-- Everything outside `SavedVariables` folders: `config-cache.wtf`, keybindings, macros, `AddOns.txt`,
-  layouts, chat settings.
-- Anything outside the chosen flavor's `WTF\Account` folder (with All flavors, each flavor's own).
+**_Screenshot Organizer: screenshots grouped by day, ready to sort_**
 
-If a flavor has no addons installed at all, the scan stops rather than proposing everything. With All flavors,
-such a flavor is listed in the tree with the reason ("not scanned: No addons found in …") and is not cleaned; the
-other flavors carry on.
+![Screenshot Organizer review screen](docs/assets/screenshot-05-screenshot-organizer-main.png)
 
-### Using the TUI
+More pictures of every screen are in each tool's guide.
 
-The review screen shows a tree: account → account-wide / each character → addon → files. With All flavors there
-is one more level on top: All flavors → flavor → account → …, and the ticks, `a`/`n`, the criteria and the max
-age apply across every flavor.
-Every account in scope is listed; one with nothing to clean says so, and so does a flavor with nothing to clean. Everything starts ticked. A progress bar shows while the scan runs.
+## What you need
 
-The left panel holds the criteria, the max age box and the buttons: **Clean**, **Dry run**, **Rescan** and, on
-its own row, **Undo last clean** (see [Undo last clean](#undo-last-clean)).
-Each criterion shows how many files it matches on its own, for example `1 Not installed (672 files)`. The counts
-update after each scan and whenever the max age changes. A ticked criterion shows a bright `✔` and an unticked
-one a dimmed `✘`. The tree uses the same marks.
+You need the following:
 
-Each criterion has its own colour. It's used on the criterion's checkbox and wherever that reason appears in
-the tree:
+1. **World of Warcraft**, duh!
+2. **Python 3.10 or newer.** Python is a free program language and interpreter which runs these tools. You install it once.
 
-| Colour | Criterion |
+### Installing Python
+
+**Windows**
+
+1. Go to [python.org/downloads](https://www.python.org/downloads/) and click the big **Download Python** button.
+2. Open the file you downloaded.
+3. On the first screen, tick **Add python.exe to PATH** (don't skip this one), then click **Install Now**.
+
+You can also get Python from the Microsoft Store: search for "Python 3.12" (or newer) and click **Get**.
+
+**Mac**
+
+1. Go to [python.org/downloads](https://www.python.org/downloads/) and click **Download Python**.
+2. Open the downloaded `.pkg` file and follow the steps.
+
+**Linux**
+
+Most Linux systems already have Python. To check, open a terminal and type `python3 --version`. If it shows
+3.10 or higher, you're set. If not, install it with your system's package manager, for example:
+
+- Ubuntu or Debian: `sudo apt install python3`
+- Fedora: `sudo dnf install python3`
+- Arch: `sudo pacman -S python`
+
+**Check that it worked.** Open a terminal (on Windows: press the Windows key, type `cmd`, press Enter) and
+type `python --version` on Windows or `python3 --version` on Mac and Linux. You should see something like
+`Python 3.12.4`.
+
+That's the only thing you install. Everything else the tools need comes in the download.
+
+## Getting Ka0s WoW Tools
+
+1. Go to the [Releases page](https://github.com/tusharsaxena/wow-tools/releases).
+2. Under the newest version, download the **Source code (zip)** file.
+3. Unzip it anywhere you like, for example `Documents\wow-tools`.
+
+If you use git, you can clone it instead, which makes updates a single command:
+`git clone https://github.com/tusharsaxena/wow-tools.git`
+
+## Getting started
+
+### Running the app
+
+| On | Do this |
 |---|---|
-| Red (`#E5534B`) | `not_installed` |
-| Orange (`#F08C3A`) | `not_enabled` |
-| Yellow (`#E8C547`) | `older_than` |
-| Purple (`#B07CFF`) | `stray_copies` |
+| Windows | Double-click `wow-tools.cmd` in the folder you unzipped |
+| Mac and Linux | Open a terminal in that folder and type `./wow-tools.sh` |
 
-| Key | Action |
+> **Tip for Windows:** make a shortcut so you don't have to open the folder every time. Right-click
+> `wow-tools.cmd`, choose **Show more options**, then **Send to → Desktop (create shortcut)**. Double-click the
+> shortcut to start the app. You can also right-click the shortcut and pick **Pin to Start**.
+
+### Navigating the app
+
+The app opens in a terminal window. You drive it with the keyboard:
+
+| Key | Does |
 |---|---|
-| `space` | Tick or untick the highlighted account, character, addon or file (on a button, press it) |
-| `a` / `n` | Tick all / none |
-| `1` `2` `3` `4` | Toggle `not_installed`, `not_enabled`, `older_than`, `stray_copies` |
-| Max age box + `Enter` | Change the age limit for this session |
-| `c` | **Clean** the ticked files (asks for confirmation first; the dialog starts on **No**) |
-| `y` | **Dry run** on the ticked files (asks first; the dialog starts on **Yes**) |
-| `r` | Rescan |
-| `z` | **Undo last clean** (asks first; the dialog starts on **No**) |
-| `f` | Choose another flavor |
-| `s` | Settings |
-| `u` | Install an available update |
-| `q` | Quit |
-
-While a clean runs, a progress window shows the current stage, a percentage bar and the current file:
-checking the selected files, checking for locked files, listing the WTF folder, backing up and verifying the WTF
-folder, zipping and verifying the files to clean, deleting, and checking the result. A dry run skips the lock
-check, the WTF backup and the result check. When a criterion or the max age changes, the tree shows a loading spinner
-and the summary bar says "Updating the list…" until the new list is ready. The results screen then shows a summary table and a table of every file
-with its status, account, character, addon, size and reasons.
-
-#### Cleaning across flavors
-
-With All flavors, Clean and Dry run work through the flavors one after another, and each flavor is cleaned
-exactly as if you had picked it alone: its own WTF backup (`backup-<flavor>-…zip`), cleaned-files zip, post-clean
-check and `keep_backups` pruning. The confirm dialog lists each flavor with its file counts and warns if WoW is
-running for any of them; the progress window names the flavor it is working on. If a flavor's clean is refused or
-stopped (a failed backup, locked files), the run stops there: flavors already done keep their results, the ones
-after it are not started. The results screen has one block of summary rows per flavor, a **Flavor** column in the
-file table, and, after a stop, rows saying which flavors were done, which one stopped and why, and which were not
-started.
-
-#### Keyboard use
-
-Every screen works without a mouse, and each one shows a one-line hint with its keys.
-
-| Key | Action |
-|---|---|
-| `↑` / `↓`, `Tab` / `Shift+Tab` | Move between fields and buttons |
-| `←` / `→` | Move between the buttons in a row. On the review screen they also switch panes: `←` from the tree goes to the filters (to the control you used last), `→` from the filters or the last button goes to the tree |
-| `Enter` or `Space` | Press the focused button, or tick the focused checkbox |
-| `Esc` | Go back or cancel |
-
-The tree, lists, tables and text boxes keep the arrow keys for themselves while they have focus. Use `Tab` to
-leave them.
-
-### Dry run
-
-A dry run (the **Dry run** button or `y`) writes and verifies the cleaned-files zip, exactly as a real clean
-would, and then deletes nothing. It reports what *would* be deleted, and it's recorded in the log. It takes no
-WTF backup. If zipping the cleaned files is turned off, a dry run writes nothing at all.
-
-### Where the zips go
-
-Everything the cleaner writes goes in its backup folder, a WTF Cleaner setting (press `s`). By default that is
-`<WoW folder>\wow-tools\wtf-cleaner`:
-
-```
-wow-tools\wtf-cleaner\
-  backup\backup-<flavor>-<YYYYMMDD-HHMMSS>.zip                  the whole WTF folder, taken before each clean
-  cleaned\cleaned-<flavor>-<account>-<YYYYMMDD-HHMMSS>.zip      only the files that clean removed
-```
-
-`<flavor>` is the flavor folder's short name (`retail`, `classic_era`, …), and `<account>` is the account you
-picked, or `all` for "All accounts". For example `cleaned-retail-all-20261003-140311.zip`.
-
-- **Cleaned files** (`cleaned\`). Before deleting, the cleaner zips the files it is about to remove, then
-  re-opens the zip and checks every file. **If it can't be written or verified, nothing is deleted.** Each zip has
-  a `manifest.json` listing every file, its size and why it was removed. These zips are never deleted by the tool.
-  You can turn them off in settings, but it isn't recommended.
-- **WTF backups** (`backup\`). See [Backup of the WTF folder](#backup-of-the-wtf-folder). The newest 5 **of each flavor**
-  are kept (`keep_backups` in settings); older ones of that flavor are deleted after each clean. Only files named
-  `backup-<flavor>-<stamp>.zip` are ever deleted.
-
-Zips from older versions (`wtf-cleaner_<flavor>_*.zip`, `wtf-snapshot_*.zip` in the folder itself) are left alone.
-
-### Undo last clean
-
-Every real clean (not a dry run) writes a **run journal**, one file per clean even with All flavors, in
-`<WoW folder>\wow-tools\wtf-cleaner\journal\` (`journal-<YYYYMMDD-HHMMSS>.jsonl`). It lists each file the moment
-it is deleted: its flavor, path, size and time, and which cleaned-files zip and WTF backup hold it. The journal is
-started before anything is deleted; **if it can't be written, nothing is deleted.** A clean that deleted nothing
-leaves no journal.
-
-**Undo last clean** (`z`, the amber button) puts back the files the newest clean deleted, newest first. The
-confirm dialog names when that clean ran, its flavors and how many files it deleted, and starts on **No**. Each
-file comes back from the cleaned-files zip, or from that flavor's WTF backup when zipping was off (or the zip is
-gone or lacks it), and its size must match the journal. The results screen ("undo result") lists every file as
-restored, skipped (with the reason) or failed.
-
-Undo is careful:
-
-- It never overwrites: a file that is back at its path (WoW may have written a new one) is **left alone**.
-- It never deletes anything and never touches the zips.
-- It only writes inside the flavors' `WTF` folders; a journal line that points anywhere else is left alone.
-- It goes back **one clean only**. Once a clean is undone the button stays disabled until the next real clean;
-  older journals are kept for reference, not offered. The button is also disabled while scanning or cleaning.
-
-Close WoW first; the confirm dialog warns you if it's running. The newest 10 journals are kept
-(`keep_journals` in settings, "Journals to keep"); older ones are deleted after each clean.
-
-### Locked files
-
-Some companion apps hold SavedVariables files open, which stops Windows from deleting them. The Raider.IO
-client is known to do this, and so is the WeakAuras Companion. Before a real clean:
-
-- the confirm dialog warns you if either app is running;
-- before the WTF backup, each selected file is renamed aside and straight back. This is a lock test that fails
-  exactly when a delete would fail. If any file is locked, the clean stops with nothing deleted and names the
-  locked files (`clean.locked`). Close the app and clean again.
-
-Dry runs skip both checks.
-
-### Backup of the WTF folder
-
-A real clean (not a dry run) also protects you against a crash halfway through. Before deleting anything it:
-
-1. zips the **whole** `<flavor>\WTF` folder to `<backup folder>\backup\backup-<flavor>-<YYYYMMDD-HHMMSS>.zip` and
-   verifies it;
-2. writes a marker file, `<backup folder>\clean-in-progress.json`, that names that backup and the files about
-   to be deleted.
-
-If the backup can't be written, the clean stops and nothing is deleted. The backup is **kept** after the clean
-(the newest `keep_backups` of each flavor, default 5, are kept).
-
-When the deleting is done (including when a few files could not be deleted), the cleaner checks the WTF folder
-against the backup:
-
-- every file it deleted is really gone;
-- every other file in the backup is still on disk;
-- with the cleaned-files zip on, it lists every deleted file at the right size.
-
-The results screen shows the backup's path and the check's result. If the check finds anything, the first
-problem is shown there and every problem is logged (`clean.check_failed`). The marker is cleared either way,
-because the clean did finish.
-
-If something unexpected stops the clean partway (an error), the cleaner puts back **only the files
-this run had already deleted**, taking them from the backup. It never overwrites a file that exists on disk. It
-then reports that the clean stopped and how many files were restored. If that restore fails, the marker is kept
-and the error names the backup.
-
-### After an interrupted clean
-
-If the program itself was killed mid-clean (power cut, closed window), the marker is still there next time. The
-cleaner **never restores on its own**. Instead:
-
-- The app shows a warning with when the clean started, where its WTF backup is and how to restore it by hand.
-  **Dismiss (keep the backup)** removes the marker and leaves the backup in place. **Remind me next time**
-  keeps both.
-
-While that marker exists, new real cleans are refused, because they would lose track of the earlier backup.
-Dry runs still work. Use Dismiss, or delete `clean-in-progress.json`, to clean again.
-
-**To restore by hand:** close WoW, then unzip that `backup\backup-<flavor>-<stamp>.zip` **into the flavor folder** (for
-example `World of Warcraft\_retail_`), keeping the folder structure. The paths inside start with `WTF\`. This
-puts back the whole WTF folder as it was before that clean, so only do it if files are really missing.
-
-### Restoring a backup
-
-- **Some cleaned files:** close WoW, then unzip the `cleaned\cleaned-…zip` **into the flavor folder** (for example `World of Warcraft\_retail_`),
-  keeping the folder structure. The paths inside the zip start with `WTF\Account\…`, so the files land back where
-  they were. You can ignore `manifest.json`.
-- **The whole WTF folder:** the same, with a `backup\backup-…zip` (its paths start with `WTF\`).
-
-### Is WoW running?
-
-Before a clean, the cleaner looks for running WoW processes and warns only about the flavor you chose. A process
-belongs to a flavor when its executable sits in that flavor's folder (`_retail_`, `_classic_era_`, …).
-
-- On Windows and WSL it reads executable paths through PowerShell. If the paths can't be read it falls back to
-  process names only, and those are listed as "flavor unknown".
-- On Linux (Wine) it reads `/proc`.
-- On macOS it can't tell, so there is no warning.
-
-## Screenshot Organizer
-
-WoW drops every screenshot into one flat `Screenshots` folder per flavor. The organizer files them into
-`YYYY\MM\DD` folders, separately for each flavor. The date comes from the file name only.
-
-### Where screenshots go
-
-There are two layouts, picked by the **destination folder** setting (press `s`):
-
-| Destination folder | Screenshots go to | Example |
-|---|---|---|
-| Set (an archive folder) | `<destination>\<flavor folder>\YYYY\MM\DD` | `H:\Media\Screenshots\World of Warcraft\_retail_\2019\07\31\WoWScrnShot_073119_232713.jpg` |
-| Empty (the default) | in place: `<flavor>\Screenshots\YYYY\MM\DD` | `World of Warcraft\_retail_\Screenshots\2019\07\31\WoWScrnShot_073119_232713.jpg` |
-
-File names are never changed. Only files lying directly in a flavor's `Screenshots` folder are looked at; date
-folders made by earlier runs are not read again. The destination can't be the WoW folder itself or anything
-inside a flavor's `Screenshots` folder (leave it empty for that). It doesn't have to exist yet: it's created on
-the first real run.
-
-**Recognised names.** `WoWScrnShot_MMDDYY_HHMMSS` with `.jpg`, `.jpeg`, `.png` or `.tga`, in any case, and a
-real calendar date (the year is `20YY`). Anything else, such as `notes.txt` or `WoWScrnShot_023119_…` (there is
-no 31 February), is **left where it is** and listed under "Skipped (n): name not recognised".
-
-### Picking flavors
-
-The flavor screen lists every flavor in your WoW folder (every `_name_` folder: `_retail_`, `_classic_`,
-`_classic_era_`, `_anniversary_`, `_classic_beta_`, ...), with **All flavors** first. Each row shows the flavor, its
-folder, and how many screenshots are waiting to be filed ("12 screenshots to file"); a flavor that has no
-`Screenshots` folder yet says "no Screenshots folder" and adds nothing to a run. Your choice (All flavors or
-one flavor) is pre-selected next time. If no flavor has a `Screenshots` folder, the tool says so and goes back to
-the menu.
-
-### Using the TUI
-
-The review screen shows a tree: All flavors (or the flavor) → flavor → year → month → day → files. Every node
-shows how many shots are under it, and everything starts ticked. A day's files appear when you expand it. A
-progress bar shows while the scan runs. The left panel shows the destination, the mode (Move or Copy) and four
-buttons: **Organize**, **Dry run**, **Rescan** and **Undo last run**. The bar at the bottom totals the ticked
-shots, possible duplicates, conflicts and skipped names. Every chosen flavor is listed; one with nothing to file says why ("no Screenshots folder" or "nothing to
-file").
-
-| Key | Action |
-|---|---|
-| `space` | Tick or untick the highlighted flavor, year, month, day or file (on a button, press it) |
-| `a` / `n` | Tick all / none |
-| `o` | **Organize** the ticked shots (asks for confirmation first; the dialog starts on **No**) |
-| `y` | **Dry run** on the ticked shots (asks first; the dialog starts on **Yes**) |
-| `r` | Rescan |
-| `z` | **Undo last run** (asks first; the dialog starts on **No**) |
-| `f` | Choose another flavor |
-| `t` | Back to the tool menu |
+| `↑` `↓` | Move up and down |
+| `Enter` | Choose |
+| `Esc` | Go back |
 | `s` | Settings |
 | `q` | Quit |
 
-`←` and `→` switch between the tree and the left panel, as on the WTF Cleaner's review screen. If nothing is
-left to file, the bar says "Nothing to file." and Organize and Dry run are disabled. Settings you change take
-effect at the next rescan (`r`).
+Each screen lists its keys along the bottom, so you don't have to remember them. A mouse works too.
 
-While a run goes, a progress window shows the stage and the current file. The results screen then shows a
-summary table (the mode, a count per outcome, and the journal) and a table of every file with its outcome,
-flavor, target folder and reason. From there `r` rescans, `f` picks another flavor, `t` goes back to the tool
-menu and `q` quits.
+### The first time
 
-### Duplicates and conflicts
+The first time you open a tool, it asks for two things:
 
-When a file with the same name is already at the target:
+1. **Your World of Warcraft folder.** This is the folder that holds `_retail_`, `_classic_` and so on, for
+   example `C:\Program Files (x86)\World of Warcraft`. The app looks in the usual places and suggests what it
+   finds. You only answer this once; every tool shares it.
+2. **That tool's settings.** Each guide explains them. If you're not sure, keep the suggested values.
 
-- **Same size** shows as a "possible duplicate" in the tree. At run time both files are compared by content
-  (SHA-256). If they're identical, the screenshot in `Screenshots` is removed, because it's already filed
-  ("Duplicate removed"). In copy mode it's left alone ("Already filed"). If the content differs after all, it's a
-  conflict.
-- **Different size** is a **conflict**. Conflicts are listed under their own read-only "Conflicts (n)" node and
-  can't be ticked. Both files are left alone and you sort them out by hand.
+Then you pick which version of the game to work on, or **All flavors** for every version at once. ("Flavor" is
+WoW's word for a game version such as Retail or Classic.)
 
-**Nothing is ever overwritten.** The target is checked again right before each move or copy, so a file that
-appears there during the run is a conflict too.
+## Tool guides
 
-### Copy mode
+Each tool has its own guide, with pictures, that walks through every screen:
 
-With "Copy instead of move" on (in settings), screenshots are copied into the date folders and stay in
-`Screenshots` as well. Every copy goes through a temporary `<name>.partial` file and is checked (size and
-SHA-256) before it's renamed into place. A move to another drive works the same way, and the original is deleted
-only after the copy checks out. If that delete fails, the result says "Copied, source left".
-
-### Dry run
-
-A dry run (the **Dry run** button or `y`) walks exactly the same checks, comparing possible duplicates by content
-too, and reports what *would* happen: "Would move", "Would copy", "Would remove duplicate" or a conflict. It
-creates no folders, moves nothing and writes no journal. It's recorded in the log.
-
-### Undo
-
-Every real run writes a **journal**, one file per run, in `<WoW folder>\wow-tools\screenshot-organizer\journal\`
-(`journal-<YYYYMMDD-HHMMSS>.jsonl`). It's kept beside the WTF Cleaner's folder and never in your screenshot
-archive. Each move, copy or removed duplicate is written to it the moment it happens, so it's accurate even if the
-run is cut short. If the journal can't be written, the run stops before it touches anything. A run that changed
-nothing leaves no journal.
-
-**Undo last run** (`z`) reverses the newest run, newest file first:
-
-- moved screenshots go back to their `Screenshots` folder;
-- copies are deleted (only while the original is still there, at the same size);
-- removed duplicates are copied back from the archive.
-
-Undo is careful:
-
-- It only touches a file that still matches the journal (same size). Anything that changed since, or a file of
-  the same name back in `Screenshots`, is **left alone** and listed as such. Nothing is ever overwritten.
-- Afterwards, `YYYY`, `MM` and `DD` folders that the run filed into are removed if they're now empty. Other
-  folders are never removed.
-- It goes back **one run only**. Once a run is undone, the button stays disabled until the next real run that files something; older
-  journals are kept for reference, not offered.
-- A journal line that doesn't point from a `Screenshots` folder in your WoW folder to a `YYYY\MM\DD` folder is
-  left alone.
-
-The newest 10 journals are kept (`keep_journals` in settings); older ones are deleted after each run. Undone
-journals count towards that.
-
-If a run stops partway (an error), the results screen shows what was done, and Undo last run can put it back when
-the run left a journal. If it stopped before anything could be journaled, the message says so and Undo is not
-offered for it.
-
-## Run journals
-
-Every tool that changes files keeps a **run journal** of each real run, so its last run can be undone. Journals
-live in your WoW folder, one folder per tool, `<WoW folder>\wow-tools\<tool>\journal\`, as
-`journal-<YYYYMMDD-HHMMSS>.jsonl` (one JSON line per change, written the moment it happens):
-
-| Tool | Journal folder | Undo |
-|---|---|---|
-| WTF Cleaner | `wow-tools\wtf-cleaner\journal\` | **Undo last clean** (`z`): puts deleted files back from the zips ([details](#undo-last-clean)) |
-| Screenshot Organizer | `wow-tools\screenshot-organizer\journal\` | **Undo last run** (`z`): moves screenshots back ([details](#undo)) |
-
-In both tools the journal is started before anything changes, so if it can't be written nothing is changed; a dry
-run writes none; only the newest run can be undone, once; Undo never overwrites a file; and each tool keeps its
-newest `keep_journals` (default 10).
-
-## Settings (`config\`)
-
-Each tool keeps its own settings file, next to one shared file for the suite:
-
-| File | Holds |
-|---|---|
-| `config\wow-tools.cfg` | `[general]`: the WoW folder, updates and logging, shared by every tool |
-| `config\wtf-cleaner.cfg` | `[wtf_cleaner]`: the WTF Cleaner's own settings |
-| `config\screenshot-organizer.cfg` | `[screenshot_organizer]`: the Screenshot Organizer's own settings |
-
-The files are created the first time they're needed. Press `s` in the app to change them, or edit them while
-the app is closed. A `wow-tools.cfg` from an older version (in the main folder) is split into `config\` on the
-next start, and the old file is removed. The Screenshot Organizer was called `screenshots` before; on the next
-start its `config\screenshots.cfg`, `logs\screenshots\` and `<WoW folder>\wow-tools\screenshots\` are moved to
-the new `screenshot-organizer` names. Nothing is overwritten: if a new file or folder already exists, only what it
-lacks is moved across, and an old settings file whose values differ is kept as `screenshots.cfg.migrated`.
-
-| File · section / key | Default | Meaning |
-|---|---|---|
-| `wow-tools.cfg` `[general] wow_path` | (asked) | WoW folder. Stored as a Windows path so it works from Windows **and** WSL. |
-| `wow-tools.cfg` `[general] last_flavor` | | Pre-selected flavor |
-| `wow-tools.cfg` `[general] check_for_updates` | `true` | Check GitHub for a new version (at most once a day) |
-| `wow-tools.cfg` `[general] auto_update` | `false` | Install new versions automatically on launch |
-| `wow-tools.cfg` `[general] log_level` | `info` | Detail level of the readable log (`debug`, `info`, `warning`, `error`) |
-| `wow-tools.cfg` `[general] log_retention_days` | `90` | Delete log files older than this |
-| `wtf-cleaner.cfg` `[wtf_cleaner] max_age_days` | `90` | Age limit for `older_than` |
-| `wtf-cleaner.cfg` `[wtf_cleaner] criterion_*` | `true` | Default on/off for each criterion |
-| `wtf-cleaner.cfg` `[wtf_cleaner] backup_before_delete` | `true` | Zip the files to clean (`cleaned\`) before deleting |
-| `wtf-cleaner.cfg` `[wtf_cleaner] backup_dir` | `<wow_path>\wow-tools\wtf-cleaner` | Holds `backup\` and `cleaned\` |
-| `wtf-cleaner.cfg` `[wtf_cleaner] keep_backups` | `5` | How many WTF backups (`backup\backup-<flavor>-*.zip`) to keep per flavor |
-| `wtf-cleaner.cfg` `[wtf_cleaner] keep_journals` | `10` | How many run journals (`<wow_path>\wow-tools\wtf-cleaner\journal\`) to keep (at least 1) |
-| `wtf-cleaner.cfg` `[wtf_cleaner] last_account` | (empty = all accounts) | Pre-selected account |
-| `wtf-cleaner.cfg` `[wtf_cleaner] last_flavor_choice` | (empty = all flavors) | Pre-selected flavor choice, e.g. `_retail_`; until it is first saved, `[general] last_flavor` is pre-selected |
-| `screenshot-organizer.cfg` `[screenshot_organizer] dest_dir` | (empty = in place) | Archive root: screenshots go to `<dest_dir>\<flavor folder>\YYYY\MM\DD`. Stored as a Windows path. |
-| `screenshot-organizer.cfg` `[screenshot_organizer] copy_mode` | `false` | Copy instead of move |
-| `screenshot-organizer.cfg` `[screenshot_organizer] last_flavor_choice` | (empty = all flavors) | Pre-selected flavor choice, e.g. `_retail_` |
-| `screenshot-organizer.cfg` `[screenshot_organizer] keep_journals` | `10` | How many run journals to keep (at least 1) |
+- [WTF Cleaner guide](docs/wtf-cleaner.md): clean out old addon settings safely, and undo a clean.
+- [Screenshot Organizer guide](docs/screenshot-organizer.md): sort screenshots into dated folders, and undo a
+  run.
 
 ## Updates
 
-On launch the suite checks GitHub Releases in the background, at most once a day. If a newer version exists,
-the app shows it in the bottom bar (press `u`).
+The app checks for a new version once a day while it's open. If there is one, the bottom bar says so; press `u`
+to install it. You can also update from a terminal in the app's folder:
 
-- `wow-tools update --check` (`./wow-tools.sh update --check` or `wow-tools.cmd update --check`) reports whether
-  an update is available.
-- `wow-tools update` installs it. A git clone is fast-forwarded to the release tag, and it refuses if
-  you have local changes. A zip install downloads the release and replaces the program files, keeping a copy
-  in `.update-backup\` and rolling back if anything fails. Your `config\`, `logs\` and backups are never
-  touched.
+- `wow-tools update --check` (on Windows `wow-tools.cmd update --check`, on Mac and Linux
+  `./wow-tools.sh update --check`) tells you whether an update is available.
+- `wow-tools update` installs it.
 
-Set `auto_update = true` to install updates on launch without asking.
+Updating never touches your settings, logs or backups. If an update fails partway, the app puts the old version
+back.
+
+## Your settings
+
+Your answers are saved in the `config` folder inside the app's folder, one file per tool:
+
+| File | Holds |
+|---|---|
+| `config\wow-tools.cfg` | Your WoW folder, plus update and log options, shared by every tool |
+| `config\wtf-cleaner.cfg` | The WTF Cleaner's settings |
+| `config\screenshot-organizer.cfg` | The Screenshot Organizer's settings |
+
+The easiest way to change them is to press `s` in the app. You can also open the files in Notepad while the app
+is closed. The guides list every setting.
+
+## Undo and run journals
+
+Every tool that changes files keeps a short record of what it did, called a **journal**, so it can undo its last
+run. Journals are kept in your WoW folder, under `wow-tools\<tool name>\journal`. Each tool's guide explains its
+undo.
 
 ## Logs
 
-Everything the tools do is logged, including settings changes, your choices, scan results, backups, and every
-file deleted, moved or skipped. Each tool has its own folder, `logs\wtf-cleaner\` and `logs\screenshot-organizer\`
-(the launcher uses `logs\suite\`):
+The app writes down everything it does, down to every file it deletes or moves. The logs are in the `logs`
+folder, one folder per tool, and the `logfile-<date>.log` files are plain text you can open in Notepad. They're
+kept for 90 days. If you ever need to report a problem, send these along.
 
-- `logfile-YYYY-MM-DD.log` is readable.
-- `events-YYYY-MM-DD.log` is structured, one JSON object per line.
+## Windows and WSL
 
-The format is described in [docs/events.md](docs/events.md).
+If you use WSL (Linux inside Windows), the same folder works from both sides. Run `./wow-tools.sh` from WSL or
+`wow-tools.cmd` from Windows; your settings carry over.
 
-## One copy at a time
+## FAQ
 
-Only one copy of Ka0s WoW Tools runs at a time. While it's open it holds a lock file, `wow-tools.lock`, in this
-folder, and it removes the file when it closes. If you start a second copy (or the last one crashed and left the
-file behind), you get a warning naming the process that holds the lock, with two choices:
-
-- **Quit** (the default), if the other copy really is open.
-- **Override and continue**, if it isn't, for example after a crash. When the process is known to be gone, the
-  warning says so and this button is focused.
-
-`wow-tools update` asks the same question on the terminal.
-
-## Windows and WSL together
-
-The same folder works from both. Paths are stored in Windows form (`G:\Games\…`) and translated to
-`/mnt/g/Games/…` automatically under WSL.
+| Question | Answer |
+|----------|--------|
+| Is it safe? Can I lose anything? | Both tools show you the full list and ask before they change anything. The WTF Cleaner backs up your whole `WTF` folder and zips every file before deleting it, and the Screenshot Organizer never overwrites a file. Both can undo their last run. If you're unsure, press **Dry run** first: it shows what would happen without changing anything. |
+| Does it change the game itself? | No. It never touches the game program or your addons. It only works on files the game leaves in your WoW folder: addon settings in `WTF` and pictures in `Screenshots`. |
+| Do I need to close WoW? | Close it before you clean with the WTF Cleaner: WoW rewrites those files when you log out and can bring deleted ones back. The cleaner warns you if WoW is running. The Screenshot Organizer doesn't mind if the game is open. |
+| Do I need to install anything besides Python? | No. Everything else the app needs comes in the download. |
+| Does it work on a Mac? | Yes, with `./wow-tools.sh`. The only thing missing on a Mac is the "WoW is running" warning, so close WoW yourself before cleaning. |
+| Why does it say another copy may already be running? | Only one copy of the app can run at once. While it's open it keeps a small file called `wow-tools.lock` in its folder. If you start it a second time, or it crashed last time, you get a warning with two buttons: **Quit** if the app really is open somewhere else, or **Override and continue** if it isn't (for example after a crash). When the app can tell the other copy is gone, it says so and puts you on **Override and continue**. |
+| Can I work on all my game versions at once? | Yes. Pick **All flavors** at the top of the list, in either tool. |
+| Where are my settings, backups and logs? | Settings are in the app's `config` folder and logs in its `logs` folder. Backups and undo journals are in your WoW folder, under `wow-tools`. See [Your settings](#your-settings) and the guides. |
+| How do I update? | The app tells you on its bottom bar when a new version is out; press `u`. See [Updates](#updates). |
+| How do I uninstall it? | Delete the app's folder. If you also want the backups and undo journals gone, delete the `wow-tools` folder inside your WoW folder. Nothing else is installed anywhere. |
 
 ## Troubleshooting
 
-- **"No WoW flavor folders were found"**: choose the `World of Warcraft` folder itself, not `_retail_`.
-- **"Refusing to scan"**: that flavor has no addons installed. Nothing is proposed, on purpose.
-- **Files come back after cleaning**: WoW was running. Close it and clean again.
-- **"files are locked by another program"**: close the Raider.IO client (or WeakAuras Companion), then clean
-  again. Nothing was deleted.
-- **"Ka0s WoW Tools may already be running"**: see [One copy at a time](#one-copy-at-a-time).
-- **"An earlier clean did not finish"**: see [After an interrupted clean](#after-an-interrupted-clean).
-- **"No Screenshots folders found"**: no flavor has a `Screenshots` folder yet. Take a screenshot in game first.
-- **A screenshot stays in `Screenshots` after organizing**: its name isn't a WoW screenshot name, or a different
-  file with the same name is already filed (a conflict). Both show in the tree and on the results screen.
-- **Python not found on Windows**: install Python 3.10+ from python.org and tick "Add to PATH".
+| Symptom | Fix |
+|---------|-----|
+| "Python was not found", or nothing happens when I double-click `wow-tools.cmd` | Python isn't installed, or **Add python.exe to PATH** wasn't ticked. Run the Python installer again, choose **Modify**, and tick it. |
+| "No WoW flavor folders were found" | Pick the `World of Warcraft` folder itself, not `_retail_` inside it. |
+| "Ka0s WoW Tools may already be running" | See *Why does it say another copy may already be running?* in the [FAQ](#faq). |
+| The window looks garbled or too small | Make the terminal window bigger, or use Windows Terminal (the default on Windows 11). |
+| It's very slow on WSL | WSL (Linux inside Windows) is slow at reading files on Windows drives such as `C:` or `G:`: every file takes a moment to check, and a WoW folder has thousands of them. Start the app from Windows instead, by double-clicking `wow-tools.cmd`. It uses the same settings, so nothing needs setting up again. If you stay on WSL, give the first scan time; the progress bar shows it's still working. |
+| A tool does something unexpected | See the troubleshooting table at the end of that tool's guide. |
+| Something looks wrong and I want to report it | Follow [Reporting a bug](#reporting-a-bug) below. |
 
-## For developers
+## Reporting a bug
 
-See [docs/architecture.md](docs/architecture.md), [docs/adding-a-tool.md](docs/adding-a-tool.md),
-[docs/vendoring.md](docs/vendoring.md), [docs/releasing.md](docs/releasing.md) and
-[docs/events.md](docs/events.md). Run the tests with `python3 scripts/run_tests.py` (in parallel), or
-`python3 -m unittest discover -s tests -t .` (one process).
+- Note what you did and what you expected to happen.
+- Open the `logs` folder inside the app's folder, then the folder of the tool you were using (for example
+  `logs\wtf-cleaner`).
+- Attach that day's `logfile-<date>.log` and `events-<date>.log` to your report.
+
+The logs list every step the app took, so they usually show what went wrong.
+
+## Issues and feature requests
+
+Bugs, ideas and planned work all go in the GitHub issue tracker:
+[https://github.com/tusharsaxena/wow-tools/issues](https://github.com/tusharsaxena/wow-tools/issues).
+Please file reports there, so nothing gets lost.
+
+## Version History
+
+| Version | Date | Highlights |
+|---------|------|------------|
+| 1.0.0 | 2026-10-03 | - First release, with two tools in one app<br>- **WTF Cleaner**: finds settings left behind by addons you no longer use, shows them for review, backs them up and deletes them; works on one game version, one account or **All flavors**; **Dry run** and **Undo last clean**<br>- **Screenshot Organizer**: sorts screenshots into year, month and day folders, in place or into an archive folder; duplicate checks, copy mode, **Dry run** and **Undo last run**<br>- Works with every installed game version (Retail, Classic, Classic Era, Anniversary, PTR and Beta) on Windows, Mac, Linux and WSL<br>- Checks for updates and installs them for you |
+
+## Credits
+
+The app's screens are built with [Textual](https://github.com/Textualize/textual) and
+[Rich](https://github.com/Textualize/rich) by Textualize (MIT license). They ship inside the app, together with
+the small libraries they use: Pygments (BSD 2-Clause), markdown-it-py, mdit-py-plugins, mdurl, linkify-it-py and
+platformdirs (all MIT), and typing_extensions (PSF license).
+
+## License
+
+Ka0s WoW Tools is released under the [MIT License](LICENSE). You're free to use, copy, change and share it.

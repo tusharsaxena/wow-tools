@@ -114,7 +114,7 @@ def check_for_update(cfg: Config, *, current: str = __version__, now: datetime |
 
 # --- applying an update ---------------------------------------------------------------------
 MANAGED_DIRS = ("wowtools", "vendor", "scripts", "docs")
-MANAGED_FILES = ("wow-tools.cmd", "wow-tools.sh", "requirements.txt", ".gitattributes")
+MANAGED_FILES = ("wow-tools.cmd", "wow-tools.sh", "requirements.txt", ".gitattributes", "LICENSE")
 # Program files earlier versions shipped that no longer exist; a zip update removes them (and backs them up).
 RETIRED_FILES = ("wtf-cleaner.cmd", "wtf-cleaner.sh")
 BACKUP_DIR_NAME = ".update-backup"
