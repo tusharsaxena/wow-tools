@@ -50,18 +50,22 @@ MISSING_FILED = ("the filed copy is missing (if it is on a drive that is not con
                  "again)")
 MISSING_FILED_FINAL = "the filed copy is missing"  # the journal was marked undone: Undo is not offered again
 COPY_GONE = "the copy was already gone"
+ALREADY_BACK = "the screenshot is already back in the Screenshots folder"
 
 
 def _undo_one(entry: dict, wow_root: Path, dest_dir: Path | None, rename: Rename) -> tuple[str, str]:
     """A filed screenshot that is missing altogether is FAILED (it may be on an unplugged drive: Undo can be tried
     again); one that changed is UNDO_SKIPPED (left alone for good). In copy mode a missing copy next to an intact
-    original is already undone (COPY_REMOVED)."""
+    original is already undone (COPY_REMOVED). A moved screenshot whose filed copy is gone but whose original is back
+    (same size: an interrupted Undo, or put back by hand) is UNDO_SKIPPED, so the journal can be closed."""
     src, dst, size, action = entry["src"], entry["dst"], entry["size"], entry["action"]
     refusal = _guard(src, dst, wow_root, dest_dir)
     if refusal:
         return UNDO_SKIPPED, refusal
     if action == A_MOVED:
         if _missing(dst):
+            if _size(src) == size:
+                return UNDO_SKIPPED, ALREADY_BACK
             return FAILED, MISSING_FILED
         if _size(dst) != size:
             return UNDO_SKIPPED, "the filed copy was changed"

@@ -130,8 +130,8 @@ name not recognised".
 Turn on **Copy instead of move** in settings to copy screenshots into the dated folders and keep the originals in
 `Screenshots` too. Every copy is checked before it counts.
 
-Next time you scan, the originals you've already copied aren't "waiting" any more. When the same file (same
-size and date) is already in its dated folder, the review screen lists it under "Already filed" for that game
+Next time you scan, the originals you've already copied aren't "waiting" any more. When a file of the same name and
+size is already in its dated folder, the review screen lists it under "Already filed" for that game
 version, unticked, and the game version list doesn't count it. You can still tick it by hand (`a` leaves these
 alone); the run then compares the two files and says "Already filed" or "Conflict".
 
@@ -152,6 +152,8 @@ Undo is careful too:
 - Undo only goes back **one run**. After you undo, the button stays greyed out until your next run.
 - If nothing could be put back because the filed screenshots are missing (for example the archive drive isn't
   connected), the undo doesn't count: connect the drive and press **Undo last run** again.
+- A screenshot that's already back in its `Screenshots` folder (say an earlier undo was cut short, or you moved
+  it back yourself) is left alone and listed as already back.
 
 Each run's record (its **journal**) is kept in `<your WoW folder>\wow-tools\screenshot-organizer\journal`, never
 in your screenshot archive. The newest 10 are kept.

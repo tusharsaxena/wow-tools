@@ -137,18 +137,23 @@ class PlannerTest(unittest.TestCase):
         self.assertEqual({i.state for i in plan.items}, {FILED})
         self.assertEqual(waiting_count(self.retail, dest, copy=True), 0)
 
-    def test_filed_needs_same_size_and_time_and_copy_mode(self):
+    def test_filed_needs_same_size_and_copy_mode(self):
+        """R3: a same-size filed copy with another modified time (a copy that did not keep it) is filed too, so the
+        picker's count and the review screen agree."""
         self.copy_all(None)
         filed = self.shots / "2019" / "07" / "31" / "WoWScrnShot_073119_232713.jpg"
         __import__("os").utime(filed, (1_000_000_000, 1_000_000_000))  # same size, other time
-        states = {i.src.name: i.state for i in scan([self.retail], None, copy=True).items}
-        self.assertEqual(states["WoWScrnShot_073119_232713.jpg"], MAYBE_DUPLICATE)
-        self.assertEqual(states["WoWScrnShot_073119_232800.jpg"], FILED)
+        plan = scan([self.retail], None, copy=True)
+        states = {i.src.name: i.state for i in plan.items}
+        self.assertEqual(states["WoWScrnShot_073119_232713.jpg"], FILED)
+        self.assertEqual(len(plan.to_file), 0)
+        self.assertEqual(waiting_count(self.retail, None, copy=True), len(plan.to_file))
         # Move mode: a same-name file at the target is a possible duplicate to remove, never "filed".
         self.assertEqual({i.state for i in scan([self.retail], None).items}, {MAYBE_DUPLICATE})
         # A filed copy of another size is a conflict and is not waiting either.
         (self.shots / "2019" / "08" / "01" / "WoWScrnShot_080119_101010.PNG").write_bytes(b"other size")
         self.assertEqual(waiting_count(self.retail, None, copy=True), 0)
+        self.assertEqual(len(scan([self.retail], None, copy=True).to_file), 0)
 
     def test_scan_completed_counts_filed(self):
         self.copy_all(None)

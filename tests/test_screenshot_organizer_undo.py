@@ -290,6 +290,33 @@ class UndoTest(unittest.TestCase):
         self.assertNotIn("try Undo again", failed.reason)  # Undo is no longer offered for this journal
         self.assertIn("missing", failed.reason)
 
+    def test_undo_again_after_an_interrupted_undo(self):
+        """R3: every screenshot was moved back but the journal was not marked undone (the app was killed): undoing
+        again finds them back in place, closes the journal and does not ask to try again."""
+        result = self.organize(self.dest)
+        with unittest.mock.patch("wowtools.tools.screenshot_organizer.undo.mark_undone"):
+            undo(result.journal_path, wow_root=self.root)
+        self.assert_restored()
+        self.assertEqual(latest_undoable(self.journals), result.journal_path)
+        back = undo(result.journal_path, wow_root=self.root)
+        self.assertEqual(back.count(FAILED), 0)
+        self.assertEqual(back.count(UNDO_SKIPPED), 4)
+        self.assertTrue(all("already back" in o.reason for o in back.outcomes))
+        self.assertTrue(back.marked_undone)
+        self.assertIsNone(latest_undoable(self.journals))
+        self.assert_restored()
+
+    def test_moved_entry_with_original_of_other_size_back_is_still_failed(self):
+        """A file of another size with the original's name is not the screenshot: the filed copy is still missing."""
+        result = self.organize(self.dest)
+        for path in (self.dest / "_retail_").rglob("*"):
+            if path.is_file():
+                path.unlink()
+        (self.shots / A).write_bytes(b"something else entirely")
+        back = undo(result.journal_path, wow_root=self.root)
+        self.assertEqual(back.count(FAILED), 4)
+        self.assertFalse(back.marked_undone)
+
     def test_copy_mode_with_copies_deleted_marks_undone(self):
         """The user deleted the archive copies: the originals are intact, so the run is already undone."""
         result = self.organize(self.dest, copy=True)

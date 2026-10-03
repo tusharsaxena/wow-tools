@@ -18,11 +18,10 @@ ScanProgress = Callable[[int, int, str], None]
 NEW = "new"
 MAYBE_DUPLICATE = "maybe_duplicate"  # a file of the same size is at the target; execute compares hashes
 CONFLICT = "conflict"  # a file of another size is at the target: never touched
-# Copy mode only: the original stays in Screenshots, and a file of the same size and modified time (copies keep
-# it) is already at the target. Not waiting: listed as already filed and unticked; execute still compares hashes
-# if it is ticked.
+# Copy mode only: the original stays in Screenshots, and a file of the same size is already at the target (the
+# modified time is not compared: not every copy keeps it). Not waiting, as in waiting_count: listed as already
+# filed and unticked; execute still compares hashes if it is ticked.
 FILED = "filed"
-SAME_TIME_S = 2.0  # FAT/exFAT drives store modified times in 2-second steps
 UNRECOGNISED = "name not recognised"
 TICK = 500  # progress tick every N files inside one folder
 SAMPLE = 20
@@ -160,10 +159,6 @@ def waiting_count(flavor: Flavor, dest_dir: Path | None = None, *, copy: bool = 
         return None
 
 
-def _same_copy(src: os.stat_result, dst: os.stat_result) -> bool:
-    return src.st_size == dst.st_size and abs(src.st_mtime - dst.st_mtime) <= SAME_TIME_S
-
-
 def scan(flavors: list[Flavor], dest_dir: Path | None, progress: ScanProgress | None = None, *,
          copy: bool = False) -> Plan:
     log_event("shots.scan_started", flavors=[f.folder for f in flavors],
@@ -216,7 +211,7 @@ def scan(flavors: list[Flavor], dest_dir: Path | None, progress: ScanProgress | 
                 if existing is not None:
                     if existing.st_size != st.st_size:
                         state = CONFLICT
-                    elif copy and _same_copy(st, existing):
+                    elif copy:
                         state = FILED
                     else:
                         state = MAYBE_DUPLICATE

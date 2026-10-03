@@ -186,8 +186,7 @@ again in `action_rescan`, which refuses to scan a hand-edited bad `dest_dir`.
 **Scan.** One listing per `Screenshots` folder (top-level files only) and one names-only listing
 (`planner.list_names`) per target day folder. Only a name already at the target is stat'ed, to set the state:
 `new`, `maybe_duplicate` (same size) or `conflict` (other size). In copy mode (`scan(..., copy=True)`) a same-size
-target whose modified time is within 2 s (copies keep it; FAT stores 2-second steps) is `filed` instead: the
-original stays in `Screenshots` after a copy, so it is not "to file" (`FlavorPlan.to_file` leaves it out), the review
+target is `filed` instead (the modified time is not compared: not every copy keeps it): the original stays in `Screenshots` after a copy, so it is not "to file" (`FlavorPlan.to_file` leaves it out), the review
 screen lists it in an unticked Already filed group, and `execute` still compares hashes if it is ticked.
 `waiting_count(flavor, dest_dir, copy=)` (the flavor picker's counts) lists names only; in copy mode it also lists
 each target day folder and leaves out names already there. Unparsable names become `Skipped`. Progress is
@@ -239,7 +238,9 @@ tampered journal cannot point Undo at a file anywhere else). `read_journal` drop
 size that is not a number, and `latest_undoable` treats an unreadable journal as not offered. Then:
 
 - `moved`: if `dst` has the recorded size and `src` is free, move it back (`move_file`, copy-verify-delete across
-  devices; a failed delete of the archive copy is still `restored`, with a reason);
+  devices; a failed delete of the archive copy is still `restored`, with a reason); a missing `dst` with `src` back
+  at the recorded size (an interrupted Undo, or put back by hand) is `undo_skipped` ("the screenshot is already
+  back in the Screenshots folder"), so the journal is closed;
 - `copied` / `copied_source_left`: delete `dst` if both `src` and `dst` have the recorded size (`copy_removed`);
   a missing `dst` next to an intact `src` is already undone (`copy_removed`, "the copy was already gone");
 - `duplicate_removed`: if `src` is free and `dst` has the recorded size, `copy_verified(dst, src)`;
