@@ -11,7 +11,7 @@ task; push after the round. Never merge without the user's go-ahead.
 | F3 | Ace3 blacklist pairs + tree screen | done | 35ec7d6 | `parse/format_blacklist`, `is_blacklisted(pairs, flavor, addon)`, `toggle_pair`, `unique_pairs` (`"*"` = legacy bare name); `Staging.locked(flavor, addon)`; `BlacklistScreen` (two panes, scan worker, flavor → addon, "(not found)", a/n/x/c); settings "Edit blacklist…" + summary; review `b` per flavor, `action_edit_blacklist` saves at once; events regenerated |
 | F4 | Ace3 guidance: pending changes, action bar, guidance line | done | 4a1959c | `report.guidance`/`node_hint`/`pending_text` (was `staged_text`), `NO_PENDING`, `STEPS`; `#pending` line; tree pane `#tree-pane` = tree + `#guide` + `#tree-actions` (`WrapButtonRow` in `ui/widgets.py`, 8 compact buttons, `TREE_ACTIONS`); guide updates on cursor/tick/pending; 80x24 tree-pane test in look-and-feel; guide "How it works", action bar, guidance line, blacklist screen; events regenerated |
 | F5 | docs + final check | done | 9c99d5c | README (Unreleased row, `x`/`c` key row), `docs/architecture.md` (blacklist pairs, setup/settings screens, `#pending`, tree pane guide + action bar, `BlacklistScreen`, `WrapButtonRow`), `CLAUDE.md` (global retention, one look and feel); guides already current; `docs/events.md` unchanged; run_tests 1010 OK (2 skipped), serial unittest 1010 OK (2 skipped), `-k ace` 437 OK, ruff clean |
-| R | review, fixes, push | todo | | |
+| R | review, fixes, push | reviewed (not pushed yet) | be0d0c4 | 8 findings, all real and fixed (two were the same tree-rows issue); run_tests 1020 OK (2 skipped), ruff clean |
 
 ## Decisions taken during the build
 
@@ -61,3 +61,29 @@ task; push after the round. Never merge without the user's go-ahead.
   "Blacklist…" and "blacklist screen" in the Ace3 guide, and no "staged" in it. The guide and README updates were
   done here (the plan's F4 file list), leaving F5 the final check.
 - Task F5: the four guides needed no change (F1, F2 and F4 had already updated them); the `ace.staged` event keeps its name (F4 decision), its description already says "pending change".
+- Feedback round 1 review:
+  - Fixed: the blacklist screen dropped legacy `"*"` pairs for shown flavors where the scan did not list the addon
+    (all of them when the scan failed). A wildcard's addon is now listed under every shown flavor ("(not found)"
+    where missing) and so saved as explicit pairs everywhere; a failed scan keeps every pair (Save stays enabled:
+    nothing is lost). Spec note: the plan said a wildcard shows "under every flavor where that addon is found"; it
+    now shows under every shown flavor.
+  - Fixed: `s` over a `BlacklistScreen` opened a second settings stack whose Save could be overwritten.
+    `open_settings` now does nothing while a `ProfileSettingsScreen` or a `BlacklistScreen` is anywhere on the stack.
+  - Fixed: Delete profile / Assign profile with nothing ticked acted on every profile or character when the root
+    (or a flavor or account) was highlighted. `_selected` no longer falls back to `GROUP_KINDS` nodes; they ask for
+    a tick like More… does. `test_popups_fit_80x24` now ticks all (`a`) before `p`, as it already did before `d`
+    (its subject is the popup's fit, not the root fallback).
+  - Fixed: the guidance line offered Delete/Rename/Copy/tick on a blacklisted addon. `node_hint`/`guidance` take
+    `locked` (the addon's name): on a locked addon, database, profile or character the hint is "X is blacklisted:
+    shown, never changed (u unlocks it for this session)".
+  - Fixed (two findings, the same cause): with pending changes the node hint pushed the tree below 5 rows at 80x24.
+    `guidance(..., hint=False)` gives the pending line alone; the screen uses it when the wrapped text would leave
+    the tree fewer than `GUIDE_MIN_TREE` (5) rows, and recomputes on resize (the plan's "when there is room"). New
+    look-and-feel test highlights an addon, a profile and a character with and without pending changes.
+  - Fixed: the left pane's hint lost its last lines at 80x24 with several kinds of pending change and a scan
+    warning (the pending line takes up to three rows, the bottom line two). The "Show" heading is folded into the box
+    labels ("Show leftover characters", "Show blacklisted addons"), as F2 did for View; the guide's filter table
+    follows. Spec note: the design spec's left pane still names a "Show" group.
+  - Fixed: the general settings screen (a plain `VerticalScroll`) let ↓ scroll the form instead of moving focus at
+    80x24, so the retention fields were reachable only with Tab. It is a `FormScroll` now, opened at the top.
+  - Rejected: none.
