@@ -1,0 +1,454 @@
+"""The summary of the chosen flavors (what Interface and WTF hold, existing backups) with Back up, Restore and
+Undo, plus the progress and result screens of a backup."""
+from __future__ import annotations
+
+import shutil
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any, ClassVar
+
+from rich.text import Text
+from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.containers import Vertical
+from textual.screen import Screen
+from textual.widgets import Button, DataTable, Footer, Header, ProgressBar, Static
+
+from wowtools.core import activity
+from wowtools.core.config import Config
+from wowtools.core.events import log_event, log_exception
+from wowtools.core.install import Flavor, WowInstall
+from wowtools.core.paths import to_stored
+from wowtools.core.process import wow_check_for
+from wowtools.tools.interface_backup.backup import BackupOutcome, back_up_all
+from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups
+from wowtools.tools.interface_backup.journal import latest_undoable
+from wowtools.tools.interface_backup.report import (BACKUP_RESULT_COLUMNS, STAGE_TITLES, SUMMARY_COLUMNS,
+                                                    backup_confirm, backup_result_rows, notices, plural,
+                                                    summary_rows)
+from wowtools.tools.interface_backup.scanner import CHEAP_STATS, FlavorScan, scan_flavors
+from wowtools.tools.interface_backup.settings import (load_settings, resolve_backup_root, resolve_journal_dir,
+                                                      validate_backup_dir)
+from wowtools.ui.branding import BrandBar
+from wowtools.ui.dialogs import ConfirmScreen, ProgressScreen, theme_colour
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
+
+NAV_HINT = ("↑↓/Tab move · ←→ buttons · Enter/Space press · b back up · e restore · z undo · r rescan · "
+            "f/Esc flavors · t tools · q quit")
+WowCheck = Callable[[], "list[str] | None"]
+
+
+def free_bytes(path: Path | None, disk_usage: Callable = shutil.disk_usage) -> int | None:
+    """Free bytes on the drive that holds path (or its nearest existing parent); None when unknown."""
+    while path is not None and not path.exists() and path.parent != path:
+        path = path.parent
+    if path is None:
+        return None
+    try:
+        return int(disk_usage(path).free)
+    except (OSError, ValueError):
+        return None
+
+
+class BackupProgressScreen(ProgressScreen):
+    """Shown while a backup (and, from Task 10, a restore or undo) runs."""
+
+    ID_PREFIX = "ibackup"
+    STAGE_TITLES = STAGE_TITLES
+
+    def __init__(self, first_stage: str = "backup") -> None:
+        super().__init__(first_stage=first_stage)
+
+
+class BackupResultScreen(Screen[str]):
+    """The outcome of a backup: one row per flavor and what to do next."""
+
+    DEFAULT_CSS = """
+    BackupResultScreen #result { height: 1fr; padding: 1 2; }
+    BackupResultScreen #result-head { height: auto; margin-bottom: 1; }
+    BackupResultScreen #result-table { height: 1fr; }
+    BackupResultScreen .buttons { height: auto; padding: 0 2; }
+    BackupResultScreen Button { margin-right: 2; }
+    BackupResultScreen NavHint { padding: 0 2; margin-top: 0; }
+    """
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("r", "choose('review')", "Rescan"), Binding("e", "choose('restore')", "Restore"),
+        Binding("f", "choose('flavors')", "Flavors"), Binding("t", "choose('tools')", "Tools"),
+        Binding("q", "choose('quit')", "Quit"), Binding("escape", "choose('review')", "Back", show=False),
+        *NAV_BINDINGS]
+
+    def __init__(self, outcomes: list[BackupOutcome]) -> None:
+        super().__init__()
+        self.outcomes = outcomes
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="result"):
+            yield Static(id="result-head")
+            yield DataTable(id="result-table", cursor_type="row", zebra_stripes=True)
+        with ButtonRow(classes="buttons"):
+            yield action_button("Rescan (r)", "neutral", id="review")
+            yield action_button("Restore (e)", "neutral", id="restore")
+            yield action_button("Other flavor (f)", "neutral", id="flavors")
+            yield action_button("Tools (t)", "neutral", id="tools")
+            yield action_button("Quit (q)", "neutral", id="quit")
+        yield NavHint("↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · r rescan · e restore · "
+                      "f other flavor · t tools · q quit")
+        yield BrandBar()
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self.sub_title = "Interface Backup · result"
+        made = sum(o.kind == "created" for o in self.outcomes)
+        self.query_one("#result-head", Static).update(
+            Text(f"{made} of {plural(len(self.outcomes), 'flavor')} backed up."))
+        table = self.query_one("#result-table", DataTable)
+        table.add_columns(*BACKUP_RESULT_COLUMNS)
+        styles = {"created": "success", "failed": "error", "skipped": "warning"}
+        for outcome, (flavor, kind, *rest) in zip(self.outcomes, backup_result_rows(self.outcomes)):
+            style = f"bold {theme_colour(self.app, styles[outcome.kind])}" if outcome.kind in styles else ""
+            table.add_row(Text(flavor), Text(kind, style=style), *(Text(c) for c in rest))
+        self.query_one("#review", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.action_choose(event.button.id or "quit")
+
+    def action_choose(self, choice: str) -> None:
+        log_event("ui.selection", screen="ibackup_result", control="next", value=choice)
+        self.dismiss(choice)
+
+
+class BackupSummaryScreen(Screen[str]):
+    """Dismisses with "flavors", "tools" or "quit"."""
+
+    DEFAULT_CSS = """
+    BackupSummaryScreen #body { height: 1fr; padding: 1 2; }
+    BackupSummaryScreen #scan-box { height: auto; }
+    BackupSummaryScreen #scan-progress { width: 1fr; }
+    BackupSummaryScreen #scan-label { color: $text-muted; }
+    BackupSummaryScreen #flavors { height: auto; max-height: 14; margin: 1 0; }
+    BackupSummaryScreen #details { height: auto; }
+    BackupSummaryScreen #notices { height: auto; color: $warning; margin-top: 1; }
+    BackupSummaryScreen #actions { height: auto; padding: 0 2; }
+    BackupSummaryScreen #actions Button { min-width: 0; width: auto; margin-right: 1; }
+    BackupSummaryScreen NavHint { padding: 0 2; }
+    """
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("b", "back_up", "Back up"), Binding("e", "restore", "Restore"),
+        Binding("z", "undo", "Undo last restore"), Binding("r", "rescan", "Rescan"),
+        Binding("f", "leave('flavors')", "Flavors"), Binding("t", "leave('tools')", "Tools"),
+        Binding("q", "leave('quit')", "Quit"), Binding("escape", "leave('flavors')", "Flavors", show=False),
+        *NAV_BINDINGS]
+
+    def __init__(self, cfg: Config, tool_cfg: Config, flavors: list[Flavor], scope_label: str, *,
+                 wow_check: WowCheck | None = None, disk_usage: Callable = shutil.disk_usage) -> None:
+        super().__init__()
+        self.cfg = cfg  # the suite config (WoW folder)
+        self.tool_cfg = tool_cfg  # config/interface-backup.cfg
+        self.flavors = list(flavors)
+        self.scope_label = scope_label
+        self.wow_check = wow_check  # None: built per run from the flavors involved
+        self.disk_usage = disk_usage
+        self.settings = load_settings(tool_cfg)
+        self.scans: list[FlavorScan] | None = None
+        self.backups: list[BackupInfo] = []
+        self.undoable: Path | None = None  # the newest undoable restore journal, found by the scan worker
+        self._scanning = False
+        self._checking = False  # the running-WoW check is in its worker
+        self._then_restore = False  # Restore (e) on the result screen: open it once the rescan is done
+        self._progress_screen: ProgressScreen | None = None
+
+    # --- layout ------------------------------------------------------------------------------------
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="body"):
+            with Vertical(id="scan-box"):
+                yield ProgressBar(id="scan-progress", show_eta=False)
+                yield Static("", id="scan-label")
+            yield DataTable(id="flavors", cursor_type="row", zebra_stripes=True)
+            yield Static("", id="details")
+            yield Static("", id="notices")
+        with ButtonRow(id="actions"):
+            yield action_button("Back up (b)", "confirm", id="btn-backup")
+            yield action_button("Restore (e)", "neutral", id="btn-restore")
+            yield action_button("Undo last restore (z)", "revert", id="btn-undo")
+            yield action_button("Rescan (r)", "neutral", id="btn-rescan")
+            yield action_button("Flavors (f)", "neutral", id="btn-flavors")
+            yield action_button("Tools (t)", "neutral", id="btn-tools")
+        yield NavHint(NAV_HINT)
+        yield BrandBar()
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self.sub_title = f"Interface Backup · {self.scope_label}"
+        self.query_one("#flavors", DataTable).add_columns(*SUMMARY_COLUMNS)
+        self.query_one("#flavors", DataTable).focus()
+        self.action_rescan()
+
+    # --- paths ---------------------------------------------------------------------------------
+    def _root(self) -> Path | None:
+        return resolve_backup_root(self.settings, self.cfg.wow_path)
+
+    def _journal_dir(self) -> Path | None:
+        return resolve_journal_dir(self.cfg.wow_path)
+
+    def _folder_problem(self) -> str | None:
+        """The saved backup folder is checked again before it is used: the file may have been edited by hand."""
+        wow = self.cfg.wow_path
+        if wow is None:
+            return "No WoW folder is set."
+        return validate_backup_dir(self.settings.backup_dir, WowInstall(wow))
+
+    @property
+    def idle(self) -> bool:
+        """Nothing is scanning, checking or running: the actions are open."""
+        return not (self._scanning or self._checking or self.app.busy)
+
+    def _refresh_buttons(self) -> None:
+        if not self.is_attached:
+            return
+        idle = self.idle
+        has_data = bool(self.scans) and any(s.has_data for s in self.scans or ())
+        self.query_one("#btn-backup", Button).disabled = not idle or not has_data
+        self.query_one("#btn-restore", Button).disabled = not idle
+        self.query_one("#btn-undo", Button).disabled = not idle or self.undoable is None
+        self.query_one("#btn-rescan", Button).disabled = not idle
+
+    # --- scan ----------------------------------------------------------------------------------
+    def action_rescan(self) -> None:
+        if not self.idle:
+            return
+        self.settings = load_settings(self.tool_cfg)
+        self._scanning = True
+        self.scans = None
+        self.query_one("#scan-progress", ProgressBar).update(total=None, progress=0)
+        self.query_one("#scan-label", Static).update(Text("Reading the Interface and WTF folders"))
+        self.query_one("#scan-box").display = True
+        self._refresh_buttons()
+        flavors, root, journal_dir = list(self.flavors), self._root(), self._journal_dir()
+        self.run_worker(lambda: self._scan_worker(flavors, root, journal_dir), thread=True, exclusive=True,
+                        group="scan")
+
+    def _scan_worker(self, flavors: list[Flavor], root: Path | None, journal_dir: Path | None) -> None:
+        def progress(stage: str, current: int, total: int, detail: str) -> None:
+            self.app.call_from_thread(self._scan_progress, current, total, detail)
+
+        try:
+            scans = scan_flavors(flavors, with_stats=CHEAP_STATS, progress=progress)
+            backups = list_backups(root)  # never raises
+            undoable = latest_undoable(journal_dir)
+        except Exception as exc:  # noqa: BLE001 - shown to the user, never a crash
+            log_exception("ibackup.scan", exc)
+            self.app.call_from_thread(self._scan_failed, f"The scan failed: {exc}")
+            return
+        self.app.call_from_thread(self._scanned, scans, backups, undoable)
+
+    def _scan_progress(self, current: int, total: int, detail: str) -> None:
+        if not self.is_attached:
+            return
+        self.query_one("#scan-progress", ProgressBar).update(total=total or None, progress=current)
+        self.query_one("#scan-label", Static).update(Text(detail))
+
+    def _scan_failed(self, message: str) -> None:
+        self._scanning = False
+        self._then_restore = False
+        if not self.is_attached:
+            return
+        self.query_one("#scan-box").display = False
+        self.query_one("#notices", Static).update(Text(message))
+        self.notify(message, title="Scan failed", severity="error", timeout=15)
+        self._refresh_buttons()
+
+    def _scanned(self, scans: list[FlavorScan], backups: list[BackupInfo], undoable: Path | None) -> None:
+        self._scanning = False
+        self.scans, self.backups, self.undoable = scans, backups, undoable
+        if not self.is_attached:
+            return
+        self.query_one("#scan-box").display = False
+        by_flavor: dict[str, list[BackupInfo]] = {}
+        for info in backups:
+            by_flavor.setdefault(info.flavor_short, []).append(info)
+        table = self.query_one("#flavors", DataTable)
+        table.clear()
+        for row in summary_rows(scans, by_flavor):
+            table.add_row(*(Text(c) for c in row))
+        root, journal_dir = self._root(), self._journal_dir()
+        keep = self.settings.keep_backups
+        self.query_one("#details", Static).update(Text(
+            f"Backups go to: {to_stored(root) if root else '?'}\n"
+            f"Keeping: {'every backup' if keep == 0 else f'the newest {keep} of each flavor'}\n"
+            f"Restore journals: {to_stored(journal_dir) if journal_dir else '?'}"))
+        self.query_one("#notices", Static).update(Text("\n".join(notices(scans))))
+        self._refresh_buttons()
+        if not self.query_one("#btn-backup", Button).disabled:
+            self.query_one("#btn-backup", Button).focus()
+        if self._then_restore:
+            self._then_restore = False
+            self.action_restore()
+
+    # --- running-WoW check (PowerShell/tasklist can take seconds: never on the UI thread) ---------------
+    def run_preflight(self, check: WowCheck, then: Callable[[list[str] | None, Any], None],
+                      extra: Callable[[], Any] | None = None) -> None:
+        """Run check() (and extra(), e.g. free space) in a worker, then call then(running, extra_result) on the UI
+        thread if this screen is still the one shown. A failing check is "unknown" (None)."""
+        self._checking = True
+        self._refresh_buttons()
+        self.query_one("#notices", Static).update(Text("Checking for running programs…", style="bold #E8B04B"))
+        self.run_worker(lambda: self._preflight_worker(check, extra, then), thread=True, group="preflight")
+
+    def _preflight_worker(self, check: WowCheck, extra: Callable[[], Any] | None,
+                          then: Callable[[list[str] | None, Any], None]) -> None:
+        running = result = None
+        try:
+            running = check()
+        except Exception as exc:  # noqa: BLE001 - a failed check is "unknown", as when PowerShell is missing
+            log_exception("preflight", exc)
+        if extra is not None:
+            try:
+                result = extra()
+            except Exception as exc:  # noqa: BLE001 - unknown as well
+                log_exception("preflight", exc)
+        self.app.call_from_thread(self._preflight_done, running, result, then)
+
+    def _preflight_done(self, running: list[str] | None, result: Any,
+                        then: Callable[[list[str] | None, Any], None]) -> None:
+        self._checking = False
+        if not self.is_attached:
+            return
+        self.query_one("#notices", Static).update(Text("\n".join(notices(self.scans or []))))
+        self._refresh_buttons()
+        if self.app.screen is not self:
+            return  # the user left the screen while the check ran
+        if running:
+            log_event("wow.running_warning", executables=running)
+        then(running, result)
+
+    # --- back up -------------------------------------------------------------------------------
+    def action_back_up(self) -> None:
+        if self.scans is None or not self.idle:
+            return
+        log_event("ui.selection", screen="ibackup_summary", control="back_up", value=True)
+        self.settings = load_settings(self.tool_cfg)
+        problem = self._folder_problem()
+        root = self._root()
+        if problem or root is None:
+            self.notify(f"{problem or 'No backup folder.'} Fix the folder in settings (s).",
+                        title="Backup folder not allowed", severity="error", timeout=15)
+            return
+        scans = [s for s in self.scans if s.has_data]
+        if not scans:
+            self.notify("Nothing to back up: no Interface or WTF folder.")
+            return
+        check = self.wow_check or wow_check_for([s.flavor for s in scans])
+        disk_usage = self.disk_usage
+        self.run_preflight(check, lambda running, free: self._confirm_backup(scans, root, running, free),
+                           extra=lambda: free_bytes(root, disk_usage))
+
+    def _confirm_backup(self, scans: list[FlavorScan], root: Path, running: list[str] | None,
+                        free: int | None) -> None:
+        keep = self.settings.keep_backups
+        title, body, alerts = backup_confirm(scans, root, keep, running, free)
+        self.app.push_screen(ConfirmScreen(title, body, alerts, default_yes=True),
+                             lambda ok: self._backup_confirmed(ok, scans, root, keep))
+
+    def _backup_confirmed(self, ok: bool | None, scans: list[FlavorScan], root: Path, keep: int) -> None:
+        log_event("ui.selection", screen="confirm", control="back_up_confirm", value=bool(ok))
+        if not ok or not self.idle:
+            return
+        self.run_job(BackupProgressScreen("backup"),
+                     lambda progress, on_flavor: back_up_all(scans, root, keep=keep, progress=progress,
+                                                             on_flavor=on_flavor),
+                     self._backup_done)
+
+    def _backup_done(self, outcomes: list[BackupOutcome]) -> None:
+        self.app.push_screen(BackupResultScreen(outcomes), self._after_result)
+
+    # --- running a job -------------------------------------------------------------------------
+    def run_job(self, screen: ProgressScreen, job: Callable[[Callable, Callable], Any],
+                done: Callable[[Any], None]) -> None:
+        """Run job(progress, on_flavor) in a worker behind the progress screen, then call done(result). The app's
+        busy flag stays up until it ends: quitting, leaving and every other action wait."""
+        self.app.busy = True
+        self._refresh_buttons()
+        self._progress_screen = screen
+        self.app.push_screen(screen)
+        self.run_worker(lambda: self._job_worker(job, screen, done), thread=True, exclusive=True, group="job")
+
+    def _job_worker(self, job: Callable[[Callable, Callable], Any], screen: ProgressScreen,
+                    done: Callable[[Any], None]) -> None:
+        # Runs in a worker thread: the progress screen is only ever touched on the UI thread.
+        def progress(*args) -> None:
+            self.app.call_from_thread(screen.update_progress, *args)
+
+        def on_flavor(label: str) -> None:
+            self.app.call_from_thread(screen.set_flavor, label)
+
+        try:
+            with activity.running():
+                result = job(progress, on_flavor)
+        except Exception as exc:  # noqa: BLE001 - shown by the UI
+            self.app.call_from_thread(self._job_failed, exc)
+            return
+        self.app.call_from_thread(self._job_done, done, result)
+
+    def _close_progress(self) -> None:
+        screen, self._progress_screen = self._progress_screen, None
+        if screen is not None and self.app.screen is screen:
+            self.app.pop_screen()
+
+    def _job_done(self, done: Callable[[Any], None], result: Any) -> None:
+        self.app.busy = False
+        self._close_progress()
+        self._refresh_buttons()
+        done(result)
+
+    def _job_failed(self, exc: Exception) -> None:
+        self.app.busy = False
+        self._close_progress()
+        self._refresh_buttons()
+        self.job_failed(exc)
+
+    def job_failed(self, exc: Exception) -> None:
+        """An unexpected error out of a job (back_up_all never raises BackupError). Task 10 extends it for
+        restores (RestoreStopped shows its partial result)."""
+        log_exception("ibackup.ui", exc)
+        self.notify(f"{type(exc).__name__}: {exc}", title="Stopped", severity="error", timeout=20)
+        self.action_rescan()
+
+    def _after_result(self, choice: str | None) -> None:
+        if choice in ("flavors", "tools", "quit"):
+            self.dismiss(choice)
+            return
+        self._then_restore = choice == "restore"
+        self.action_rescan()
+
+    # --- restore and undo (Task 10) ------------------------------------------------------------
+    def action_restore(self) -> None:
+        if not self.idle:
+            return
+        log_event("ui.selection", screen="ibackup_summary", control="restore", value=True)
+        self.notify("Restore is not available yet.")
+
+    def action_undo(self) -> None:
+        if not self.idle:
+            return
+        log_event("ui.selection", screen="ibackup_summary", control="undo", value=True)
+        if self.undoable is None:
+            self.notify("Nothing to undo.")
+            return
+        self.notify("Undo is not available yet.")
+
+    # --- leaving -------------------------------------------------------------------------------
+    def action_leave(self, choice: str) -> None:
+        if not self.app.busy:
+            self.dismiss(choice)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        actions = {"btn-backup": self.action_back_up, "btn-restore": self.action_restore,
+                   "btn-undo": self.action_undo, "btn-rescan": self.action_rescan,
+                   "btn-flavors": lambda: self.action_leave("flavors"),
+                   "btn-tools": lambda: self.action_leave("tools")}
+        action = actions.get(event.button.id or "")
+        if action is not None:
+            event.stop()
+            action()

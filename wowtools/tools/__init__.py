@@ -27,6 +27,9 @@ TOOLS: dict[str, Tool] = {tool.name: tool for tool in (
     Tool("screenshot-organizer", "Screenshot Organizer",
          "File screenshots into year/month/day folders, per flavor.",
          "wowtools.tools.screenshot_organizer.app", "screenshot_organizer"),
+    Tool("interface-backup", "Interface Backup",
+         "Zip a flavor's Interface and WTF folders, and restore them.",
+         "wowtools.tools.interface_backup.app", "interface_backup"),
 )}
 
 # Tools that changed name. At start-up each tool's old config file, logs/<old>/ folder and

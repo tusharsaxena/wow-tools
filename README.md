@@ -20,6 +20,7 @@ you land back on the menu.
 |---|---|---|
 | **WTF Cleaner** | Finds settings files left behind by addons you no longer use, backs them up, and deletes them. | [WTF Cleaner guide](docs/wtf-cleaner.md) |
 | **Screenshot Organizer** | Sorts your WoW screenshots into folders by year, month and day, one set per game version. | [Screenshot Organizer guide](docs/screenshot-organizer.md) |
+| **Interface Backup** | Zips a game version's `Interface` and `WTF` folders (your addons and their settings), and puts them back from a zip. | [Interface Backup guide](docs/interface-backup.md) |
 
 Both tools work with every version of the game you have installed: Retail, Classic, Classic Era, Anniversary,
 and the PTR and Beta clients. You can work on one version at a time or all of them at once.
@@ -133,6 +134,8 @@ Each tool has its own guide, with pictures, that walks through every screen:
 - [WTF Cleaner guide](docs/wtf-cleaner.md): clean out old addon settings safely, and undo a clean.
 - [Screenshot Organizer guide](docs/screenshot-organizer.md): sort screenshots into dated folders, and undo a
   run.
+- [Interface Backup guide](docs/interface-backup.md): back up your addons and their settings, restore them, and
+  undo a restore.
 
 ## Updates
 
@@ -168,6 +171,7 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 | `config\wow-tools.cfg` | Your WoW folder, plus update and log options, shared by every tool |
 | `config\wtf-cleaner.cfg` | The WTF Cleaner's settings |
 | `config\screenshot-organizer.cfg` | The Screenshot Organizer's settings |
+| `config\interface-backup.cfg` | Interface Backup's settings |
 
 The easiest way to change them is to press `s` in the app. You can also open the files in Notepad while the app
 is closed. The guides list every setting.

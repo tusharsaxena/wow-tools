@@ -1,0 +1,379 @@
+from __future__ import annotations
+
+import tempfile
+import threading
+import zipfile
+from pathlib import Path
+from unittest.mock import patch
+
+from textual.widgets import Button, DataTable, Input, OptionList, Static
+
+from tests.fixtures import TuiTestCase, build_interface_tree, build_wow_tree, make_config, settle
+from wowtools.core import activity
+from wowtools.core.config import Config
+from wowtools.core.events import capture_events
+from wowtools.tools import TOOLS
+from wowtools.tools.interface_backup import app as app_module
+from wowtools.tools.interface_backup import summary_screen as summary_module
+from wowtools.tools.interface_backup.app import BackupSettingsScreen
+from wowtools.tools.interface_backup.settings import load_settings
+from wowtools.tools.interface_backup.summary_screen import (BackupProgressScreen, BackupResultScreen,
+                                                            BackupSummaryScreen)
+from wowtools.ui.dialogs import ConfirmScreen
+from wowtools.ui.flavor_screen import FlavorScreen
+from wowtools.ui.setup_screen import SetupScreen
+from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
+from wowtools.ui.widgets import ACTION_VARIANTS, NavHint
+
+SIZE = (140, 50)
+
+
+class InterfaceBackupAppTest(TuiTestCase):
+    def setUp(self):
+        t = tempfile.TemporaryDirectory()
+        self.addCleanup(t.cleanup)
+        self.tmp = Path(t.name)
+        self.root = build_interface_tree(build_wow_tree(self.tmp / "World of Warcraft"))
+        self.config_dir = self.tmp / "config"
+        self.cfg = make_config(self.config_dir, self.root)
+        self.bk = self.tmp / "bk"
+
+    def save_tool_cfg(self, **values):
+        tool_cfg = Config(self.config_dir / "interface-backup.cfg")
+        for key, value in values.items():
+            tool_cfg.set("interface_backup", key, value, log=False)
+        tool_cfg.save()
+
+    def make_app(self, running=()):
+        return WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list,
+                           tool_options={"interface-backup": {"wow_check": lambda: list(running)}})
+
+    async def open_tool(self, app, pilot):
+        await pilot.pause()
+        self.assertIsInstance(app.screen, ToolMenuScreen)
+        await pilot.press("down", "down", "enter")  # third tool in the menu
+        await pilot.pause()
+
+    async def open_summary(self, app, pilot, keys=("enter",)):
+        await self.open_tool(app, pilot)
+        self.assertIsInstance(app.screen, FlavorScreen)
+        await pilot.press(*keys)  # Enter: "All flavors"
+        await settle(app, pilot)
+        self.assertIsInstance(app.screen, BackupSummaryScreen)
+        return app.screen
+
+    def zips(self):
+        return sorted(p.name for p in (self.bk / "interface-backup").glob("backup-*.zip"))
+
+    # --- registration -----------------------------------------------------------------------------
+    def test_registered_as_third_tool(self):
+        self.assertEqual(list(TOOLS)[2], "interface-backup")
+        tool = TOOLS["interface-backup"]
+        self.assertEqual((tool.title, tool.section), ("Interface Backup", "interface_backup"))
+        self.assertEqual(tool.flow().__name__, "InterfaceBackupFlow")
+
+    # --- settings ---------------------------------------------------------------------------------
+    async def test_first_open_asks_for_settings(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_tool(app, pilot)
+            self.assertIsInstance(app.screen, BackupSettingsScreen)
+            self.assertEqual(app.screen.sub_title, "Interface Backup settings")
+            app.screen.query_one("#backup_dir", Input).value = str(self.bk)
+            app.screen.query_one("#keep_backups", Input).value = "0"
+            app.screen.query_one("#save", Button).press()
+            await pilot.pause()
+            self.assertIsInstance(app.screen, FlavorScreen)
+            await settle(app, pilot)
+        s = load_settings(Config(self.config_dir / "interface-backup.cfg").load())
+        self.assertEqual((s.backup_dir, s.keep_backups, s.keep_journals), (self.bk, 0, 10))
+
+    async def test_settings_refuse_folder_inside_wtf(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_tool(app, pilot)
+            app.screen.query_one("#backup_dir", Input).value = str(self.root / "_retail_" / "WTF" / "bk")
+            app.screen.query_one("#save", Button).press()
+            await pilot.pause()
+            self.assertIsInstance(app.screen, BackupSettingsScreen)
+            self.assertIn("WTF", app.screen.error_text)
+        self.assertFalse((self.config_dir / "interface-backup.cfg").exists())
+
+    async def test_settings_refuse_bad_counts(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_tool(app, pilot)
+            screen = app.screen
+            screen.query_one("#keep_backups", Input).value = "-1"
+            screen.query_one("#save", Button).press()
+            await pilot.pause()
+            self.assertIn("Backups to keep", screen.error_text)
+            screen.query_one("#keep_backups", Input).value = "3"
+            screen.query_one("#keep_journals", Input).value = "0"
+            screen.query_one("#save", Button).press()
+            await pilot.pause()
+            self.assertIs(app.screen, screen)
+            self.assertIn("at least 1 journal", screen.error_text)
+        self.assertFalse((self.config_dir / "interface-backup.cfg").exists())
+
+    async def test_cancel_first_settings_still_opens_the_picker(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_tool(app, pilot)
+            await pilot.press("escape")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, FlavorScreen)
+
+    async def test_s_opens_wow_folder_then_tool_settings(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_summary(app, pilot)
+            await pilot.press("s")
+            await pilot.pause()
+            self.assertIsInstance(app.screen, SetupScreen)
+            app.screen.dismiss(False)
+            await pilot.pause()
+            self.assertIsInstance(app.screen, BackupSettingsScreen)
+            self.assertEqual(app.screen.query_one("#backup_dir", Input).value, str(self.bk))
+
+    # --- flavor picker ----------------------------------------------------------------------------
+    async def test_picker_notes_fill_in_from_a_worker(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        release = threading.Event()
+        self.addCleanup(release.set)
+        real = app_module.list_backups
+        threads = []
+
+        def slow_list(*args, **kwargs):
+            threads.append(threading.current_thread() is threading.main_thread())
+            release.wait(5)
+            return real(*args, **kwargs)
+
+        app = self.make_app()
+        with patch.object(app_module, "list_backups", slow_list):
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_tool(app, pilot)
+                options = app.screen.query_one("#flavors", OptionList)
+                labels = [str(options.get_option_at_index(n).prompt) for n in range(options.option_count)]
+                self.assertTrue(all("checking" in label for label in labels), labels)
+                release.set()
+                await settle(app, pilot)
+                labels = [str(options.get_option_at_index(n).prompt) for n in range(options.option_count)]
+                self.assertTrue(all("no backups yet" in label for label in labels), labels)
+        self.assertEqual(threads, [False])
+
+    async def test_single_flavor_and_choice_remembered(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            summary = await self.open_summary(app, pilot, keys=("down", "enter"))
+            self.assertEqual(summary.query_one("#flavors", DataTable).row_count, 1)
+            self.assertTrue(summary.sub_title.startswith("Interface Backup · "))
+            await pilot.press("f")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, FlavorScreen)
+        stored = load_settings(Config(self.config_dir / "interface-backup.cfg").load()).last_flavor_choice
+        self.assertTrue(stored.startswith("_") and stored.endswith("_"), stored)
+
+    # --- summary ----------------------------------------------------------------------------------
+    async def test_summary_lists_every_flavor_and_where_zips_go(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            summary = await self.open_summary(app, pilot)
+            self.assertEqual(summary.sub_title, "Interface Backup · All flavors")
+            table = summary.query_one("#flavors", DataTable)
+            self.assertEqual(table.row_count, 4)  # retail, classic era, anniversary, ptr
+            details = str(summary.query_one("#details", Static).render())
+            self.assertIn("interface-backup", details)
+            self.assertFalse(summary.query_one("#btn-backup", Button).disabled)
+            self.assertTrue(summary.query_one("#btn-undo", Button).disabled)  # nothing restored yet
+            for screen_hint in summary.query(NavHint):
+                self.assertIn("b back up", str(screen_hint.render()))
+            variants = {i: summary.query_one(f"#{i}", Button).variant
+                        for i in ("btn-backup", "btn-restore", "btn-undo", "btn-rescan")}
+        self.assertEqual(variants, {"btn-backup": ACTION_VARIANTS["confirm"],
+                                    "btn-restore": ACTION_VARIANTS["neutral"],
+                                    "btn-undo": ACTION_VARIANTS["revert"],
+                                    "btn-rescan": ACTION_VARIANTS["neutral"]})
+
+    async def test_scan_runs_in_a_worker(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        real = summary_module.scan_flavors
+        threads = []
+
+        def scan(*args, **kwargs):
+            threads.append(threading.current_thread() is threading.main_thread())
+            return real(*args, **kwargs)
+
+        app = self.make_app()
+        with patch.object(summary_module, "scan_flavors", scan):
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_summary(app, pilot)
+        self.assertEqual(threads, [False])
+
+    async def test_tools_key_returns_to_menu(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_summary(app, pilot)
+            await pilot.press("t")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ToolMenuScreen)
+
+    # --- back up ----------------------------------------------------------------------------------
+    async def test_back_up_all_flavors(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        with capture_events() as records:
+            async with app.run_test(size=SIZE) as pilot:
+                summary = await self.open_summary(app, pilot)
+                table = summary.query_one("#flavors", DataTable)
+                self.assertGreaterEqual(table.row_count, 3)
+                await pilot.press("b")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, ConfirmScreen)
+                self.assertIs(app.screen.focused, app.screen.query_one("#yes", Button))  # nothing is changed
+                self.assertIn("Back up 3 flavors?", app.screen.title_text)
+                await pilot.press("y")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, BackupResultScreen)
+                self.assertEqual(app.screen.sub_title, "Interface Backup · result")
+                self.assertEqual(app.screen.query_one("#result-table", DataTable).row_count, 3)
+                self.assertFalse(app.busy)
+                await pilot.press("r")
+                await settle(app, pilot)
+                self.assertIs(app.screen, summary)
+                newest = [str(c) for c in table.get_row_at(0)]
+                self.assertEqual(newest[4], "1")  # retail now has one backup
+        zips = self.zips()
+        self.assertTrue(any(n.startswith("backup-retail-") for n in zips))
+        self.assertFalse(any(n.startswith("backup-ptr-") for n in zips))  # neither part: skipped
+        with zipfile.ZipFile(self.bk / "interface-backup" / next(n for n in zips if "retail" in n)) as zf:
+            self.assertIn("WTF/Config.wtf", zf.namelist())
+        selections = [(r["data"].get("screen"), r["data"].get("control"), r["data"].get("value"))
+                      for r in records if r["event"] == "ui.selection"]
+        self.assertIn(("ibackup_summary", "back_up", True), selections)
+        self.assertIn(("confirm", "back_up_confirm", True), selections)
+        self.assertIn(("ibackup_result", "next", "review"), selections)
+        self.assertTrue(activity.wait_idle(0))
+
+    async def test_decline_confirm_writes_nothing(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_summary(app, pilot)
+            await pilot.press("b")
+            await settle(app, pilot)
+            await pilot.press("n")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, BackupSummaryScreen)
+        self.assertFalse((self.bk / "interface-backup").exists())
+
+    async def test_wow_running_is_an_alert(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app(running=["Wow.exe"])
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_summary(app, pilot)
+            await pilot.press("b")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertTrue(any("Wow.exe" in alert for alert in app.screen.alerts))
+
+    async def test_wow_check_runs_in_a_worker(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        threads = []
+
+        def check():
+            threads.append(threading.current_thread() is threading.main_thread())
+            return []
+
+        app = WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list,
+                          tool_options={"interface-backup": {"wow_check": check}})
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_summary(app, pilot)
+            await pilot.press("b")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+        self.assertEqual(threads, [False])
+
+    async def test_folder_edited_into_wtf_refuses_the_backup(self):
+        self.save_tool_cfg(backup_dir=str(self.root / "_retail_" / "WTF" / "bk"))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            summary = await self.open_summary(app, pilot)
+            await pilot.press("b")
+            await settle(app, pilot)
+            self.assertIs(app.screen, summary)
+        self.assertFalse((self.root / "_retail_" / "WTF" / "bk").exists())
+
+    async def test_busy_while_backing_up_guards_leaving(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        release = threading.Event()
+        self.addCleanup(release.set)
+        real = summary_module.back_up_all
+        seen = []
+
+        def slow(*args, **kwargs):
+            seen.append(activity.wait_idle(0))
+            release.wait(5)
+            return real(*args, **kwargs)
+
+        app = self.make_app()
+        with patch.object(summary_module, "back_up_all", slow):
+            async with app.run_test(size=SIZE) as pilot:
+                summary = await self.open_summary(app, pilot)
+                await pilot.press("b")
+                await settle(app, pilot)
+                await pilot.press("y")
+                await pilot.pause()
+                self.assertTrue(app.busy)
+                self.assertIsInstance(app.screen, BackupProgressScreen)
+                summary.action_leave("tools")
+                summary.action_back_up()
+                summary.action_rescan()
+                await pilot.pause()
+                self.assertIsInstance(app.screen, BackupProgressScreen)
+                self.assertTrue(summary.query_one("#btn-backup", Button).disabled)
+                release.set()
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, BackupResultScreen)
+                self.assertFalse(app.busy)
+        self.assertEqual(seen, [False])
+        self.assertEqual(len(self.zips()), 3)
+
+    async def test_result_screen_leads_back_to_flavors(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_summary(app, pilot)
+            await pilot.press("b")
+            await settle(app, pilot)
+            await pilot.press("y")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, BackupResultScreen)
+            await pilot.press("f")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, FlavorScreen)
+            options = app.screen.query_one("#flavors", OptionList)
+            labels = [str(options.get_option_at_index(n).prompt) for n in range(options.option_count)]
+            self.assertIn("3 backups", labels[0])
+
+    async def test_failed_job_is_reported_and_clears_busy(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+
+        def boom(*args, **kwargs):
+            raise OSError("disk gone")
+
+        app = self.make_app()
+        with patch.object(summary_module, "back_up_all", boom):
+            async with app.run_test(size=SIZE) as pilot:
+                summary = await self.open_summary(app, pilot)
+                await pilot.press("b")
+                await settle(app, pilot)
+                await pilot.press("y")
+                await settle(app, pilot)
+                self.assertIs(app.screen, summary)
+                self.assertFalse(app.busy)
+                self.assertFalse(summary.query_one("#btn-backup", Button).disabled)
