@@ -23,6 +23,7 @@ _notaflavor: not a flavor folder
 
 build_screenshot_tree(root) adds Screenshots folders (see its docstring); SHOT_BYTES maps each valid shot
 name to its bytes.
+build_interface_tree(root) adds known bytes to _retail_'s Interface and WTF and an empty _ptr_ flavor.
 """
 from __future__ import annotations
 
@@ -172,4 +173,15 @@ def build_screenshot_tree(root: Path) -> Path:
     _write_bytes(retail / "WoWScrnShot_023119_120000.jpg", b"bad-date")
     _write_bytes(retail / "notes.txt", b"notes")
     _write_bytes(retail / "2025" / "01" / "02" / "WoWScrnShot_010225_090000.jpg", b"filed")
+    return root
+
+
+def build_interface_tree(root: Path) -> Path:
+    """Interface Backup extras (call after build_wow_tree): known bytes in _retail_'s Interface and WTF, and an
+    empty _ptr_ flavor (neither part). _anniversary_ already has WTF only."""
+    retail = root / "_retail_"
+    _write_bytes(retail / "Interface" / "AddOns" / "Auctionator" / "Auctionator.lua", b"auc")
+    _write_bytes(retail / "Interface" / "AddOns" / "Details" / "core.lua", b"det")
+    _write_bytes(retail / "WTF" / "Config.wtf", b"SET a 1\n")
+    (root / "_ptr_").mkdir(parents=True, exist_ok=True)
     return root
