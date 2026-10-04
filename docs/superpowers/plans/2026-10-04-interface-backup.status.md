@@ -22,7 +22,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | M3 | push milestone 3, ask for merge go-ahead | done (pushed; awaiting merge go-ahead) | 42958c4 | final review: 13 findings fixed |
 | R1 | redesign: two-pane review screen with flavor ticks and Backups nodes (spec Addendum A) | done | d9d2d31 | `BackupReviewScreen` in `review_screen.py` (renamed from `summary_screen.py`); BackupListScreen removed; tests rewritten for the tree |
 | R2 | redesign: two-pane restore screen with warnings tree; result screens in the organizer's shape | done | c5c6976, 552248c | `RestoreScreen` two panes (`RestoreTree` `#effects`, `#summary`); result screens get `#result-summary` (Item/Value) above `#result-table`. Review fixes in 552248c (see decisions, "R2 review") |
-| R3 | look-and-feel parity pass across all three tools | todo | | |
+| R3 | look-and-feel parity pass across all three tools | done | 6a0b770 | Every screen of the three tools rendered at 80x24 and 140x50; shared CSS and hints in `ui/dialogs.py`; drifts fixed or kept with a reason (see decisions, "R3"); `tests/test_look_and_feel.py` |
 | R4 | redesign review, docs (guide, architecture), push | todo | | |
 
 ## Decisions taken during the build
@@ -330,3 +330,47 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   its width, the hint is not clipped and the longest box label fits; the 80x24 restore test also checks NavHint
   and the result hint; a report test pins the natural order. docs/interface-backup.md still quotes the old
   linked-part label: R4.
+- R3: every screen of the three tools (settings, flavor picker, review, confirm, progress, result, dry-run and undo
+  results, restore screen and its result) was rendered headlessly at 80x24 and 140x50 over fixture trees and compared
+  as text. Shared now, in `wowtools/ui/dialogs.py`: `two_pane_css(screen, tree, width=FILTERS_WIDTH)` (left pane
+  `#filters` 50 wide, `padding: 0 1`, `.section` headings, compact boxes and inputs, `#actions` one row of compact
+  buttons, the tree, `#scan-box`, `#summary`), `result_css(screen)` (`#result-summary` Item/Value at most half the
+  height above the `.result-detail` table, compact `.buttons` row, NavHint), `settings_css(screen)`, `REVIEW_HINT`
+  and `RESULT_HINT` (the hint prefixes), `ACCENT` and `BUSY_STYLE`. Each tool's screens use them instead of copies.
+- R3 drifts fixed: (1) WTF Cleaner's left pane was 46 wide with Undo last clean on a second row, and at 80x24 its
+  tall criteria boxes pushed the action buttons and the hint off the screen: now 50 wide, one row of four buttons,
+  criteria boxes and the max-age input compact (`compact=True`), all on screen at 80x24. (2) The cleaner's hint left
+  out a/n/f: now `REVIEW_HINT` + "a all · n none · c clean · y dry run · r rescan · z undo · f flavors · t tools ·
+  1-4 criteria", the order of the footer. (3) The cleaner's summary repeated the criteria by raw name ("Criteria:
+  not_installed, ..."), three lines at 80 columns: dropped (the left pane shows them); "1 scan warning" singular.
+  (4) Esc on the review went to the flavor picker only in Interface Backup: now in all three (hidden binding, as f).
+  (5) Result screens: the cleaner's had no BrandBar, and the organizer's and the cleaner's used 16-wide buttons with
+  2-column gaps while Interface Backup's were compact: all compact now (five buttons must fit 80 columns), all
+  summaries capped at half the height, detail tables carry class `result-detail` (ids unchanged). (6) The
+  organizer's result table showed flavor folders (`_retail_`): now display names, as the other tools
+  (`report.flavor_name`). (7) Settings: the organizer's and Interface Backup's forms were a `VerticalScroll`, where
+  ↑/↓ scrolled instead of moving between fields: `FormScroll` now, as in the cleaner; one CSS (checkbox margin as the
+  cleaner's). (8) The restore screen's boxes are compact as well and its hint uses `REVIEW_HINT` ("o restore · b/Esc
+  back"); `#actions` has its top margin back (the compact boxes freed the lines R2 had to save).
+- R3 differences kept, with the reason: (a) the restore screen's left pane stays 46 wide: it has two buttons only,
+  and at 80 columns a 30-column tree would clip its root ("Retail · <date>") and the effect titles ("Will be removed
+  (N files)"), which R2's 80x24 test pins. (b) Clean is red (delete), not green: it deletes files for good
+  (`ACTION_VARIANTS`). (c) The review's Restore is neutral: it opens the restore screen (navigation); the restore
+  screen's own Restore, which changes files, is apply (green). (d) Undo buttons keep their names (Undo last clean /
+  run / restore): same style (revert), same place (last in the row). (e) Extra result buttons stay where the tool
+  has an extra next step: Restore (e) after a backup, Undo (z) first after a restore (spec). (f) The left pane's
+  sections differ by tool (criteria and max age; destination and mode; backup folder and keep): they are each
+  tool's settings at a glance. (g) The cleaner's sub_title adds the account scope ("All flavors · all accounts"):
+  it is the one tool that has an account choice. (h) The cleaner's flavor picker has no per-flavor note: a count
+  would need a scan of every flavor's SavedVariables before the picker could show. (i) Settings screens and popups
+  (confirm, progress, update) keep full-width buttons: two buttons each, the same in every tool. (j) Interface
+  Backup's settings hint has no "Space/Enter tick": that form has no checkbox. (k) Esc in the cleaner's max-age
+  input leaves the review like Esc anywhere else on it (Input does not bind Esc).
+- R3 noticed, not changed (not a look-and-feel item): the organizer's and the cleaner's `_refresh_undo` list the
+  journal folder (`latest_undoable`) on the UI thread; Interface Backup does it in its scan worker. A small folder
+  of journals, but R4 may move it to a worker for the rule "slow work never on the UI thread".
+- R3 tests: `tests/test_look_and_feel.py` (all three tools at 80x24: left pane 50 wide, four action buttons in one
+  row and the hint inside the pane, the last button an Undo in revert style, hint prefix and order, summary starts
+  "Selected:"/"Nothing to", sub_title shape, Esc back to the flavor picker; result screens: Item/Value summary, one
+  `.result-detail` table, BrandBar, hint prefix and ending, Rescan first and Other flavor/Tools/Quit last in one
+  row); the R2 restore test now expects a one-line (compact) box; the organizer's report test expects "Retail".
