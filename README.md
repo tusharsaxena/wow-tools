@@ -121,6 +121,12 @@ Each screen lists its keys along the bottom, so you don't have to remember them.
 changing or writing files (a clean, a sort, a backup, a restore, a profile change or an undo), the app won't quit until it has
 finished.
 
+### Terminal size
+
+The app is laid out for the window Windows Terminal (the default on Windows 11) opens: 120 columns by 30 lines.
+Maximize the window and the lists and tables grow to fill it. A smaller window still works, but it's cramped and
+you'll scroll more.
+
 ### The first time
 
 The first time you open a tool, it asks for two things:
@@ -228,7 +234,7 @@ If you use WSL (Linux inside Windows), the same folder works from both sides. Ru
 | "Python was not found", or nothing happens when I double-click `wow-tools.cmd` | Python isn't installed, or **Add python.exe to PATH** wasn't ticked. Run the Python installer again, choose **Modify**, and tick it. |
 | "No WoW flavor folders were found" | Pick the `World of Warcraft` folder itself, not `_retail_` inside it. |
 | "Ka0s WoW Tools may already be running" | See *Why does it say another copy may already be running?* in the [FAQ](#faq). |
-| The window looks garbled or too small | Make the terminal window bigger, or use Windows Terminal (the default on Windows 11). |
+| The window looks garbled or too small | Make the terminal window bigger (at least 120 columns by 30 lines; see [Terminal size](#terminal-size)), or use Windows Terminal (the default on Windows 11). |
 | It's very slow on WSL | WSL (Linux inside Windows) is slow at reading files on Windows drives such as `C:` or `G:`: every file takes a moment to check, and a WoW folder has thousands of them. Start the app from Windows instead, by double-clicking `wow-tools.cmd`. It uses the same settings, so nothing needs setting up again. If you stay on WSL, give the first scan time; the progress bar shows it's still working. |
 | A tool does something unexpected | See the troubleshooting table at the end of that tool's guide. |
 | Something looks wrong and I want to report it | Follow [Reporting a bug](#reporting-a-bug) below. |

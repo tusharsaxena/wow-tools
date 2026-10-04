@@ -54,7 +54,9 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      `REVIEW_HINT` (or `review_hint("tick or open")` when Space does more in your tree) and `RESULT_HINT`.
      Every tree screen binds `TREE_BINDINGS` (`x` expand all, `c` collapse all) and puts `TREE_HINT` in its hint
      before `r rescan`; each focusable control of the left pane gets a row of its own.
-     `tests/test_look_and_feel.py` checks every tool against them; add yours to its `TOOLS`.
+     Lay the screens out for 120x30 (Windows Terminal's default window) and let trees and tables take any extra
+     room; 80x24 only has to keep working. `tests/test_look_and_feel.py` checks every tool against them at those
+     sizes; add yours to its `TOOLS`.
 2. **Register** it in `wowtools/tools/__init__.py`:
    `Tool("screenshot-organizer", "Screenshot Organizer", "File screenshots into year/month/day folders, per flavor.",
    "wowtools.tools.screenshot_organizer.app", "screenshot_organizer")`. It appears in the tool menu. There are no per-tool wrappers or command-line modes: every tool

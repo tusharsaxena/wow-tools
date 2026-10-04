@@ -395,7 +395,7 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
 `restore_screen.py` holds:
 
 - `RestoreScreen(info, flavor, *, disk_usage)`: `TwoPaneFocus`, `two_pane_css(width=46)` (two buttons only, and
-  the tree's root and effect titles must fit at 80 columns). Left: "Backup" (flavor, kind and date; size, parts
+  the tree's root and effect titles fit at 120 columns). Left: "Backup" (flavor, kind and date; size, parts
   and files once read; "made …" when the manifest's date differs), "Restore" with an `Interface` and a `WTF`
   `Ka0sCheckbox` (`#part-Interface`, `#part-WTF`; disabled for a part the backup lacks or that is a link; both off
   when a leftover, another flavor's backup or an unreadable zip blocks it), **Restore** (apply, `o`) and **Back**
@@ -583,6 +583,34 @@ Shared screens and widgets in `wowtools/ui/`:
 | `dialogs` | What every tool's screens share, so no tool imports another tool's screens: `ConfirmScreen(title, body, alerts=(), *, default_yes=False)` (yes/no; `alerts` in red; risky actions start on No), `ProgressScreen` (stage, bar and current file of a run; a tool subclasses it with `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, and calls `update_progress(stage, current, total, detail)`, plus `set_flavor(label)` across several flavors), `tick_mark(items, unchecked, key, success=)` (✔ / ◩ / ✘ for a review-tree line), `relabel_branch(tree, node, label, skip=)` (after a tick), the `TwoPaneFocus` mixin (←/→ between the left `#filters` panel and the tree; it is a `TreeKeys`, whose `x`/`c` expand and collapse every node below the root, bound with `TREE_BINDINGS` and named in the hint by `TREE_HINT`), `theme_colour(app, name)` (the theme's colour, or the Ka0s one before a theme is set), and the one look every tool's screens are built from: `two_pane_css(screen, tree, width=FILTERS_WIDTH)` (review: left pane `#filters`, `FILTERS_WIDTH` = 50, one-row actions, scan box, summary), `ACCENT` (names in a tree) and `BUSY_STYLE` (a summary line while work runs), `result_css(screen)` (the summary takes at most 60% of the height), `settings_css(screen)` (the form at `FORM_WIDTH`: up to 100 columns, centred; compact checkboxes), and the hint starts `REVIEW_HINT` / `review_hint(space)` and `RESULT_HINT` |
 | `widgets` | `action_button(label, action)` and `ACTION_VARIANTS` (one colour per kind of action in every tool: delete red, apply green, simulate blue, revert amber, confirm blue, neutral grey), `LIST_NAME_STYLE` / `LIST_CURSOR_BACKGROUND` (pick lists), `Ka0sCheckbox` (✔/✘ marks), `ButtonRow` (←/→ move focus between its buttons, Space presses the focused one), `WrapButtonRow` (a `ButtonRow` of compact one-row buttons in a grid whose column count follows its width; the Ace3 review's action bar), `NAV_BINDINGS` (↑/↓ move focus; not priority bindings, so a focused tree, list, table or input keeps its arrow keys), and `NavHint` (the one-line key hint every screen shows), `FormScroll` (a scrolling form where ↑/↓ still move focus; `open_at_top()` after the first focus) |
 
+### Look and feel and terminal size
+
+Every screen is designed for **120x30**, the window Windows Terminal (Windows 11's default terminal) opens, and
+grows when the window is larger; 80x24 only has to keep working (Addendum B of
+`docs/superpowers/specs/2026-10-04-ace-profiles-design.md`). The sizes live in `wowtools/ui/dialogs.py`:
+
+- the review's left pane is `FILTERS_WIDTH` (50) columns at every size (its four action buttons need 45); the tree
+  takes the rest (`1fr`, 70 columns at 120x30) and all the height;
+- popups (`ConfirmScreen`, `ProgressScreen`, the Ace3 popups, the recovery and lock screens) are `POPUP_WIDTH`
+  (`width: 90; max-width: 90%`), centred; `UpdateScreen` (76) and `UpdateProgressScreen` (64) stay narrower;
+- settings forms are `FORM_WIDTH` (`width: 100%; max-width: 100`), centred, with compact checkboxes, so the whole
+  form and its Save button show at 120x30;
+- a result screen's summary takes at most 60% of the height (`result_css`); the table below takes the rest;
+- footers show every key whole at 120 columns: the command palette's key is hidden suite-wide (Ctrl+P still opens
+  it), and keys that are on a button (the Ace3 review's `d`, `p`, `m`) are left off the footer;
+- paths on result screens are named inside a "Backup folder" row (`cleaned/<name>`, `snapshots/<name>`, …) rather
+  than whole, so they fit; a tree line longer than its pane scrolls sideways.
+
+`tests/fixtures.py` names the sizes: `BASE = (120, 30)`, `LARGE = (160, 45)`, `TINY = (80, 24)`.
+`tests/test_look_and_feel.py` runs each check for every tool: at BASE the left pane, its one-row buttons, the hint
+shape, the result layout, the settings forms (whole, Save included), the footer keys and the popups (fit with room
+around them; the Ace3 quick actions list every action without scrolling); the Ace3 tree pane keeps the plan's
+Review Focus 5 (action bar at most 2 rows, guide at most `GUIDE_MAX_ROWS` = 2, tree at least 12 rows). At LARGE the
+tree grows while the left pane keeps its width, the Ace3 action bar takes one row, and popups and forms stay at a
+readable width (at most 100 columns), centred. One TINY smoke test opens every tool's review, settings and result
+screens at 80x24 and focuses every focusable control; nothing there is hidden or shortened for that size. Tool tests
+that check a layout run at BASE (`…_at_base`).
+
 The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfCleanerFlow` (`FLOW`) and
 `CleanerSettingsScreen` (criteria, max age, backup on/off, backup folder). The flow shows `FlavorScreen` with
 `include_all=True` and `last=last_flavor_choice`; All flavors skips the account screen. `review_screen.py` holds:
@@ -620,7 +648,8 @@ copy mode; `validate_dest` errors show inline). `review_screen.py` holds:
 `python3 scripts/run_tests.py` deals the tests round-robin into one process per CPU (at most 16); `python3 -m
 unittest discover -s tests -t .` runs them in one process. Textual tests subclass `tests.fixtures.TuiTestCase`,
 which turns off asyncio debug mode. `tests/fixtures.py` builds a synthetic install in a temp
-folder, and TUI tests use Textual's `App.run_test()` pilot. No test touches a real WoW folder or the network.
+folder, and TUI tests use Textual's `App.run_test()` pilot, at `BASE` (120x30) for anything about layout (see
+[Look and feel and terminal size](#look-and-feel-and-terminal-size)). No test touches a real WoW folder or the network.
 
 CI (`.github/workflows/tests.yml`) runs on every push and pull request: Ubuntu and Windows, Python 3.10 (the floor)
 and 3.13. Each job byte-compiles `wowtools`, `scripts` and `tests`, runs `gen_event_docs.py --check`, then
