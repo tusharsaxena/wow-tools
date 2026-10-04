@@ -17,7 +17,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | 8 | report helpers | done | 4cbafec | API as planned plus `RestorePlan.unreadable` warnings, missing files in the backup result, notices capped per part; 12 tests |
 | 9 | flow, settings, summary, backup screens, registration | done | e6e3ab6 | API as planned with explicit `wow_check`/`disk_usage` flow kwargs; journal lookup and free space moved off the UI thread; own `_checking` flag for the WoW check; 19 TUI tests |
 | 10 | restore and undo screens | done | ae15647 | API as planned; backup list, backup load/scan and every plan built in workers; Undo on the result screen only for a restore that changed a part; 12 new TUI tests |
-| M2 | push milestone 2 | todo | | |
+| M2 | push milestone 2 | reviewed, fixes in 763a34b | 763a34b | Milestone 2 review: 20 findings fixed (see decisions, "M2 review") |
 | 11 | docs, events, final checks | todo | | |
 | M3 | push milestone 3, ask for merge go-ahead | todo | | |
 
@@ -189,3 +189,38 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   and declined confirm change nothing, list/open/scan/plan off the UI thread, WoW-running alert on the restore
   confirm, refused and stopped restores, Undo from the summary starting on No. No menu-count test changed; no new
   events, so `docs/events.md` is unchanged.
+- M2 review: the summary's action row is Back up / Restore / Undo (z) / Rescan (the spec's "Undo last restore (z)"
+  label and the Flavors/Tools buttons are gone; f/t/Esc, the hint and the footer leave). The texts that named
+  "Undo last restore (z)" say "Undo (z)". Task 11's guide must use the new labels.
+- M2 review: the summary's `#body` is a `VerticalScroll(can_focus=False)` with PgUp/PgDn bound to scroll it; the
+  notices sit under the table, the details under them.
+- M2 review: `BackupResultScreen` and `RestoreResultScreen` buttons are `min-width: 0; width: auto; margin-right: 1`
+  (all five fit 80 columns; "Other flavor (f)" kept, as in the other tools).
+- M2 review: `report.restore_confirm` alerts come from the new `restore_confirm_alerts` (one counted line per kind:
+  removed, newer, unreadable, links replaced, low space, naming the largest group); `restore_warnings` stays the
+  full grouped list on the RestoreScreen.
+- M2 review: `RestoreResultScreen.check_action` hides `z` when `can_undo` is false; `report.ordered_parts` puts
+  result rows in PARTS order (an undo processes them in reverse).
+- M2 review: `list_rows(infos, names)` maps short names to display names; `friendly_created` formats the
+  manifest's `created`, dropped on the RestoreScreen when it equals the zip's stamp. A blocked RestoreScreen
+  unticks both boxes; focus goes to Back whenever no box can be ticked.
+- M2 review: `_scanned` runs a queued Restore/Undo only when the summary is the screen shown (else a "Press e/z
+  on the summary" notice); `action_restore`/`action_undo` return unless the summary is shown.
+- M2 review: `BackupSummaryScreen(wow_root=)` (the flow passes the install its flavors came from).
+  `wow_folder_changed()` runs on resume and before every scan, backup, restore and undo step: a different
+  `cfg.wow_path` notifies "The WoW folder changed: pick the flavor again." and dismisses to the picker (once, when
+  shown and not busy). The flow's `_after_flavor` re-opens the picker for a choice made on the old install's
+  list, and `_settings_done` drops the "Press r" notice when the WoW folder changed. WTF Cleaner and Screenshot
+  Organizer have the same gap (not changed here).
+- M2 review: the picker-notes guard is `picker not in app.screen_stack` (a covered picker still gets its notes);
+  the same fix in Screenshot Organizer, whose "no Screenshots folder anywhere" dismiss still needs the picker
+  shown.
+- M2 review: settings `Label`s are `width: 1fr; height: auto` in all three tools (they wrap at 80 columns);
+  Interface Backup's settings show "Zips go to: <resolved folder>" under the folder input, updated as you type.
+- M2 review: README intro and FAQ reworded for three tools (Dry run named as a WTF Cleaner / Screenshot Organizer
+  feature), done now rather than in Task 11 Step 3.
+- M2 review: tests at 80x24 (summary and result buttons, notices, restore confirm, settings labels in all three
+  tools) and for the paths the review named: notifications of refused/failed jobs, Restore (e) from the backup
+  result, an Undo no longer possible, an unreadable journal, Esc on the summary, restore screen and both result
+  screens, a stopped restore with a journal (with and without a replaced part). The tests-docs findings covered
+  existing code, so those tests passed before the fix.
