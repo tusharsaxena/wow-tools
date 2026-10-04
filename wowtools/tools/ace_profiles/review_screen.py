@@ -20,7 +20,7 @@ from textual.widgets.tree import TreeNode
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
-from wowtools.core.install import Flavor
+from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.journal import Journal, friendly_stamp
 from wowtools.core.process import wow_check_for
 from wowtools.tools.ace_profiles.editor import ApplyError, Marker, clear_marker, read_marker
@@ -36,7 +36,8 @@ from wowtools.tools.ace_profiles.report import (DETAIL_COLUMNS, STAGE_TITLES, UN
 from wowtools.tools.ace_profiles.result_screen import ProfileResultScreen
 from wowtools.tools.ace_profiles.scanner import ScanResult, scan_flavors
 from wowtools.tools.ace_profiles.settings import (ProfileSettings, is_blacklisted, load_settings, parse_blacklist,
-                                                  resolve_journal_dir, resolve_root, save_settings)
+                                                  resolve_journal_dir, resolve_root, save_settings,
+                                                  validate_backup_dir)
 from wowtools.tools.ace_profiles.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
 from wowtools.tools.ace_profiles.undo import UndoError, UndoResult, recover, undo_run
 from wowtools.ui.branding import BrandBar
@@ -892,6 +893,23 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
     def action_dry_run(self) -> None:
         self._start(dry_run=True)
 
+    def _backup_dir_refused(self) -> bool:
+        """True (and say so) when the backup folder in the settings is not allowed (it may have been edited by
+        hand in the cfg): checked before anything is written to it, as on save."""
+        wow_path = self.cfg.wow_path
+        if wow_path is None:
+            return False
+        problem = validate_backup_dir(load_settings(self.tool_cfg).backup_dir, WowInstall(wow_path))
+        if problem:
+            self.notify(f"{problem} Fix the folder in settings (s).", title="Backup folder not allowed",
+                        severity="error", timeout=15)
+        return bool(problem)
+
+    def apply_check(self) -> WowCheck:
+        """The running-WoW check of the flavors with staged changes (only their files are written)."""
+        changed = self.staging.changed() if self.staging is not None else []
+        return self.check_for({s.file.flavor.folder for s in changed})
+
     def _start(self, dry_run: bool) -> None:
         if not self._ready():
             return
@@ -901,10 +919,16 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         if not self.staging.summary().total:
             self.notify("Nothing staged")
             return
-        if dry_run:  # writes nothing: WoW running does not matter
+        if dry_run:  # writes nothing: WoW running and the backup folder do not matter
             self._show_apply_confirm(dry_run, [])
             return
-        self._run_preflight(lambda running: self._after_apply_preflight(running))
+        if self.marker is not None:  # an earlier Apply did not finish: settle that first (Apply would refuse)
+            self.offer_recovery(self.marker)
+            return
+        if self._backup_dir_refused():
+            return
+        check = self.apply_check()
+        self._run_preflight(lambda running: self._after_apply_preflight(running), check)
 
     def _after_apply_preflight(self, running: list[str] | None) -> None:
         alerts: list[str] = []
@@ -937,17 +961,19 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         screen = ProfileProgressScreen(dry_run=dry_run)
         self.app.push_screen(screen)
         settings = self.settings
-        self.run_worker(lambda: self._apply_worker(plan, root, journal_dir, settings, dry_run, screen),
+        check = None if dry_run else self.apply_check()
+        self.run_worker(lambda: self._apply_worker(plan, root, journal_dir, settings, dry_run, screen, check),
                         thread=True, exclusive=True, group="run")
 
     def _apply_worker(self, plan: list[tuple[Flavor, list[DbState]]], root: Path, journal_dir: Path,
-                      settings: ProfileSettings, dry_run: bool, screen: ProfileProgressScreen) -> None:
+                      settings: ProfileSettings, dry_run: bool, screen: ProfileProgressScreen,
+                      check: WowCheck | None = None) -> None:
         try:
             with activity.running():
                 result = apply_flavors(plan, root=root, journal_dir=journal_dir,
                                        keep_journals=settings.keep_journals, keep_snapshots=settings.keep_snapshots,
                                        dry_run=dry_run, account=self.account,
-                                       wow_check=None if dry_run else self.wow_check,
+                                       wow_check=check,
                                        progress=self._progress_cb(screen))
         except ApplyError as exc:  # WowRunning included: refused before anything was written
             log_exception("ace.apply", exc)
@@ -1009,6 +1035,8 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         path = self.undoable
         if path is None:
             self.notify("Nothing to undo")
+            return
+        if self._backup_dir_refused():
             return
         try:
             journal = read_profile_journal(path)
@@ -1092,6 +1120,8 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
             log_event("ace.recovery_done", choice="leave")
             self.marker = None
             return
+        if self._backup_dir_refused():
+            return  # the marker stays: offered again at the next scan
         check = self.check_for([marker.flavor])  # the marker's flavor, which may not be the one reviewed
         self._run_preflight(lambda running: self._after_recover_preflight(marker, root, check, running), check)
 
@@ -1103,17 +1133,20 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self._refresh_buttons()
         screen = ProfileProgressScreen(dry_run=False, first_stage="undo")
         self.app.push_screen(screen)
-        self.run_worker(lambda: self._recover_worker(marker, root, check, screen), thread=True, exclusive=True,
-                        group="run")
+        keep = load_settings(self.tool_cfg).keep_snapshots
+        self.run_worker(lambda: self._recover_worker(marker, root, check, screen, keep), thread=True,
+                        exclusive=True, group="run")
 
-    def _recover_worker(self, marker: Marker, root: Path, check: WowCheck, screen: ProfileProgressScreen) -> None:
+    def _recover_worker(self, marker: Marker, root: Path, check: WowCheck, screen: ProfileProgressScreen,
+                        keep_snapshots: int | None = None) -> None:
         def progress(stage: str, current: int, total: int, detail: str) -> None:
             self.app.call_from_thread(lambda: screen.update_progress(stage, current, total, detail)
                                       if screen.is_attached else None)
 
         try:
             with activity.running():
-                result = recover(marker, root=root, wow_check=check, progress=progress)
+                result = recover(marker, root=root, journal_dir=resolve_journal_dir(self.cfg.wow_path),
+                                 keep_snapshots=keep_snapshots, wow_check=check, progress=progress)
         except UndoError as exc:  # WoW running, locked files, the backup failed: nothing was changed
             log_exception("ace.recover", exc)
             self.app.call_from_thread(self._run_failed, screen, str(exc), False)

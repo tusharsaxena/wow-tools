@@ -4,7 +4,8 @@ One journal per Apply, even across All flavors: <WoW>/wow-tools/ace-profiles/jou
 rewritten file adds {"action": "edited", "flavor", "path", "rel", "zip", "sha_before", "sha_after", "size_before",
 "size_after", "changes"}: zip is the edited-*.zip holding the file's original bytes (as <rel>). When a run puts
 written files back after a failure it appends {"action": "rolled_back", "flavor", "rels"}; those entries are
-dropped on reading, so they are never offered for Undo.
+dropped on reading, so they are never offered for Undo. Recovery after an Apply that did not finish appends the
+same entry for the files it put back (record_recovered), so Undo never offers them again.
 """
 from __future__ import annotations
 
@@ -56,6 +57,29 @@ def read_profile_journal(path: Path) -> Journal:
         entries.append(entry)
     journal.entries = entries
     return journal
+
+
+def record_recovered(folder: Path | None, flavor: str, zip_name: str, rels: list[str]) -> list[Path]:
+    """Recovery put rels of an unfinished Apply back (or found them at their original): add a rolled_back entry to
+    each journal holding their edited entries from zip_name, so Undo does not offer them again. Returns the
+    journals changed; an unreadable or unwritable journal is left as it is."""
+    wanted = set(rels)
+    changed = []
+    for path in core.list_journals(folder):
+        try:
+            journal = read_profile_journal(path)
+        except (OSError, ValueError, TypeError):
+            continue
+        hit = sorted({e["rel"] for e in journal.entries
+                      if e["flavor"] == flavor and e["zip"].name == zip_name and e["rel"] in wanted})
+        if not hit:
+            continue
+        try:
+            core.append_record(path, {"action": A_ROLLED_BACK, "flavor": flavor, "rels": hit})
+        except OSError:
+            continue
+        changed.append(path)
+    return changed
 
 
 def latest_undoable(folder: Path | None) -> Path | None:

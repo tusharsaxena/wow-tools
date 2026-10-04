@@ -13,7 +13,7 @@ EVENTS: dict[str, EventSpec] = {
     "ace.lookalike": EventSpec("debug", "A table looks like an AceDB database but is not one; it is left alone."),
     "ace.staged": EventSpec("debug", "A change was staged on the review screen (operation and counts)."),
     "ace.blacklist_changed": EventSpec("info", "An addon was added to or removed from the blacklist."),
-    "ace.unlocked": EventSpec("info", "A blacklisted addon was unlocked for this session."),
+    "ace.unlocked": EventSpec("info", "A blacklisted addon was unlocked for this session, or locked again (unlocked=false)."),
     "ace.apply_started": EventSpec("info", "Apply (or a dry run) of the staged changes started."),
     "ace.wow_running": EventSpec("warning", "Apply or Undo was refused because WoW of that flavor is running."),
     "ace.file_changed": EventSpec("warning", "A file changed since the scan; its changes were skipped."),
@@ -23,6 +23,7 @@ EVENTS: dict[str, EventSpec] = {
     "ace.snapshot_failed": EventSpec("error", "The whole-WTF snapshot failed; nothing was changed."),
     "ace.files_backed_up": EventSpec("info", "The originals of the files to change were zipped and verified."),
     "ace.backup_failed": EventSpec("error", "The zip of the original files failed; nothing was changed."),
+    "ace.earlier_unfinished": EventSpec("error", "Apply was refused: an earlier Apply did not finish (its crash marker is there); nothing was changed."),
     "ace.marker_failed": EventSpec("error", "The crash marker could not be written; nothing was changed."),
     "ace.file_edited": EventSpec("info", "A SavedVariables file was rewritten with the staged changes."),
     "ace.would_edit": EventSpec("info", "Dry run: a file that would be rewritten, with its changes (checked, not written)."),
@@ -41,7 +42,7 @@ EVENTS: dict[str, EventSpec] = {
     "ace.file_skipped": EventSpec("warning", "Undo or recovery: a file was left alone (it changed since the run, or is outside the WTF folder)."),
     "ace.undo_failed": EventSpec("error", "Undo or recovery: a file could not be put back (its zip is missing or does not match)."),
     "ace.undo_completed": EventSpec("info", "Undo last change finished (logged at warning if any file was skipped or failed)."),
-    "ace.recovery_offered": EventSpec("warning", "A marker from an Apply that did not finish was found when the tool opened."),
+    "ace.recovery_offered": EventSpec("warning", "A marker from an Apply that did not finish was found by a scan (on opening or a rescan), or Apply was pressed while it is there."),
     "ace.recovery_done": EventSpec("info", "The user chose what to do about an unfinished Apply (put back or leave)."),
 }
 

@@ -18,10 +18,10 @@ from wowtools.core.events import log_event
 from wowtools.core.fsutil import atomic_write_bytes, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.core.journal import mark_undone
-from wowtools.core.snapshot import take_snapshot
+from wowtools.core.snapshot import prune_snapshots, take_snapshot
 from wowtools.core.svfiles import SvFileError, probe_lock
 from wowtools.tools.ace_profiles.editor import SNAPSHOT_PREFIX, SNAPSHOT_SUBDIR, Marker, clear_marker
-from wowtools.tools.ace_profiles.journal import read_profile_journal
+from wowtools.tools.ace_profiles.journal import read_profile_journal, record_recovered
 
 CHANGED_SINCE = "changed since the change was made (WoW may have saved it); left as it is"
 
@@ -139,6 +139,16 @@ def _snapshot(flavor: Flavor, root: Path, now: datetime | None, report, action: 
         raise UndoError(f"The WTF backup before {action} failed ({exc}). Nothing was changed.") from exc
 
 
+def _prune(flavors: list[Flavor], root: Path, keep_snapshots: int | None) -> None:
+    """Keep only the newest keep_snapshots WTF backups of each flavor, as Apply does."""
+    if keep_snapshots is None:
+        return
+    for flavor in flavors:
+        pruned = prune_snapshots(root / SNAPSHOT_SUBDIR, SNAPSHOT_PREFIX, flavor.short_name, keep_snapshots)
+        if pruned:
+            log_event("ace.snapshots_pruned", flavor=flavor.folder, removed=[p.name for p in pruned])
+
+
 def undo_run(journal_path: Path, *, wow_root: Path, root: Path, keep_snapshots: int,
              wow_check: Callable[[], list[str] | None] | None = None, now: datetime | None = None,
              progress: Callable[[str, int, int, str], None] | None = None) -> UndoResult:
@@ -150,8 +160,9 @@ def undo_run(journal_path: Path, *, wow_root: Path, root: Path, keep_snapshots: 
     targets = [(e, destination(wow_root, e["flavor"], e["rel"])) for e in entries]
     _refuse_locked([(entry["rel"], dest) for entry, dest in targets], "undo")
     result = UndoResult(journal_path=journal_path)
-    for folder in sorted({e["flavor"] for e in entries}):
-        result.snapshots.append(_snapshot(Flavor(folder, wow_root / folder), root, now, report, "undo"))
+    flavors = [Flavor(folder, wow_root / folder) for folder in sorted({e["flavor"] for e in entries})]
+    for flavor in flavors:
+        result.snapshots.append(_snapshot(flavor, root, now, report, "undo"))
     for index, (entry, dest) in enumerate(targets, 1):
         rel, flavor = entry["rel"], entry["flavor"]
         report("undo", index, len(targets), rel)
@@ -178,23 +189,28 @@ def undo_run(journal_path: Path, *, wow_root: Path, root: Path, keep_snapshots: 
             log_event("ace.undo_failed", flavor=flavor, path=rel, error=problem)
     if result.restored or not result.failed:
         mark_undone(journal_path, len(result.restored), len(result.skipped))
+    _prune(flavors, root, keep_snapshots)
     level_bad = result.skipped or result.failed
     log_event("ace.undo_completed", restored=len(result.restored), skipped=len(result.skipped),
               failed=len(result.failed), level="warning" if level_bad else None)
     return result
 
 
-def recover(marker: Marker, *, root: Path, wow_check: Callable[[], list[str] | None] | None = None,
+def recover(marker: Marker, *, root: Path, journal_dir: Path | None = None, keep_snapshots: int | None = None,
+            wow_check: Callable[[], list[str] | None] | None = None,
             now: datetime | None = None, progress: Callable[[str, int, int, str], None] | None = None) -> UndoResult:
     """After an Apply that did not finish: put back every file of the marker that is still what the run wrote.
     A file still at its original is left alone; one that is neither (the run skipped it as changed since the scan,
     or WoW saved it since) is skipped and never overwritten. As Undo: refused while that flavor's WoW runs or a
-    file is locked, and the flavor's WTF folder is backed up first (when there is something to put back)."""
+    file is locked, and the flavor's WTF folder is backed up first (when there is something to put back), then
+    pruned to keep_snapshots. The files now at their original get a rolled_back entry in the run's journal (in
+    journal_dir), so Undo does not offer them again."""
     report = safe_progress(progress)
     _refuse_running(wow_check, "recover")
     targets = {rel: destination(marker.flavor_path.parent, marker.flavor, rel) for rel in marker.files}
     _refuse_locked(sorted(targets.items()), "recover")
     result = UndoResult()
+    original: list[str] = []
     if any(dest is not None and _current_sha(dest) == marker.after.get(rel) for rel, dest in targets.items()):
         result.snapshots.append(_snapshot(Flavor(marker.flavor, marker.flavor_path), root, now, report, "recovery"))
     for index, (rel, sha_before) in enumerate(sorted(marker.files.items()), 1):
@@ -206,6 +222,7 @@ def recover(marker: Marker, *, root: Path, wow_check: Callable[[], list[str] | N
             continue
         current = _current_sha(dest)
         if current == sha_before:
+            original.append(rel)
             continue
         if current is None or current != marker.after.get(rel):
             detail = "the file is gone or could not be read" if current is None else CHANGED_SINCE
@@ -217,6 +234,11 @@ def recover(marker: Marker, *, root: Path, wow_check: Callable[[], list[str] | N
         status = "restored" if problem is None else "failed"
         result.outcomes.append(UndoOutcome(marker.flavor, rel, dest, status, problem or ""))
         log_event("ace.file_restored" if problem is None else "ace.undo_failed", flavor=marker.flavor, path=rel)
+    back = original + [o.rel for o in result.restored]
+    if back:
+        record_recovered(journal_dir, marker.flavor, marker.zip.name, back)
+    if result.snapshots:
+        _prune([Flavor(marker.flavor, marker.flavor_path)], root, keep_snapshots)
     if not result.failed:
         clear_marker(root)
     log_event("ace.recovery_done", choice="put_back", restored=len(result.restored), skipped=len(result.skipped),

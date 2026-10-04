@@ -733,3 +733,88 @@ class ReviewFixesTest(AceAppBase):
             await settle(app, pilot)
             addon = find_addon(tree, "ElvUI")
             self.assertFalse(addon.is_expanded)  # back to how it was before the search
+
+
+class FinalReviewFixesTest(AceAppBase):
+    """M4 review: Apply with an unfinished earlier change, the backup folder checked before use, and the
+    running-WoW check of only the flavors with changes."""
+
+    async def stage_elv(self, app, pilot, review):
+        key = next(k for k in review.staging.states if k.sv_name == "ElvDB")
+        review.staging.delete({key: ["Healer"]}, "Default")
+        review.refresh_view()
+        await settle(app, pilot)
+        return key.path
+
+    async def test_apply_offers_the_earlier_unfinished_change_first(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            kick = next(k for k in review.staging.states if k.sv_name == "KickCDDB").path
+            flavor = WowInstall(self.root).flavor("_retail_")
+            rel = kick.relative_to(flavor.path).as_posix()
+            root = self.root / "wow-tools" / "ace-profiles"
+            earlier = editor.Marker("_retail_", flavor.path, root / "edited" / "edited-retail-all-x.zip",
+                                    {rel: "a"}, "2026-10-03T12:00:00+00:00", 1, "1.0.0", {rel: "b"})
+            editor.write_marker(root, earlier)
+            await pilot.press("r")
+            await settle(app, pilot)
+            self.assertEqual(type(app.screen).__name__, "ProfileRecoveryScreen")
+            await pilot.press("escape")  # closed without a choice
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            path = await self.stage_elv(app, pilot, review)
+            before = path.read_bytes()
+            await pilot.press("w")
+            await settle(app, pilot)
+            self.assertEqual(type(app.screen).__name__, "ProfileRecoveryScreen")
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(editor.read_marker(root), earlier)
+
+    async def test_apply_and_undo_refuse_a_backup_folder_not_allowed(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            path = await self.stage_elv(app, pilot, review)
+            before = path.read_bytes()
+            inside_wtf = self.root / "_retail_" / "WTF" / "bk"
+            review.tool_cfg.set_path("ace_profiles", "backup_dir", inside_wtf)  # edited by hand in the cfg
+            await pilot.press("w")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(path.read_bytes(), before)
+            self.assertFalse(inside_wtf.exists())
+            self.assertTrue(any(n.title == "Backup folder not allowed" for n in app._notifications))
+            app._notifications.clear()
+            review.undoable = self.root / "journal-x.jsonl"
+            await pilot.press("z")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertTrue(any(n.title == "Backup folder not allowed" for n in app._notifications))
+
+    async def test_apply_checks_only_the_flavors_it_changes(self):
+        from unittest.mock import patch
+
+        from wowtools.core import process
+        from wowtools.core.process import WowProcess
+        procs = [WowProcess("WowClassic.exe", str(self.root / "_classic_era_" / "WowClassic.exe"))]
+        asked: list[list[str]] = []
+
+        def check_for(folders, **_):
+            asked.append(list(folders))
+            return process.wow_check_for(folders, lister=lambda: list(procs))
+        app = WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list)
+        with patch("wowtools.tools.ace_profiles.review_screen.wow_check_for", side_effect=check_for):
+            async with app.run_test(size=(140, 50)) as pilot:
+                review = await self.open_review(app, pilot)  # All flavors
+                self.assertGreater(len(review.flavors), 1)
+                path = await self.stage_elv(app, pilot, review)  # a Retail file only
+                before = path.read_bytes()
+                await pilot.press("w")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, ConfirmScreen)  # Classic Era running does not matter
+                app.screen.dismiss(True)
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, ProfileResultScreen)
+                self.assertIn(["_retail_"], asked)
+                self.assertNotEqual(path.read_bytes(), before)

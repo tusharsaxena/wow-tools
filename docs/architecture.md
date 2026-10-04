@@ -420,7 +420,7 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
     apply_flavors([(flavor, [DbState]), ...], root, journal_dir, keep_journals, keep_snapshots, dry_run, account, wow_check, progress)
                       → MultiApplyResult(dry_run, runs[FlavorRun(flavor, result: ApplyResult, error)], journal_path)
     undo_run(journal_path, wow_root, root, keep_snapshots, wow_check, progress) → UndoResult(outcomes, snapshots)
-    recover(marker, root, wow_check, progress) → UndoResult
+    recover(marker, root, journal_dir, keep_snapshots, wow_check, progress) → UndoResult
 
 Modules in `tools/ace_profiles/` (all UI-free except `app.py`, `review_screen.py`, `tree_view.py`, `popups.py` and
 `result_screen.py`): `events`, `settings`, `luasv`, `model`, `scanner`, `ops`, `verify`, `editor`, `multi`,
@@ -472,7 +472,10 @@ them byte-identical, and the namespaces section with only the profile tables and
 mismatch fails the file (`ace.verify_failed`) and stops the run before anything is written.
 
 **Apply** (`editor.apply_flavor`, `multi.apply_flavors`). `apply_flavors` refuses while WoW runs (`WowRunning`,
-skipped for a dry run), opens one `ProfileJournal` for the run, then per flavor: `SvGuard`; recheck each file's
+skipped for a dry run; the review screen checks only the flavors with staged changes), opens one `ProfileJournal`
+for the run, then per flavor: a real run is refused while an earlier run's crash marker is there
+(`ace.earlier_unfinished`: it would overwrite, then clear, the only pointer to that run's originals; the review
+screen offers that recovery again instead); `SvGuard`; recheck each file's
 SHA-256 (a changed file is skipped, "changed since the scan; rescan", `ace.file_changed`); compile and verify. A
 dry run stops here (`would_edit` outcomes, nothing written). A real run: journal open, probe leftovers recovered,
 lock probe (`probe_lock`; any locked file refuses), whole-WTF snapshot (`core.snapshot`,
@@ -485,7 +488,8 @@ puts back every file this run wrote, newest first, records `rolled_back` in the 
 the marker then stays). Then the marker is cleared and snapshots pruned to `keep_snapshots`. Any refusal before the
 writes is an `ApplyError` ending "Nothing was changed."; a flavor that stops ends the run (`ace.flavors_stopped`).
 Afterwards journals are pruned to `keep_journals` and `prune_edited_zips` deletes only `edited-*.zip` files no kept
-journal names (nothing when a journal cannot be read).
+journal names (nothing when a journal cannot be read). The review screen checks the backup folder with
+`validate_backup_dir` before an Apply, an Undo or a recovery (it may have been edited by hand in the cfg).
 
 **Journal and Undo** (`journal.py`, `undo.py`). `<WoW>/wow-tools/ace-profiles/journal/journal-<stamp>.jsonl`:
 
@@ -497,11 +501,13 @@ journal names (nothing when a journal cannot be read).
 
 `read_profile_journal` drops `edited` entries a `rolled_back` line names. `latest_undoable` is the newest journal of
 the whole tool. `undo_run` refuses while WoW of a flavor the journal changed runs and when a file is locked
-(`UndoError`), snapshots each of those flavors, then newest entry first: a file whose SHA-256 is `sha_after` gets
+(`UndoError`), snapshots each of those flavors (pruned to `keep_snapshots` afterwards), then newest entry first: a file whose SHA-256 is `sha_after` gets
 its original bytes from the zip (checked against `sha_before`, written atomically: "restored"); any other file is
 "skipped: changed since"; the journal is marked undone unless nothing was restored and something failed.
 `recover(marker)` (the recovery popup's "Put the originals back") is guarded the same way and puts back only files
-still at the marker's `after` hash; a file at its original is left alone, any other is skipped.
+still at the marker's `after` hash; a file at its original is left alone, any other is skipped. The files now at
+their original get a `rolled_back` line in the journal that holds their entries from the marker's zip
+(`journal.record_recovered`), so Undo never offers them again; its snapshot is pruned to `keep_snapshots`.
 
 ### Ace3 Profile Manager screens
 
@@ -527,7 +533,7 @@ inline). `s` opens the shared WoW-folder settings, then this tool's.
 - `ProfileProgressScreen` (ids `ace-*`, `report.STAGE_TITLES`) and `ProfileRecoveryScreen` (Put the originals
   back / Leave as is; Esc leaves the marker for the next scan).
 - `ProfileResultScreen` (`result_screen.py`): `result_css`; `#result-summary` (`apply_summary_rows` or
-  `undo_summary_rows`) above `#result-table` (`DETAIL_COLUMNS` or `UNDO_COLUMNS`); Rescan (r), Other flavor (f),
+  `undo_summary_rows`) above `#result-detail` (`DETAIL_COLUMNS` or `UNDO_COLUMNS`); Rescan (r), Other flavor (f),
   Tools (t), Quit (q), plus a focused **Back to review (Esc)** after a dry run. After a real Apply or Undo the
   staging is dropped and the review rescans when shown again.
 

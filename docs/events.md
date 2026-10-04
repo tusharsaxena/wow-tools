@@ -162,6 +162,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ace.backup_failed` | error | The zip of the original files failed; nothing was changed. |
 | `ace.blacklist_changed` | info | An addon was added to or removed from the blacklist. |
 | `ace.dry_run_completed` | info | A dry run finished. |
+| `ace.earlier_unfinished` | error | Apply was refused: an earlier Apply did not finish (its crash marker is there); nothing was changed. |
 | `ace.file_changed` | warning | A file changed since the scan; its changes were skipped. |
 | `ace.file_edited` | info | A SavedVariables file was rewritten with the staged changes. |
 | `ace.file_locked` | error | Apply or Undo stopped before changing anything: files are locked by another program. |
@@ -177,7 +178,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ace.parse_failed` | warning | A SavedVariables file is not readable Lua; it is shown as a warning and never changed. |
 | `ace.probe_recovered` | warning | A SavedVariables file left as <name>.wowtools-lockcheck by an interrupted lock check was renamed back. |
 | `ace.recovery_done` | info | The user chose what to do about an unfinished Apply (put back or leave). |
-| `ace.recovery_offered` | warning | A marker from an Apply that did not finish was found when the tool opened. |
+| `ace.recovery_offered` | warning | A marker from an Apply that did not finish was found by a scan (on opening or a rescan), or Apply was pressed while it is there. |
 | `ace.rollback_failed` | error | A file could not be put back after a failure; restore it from the zip the message names. |
 | `ace.rolled_back` | warning | After a failure, the files this run had already written were put back. |
 | `ace.scan_completed` | info | A scan finished, with counts (files, databases, profiles, characters, leftover characters, seconds). |
@@ -189,7 +190,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ace.undo_completed` | info | Undo last change finished (logged at warning if any file was skipped or failed). |
 | `ace.undo_failed` | error | Undo or recovery: a file could not be put back (its zip is missing or does not match). |
 | `ace.undo_started` | info | Undo last change started, from the newest journal. |
-| `ace.unlocked` | info | A blacklisted addon was unlocked for this session. |
+| `ace.unlocked` | info | A blacklisted addon was unlocked for this session, or locked again (unlocked=false). |
 | `ace.verify_failed` | error | An edited file did not re-read as expected; it was not written and the run stopped. |
 | `ace.would_edit` | info | Dry run: a file that would be rewritten, with its changes (checked, not written). |
 | `ace.wow_running` | warning | Apply or Undo was refused because WoW of that flavor is running. |

@@ -1,6 +1,6 @@
 """Apply staged profile changes to one flavor's SavedVariables (spec §9). UI-free.
 
-Order: guard every path, re-read each file and check it is still what the scan saw (SHA-256), compile and verify
+Order: refuse while an earlier Apply's crash marker is there (its recovery would be lost), guard every path, re-read each file and check it is still what the scan saw (SHA-256), compile and verify
 every edit in memory, then (real runs only) open the journal, recover lock-probe leftovers, refuse locked files,
 take the whole-WTF snapshot, zip the original bytes of every file to change, write the crash marker, and write
 each file atomically (re-read and compared), journalling each one. Any failure while writing puts the files
@@ -193,6 +193,19 @@ def _refuse_locked(ready: list[tuple[SvFile, FileEdit, bytes]], flavor: Flavor, 
                          f"Companion are known to do this). Close it and apply again.\n{names}")
 
 
+def _refuse_unfinished(root: Path, flavor: Flavor) -> None:
+    """ApplyError while an earlier Apply's marker is there: a new run would overwrite (then clear) the only pointer
+    to that run's originals, as the WTF Cleaner refuses too."""
+    earlier = read_marker(root)
+    if earlier is None:
+        return
+    log_event("ace.earlier_unfinished", flavor=flavor.folder, earlier_flavor=earlier.flavor,
+              started=earlier.started, zip=str(earlier.zip))
+    raise ApplyError(f"An earlier change (started {earlier.started}) did not finish; its original files are in "
+                     f"{earlier.zip}. Press r to rescan and choose what to do about it (put the originals back or "
+                     f"leave as is), then apply again. Nothing was changed.")
+
+
 def apply_flavor(flavor: Flavor, states: list[DbState], *, root: Path, journal: ProfileJournal | None,
                  dry_run: bool, keep_snapshots: int, account: str | None = None, now: datetime | None = None,
                  progress: ApplyProgress | None = None,
@@ -212,6 +225,8 @@ def _apply(result: ApplyResult, states: list[DbState], *, root: Path, journal: P
            write: Callable[[Path, bytes], None]) -> ApplyResult:
     flavor, dry_run = result.flavor, result.dry_run
     log_event("ace.apply_started", flavor=flavor.folder, dry_run=dry_run, databases=len(states))
+    if not dry_run:
+        _refuse_unfinished(root, flavor)
     ready = _prepare(flavor, states, result, report)
     if dry_run:
         for file, edit, _ in ready:

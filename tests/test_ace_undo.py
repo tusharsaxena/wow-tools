@@ -70,6 +70,17 @@ class UndoTest(unittest.TestCase):
         self.assertEqual(len(result.failed), 2)
         self.assertEqual(latest_undoable(self.journals), self.journal)
 
+    def test_undo_prunes_snapshots_to_keep_snapshots(self):
+        """M4 review: Undo's WTF backup is pruned to keep_snapshots, as Apply's is."""
+        folder = self.root / "snapshots"
+        for day in ("01", "02"):
+            (folder / f"snapshot-retail-202610{day}-000000.zip").write_bytes(b"x")
+        result = self.undo()
+        left = sorted(p.name for p in folder.iterdir())
+        self.assertEqual(len(left), 2)
+        self.assertIn(result.snapshots[0].name, left)
+        self.assertNotIn("snapshot-retail-20261001-000000.zip", left)
+
     def test_destination_refuses_escapes(self):
         self.assertIsNone(undo.destination(self.wow, "_retail_", "../x.lua"))
         self.assertIsNone(undo.destination(self.wow, "_retail_", "Interface/AddOns/x.lua"))
@@ -202,6 +213,60 @@ class RecoverTest(unittest.TestCase):
         self.assertEqual(sv.read_bytes(), original)
         self.assertEqual(len(result.snapshots), 1)
         self.assertTrue(result.snapshots[0].is_file())
+
+
+class RecoverJournalTest(unittest.TestCase):
+    """M4 review: recovery marks what it put back in the crashed run's journal, and prunes its WTF backup."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name)
+        self.wow = build_ace_tree(base / "wow")
+        self.flavor = WowInstall(self.wow).flavor("_retail_")
+        self.root = base / "out"
+        self.journals = base / "journal"
+        staging = ops.Staging.from_scan(scanner.ScanResult([scanner.scan_flavor(self.flavor, account="ACCT1")]))
+        key = {k.sv_name: k for k in staging.states}
+        staging.delete({key["ElvDB"]: ["Healer"]}, "Default")
+        staging.remove_leftovers({key["KickCDDB"]: ["Gone - Realm1"]})
+        self.first, self.second = list(dict.fromkeys(s.file.path for s in staging.changed()))
+        self.original = self.first.read_bytes()
+
+        def write(path, data):  # the first file lands and is journalled; the run then "dies"
+            if path == self.first:
+                atomic_write_bytes(path, data)
+            else:
+                raise OSError("killed")
+        journal = _journal(base)
+        with patch("wowtools.tools.ace_profiles.editor.restore_original", side_effect=OSError("no")), \
+                self.assertRaises(editor.ApplyError):
+            editor.apply_flavor(self.flavor, staging.changed(), root=self.root, journal=journal, dry_run=False,
+                                keep_snapshots=2, now=WHEN, write=write)
+        journal.close()
+        self.journal = journal.path
+        self.marker = editor.read_marker(self.root)
+        self.assertIsNotNone(self.marker)
+        self.assertEqual(latest_undoable(self.journals), self.journal)
+
+    def test_recovered_files_are_not_offered_for_undo(self):
+        result = undo.recover(self.marker, root=self.root, journal_dir=self.journals, now=WHEN)
+        self.assertEqual(self.first.read_bytes(), self.original)
+        self.assertEqual(len(result.restored), 1)
+        self.assertIsNone(latest_undoable(self.journals))
+
+    def test_without_a_journal_folder_the_journal_is_left(self):
+        undo.recover(self.marker, root=self.root, now=WHEN)
+        self.assertEqual(latest_undoable(self.journals), self.journal)
+
+    def test_recovery_prunes_snapshots(self):
+        folder = self.root / "snapshots"
+        for day in ("01", "02"):
+            (folder / f"snapshot-retail-202610{day}-000000.zip").write_bytes(b"x")
+        result = undo.recover(self.marker, root=self.root, journal_dir=self.journals, keep_snapshots=2, now=WHEN)
+        left = sorted(p.name for p in folder.iterdir())
+        self.assertEqual(len(left), 2)
+        self.assertIn(result.snapshots[0].name, left)
 
 
 def _journal(base):

@@ -171,6 +171,24 @@ class EditorTest(unittest.TestCase):
         self.assertEqual(seen[0].after[rel], scanner.sha256_of(elv.read_bytes()))
         self.assertEqual(set(seen[0].after), set(seen[0].files))
 
+    def test_refused_while_an_earlier_apply_did_not_finish(self):
+        """M4 review: a new Apply must not overwrite (then clear) an earlier run's crash marker."""
+        earlier = editor.Marker("_retail_", self.flavor.path, self.root / "edited" / "edited-retail-all-x.zip",
+                                {"WTF/Account/ACCT1/SavedVariables/Other.lua": "a"}, "2026-10-03T12:00:00", 1,
+                                "1.0.0", {"WTF/Account/ACCT1/SavedVariables/Other.lua": "b"})
+        editor.write_marker(self.root, earlier)
+        self.stage_two_files()
+        before = {p: p.read_bytes() for p in self.flavor.wtf_dir.rglob("*.lua")}
+        with capture_events() as events, self.assertRaises(editor.ApplyError) as caught:
+            self.apply()
+        self.assertIn("did not finish", str(caught.exception))
+        self.assertIn("Nothing was changed", str(caught.exception))
+        self.assertIn("ace.earlier_unfinished", [e["event"] for e in events])
+        self.assertEqual({p: p.read_bytes() for p in self.flavor.wtf_dir.rglob("*.lua")}, before)
+        self.assertEqual(editor.read_marker(self.root), earlier)
+        self.assertFalse((self.root / "snapshots").exists())
+        self.assertEqual(len(self.apply(dry_run=True).would_edit), 2)  # a dry run writes nothing: allowed
+
     def test_guard_refuses_a_path_outside_saved_variables(self):
         self.stage_two_files()
         state = self.staging.changed()[0]

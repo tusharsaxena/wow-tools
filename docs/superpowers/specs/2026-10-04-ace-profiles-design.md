@@ -185,7 +185,9 @@ Order per flavor (multi-flavor runs go flavor by flavor, one journal for the run
 flavor):
 
 1. Guard: every path lies inside `<flavor>/WTF/Account` and directly in a `SavedVariables` folder.
-2. WoW of that flavor running → refuse (`ace.wow_running`).
+2. WoW of that flavor running → refuse (`ace.wow_running`). A crash marker from an earlier Apply → refuse
+   (`ace.earlier_unfinished`), as the WTF Cleaner does: a new run would overwrite, then clear, the only pointer to
+   that run's originals. The review screen offers that recovery again instead (M4 review).
 3. Recheck each file: size, mtime and SHA-256 must match the scan; a changed file is skipped ("changed since the
    scan; rescan") with its edits.
 4. Open the journal; lock probe (rename to `.wowtools-lockcheck` and back) on every file to change.
@@ -204,7 +206,9 @@ Dry run: steps 1–3 and compile + verify for every file, in memory. Nothing is 
 Crash marker on next open: a recovery popup lists the files and offers **Put the originals back** (from the per-file
 zip, only files whose hash is still what the run wrote; a file at neither hash, skipped by the run or saved since by
 WoW, is left as it is) or **Leave as is**. Same flow as the WTF Cleaner's. Putting the originals back is guarded as
-Undo is: refused while the marker's flavor's WoW runs, lock probe, WTF snapshot first.
+Undo is: refused while the marker's flavor's WoW runs, lock probe, WTF snapshot first (pruned to `keep_snapshots`).
+The files then at their original get a `rolled_back` line in the run's journal, so Undo does not offer them again
+(M4 review).
 
 ## 10. Undo (`undo.py`)
 
@@ -212,7 +216,8 @@ Latest undoable journal (`core/journal.latest_undoable`). Refused while that fla
 journal changed, which need not be the ones reviewed; the confirm names them); lock probe; snapshot
 first. For each `edited` entry, newest first: current SHA-256 equals `sha_after` → write the original bytes from the
 per-file zip atomically and check `sha_before` → "restored"; otherwise "skipped: changed since". The journal is
-marked undone unless nothing was restored and something failed (WTF Cleaner rule).
+marked undone unless nothing was restored and something failed (WTF Cleaner rule). Its snapshots are pruned to
+`keep_snapshots` as Apply's are (M4 review).
 
 ## 11. Settings (`[ace_profiles]`)
 
@@ -254,8 +259,9 @@ Two panes like the other tools (`two_pane_css`, `FILTERS_WIDTH`, `review_hint`).
 **Tree, By addon**: root → flavor (when several) → account → addon (`KickCD`, tags: blacklisted / unlocked /
 per character) → database (only when the file has more than one) → profile (`Default · 12 characters`, tags
 Default, unused, empty, missing, staged marks) → character leaves (`Kaelys - Mug'thol`, tags no character folder,
-spec profiles). Staged marks: deleted profile `✘ deleted → Default`, renamed `Old → New`, copied `+ copy of A`,
-reassigned character `Old → New`, removed character `✘ removed`. Unreadable files are warning notes.
+spec profiles). Staged marks (as built, M4 review): deleted profile `✘ deleted` (its characters are shown under
+their new profile), renamed `renamed from Old`, copied `copy of A`, reassigned character `was Old`, removed
+character `✘ removed`. Unreadable files are warning notes under a `⚠ Scan warnings (n)` node at the bottom.
 
 **Tree, By character**: root → flavor → account → character (`Kaelys - Mug'thol`, leftover tag) → `Addon: Profile`
 leaves. Ticking here selects (database, character) pairs.
@@ -282,9 +288,10 @@ quick actions (a list). Apply and Undo use `ConfirmScreen` (alerts in red: WoW r
 targets that will be created at login, Default being deleted) and a `ProgressScreen` subclass (stages: check,
 snapshot, back up, edit, verify).
 
-**Result screen** (`result_css`): Item/Value summary (files changed, skipped, failed, profiles deleted/renamed/
-copied, characters reassigned/removed, snapshot, per-file backup, journal) above one `.result-detail` table (flavor,
-account, addon, change, result). Buttons Rescan (r) … Other flavor (f), Tools (t), Quit (q). The same screen shows
+**Result screen** (`result_css`): Item/Value summary (as built, M4 review: files changed or would change,
+skipped, put back after a failure, failed, the flavor stopped at, the WTF backup and original-files paths, journal;
+the per-profile and per-character changes are in the detail table, not counted) above one `.result-detail` table
+(flavor, account, addon, change, result). Buttons Rescan (r) … Other flavor (f), Tools (t), Quit (q). The same screen shows
 dry-run and undo results. A dry run's result adds **Back to review (Esc)**, focused: back with the staged changes
 kept.
 

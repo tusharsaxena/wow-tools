@@ -2,7 +2,7 @@
 
 [← Back to the main page](../README.md)
 
-Many addons (ElvUI, Details, HandyNotes and hundreds more) are built on a library called **Ace3**, and they keep
+Many addons (ElvUI, Bartender4, HandyNotes and hundreds more) are built on a library called **Ace3**, and they keep
 their settings in **profiles**. A profile is a named set of settings, such as "Default", "Healer" or
 "Kaelys - Mug'thol". Each character uses one profile, and several characters can share one.
 
@@ -46,8 +46,8 @@ on the left) to switch between them.
 
 game version → account → addon → profile → the characters that use it
 
-- An addon whose settings are kept per character shows that character after its name, for example
-  `Details (Kaelys - Mug'thol)`.
+- An addon whose settings are kept per character shows that character (realm/name) after its name, for example
+  `KickCD (Mug'thol/Kaelys)`.
 - When one file holds more than one Ace3 database (ElvUI keeps `ElvDB` and `ElvPrivateDB` in one file), each
   database gets its own line under the addon.
 - A profile line shows its name and how many characters use it, for example `Default · 12 characters`.
@@ -110,11 +110,11 @@ lower case doesn't matter). `Esc` takes you from the search box back to the tree
 
 Tick the profiles or characters a change should apply to (`Space`), or just highlight one. Ticking an addon, an
 account or a game version ticks everything below it. Changes are made per addon database: a profile in ElvUI and a
-profile with the same name in Details are two different profiles.
+profile with the same name in Bartender4 are two different profiles.
 
 | Key | Change | What it does |
 |---|---|---|
-| `d` | **Delete profiles** | Deletes the ticked profiles. Their characters have to go somewhere, so a popup asks which profile they move to: "Default" to start with, or any other profile of that addon. If you're deleting every profile, you type a name instead |
+| `d` | **Delete profiles** | Deletes the ticked profiles. Their characters have to go somewhere, so a popup asks which profile they move to: "Default" to start with, or any other profile of that addon. If you're deleting every profile, "Default" included, you type a name instead |
 | `p` | **Assign a profile** | Moves the ticked characters to a profile you pick from the list, or to a new name you type |
 | `e` | **Rename a profile** | Renames the highlighted profile. Its characters follow it |
 | `k` | **Copy a profile** | Copies the highlighted profile, settings and all, under a new name. Nobody uses the copy until you assign it |
@@ -149,7 +149,7 @@ see their profiles, but they can't be ticked or changed.
   tagged "unlocked". Press `u` again to lock it again.
 - Blacklisting or locking an addon throws away any changes already staged for it, and says so.
 
-An addon's name is its settings file's name without `.lua` (`ElvUI`, `Details`), upper or lower case doesn't
+An addon's name is its settings file's name without `.lua` (`ElvUI`, `Bartender4`), upper or lower case doesn't
 matter.
 
 ## Keys on the review screen
@@ -221,9 +221,9 @@ tool:
 4. **Saves the files it's about to change**, as they are now, into another zip. This is what Undo uses.
 5. **Writes each file**, after checking the new version, and reads it back to make sure it landed.
 
-If anything goes wrong while writing, every file already written in that run is put back as it was, and the run
-stops. With **All flavors**, the game versions are changed one after another; if one runs into a problem, the
-versions after it aren't touched.
+If anything goes wrong while writing, every file already written in that game version is put back as it was, and
+the run stops. With **All flavors**, the game versions are changed one after another; if one runs into a problem,
+the versions after it aren't touched, and the versions before it keep their changes (Undo puts them back).
 
 ## Dry run
 
@@ -274,7 +274,8 @@ Unless you change it in settings, the backup folder is `<your WoW folder>\wow-to
 another. The journals always stay in your WoW folder, even if you pick another backup folder.
 
 - Only the newest 2 **WTF backups** (`snapshots`) of each game version are kept (you can change this in settings).
-  They're a safety net in case something goes badly wrong.
+  One is taken before each change, each Undo and each recovery. They're a safety net in case something goes badly
+  wrong.
 - Only the newest 10 **journals** are kept. An `edited` zip is deleted along with the last journal that needs it.
 - To put files back by hand (an older change, say): close WoW, open the `edited\edited-…zip`, and extract it **into
   the game version's folder** (for example `World of Warcraft\_retail_`), keeping the folders. You can ignore
@@ -291,7 +292,8 @@ originals are. It **never repairs anything on its own**. You choose:
   This is guarded like Undo: refused while WoW is running, and your `WTF` folder is backed up first.
 - **Leave as is**: the files stay as they are now; the zips are kept.
 
-If you close the message with `Esc`, it's shown again next time.
+If you close the message with `Esc`, it's shown again next time, and when you press **Apply**: a new change
+can't start until you've chosen, since it would lose the way back for the earlier one.
 
 ## Settings
 
@@ -332,7 +334,7 @@ The file itself uses these names, if you edit it by hand: `backup_dir`, `keep_sn
 | A file was "skipped: changed since the scan; rescan" | WoW (or another program) saved that file after the scan. Press `r` to scan again, stage that addon's changes again and apply. The other files were changed as planned. |
 | My changes were undone after I played | WoW was running while you applied, or an addon synced its profiles back. Close WoW completely, apply again, then start the game. |
 | "files are locked by another program" | Close the Raider.IO client or the WeakAuras Companion, then apply again. Nothing was changed. |
-| An addon is missing from the tree | It doesn't use Ace3 profiles, its file is blacklisted and hidden (tick **Blacklisted addons**), or a filter or search hides it. If its file couldn't be read, it's listed under **Scan warnings** at the top of the tree. |
+| An addon is missing from the tree | It doesn't use Ace3 profiles, its file is blacklisted and hidden (tick **Blacklisted addons**), or a filter or search hides it. If its file couldn't be read, it's listed under **Scan warnings** at the bottom of the tree. |
 | "Not staged" with a list of addons | The change couldn't be made in those addons (blacklisted, a name already taken, …); the message says why for each. It was made in the others. |
 | A character keeps a profile I changed | It has **spec profiles**: LibDualSpec switches its profile by spec at login. See the [FAQ](#faq). |
 | "An earlier change did not finish" | See [If a change was interrupted](#if-a-change-was-interrupted). |
