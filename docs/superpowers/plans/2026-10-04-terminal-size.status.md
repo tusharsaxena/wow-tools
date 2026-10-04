@@ -10,7 +10,7 @@ task; push after the round. Never merge without the user's go-ahead.
 | S2 | WTF Cleaner, Screenshot Organizer, Interface Backup at 120x30 | done | 7cb47cf | Footer keys whole (palette key hidden); settings forms <= 100 cols, centred, compact checkboxes (WTF form fits at 120x30); WTF result names zips inside a Backup folder row; IB backup lines show the full date and time; 80-column tests moved to BASE. Suite 1027 tests, 0 failures; ruff clean. Renders in /tmp/wow-tools-shots/S2/ (before: S2-before/) |
 | S3 | Ace3 screens at 120x30 | done | 5b86bc3 | Action bar 1 row at 160x45, 2 at 120x30 (shorter labels); guide shows pending line + hint, one row each, at 120x30; footer whole (d/p/m off it); quick actions list and 12-line target body without scrolling; result rows inside a Backup folder row; recovery path on its own line; 80x24 Ace3 tests at BASE. Suite 1031 tests, 0 failures (2 skipped); ruff clean. Renders in /tmp/wow-tools-shots/S3/ (before: S3-before/) |
 | S4 | docs | done | 99132af | README "Terminal size" section (+ troubleshooting row links it); CLAUDE.md convention line; architecture "Look and feel and terminal size" subsection under UI (sizes, widths, tests) and Testing note; adding-a-tool layout note; RestoreScreen "80 columns" line fixed. Suite 1031 tests, 0 failures (2 skipped); -k ace 451, 0 failures; ruff clean. |
-| R | review, fixes, push | todo | | |
+| R | review, fixes, push | reviewed (not pushed yet) | 49df86f | Terminal size round review: 10 findings (two duplicates), all fixed; one sub-point rejected (see below). Suite 1045 tests, 0 failures (2 skipped); ruff clean. |
 
 ## Decisions taken during the build
 
@@ -95,3 +95,36 @@ task; push after the round. Never merge without the user's go-ahead.
   `ace-profiles.md`) mention neither 80x24 nor a layout compromise, so they were left unchanged (S1 and S3 had
   already updated `docs/ace-profiles.md` for the new labels and headings). `docs/adding-a-tool.md` got a line on
   designing for 120x30. The architecture doc had no look-and-feel section; one was added under UI.
+- Terminal size round review:
+  - Fixed (findings 1 and 3, one issue): the WTF Cleaner result named the run journal by file name next to a
+    "Backup folder" row, but the journal is in `<WoW>/wow-tools/wtf-cleaner/journal`, which a custom backup folder
+    does not hold. `journal_text` names it inside the backup folder when it is there (the default folder holds
+    `journal/`), else by whole path; then the "(Undo last clean (z) …)" note moves to a row of its own (blank
+    item) so the journal's row still fits at 120x30 with a short path. Same for the All flavors top row.
+    `test_real_clean_result_summary_fits_at_base` now expects 11 rows for its custom folder; a new test checks the
+    default folder (10 rows, `journal/<name>`, fits).
+  - Fixed (finding 2): the pending line took 2 rows at 68 columns from 100 changes, and a long name ("Name -
+    Realm") made the hint wrap; either way the hint was dropped. The pending line is now "N pending changes, not
+    written: w apply · y dry run · ⌫ discard" (one row up to 99999; the spec's "not written yet" lost "yet"), and
+    the screen shortens the node's name (or the locked addon's) with "…" until the guide fits `GUIDE_MAX_ROWS`,
+    dropping the hint only if even that fails (`_shortened_guidance`, `report.shorten`).
+  - Fixed (findings 4 and 5, one issue): `SetupScreen` (general settings, first-time setup) uses `FORM_WIDTH`,
+    centred, and no longer shows the banner logo (11 rows), so the whole form, Save included, fits at 120x30. The
+    tool menu, flavor and account pickers keep the banner.
+  - Fixed (finding 6): the WTF Cleaner result table's Reasons column is before Size and File
+    (`RESULT_COLUMNS`), so it shows whole at 120x30, also with the Flavor column; a long file name now ends at the
+    edge instead.
+  - Fixed (finding 7): the Screenshot Organizer result has a "Target folder" summary row
+    (`report.target_folder`: the targets' common folder, moved up until each keeps YYYY/MM/DD; an undo target its
+    last folder); the Target column names each folder inside it.
+  - Fixed (finding 8): the Interface Backup restore tree's notes are shorter ("Nothing on disk would be lost
+    everything is in the backup"; "⚠ Low disk space on the WoW drive: X free, ~Y needed") and fit at 120x30.
+  - Fixed in part (finding 9): the WTF "not scanned" line says "no addons installed" (`ScanError.short`; the
+    whole message with its path is in the log) and fits even with "Retail Experimental PTR"; the Interface Backup
+    "nothing to back up" line leaves out "no backups yet" (shows the backups only when there are some). Rejected:
+    deep tree lines such as "OldAddon  Older than max age  2 files · 38 B · 200d" depend on nesting and names and
+    cannot fit at every depth; as S2 decided, they end at the pane's edge and the tree scrolls sideways, and each
+    file line below shows its own age.
+  - Fixed (finding 10): `NavHint` wraps only between its " · " items (`widgets.wrap_items`, counting the
+    trailing "·"), so a key stays with its action; the Ace3 steps wrap only between steps (" → "). Tests that read
+    the hint's text use `NavHint.hint` (the unwrapped text).
