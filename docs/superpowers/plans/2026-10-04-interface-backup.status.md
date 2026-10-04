@@ -22,7 +22,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | M3 | push milestone 3, ask for merge go-ahead | done (pushed; awaiting merge go-ahead) | 42958c4 | final review: 13 findings fixed |
 | R1 | redesign: two-pane review screen with flavor ticks and Backups nodes (spec Addendum A) | done | d9d2d31 | `BackupReviewScreen` in `review_screen.py` (renamed from `summary_screen.py`); BackupListScreen removed; tests rewritten for the tree |
 | R2 | redesign: two-pane restore screen with warnings tree; result screens in the organizer's shape | done | c5c6976, 552248c | `RestoreScreen` two panes (`RestoreTree` `#effects`, `#summary`); result screens get `#result-summary` (Item/Value) above `#result-table`. Review fixes in 552248c (see decisions, "R2 review") |
-| R3 | look-and-feel parity pass across all three tools | done | 6a0b770 | Every screen of the three tools rendered at 80x24 and 140x50; shared CSS and hints in `ui/dialogs.py`; drifts fixed or kept with a reason (see decisions, "R3"); `tests/test_look_and_feel.py` |
+| R3 | look-and-feel parity pass across all three tools | done | 6a0b770, 7a38b4d | Every screen of the three tools rendered at 80x24 and 140x50; shared CSS and hints in `ui/dialogs.py`; drifts fixed or kept with a reason (see decisions, "R3"); `tests/test_look_and_feel.py`. Review fixes in 7a38b4d (see decisions, "R3 review") |
 | R4 | redesign review, docs (guide, architecture), push | todo | | |
 
 ## Decisions taken during the build
@@ -347,8 +347,8 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   (5) Result screens: the cleaner's had no BrandBar, and the organizer's and the cleaner's used 16-wide buttons with
   2-column gaps while Interface Backup's were compact: all compact now (five buttons must fit 80 columns), all
   summaries capped at half the height, detail tables carry class `result-detail` (ids unchanged). (6) The
-  organizer's result table showed flavor folders (`_retail_`): now display names, as the other tools
-  (`report.flavor_name`). (7) Settings: the organizer's and Interface Backup's forms were a `VerticalScroll`, where
+  organizer's result table and (since the R3 review) its confirm showed flavor folders (`_retail_`): now display
+  names, as the other tools (`report.flavor_name`; the confirm still groups by folder). (7) Settings: the organizer's and Interface Backup's forms were a `VerticalScroll`, where
   ↑/↓ scrolled instead of moving between fields: `FormScroll` now, as in the cleaner; one CSS (checkbox margin as the
   cleaner's). (8) The restore screen's boxes are compact as well and its hint uses `REVIEW_HINT` ("o restore · b/Esc
   back"); `#actions` has its top margin back (the compact boxes freed the lines R2 had to save).
@@ -374,3 +374,17 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   "Selected:"/"Nothing to", sub_title shape, Esc back to the flavor picker; result screens: Item/Value summary, one
   `.result-detail` table, BrandBar, hint prefix and ending, Rescan first and Other flavor/Tools/Quit last in one
   row); the R2 restore test now expects a one-line (compact) box; the organizer's report test expects "Retail".
+- R3 review (7a38b4d): (1) the organizer's confirm listed raw folders ("_retail_: 4 screenshots"): display names now;
+  `test_look_and_feel` checks every tool's confirm names "Retail" and never shows a bare `_folder_`. (2) The restore
+  screen's hint lost "or open" (Space there opens effects nodes too): `review_hint(space)` in `ui/dialogs.py`
+  (`REVIEW_HINT = review_hint()`), the restore screen uses `review_hint("tick or open")`. (3) The wtf-cleaner and
+  screenshot-organizer guides now say "`f` or `Esc`"; architecture.md's `dialogs` row and adding-a-tool.md list
+  `two_pane_css`, `result_css`, `settings_css`, `FILTERS_WIDTH`, `REVIEW_HINT`/`review_hint`, `RESULT_HINT`.
+  (4) Settings: all three forms opened scrolled past their title (Textual scrolls the focused field into view on
+  mount): `FormScroll.open_at_top()` after the focus; the organizer's copy-mode label was cut at 80 columns
+  (Checkbox labels never wrap, height 1): shortened to "Copy instead of move (the originals stay in Screenshots)".
+  Pinned by `test_settings_screens_open_at_the_title_and_fit`.
+- R3 review, recorded, not fixed (not R3's, out of scope): BrandBar and Footer are both `dock: bottom; height: 1`
+  and share the last row (Region y=23 at 80x24), so the Footer hides the BrandBar ("Ka0s WoW Tools vX" and the
+  update notice) on every screen. A later fix: stack the bar above the Footer (one bottom container, or offset the
+  BrandBar) and test that their regions do not overlap. `test_look_and_feel` only checks the BrandBar is present.
