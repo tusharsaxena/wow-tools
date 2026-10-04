@@ -98,6 +98,12 @@ class ReportTest(unittest.TestCase):
                           ("WTF/Config.wtf", [("WTF", "Config.wtf")])])
         self.assertEqual(report.group_items([]), [])
 
+    def test_group_items_sorts_names_naturally(self):
+        names = ["New10", "new2", "New1", "Alpha"]
+        items = [("Interface", f"AddOns/{n}/a.lua") for n in names]
+        self.assertEqual([name.rsplit("/", 1)[1] for name, _ in report.group_items(items)],
+                         ["Alpha", "New1", "new2", "New10"])
+
     def test_restore_summary(self):
         p = plan(removed=[("Interface", "AddOns/A/x.lua")], newer=[("Interface", "AddOns/B/y.lua")] * 2, free=5000)
         self.assertEqual(report.restore_summary(p, "2026-10-04 15:30:12"),

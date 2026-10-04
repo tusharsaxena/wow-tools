@@ -1,6 +1,7 @@
 """Labels, sizes, table rows and dialog texts for Interface Backup's screens (UI-free text helpers)."""
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -188,11 +189,17 @@ def friendly_created(created: str) -> str:
 
 def group_items(items: list[tuple[str, str]], depth: int = 3) -> list[tuple[str, list[tuple[str, str]]]]:
     """Group (part, rel) paths by their first `depth` path parts (e.g. Interface/AddOns/WeakAuras): (name, members)
-    per group, largest group first, then by name."""
+    per group, largest group first, then by name (ignoring case, numbers in order: New2 before New10)."""
     groups: dict[str, list[tuple[str, str]]] = {}
     for part, rel in items:
         groups.setdefault("/".join([part, *rel.split("/")][:depth]), []).append((part, rel))
-    return sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    return sorted(groups.items(), key=lambda kv: (-len(kv[1]), natural_key(kv[0]), kv[0]))
+
+
+def natural_key(text: str) -> list:
+    """Sort key: case ignored, runs of digits compared as numbers (re.split keeps text and numbers alternating,
+    so the same positions always hold the same type)."""
+    return [int(piece) if i % 2 else piece for i, piece in enumerate(re.split(r"(\d+)", text.casefold()))]
 
 
 def group_paths(items: list[tuple[str, str]], depth: int = 3) -> list[tuple[str, int]]:

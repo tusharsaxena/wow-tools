@@ -29,7 +29,8 @@ from wowtools.ui.dialogs import TwoPaneFocus, theme_colour
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
 ACCENT = "bold #5CC8FF"
-NAV_HINT = ("↑↓/Tab move · ←→ panes and buttons · Space tick or open · Enter/Space press · o restore · b/Esc back")
+# Two lines in the 46-wide pane, so it stays on screen at 80x24.
+NAV_HINT = "↑↓/Tab move · ←→ panes · Space tick or open · Enter press · o restore · b/Esc back"
 # The tree's top nodes: (kind, title, note). Their children are loaded on expand (groups of files, links, lines).
 EFFECTS = (
     ("removed", "Will be removed", "on disk now, not in the backup"),
@@ -46,6 +47,14 @@ def _error_text(exc: Exception) -> str:
     return str(exc) if isinstance(exc, RestoreError) else f"{type(exc).__name__}: {exc}"
 
 
+def group_label(name: str, files: int | None) -> Text:
+    """A folder group's tree label, the part that tells groups apart first (the tree is narrow at 80 columns):
+    "WeakAuras  Interface/AddOns · 2 files"; `files` None for a group that is one file."""
+    parent, _, last = name.rpartition("/")
+    return Text.assemble((last, "bold"), (f"  {parent}" if parent else "", "dim"),
+                         (f" · {plural(files, 'file')}" if files is not None else "", "dim"))
+
+
 class RestoreTree(Tree):
     """What the restore changes. ← jumps to the left panel (instead of scrolling sideways)."""
 
@@ -60,9 +69,9 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
     TREE_SELECTOR = "#effects"
     DEFAULT_CSS = """
     RestoreScreen #body { height: 1fr; }
-    RestoreScreen #filters { width: 50; padding: 1; border-right: solid $primary; }
-    RestoreScreen #actions { margin-top: 1; height: auto; }
-    RestoreScreen #actions Button { min-width: 0; width: auto; margin-right: 1; margin-bottom: 1; }
+    RestoreScreen #filters { width: 46; padding: 1; border-right: solid $primary; }
+    RestoreScreen #actions { height: auto; }  /* no margin: the hint must fit at 80x24 */
+    RestoreScreen #actions Button { min-width: 0; width: auto; margin-right: 1; }
     RestoreScreen .section { color: $accent; text-style: bold; margin: 1 0 0 0; }
     RestoreScreen #effects { width: 1fr; padding: 0 1; }
     RestoreScreen #summary { height: auto; padding: 0 1; background: $surface; }
@@ -107,8 +116,8 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
                     yield action_button("Restore", "apply", id="btn-restore", disabled=True)
                     yield action_button("Back", "neutral", id="btn-back")
                 yield NavHint(NAV_HINT)
-            yield RestoreTree(Text(f"{self.flavor.display_name} · {self.kind_text.lower()} from {self.info.when}",
-                                   style=ACCENT), id="effects")
+            # Short: the tree is narrow at 80 columns; the left pane has the kind and the zip.
+            yield RestoreTree(Text(f"{self.flavor.display_name} · {self.info.when}", style=ACCENT), id="effects")
         yield Static("", id="summary")
         yield BrandBar()
         yield Footer()
@@ -121,8 +130,9 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
         self.run_worker(lambda: self._load_worker(info, flavor), thread=True, group="restore-load")
 
     def _info_text(self) -> Text:
-        """The left pane's "Backup" section: flavor, kind and date, size, then (once read) parts and files."""
-        lines = [self.flavor.display_name, f"{self.kind_text} from {self.info.when}", human_size(self.info.size)]
+        """The left pane's "Backup" section: flavor, kind and date; size, then (once read) parts and files. No zip
+        path: the review shows the folder, the result the zip, and the pane must keep its hint on screen at 80x24."""
+        lines = [f"{self.flavor.display_name} · {self.kind_text} from {self.info.when}", human_size(self.info.size)]
         contents = self.contents
         if contents is not None:
             files = sum(len(f) for f in contents.files.values())
@@ -130,7 +140,6 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
             made = friendly_created(contents.created) if contents.created else ""
             if made and made != self.info.when:
                 lines.append(f"made {made}")
-        lines.append(to_stored(self.info.path))
         return Text("\n".join(lines))
 
     # --- panes (←/→): TwoPaneFocus ------------------------------------------------------------------
@@ -176,7 +185,7 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
                 box.label = f"{part} (not in this backup)"
             elif linked:
                 box.value = False
-                box.label = f"{part} (a link: restore it by hand)"
+                box.label = f"{part} (link: restore by hand)"
             if available and first is None:
                 first = box
         # Focus starts on something that acts: the first box that can be ticked, else Back.
@@ -273,8 +282,7 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
                 node = tree.root.add(label, data=("effect", kind), expand=True)
                 for name, members in group_items(items):
                     single = len(members) == 1 and "/".join(members[0]) == name
-                    text = Text.assemble((name, "bold"), ("" if single else f"  {plural(len(members), 'file')}",
-                                                          "dim"))
+                    text = group_label(name, None if single else len(members))
                     if single:
                         node.add_leaf(text, data=("file",))
                     else:
@@ -369,7 +377,7 @@ class RestoreResultScreen(Screen[str]):
             yield action_button("Other flavor (f)", "neutral", id="flavors")
             yield action_button("Tools (t)", "neutral", id="tools")
             yield action_button("Quit (q)", "neutral", id="quit")
-        hint = "←→ buttons · Enter/Space press · Esc back · " + ("z undo · " if self.can_undo else "")
+        hint = "↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · " + ("z undo · " if self.can_undo else "")
         yield NavHint(hint + "r rescan · f other flavor · t tools · q quit")
         yield BrandBar()
         yield Footer()

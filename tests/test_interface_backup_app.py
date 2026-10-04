@@ -676,7 +676,7 @@ class InterfaceBackupAppTest(TuiTestCase):
                 self.assertIn("Will be removed (1 file)", str(removed.label))
                 self.assertTrue(removed.is_expanded)
                 group = removed.children[0]
-                self.assertIn("Interface/AddOns/WeakAuras", str(group.label))
+                self.assertEqual(str(group.label), "WeakAuras  Interface/AddOns · 1 file")  # the name first, then the parent
                 self.assertFalse(group.children)  # files load on expand
                 group.expand()
                 await settle(app, pilot)
@@ -744,7 +744,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             (retail / "Interface" / "keep.txt").write_text("k", encoding="utf-8")
             (retail / "WTF" / "Config.wtf").write_bytes(b"mine")
             screen = await self.open_restore(app, pilot)
-            self.assertIn("Interface/keep.txt", self.effects_text(screen))
+            self.assertIn("keep.txt  Interface", self.effects_text(screen))
             screen.query_one("#part-Interface", Checkbox).value = False
             await settle(app, pilot)
             self.assertNotIn("keep.txt", self.effects_text(screen))
@@ -1214,7 +1214,8 @@ class InterfaceBackupAppTest(TuiTestCase):
             await pilot.press("r")
             await settle(app, pilot)
             screen = await self.open_restore(app, pilot)
-            for selector in ("#part-Interface", "#part-WTF", "#btn-restore", "#btn-back", "#effects", "#summary"):
+            for selector in ("#part-Interface", "#part-WTF", "#btn-restore", "#btn-back", "#effects", "#summary",
+                             "NavHint"):
                 self.assert_on_screen(screen.query_one(selector))
             await pilot.press("o")
             await settle(app, pilot)
@@ -1227,10 +1228,48 @@ class InterfaceBackupAppTest(TuiTestCase):
             for button in buttons:
                 self.assert_on_screen(button)
             self.assert_on_screen(app.screen.query_one("#result-table", DataTable))
+            hint = str(app.screen.query_one(NavHint).render())
+            self.assertTrue(hint.startswith("↑↓/Tab move · ←→ buttons"), hint)  # as on the organizer's result
             summary = self.table_rows(app.screen.query_one("#result-summary", DataTable))
             self.assertEqual(summary["Restore"], ["finished"])
             self.assertIn("Safety backup", summary)
             self.assertIn("Journal", summary)
+
+    async def test_restore_tree_names_groups_within_80_columns(self):
+        """At 80x24 the tree is narrow: each group's row shows the name that tells it apart (not just the shared
+        Interface/AddOns prefix), the root is short and the left pane's hint is not clipped."""
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        addons = self.root / "_retail_" / "Interface" / "AddOns"
+        app = self.make_app()
+        async with app.run_test(size=SMALL) as pilot:
+            await self.open_review(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            for i in range(12):
+                (addons / f"New{i}").mkdir(parents=True)
+                (addons / f"New{i}" / "a.lua").write_text("a", encoding="utf-8")
+            (addons / "WeakAuras").mkdir(parents=True)
+            for name in ("a.lua", "b.lua"):
+                (addons / "WeakAuras" / name).write_text("w", encoding="utf-8")
+            screen = await self.open_restore(app, pilot)
+            removed = self.effect(screen, "removed")
+            labels = [str(c.label) for c in removed.children]
+            self.assertEqual(labels[:4], ["WeakAuras  Interface/AddOns · 2 files", "New0  Interface/AddOns · 1 file",
+                                          "New1  Interface/AddOns · 1 file", "New2  Interface/AddOns · 1 file"])
+            tree = screen.query_one("#effects", Tree)
+            shown = "\n".join(tree.render_line(y).text for y in range(tree.scrollable_content_region.height))
+            self.assertIn(screen.flavor.display_name + " · " + screen.info.when, shown)  # the root, not cut
+            for name in ("WeakAuras", "New0", "New1", "New2"):
+                self.assertRegex(shown, rf"\b{name}\b", shown)
+            filters, hint = screen.query_one("#filters"), screen.query_one(NavHint)
+            self.assertLessEqual(hint.region.bottom, filters.content_region.bottom, hint.region)  # not clipped
+            self.assertIn("Will be removed (14 files)", shown)
+            box = screen.query_one("#part-Interface", Checkbox)
+            box.label = "Interface (link: restore by hand)"  # the longest label a box gets
+            await settle(app, pilot)
+            self.assertEqual(box.region.height, 3, box.region)  # one line: not wrapped
+            self.assertLessEqual(box.region.right, filters.content_region.right)
 
     async def test_restore_tree_lists_links_and_unreadable_on_expand(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
