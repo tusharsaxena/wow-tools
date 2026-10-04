@@ -371,3 +371,27 @@ The user's feedback after trying the first build. Items 1, 3 and 4 apply to ever
      - with pending changes: "N pending changes, not written yet: Apply (w) writes them, Discard (⌫) drops them".
    - **The left pane** keeps View, Show, Search and the four run buttons. It still fits at 80x24.
    - **The guide** gains a short "How it works" section at the top.
+
+## Addendum B: design for the Windows Terminal default size (2026-10-04)
+
+The user's call: don't optimise for 80x24. Most users have a 1920x1080 monitor, Windows 11, and its default terminal
+app (Windows Terminal, Cascadia Mono 12pt). Double-clicking `wow-tools.cmd` opens a **120x30** window. Maximized
+gives about 210x50 at 100% scaling and about 170x40 at 125% scaling. Option A was chosen:
+
+- **Baseline 120x30.** Every screen of every tool must look complete and uncramped at 120x30:
+  - no truncated labels or hints;
+  - each tree shows a useful number of rows;
+  - the Ace3 action bar takes at most two rows;
+  - popups fit with room around them.
+- **Grow with the window.** At larger sizes (checked at **160x45**), trees and tables take the extra width and height.
+  The left pane stays its fixed width. Popups and forms stay readable widths, centred, never stretched edge to edge.
+- **80x24 keeps working, but isn't a design target.** No crash, and every control is still reachable, with scrolling
+  allowed. Nothing is hidden or shortened for it.
+- **Undo the 80x24 compromises where they hurt.** Restore the "View" and "Show" section headings in Ace3, and let
+  labels, hints and tree lines use the room 120 columns give. The left pane's width (`FILTERS_WIDTH`) may grow if
+  120x30 benefits.
+- **Test sizes.**
+  - `tests/test_look_and_feel.py` moves from 80x24 to `BASE = (120, 30)`, and gains checks at `LARGE = (160, 45)`.
+  - Tool tests named "…80x24" move to 120x30, or are dropped when they only guarded an 80-column squeeze.
+  - One suite-wide smoke test at 80x24 checks that every tool's review, settings and result screens open, nothing
+    crashes, and every focusable control can be focused.
