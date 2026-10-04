@@ -9,7 +9,7 @@ task; push after the round. Never merge without the user's go-ahead.
 | F1 | global retention settings | done | 05aa3cd | `Config.keep_backups`/`keep_journals` + `remove`/`remove_retired`; setup screen inputs; tool settings/screens lose retention (Screenshot Organizer too); pruners keep all at 0; docs + events regenerated |
 | F2 | one control per row; expand/collapse all on every tree | done | 7376239 | `TreeKeys` mixin (base of `TwoPaneFocus`) + `TREE_BINDINGS`/`TREE_HINT` in `ui/dialogs.py`; x/c on every review tree and the restore screen; WTF Clean on `w`; Ace3 discard on Backspace; Ace3 View boxes one per row; look-and-feel tests for one-control-per-row and expand/collapse; guides' key tables |
 | F3 | Ace3 blacklist pairs + tree screen | done | 35ec7d6 | `parse/format_blacklist`, `is_blacklisted(pairs, flavor, addon)`, `toggle_pair`, `unique_pairs` (`"*"` = legacy bare name); `Staging.locked(flavor, addon)`; `BlacklistScreen` (two panes, scan worker, flavor → addon, "(not found)", a/n/x/c); settings "Edit blacklist…" + summary; review `b` per flavor, `action_edit_blacklist` saves at once; events regenerated |
-| F4 | Ace3 guidance: pending changes, action bar, guidance line | todo | | |
+| F4 | Ace3 guidance: pending changes, action bar, guidance line | done | 4a1959c | `report.guidance`/`node_hint`/`pending_text` (was `staged_text`), `NO_PENDING`, `STEPS`; `#pending` line; tree pane `#tree-pane` = tree + `#guide` + `#tree-actions` (`WrapButtonRow` in `ui/widgets.py`, 8 compact buttons, `TREE_ACTIONS`); guide updates on cursor/tick/pending; 80x24 tree-pane test in look-and-feel; guide "How it works", action bar, guidance line, blacklist screen; events regenerated |
 | F5 | docs + final check | todo | | |
 | R | review, fixes, push | todo | | |
 
@@ -45,3 +45,18 @@ task; push after the round. Never merge without the user's go-ahead.
   `[("_retail_", "ElvUI"), ("*", "Questie")]`; `format_blacklist` writes a `"*"` pair as the bare name.
 - Task F3: until F4 adds the action-bar "Blacklist…" button, the review reaches `action_edit_blacklist` through the
   More… menu (new entry `edit_blacklist`). Guide updates are left to F5.
+- Task F4: the "wrapping ButtonRow" is a new shared `WrapButtonRow(ButtonRow)` in `ui/widgets.py`: Textual has no
+  flowing layout, so it is a grid whose column count is set on resize from the widest label; its buttons are compact
+  (one row each). At 80x24 the tree pane is 30 columns wide, so the bar is one column of 8 rows and the tree keeps 6.
+- Task F4: the left pane's `#pending` line (was `#staged`) lost its top margin: with pending changes and a scan
+  warning the bottom line takes two rows, which cut the hint off at 80x24. The new look-and-feel test checks the
+  hint and `#pending` with and without pending changes.
+- Task F4: the per-node hint replaces the four steps (the steps show on the root, a flavor or an account, or with
+  nothing highlighted); with pending changes, the pending line comes first and the hint follows on a second line.
+  Deleted and removed lines, warnings and notes have no hint of their own.
+- Task F4: the review's "Not staged (N)" notification is now "Not done (N)"; `verify.py`'s problem texts say
+  "planned" instead of "staged" (they reach the result screen). Code identifiers (`Staging`, `_staged`, the
+  `ace.staged` event name) stay. The More… menu keeps its "Edit the blacklist" entry next to the new button.
+- Task F4: `tests/test_docs.py` now requires "## How it works", "pending change", "guidance line", "action bar",
+  "Blacklist…" and "blacklist screen" in the Ace3 guide, and no "staged" in it. The guide and README updates were
+  done here (the plan's F4 file list), leaving F5 the final check.
