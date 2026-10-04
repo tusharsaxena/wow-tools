@@ -13,7 +13,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | 5 | open backup + plan restore | done | 7127e9d, 7a2a5b5 | API as planned; stricter entry checks (duplicates over infolist, file/folder clash, files in an unclaimed part); plan_restore raises for a part not in the backup. Review fix: device names and control chars refused only on Windows (backups made on POSIX with an `Aux` character folder restore there), manifest mtimes must be finite and >= 0, `parts` must be a list, `sizes(())` is empty, plan_restore refuses a backup of another flavor. Review fix 2: negative (pre-1970) manifest mtimes accepted (only NaN/inf refused), names compare with per-character `lower()` not `casefold()` (NTFS: `ß` is not `ss`), flavor folder `fullmatch`, plan_restore refuses an unknown or empty part list, `RestorePlan.unreadable` carries the chosen parts' scan errors; 29 tests |
 | 6 | run restore + journal | done | cc1c768 | API as planned plus `on_swapped` (journal `replaced` entry written before the old copy is deleted, as the spec orders); Ctrl+C before the swap rolls the part back; part turned link since the plan refused; new `ibackup.restore_failed` event; `log_part` public; 21 new tests |
 | 7 | undo | done | c753f94 | API as planned; all guards run before anything changes (also: zip kind pre-restore, leftovers, unknown/duplicate parts, existed part absent from the zip); per-part outcomes rolled_back/failed like restore; journal left undoable when nothing changed; `ZIP_ERRORS` public; 19 tests |
-| M1 | push milestone 1 | todo | | |
+| M1 | push milestone 1 | reviewed, fixes in 2b66d80 | 2b66d80 | Milestone 1 review: 15 findings fixed (see decisions, "M1 review") |
 | 8 | report helpers | todo | | |
 | 9 | flow, settings, summary, backup screens, registration | todo | | |
 | 10 | restore and undo screens | todo | | |
@@ -96,3 +96,39 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   as Task 6 made it public. No new events, so `docs/events.md` is unchanged.
 - Task 7: tests rewrite the journal by parsing its JSON lines and storing paths with `to_stored()` (the plan did a
   raw string replace of the path), and damage the safety zip at the entry's first data byte.
+- M1 review: `_prune` never deletes the zip being restored from (`prune_safety(..., protect=)`), and a restore whose
+  parts were all rolled back prunes nothing, so a no-op retry cannot push out an older undoable journal.
+- M1 review: a link whose path has an ancestor the backup holds as a file goes in `links_removed` (it had no folder
+  to stay in, so the part rolled back on every attempt).
+- M1 review: `replace_part` calls `on_swapped(existed)` with its own `lexists` result; the journal's `existed` no
+  longer comes from the safety zip's parts. A part that is there but that the safety zip does not hold (its files
+  vanished while it was written) is left alone (`rolled_back`), since Undo could not put it back.
+- M1 review: WTF Cleaner skips (with a scan warning) SavedVariables folders under a linked account, realm,
+  character or SavedVariables folder, and `take_snapshot(must_hold=)` refuses the clean (BackupError, nothing
+  deleted) when a file to delete is not among the files backed up. Both layers, so a symlinked SV file that the
+  scanner still lists is refused too. `test_symlink_escaping_wtf_is_rejected` is unchanged (the guard runs first).
+- M1 review: after writing the safety zip, `restore()` opens it with `open_backup` plus the target name rules (what
+  Undo will run) and refuses the restore, deleting the zip, if it fails (case twins on a case-sensitive disk). The
+  alternative (case rule only on case-insensitive targets) was not taken.
+- M1 review: `_extract` remembers the folders it made (one `mkdir` per staging folder, not per file).
+- M1 review: a failing `on_swapped` raises `SwapNotRecorded`; `restore()` records the part as `failed` with a reason
+  naming the part, the `.replaced` folder and the safety zip, logs it, and stops (`RestoreStopped` carries that text
+  as is). No "swapping" intent entry was added to the journal format.
+- M1 review: `fsutil._delete_entry` retries with `chmod(S_IWRITE)` only on Windows; on POSIX it re-raises.
+- M1 review: safety-zip pruning deletes only the zips that the journals being pruned named and no remaining journal
+  names (`journal.safety_zips_named`, read before the prune); `prune_safety(root, names, protect=)` now takes the
+  names to delete, not the names to keep. A zip no journal of this folder ever named (another install sharing the
+  backup folder) is never touched; a pruned journal that cannot be read keeps its zip.
+- M1 review: `split_entry` strips spaces before the extension (`nul .lua`) and refuses `COM¹²³`/`LPT¹²³`;
+  `windows_target(path)` is true on Windows and for a WSL `/mnt/<letter>/` path, and `plan_restore`
+  (`check_target_names`) then applies the Windows rules to the chosen parts' names.
+- M1 review: `write_zip` opens files with `O_NOFOLLOW | O_NONBLOCK` and `fstat`s the descriptor on POSIX (no lstat
+  per file; a FIFO is left out without blocking); Windows keeps lstat-then-open. Three backup tests that hooked
+  `builtins.open` now hook `os.open` (and `os.fstat` for the grown-file case).
+- M1 review: tests added for the `_prune` guards (clock set back, unreadable pruned journal, `journal_pruned`
+  payload) and for Undo's stopped path and a created part's `replaced_left`; these covered existing code, so they
+  passed before the fix.
+- M1 review: the leftover refusal and a journal that cannot be opened log `ibackup.restore_failed` (`restore._refuse`).
+- M1 review: `restore` imports `KINDS` from catalog; `undo` imports `Rename` and `case_key` (`_case_key` renamed
+  public) from restore. No events changed, so `docs/events.md` is unchanged.
+- M1 review: the run was done in one session without sub-workflows (no workflow tool in this agent's tool set).
