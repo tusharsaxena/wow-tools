@@ -3,9 +3,11 @@ texts and result rows (UI-free)."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from wowtools.core.install import FLAVOR_NAMES
 from wowtools.core.journal import Journal, friendly_stamp
+from wowtools.core.paths import to_stored
 from wowtools.tools.ace_profiles.model import DEFAULT
 from wowtools.tools.ace_profiles.multi import MultiApplyResult
 from wowtools.tools.ace_profiles.ops import CopyOf, DbState, Original, Summary
@@ -22,7 +24,8 @@ UNDO_COLUMNS = ("Flavor", "File", "Result")
 DELETED = "✘ deleted"
 REMOVED = "✘ removed"
 NO_PENDING = "No pending changes"
-# The guide's texts each take at most two rows of the tree pane at 120x30 (tests/test_look_and_feel.py).
+# The guide's texts at 120x30 (68 columns, tests/test_ace_report.py and tests/test_look_and_feel.py): the steps take
+# two rows; the pending line and each hint (with a name of up to 16 characters) one row each, so both show together.
 STEPS = ("1 Tick profiles or characters (Space) → 2 pick an action below → 3 check the pending changes in the tree "
          "→ 4 Apply (w) writes them")
 CHARACTER_KINDS = ("char", "pair", "character")  # tree nodes that are one character
@@ -136,25 +139,25 @@ def node_hint(node_kind: str | None, node_name: str, ticked: int, locked: str = 
     if ticked:
         return f"{ticked} ticked: pick an action below (Delete, Assign, …)"
     if locked and (node_kind in ("profile", "addon", "db") or node_kind in CHARACTER_KINDS):
-        return f"{locked} is blacklisted: shown, never changed (u unlocks it for this session)"
+        return f"{locked} is blacklisted: u unlocks it for this session"
     if node_kind == "profile":
-        return f'Profile "{node_name}": Delete, Rename or Copy it, or tick it with Space'
+        return f'Profile "{node_name}": Delete, Rename or Copy it'
     if node_kind in CHARACTER_KINDS:
-        return f'"{node_name}": Assign it a profile, or remove it if it is a leftover'
+        return f'"{node_name}": Assign a profile, or remove it if a leftover'
     if node_kind in ("addon", "db"):
-        return f"{node_name}: Keep only Default or Everyone → Default (More…), or Blacklist…"
+        return f"{node_name}: Keep only Default, Everyone → Default (More…)"
     return ""
 
 
-def guidance(node_kind: str | None, node_name: str, ticked_profiles: int, ticked_chars: int, pending_total: int,
-             pending_files: int, *, locked: str = "", hint: bool = True) -> str:
-    """The review's guidance line (#guide): the pending changes first (when there are any), then what can be done
-    with the ticks or the highlighted node; with neither, the four steps of the workflow. hint=False leaves the
-    per-node hint out (the screen does when the guide would take more than two rows)."""
+def guidance(node_kind: str | None, node_name: str, ticked_profiles: int, ticked_chars: int, pending_total: int, *,
+             locked: str = "", hint: bool = True) -> str:
+    """The review's guidance line (#guide): the pending changes first (when there are any; the bottom line says in
+    how many files), then what can be done with the ticks or the highlighted node; with neither, the four steps of
+    the workflow. hint=False leaves the per-node hint out (the screen does when the guide would take more than two
+    rows: a long name)."""
     lines = []
     if pending_total:
-        lines.append(f"{pending_count(pending_total, pending_files)}, not written yet: Apply (w) writes, "
-                     "Dry run (y) checks, Discard (⌫) drops")
+        lines.append(f"{plural(pending_total, 'pending change')}, not written yet: w apply · y dry run · ⌫ discard")
     text = node_hint(node_kind, node_name, ticked_profiles + ticked_chars, locked) if hint else ""
     if text:
         lines.append(text)
@@ -206,13 +209,23 @@ def apply_summary_rows(result: MultiApplyResult) -> list[tuple[str, str]]:
         rows.append(("Failed", plural(len(result.failed), "file")))
     if result.stopped:
         rows.append(("Stopped", f"{flavor_name(result.stopped.flavor.folder)}: {result.stopped.error}"))
-    for run in result.runs:
-        if run.result is not None and run.result.snapshot is not None:
-            rows.append((f"WTF backup ({flavor_name(run.flavor.folder)})", str(run.result.snapshot)))
-        if run.result is not None and run.result.backup_zip is not None:
-            rows.append((f"Original files ({flavor_name(run.flavor.folder)})", str(run.result.backup_zip)))
-    if result.journal_path is not None:
-        rows.append(("Journal", str(result.journal_path)))
+    zips = [(f"{label} ({flavor_name(run.flavor.folder)})", path) for run in result.runs if run.result is not None
+            for label, path in (("WTF backup", run.result.snapshot), ("Original files", run.result.backup_zip))
+            if path is not None]
+    files = zips + ([("Journal", result.journal_path)] if result.journal_path is not None else [])
+    return rows + in_backup_folder(files, [path for _, path in zips])
+
+
+def in_backup_folder(files: list[tuple[str, Path]], zips: list[Path]) -> list[tuple[str, str]]:
+    """Result rows naming `files` inside the backup folder (the folder above the first zip's snapshots/ or edited/),
+    which gets a row of its own in front of them: a whole path does not fit at 120x30. A file elsewhere keeps its
+    whole path."""
+    if not zips:
+        return [(item, to_stored(path)) for item, path in files]
+    folder = zips[0].parent.parent
+    rows = [("Backup folder", to_stored(folder))]
+    for item, path in files:
+        rows.append((item, str(path.relative_to(folder)) if path.is_relative_to(folder) else to_stored(path)))
     return rows
 
 
@@ -234,8 +247,7 @@ def undo_summary_rows(result: UndoResult) -> list[tuple[str, str]]:
         rows.append(("Left as they are", plural(len(result.skipped), "file")))
     if result.failed:
         rows.append(("Failed", plural(len(result.failed), "file")))
-    rows += [("WTF backup", str(p)) for p in result.snapshots]
-    return rows
+    return rows + in_backup_folder([("WTF backup", p) for p in result.snapshots], result.snapshots)
 
 
 def undo_detail_rows(result: UndoResult) -> list[tuple[str, str, str]]:

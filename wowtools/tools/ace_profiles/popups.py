@@ -38,19 +38,21 @@ ACTIONS = (
 
 def popup_css(screen: str) -> str:
     """ConfirmScreen's look: a centred box (POPUP_WIDTH) with an accent border, a bold title and right-aligned
-    buttons. It still fits 80x24 (tests/test_ace_app.py): the list and the name field are compact, the error line takes no room until
-    there is an error, and a long body scrolls inside its share of the height."""
+    buttons. At 120x30 (tests/test_look_and_feel.py) a body of 12 lines and the whole quick actions menu show without
+    scrolling, with room around the box: the list and the name field are compact and the error line takes no room
+    until there is an error. A longer body scrolls inside its share of the height; on a smaller window the box
+    scrolls."""
     return f"""
     {screen} {{ align: center middle; }}
     {screen} .popup-box {{ {POPUP_WIDTH} height: auto; max-height: 100%; overflow-y: auto;
                           border: thick $accent; background: $panel; padding: 1 2; }}
     {screen} .title {{ color: $accent; text-style: bold; margin-bottom: 1; }}
-    {screen} .popup-body {{ height: auto; max-height: 35vh; overflow-y: auto; }}
+    {screen} .popup-body {{ height: auto; max-height: 40vh; overflow-y: auto; }}
     {screen} Select, {screen} Input {{ margin-top: 1; }}
     {screen} .popup-error {{ height: auto; display: none; }}
     {screen} .popup-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
     {screen} Button {{ margin-left: 2; }}
-    {screen} OptionList {{ height: auto; max-height: 12; }}
+    {screen} OptionList {{ height: auto; max-height: {len(ACTIONS) + 2}; }}
     """
 
 

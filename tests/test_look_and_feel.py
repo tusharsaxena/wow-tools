@@ -24,8 +24,6 @@ from wowtools.ui.widgets import NavHint
 POPUP_MAX_WIDTH = 100  # a popup or confirm at LARGE: a readable width, never stretched edge to edge
 FORM_MAX_WIDTH = 100  # a settings form, at any size
 TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup", "ace-profiles")
-# The tools whose settings form and footer are checked at BASE (the Ace3 Profile Manager's are Task S3's).
-SETTINGS_FIT_TOOLS = FOOTER_TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup")
 # The action that leads to a result screen without a running-WoW popup in between (dry runs, a backup).
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
               "ace-profiles": "dry_run"}
@@ -171,8 +169,8 @@ class LookAndFeelTest(TuiTestCase):
         self.assertGreaterEqual(review.query_one("#profiles", Tree).region.height, 12, note)
 
     async def test_ace_tree_keeps_12_rows_with_a_node_highlighted(self):
-        """With pending changes and a node highlighted, the guide and the action bar still leave the tree at least
-        12 rows at BASE."""
+        """With pending changes and a node highlighted, the guide shows the pending line and the node's hint, one
+        row each, and with the action bar still leaves the tree at least 12 rows at BASE."""
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot, "ace-profiles")
@@ -191,11 +189,28 @@ class LookAndFeelTest(TuiTestCase):
                     self.assertEqual("pending change" in guide, prepared, guide)
                     self.assert_ace_tree_pane_rows(review, (prepared, kind, guide))
                     self.assert_inside(review.query_one("#guide"), review.query_one("#tree-pane").region)
+                    # the pending line and the hint each take one row: both show (the hint is dropped only for
+                    # a name too long to fit, GUIDE_MAX_ROWS)
+                    self.assertEqual(len(guide.splitlines()), 2 if prepared else 1, guide)
+                    self.assertEqual(review.query_one("#guide").region.height, len(guide.splitlines()), guide)
             await pilot.resize_terminal(*LARGE)  # plenty of room: the hint follows the pending line
             await settle(app, pilot)
             guide = str(review.query_one("#guide").render())
             self.assertIn("pending change", guide)
             self.assertEqual(len(guide.splitlines()), 2, guide)
+
+    async def test_ace_action_bar_is_one_row_at_large(self):
+        """Review Focus 5: at LARGE the whole action bar under the tree takes one row, each button drawn whole."""
+        app = self.make_app()
+        async with app.run_test(size=LARGE) as pilot:
+            review = await self.open_review(app, pilot, "ace-profiles")
+            bar = review.query_one("#tree-actions")
+            buttons = list(bar.query(Button))
+            self.assertEqual(len({b.region.y for b in buttons}), 1, [b.region for b in buttons])
+            self.assertEqual(bar.region.height, 1)
+            for button in buttons:
+                self.assert_inside(button, review.query_one("#tree-pane").region)
+                self.assertGreaterEqual(button.region.width, len(button.label.plain) + 2, button.label)
 
     async def test_ace_left_pane_hint_fits_with_several_kinds_of_pending_change(self):
         """Feedback round 1 review: several kinds of pending change and a scan warning (the bottom line takes two
@@ -289,14 +304,14 @@ class LookAndFeelTest(TuiTestCase):
                         box = form.region
                         self.assertLessEqual(box.width, FORM_MAX_WIDTH, box)
                         self.assertLessEqual(abs(box.x - (size[0] - box.right)), 1, box)  # centred
-                        if size == BASE and tool in SETTINGS_FIT_TOOLS:
+                        if size == BASE:
                             self.assertEqual(form.max_scroll_y, 0)
                             self.assert_inside(app.screen.query_one("#save", Button), box)
 
     async def test_footer_shows_every_key_at_base(self):
         """At BASE the footer of the review and result screens shows each of its keys whole (the command palette
         key, which nothing documents, is not shown; Ctrl+P still opens it)."""
-        for tool in FOOTER_TOOLS:
+        for tool in TOOLS:
             with self.subTest(tool=tool):
                 app = self.make_app()
                 async with app.run_test(size=BASE) as pilot:
@@ -378,6 +393,31 @@ class LookAndFeelTest(TuiTestCase):
                     await settle(app, pilot)
                     self.assertIsInstance(app.screen, ConfirmScreen)
                     self.assert_popup_width(app.screen, LARGE)
+
+    async def test_ace_popups_show_everything_at_base(self):
+        """At BASE the quick actions menu lists every action without scrolling, and a target popup shows a
+        12-line body whole (one line per addon of a delete) with its buttons and hint, with room around it."""
+        body = "\n".join(f"Addon{i}: Default, Healer (1 character move)" for i in range(12))
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await pilot.pause()
+            for screen in (ActionsScreen(), TargetScreen("Delete profiles", body, ["Default", "Healer"])):
+                with self.subTest(popup=type(screen).__name__):
+                    app.push_screen(screen)
+                    await settle(app, pilot)
+                    box = screen.query_one(".popup-box")
+                    self.assertEqual(box.max_scroll_y, 0)
+                    shown = [w for w in screen.query("Button, Input, NavHint, OptionList, .popup-body")
+                             if w.display]  # not the Select's closed overlay
+                    for widget in shown:
+                        self.assert_inside(widget, box.region)
+                    for scroller in screen.query("OptionList, .popup-body"):
+                        if scroller.display:
+                            self.assertEqual(scroller.max_scroll_y, 0, scroller)  # nothing scrolled out of view
+                    self.assertTrue(box.region.y >= 1 and box.region.bottom <= BASE[1] - 1, box.region)
+                    self.assert_popup_width(screen, BASE)
+                    screen.dismiss(None)
+                    await settle(app, pilot)
 
     def assert_popup_width(self, screen, size) -> None:
         box = screen.children[0].region

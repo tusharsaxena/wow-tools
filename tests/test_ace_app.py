@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from textual.widgets import Button, DataTable, Input, Tree
 
-from tests.fixtures import TuiTestCase, build_ace_tree, make_config, settle
+from tests.fixtures import BASE, TuiTestCase, build_ace_tree, make_config, settle
 from wowtools.core.backup import BackupEntry, create_backup
 from wowtools.core.config import Config
 from wowtools.core.install import WowInstall
@@ -558,7 +558,7 @@ def inside(widget, box) -> bool:
 
 class ReviewFixesTest(AceAppBase):
     """M3 review: blacklisting after staging, the Undo and recovery WoW checks, leaving with staged changes, the
-    popups at 80x24, the delete target, the extra keys in the menu, the dry-run result and search expansion."""
+    popups at 120x30, the delete target, the extra keys in the menu, the dry-run result and search expansion."""
 
     async def stage_elv(self, app, pilot, review):
         key = next(k for k in review.staging.states if k.sv_name == "ElvDB")
@@ -691,9 +691,11 @@ class ReviewFixesTest(AceAppBase):
             self.assertEqual(path.read_bytes(), b"torn")
             self.assertIsNotNone(editor.read_marker(root))  # offered again at the next scan
 
-    async def test_recovery_popup_fits_80_columns(self):
+    async def test_recovery_popup_fits_at_base(self):
+        """At 120x30 the recovery popup is drawn whole, and the zip's path has a line of its own (a path with a
+        space, "World of Warcraft", is never split between two lines of text)."""
         app = self.make_app()
-        async with app.run_test(size=(80, 24)) as pilot:
+        async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot)
             await self.write_torn_marker(review)
             await pilot.press("r")
@@ -701,6 +703,7 @@ class ReviewFixesTest(AceAppBase):
             box = app.screen.query_one("#recovery-box")
             for button in app.screen.query("Button"):
                 self.assertTrue(inside(button, box), button.id)
+            self.assertIn(str(app.screen.marker.zip), app.screen.message().splitlines())
 
     async def test_leaving_with_staged_changes_asks_first(self):
         app = self.make_app()
@@ -806,9 +809,9 @@ class ReviewFixesTest(AceAppBase):
             self.assertEqual(len(names), len(kicks))
             self.assertTrue(any("ACCT2" in n for n in names))
 
-    async def test_popups_fit_80x24(self):
+    async def test_popups_fit_at_base(self):
         app = self.make_app()
-        async with app.run_test(size=(80, 24)) as pilot:
+        async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot)
             # p ticks all first: on the root with nothing ticked, Delete and Assign ask for a tick (feedback round 1
             # review)
@@ -967,7 +970,7 @@ class GuidanceTest(AceAppBase):
                             self.guide(review))
             self.assertEqual(review.guide_text, self.guide(review))
             await self.highlight(app, pilot, review, "profile", "Healer")
-            self.assertEqual(self.guide(review), 'Profile "Healer": Delete, Rename or Copy it, or tick it with Space')
+            self.assertEqual(self.guide(review), 'Profile "Healer": Delete, Rename or Copy it')
             tree = review.query_one("#profiles", Tree)
             tree.focus()
             await pilot.press("space")
@@ -983,9 +986,8 @@ class GuidanceTest(AceAppBase):
             app.screen.dismiss("Default")
             await settle(app, pilot)
             total = review.staging.summary().total
-            self.assertTrue(self.guide(review).startswith(f"{total} pending changes in 1 file, not written yet: "
-                                                          "Apply (w) writes, Dry run (y) checks"),
-                            self.guide(review))
+            self.assertTrue(self.guide(review).startswith(f"{total} pending changes, not written yet: w apply · "
+                                                          "y dry run · ⌫ discard"), self.guide(review))
             self.assertNotIn("staged", (self.guide(review) + review.summary_text).casefold())
 
     async def test_action_bar_buttons_have_their_kind_of_colour(self):
@@ -994,8 +996,8 @@ class GuidanceTest(AceAppBase):
             review = await self.open_review(app, pilot)
             buttons = list(review.query_one("#tree-actions").query(Button))
             self.assertEqual([b.label.plain for b in buttons],
-                             ["Delete profile (d)", "Assign profile (p)", "Rename (e)", "Copy (k)",
-                              "Remove leftovers (o)", "Blacklist…", "More… (m)", "Discard (⌫)"])
+                             ["Delete (d)", "Assign (p)", "Rename (e)", "Copy (k)", "Leftovers (o)", "Blacklist…",
+                              "More… (m)", "Discard (⌫)"])
             self.assertEqual([b.variant for b in buttons],
                              ["error", "success", "success", "success", "error", "default", "default", "default"])
             self.assertFalse(any(b.disabled for b in buttons))
@@ -1140,9 +1142,9 @@ class BlacklistScreenTest(AceAppBase):
             self.assertEqual(results, [[("_retail_", "Gone"), ("_classic_era_", "KickCD"), ("_retail_", "KickCD"),
                                         ("_classic_era_", "Questie")]])
 
-    async def test_fits_80x24(self):
+    async def test_fits_at_base(self):
         app = self.make_app()
-        async with app.run_test(size=(80, 24)) as pilot:
+        async with app.run_test(size=BASE) as pilot:
             screen, _ = await self.open_screen(app, pilot, [])
             pane = screen.query_one("#filters")
             for widget in (*screen.query("#filters Button"), screen.query_one("NavHint")):

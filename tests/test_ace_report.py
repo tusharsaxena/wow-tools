@@ -5,9 +5,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from rich.cells import cell_len
+
 from tests.fixtures import build_ace_tree
-from wowtools.core.install import WowInstall
-from wowtools.tools.ace_profiles import ops, report, scanner
+from wowtools.core.install import Flavor, WowInstall
+from wowtools.core.paths import to_stored
+from wowtools.tools.ace_profiles import editor, multi, ops, report, scanner
+from wowtools.tools.ace_profiles.undo import UndoResult
 
 
 class ReportTest(unittest.TestCase):
@@ -69,51 +73,85 @@ class ReportTest(unittest.TestCase):
         self.assertNotIn("staged", report.selection_text(1, 3, summary, 2).casefold())
 
     def test_guidance_steps_when_nothing_is_going_on(self):
-        text = report.guidance("root", "", 0, 0, 0, 0)
+        text = report.guidance("root", "", 0, 0, 0)
         self.assertEqual(text, "1 Tick profiles or characters (Space) → 2 pick an action below → 3 check the "
                                "pending changes in the tree → 4 Apply (w) writes them")
-        self.assertEqual(report.guidance(None, "", 0, 0, 0, 0), text)
-        self.assertEqual(report.guidance("account", "ACCT1", 0, 0, 0, 0), text)
+        self.assertEqual(report.guidance(None, "", 0, 0, 0), text)
+        self.assertEqual(report.guidance("account", "ACCT1", 0, 0, 0), text)
 
     def test_guidance_on_a_highlighted_node(self):
-        self.assertEqual(report.guidance("profile", "Healer", 0, 0, 0, 0),
-                         'Profile "Healer": Delete, Rename or Copy it, or tick it with Space')
+        self.assertEqual(report.guidance("profile", "Healer", 0, 0, 0), 'Profile "Healer": Delete, Rename or Copy it')
         for kind in ("char", "pair", "character"):
-            self.assertEqual(report.guidance(kind, "Kaelys - Realm1", 0, 0, 0, 0),
-                             '"Kaelys - Realm1": Assign it a profile, or remove it if it is a leftover')
-        self.assertEqual(report.guidance("addon", "ElvUI", 0, 0, 0, 0),
-                         "ElvUI: Keep only Default or Everyone → Default (More…), or Blacklist…")
+            self.assertEqual(report.guidance(kind, "Kaelys - Realm1", 0, 0, 0),
+                             '"Kaelys - Realm1": Assign a profile, or remove it if a leftover')
+        self.assertEqual(report.guidance("addon", "ElvUI", 0, 0, 0),
+                         "ElvUI: Keep only Default, Everyone → Default (More…)")
 
     def test_guidance_on_a_blacklisted_node(self):
         """Feedback round 1 review: a locked addon offers no action but the unlock."""
         for kind, name in (("addon", "ElvUI"), ("db", "ElvUI"), ("profile", "Healer"), ("char", "Kaelys - Realm1")):
-            text = report.guidance(kind, name, 0, 0, 0, 0, locked="ElvUI")
-            self.assertEqual(text, "ElvUI is blacklisted: shown, never changed (u unlocks it for this session)",
-                             kind)
-        self.assertEqual(report.guidance("root", "", 0, 0, 0, 0, locked=""), report.STEPS)
-        pending = report.guidance("profile", "Healer", 0, 0, 3, 2, locked="ElvUI")
-        self.assertEqual(pending.splitlines()[1], "ElvUI is blacklisted: shown, never changed (u unlocks it for "
-                                                  "this session)")
+            text = report.guidance(kind, name, 0, 0, 0, locked="ElvUI")
+            self.assertEqual(text, "ElvUI is blacklisted: u unlocks it for this session", kind)
+        self.assertEqual(report.guidance("root", "", 0, 0, 0, locked=""), report.STEPS)
+        pending = report.guidance("profile", "Healer", 0, 0, 3, locked="ElvUI")
+        self.assertEqual(pending.splitlines()[1], "ElvUI is blacklisted: u unlocks it for this session")
 
     def test_guidance_without_the_hint(self):
         """When the hint does not fit, only the pending line is shown (the steps when nothing is pending)."""
-        text = report.guidance("profile", "Healer", 0, 0, 3, 2, hint=False)
-        self.assertEqual(text.splitlines(), [report.guidance("root", "", 0, 0, 3, 2)])
-        self.assertEqual(report.guidance("profile", "Healer", 2, 0, 0, 0, hint=False), report.STEPS)
+        text = report.guidance("profile", "Healer", 0, 0, 3, hint=False)
+        self.assertEqual(text.splitlines(), [report.guidance("root", "", 0, 0, 3)])
+        self.assertEqual(report.guidance("profile", "Healer", 2, 0, 0, hint=False), report.STEPS)
 
     def test_guidance_with_ticks(self):
-        self.assertEqual(report.guidance("profile", "Healer", 2, 1, 0, 0),
+        self.assertEqual(report.guidance("profile", "Healer", 2, 1, 0),
                          "3 ticked: pick an action below (Delete, Assign, …)")
 
     def test_guidance_with_pending_changes_comes_first(self):
-        pending = ("3 pending changes in 2 files, not written yet: Apply (w) writes, Dry run (y) checks, "
-                   "Discard (⌫) drops")
-        self.assertEqual(report.guidance("root", "", 0, 0, 3, 2), pending)
-        self.assertEqual(report.guidance("profile", "Healer", 0, 0, 3, 2),
-                         pending + '\nProfile "Healer": Delete, Rename or Copy it, or tick it with Space')
-        self.assertTrue(report.guidance("addon", "ElvUI", 1, 0, 1, 1).startswith(
-            "1 pending change in 1 file, not written yet"))
-        self.assertIn("\n1 ticked: pick an action below", report.guidance("addon", "ElvUI", 1, 0, 1, 1))
+        pending = "3 pending changes, not written yet: w apply · y dry run · ⌫ discard"
+        self.assertEqual(report.guidance("root", "", 0, 0, 3), pending)
+        self.assertEqual(report.guidance("profile", "Healer", 0, 0, 3),
+                         pending + '\nProfile "Healer": Delete, Rename or Copy it')
+        self.assertTrue(report.guidance("addon", "ElvUI", 1, 0, 1).startswith("1 pending change, not written yet"))
+        self.assertIn("\n1 ticked: pick an action below", report.guidance("addon", "ElvUI", 1, 0, 1))
+
+    def test_guide_lines_fit_one_row_of_the_tree_pane_at_base(self):
+        """Terminal size plan, Task S3: at 120x30 the guide is 68 columns wide (the tree pane, less its padding).
+        The pending line (up to 99 changes) and each hint, with a name of up to 16 characters, take one row each,
+        so both show together; a longer name may wrap, and the screen then leaves the hint out (GUIDE_MAX_ROWS)."""
+        width = 68
+        name = "N" * 16
+        lines = [report.guidance("root", "", 0, 0, 99)]
+        lines += [report.guidance(kind, name, 0, 0, 0) for kind in ("profile", "char", "addon")]
+        lines += [report.guidance("profile", name, 0, 0, 0, locked=name), report.guidance("profile", name, 99, 0, 0)]
+        for line in lines:
+            self.assertLessEqual(cell_len(line), width, line)
+
+    def test_result_summaries_name_files_inside_the_backup_folder(self):
+        """Terminal size plan, Task S3: a whole zip path is cut off at 120 columns. The backup folder has a row of
+        its own; the zips (and the journal, when it is in there) are named inside it; a file elsewhere keeps its
+        whole path."""
+        root = Path("/wow/wow-tools/ace-profiles")
+        flavor = Flavor("_retail_", Path("/wow/_retail_"))
+        apply = editor.ApplyResult(flavor, False, snapshot=root / "snapshots" / "snapshot-retail-1.zip",
+                                   backup_zip=root / "edited" / "edited-retail-all-1.zip")
+        result = multi.MultiApplyResult(False, [multi.FlavorRun(flavor, apply)], root / "journal" / "journal-1.jsonl")
+        rows = report.apply_summary_rows(result)
+        self.assertEqual([item for item, _ in rows], ["Changed", "Backup folder", "WTF backup (Retail)",
+                                                       "Original files (Retail)", "Journal"])
+        values = dict(rows)
+        self.assertEqual(values["Backup folder"], to_stored(root))
+        self.assertEqual(values["WTF backup (Retail)"], str(Path("snapshots", "snapshot-retail-1.zip")))
+        self.assertEqual(values["Original files (Retail)"], str(Path("edited", "edited-retail-all-1.zip")))
+        self.assertEqual(values["Journal"], str(Path("journal", "journal-1.jsonl")))
+        elsewhere = Path("/journals/journal-1.jsonl")
+        result.journal_path = elsewhere
+        self.assertEqual(dict(report.apply_summary_rows(result))["Journal"], to_stored(elsewhere))
+        undo = UndoResult(snapshots=[root / "snapshots" / "snapshot-retail-2.zip"])
+        self.assertEqual(report.undo_summary_rows(undo), [
+            ("Put back", "0 files"), ("Backup folder", to_stored(root)),
+            ("WTF backup", str(Path("snapshots", "snapshot-retail-2.zip")))])
+        dry = multi.MultiApplyResult(True, [multi.FlavorRun(flavor, editor.ApplyResult(flavor, True))])
+        self.assertEqual([item for item, _ in report.apply_summary_rows(dry)], ["Would change"])
 
     def test_apply_confirm_alerts(self):
         key = self.st("ElvDB").key

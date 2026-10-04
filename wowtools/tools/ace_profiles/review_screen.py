@@ -56,13 +56,14 @@ PROGRESS_EVERY = 0.05  # seconds between two scan progress reports sent to the U
 GUIDE_MAX_ROWS = 2  # the guidance line leaves its per-node hint out rather than take more rows than this
 GROUP_KINDS = ("root", "flavor", "account")  # nodes too broad to stand for a selection when nothing is ticked
 # The action bar under the tree: (id, label, kind of action, action). Each button does what its key does; one with
-# nothing to act on stays enabled and says what to tick or highlight.
+# nothing to act on stays enabled and says what to tick or highlight. The labels are short enough for one row at
+# 160x45 (and two at 120x30): tests/test_look_and_feel.py.
 TREE_ACTIONS = (
-    ("act-delete", "Delete profile (d)", "delete", "delete"),
-    ("act-assign", "Assign profile (p)", "apply", "assign"),
+    ("act-delete", "Delete (d)", "delete", "delete"),
+    ("act-assign", "Assign (p)", "apply", "assign"),
     ("act-rename", "Rename (e)", "apply", "rename"),
     ("act-copy", "Copy (k)", "apply", "copy"),
-    ("act-leftovers", "Remove leftovers (o)", "delete", "remove_leftovers"),
+    ("act-leftovers", "Leftovers (o)", "delete", "remove_leftovers"),
     ("act-blacklist", "Blacklist…", "neutral", "edit_blacklist"),
     ("act-more", "More… (m)", "neutral", "more"),
     ("act-discard", "Discard (⌫)", "neutral", "discard"),
@@ -116,7 +117,8 @@ class ProfileRecoveryScreen(ModalScreen[str]):
         return "\n".join([
             (f"A change to {flavor_name(marker.flavor)} started {friendly_stamp(marker.started)} did not finish "
              f"({plural(len(marker.files), 'file')})."),
-            f"The original files are in: {marker.zip}",
+            "The original files are in:",
+            str(marker.zip),
             ("Put the originals back: each file the change wrote is restored from that zip; a file saved since "
              "(by WoW) is left as it is."),
             "Leave as is: the files stay as they are now; the zip and the WTF backup are kept.",
@@ -164,12 +166,14 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         Binding("space", "toggle", "Tick/untick", priority=True),
         Binding("a", "select_all", "All"),
         Binding("n", "select_none", "None"),
-        Binding("d", "delete", "Delete"),
-        Binding("p", "assign", "Assign"),
+        # d, p and m are on the action bar's buttons (with their keys): the footer leaves them out, so the rest
+        # fits at 120 columns
+        Binding("d", "delete", "Delete", show=False),
+        Binding("p", "assign", "Assign", show=False),
         Binding("e", "rename", "Rename", show=False),
         Binding("k", "copy", "Copy", show=False),
         Binding("o", "remove_leftovers", "Remove leftovers", show=False),
-        Binding("m", "more", "More"),
+        Binding("m", "more", "More", show=False),
         Binding("backspace", "discard", "Discard", show=False),
         Binding("b", "blacklist", "Blacklist", show=False),
         Binding("u", "unlock", "Unlock", show=False),
@@ -212,7 +216,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self.undoable: Path | None = None  # the newest undoable journal, found by the scan worker
         self.marker: Marker | None = None  # an Apply that did not finish, found by the scan worker
         self.summary_text = f"Selected: 0 profiles · 0 characters · {NO_PENDING}"
-        self.guide_text = guidance(None, "", 0, 0, 0, 0)
+        self.guide_text = guidance(None, "", 0, 0, 0)
         self._builder: TreeBuilder | None = None
         self._expanded: dict[Hashable, bool] = {}
         self._scanning = False
@@ -509,9 +513,9 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         locked = file.addon if file is not None and self.locked(file.flavor.folder, file.addon) else ""
         summary = self.staging.summary()
         profiles, chars = counts(self.ticked)
-        text = guidance(kind, name, profiles, chars, summary.total, summary.files, locked=locked)
-        if summary.total and not self._guide_fits(text):
-            text = guidance(kind, name, profiles, chars, summary.total, summary.files, hint=False)
+        text = guidance(kind, name, profiles, chars, summary.total, locked=locked)
+        if summary.total and not self._guide_fits(text):  # a long name: the hint would wrap
+            text = guidance(kind, name, profiles, chars, summary.total, hint=False)
         if text != self.guide_text:
             self.guide_text = text
             self.query_one("#guide", Static).update(Text(text))

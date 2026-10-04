@@ -530,10 +530,10 @@ their original get a `rolled_back` line in the journal that holds their entries 
   `app.busy` and run inside `activity.running()`.
   The tree sits in `#tree-pane` above the guidance line `#guide` (`report.guidance`: the four `STEPS` on the root,
   a flavor or an account or with nothing highlighted, else `report.node_hint` for the highlighted node; with
-  pending changes the pending count and Apply/Discard come first, and the node hint follows only while the guide
-  stays within `GUIDE_MAX_ROWS` (2) rows; on a locked addon the hint names it and the `u` unlock) and the action bar `#tree-actions`, a
-  `WrapButtonRow` of `TREE_ACTIONS` (Delete profile, Assign profile, Rename, Copy, Remove leftovers, Blacklist…,
-  More…, Discard), each button doing what its key does. With nothing ticked, Delete and Assign act on the
+  pending changes the pending count and the w/y/⌫ keys come first, and the node hint follows only while the guide
+  stays within `GUIDE_MAX_ROWS` (2) rows, which at 120x30 it does unless the name is long; on a locked addon the hint names it and the `u` unlock) and the action bar `#tree-actions`, a
+  `WrapButtonRow` of `TREE_ACTIONS` (Delete, Assign, Rename, Copy, Leftovers, Blacklist…, More…, Discard: two
+  rows at 120x30, one at 160x45), each button doing what its key does. With nothing ticked, Delete and Assign act on the
   highlighted node, but never on the root, a flavor or an account (`GROUP_KINDS`). The guide follows the cursor, the ticks and the pending
   changes. Discard is Backspace (`x`/`c` are expand and collapse all); `b` toggles the highlighted addon's
   (flavor, addon) pair (`settings.toggle_pair`) and saves at once; **Blacklist…** (`action_edit_blacklist`) opens
@@ -552,7 +552,8 @@ their original get a `rolled_back` line in the journal that holds their entries 
 - `ProfileProgressScreen` (ids `ace-*`, `report.STAGE_TITLES`) and `ProfileRecoveryScreen` (Put the originals
   back / Leave as is; Esc leaves the marker for the next scan).
 - `ProfileResultScreen` (`result_screen.py`): `result_css`; `#result-summary` (`apply_summary_rows` or
-  `undo_summary_rows`) above `#result-detail` (`DETAIL_COLUMNS` or `UNDO_COLUMNS`); Rescan (r), Other flavor (f),
+  `undo_summary_rows`: zips and the journal are named inside the backup folder, `report.in_backup_folder`, which
+  has a "Backup folder" row of its own) above `#result-detail` (`DETAIL_COLUMNS` or `UNDO_COLUMNS`); Rescan (r), Other flavor (f),
   Tools (t), Quit (q), plus a focused **Back to review (Esc)** after a dry run. After a real Apply or Undo the
   staging is dropped and the review rescans when shown again.
 

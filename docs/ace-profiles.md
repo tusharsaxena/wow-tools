@@ -26,8 +26,8 @@ edits, and **Undo last change** puts them back.
 Nothing you do on the review screen touches a file until you press **Apply**. In four steps:
 
 1. **Tick** the profiles or characters you want to change (`Space`), or just highlight one.
-2. **Pick an action** in the bar under the tree: **Delete profile**, **Assign profile**, **Rename**, **Copy**,
-   **Remove leftovers**, **Blacklist…** or **More…** (each button also has a key).
+2. **Pick an action** in the bar under the tree: **Delete**, **Assign**, **Rename**, **Copy**, **Leftovers**,
+   **Blacklist…** or **More…** (each button also has a key).
 3. **Check the pending changes in the tree.** Each action shows its result in the tree straight away, marked so you
    can tell (`✘ deleted`, `was Healer` and so on), but it's only *pending*: nothing has been written yet. Make as
    many as you like; **Discard** (`Backspace`) drops them all.
@@ -35,8 +35,8 @@ Nothing you do on the review screen touches a file until you press **Apply**. In
 
 The line just above the action bar (the **guidance line**) always tells you where you are: the four steps when
 nothing is going on, what you can do with the highlighted profile, character or addon (or that it's blacklisted,
-and `u` unlocks it), how many lines are ticked, and how many pending changes are waiting to be applied. On a small
-window, with pending changes, it shows only the pending changes so the tree keeps its room.
+and `u` unlocks it), how many lines are ticked, and how many pending changes are waiting to be applied. With pending
+changes and a very long name highlighted, it shows only the pending changes so the tree keeps its room.
 
 ## Step by step
 
@@ -80,11 +80,11 @@ that addon.
 
 | Button | Key | Does |
 |---|---|---|
-| **Delete profile** | `d` | Deletes the ticked profiles, or the highlighted profile (or addon's profiles) |
-| **Assign profile** | `p` | Moves the ticked characters, or the highlighted ones, to another profile |
+| **Delete** | `d` | Deletes the ticked profiles, or the highlighted profile (or addon's profiles) |
+| **Assign** | `p` | Moves the ticked characters, or the highlighted ones, to another profile |
 | **Rename** | `e` | Renames the highlighted profile |
 | **Copy** | `k` | Copies the highlighted profile under a new name |
-| **Remove leftovers** | `o` | Removes the ticked leftover characters |
+| **Leftovers** | `o` | Removes the ticked leftover characters |
 | **Blacklist…** | | Opens the [blacklist](#the-blacklist) screen |
 | **More…** | `m` | The quick actions, and every other key |
 | **Discard** | `Backspace` | Drops every pending change |
