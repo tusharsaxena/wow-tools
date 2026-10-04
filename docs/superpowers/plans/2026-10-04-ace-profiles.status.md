@@ -24,7 +24,7 @@ merge, delete every branch, stash and worktree this run created.
 | 12 | review screen: tree, ticks, filters, blacklist | done | 33bbe9a | tree building split into `tree_view.py` (`TreeBuilder`, `Filters`, `ident`) as the plan allows; screen 570 lines; d/p/e/k/o/m/x/w/y/z are notify stubs for Tasks 13–14; recovery marker is read and kept on `self.marker` (`offer_recovery` notifies until Task 14); 9 ace_app tests OK (+1 added); ace 375 OK; full suite 937 OK (2 skipped), ruff clean; events.md unchanged |
 | 13 | popups + staging from the tree | done | 9a888c0 | `popups.py` (`TargetScreen`, `NameScreen`, `ActionsScreen`, shared `popup_css`); d/p/e/k/o/m/x staged from the tree, refusals notified as warnings, ticks of changed databases cleared; w/y/z stay stubs for Task 14; 5 StagingTest tests OK; ace 380 OK; structure OK; full suite 942 OK (2 skipped), ruff clean |
 | 14 | apply, dry run, undo, recovery, result screens | done | 3fbdd3d | `result_screen.py` (`ProfileResultScreen`); `ProfileProgressScreen`, `ProfileRecoveryScreen` and the w/y/z, recovery and stale-rescan flows in `review_screen.py`; `apply_confirm` names the flavors; left pane made to fit 80x24 (look-and-feel test); 4 RunTest tests OK; ace 384 OK; look_and_feel 3 OK; full suite 946 OK (2 skipped), ruff clean; events.md unchanged; milestone push left to the orchestrator |
-| M3 | push milestone 3 | todo | | |
+| M3 | push milestone 3 | reviewed (not pushed yet) | 131119c | review fixes: blacklisting drops staged changes, Undo/recovery check the WoW of the flavor they touch, recovery guarded like Undo, leaving asks, popups fit 80x24, delete target, menu lists hidden keys, dry-run Back, search expands; full suite 965 OK (2 skipped), ruff clean |
 | 15 | docs + final battery | todo | | |
 | M4 | push, ask for merge go-ahead | todo | | |
 
@@ -124,3 +124,39 @@ merge, delete every branch, stash and worktree this run created.
   screen is Rescan, as in the WTF Cleaner. A stopped flavor still shows the result screen, with an error notify.
 - Task 14: the recovery popup closed with Esc (no choice) leaves the marker, so it is offered again at the next
   scan; "Put the originals back" runs `recover` under the progress screen, notifies the counts and rescans.
+- M3 review: fixed (three findings, one bug): blacklisting an addon (`b`), locking it again (`u`) or blacklisting it
+  in settings left its staged changes in place and Apply wrote them. `Staging.drop_locked()` resets a locked
+  addon's databases (called by `b`/`u`, before Apply/dry run and when the review is shown again, with a warning
+  naming the addons), and `Staging.changed()`/`summary()` never include a locked addon (the last guard). Spec §3
+  intent kept ("can't be ticked or changed").
+- M3 review: fixed (two findings, one bug): Undo ran the running-WoW check for the reviewed flavors only, while the
+  journal is the newest of the whole tool. The check is now built from the flavors the journal changed
+  (`ProfileReviewScreen.check_for`, as the WTF Cleaner does) for the preflight and inside `undo_run`;
+  `undo_confirm` names those flavors. An injected test check still stands for every flavor.
+- M3 review: fixed (two findings, one bug): "Put the originals back" had no running-WoW check. It now runs the
+  preflight for the marker's flavor and `recover()` takes `wow_check` and `progress`, probes locks and takes a WTF
+  snapshot first (only when a file is to be put back), like `undo_run` (shared `_refuse_running`,
+  `_refuse_locked`, `_snapshot`). Refused: the marker stays and is offered at the next scan. This reverses the M2
+  note "Not done: a WTF snapshot before recovery"; spec recovery paragraph updated.
+- M3 review: fixed: Esc/`f`/`t`/`q` dropped staged changes silently (Esc even from the search box). Leaving with
+  changes staged now asks "Leave and discard the staged changes?" (also from a dry-run result); Esc in the search
+  box returns to the tree; the Undo confirm adds a line when staged changes will be dropped. Spec keys paragraph
+  updated.
+- M3 review: fixed: the Delete/Assign/Name popups clipped their controls at 80x24. The box is `max-height: 100%`
+  (scrolls if ever needed), the Select and Inputs are compact, the error line takes no room until there is an
+  error and the body gets at most 35vh. The recovery box is 80 wide (was 90) with `max-width: 100%`.
+- M3 review: fixed: the delete target always offered and preselected "Default", even when it was being deleted.
+  `_targets` leaves out every profile being deleted (Default included); `TargetScreen` preselects `default` only
+  when offered, else the first; with nothing left only a new name is asked for. Refusals are one notification
+  (at most 8 lines), and `_addon_name` adds the flavor/account when the same addon is in another one. Spec popups
+  paragraph updated.
+- M3 review: fixed: `e`, `k`, `o`, `b`, `u`, `v`, `/`, `x` were shown nowhere. The `m` menu now lists each (label
+  names the key) and runs it. The footer and left-pane hint are unchanged (the hint must fit 80x24); the guide
+  (Task 15) lists every key.
+- M3 review: fixed: Esc and the focused button on a dry-run result led to "Discard staged changes?". A dry-run
+  result adds a focused "Back to review (Esc)" button (after Rescan, which stays first as on every result screen)
+  and Esc goes back with the staging kept. Apply/Undo results keep Esc = Rescan.
+- M3 review: fixed: a search left addon nodes collapsed in By addon view. While searching every group shown is
+  open (scan warnings excepted) and the expansion state is not recorded, so clearing the search restores it.
+- M3 review: no finding rejected. Regression tests: `ReviewFixesTest` (15, `tests/test_ace_app.py`), three
+  `RecoverTest` cases (`tests/test_ace_undo.py`), one ops test; each failed on the code before the fix.
