@@ -6,7 +6,7 @@ task; push after the round. Never merge without the user's go-ahead.
 
 | Task | Title | Status | Commit | Notes |
 |---|---|---|---|---|
-| F1 | global retention settings | todo | | |
+| F1 | global retention settings | done | 05aa3cd | `Config.keep_backups`/`keep_journals` + `remove`/`remove_retired`; setup screen inputs; tool settings/screens lose retention (Screenshot Organizer too); pruners keep all at 0; docs + events regenerated |
 | F2 | one control per row; expand/collapse all on every tree | todo | | |
 | F3 | Ace3 blacklist pairs + tree screen | todo | | |
 | F4 | Ace3 guidance: pending changes, action bar, guidance line | todo | | |
@@ -15,4 +15,15 @@ task; push after the round. Never merge without the user's go-ahead.
 
 ## Decisions taken during the build
 
-- (none yet)
+- Task F1: the Screenshot Organizer's settings screen also lost its `keep_journals` input (the spec says tool
+  settings screens no longer show retention; the plan's test list named only the other three).
+- Task F1: Ace3's logic functions keep their `keep_snapshots` parameter name (`apply_flavors`, `undo_run`,
+  `recover`, `apply_flavor`); the review screen passes `cfg.keep_backups` into it. Renaming would churn many tests
+  for no behaviour change.
+- Task F1: `Config.remove_retired(section)` (drops `keep_backups`/`keep_snapshots`/`keep_journals`) is the shared
+  helper each tool's `save_settings` calls; `Config.remove` logs `config.changed` with `new=None` (event description
+  updated to say "or was removed").
+- Task F1: `wtf_cleaner/safety.DEFAULT_KEEP_SNAPSHOTS` (5) and the per-tool `DEFAULT_KEEP_*` constants are gone;
+  `core/config.DEFAULT_KEEP_BACKUPS`/`DEFAULT_KEEP_JOURNALS` (10/10) replace them. The WTF confirm says "all of
+  this flavor are kept" when keep_backups is 0.
+- Task F1: `tests/test_docs.py` now requires `keep_backups` (not `keep_snapshots`) in the Ace3 guide.
