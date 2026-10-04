@@ -20,7 +20,7 @@ merge, delete every branch, stash and worktree this run created.
 | 9 | undo, recovery, multi | done | f62f843 | plan code verbatim apart from a ruff fix in the test and the `ace.apply_completed` warning level; 6 ace_undo + 5 ace_multi tests OK; ace 351 OK; full suite 913 OK (2 skipped), ruff clean |
 | 10 | report helpers | done | a7d0f81 | plan code verbatim (`FLAVOR_NAMES` is public in `core/install.py`); test file drops the plan's `# tests/...` path comment; 7 ace_report tests OK; ace 358 OK; full suite 920 OK (2 skipped), ruff clean; milestone push left to the orchestrator |
 | M2 | push milestone 2 | done (pushed) | 8c6f4fd | review fixes: zips kept when a journal is unreadable, recovery only reverts what the run wrote, a stopped flavor's result reaches the report, marker write failure is an ApplyError, removed characters under the right profile row; full suite 928 OK (2 skipped), ruff clean |
-| 11 | flow, settings screen, registration | todo | | |
+| 11 | flow, settings screen, registration | done | 60460ad | tool registered after Interface Backup; settings screen + flow mirror the WTF Cleaner's; review screen is the Task 12 layout stub (filters pane, four buttons, `ProfileTree #profiles`, f/Esc/t/q); README row + guide link, `docs/ace-profiles.md` stub; events.md unchanged by regeneration; 3 ace_app tests OK; ace 369 OK; full suite 931 OK (2 skipped), ruff clean |
 | 12 | review screen: tree, ticks, filters, blacklist | todo | | |
 | 13 | popups + staging from the tree | todo | | |
 | 14 | apply, dry run, undo, recovery, result screens | todo | | |
@@ -85,3 +85,7 @@ merge, delete every branch, stash and worktree this run created.
   a phantom "missing" row when its profile was renamed or gone. It now goes under the row of its profile's
   current name (renamed, deleted or kept), else a "missing" row named after its old profile.
 - M2 review: no finding rejected.
+- Task 11: scope label for one flavor with a chosen account is `"<flavor> · <account>"` (plan named only
+  "All flavors"); picker choices (`last_flavor_choice`, `last_account`) are saved with `source="picker"`, as the
+  plan says. No `ace.settings_saved` log: that event is not in the registry (config changes already log
+  `config.changed`). `docs/ace-profiles.md` stub and README rows are worded for users; Task 15 writes the guide.
