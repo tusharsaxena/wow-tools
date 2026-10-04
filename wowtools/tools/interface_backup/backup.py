@@ -2,6 +2,7 @@
 UI-free. Nothing in the game folders changes, so there is no journal."""
 from __future__ import annotations
 
+import errno
 import json
 import os
 import shutil
@@ -16,7 +17,7 @@ from pathlib import Path
 from wowtools import __version__
 from wowtools.core.backup import MANIFEST_NAME, BackupError, verify_backup
 from wowtools.core.events import log_event
-from wowtools.core.fsutil import remove_quietly, rename_no_replace, safe_progress
+from wowtools.core.fsutil import is_real_dir, remove_quietly, rename_no_replace, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.core.journal import now_iso
 from wowtools.core.paths import to_stored
@@ -28,6 +29,8 @@ MANIFEST_VERSION = 1
 # A zip entry's date is DOS time: 1980 to 2107. A file stamped outside it is stored with the nearest end.
 _ZIP_FIRST = (1980, 1, 1, 0, 0, 0)
 _ZIP_LAST = (2107, 12, 31, 23, 59, 58)
+# POSIX: refuse to open a file that turned into a symlink between the lstat and the open (ELOOP). Windows has none.
+_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 
 
 @dataclass
@@ -36,9 +39,10 @@ class ZipStats:
     files: int
     bytes_in: int  # bytes stored (as read while zipping, not as scanned)
     bytes_zip: int
-    missing: list[str]  # "<Part>/<rel>" gone (or no longer a plain file) since the scan
-    links: list[str]  # "<Part>/<rel>" links that were not followed
-    parts_existing: list[str]  # the parts written (each existed as a real folder)
+    missing: list[str]  # "<Part>/<rel>" gone (or no longer a plain file, or under a linked folder) since the
+    # scan; a bare "<Part>" when the whole part folder is gone or is a link now
+    links: list[str]  # "<Part>/<rel>" links that were not followed; a bare "<Part>" when the part itself is one
+    parts_existing: list[str]  # the parts written (each still a real folder with something read from it)
 
 
 @dataclass
@@ -71,12 +75,19 @@ def _zip_info(arcname: str, st: os.stat_result) -> zipfile.ZipInfo:
     return info
 
 
+def _open_no_follow(path: str, flags: int) -> int:
+    return os.open(path, flags | _NOFOLLOW)
+
+
 def write_zip(scan: FlavorScan, dest: Path, *, kind: str, parts: tuple[str, ...] = PARTS,
               progress: Progress | None = None) -> ZipStats:
     """Zip the scanned parts of a flavor to dest as <Part>/<rel> plus manifest.json, through dest.partial, verify
-    it, then move it into place without replacing anything. A file gone since the scan (or that is no longer a
-    plain file, e.g. now a link) is left out and listed. Stages "backup" and "verify". Raises BackupError; never
-    leaves the .partial behind, even on Ctrl+C."""
+    it, then move it into place without replacing anything. Links are never followed: a file gone since the scan,
+    no longer a plain file (e.g. now a link) or under a folder that is now a link is left out and listed in
+    missing; so is a whole part whose folder is gone or now a link, or none of whose files could be read (it is
+    not claimed in the manifest, so a restore of this zip leaves that folder alone). A part that is itself a link
+    is listed in links as "<Part>". Stages "backup" and "verify". Raises BackupError (also when no chosen part
+    could be read at all); never leaves the .partial behind, even on Ctrl+C."""
     report = safe_progress(progress)
     flavor = scan.flavor
     chosen = [scan.parts[p] for p in PARTS if p in parts and scan.parts[p].exists]
@@ -85,29 +96,73 @@ def write_zip(scan: FlavorScan, dest: Path, *, kind: str, parts: tuple[str, ...]
     expected: dict[str, int] = {}
     files: list[dict] = []
     missing: list[str] = []
-    links = [f"{p.name}/{rel}" for p in chosen for rel in p.links]
+    links: list[str] = []
+    for name in PARTS:
+        if name in parts and scan.parts[name].linked:
+            links.append(name)
+        elif name in parts and scan.parts[name].exists:
+            links.extend(f"{name}/{rel}" for rel in scan.parts[name].links)
+    written: list[str] = []
+    real_dirs: dict[Path, bool] = {}  # one lstat per folder
+
+    def real_dir(path: Path) -> bool:
+        if path not in real_dirs:
+            real_dirs[path] = is_real_dir(path)
+        return real_dirs[path]
+
+    def under_real_dirs(base: Path, rel_parts: list[str]) -> bool:
+        folder = base
+        for name in rel_parts[:-1]:
+            folder = folder / name
+            if not real_dir(folder):
+                return False
+        return True
+
+    done = 0
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(partial, "w", allowZip64=True) as zf:
             for part in chosen:
+                if not real_dir(part.path):  # gone, or now a link, since the scan: never followed
+                    missing.append(part.name)
+                    done += len(part.files)
+                    report("backup", done, total, part.name)
+                    continue
+                read_before = len(files)
                 for info in part.files:
+                    done += 1
                     arcname = f"{part.name}/{info.rel}"
-                    source = part.path.joinpath(*info.rel.split("/"))
+                    rel_parts = info.rel.split("/")
+                    source = part.path.joinpath(*rel_parts)
                     try:
+                        if not under_real_dirs(part.path, rel_parts):
+                            raise FileNotFoundError(arcname)  # a folder on the way is a link now: never followed
                         st = os.lstat(source)
                         if not stat.S_ISREG(st.st_mode):
                             raise FileNotFoundError(arcname)  # a link or folder now: never followed
-                        with open(source, "rb") as src, zf.open(_zip_info(arcname, st), "w") as out:
+                        with open(source, "rb", opener=_open_no_follow) as src, \
+                                zf.open(_zip_info(arcname, st), "w") as out:
                             shutil.copyfileobj(src, out, 1 << 20)
                     except (FileNotFoundError, NotADirectoryError):
                         missing.append(arcname)
-                        report("backup", len(files) + len(missing), total, arcname)
+                        report("backup", done, total, arcname)
+                        continue
+                    except OSError as exc:
+                        if exc.errno != errno.ELOOP:  # ELOOP: turned into a link after the lstat
+                            raise
+                        missing.append(arcname)
+                        report("backup", done, total, arcname)
                         continue
                     stored = zf.getinfo(arcname).file_size  # the bytes actually stored, even if the file grew
                     expected[arcname] = stored
                     files.append({"path": arcname, "size": stored, "mtime": st.st_mtime})
-                    report("backup", len(files) + len(missing), total, arcname)
-            written = [p.name for p in chosen]
+                    report("backup", done, total, arcname)
+                if part.files and len(files) == read_before:
+                    missing.append(part.name)  # every file vanished: do not claim the part
+                else:
+                    written.append(part.name)
+            if chosen and not written:
+                raise BackupError("nothing could be read: the folders changed since the scan")
             manifest = {"version": MANIFEST_VERSION, "kind": kind, "flavor": flavor.short_name,
                         "flavor_folder": flavor.folder, "created": now_iso(), "suite_version": __version__,
                         "parts": written, "parts_existing": written, "files": files, "links": links}
@@ -124,7 +179,7 @@ def write_zip(scan: FlavorScan, dest: Path, *, kind: str, parts: tuple[str, ...]
     except BaseException:  # e.g. Ctrl+C while zipping: never leave a stray .partial behind
         remove_quietly(partial)
         raise
-    return ZipStats(dest, len(files), sum(expected.values()), bytes_zip, missing, links, [p.name for p in chosen])
+    return ZipStats(dest, len(files), sum(expected.values()), bytes_zip, missing, links, written)
 
 
 def back_up(scan: FlavorScan, root: Path, *, keep: int, now: datetime | None = None,
@@ -132,8 +187,13 @@ def back_up(scan: FlavorScan, root: Path, *, keep: int, now: datetime | None = N
     """One flavor: zip, verify, then prune its older backups (only after a success). Never raises BackupError."""
     flavor = scan.flavor
     if not scan.has_data:
-        log_event("ibackup.backup_skipped", flavor=flavor.folder)
-        return BackupOutcome(flavor, "skipped", reason="no Interface or WTF folder")
+        linked = [name for name in PARTS if scan.parts[name].linked]
+        if linked:
+            reason = f"{' and '.join(linked)} {'is a link' if len(linked) == 1 else 'are links'} (not followed)"
+        else:
+            reason = "no Interface or WTF folder"
+        log_event("ibackup.backup_skipped", flavor=flavor.folder, reason=reason, links=linked)
+        return BackupOutcome(flavor, "skipped", links=linked, reason=reason)
     dest = new_backup_path(root, flavor.short_name, now or datetime.now(), kind=BACKUP)
     try:
         stats = write_zip(scan, dest, kind=BACKUP, progress=progress)
@@ -146,7 +206,7 @@ def back_up(scan: FlavorScan, root: Path, *, keep: int, now: datetime | None = N
     if stats.links:
         log_event("ibackup.links_skipped", flavor=flavor.folder, count=len(stats.links), sample=stats.links[:SAMPLE])
     safe_progress(progress)("prune", 0, 0, flavor.display_name)
-    pruned = prune_backups(root, flavor.short_name, keep)
+    pruned = prune_backups(root, flavor.short_name, keep, protect=stats.path)  # never the zip just made
     if pruned:
         log_event("ibackup.pruned", flavor=flavor.folder, keep=keep, removed=[p.name for p in pruned])
     return BackupOutcome(flavor, "created", stats.path, stats.files, stats.bytes_in, stats.bytes_zip, stats.links,

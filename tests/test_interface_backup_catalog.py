@@ -70,6 +70,17 @@ class CatalogTest(unittest.TestCase):
         self.assertTrue((self.root / "notes.txt").exists())
         self.assertEqual(prune_backups(self.root, "retail", 0), [])  # 0 = never delete
 
+    def test_prune_protects_the_named_backup_whatever_its_stamp(self):
+        new = self.touch("backup-retail-20261001-000000.zip")
+        for day in (2, 3, 4):
+            self.touch(f"backup-retail-2026100{day}-000000.zip")
+        removed = prune_backups(self.root, "retail", 2, protect=new)
+        self.assertTrue(new.exists())
+        self.assertNotIn(new, removed)
+        self.assertEqual(sorted(p.name for p in self.root.glob("backup-retail-*")),
+                         ["backup-retail-20261001-000000.zip", "backup-retail-20261004-000000.zip"])
+        self.assertEqual(prune_backups(self.root, "retail", 1, protect=new), [self.root / "backup-retail-20261004-000000.zip"])
+
     def test_prune_safety_keeps_referenced(self):
         keep = self.touch("pre-restore-retail-20261001-000000.zip")
         drop = self.touch("pre-restore-retail-20261002-000000.zip")

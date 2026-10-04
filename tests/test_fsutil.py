@@ -13,6 +13,7 @@ from wowtools.core.fsutil import (
     atomic_write_text,
     free_name,
     is_link,
+    is_real_dir,
     remove_quietly,
     remove_tree_no_follow,
     rename_no_replace,
@@ -166,6 +167,16 @@ class RemoveTreeNoFollowTest(unittest.TestCase):
         self.assertFalse(is_link(self.tmp / "missing"))
         with os.scandir(self.tmp) as entries:
             self.assertEqual([is_link(entry) for entry in entries], [False])
+
+    def test_is_real_dir(self):
+        (self.tmp / "d").mkdir()
+        (self.tmp / "f").write_text("x", encoding="utf-8")
+        self.assertTrue(is_real_dir(self.tmp / "d"))
+        self.assertFalse(is_real_dir(self.tmp / "f"))
+        self.assertFalse(is_real_dir(self.tmp / "missing"))
+        if can_symlink(self.tmp):
+            os.symlink(self.tmp / "d", self.tmp / "link", target_is_directory=True)
+            self.assertFalse(is_real_dir(self.tmp / "link"))
 
     def test_missing_tree_raises(self):
         with self.assertRaises(OSError):

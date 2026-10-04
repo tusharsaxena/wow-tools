@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 import unittest
 import zipfile
@@ -18,6 +19,13 @@ from wowtools.tools.interface_backup.backup import back_up, back_up_all, write_z
 from wowtools.tools.interface_backup.scanner import scan_flavor
 
 NOW = datetime(2026, 10, 4, 15, 30, 12)
+
+
+def _symlink(test, target, link, *, folder=False):
+    try:
+        os.symlink(target, link, target_is_directory=folder)
+    except (OSError, NotImplementedError):
+        test.skipTest("symlinks not permitted here")
 
 
 class BackupTest(unittest.TestCase):
@@ -100,6 +108,178 @@ class BackupTest(unittest.TestCase):
         self.assertEqual(outcome.missing, ["WTF/Config.wtf"])
         with zipfile.ZipFile(outcome.path) as zf:
             self.assertNotIn("WTF/Config.wtf", zf.namelist())
+
+    def test_grown_while_zipping_stores_what_was_read(self):
+        config = self.wow / "_retail_" / "WTF" / "Config.wtf"
+        grown = b"SET a 1\n" + b"x" * 5000
+        real_open = open
+
+        def grow(path, *args, **kwargs):
+            if str(path).endswith("Config.wtf"):
+                config.write_bytes(grown)  # after write_zip's lstat, before the read
+            return real_open(path, *args, **kwargs)
+
+        scan = self.scan()
+        with capture_events(), patch("builtins.open", side_effect=grow):
+            outcome = back_up(scan, self.root, keep=10, now=NOW)
+        self.assertEqual(outcome.kind, "created")
+        with zipfile.ZipFile(outcome.path) as zf:
+            self.assertEqual(zf.read("WTF/Config.wtf"), grown)
+            sizes = {f["path"]: f["size"] for f in json.loads(zf.read("manifest.json"))["files"]}
+            self.assertEqual(zf.getinfo("WTF/Config.wtf").file_size, len(grown))
+        self.assertEqual(sizes["WTF/Config.wtf"], len(grown))
+
+    def test_addon_folder_turned_link_after_scan_is_not_followed(self):
+        if not hasattr(os, "symlink"):
+            self.skipTest("needs symlinks")
+        scan = self.scan()
+        repo = self.tmp / "devrepo"
+        repo.mkdir()
+        (repo / "Auctionator.lua").write_bytes(b"REPO")
+        addon = self.wow / "_retail_" / "Interface" / "AddOns" / "Auctionator"
+        shutil.rmtree(addon)
+        _symlink(self, repo, addon, folder=True)
+        with capture_events():
+            outcome = back_up(scan, self.root, keep=10, now=NOW)
+        self.assertEqual(outcome.kind, "created")
+        scanned = {f"Interface/{f.rel}" for f in scan.parts["Interface"].files if f.rel.startswith("AddOns/Auctionator/")}
+        self.assertIn("Interface/AddOns/Auctionator/Auctionator.lua", scanned)
+        self.assertEqual(set(outcome.missing), scanned)
+        with zipfile.ZipFile(outcome.path) as zf:
+            names = zf.namelist()
+            self.assertFalse([n for n in names if n.startswith("Interface/AddOns/Auctionator/")])
+            self.assertIn("Interface/AddOns/Details/core.lua", names)
+            self.assertFalse([n for n in names if zf.read(n) == b"REPO"])
+
+    def test_part_folder_turned_link_after_scan_is_not_followed_or_claimed(self):
+        if not hasattr(os, "symlink"):
+            self.skipTest("needs symlinks")
+        scan = self.scan()
+        outside = self.tmp / "outside-wtf"
+        outside.mkdir()
+        (outside / "Config.wtf").write_bytes(b"OUTSIDE")
+        wtf = self.wow / "_retail_" / "WTF"
+        shutil.rmtree(wtf)
+        _symlink(self, outside, wtf, folder=True)
+        with capture_events():
+            outcome = back_up(scan, self.root, keep=10, now=NOW)
+        self.assertEqual(outcome.kind, "created")
+        self.assertEqual(outcome.missing, ["WTF"])
+        with zipfile.ZipFile(outcome.path) as zf:
+            self.assertFalse([n for n in zf.namelist() if n.startswith("WTF/")])
+            manifest = json.loads(zf.read("manifest.json"))
+        self.assertEqual(manifest["parts"], ["Interface"])
+        self.assertEqual(manifest["parts_existing"], ["Interface"])
+
+    def test_file_swapped_for_link_between_lstat_and_open_is_not_followed(self):
+        if not getattr(os, "O_NOFOLLOW", 0) or not hasattr(os, "symlink"):
+            self.skipTest("needs O_NOFOLLOW and symlinks")
+        config = self.wow / "_retail_" / "WTF" / "Config.wtf"
+        secret = self.tmp / "secret.txt"
+        secret.write_bytes(b"outside")
+        real_open = open
+
+        def swap(path, *args, **kwargs):
+            if str(path).endswith("Config.wtf"):
+                config.unlink()
+                _symlink(self, secret, config)
+            return real_open(path, *args, **kwargs)
+
+        scan = self.scan()
+        with capture_events(), patch("builtins.open", side_effect=swap):
+            outcome = back_up(scan, self.root, keep=10, now=NOW)
+        self.assertEqual(outcome.kind, "created")
+        self.assertIn("WTF/Config.wtf", outcome.missing)
+        with zipfile.ZipFile(outcome.path) as zf:
+            self.assertNotIn("WTF/Config.wtf", zf.namelist())
+
+    def test_part_folder_gone_after_scan_is_not_claimed(self):
+        scan = self.scan()
+        shutil.rmtree(self.wow / "_retail_" / "WTF")
+        with capture_events():
+            outcome = back_up(scan, self.root, keep=10, now=NOW)
+        self.assertEqual(outcome.kind, "created")
+        self.assertEqual(outcome.missing, ["WTF"])
+        with zipfile.ZipFile(outcome.path) as zf:
+            self.assertEqual(json.loads(zf.read("manifest.json"))["parts_existing"], ["Interface"])
+
+    def test_part_whose_files_all_vanished_is_not_claimed(self):
+        scan = self.scan()
+        for info in scan.parts["WTF"].files:
+            (self.wow / "_retail_" / "WTF").joinpath(*info.rel.split("/")).unlink()
+        stats = write_zip(scan, self.root / "backup-retail-x.zip", kind="backup", parts=("Interface", "WTF"))
+        self.assertEqual(stats.parts_existing, ["Interface"])
+        self.assertEqual(stats.missing, [f"WTF/{f.rel}" for f in scan.parts["WTF"].files] + ["WTF"])
+        with zipfile.ZipFile(stats.path) as zf:
+            self.assertEqual(json.loads(zf.read("manifest.json"))["parts"], ["Interface"])
+
+    def test_empty_part_folder_is_still_claimed(self):
+        empty = self.flavors["_classic_era_"]
+        scan = scan_flavor(empty, with_stats=False)
+        for part in scan.parts.values():
+            if part.exists:
+                shutil.rmtree(part.path)
+                part.path.mkdir()
+                part.files.clear()
+                part.links.clear()
+        stats = write_zip(scan, self.root / "backup-classic_era-x.zip", kind="backup")
+        self.assertEqual(stats.missing, [])
+        self.assertEqual(stats.parts_existing, [p for p in ("Interface", "WTF") if scan.parts[p].exists])
+
+    def test_nothing_readable_fails_the_backup(self):
+        scan = self.scan()
+        shutil.rmtree(self.wow / "_retail_" / "Interface")
+        shutil.rmtree(self.wow / "_retail_" / "WTF")
+        with capture_events():
+            outcome = back_up(scan, self.root, keep=10, now=NOW)
+        self.assertEqual(outcome.kind, "failed")
+        self.assertIn("nothing could be read", outcome.reason)
+        self.assertEqual(list(self.root.iterdir()), [])
+
+    def test_linked_part_is_reported(self):
+        if not hasattr(os, "symlink"):
+            self.skipTest("needs symlinks")
+        outside = self.tmp / "outside-wtf"
+        outside.mkdir()
+        wtf = self.wow / "_retail_" / "WTF"
+        shutil.rmtree(wtf)
+        _symlink(self, outside, wtf, folder=True)
+        with capture_events() as events:
+            outcome = back_up(self.scan(), self.root, keep=10, now=NOW)
+        self.assertEqual(outcome.kind, "created")
+        self.assertEqual(outcome.links, ["WTF"])
+        with zipfile.ZipFile(outcome.path) as zf:
+            self.assertEqual(json.loads(zf.read("manifest.json"))["links"], ["WTF"])
+        self.assertIn("ibackup.links_skipped", [e["event"] for e in events])
+
+    def test_flavor_with_only_linked_parts_says_so(self):
+        if not hasattr(os, "symlink"):
+            self.skipTest("needs symlinks")
+        for name in ("Interface", "WTF"):
+            outside = self.tmp / f"outside-{name}"
+            outside.mkdir()
+            part = self.wow / "_retail_" / name
+            shutil.rmtree(part)
+            _symlink(self, outside, part, folder=True)
+        with capture_events() as events:
+            outcome = back_up(self.scan(), self.root, keep=10, now=NOW)
+        self.assertEqual(outcome.kind, "skipped")
+        self.assertEqual(outcome.reason, "Interface and WTF are links (not followed)")
+        self.assertEqual(outcome.links, ["Interface", "WTF"])
+        skipped = [e for e in events if e["event"] == "ibackup.backup_skipped"]
+        self.assertEqual(skipped[0]["data"]["links"], ["Interface", "WTF"])
+
+    def test_prune_never_deletes_the_new_backup_even_if_others_are_stamped_later(self):
+        self.root.mkdir(parents=True)
+        for day in (5, 6, 7):
+            (self.root / f"backup-retail-202611{day:02d}-000000.zip").write_bytes(b"z")
+        for keep, left in ((2, 2), (1, 1)):
+            with self.subTest(keep=keep), capture_events():
+                outcome = back_up(self.scan(), self.root, keep=keep, now=NOW)
+                self.assertEqual(outcome.kind, "created")
+                self.assertTrue(outcome.path.exists())
+                self.assertNotIn(outcome.path, outcome.pruned)
+                self.assertEqual(len(list(self.root.glob("backup-retail-*.zip"))), left)
 
     def test_links_are_reported(self):
         scan = self.scan()

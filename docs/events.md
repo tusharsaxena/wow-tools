@@ -132,7 +132,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 |---|---|---|
 | `ibackup.backup_created` | info | A backup zip was written and verified: path, files, sizes. |
 | `ibackup.backup_failed` | error | A flavor's backup failed; no zip was left behind. |
-| `ibackup.backup_skipped` | warning | A flavor was skipped: it has neither an Interface nor a WTF folder. |
+| `ibackup.backup_skipped` | warning | A flavor was skipped: it has no real Interface or WTF folder (missing, or links). |
 | `ibackup.backup_started` | info | A backup run started: flavors and destination. |
 | `ibackup.journal_pruned` | info | Older restore journals and the safety backups only they named were deleted. |
 | `ibackup.leftover_found` | warning | A .restoring or .replaced folder from an interrupted restore was found. |

@@ -81,12 +81,19 @@ def _delete(paths: list[Path]) -> list[Path]:
     return removed
 
 
-def prune_backups(root: Path, flavor_short: str, keep: int) -> list[Path]:
+def prune_backups(root: Path, flavor_short: str, keep: int, *, protect: Path | None = None) -> list[Path]:
     """Delete all but the newest `keep` backup-<flavor>-*.zip of this flavor; keep 0 means never delete. Safety
-    backups, other flavors' backups and other files are never touched."""
+    backups, other flavors' backups and other files are never touched. `protect` (the backup just made) is never
+    deleted and takes one of the `keep` slots, whatever its stamp: an older backup stamped later (a clock
+    change, a DST fall-back) cannot push it out."""
     if keep <= 0:
         return []
-    return _delete([b.path for b in list_backups(root, {flavor_short}, kinds=(BACKUP,))[keep:]])
+    found = [b.path for b in list_backups(root, {flavor_short}, kinds=(BACKUP,))]
+    kept = [p for p in found if protect is not None and p.name == protect.name]
+    if kept:
+        found.remove(kept[0])
+        keep -= 1
+    return _delete(found[keep:])
 
 
 def prune_safety(root: Path, referenced: set[str]) -> list[Path]:

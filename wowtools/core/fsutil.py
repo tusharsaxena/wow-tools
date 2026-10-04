@@ -115,6 +115,16 @@ def is_link(entry: os.DirEntry | Path) -> bool:
         return False
 
 
+def is_real_dir(path: Path) -> bool:
+    """True for a folder that is not itself a symlink or junction, from one lstat (never follows the last
+    component). False when it is gone, a file or a link. Never raises."""
+    try:
+        info = os.lstat(path)
+    except (OSError, ValueError):
+        return False
+    return stat.S_ISDIR(info.st_mode) and getattr(info, "st_reparse_tag", 0) not in _LINK_TAGS
+
+
 def _unlink_link(path: Path) -> None:
     """Remove a link itself (never its target)."""
     try:
