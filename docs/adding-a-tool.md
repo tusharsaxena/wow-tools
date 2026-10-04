@@ -43,6 +43,11 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
      run's `progress(stage, current, total, detail)` through `app.call_from_thread`. Wrap that callback with
      `core.fsutil.safe_progress` inside the run. A review tree can use `tick_mark`, `relabel_branch` and the
      `TwoPaneFocus` mixin; `theme_colour(app, "success")` gives theme colours with the Ka0s fallback.
+   - **One look.** Build the screens' CSS and hints from the same module, so a new tool looks like the others:
+     `two_pane_css(screen, tree)` for the review (left pane `FILTERS_WIDTH` wide, four action buttons in one row),
+     `result_css(screen)` for the result, `settings_css(screen)` for the settings form, and hints that start with
+     `REVIEW_HINT` (or `review_hint("tick or open")` when Space does more in your tree) and `RESULT_HINT`.
+     `tests/test_look_and_feel.py` checks every tool against them; add yours to its `TOOLS`.
 2. **Register** it in `wowtools/tools/__init__.py`:
    `Tool("screenshot-organizer", "Screenshot Organizer", "File screenshots into year/month/day folders, per flavor.",
    "wowtools.tools.screenshot_organizer.app", "screenshot_organizer")`. It appears in the tool menu. There are no per-tool wrappers or command-line modes: every tool

@@ -92,5 +92,5 @@ class ReportTest(unittest.TestCase):
         plan = Plan([FlavorPlan(flavor, Path("/w/_retail_/Screenshots"), Path("/w/_retail_/Screenshots"), [item])],
                     None)
         _, body = confirm_text([item], plan, ShotSettings(copy_mode=True), False)
-        self.assertIn("_retail_: 1 screenshot (1 already filed)", body)
+        self.assertIn("Retail: 1 screenshot (1 already filed)", body)
         self.assertIn("compared by content", body)

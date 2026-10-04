@@ -1217,6 +1217,8 @@ class InterfaceBackupAppTest(TuiTestCase):
             for selector in ("#part-Interface", "#part-WTF", "#btn-restore", "#btn-back", "#effects", "#summary",
                              "NavHint"):
                 self.assert_on_screen(screen.query_one(selector))
+            hint = str(screen.query_one(NavHint).render())  # Space opens the effects tree's nodes here too
+            self.assertTrue(hint.startswith("↑↓/Tab move · ←→ panes and buttons · Space tick or open · "), hint)
             await pilot.press("o")
             await settle(app, pilot)
             await pilot.press("y")

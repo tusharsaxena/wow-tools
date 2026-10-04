@@ -6,7 +6,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from textual.widgets import Button, DataTable
+from textual.widgets import Button, Checkbox, DataTable
 
 from tests.fixtures import (TuiTestCase, build_interface_tree, build_screenshot_tree, build_wow_tree, make_config,
                             settle)
@@ -94,6 +94,9 @@ class LookAndFeelTest(TuiTestCase):
                     getattr(review, f"action_{RUN_ACTION[tool]}")()
                     await settle(app, pilot)
                     self.assertIsInstance(app.screen, ConfirmScreen)
+                    body = app.screen.title_text + "\n" + app.screen.body_text
+                    self.assertIn("Retail", body)  # flavors by name, as in the result tables
+                    self.assertNotRegex(body, r"(?<![/\\\w])_[a-z]+(_[a-z]+)*_(?![/\\\w])", body)  # never a bare folder
                     app.screen.dismiss(True)
                     await settle(app, pilot)
                     result = app.screen
@@ -113,3 +116,23 @@ class LookAndFeelTest(TuiTestCase):
                     for button in buttons:
                         self.assert_inside(button, app.screen.region)
                     self.assertEqual({b.region.y for b in buttons}, {buttons[0].region.y})
+
+    async def test_settings_screens_open_at_the_title_and_fit(self):
+        """Each settings form opens showing its title (not scrolled down to the focused field) and no checkbox
+        label runs past the right edge at 80 columns."""
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=SMALL) as pilot:
+                    await pilot.pause()
+                    app.open_tool(tool)
+                    await settle(app, pilot)
+                    screen = app.screen
+                    form = screen.query_one("#settings")
+                    self.assertEqual(form.scroll_y, 0)
+                    self.assert_inside(screen.query_one(".title"), form.region)
+                    self.assert_inside(screen.focused, form.region)
+                    for box in screen.query(Checkbox):
+                        self.assertLessEqual(box.region.right, form.content_region.right, box.id)
+                        self.assertGreaterEqual(box.content_size.width, box.get_content_width(box.size, box.size),
+                                                box.id)  # the whole label, not cut with an ellipsis

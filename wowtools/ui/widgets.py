@@ -47,6 +47,11 @@ class FormScroll(VerticalScroll):
 
     BINDINGS: ClassVar[list[Binding]] = list(NAV_BINDINGS)
 
+    def open_at_top(self) -> None:
+        """Show the form from its title once it is laid out, even though the focused field (lower down) asked to be
+        scrolled into view on mount."""
+        self.call_after_refresh(self.scroll_home, animate=False)
+
 
 class Ka0sCheckbox(Checkbox):
     """A checkbox that shows a bright ✔ when on and a dimmed ✘ when off."""

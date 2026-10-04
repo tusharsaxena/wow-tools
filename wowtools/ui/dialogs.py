@@ -25,7 +25,14 @@ BUSY_STYLE = "bold #E8B04B"  # a summary line that says work is going on ("Check
 # One look for every tool: the same left pane, action row, bottom line and hints on the two-pane screens, the
 # same layout and hints on the result screens, the same form on the settings screens.
 FILTERS_WIDTH = 50  # the left pane: wide enough for four action buttons in one row
-REVIEW_HINT = "↑↓/Tab move · ←→ panes and buttons · Space tick · Enter/Space press · "
+
+
+def review_hint(space: str = "tick") -> str:
+    """The start of a two-pane screen's hint; `space` says what Space does in its tree ("tick", "tick or open")."""
+    return f"↑↓/Tab move · ←→ panes and buttons · Space {space} · Enter/Space press · "
+
+
+REVIEW_HINT = review_hint()
 RESULT_HINT = "↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · "
 
 

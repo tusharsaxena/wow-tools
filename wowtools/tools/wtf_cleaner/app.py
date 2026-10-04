@@ -75,6 +75,7 @@ class CleanerSettingsScreen(Screen[bool]):
     def on_mount(self) -> None:
         self.sub_title = "WTF Cleaner settings"
         self.query_one("#max_age", Input).focus()
+        self.query_one("#settings", FormScroll).open_at_top()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "save":

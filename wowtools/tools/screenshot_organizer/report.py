@@ -120,7 +120,7 @@ def confirm_text(selection: list[ShotItem], plan: Plan, settings: ShotSettings, 
     title = f"{verb} {plural(len(selection), 'screenshot')} {where}?"
     if dry_run:
         title = f"Dry run: {title}"
-    per_flavor: dict[str, list[ShotItem]] = {}
+    per_flavor: dict[str, list[ShotItem]] = {}  # keyed by folder so two flavors never merge; shown by name
     for item in selection:
         per_flavor.setdefault(item.flavor.folder, []).append(item)
     lines = []
@@ -130,7 +130,7 @@ def confirm_text(selection: list[ShotItem], plan: Plan, settings: ShotSettings, 
         notes = [plural(dupes, 'possible duplicate')] if dupes else []
         if filed:
             notes.append(f"{filed} already filed")
-        line = f"{folder}: {plural(len(items), 'screenshot')}"
+        line = f"{flavor_name(folder)}: {plural(len(items), 'screenshot')}"
         if notes:
             line += f" ({', '.join(notes)})"
         lines.append(line)

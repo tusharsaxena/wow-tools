@@ -50,7 +50,7 @@ class ScreenshotSettingsScreen(Screen[bool]):
                         placeholder="Empty = in place: <flavor>\\Screenshots\\YYYY\\MM\\DD", id="dest_dir")
             yield Label("Run journals to keep (each real run writes one; Undo uses the newest)")
             yield Input(str(self.settings.keep_journals), type="integer", id="keep_journals")
-            yield Ka0sCheckbox("Copy instead of move (the screenshots stay in the Screenshots folder too)",
+            yield Ka0sCheckbox("Copy instead of move (the originals stay in Screenshots)",
                                self.settings.copy_mode, id="sw_copy")
             yield Static("", id="settings-error")
             with ButtonRow(classes="buttons"):
@@ -63,6 +63,7 @@ class ScreenshotSettingsScreen(Screen[bool]):
     def on_mount(self) -> None:
         self.sub_title = "Screenshot Organizer settings"
         self.query_one("#dest_dir", Input).focus()
+        self.query_one("#settings", FormScroll).open_at_top()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "save":

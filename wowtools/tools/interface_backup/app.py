@@ -71,6 +71,7 @@ class BackupSettingsScreen(Screen[bool]):
     def on_mount(self) -> None:
         self.sub_title = "Interface Backup settings"
         self.query_one("#backup_dir", Input).focus()
+        self.query_one("#settings", FormScroll).open_at_top()
         self._show_destination()
 
     def on_input_changed(self, event: Input.Changed) -> None:
