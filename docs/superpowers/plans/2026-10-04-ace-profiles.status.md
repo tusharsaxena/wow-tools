@@ -19,7 +19,7 @@ merge, delete every branch, stash and worktree this run created.
 | 8 | journal + editor | done | fe6fc85 | plan code verbatim apart from one ruff `noqa: BLE001` on the deliberate `except BaseException` (roll back, then re-raise); 3 ace_journal + 11 ace_editor tests OK; ace 340 OK; full suite 902 OK (2 skipped), ruff clean |
 | 9 | undo, recovery, multi | done | f62f843 | plan code verbatim apart from a ruff fix in the test and the `ace.apply_completed` warning level; 6 ace_undo + 5 ace_multi tests OK; ace 351 OK; full suite 913 OK (2 skipped), ruff clean |
 | 10 | report helpers | done | a7d0f81 | plan code verbatim (`FLAVOR_NAMES` is public in `core/install.py`); test file drops the plan's `# tests/...` path comment; 7 ace_report tests OK; ace 358 OK; full suite 920 OK (2 skipped), ruff clean; milestone push left to the orchestrator |
-| M2 | push milestone 2 | todo | | |
+| M2 | push milestone 2 | reviewed (not pushed yet) | 8c6f4fd | review fixes: zips kept when a journal is unreadable, recovery only reverts what the run wrote, a stopped flavor's result reaches the report, marker write failure is an ApplyError, removed characters under the right profile row; full suite 928 OK (2 skipped), ruff clean |
 | 11 | flow, settings screen, registration | todo | | |
 | 12 | review screen: tree, ticks, filters, blacklist | todo | | |
 | 13 | popups + staging from the tree | todo | | |
@@ -62,3 +62,26 @@ merge, delete every branch, stash and worktree this run created.
   no assertion changed.
 - Task 10: `tests/test_ace_report.py` drops the plan's leading `# tests/test_ace_report.py` comment (as in Task 7);
   the plan's `git push` in Step 5 is left to the milestone step.
+- M2 review: fixed: `referenced_zips` skipped a journal it could not read, so `prune_edited_zips` deleted the
+  originals zip of a journal still offered for Undo. It now returns None on any read failure and the prune deletes
+  nothing that time (a journal that stays unreadable blocks zip pruning until it is gone; the safe side).
+- M2 review: fixed (two findings, one bug): `recover()` reverted every marker file whose hash differed from the
+  original, including files the run skipped as changed since the scan and files WoW saved after the crash. The
+  marker gains `after` (rel -> SHA-256 of what the run writes); recovery puts back only files still at that hash
+  and skips the rest (`ace.file_skipped`). Spec §9 step 5 and the recovery paragraph updated: this changes the
+  spec's "only files whose hash differs from the original" rule. `RecoverTest`'s existing test now writes "what
+  the run wrote" with a matching `after` hash instead of "half written" (atomic writes never leave a half file);
+  its assertions are unchanged. Not done: a WTF snapshot before recovery; with the hash rule recovery only
+  overwrites bytes the run itself wrote, and the failed run's own snapshot already exists.
+- M2 review: fixed (two findings, one bug): a flavor that stopped with ApplyError lost its ApplyResult.
+  `ApplyError.result` now carries it (set by `apply_flavor` for every refusal) and `apply_flavors` keeps it on the
+  `FlavorRun`, so the report shows put-back files, the stopped flavor's WTF snapshot and originals zip. New
+  outcomes: a file that could not be put back becomes "failed" (detail names the zip), and the file whose write
+  failed gets a "rolled_back" or "failed" outcome; `apply_summary_rows` gains a "Failed" row.
+- M2 review: fixed: an OSError writing the crash marker escaped as a raw OSError past `apply_flavors`. It is now
+  `ApplyError("The crash marker could not be written (...). Nothing was changed.")` with a new
+  `ace.marker_failed` event (error); docs/events.md regenerated.
+- M2 review: fixed (two findings, one bug): `profile_rows` put a removed character under the first deleted row or
+  a phantom "missing" row when its profile was renamed or gone. It now goes under the row of its profile's
+  current name (renamed, deleted or kept), else a "missing" row named after its old profile.
+- M2 review: no finding rejected.
