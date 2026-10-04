@@ -21,6 +21,7 @@ you land back on the menu.
 | **WTF Cleaner** | Finds settings files left behind by addons you no longer use, backs them up, and deletes them. | [WTF Cleaner guide](docs/wtf-cleaner.md) |
 | **Screenshot Organizer** | Sorts your WoW screenshots into folders by year, month and day, one set per game version. | [Screenshot Organizer guide](docs/screenshot-organizer.md) |
 | **Interface Backup** | Zips a game version's `Interface` and `WTF` folders (your addons and their settings), and puts them back from a zip. | [Interface Backup guide](docs/interface-backup.md) |
+| **Ace3 Profile Manager** | Shows the profiles of every addon built on Ace3 and which characters use them, and lets you delete, rename and copy profiles or move characters between them. | [Ace3 Profile Manager guide](docs/ace-profiles.md) |
 
 Every tool works with every version of the game you have installed: Retail, Classic, Classic Era, Anniversary,
 and the PTR and Beta clients. You can work on one version at a time or all of them at once.
@@ -140,6 +141,8 @@ Each tool has its own guide, with pictures, that walks through every screen:
   run.
 - [Interface Backup guide](docs/interface-backup.md): back up your addons and their settings, restore them, and
   undo a restore.
+- [Ace3 Profile Manager guide](docs/ace-profiles.md): tidy up Ace3 addon profiles, move characters between them,
+  and undo a change.
 
 ## Updates
 

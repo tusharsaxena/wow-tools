@@ -30,6 +30,9 @@ TOOLS: dict[str, Tool] = {tool.name: tool for tool in (
     Tool("interface-backup", "Interface Backup",
          "Zip a flavor's Interface and WTF folders, and restore them.",
          "wowtools.tools.interface_backup.app", "interface_backup"),
+    Tool("ace-profiles", "Ace3 Profile Manager",
+         "See and change which Ace3 profile each character uses.",
+         "wowtools.tools.ace_profiles.app", "ace_profiles"),
 )}
 
 # Tools that changed name. At start-up each tool's old config file, logs/<old>/ folder and
