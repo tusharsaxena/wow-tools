@@ -142,6 +142,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ibackup.pruned` | info | Older backups of a flavor were deleted to keep the newest N (keep_backups). |
 | `ibackup.replaced_left` | warning | A part was restored but its old copy could not be fully deleted. |
 | `ibackup.restore_completed` | info | A restore finished, with totals (logged at warning if a part failed). |
+| `ibackup.restore_failed` | error | A restore could not go ahead (backup did not verify, safety backup or journal failed); nothing was changed. |
 | `ibackup.restore_started` | info | A restore started: backup, flavor, parts and warning counts. |
 | `ibackup.restore_stopped` | error | A restore stopped unexpectedly; the journal holds what was done so far. |
 | `ibackup.safety_created` | info | The pre-restore safety backup was written and verified. |

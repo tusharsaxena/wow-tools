@@ -24,6 +24,7 @@ EVENTS: dict[str, EventSpec] = {
     "ibackup.part_rolled_back": EventSpec("warning", "A part could not be replaced and was left as it was."),
     "ibackup.replaced_left": EventSpec("warning", "A part was restored but its old copy could not be fully deleted."),
     "ibackup.restore_completed": EventSpec("info", "A restore finished, with totals (logged at warning if a part failed)."),
+    "ibackup.restore_failed": EventSpec("error", "A restore could not go ahead (backup did not verify, safety backup or journal failed); nothing was changed."),
     "ibackup.restore_stopped": EventSpec("error", "A restore stopped unexpectedly; the journal holds what was done so far."),
     "ibackup.journal_pruned": EventSpec("info", "Older restore journals and the safety backups only they named were deleted."),
     "ibackup.undo_started": EventSpec("info", "Undo of a restore journal started."),
