@@ -23,7 +23,7 @@ merge, delete every branch, stash and worktree this run created.
 | 11 | flow, settings screen, registration | done | 60460ad | tool registered after Interface Backup; settings screen + flow mirror the WTF Cleaner's; review screen is the Task 12 layout stub (filters pane, four buttons, `ProfileTree #profiles`, f/Esc/t/q); README row + guide link, `docs/ace-profiles.md` stub; events.md unchanged by regeneration; 3 ace_app tests OK; ace 369 OK; full suite 931 OK (2 skipped), ruff clean |
 | 12 | review screen: tree, ticks, filters, blacklist | done | 33bbe9a | tree building split into `tree_view.py` (`TreeBuilder`, `Filters`, `ident`) as the plan allows; screen 570 lines; d/p/e/k/o/m/x/w/y/z are notify stubs for Tasks 13–14; recovery marker is read and kept on `self.marker` (`offer_recovery` notifies until Task 14); 9 ace_app tests OK (+1 added); ace 375 OK; full suite 937 OK (2 skipped), ruff clean; events.md unchanged |
 | 13 | popups + staging from the tree | done | 9a888c0 | `popups.py` (`TargetScreen`, `NameScreen`, `ActionsScreen`, shared `popup_css`); d/p/e/k/o/m/x staged from the tree, refusals notified as warnings, ticks of changed databases cleared; w/y/z stay stubs for Task 14; 5 StagingTest tests OK; ace 380 OK; structure OK; full suite 942 OK (2 skipped), ruff clean |
-| 14 | apply, dry run, undo, recovery, result screens | todo | | |
+| 14 | apply, dry run, undo, recovery, result screens | done | 3fbdd3d | `result_screen.py` (`ProfileResultScreen`); `ProfileProgressScreen`, `ProfileRecoveryScreen` and the w/y/z, recovery and stale-rescan flows in `review_screen.py`; `apply_confirm` names the flavors; left pane made to fit 80x24 (look-and-feel test); 4 RunTest tests OK; ace 384 OK; look_and_feel 3 OK; full suite 946 OK (2 skipped), ruff clean; events.md unchanged; milestone push left to the orchestrator |
 | M3 | push milestone 3 | todo | | |
 | 15 | docs + final battery | todo | | |
 | M4 | push, ask for merge go-ahead | todo | | |
@@ -107,3 +107,20 @@ merge, delete every branch, stash and worktree this run created.
   node they notify "Tick or highlight an addon first". The rename/copy `NameScreen` also refuses a name already
   taken in that database (staging refuses it too). Ticks are cleared only for databases the operation changed;
   refused ones keep theirs.
+- Task 14: the left pane did not fit 80x24 once the tool joined `test_look_and_feel` (buttons at row 32). The
+  checkboxes and the search box are `compact=True` (as in the WTF Cleaner), the two View boxes share one row, the
+  "Search" and "Staged" section headings are gone: the search box's placeholder reads "Search addon, profile or
+  character" and the staged line reads "Staged: <kinds>" (spec §13 sections kept, only their headings merged).
+- Task 14: `test_recovery_offered_and_put_back` writes the marker with `after = {rel: sha256(b"torn")}`: since the
+  M2 review, recovery puts back only a file still at what the run wrote, and a marker without `after` would leave
+  the torn file alone. Assertions unchanged. `test_dry_run_...` unpacks `_review` (ruff RUF059); the new imports go
+  in the sorted import block (as in Task 13), not appended with `# noqa: E402`.
+- Task 14: the dry run skips the running-WoW check (it writes nothing; the plan's step 3 acts on the check only
+  for Apply), so no process listing delays it. Apply and Undo run the check in a worker and refuse while WoW runs;
+  a check that cannot run adds the plan's alert to the confirm.
+- Task 14: after a real Apply, an Undo, or an unexpected crash in either, the staging is discarded and the review
+  is marked stale: it rescans without asking when shown again (result "Rescan", or on resume). After a dry run,
+  Rescan goes through the usual "Discard staged changes?" confirm, so the staging can be kept. Esc on the result
+  screen is Rescan, as in the WTF Cleaner. A stopped flavor still shows the result screen, with an error notify.
+- Task 14: the recovery popup closed with Esc (no choice) leaves the marker, so it is offered again at the next
+  scan; "Put the originals back" runs `recover` under the progress screen, notifies the counts and rescans.
