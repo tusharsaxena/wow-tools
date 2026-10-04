@@ -14,7 +14,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | 6 | run restore + journal | done | cc1c768 | API as planned plus `on_swapped` (journal `replaced` entry written before the old copy is deleted, as the spec orders); Ctrl+C before the swap rolls the part back; part turned link since the plan refused; new `ibackup.restore_failed` event; `log_part` public; 21 new tests |
 | 7 | undo | done | c753f94 | API as planned; all guards run before anything changes (also: zip kind pre-restore, leftovers, unknown/duplicate parts, existed part absent from the zip); per-part outcomes rolled_back/failed like restore; journal left undoable when nothing changed; `ZIP_ERRORS` public; 19 tests |
 | M1 | push milestone 1 | done (pushed) | 2b66d80 | Milestone 1 review: 15 findings fixed (see decisions, "M1 review") |
-| 8 | report helpers | todo | | |
+| 8 | report helpers | done | 4cbafec | API as planned plus `RestorePlan.unreadable` warnings, missing files in the backup result, notices capped per part; 12 tests |
 | 9 | flow, settings, summary, backup screens, registration | todo | | |
 | 10 | restore and undo screens | todo | | |
 | M2 | push milestone 2 | todo | | |
@@ -132,3 +132,11 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 - M1 review: `restore` imports `KINDS` from catalog; `undo` imports `Rename` and `case_key` (`_case_key` renamed
   public) from restore. No events changed, so `docs/events.md` is unchanged.
 - M1 review: the run was done in one session without sub-workflows (no workflow tool in this agent's tool set).
+- Task 8: `report.py` keeps the plan's API. Additions: `restore_warnings` lists `RestorePlan.unreadable` (first
+  `limit`, "and N more") and caps `links_removed` the same way; `notices` shows 3 scan warnings per part plus a
+  "N more ... warnings in the log" line; `backup_result_rows` appends "N files gone while zipping, left out" to the
+  Zip cell when `BackupOutcome.missing` is non-empty; `undo_confirm` shows the flavor's display name (from the
+  journal's `flavor` folder) and copes with a journal without parts. `backup_confirm` sums sizes without a
+  type-ignore (unknown sizes: no space alert). The plan test's `assertIn("newer", text)` could not pass against the
+  plan's own "Newer now ..." text; it asserts "Newer now than in the backup" (spec wording). `LIST_COLUMNS` has no
+  Parts column (spec §10 lists one): `BackupInfo` does not know a zip's parts without opening it.
