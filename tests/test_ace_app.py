@@ -155,6 +155,15 @@ def labels(tree):
     return out
 
 
+def walk(node):
+    """node and every node below it."""
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        yield current
+        stack.extend(current.children)
+
+
 def find(tree, kind, *rest):
     stack = [tree.root]
     while stack:
@@ -801,7 +810,9 @@ class ReviewFixesTest(AceAppBase):
         app = self.make_app()
         async with app.run_test(size=(80, 24)) as pilot:
             review = await self.open_review(app, pilot)
-            for keys, kind in ((("a", "d"), TargetScreen), (("p",), TargetScreen), (("m",), ActionsScreen)):
+            # p ticks all first: on the root with nothing ticked, Delete and Assign ask for a tick (feedback round 1
+            # review)
+            for keys, kind in ((("a", "d"), TargetScreen), (("a", "p"), TargetScreen), (("m",), ActionsScreen)):
                 for key in keys:
                     await pilot.press(key)
                     await settle(app, pilot)
@@ -1137,3 +1148,108 @@ class BlacklistScreenTest(AceAppBase):
                 self.assertTrue(inside(widget, pane), widget)
             hint = str(screen.query_one("NavHint").render())
             self.assertIn("x expand all · c collapse all", hint)
+
+
+class FeedbackReviewFixesTest(AceAppBase):
+    """Feedback round 1 review: legacy wildcards survive the blacklist screen, `s` never stacks a second settings
+    screen, Delete/Assign on the root ask for a tick, and the guidance line knows a blacklisted addon."""
+
+    async def save_unchanged(self, app, pilot, pairs):
+        install = WowInstall(self.root)
+        results: list = []
+        app.push_screen(BlacklistScreen(self.cfg, install.flavors(), pairs), results.append)
+        await settle(app, pilot)
+        screen = app.screen
+        self.assertIsInstance(screen, BlacklistScreen)
+        text = "\n".join(labels(screen.query_one("#blacklist-tree", Tree)))
+        screen.query_one("#save", Button).press()
+        await settle(app, pilot)
+        return text, results
+
+    async def test_wildcards_are_kept_for_every_flavor(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            await pilot.pause()
+            pairs = [("*", "KickCD"), ("*", "NotInstalledYet"), ("_retail_", "Explicit")]
+            text, results = await self.save_unchanged(app, pilot, pairs)
+            self.assertEqual(sorted(results[0]), sorted([
+                ("_classic_era_", "KickCD"), ("_retail_", "KickCD"), ("_classic_era_", "NotInstalledYet"),
+                ("_retail_", "NotInstalledYet"), ("_retail_", "Explicit")]))
+            self.assertIn("KickCD (not found)", text)  # Classic Era has no KickCD
+
+    async def test_wildcards_are_kept_when_the_scan_fails(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            await pilot.pause()
+            pairs = [("*", "KickCD"), ("_retail_", "Explicit")]
+            with patch("wowtools.tools.ace_profiles.blacklist_screen.scan_flavors", side_effect=OSError("boom")):
+                _, results = await self.save_unchanged(app, pilot, pairs)
+            self.assertEqual(sorted(results[0]), sorted([
+                ("_classic_era_", "KickCD"), ("_retail_", "KickCD"), ("_retail_", "Explicit")]))
+
+    async def test_settings_key_does_nothing_over_the_blacklist_screen(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            review.query_one("#act-blacklist", Button).press()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, BlacklistScreen)
+            app.action_settings()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, BlacklistScreen)
+            app.screen.dismiss(None)
+            await settle(app, pilot)
+            app.action_settings()  # from the review: general settings, then the tool's
+            await settle(app, pilot)
+            app.screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ProfileSettingsScreen)
+            app.screen.query_one("#edit-blacklist", Button).press()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, BlacklistScreen)
+            app.action_settings()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, BlacklistScreen)
+            self.assertEqual(sum(isinstance(s, ProfileSettingsScreen) for s in app.screen_stack), 1)
+
+    async def test_delete_and_assign_on_the_root_ask_for_a_tick(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#profiles", Tree)
+            for node in (tree.root, find(tree, "flavor"), find(tree, "account")):
+                tree.move_cursor(node)
+                await settle(app, pilot)
+                with patch.object(review, "notify") as notify:
+                    for button_id in ("act-delete", "act-assign"):
+                        review.query_one(f"#{button_id}", Button).press()
+                        await settle(app, pilot)
+                        self.assertIs(app.screen, review, (node.data[0], button_id))
+                self.assertEqual([c.args[0] for c in notify.call_args_list],
+                                 ["Tick or highlight a profile first", "Tick or highlight a character first"])
+            await self.highlight(app, pilot, review, "profile", "Healer")  # a highlighted profile still works
+            review.query_one("#act-delete", Button).press()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, TargetScreen)
+
+    async def test_guide_on_a_blacklisted_addon_says_it_is_locked(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.highlight_addon(app, pilot, review, "ElvUI")
+            review.action_blacklist()
+            await settle(app, pilot)
+            tree = review.query_one("#profiles", Tree)
+            for kind in ("addon", "db", "profile", "char"):
+                await self.highlight_addon(app, pilot, review, "ElvUI")
+                node = next(n for n in walk(tree.cursor_node) if n.data and n.data[0] == kind)
+                tree.move_cursor(node)
+                await settle(app, pilot)
+                guide = str(review.query_one("#guide").render())
+                self.assertIn("ElvUI is blacklisted", guide, kind)
+                self.assertIn("u unlocks", guide, kind)
+                self.assertNotIn("Delete, Rename", guide, kind)
+            await pilot.press("u")
+            await settle(app, pilot)
+            await self.highlight(app, pilot, review, "profile", "Healer")
+            self.assertIn("Delete, Rename or Copy", str(review.query_one("#guide").render()))

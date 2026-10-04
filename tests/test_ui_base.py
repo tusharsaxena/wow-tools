@@ -268,6 +268,23 @@ class SetupScreenTest(UiTestCase):
         self.assertEqual((saved.keep_backups, saved.keep_journals), (0, 4))
         self.assertEqual(saved.get("general", "keep_backups"), "0")
 
+    async def test_down_reaches_every_field_at_80x24(self):
+        """Feedback round 1 review: at 80x24 the form is taller than the screen; ↓ still moves focus field by field
+        (it used to scroll the form instead, so the retention fields were reachable only with Tab)."""
+        self.cfg.set("general", "wow_path", str(self.root), log=False)
+        screen = SetupScreen(self.cfg, first_run=False, detect=list)
+        app = Host(self.cfg, screen)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            self.assertEqual(screen.focused.id, "wow_path")
+            for expected in ("keep-backups", "keep-journals", "save"):
+                await pilot.press("down")
+                await pilot.pause()
+                self.assertEqual(screen.focused.id, expected)
+            await pilot.press("up")
+            await pilot.pause()
+            self.assertEqual(screen.focused.id, "keep-journals")
+
     async def test_rejects_bad_retention_values(self):
         self.cfg.set("general", "wow_path", str(self.root), log=False)
         screen = SetupScreen(self.cfg, first_run=False, detect=list)

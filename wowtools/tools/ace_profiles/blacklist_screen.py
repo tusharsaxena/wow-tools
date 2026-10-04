@@ -46,8 +46,9 @@ class BlacklistScreen(TwoPaneFocus, Screen["list[Pair] | None"]):
     """Tick the (flavor, addon) pairs to blacklist. Dismisses with the new pair list (Save), or None (Cancel, Esc).
 
     `cfg` is the suite config (its WoW folder names every flavor of the install); `flavors` are the flavors shown;
-    `pairs` the blacklist now. A legacy wildcard pair ("*") shows ticked under every shown flavor that has the addon
-    and is saved as explicit pairs; pairs of flavors not shown are kept as they are."""
+    `pairs` the blacklist now. A legacy wildcard pair ("*") shows ticked under every shown flavor (marked
+    "(not found)" where that flavor has no data for it) and is saved as explicit pairs; pairs of flavors not shown
+    are kept as they are."""
 
     TREE_SELECTOR = "#blacklist-tree"
     DEFAULT_CSS = two_pane_css("BlacklistScreen", "#blacklist-tree") + """
@@ -168,8 +169,9 @@ class BlacklistScreen(TwoPaneFocus, Screen["list[Pair] | None"]):
             folder = flavor.folder
             addons = dict(found.get(folder.casefold(), {}))
             missing = set()
-            for where, addon in self.pairs:  # blacklisted here but not found: shown so it can be taken off
-                if where.casefold() == folder.casefold() and addon.casefold() not in addons:
+            for where, addon in self.pairs:  # blacklisted here (or everywhere) but not found: shown, so a Save
+                # keeps it and it can be taken off; this also keeps every pair when the scan failed
+                if where.casefold() in (folder.casefold(), WILDCARD) and addon.casefold() not in addons:
                     addons[addon.casefold()] = addon
                     missing.add(addon.casefold())
             node = root.add(Text(""), data=("flavor", folder, flavor.display_name), expand=True)

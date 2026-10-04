@@ -517,10 +517,10 @@ their original get a `rolled_back` line in the journal that holds their entries 
 `FlavorScreen(include_all=True, last=last_flavor_choice)` → `AccountScreen` for one flavor with several accounts
 (`last_account`) → `ProfileReviewScreen`; `unlocked`, the addons unlocked this session, lives on the flow) and
 `ProfileSettingsScreen` (backup folder, a `#blacklist-summary` line and **Edit blacklist…**, which opens the
-`BlacklistScreen` and keeps its answer until Save; `validate_backup_dir` errors inline). `s` opens the shared WoW-folder settings, then this tool's.
+`BlacklistScreen` and keeps its answer until Save; `validate_backup_dir` errors inline). `s` opens the shared WoW-folder settings, then this tool's (not while a `ProfileSettingsScreen` or a `BlacklistScreen` is on the stack: two Saves would overwrite each other).
 
 - `ProfileReviewScreen` (`review_screen.py`): `TwoPaneFocus`, `two_pane_css`. Left pane `#filters`, one control per row: the
-  View pair (View by addon / View by character), the Show boxes, the search `Input`, the `#pending` line (`report.pending_text`, "N pending changes" or `NO_PENDING`) and the
+  View pair (View by addon / View by character), the Show boxes (no heading: "Show leftover characters" and so on), the search `Input`, the `#pending` line (`report.pending_text`, "N pending changes" or `NO_PENDING`) and the
   action row **Apply** (delete variant), **Dry run**, **Rescan**, **Undo last change** (revert). Right:
   `ProfileTree` (`#profiles`), built by `tree_view.TreeBuilder` from the scan, the staging and `Filters`; each
   rebuild keeps expansion and the cursor by `ident`. Labels and tags come from `report.profile_rows` and
@@ -530,16 +530,19 @@ their original get a `rolled_back` line in the journal that holds their entries 
   `app.busy` and run inside `activity.running()`.
   The tree sits in `#tree-pane` above the guidance line `#guide` (`report.guidance`: the four `STEPS` on the root,
   a flavor or an account or with nothing highlighted, else `report.node_hint` for the highlighted node; with
-  pending changes the pending count and Apply/Discard come first) and the action bar `#tree-actions`, a
+  pending changes the pending count and Apply/Discard come first, and the node hint follows only while the tree
+  keeps `GUIDE_MIN_TREE` (5) rows; on a locked addon the hint names it and the `u` unlock) and the action bar `#tree-actions`, a
   `WrapButtonRow` of `TREE_ACTIONS` (Delete profile, Assign profile, Rename, Copy, Remove leftovers, Blacklist…,
-  More…, Discard), each button doing what its key does. The guide follows the cursor, the ticks and the pending
+  More…, Discard), each button doing what its key does. With nothing ticked, Delete and Assign act on the
+  highlighted node, but never on the root, a flavor or an account (`GROUP_KINDS`). The guide follows the cursor, the ticks and the pending
   changes. Discard is Backspace (`x`/`c` are expand and collapse all); `b` toggles the highlighted addon's
   (flavor, addon) pair (`settings.toggle_pair`) and saves at once; **Blacklist…** (`action_edit_blacklist`) opens
   the `BlacklistScreen` for the review's flavors and saves its answer at once.
 - `BlacklistScreen(cfg, flavors, pairs)` (`blacklist_screen.py`): `TwoPaneFocus`, `two_pane_css`. Left pane: an
   explanation and **Save** / **Select none** / **Cancel** (Esc); right: a flavor → addon tree, from its own
   scan worker (`scan_flavors`), of every addon with Ace3 data plus each blacklisted pair no longer found
-  ("(not found)"). A ticked pair is blacklisted; nothing else is ticked. `a`/`n`/`x`/`c` as on every tree. It
+  ("(not found)"; a legacy `"*"` pair is listed under every shown flavor, so a Save, or a failed scan, never drops
+  it). A ticked pair is blacklisted; nothing else is ticked. `a`/`n`/`x`/`c` as on every tree. It
   dismisses with the new pair list (or `None`); pairs of flavors it does not show are kept, and a legacy `"*"`
   pair is saved as explicit pairs (for the hidden flavors too).
 - `popups.py`: `TargetScreen` (delete and assign: a target `Select` plus a new-name `Input`), `NameScreen` (rename
@@ -573,7 +576,7 @@ Shared screens and widgets in `wowtools/ui/`:
 |---|---|
 | `suite_app` | `WowToolsApp`, `ToolMenuScreen` (the first screen), `LockScreen` (another copy may be running: Quit, or Override and continue) |
 | `tool_flow` | `ToolFlow` base: `start()`, `open_settings()`, `close()`, `require_install()` (shared WoW-folder setup) |
-| `setup_screen` | General setup: the WoW folder, and the retention every tool shares (`#keep-backups`, `#keep-journals`: `[general] keep_backups` / `keep_journals`) |
+| `setup_screen` | General setup (a `FormScroll`, so ↑/↓ move between fields at any size): the WoW folder, and the retention every tool shares (`#keep-backups`, `#keep-journals`: `[general] keep_backups` / `keep_journals`) |
 | `flavor_screen` | `FlavorScreen(cfg, install, *, include_all=False, last=None, flavors=None)`: the flavor picker. `include_all` adds "All flavors" first (dismisses with `ALL_FLAVORS`); `last` is the folder to pre-select (`""` = All flavors, `None` = `[general] last_flavor`); `flavors` replaces `install.flavors()`; `note`/`all_note` fill the remarks column and `set_notes()` replaces them later. Picking one flavor saves `[general] last_flavor`. |
 | `account_screen` | `AccountScreen(cfg, flavor, last)`: "All accounts" plus each account. Dismisses with the name, `""` for all, or `None` for back. The WTF Cleaner and the Ace3 Profile Manager show it only when a flavor has more than one account and save the choice as their own `last_account`. |
 | `dialogs` | What every tool's screens share, so no tool imports another tool's screens: `ConfirmScreen(title, body, alerts=(), *, default_yes=False)` (yes/no; `alerts` in red; risky actions start on No), `ProgressScreen` (stage, bar and current file of a run; a tool subclasses it with `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, and calls `update_progress(stage, current, total, detail)`, plus `set_flavor(label)` across several flavors), `tick_mark(items, unchecked, key, success=)` (✔ / ◩ / ✘ for a review-tree line), `relabel_branch(tree, node, label, skip=)` (after a tick), the `TwoPaneFocus` mixin (←/→ between the left `#filters` panel and the tree; it is a `TreeKeys`, whose `x`/`c` expand and collapse every node below the root, bound with `TREE_BINDINGS` and named in the hint by `TREE_HINT`), `theme_colour(app, name)` (the theme's colour, or the Ka0s one before a theme is set), and the one look every tool's screens are built from: `two_pane_css(screen, tree, width=FILTERS_WIDTH)` (review: left pane `#filters`, `FILTERS_WIDTH` = 50, one-row actions, scan box, summary), `ACCENT` (names in a tree) and `BUSY_STYLE` (a summary line while work runs), `result_css(screen)`, `settings_css(screen)`, and the hint starts `REVIEW_HINT` / `review_hint(space)` and `RESULT_HINT` |

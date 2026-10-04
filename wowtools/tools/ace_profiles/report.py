@@ -129,10 +129,13 @@ def selection_text(profiles: int, chars: int, summary: Summary, warnings: int) -
     return text
 
 
-def node_hint(node_kind: str | None, node_name: str, ticked: int) -> str:
-    """What can be done with the ticks, else with the highlighted node ("" when nothing in particular)."""
+def node_hint(node_kind: str | None, node_name: str, ticked: int, locked: str = "") -> str:
+    """What can be done with the ticks, else with the highlighted node ("" when nothing in particular). `locked` is
+    the addon's name when the highlighted node belongs to a blacklisted (locked) addon: only the unlock is offered."""
     if ticked:
         return f"{ticked} ticked: pick an action below (Delete, Assign, …)"
+    if locked and (node_kind in ("profile", "addon", "db") or node_kind in CHARACTER_KINDS):
+        return f"{locked} is blacklisted: shown, never changed (u unlocks it for this session)"
     if node_kind == "profile":
         return f'Profile "{node_name}": Delete, Rename or Copy it, or tick it with Space'
     if node_kind in CHARACTER_KINDS:
@@ -143,16 +146,17 @@ def node_hint(node_kind: str | None, node_name: str, ticked: int) -> str:
 
 
 def guidance(node_kind: str | None, node_name: str, ticked_profiles: int, ticked_chars: int, pending_total: int,
-             pending_files: int) -> str:
+             pending_files: int, *, locked: str = "", hint: bool = True) -> str:
     """The review's guidance line (#guide): the pending changes first (when there are any), then what can be done
-    with the ticks or the highlighted node; with neither, the four steps of the workflow."""
+    with the ticks or the highlighted node; with neither, the four steps of the workflow. hint=False leaves the
+    per-node hint out (the screen does when it would squeeze the tree)."""
     lines = []
     if pending_total:
         lines.append(f"{pending_count(pending_total, pending_files)}, not written yet: Apply (w) writes them, "
                      "Dry run (y) checks them, Discard (⌫) drops them")
-    hint = node_hint(node_kind, node_name, ticked_profiles + ticked_chars)
-    if hint:
-        lines.append(hint)
+    text = node_hint(node_kind, node_name, ticked_profiles + ticked_chars, locked) if hint else ""
+    if text:
+        lines.append(text)
     return "\n".join(lines) or STEPS
 
 

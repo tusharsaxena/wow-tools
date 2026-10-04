@@ -34,8 +34,9 @@ Nothing you do on the review screen touches a file until you press **Apply**. In
 4. **Apply** (`w`) writes the pending changes, after backing everything up. **Dry run** (`y`) only checks them.
 
 The line just above the action bar (the **guidance line**) always tells you where you are: the four steps when
-nothing is going on, what you can do with the highlighted profile, character or addon, how many lines are ticked,
-and how many pending changes are waiting to be applied.
+nothing is going on, what you can do with the highlighted profile, character or addon (or that it's blacklisted,
+and `u` unlocks it), how many lines are ticked, and how many pending changes are waiting to be applied. On a small
+window, with pending changes, it shows only the pending changes so the tree keeps its room.
 
 ## Step by step
 
@@ -79,8 +80,8 @@ that addon.
 
 | Button | Key | Does |
 |---|---|---|
-| **Delete profile** | `d` | Deletes the ticked (or highlighted) profiles |
-| **Assign profile** | `p` | Moves the ticked (or highlighted) characters to another profile |
+| **Delete profile** | `d` | Deletes the ticked profiles, or the highlighted profile (or addon's profiles) |
+| **Assign profile** | `p` | Moves the ticked characters, or the highlighted ones, to another profile |
 | **Rename** | `e` | Renames the highlighted profile |
 | **Copy** | `k` | Copies the highlighted profile under a new name |
 | **Remove leftovers** | `o` | Removes the ticked leftover characters |
@@ -89,6 +90,8 @@ that addon.
 | **Discard** | `Backspace` | Drops every pending change |
 
 A button is never greyed out: if there's nothing for it to work on, it tells you what to tick or highlight first.
+With nothing ticked, a game version, an account or the top line doesn't count as highlighted: tick first (`a`
+ticks everything shown).
 `Tab` from the tree reaches the bar, and `←` `→` move along it.
 
 **On the left** are the view boxes, the filters, a search box, a **Pending changes** line that sums them up, and
@@ -134,8 +137,8 @@ the screen.
 |---|---|
 | **Only addons with 2+ profiles** | Only the addons (databases) with at least two profiles: the ones worth tidying |
 | **Only unused profiles** | Only profiles no character uses (By addon view) |
-| **Leftover characters** (on) | Characters tagged "no character folder". Untick to hide them |
-| **Blacklisted addons** (on) | Addons on your blacklist. Untick to hide them |
+| **Show leftover characters** (on) | Characters tagged "no character folder". Untick to hide them |
+| **Show blacklisted addons** (on) | Addons on your blacklist. Untick to hide them |
 
 The search box (`/`) keeps only lines whose addon, profile or character name contains what you type (upper or
 lower case doesn't matter). `Esc` takes you from the search box back to the tree.
@@ -185,7 +188,8 @@ change.
   of game version → addon listing every addon with Ace3 profiles. Nothing is ticked except what's already
   blacklisted; tick the ones you want blacklisted (`Space`, `a` all, `n` none, `x` / `c` expand and collapse) and
   press **Save**, or **Cancel** (`Esc`) to leave it as it was. A blacklisted addon that's no longer installed is
-  listed with "(not found)" so you can take it off.
+  listed with "(not found)" so you can take it off; so is one blacklisted (from an older version) in every game
+  version, under each version that doesn't have it.
 - `u` **unlocks** a blacklisted addon for this session only: it can be changed until you close the tool, and it's
   tagged "unlocked". Press `u` again to lock it again.
 - Blacklisting or locking an addon throws away any pending changes for it, and says so.
@@ -381,7 +385,7 @@ in `config\wow-tools.cfg`. The WTF backups (`snapshots`) follow `keep_backups`.
 | A file was "skipped: changed since the scan; rescan" | WoW (or another program) saved that file after the scan. Press `r` to scan again, make that addon's changes again and apply. The other files were changed as planned. |
 | My changes were undone after I played | WoW was running while you applied, or an addon synced its profiles back. Close WoW completely, apply again, then start the game. |
 | "files are locked by another program" | Close the Raider.IO client or the WeakAuras Companion, then apply again. Nothing was changed. |
-| An addon is missing from the tree | It doesn't use Ace3 profiles, its file is blacklisted and hidden (tick **Blacklisted addons**), or a filter or search hides it. If its file couldn't be read, it's listed under **Scan warnings** at the bottom of the tree. |
+| An addon is missing from the tree | It doesn't use Ace3 profiles, its file is blacklisted and hidden (tick **Show blacklisted addons**), or a filter or search hides it. If its file couldn't be read, it's listed under **Scan warnings** at the bottom of the tree. |
 | "Not done" with a list of addons | The change couldn't be made in those addons (blacklisted, a name already taken, …); the message says why for each. It was made in the others. |
 | A character keeps a profile I changed | It has **spec profiles**: LibDualSpec switches its profile by spec at login. See the [FAQ](#faq). |
 | "An earlier change did not finish" | See [If a change was interrupted](#if-a-change-was-interrupted). |

@@ -84,6 +84,23 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(report.guidance("addon", "ElvUI", 0, 0, 0, 0),
                          "ElvUI: Keep only Default or Everyone → Default (More…), or Blacklist…")
 
+    def test_guidance_on_a_blacklisted_node(self):
+        """Feedback round 1 review: a locked addon offers no action but the unlock."""
+        for kind, name in (("addon", "ElvUI"), ("db", "ElvUI"), ("profile", "Healer"), ("char", "Kaelys - Realm1")):
+            text = report.guidance(kind, name, 0, 0, 0, 0, locked="ElvUI")
+            self.assertEqual(text, "ElvUI is blacklisted: shown, never changed (u unlocks it for this session)",
+                             kind)
+        self.assertEqual(report.guidance("root", "", 0, 0, 0, 0, locked=""), report.STEPS)
+        pending = report.guidance("profile", "Healer", 0, 0, 3, 2, locked="ElvUI")
+        self.assertEqual(pending.splitlines()[1], "ElvUI is blacklisted: shown, never changed (u unlocks it for "
+                                                  "this session)")
+
+    def test_guidance_without_the_hint(self):
+        """When the hint does not fit, only the pending line is shown (the steps when nothing is pending)."""
+        text = report.guidance("profile", "Healer", 0, 0, 3, 2, hint=False)
+        self.assertEqual(text.splitlines(), [report.guidance("root", "", 0, 0, 3, 2)])
+        self.assertEqual(report.guidance("profile", "Healer", 2, 0, 0, 0, hint=False), report.STEPS)
+
     def test_guidance_with_ticks(self):
         self.assertEqual(report.guidance("profile", "Healer", 2, 1, 0, 0),
                          "3 ticked: pick an action below (Delete, Assign, …)")

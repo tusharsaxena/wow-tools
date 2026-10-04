@@ -15,7 +15,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
 from textual.widget import Widget
-from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, ProgressBar, Static, Tree
+from textual.widgets import Button, Checkbox, Footer, Header, Input, ProgressBar, Static, Tree
 from textual.widgets.tree import TreeNode
 
 from wowtools.core import activity
@@ -53,6 +53,8 @@ WowCheck = Callable[[], "list[str] | None"]
 SHOW_FILTERS = {"only-multi": "only_multi", "only-unused": "only_unused", "show-leftovers": "leftovers",
                 "show-blacklisted": "blacklisted"}
 PROGRESS_EVERY = 0.05  # seconds between two scan progress reports sent to the UI thread
+GUIDE_MIN_TREE = 5  # rows the tree keeps: the guidance line leaves its per-node hint out rather than squeeze it
+GROUP_KINDS = ("root", "flavor", "account")  # nodes too broad to stand for a selection when nothing is ticked
 # The action bar under the tree: (id, label, kind of action, action). Each button does what its key does; one with
 # nothing to act on stays enabled and says what to tick or highlight.
 TREE_ACTIONS = (
@@ -149,10 +151,11 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
     session (shared, not copied)."""
 
     TREE_SELECTOR = "#profiles"
-    # The left pane fits 80x24 (tests/test_look_and_feel.py) with one control per row: the two View boxes, the
-    # search box and the pending line carry their own names instead of a section heading each (and the pending line
-    # sits right under the search box, so the hint still fits when the bottom line takes two rows). The tree pane
-    # holds the tree, the guidance line and the action bar, and fits 80x24 too.
+    # The left pane fits 80x24 (tests/test_look_and_feel.py) with one control per row: the View and Show boxes, the
+    # search box and the pending line carry their own names instead of a section heading each, so the hint still
+    # fits when the pending line takes three rows (every kind of change) and the bottom line two (scan warnings).
+    # The tree pane holds the tree, the guidance line and the action bar, and fits 80x24 too: the guidance line
+    # drops its per-node hint when it would leave the tree fewer than GUIDE_MIN_TREE rows.
     DEFAULT_CSS = two_pane_css("ProfileReviewScreen", "#profiles") + """
     ProfileReviewScreen #tree-pane { width: 1fr; }
     ProfileReviewScreen #profiles { height: 1fr; }
@@ -227,11 +230,10 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
             with Vertical(id="filters"):
                 yield Ka0sCheckbox("View by addon", True, id="view-addon", compact=True)
                 yield Ka0sCheckbox("View by character", False, id="view-character", compact=True)
-                yield Label("Show", classes="section")
                 yield Ka0sCheckbox("Only addons with 2+ profiles", False, id="only-multi", compact=True)
                 yield Ka0sCheckbox("Only unused profiles", False, id="only-unused", compact=True)
-                yield Ka0sCheckbox("Leftover characters", True, id="show-leftovers", compact=True)
-                yield Ka0sCheckbox("Blacklisted addons", True, id="show-blacklisted", compact=True)
+                yield Ka0sCheckbox("Show leftover characters", True, id="show-leftovers", compact=True)
+                yield Ka0sCheckbox("Show blacklisted addons", True, id="show-blacklisted", compact=True)
                 yield Input(placeholder="Search addon, profile or character", id="search", compact=True)
                 yield Static(self._pending_line(NO_PENDING), id="pending")
                 with ButtonRow(id="actions", wrap=False):
@@ -496,18 +498,36 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         return ""
 
     def _update_guide(self) -> None:
-        """The guidance line: the pending changes, then what can be done with the ticks or the highlighted node."""
+        """The guidance line: the pending changes, then what can be done with the ticks or the highlighted node
+        (left out when there is no room for it: see _guide_fits)."""
         if self.staging is None or not self.is_attached:
             return
         node = self.query_one("#profiles", Tree).cursor_node
         data = node.data if node is not None else None
         kind, name = (data[0], self._node_name(data)) if data else (None, "")
+        file = self._file_of(node)
+        locked = file.addon if file is not None and self.locked(file.flavor.folder, file.addon) else ""
         summary = self.staging.summary()
         profiles, chars = counts(self.ticked)
-        text = guidance(kind, name, profiles, chars, summary.total, summary.files)
+        text = guidance(kind, name, profiles, chars, summary.total, summary.files, locked=locked)
+        if summary.total and not self._guide_fits(text):
+            text = guidance(kind, name, profiles, chars, summary.total, summary.files, hint=False)
         if text != self.guide_text:
             self.guide_text = text
             self.query_one("#guide", Static).update(Text(text))
+
+    def _guide_fits(self, text: str) -> bool:
+        """The guide, wrapped to its width, leaves the tree at least GUIDE_MIN_TREE rows of the tree pane (the
+        action bar's height depends on the width only). True until the pane is laid out."""
+        pane, guide = self.query_one("#tree-pane"), self.query_one("#guide", Static)
+        if pane.size.height <= 0 or guide.size.width <= 0:
+            return True
+        lines = len(Text(text).wrap(self.app.console, guide.size.width))
+        bar = self.query_one("#tree-actions").outer_size.height
+        return pane.size.height - bar - lines >= GUIDE_MIN_TREE
+
+    def on_resize(self) -> None:
+        self.call_after_refresh(self._update_guide)  # once the action bar has settled at the new width
 
     def on_tree_node_highlighted(self, event: Tree.NodeHighlighted) -> None:
         if event.control.id == "profiles":
@@ -515,14 +535,21 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
 
     # --- selection -----------------------------------------------------------------------------------
     def _selected(self, kind: str) -> dict[DbKey, list[str]]:
-        keys = self.ticked or set(self._tick_keys(self.query_one("#profiles", Tree).cursor_node))
+        """The ticked keys of this kind, else the highlighted node's; never every key of a flavor, an account or the
+        whole tree when nothing is ticked (that needs ticks, a for all)."""
+        keys = self.ticked
+        if not keys:
+            node = self.query_one("#profiles", Tree).cursor_node
+            broad = node is None or node.data is None or node.data[0] in GROUP_KINDS
+            keys = set() if broad else set(self._tick_keys(node))
         out: dict[DbKey, list[str]] = {}
         for key in sorted((k for k in keys if k[0] == kind), key=lambda k: (str(k[1].path), k[1].sv_name, k[2])):
             out.setdefault(key[1], []).append(key[2])
         return out
 
     def selected_profiles(self) -> dict[DbKey, list[str]]:
-        """The ticked profiles, or the highlighted node's when nothing is ticked."""
+        """The ticked profiles, or the highlighted node's (an addon, a database or a profile) when nothing is
+        ticked."""
         return self._selected("p")
 
     def selected_chars(self) -> dict[DbKey, list[str]]:
@@ -605,9 +632,9 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self.query_one("#search", Input).focus()
 
     # --- blacklist -------------------------------------------------------------------------------
-    def _file_at_cursor(self) -> SvFile | None:
-        """The SavedVariables file (flavor and addon) of the highlighted addon, or of what is highlighted in one."""
-        node = self.query_one("#profiles", Tree).cursor_node
+    def _file_of(self, node: TreeNode | None) -> SvFile | None:
+        """The SavedVariables file (flavor and addon) of this addon node, or of the addon it is in (None above
+        one)."""
         while node is not None and node.data is not None:
             data = node.data
             if data[0] == "addon":
@@ -615,8 +642,14 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
             if len(data) > 1 and isinstance(data[1], DbKey) and self.staging is not None:
                 return self.staging.state(data[1]).file
             node = node.parent
-        self.notify("Highlight an addon (or something inside one) first.")
         return None
+
+    def _file_at_cursor(self) -> SvFile | None:
+        """The SavedVariables file (flavor and addon) of the highlighted addon, or of what is highlighted in one."""
+        file = self._file_of(self.query_one("#profiles", Tree).cursor_node)
+        if file is None:
+            self.notify("Highlight an addon (or something inside one) first.")
+        return file
 
     def _flavor_folders(self) -> list[str]:
         """Every flavor folder of the install (a wildcard pair taken off in one flavor stays in the others)."""

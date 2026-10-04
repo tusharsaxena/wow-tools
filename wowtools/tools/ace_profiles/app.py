@@ -205,7 +205,9 @@ class AceProfilesFlow(ToolFlow):
 
     def open_settings(self) -> None:
         """`s`: the shared WoW folder first, then this tool's own settings."""
-        if isinstance(self.app.screen, ProfileSettingsScreen):
+        # Never a second settings stack over the open one, nor over a blacklist screen: their Saves would overwrite
+        # each other.
+        if any(isinstance(s, (ProfileSettingsScreen, BlacklistScreen)) for s in self.app.screen_stack):
             return
         self.app.open_general_settings(
             lambda _: self.app.push_screen(ProfileSettingsScreen(self.tool_cfg, self.cfg.wow_path,

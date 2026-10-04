@@ -154,6 +154,57 @@ class LookAndFeelTest(TuiTestCase):
                 for widget in (review.query_one("#pending"), review.query_one(NavHint)):
                     self.assert_inside(widget, left._replace(width=left.width - 1))
 
+    async def test_ace_tree_keeps_5_rows_with_a_node_highlighted(self):
+        """Feedback round 1 review: with pending changes and a profile highlighted, the per-node hint follows the
+        pending line only when the tree still keeps at least 5 rows at 80x24."""
+        app = self.make_app()
+        async with app.run_test(size=SMALL) as pilot:
+            review = await self.open_review(app, pilot, "ace-profiles")
+            tree = review.query_one("#profiles", Tree)
+            for prepared in (False, True):
+                if prepared:
+                    PREPARE["ace-profiles"](review)
+                    await settle(app, pilot)
+                tree.root.expand_all()
+                await settle(app, pilot)
+                for kind in ("addon", "profile", "char"):
+                    node = next(n for n in walk(tree.root) if n.data and n.data[0] == kind)
+                    tree.move_cursor(node)
+                    await settle(app, pilot)
+                    guide = str(review.query_one("#guide").render())
+                    self.assertEqual("pending change" in guide, prepared, guide)
+                    self.assertGreaterEqual(tree.region.height, 5, (prepared, kind, guide))
+                    self.assert_inside(review.query_one("#guide"), review.query_one("#tree-pane").region)
+            await pilot.resize_terminal(140, 50)  # room again: the hint comes back after the pending line
+            await settle(app, pilot)
+            guide = str(review.query_one("#guide").render())
+            self.assertIn("pending change", guide)
+            self.assertEqual(len(guide.splitlines()), 2, guide)
+
+    async def test_ace_left_pane_hint_fits_with_several_kinds_of_pending_change(self):
+        """Feedback round 1 review: several kinds of pending change and a scan warning (the bottom line takes two
+        rows) still leave the whole hint in the left pane at 80x24."""
+        app = self.make_app()
+        async with app.run_test(size=SMALL) as pilot:
+            review = await self.open_review(app, pilot, "ace-profiles")
+            staging = review.staging
+            elv = next(k for k, s in staging.states.items() if s.file.addon == "ElvUI" and "Healer" in s.names())
+            staging.delete({elv: ["Healer"]}, "Default")
+            staging.copy(elv, "Default", "Default copy")
+            staging.everyone_to_default(list(staging.states))
+            leftovers = {k: sorted(s.leftovers) for k, s in staging.states.items() if s.leftovers}
+            staging.remove_leftovers(leftovers)
+            review.refresh_view()
+            await settle(app, pilot)
+            summary = staging.summary()
+            self.assertTrue(summary.deleted and summary.copied and summary.reassigned and summary.removed)
+            self.assertIn("scan warning", review.summary_text)
+            left = review.query_one("#filters").region
+            hint = review.query_one(NavHint)
+            for widget in (review.query_one("#pending"), hint):
+                self.assert_inside(widget, left._replace(width=left.width - 1))
+            self.assertTrue(str(hint.render()).endswith("f flavors · t tools"))
+
     async def test_result_screens_share_one_layout(self):
         for tool in TOOLS:
             with self.subTest(tool=tool):

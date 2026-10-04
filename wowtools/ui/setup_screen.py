@@ -8,7 +8,6 @@ from typing import ClassVar
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Label, Static
 
@@ -17,7 +16,7 @@ from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import WowInstall, detect_installs
 from wowtools.core.paths import to_native, to_stored
 from wowtools.ui.branding import Banner, BrandBar
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, FormScroll, NavHint, action_button
 
 
 class SetupScreen(Screen[bool]):
@@ -44,7 +43,7 @@ class SetupScreen(Screen[bool]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with VerticalScroll(id="setup", can_focus=False):
+        with FormScroll(id="setup", can_focus=False):
             yield Banner()
             yield Static("First-time setup" if self.first_run else "General settings", classes="title")
             yield Label("World of Warcraft folder (the one that contains _retail_, _classic_ and so on)")
@@ -66,6 +65,7 @@ class SetupScreen(Screen[bool]):
     def on_mount(self) -> None:
         self.sub_title = "Setup"
         self.query_one("#wow_path", Input).focus()
+        self.query_one("#setup", FormScroll).open_at_top()
         if self._detecting:
             self.run_worker(self._detect_worker, thread=True, group="detect")
 
