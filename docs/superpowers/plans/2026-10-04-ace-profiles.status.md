@@ -21,7 +21,7 @@ merge, delete every branch, stash and worktree this run created.
 | 10 | report helpers | done | a7d0f81 | plan code verbatim (`FLAVOR_NAMES` is public in `core/install.py`); test file drops the plan's `# tests/...` path comment; 7 ace_report tests OK; ace 358 OK; full suite 920 OK (2 skipped), ruff clean; milestone push left to the orchestrator |
 | M2 | push milestone 2 | done (pushed) | 8c6f4fd | review fixes: zips kept when a journal is unreadable, recovery only reverts what the run wrote, a stopped flavor's result reaches the report, marker write failure is an ApplyError, removed characters under the right profile row; full suite 928 OK (2 skipped), ruff clean |
 | 11 | flow, settings screen, registration | done | 60460ad | tool registered after Interface Backup; settings screen + flow mirror the WTF Cleaner's; review screen is the Task 12 layout stub (filters pane, four buttons, `ProfileTree #profiles`, f/Esc/t/q); README row + guide link, `docs/ace-profiles.md` stub; events.md unchanged by regeneration; 3 ace_app tests OK; ace 369 OK; full suite 931 OK (2 skipped), ruff clean |
-| 12 | review screen: tree, ticks, filters, blacklist | todo | | |
+| 12 | review screen: tree, ticks, filters, blacklist | done | 33bbe9a | tree building split into `tree_view.py` (`TreeBuilder`, `Filters`, `ident`) as the plan allows; screen 570 lines; d/p/e/k/o/m/x/w/y/z are notify stubs for Tasks 13–14; recovery marker is read and kept on `self.marker` (`offer_recovery` notifies until Task 14); 9 ace_app tests OK (+1 added); ace 375 OK; full suite 937 OK (2 skipped), ruff clean; events.md unchanged |
 | 13 | popups + staging from the tree | todo | | |
 | 14 | apply, dry run, undo, recovery, result screens | todo | | |
 | M3 | push milestone 3 | todo | | |
@@ -89,3 +89,15 @@ merge, delete every branch, stash and worktree this run created.
   "All flavors"); picker choices (`last_flavor_choice`, `last_account`) are saved with `source="picker"`, as the
   plan says. No `ace.settings_saved` log: that event is not in the registry (config changes already log
   `config.changed`). `docs/ace-profiles.md` stub and README rows are worded for users; Task 15 writes the guide.
+- Task 12: `test_tick_a_profile_and_summary_counts` mechanic adapted, assertions unchanged: the plan expanded only
+  the profile's parent and moved the cursor at once, but the ElvUI addon node above it starts collapsed and a
+  newly shown node has no line until the tree lays out, so `move_cursor` landed on the root (verified: it ticked
+  every profile). The test now expands every ancestor and settles before `move_cursor`.
+- Task 12: the tree is built by `wowtools/tools/ace_profiles/tree_view.py` (fifth UI module, as the plan allows).
+  A profile node ticks only its own `"p"` key, but a group above it covers the profile and its characters. Each
+  rebuild keeps expansion and the highlighted node, and lays the lines out at once so `move_cursor` finds new
+  nodes. Group nodes left empty by a filter or search are dropped; with no filter, an account without AceDB data
+  shows "no Ace3 data". "Only unused profiles" applies to the By addon view only; "Only addons with 2+ profiles"
+  filters per database. Space typed in the search box goes into it (Space is priority-bound for ticking).
+- Task 12: added `test_all_ticks_visible_profiles_and_characters` (`a` ticks profiles and characters, only
+  visible ones under a search; hidden ticks survive clearing the search).
