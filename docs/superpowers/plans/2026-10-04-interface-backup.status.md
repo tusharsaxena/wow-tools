@@ -8,7 +8,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 |---|---|---|---|---|
 | 1 | core helpers: walk_files, is_link, remove_tree_no_follow | done | 440fce5 | wtf_files delegates to walk_files; symlink tests run on WSL; extra tests for on_error and link-as-root |
 | 2 | events, settings, catalog | done | e7f75e5 | docs/events.md regenerated now (test_docs needs it); extra tests for event registry, info fields, folder named like a zip |
-| 3 | scanner | todo | | |
+| 3 | scanner | done | dbd0932 | API as planned; sizes summed without type-ignores; extra tests for chosen parts, unreadable sub-folder, part-as-link warning, broken progress |
 | 4 | backup | todo | | |
 | 5 | open backup + plan restore | todo | | |
 | 6 | run restore + journal | todo | | |
@@ -31,3 +31,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 - Task 2: catalog keeps the plan's API (`NAME`, `new_backup_path(..., kind=)`) rather than the spec's
   `BACKUP_NAME`/`SAFETY_NAME`/`backup_path`/`safety_path`; adds `BACKUP`/`SAFETY` constants, `new_backup_path` rejects
   an unknown kind, `list_backups` stats without following links, `BackupInfo.when` formats the stamp by slicing.
+- Task 3: `PartScan.links` holds rel strings (plan) rather than the spec's `list[Path]`; the spec's `PartScan.size: int`
+  is `int | None` (unknown when sizes were not read, the WSL default). `scan_flavors` logs at most 20 warnings per
+  part plus one "N more not logged" line, and `scan_completed` also records `linked` per part. A file whose
+  `stat()` fails during a stats scan is left out of `files` and listed in `errors`.
