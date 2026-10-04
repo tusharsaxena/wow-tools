@@ -37,6 +37,8 @@ class BackupSettingsScreen(Screen[bool]):
     DEFAULT_CSS = """
     BackupSettingsScreen #settings { padding: 0 2; }
     BackupSettingsScreen .title { color: $accent; text-style: bold; margin: 1 0; }
+    BackupSettingsScreen Label { width: 1fr; height: auto; }
+    BackupSettingsScreen #destination { color: $text-muted; height: auto; }
     BackupSettingsScreen #settings-error { color: $error; height: auto; }
     BackupSettingsScreen .buttons { height: auto; margin-top: 1; }
     BackupSettingsScreen Button { margin-right: 2; }
@@ -59,6 +61,7 @@ class BackupSettingsScreen(Screen[bool]):
                         "Leave it empty to use <WoW folder>\\wow-tools.")
             yield Input(to_stored(self.settings.backup_dir) if self.settings.backup_dir else "",
                         placeholder="Empty = <WoW folder>\\wow-tools", id="backup_dir")
+            yield Static("", id="destination")
             yield Label("Backups to keep per flavor (0 = never delete old backups)")
             yield Input(str(self.settings.keep_backups), type="integer", id="keep_backups")
             yield Label("Restore journals to keep (each names its safety backup; Undo uses the newest)")
@@ -74,6 +77,19 @@ class BackupSettingsScreen(Screen[bool]):
     def on_mount(self) -> None:
         self.sub_title = "Interface Backup settings"
         self.query_one("#backup_dir", Input).focus()
+        self._show_destination()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "backup_dir":
+            self._show_destination()
+
+    def _show_destination(self) -> None:
+        """Where the zips would go with the folder as typed (no disk access: just the path)."""
+        raw = self.query_one("#backup_dir", Input).value.strip()
+        root = resolve_backup_root(BackupSettings(to_native(raw) if raw else None),
+                                   self.install.root if self.install is not None else None)
+        self.query_one("#destination", Static).update(
+            Text(f"Zips go to: {to_stored(root)}" if root is not None else "Zips go to: (set the WoW folder first)"))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "save":
@@ -125,6 +141,7 @@ class InterfaceBackupFlow(ToolFlow):
         self._wow_check = wow_check  # tests inject it; None: built per run for the flavors involved
         self._disk_usage = disk_usage
         self.flavors: list[Flavor] = []
+        self.wow_root: Path | None = None  # the WoW folder self.flavors were read from
 
     def start(self) -> None:
         self.require_install(self._ready)
@@ -142,6 +159,7 @@ class InterfaceBackupFlow(ToolFlow):
             self.start()
             return
         self.flavors = install.flavors()
+        self.wow_root = install.root
         settings = load_settings(self.tool_cfg)
         # Listing the backup folder can be slow (a network drive): the picker opens at once and a worker fills in
         # each flavor's backups.
@@ -156,8 +174,9 @@ class InterfaceBackupFlow(ToolFlow):
         self.app.call_from_thread(self._notes_ready, picker, backups)
 
     def _notes_ready(self, picker: FlavorScreen, backups: list[BackupInfo]) -> None:
-        if self.app.screen is not picker:
+        if picker not in self.app.screen_stack:
             return  # a flavor was already chosen (or Esc pressed) before the list was ready
+        # A picker only covered (settings opened with s) still gets its notes: it shows them when it is back.
         by_flavor = {f.short_name: [b for b in backups if b.flavor_short == f.short_name] for f in self.flavors}
         mine = [b for flavor_backups in by_flavor.values() for b in flavor_backups]
         mine.sort(key=lambda b: (b.stamp, b.n), reverse=True)
@@ -166,6 +185,10 @@ class InterfaceBackupFlow(ToolFlow):
     def _after_flavor(self, choice: Flavor | str | None) -> None:
         if choice is None:
             self.close()
+            return
+        if self.cfg.wow_path != self.wow_root:  # s changed the WoW folder while the picker was open
+            self.app.notify("The WoW folder changed: pick the flavor again.", severity="warning")
+            self._pick_flavor()
             return
         if choice == ALL_FLAVORS:
             chosen, label, stored = list(self.flavors), "All flavors", ""
@@ -176,7 +199,7 @@ class InterfaceBackupFlow(ToolFlow):
             self.tool_cfg.set(SECTION, "last_flavor_choice", stored)
             self.tool_cfg.save_if_exists()
         self.app.push_screen(BackupSummaryScreen(self.cfg, self.tool_cfg, chosen, label, wow_check=self._wow_check,
-                                                 disk_usage=self._disk_usage),
+                                                 disk_usage=self._disk_usage, wow_root=self.wow_root),
                              self._after_summary)
 
     def _after_summary(self, choice: str | None) -> None:
@@ -196,6 +219,8 @@ class InterfaceBackupFlow(ToolFlow):
                                            self._settings_done))
 
     def _settings_done(self, saved: bool | None) -> None:
+        if self.wow_root is not None and self.cfg.wow_path != self.wow_root:
+            return  # a new WoW folder: the summary (or the picker, on a choice) goes back to the flavor picker
         if saved:
             self.app.notify("Settings saved. Press r on the summary to rescan with them.")
 

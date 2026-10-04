@@ -22,12 +22,13 @@ you land back on the menu.
 | **Screenshot Organizer** | Sorts your WoW screenshots into folders by year, month and day, one set per game version. | [Screenshot Organizer guide](docs/screenshot-organizer.md) |
 | **Interface Backup** | Zips a game version's `Interface` and `WTF` folders (your addons and their settings), and puts them back from a zip. | [Interface Backup guide](docs/interface-backup.md) |
 
-Both tools work with every version of the game you have installed: Retail, Classic, Classic Era, Anniversary,
+Every tool works with every version of the game you have installed: Retail, Classic, Classic Era, Anniversary,
 and the PTR and Beta clients. You can work on one version at a time or all of them at once.
 
-Neither tool changes anything until you say so. Each one shows you the full list first and asks before it
-touches a file. If you'd rather see what would happen first, do a practice run (a **Dry run**). And if you
-change your mind afterwards, you can undo the last run.
+No tool changes anything until you say so. Each one shows you what it will do first and asks before it
+touches a file. The WTF Cleaner and the Screenshot Organizer can also do a practice run (a **Dry run**) that
+shows what would happen without changing anything. And if you change your mind afterwards, you can undo the last
+clean, the last sort or the last restore.
 
 ## Screenshots
 
@@ -197,7 +198,7 @@ If you use WSL (Linux inside Windows), the same folder works from both sides. Ru
 
 | Question | Answer |
 |----------|--------|
-| Is it safe? Can I lose anything? | Both tools show you the full list and ask before they change anything. The WTF Cleaner backs up your whole `WTF` folder and zips every file before deleting it, and the Screenshot Organizer never overwrites a file. Both can undo their last run. If you're unsure, press **Dry run** first: it shows what would happen without changing anything. |
+| Is it safe? Can I lose anything? | Every tool shows you what it will do and asks before it changes anything. The WTF Cleaner backs up your whole `WTF` folder and zips every file before deleting it, the Screenshot Organizer never overwrites a file, and Interface Backup takes a safety backup of your folders before every restore. Each can undo its last run (Interface Backup: its last restore). If you're unsure, press **Dry run** in the WTF Cleaner or the Screenshot Organizer first: it shows what would happen without changing anything. |
 | Does it change the game itself? | No. It never touches the game program or your addons. It only works on files the game leaves in your WoW folder: addon settings in `WTF` and pictures in `Screenshots`. |
 | Do I need to close WoW? | Close it before you clean with the WTF Cleaner: WoW rewrites those files when you log out and can bring deleted ones back. The cleaner warns you if WoW is running. The Screenshot Organizer doesn't mind if the game is open. |
 | Do I need to install anything besides Python? | No. Everything else the app needs comes in the download. |

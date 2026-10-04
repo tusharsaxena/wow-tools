@@ -35,6 +35,7 @@ class CleanerSettingsScreen(Screen[bool]):
     DEFAULT_CSS = """
     CleanerSettingsScreen #settings { padding: 0 2; }
     CleanerSettingsScreen .title { color: $accent; text-style: bold; margin: 1 0; }
+    CleanerSettingsScreen Label { width: 1fr; height: auto; }
     CleanerSettingsScreen Ka0sCheckbox { margin-bottom: 1; }
     CleanerSettingsScreen #settings-error { color: $error; height: auto; }
     CleanerSettingsScreen .buttons { height: auto; margin-top: 1; }

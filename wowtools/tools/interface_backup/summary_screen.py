@@ -11,7 +11,7 @@ from typing import Any, ClassVar
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, DataTable, Footer, Header, ProgressBar, Static
 
@@ -38,8 +38,8 @@ from wowtools.ui.branding import BrandBar
 from wowtools.ui.dialogs import ConfirmScreen, ProgressScreen, theme_colour
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-NAV_HINT = ("↑↓/Tab move · ←→ buttons · Enter/Space press · b back up · e restore · z undo · r rescan · "
-            "f/Esc flavors · t tools · q quit")
+NAV_HINT = ("↑↓/Tab move · ←→ buttons · Enter/Space press · PgUp/PgDn scroll · b back up · e restore · z undo · "
+            "r rescan · f/Esc flavors · t tools · q quit")
 WowCheck = Callable[[], "list[str] | None"]
 
 
@@ -73,7 +73,7 @@ class BackupResultScreen(Screen[str]):
     BackupResultScreen #result-head { height: auto; margin-bottom: 1; }
     BackupResultScreen #result-table { height: 1fr; }
     BackupResultScreen .buttons { height: auto; padding: 0 2; }
-    BackupResultScreen Button { margin-right: 2; }
+    BackupResultScreen .buttons Button { min-width: 0; width: auto; margin-right: 1; }
     BackupResultScreen NavHint { padding: 0 2; margin-top: 0; }
     """
     BINDINGS: ClassVar[list[Binding]] = [
@@ -133,24 +133,32 @@ class BackupSummaryScreen(Screen[str]):
     BackupSummaryScreen #scan-label { color: $text-muted; }
     BackupSummaryScreen #flavors { height: auto; max-height: 14; margin: 1 0; }
     BackupSummaryScreen #details { height: auto; }
-    BackupSummaryScreen #notices { height: auto; color: $warning; margin-top: 1; }
+    BackupSummaryScreen #notices { height: auto; color: $warning; }
+    BackupSummaryScreen #details { margin-top: 1; }
     BackupSummaryScreen #actions { height: auto; padding: 0 2; }
     BackupSummaryScreen #actions Button { min-width: 0; width: auto; margin-right: 1; }
     BackupSummaryScreen NavHint { padding: 0 2; }
     """
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("b", "back_up", "Back up"), Binding("e", "restore", "Restore"),
-        Binding("z", "undo", "Undo last restore"), Binding("r", "rescan", "Rescan"),
+        Binding("z", "undo", "Undo"), Binding("r", "rescan", "Rescan"),
         Binding("f", "leave('flavors')", "Flavors"), Binding("t", "leave('tools')", "Tools"),
         Binding("q", "leave('quit')", "Quit"), Binding("escape", "leave('flavors')", "Flavors", show=False),
+        Binding("pageup", "scroll_body(-1)", "Scroll up", show=False),
+        Binding("pagedown", "scroll_body(1)", "Scroll down", show=False),
         *NAV_BINDINGS]
 
     def __init__(self, cfg: Config, tool_cfg: Config, flavors: list[Flavor], scope_label: str, *,
-                 wow_check: WowCheck | None = None, disk_usage: Callable = shutil.disk_usage) -> None:
+                 wow_check: WowCheck | None = None, disk_usage: Callable = shutil.disk_usage,
+                 wow_root: Path | None = None) -> None:
         super().__init__()
         self.cfg = cfg  # the suite config (WoW folder)
         self.tool_cfg = tool_cfg  # config/interface-backup.cfg
         self.flavors = list(flavors)
+        # The WoW folder these flavors were read from. If `s` changes the shared WoW folder, they belong to another
+        # install: the summary goes back to the flavor picker rather than mix the two (see wow_folder_changed).
+        self.wow_root = wow_root if wow_root is not None else cfg.wow_path
+        self._leaving_for_new_folder = False
         self.scope_label = scope_label
         self.wow_check = wow_check  # None: built per run from the flavors involved
         self.disk_usage = disk_usage
@@ -168,20 +176,20 @@ class BackupSummaryScreen(Screen[str]):
     # --- layout ------------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
         yield Header()
-        with Vertical(id="body"):
+        # Scrolls (PgUp/PgDn, the wheel) when the notices do not fit a small terminal; never takes focus itself.
+        with VerticalScroll(id="body", can_focus=False):
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)
                 yield Static("", id="scan-label")
             yield DataTable(id="flavors", cursor_type="row", zebra_stripes=True)
+            yield Static("", id="notices")  # under the table: leftovers block a restore, so they come first
             yield Static("", id="details")
-            yield Static("", id="notices")
+        # Four actions, as on the other tools' review screens: f/t/Esc (hint, footer) leave.
         with ButtonRow(id="actions"):
             yield action_button("Back up (b)", "confirm", id="btn-backup")
             yield action_button("Restore (e)", "neutral", id="btn-restore")
-            yield action_button("Undo last restore (z)", "revert", id="btn-undo")
+            yield action_button("Undo (z)", "revert", id="btn-undo")
             yield action_button("Rescan (r)", "neutral", id="btn-rescan")
-            yield action_button("Flavors (f)", "neutral", id="btn-flavors")
-            yield action_button("Tools (t)", "neutral", id="btn-tools")
         yield NavHint(NAV_HINT)
         yield BrandBar()
         yield Footer()
@@ -191,6 +199,29 @@ class BackupSummaryScreen(Screen[str]):
         self.query_one("#flavors", DataTable).add_columns(*SUMMARY_COLUMNS)
         self.query_one("#flavors", DataTable).focus()
         self.action_rescan()
+
+    def action_scroll_body(self, step: int) -> None:
+        body = self.query_one("#body", VerticalScroll)
+        if step < 0:
+            body.scroll_page_up()
+        else:
+            body.scroll_page_down()
+
+    # --- the WoW folder ------------------------------------------------------------------------
+    def wow_folder_changed(self) -> bool:
+        """True when the shared WoW folder is no longer the one these flavors came from (changed with `s`). The
+        summary then goes back to the flavor picker as soon as it is the screen shown: a scan, backup, restore or
+        undo would otherwise read one install while the backup folder, journals and Undo use the other."""
+        if self.cfg.wow_path == self.wow_root:
+            return False
+        if not self._leaving_for_new_folder and self.app.screen is self and not self.app.busy:
+            self._leaving_for_new_folder = True
+            self.notify("The WoW folder changed: pick the flavor again.", severity="warning")
+            self.dismiss("flavors")
+        return True
+
+    def on_screen_resume(self) -> None:
+        self.wow_folder_changed()
 
     # --- paths ---------------------------------------------------------------------------------
     def _root(self) -> Path | None:
@@ -223,7 +254,7 @@ class BackupSummaryScreen(Screen[str]):
 
     # --- scan ----------------------------------------------------------------------------------
     def action_rescan(self) -> None:
-        if not self.idle:
+        if not self.idle or self.wow_folder_changed():
             return
         self.settings = load_settings(self.tool_cfg)
         self._scanning = True
@@ -293,6 +324,12 @@ class BackupSummaryScreen(Screen[str]):
         if pending is None:
             return
         what, journal = pending
+        if self.app.screen is not self:
+            # Another screen (settings, say) opened while the scan ran: never open Restore or Undo on top of it.
+            key = "e" if what == "restore" else "z"
+            self.notify(f"{'Restore' if what == 'restore' else 'Undo'} was not opened. Press {key} on the summary.",
+                        severity="warning")
+            return
         if what == "restore":
             self.action_restore()
         elif journal is not None and journal == undoable:
@@ -339,7 +376,7 @@ class BackupSummaryScreen(Screen[str]):
 
     # --- back up -------------------------------------------------------------------------------
     def action_back_up(self) -> None:
-        if self.scans is None or not self.idle:
+        if self.scans is None or not self.idle or self.wow_folder_changed():
             return
         log_event("ui.selection", screen="ibackup_summary", control="back_up", value=True)
         self.settings = load_settings(self.tool_cfg)
@@ -367,7 +404,7 @@ class BackupSummaryScreen(Screen[str]):
 
     def _backup_confirmed(self, ok: bool | None, scans: list[FlavorScan], root: Path, keep: int) -> None:
         log_event("ui.selection", screen="confirm", control="back_up_confirm", value=bool(ok))
-        if not ok or not self.idle:
+        if not ok or not self.idle or self.wow_folder_changed():
             return
         self.run_job(BackupProgressScreen("backup"),
                      lambda progress, on_flavor: back_up_all(scans, root, keep=keep, progress=progress,
@@ -430,7 +467,7 @@ class BackupSummaryScreen(Screen[str]):
         elif isinstance(exc, RestoreStopped):
             what = "Undo" if exc.result.undo else "Restore"
             changed = any(p.kind != "rolled_back" for p in exc.result.parts)
-            hint = (" Undo last restore (z) puts back what was replaced." if changed and not exc.result.undo
+            hint = (" Undo (z) puts back what was replaced." if changed and not exc.result.undo
                     else "")
             self.notify(f"{exc}{hint}", title=f"{what} stopped", severity="error", timeout=20)
             self.app.push_screen(RestoreResultScreen(exc.result),
@@ -449,13 +486,13 @@ class BackupSummaryScreen(Screen[str]):
 
     # --- restore ------------------------------------------------------------------------------
     def action_restore(self) -> None:
-        if not self.idle:
+        if not self.idle or self.app.screen is not self or self.wow_folder_changed():
             return
         log_event("ui.selection", screen="ibackup_summary", control="restore", value=True)
         self.app.push_screen(BackupListScreen(self._root(), self.flavors), self._backup_chosen)
 
     def _backup_chosen(self, info: BackupInfo | None) -> None:
-        if info is None or not self.idle:
+        if info is None or not self.idle or self.wow_folder_changed():
             return
         flavor = next((f for f in self.flavors if f.short_name == info.flavor_short), None)
         if flavor is None:  # the list holds only the chosen flavors' backups
@@ -465,7 +502,7 @@ class BackupSummaryScreen(Screen[str]):
                              lambda plan: self._restore_chosen(plan, info))
 
     def _restore_chosen(self, plan: RestorePlan | None, info: BackupInfo) -> None:
-        if plan is None or not self.idle:
+        if plan is None or not self.idle or self.wow_folder_changed():
             return
         check = self.wow_check or wow_check_for([plan.flavor])
         self.run_preflight(check, lambda running, _extra: self._confirm_restore(plan, info, running))
@@ -479,7 +516,7 @@ class BackupSummaryScreen(Screen[str]):
         log_event("ui.selection", screen="confirm", control="restore_confirm", value=bool(ok))
         self.settings = load_settings(self.tool_cfg)
         root, journal_dir, keep = self._root(), self._journal_dir(), self.settings.keep_journals
-        if not ok or not self.idle:
+        if not ok or not self.idle or self.wow_folder_changed():
             return
         problem = self._folder_problem()
         if problem or root is None or journal_dir is None:
@@ -506,7 +543,7 @@ class BackupSummaryScreen(Screen[str]):
 
     # --- undo ----------------------------------------------------------------------------------
     def action_undo(self) -> None:
-        if not self.idle:
+        if not self.idle or self.app.screen is not self or self.wow_folder_changed():
             return
         log_event("ui.selection", screen="ibackup_summary", control="undo", value=True)
         path = self.undoable
@@ -544,7 +581,7 @@ class BackupSummaryScreen(Screen[str]):
         log_event("ui.selection", screen="confirm", control="undo_confirm", value=bool(ok))
         self.settings = load_settings(self.tool_cfg)
         wow, root = self.cfg.wow_path, self._root()
-        if not ok or not self.idle or wow is None or root is None:
+        if not ok or not self.idle or wow is None or root is None or self.wow_folder_changed():
             return
         self.run_job(BackupProgressScreen("verify"),
                      lambda progress, _on_flavor: undo_restore(path, wow_root=wow, root=root, progress=progress),
@@ -557,9 +594,7 @@ class BackupSummaryScreen(Screen[str]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         actions = {"btn-backup": self.action_back_up, "btn-restore": self.action_restore,
-                   "btn-undo": self.action_undo, "btn-rescan": self.action_rescan,
-                   "btn-flavors": lambda: self.action_leave("flavors"),
-                   "btn-tools": lambda: self.action_leave("tools")}
+                   "btn-undo": self.action_undo, "btn-rescan": self.action_rescan}
         action = actions.get(event.button.id or "")
         if action is not None:
             event.stop()

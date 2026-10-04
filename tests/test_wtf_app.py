@@ -577,6 +577,18 @@ class FirstRunTest(AppTestCase):
         self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).backup_dir, target)
 
 
+    async def test_settings_labels_wrap_at_80_columns(self):
+        app = self.make_app()
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            screen = CleanerSettingsScreen(self.tool_cfg, self.root, source="settings")
+            app.push_screen(screen)
+            await pilot.pause()
+            for label in screen.query("Label"):
+                text = str(label.render())
+                self.assertLessEqual(label.region.right, 80, text)
+                self.assertGreaterEqual(label.region.width * label.region.height, len(text), text)
+
 class BackupFolderValidationTest(AppTestCase):
     async def test_settings_reject_backup_dir_inside_wtf_or_relative(self):
         app = self.make_app()

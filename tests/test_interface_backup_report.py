@@ -81,6 +81,12 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(rows[0], ("2026-10-04 15:30:12", "retail", "backup", "2.0 KB"))
         self.assertEqual(rows[1][2], "safety (pre-restore)")
         self.assertEqual(len(rows[0]), len(report.LIST_COLUMNS))
+        named = report.list_rows([info("20261004-153012")], {"retail": "Retail"})
+        self.assertEqual(named[0][1], "Retail")  # the display name; the short name only for an unknown flavor
+
+    def test_friendly_created(self):
+        self.assertEqual(report.friendly_created("2026-10-04T12:57:33+05:30"), "2026-10-04 12:57:33")
+        self.assertEqual(report.friendly_created("not a date"), "not a date")
 
     def test_group_paths(self):
         items = [("Interface", "AddOns/WeakAuras/a.lua"), ("Interface", "AddOns/WeakAuras/b/c.lua"),
@@ -120,6 +126,19 @@ class ReportTest(unittest.TestCase):
         self.assertIn("1 link", body)
         self.assertTrue(any("Wow.exe" in a for a in alerts))
         self.assertTrue(any("Will be removed" in a for a in alerts))
+        # The confirm counts, one line per kind; the restore screen shows the grouped lists.
+        many = [("Interface", f"AddOns/A{i:02}/x.lua") for i in range(20)]
+        _, _, alerts = report.restore_confirm(plan(removed=many, newer=many[:3], dropped=[("Interface", "AddOns/Dev")],
+                                                   free=10, unreadable=["X: denied", "Y: denied"]),
+                                              "2026-10-04 15:30:12", ["Wow.exe"])
+        self.assertEqual(alerts, ("Will be removed: 20 files (Interface/AddOns/A00 and 19 more)",
+                                  ("Newer now than in the backup (these changes are lost): 3 files "
+                                   "(Interface/AddOns/A00 and 2 more)"),
+                                  "2 places could not be read; whatever is there is replaced too.",
+                                  "Links replaced by the backup's files: 1 (only the link goes).",
+                                  "Low disk space: 10 B free on the WoW drive, about 1000 B needed.",
+                                  alerts[-1]))
+        self.assertIn("Wow.exe", alerts[-1])
         title, body, alerts = report.backup_confirm([scan()], Path("/bk"), 0, None, None)
         self.assertIn("never", body)
         self.assertIn("1 flavor", title)
@@ -152,6 +171,9 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(skipped[1:3], ("Skipped", "no Interface or WTF folder"))
         result = RestoreResult(RETAIL, Path("/bk/x.zip"), [PartOutcome("WTF", "rolled_back", "locked")])
         self.assertEqual(report.restore_result_rows(result)[0], ("WTF", "Left as it was", "locked"))
+        undone = RestoreResult(RETAIL, Path("/bk/x.zip"), [PartOutcome("WTF", "restored"),
+                                                           PartOutcome("Interface", "restored")], undo=True)
+        self.assertEqual([r[0] for r in report.restore_result_rows(undone)], ["Interface", "WTF"])  # PARTS order
 
     def test_every_progress_stage_has_a_title(self):
         for stage in ("scan", "backup", "verify", "prune", "safety", "safety_verify", "extract", "swap", "cleanup"):

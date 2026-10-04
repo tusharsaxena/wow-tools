@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
 
 from wowtools.core.install import Flavor
@@ -9,8 +10,8 @@ from wowtools.core.journal import Journal, friendly_stamp
 from wowtools.core.paths import to_stored
 from wowtools.tools.interface_backup.backup import BackupOutcome
 from wowtools.tools.interface_backup.catalog import BackupInfo
-from wowtools.tools.interface_backup.restore import RestorePlan, RestoreResult
-from wowtools.tools.interface_backup.scanner import FlavorScan, PartScan
+from wowtools.tools.interface_backup.restore import PartOutcome, RestorePlan, RestoreResult
+from wowtools.tools.interface_backup.scanner import PARTS, FlavorScan, PartScan
 
 # Titles for the stages the logic modules pass to progress(stage, done, total, detail).
 STAGE_TITLES = {
@@ -131,9 +132,21 @@ def backup_result_rows(outcomes: list[BackupOutcome]) -> list[tuple[str, ...]]:
     return rows
 
 
-def list_rows(infos: list[BackupInfo]) -> list[tuple[str, ...]]:
-    return [(b.when, b.flavor_short, "safety (pre-restore)" if b.is_safety else "backup", human_size(b.size))
-            for b in infos]
+def list_rows(infos: list[BackupInfo], names: dict[str, str] | None = None) -> list[tuple[str, ...]]:
+    """LIST_COLUMNS rows. `names` maps a flavor's short name to its display name (the short name is the fallback
+    for a flavor this install does not have)."""
+    names = names or {}
+    return [(b.when, names.get(b.flavor_short, b.flavor_short), "safety (pre-restore)" if b.is_safety else "backup",
+             human_size(b.size)) for b in infos]
+
+
+def friendly_created(created: str) -> str:
+    """A manifest's ISO-8601 `created` as "YYYY-MM-DD HH:MM:SS" (its own clock), like every other date shown;
+    anything unparsable is shown as is."""
+    try:
+        return datetime.fromisoformat(created).strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return created
 
 
 def group_paths(items: list[tuple[str, str]], depth: int = 3) -> list[tuple[str, int]]:
@@ -175,23 +188,56 @@ def restore_warnings(plan: RestorePlan, limit: int = 15) -> list[str]:
     return lines
 
 
+def _counted(title: str, items: list[tuple[str, str]]) -> str:
+    groups = group_paths(items)
+    where = groups[0][0] + (f" and {len(groups) - 1} more" if len(groups) > 1 else "")
+    return f"{title}: {plural(len(items), 'file')} ({where})"
+
+
+def restore_confirm_alerts(plan: RestorePlan) -> list[str]:
+    """restore_warnings in one line per kind, so the confirm fits a small terminal: the restore screen just before
+    it lists them by folder."""
+    lines: list[str] = []
+    if plan.removed:
+        lines.append(_counted("Will be removed", plan.removed))
+    if plan.newer:
+        lines.append(_counted("Newer now than in the backup (these changes are lost)", plan.newer))
+    if plan.unreadable:
+        lines.append(f"{plural(len(plan.unreadable), 'place')} could not be read; whatever is there is replaced "
+                     "too.")
+    if plan.links_removed:
+        lines.append(f"Links replaced by the backup's files: {len(plan.links_removed)} (only the link goes).")
+    if plan.low_space:
+        lines.append(f"Low disk space: {human_size(plan.free_bytes)} free on the WoW drive, about "
+                     f"{human_size(plan.bytes_needed)} needed.")
+    return lines
+
+
 def restore_confirm(plan: RestorePlan, when: str, running: list[str] | None) -> tuple[str, str, tuple[str, ...]]:
-    """(title, body, alerts) for the Restore ConfirmScreen (which starts on No)."""
+    """(title, body, alerts) for the Restore ConfirmScreen (which starts on No). The alerts are counts, one line
+    per kind (restore_confirm_alerts), never the full lists."""
     parts = " and ".join(plan.parts)
     title = f"Replace {parts} of {plan.flavor.display_name} with the backup from {when}?"
     body = ("The folders become exactly what the backup holds. A safety backup of the current folders is taken "
-            "first, so Undo last restore (z) can put them back.")
+            "first, so Undo (z) can put them back.")
     if plan.links_kept:
         body += f"\n{plural(len(plan.links_kept), 'link')} kept as they are."
-    alerts = restore_warnings(plan)
+    alerts = restore_confirm_alerts(plan)
     if running:
         alerts.append(f"WoW appears to be running ({', '.join(running)}). Close it first: it rewrites WTF when you "
                       "log out, and an open game can lock Interface files.")
     return title, body, tuple(alerts)
 
 
+def ordered_parts(result: RestoreResult) -> list[PartOutcome]:
+    """The result's parts in PARTS order (an undo works through them in reverse; the tables do not)."""
+    order = {part: n for n, part in enumerate(PARTS)}
+    return sorted(result.parts, key=lambda p: order.get(p.part, len(order)))
+
+
 def restore_result_rows(result: RestoreResult) -> list[tuple[str, ...]]:
-    return [(p.part, _PART_KINDS.get(p.kind, p.kind), p.reason) for p in result.parts]
+    """RESTORE_RESULT_COLUMNS rows, in PARTS order (ordered_parts)."""
+    return [(p.part, _PART_KINDS.get(p.kind, p.kind), p.reason) for p in ordered_parts(result)]
 
 
 def undo_confirm(journal: Journal) -> tuple[str, str]:

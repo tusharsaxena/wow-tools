@@ -17,8 +17,9 @@ from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor
 from wowtools.core.paths import to_stored
 from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups
-from wowtools.tools.interface_backup.report import (LIST_COLUMNS, RESTORE_RESULT_COLUMNS, human_size, list_rows,
-                                                    plural, restore_result_rows, restore_warnings)
+from wowtools.tools.interface_backup.report import (LIST_COLUMNS, RESTORE_RESULT_COLUMNS, friendly_created,
+                                                    human_size, list_rows, ordered_parts, plural,
+                                                    restore_result_rows, restore_warnings)
 from wowtools.tools.interface_backup.restore import (BackupContents, RestoreError, RestorePlan, RestoreResult,
                                                      case_key, open_backup, plan_restore)
 from wowtools.tools.interface_backup.scanner import PARTS, FlavorScan, scan_flavor
@@ -74,7 +75,7 @@ class BackupListScreen(Screen[BackupInfo | None]):
         if not self.is_attached:
             return
         table = self.query_one("#backups", DataTable)
-        for row in list_rows(infos):
+        for row in list_rows(infos, {f.short_name: f.display_name for f in self.flavors}):
             table.add_row(*(Text(c) for c in row))
         where = to_stored(self.root) if self.root else "?"
         title = (f"{plural(len(infos), 'backup')} in {where}. Safety backups are the folders as they were before "
@@ -166,10 +167,11 @@ class RestoreScreen(Screen[RestorePlan | None]):
                             + ". Move or delete it first (see the guide).")
         if contents is not None:
             parts = ", ".join(contents.parts) or "nothing"
+            made = friendly_created(contents.created) if contents.created else ""
             self.query_one("#backup-info", Static).update(Text(
                 f"{to_stored(self.info.path)}\nHolds: {parts} · "
                 f"{plural(sum(len(f) for f in contents.files.values()), 'file')}"
-                + (f" · made {contents.created}" if contents.created else "")))
+                + (f" · made {made}" if made and made != self.info.when else "")))
         first = None
         for part in PARTS:
             box = self.query_one(f"#part-{part}", Ka0sCheckbox)
@@ -177,7 +179,9 @@ class RestoreScreen(Screen[RestorePlan | None]):
             linked = scan is not None and scan.parts[part].linked
             available = in_backup and not linked and not self.problem
             box.disabled = not available
-            if not in_backup:
+            if self.problem:
+                box.value = False  # blocked: a ticked box would read as "this will be restored"
+            elif not in_backup:
                 box.value = False
                 box.label = f"{part} (not in this backup)"
             elif linked:
@@ -185,8 +189,8 @@ class RestoreScreen(Screen[RestorePlan | None]):
                 box.label = f"{part} (a link to another folder: restore it by hand)"
             if available and first is None:
                 first = box
-        if first is not None:
-            first.focus()
+        # Focus starts on something that acts: the first box that can be ticked, else Back.
+        (first or self.query_one("#btn-back", Button)).focus()
         self._replan()
 
     # --- the plan (worker) -----------------------------------------------------------------------
@@ -277,7 +281,7 @@ class RestoreResultScreen(Screen[str]):
     RestoreResultScreen #result-head { height: auto; margin-bottom: 1; }
     RestoreResultScreen #result-table { height: auto; }
     RestoreResultScreen .buttons { height: auto; padding: 0 2; }
-    RestoreResultScreen Button { margin-right: 2; }
+    RestoreResultScreen .buttons Button { min-width: 0; width: auto; margin-right: 1; }
     RestoreResultScreen NavHint { padding: 0 2; }
     """
     BINDINGS: ClassVar[list[Binding]] = [
@@ -296,6 +300,10 @@ class RestoreResultScreen(Screen[str]):
         nothing to undo, and Undo would pick an older restore)."""
         r = self.result
         return not r.undo and r.journal_path is not None and any(p.kind != "rolled_back" for p in r.parts)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """z is not a key here (nor in the footer) when there is no Undo."""
+        return not (action == "choose" and parameters == ("undo",) and not self.can_undo)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -329,7 +337,7 @@ class RestoreResultScreen(Screen[str]):
         table = self.query_one("#result-table", DataTable)
         table.add_columns(*RESTORE_RESULT_COLUMNS)
         styles = {"restored": "success", "replaced_left": "warning", "rolled_back": "warning", "failed": "error"}
-        for outcome, (part, kind, reason) in zip(r.parts, restore_result_rows(r)):
+        for outcome, (part, kind, reason) in zip(ordered_parts(r), restore_result_rows(r)):
             style = f"bold {theme_colour(self.app, styles.get(outcome.kind, 'warning'))}"
             table.add_row(Text(part), Text(kind, style=style), Text(reason))
         self.query_one("#review", Button).focus()

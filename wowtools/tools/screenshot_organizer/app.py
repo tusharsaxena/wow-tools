@@ -31,6 +31,7 @@ class ScreenshotSettingsScreen(Screen[bool]):
     DEFAULT_CSS = """
     ScreenshotSettingsScreen #settings { padding: 0 2; }
     ScreenshotSettingsScreen .title { color: $accent; text-style: bold; margin: 1 0; }
+    ScreenshotSettingsScreen Label { width: 1fr; height: auto; }
     ScreenshotSettingsScreen Ka0sCheckbox { margin: 1 0; }
     ScreenshotSettingsScreen #settings-error { color: $error; height: auto; }
     ScreenshotSettingsScreen .buttons { height: auto; margin-top: 1; }
@@ -162,9 +163,11 @@ class ScreenshotsFlow(ToolFlow):
         self.app.call_from_thread(self._counts_ready, picker, install, counts)
 
     def _counts_ready(self, picker: FlavorScreen, install: WowInstall, counts: dict[str, int | None]) -> None:
-        if self.app.screen is not picker:
+        if picker not in self.app.screen_stack:
             return  # a flavor was already chosen (or Esc pressed) before the counts were ready
-        if all(count is None for count in counts.values()):  # every Screenshots folder is unreadable
+        # A picker only covered (settings opened with s) still gets its counts: it shows them when it is back.
+        if all(count is None for count in counts.values()) and self.app.screen is picker:
+            # every Screenshots folder is unreadable
             self.app.notify(f"No Screenshots folders found in {to_stored(install.root)}.", severity="warning")
             picker.dismiss(None)  # back to the tool menu
             return
