@@ -8,7 +8,7 @@ merge, delete every branch, stash and worktree this run created.
 | Task | Title | Status | Commit | Notes |
 |---|---|---|---|---|
 | 0 | spec and plan | done | b5d55ca | plan code for Tasks 2–10 pre-validated against its own tests in a scratch copy (102 tests); parser read all 750 real SV files (read-only) with no error, 53 AceDB DBs, 12 MB Questie in 0.9 s |
-| 1 | core helpers: snapshot, svfiles, atomic_write_bytes | todo | | |
+| 1 | core helpers: snapshot, svfiles, atomic_write_bytes | done | 15c1cf9 | core/snapshot.py + core/svfiles.py; WTF Cleaner wraps them (messages, names unchanged); 3 test patch targets moved to core, no assertion changed; full suite 811 OK, ruff clean |
 | 2 | luasv parser, splice, codec | todo | | |
 | 3 | model: find AceDB databases | todo | | |
 | 4 | events, settings | todo | | |
@@ -30,4 +30,10 @@ merge, delete every branch, stash and worktree this run created.
 
 ## Decisions taken during the build
 
-- (none yet)
+- Task 1: `atomic_write_text` delegates as `atomic_write_bytes(path, text.replace("\n", os.linesep).encode("utf-8"))`,
+  not plain `.encode("utf-8")`: the old text-mode write turned `\n` into CRLF on Windows, and config files keep that.
+- Task 1: patch targets moved to core (no assertion changed): `test_cleaner.LockAndCheckTest._lock` and
+  `test_no_replace_call_sites` patch `wowtools.core.svfiles.rename_no_replace`; the never-replaces snapshot test
+  patches `wowtools.core.snapshot.snapshot_path`.
+- Task 1: `safety.py` gains `SNAPSHOT_PREFIX = "backup"`; `LIST_REPORT_EVERY`/`SnapshotProgress`/`wtf_files` and
+  `cleaner.LOCK_PROBE_SUFFIX` stay importable from their old modules as re-exports (`# noqa: F401`).
