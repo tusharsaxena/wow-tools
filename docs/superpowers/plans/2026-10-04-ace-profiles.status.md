@@ -12,7 +12,7 @@ merge, delete every branch, stash and worktree this run created.
 | 2 | luasv parser, splice, codec | done | 5c8b888 | plan code verbatim apart from ruff fixes; 19 luasv tests OK (speed test ~0.1 s); full suite 830 OK, ruff clean |
 | 3 | model: find AceDB databases | done | 20db114 | plan code verbatim; 9 ace_model tests OK; full suite 839 OK, ruff clean |
 | 4 | events, settings | done | 7ca6a9a | plan code verbatim (core `get_int` already falls back on bad values); 6 ace_settings tests OK; docs/events.md gains the `ace-profiles` section; full suite 845 OK (2 skipped), ruff clean |
-| 5 | fixture + scanner | todo | | |
+| 5 | fixture + scanner | done | 98474e8 | plan code verbatim (install `ErrorHandler` is `(Path, OSError)`, capture records use `event`); fixtures.py docstring gains a `build_ace_tree`/`ace_lua` paragraph; 9 ace_scanner tests OK; full suite 854 OK (2 skipped), ruff clean |
 | 6 | ops: staging | todo | | |
 | 7 | compile + verify | todo | | |
 | M1 | push milestone 1 | todo | | |
