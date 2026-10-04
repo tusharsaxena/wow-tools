@@ -16,7 +16,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | M1 | push milestone 1 | done (pushed) | 2b66d80 | Milestone 1 review: 15 findings fixed (see decisions, "M1 review") |
 | 8 | report helpers | done | 4cbafec | API as planned plus `RestorePlan.unreadable` warnings, missing files in the backup result, notices capped per part; 12 tests |
 | 9 | flow, settings, summary, backup screens, registration | done | e6e3ab6 | API as planned with explicit `wow_check`/`disk_usage` flow kwargs; journal lookup and free space moved off the UI thread; own `_checking` flag for the WoW check; 19 TUI tests |
-| 10 | restore and undo screens | done | ae15647 | API as planned; backup list, backup load/scan and every plan built in workers; Undo on the result screen only for a restore that changed a part; 12 new TUI tests |
+| 10 | restore and undo screens | done | ae15647, ed8ee75 | API as planned; backup list, backup load/scan and every plan built in workers; Undo on the result screen only for a restore that changed a part; 12 new TUI tests. Follow-up ed8ee75: Parts column in the backup list (spec §10), manifests read in a worker |
 | M2 | push milestone 2 | done (pushed) | 763a34b | Milestone 2 review: 20 findings fixed (see decisions, "M2 review") |
 | 11 | docs, events, final checks | todo | | |
 | M3 | push milestone 3, ask for merge go-ahead | todo | | |
@@ -224,3 +224,9 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   result, an Undo no longer possible, an unreadable journal, Esc on the summary, restore screen and both result
   screens, a stopped restore with a journal (with and without a replaced part). The tests-docs findings covered
   existing code, so those tests passed before the fix.
+- Parts column (ed8ee75): `LIST_COLUMNS` is Date / Flavor / Kind / Parts / Size, as spec §10 lists (Task 8 had left
+  Parts out). `catalog.read_parts(path)` reads only the manifest entry (no entry checks, no verify; never raises)
+  and returns the claimed parts in PARTS order, None when unreadable. `BackupListScreen` lists the rows first
+  (Parts "…"), then a second worker reads each zip and fills the cell (`report.parts_cell`: "Interface, WTF",
+  "WTF", "?" for an unreadable zip, which stays listed); it checks `is_cancelled` and the update is skipped once
+  the screen has left. Columns are keyed by label. Flavor stays the display name (M2 fix).
