@@ -164,18 +164,27 @@ def undo_run(journal_path: Path, *, wow_root: Path, root: Path, keep_snapshots: 
 
 
 def recover(marker: Marker, *, root: Path) -> UndoResult:
-    """After an Apply that did not finish: put back every file of the marker that is not its original."""
+    """After an Apply that did not finish: put back every file of the marker that is still what the run wrote.
+    A file still at its original is left alone; one that is neither (the run skipped it as changed since the scan,
+    or WoW saved it since) is skipped and never overwritten."""
     result = UndoResult()
     for rel, sha_before in sorted(marker.files.items()):
         dest = destination(marker.flavor_path.parent, marker.flavor, rel)
         if dest is None:
             result.outcomes.append(UndoOutcome(marker.flavor, rel, None, "skipped", "it is outside the WTF folder"))
+            log_event("ace.file_skipped", flavor=marker.flavor, path=rel, reason="outside")
             continue
         try:
-            current = dest.read_bytes()
+            current = _sha(dest.read_bytes())
         except OSError:
-            current = b""
-        if _sha(current) == sha_before:
+            current = None
+        if current == sha_before:
+            continue
+        if current is None or current != marker.after.get(rel):
+            detail = "the file is gone or could not be read" if current is None else CHANGED_SINCE
+            result.outcomes.append(UndoOutcome(marker.flavor, rel, dest, "skipped", detail))
+            log_event("ace.file_skipped", flavor=marker.flavor, path=rel,
+                      reason="gone" if current is None else "changed")
             continue
         problem = _put_back(marker.zip, rel, dest, sha_before)
         status = "restored" if problem is None else "failed"
@@ -183,5 +192,6 @@ def recover(marker: Marker, *, root: Path) -> UndoResult:
         log_event("ace.file_restored" if problem is None else "ace.undo_failed", flavor=marker.flavor, path=rel)
     if not result.failed:
         clear_marker(root)
-    log_event("ace.recovery_done", choice="put_back", restored=len(result.restored), failed=len(result.failed))
+    log_event("ace.recovery_done", choice="put_back", restored=len(result.restored), skipped=len(result.skipped),
+              failed=len(result.failed))
     return result

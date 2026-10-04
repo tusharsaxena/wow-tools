@@ -93,11 +93,13 @@ def profile_rows(state: DbState) -> list[ProfileRow]:
         rows[name] = ProfileRow(name, False, tags, [CharRow(c, char_tags(state, c)) for c in state.users(name)])
     for name in state.changes().deleted:
         rows.setdefault(name, ProfileRow(name, True, [f"{DELETED}"]))
+    renamed = {src.name: name for name, src in state.profiles.items()
+               if isinstance(src, Original) and src.name != name}
     for char, old in state.db.profile_keys.items():
         if state.keys.get(char) is None:
-            row = rows.get(old) or next((r for r in rows.values() if r.deleted), None)
-            if row is None:
-                row = rows.setdefault(old, ProfileRow(old, False, ["missing"]))
+            # under its profile where it is now (renamed, deleted or kept); a missing profile it alone used keeps
+            # a row of its own
+            row = rows.get(renamed.get(old, old)) or rows.setdefault(old, ProfileRow(old, False, ["missing"]))
             row.chars.append(CharRow(char, char_tags(state, char), removed=True))
     return list(rows.values())
 
@@ -157,6 +159,8 @@ def apply_summary_rows(result: MultiApplyResult) -> list[tuple[str, str]]:
         rows.append(("Skipped", plural(len(result.skipped), "file")))
     if result.rolled_back:
         rows.append(("Put back after a failure", plural(len(result.rolled_back), "file")))
+    if result.failed:
+        rows.append(("Failed", plural(len(result.failed), "file")))
     if result.stopped:
         rows.append(("Stopped", f"{flavor_name(result.stopped.flavor.folder)}: {result.stopped.error}"))
     for run in result.runs:

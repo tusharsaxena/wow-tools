@@ -69,12 +69,14 @@ def prune_journals(folder: Path | None, keep: int) -> list[Path]:
     return removed
 
 
-def referenced_zips(folder: Path | None) -> set[str]:
+def referenced_zips(folder: Path | None) -> set[str] | None:
+    """The edited-*.zip names the journals in folder use; None when a journal could not be read (a reader such as
+    a virus scanner or OneDrive may hold it for a moment): its zips are unknown, so none may be deleted."""
     names: set[str] = set()
     for path in core.list_journals(folder):
         try:
             journal = read_profile_journal(path)
-        except OSError:
-            continue
+        except (OSError, ValueError, TypeError):
+            return None
         names.update(entry["zip"].name for entry in journal.entries)
     return names

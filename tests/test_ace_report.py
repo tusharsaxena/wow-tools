@@ -80,3 +80,25 @@ class ReportTest(unittest.TestCase):
     def test_plural(self):
         self.assertEqual(report.plural(1, "profile"), "1 profile")
         self.assertEqual(report.plural(2, "copy", "copies"), "2 copies")
+
+    def test_removed_character_follows_a_renamed_profile(self):
+        key = self.st("KickCDDB").key
+        self.staging.remove_leftovers({key: ["Gone - Realm1"]})
+        self.staging.rename(key, "Default", "Main")
+        rows = self.rows("KickCDDB")
+        self.assertNotIn("Default", rows)
+        self.assertEqual(rows["Main"].label, "Main · 2 characters · renamed from Default")
+        gone = next(c for c in rows["Main"].chars if c.char == "Gone - Realm1")
+        self.assertTrue(gone.removed)
+
+    def test_removed_character_of_a_missing_profile_is_not_put_under_a_deleted_one(self):
+        state = self.st("KickCDDB")
+        state.db.profile_keys["Gone - Realm1"] = "Lost"
+        state.keys["Gone - Realm1"] = "Lost"
+        self.staging.remove_leftovers({state.key: ["Gone - Realm1"]})
+        self.staging.delete({state.key: ["Backup"]}, "Default")
+        rows = self.rows("KickCDDB")
+        self.assertTrue(rows["Backup"].deleted)
+        self.assertEqual(rows["Backup"].chars, [])
+        self.assertIn("missing", rows["Lost"].tags)
+        self.assertEqual([c.char for c in rows["Lost"].chars], ["Gone - Realm1"])

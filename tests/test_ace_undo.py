@@ -5,8 +5,10 @@ import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 from tests.fixtures import build_ace_tree
+from wowtools.core.fsutil import atomic_write_bytes
 from wowtools.core.install import WowInstall
 from wowtools.core.journal import read_journal
 from wowtools.tools.ace_profiles import editor, multi, ops, scanner, undo
@@ -92,12 +94,76 @@ class RecoverTest(unittest.TestCase):
         editor.apply_flavor(flavor, staging.changed(), root=root, journal=None, dry_run=True, keep_snapshots=2)
         from wowtools.core.backup import BackupEntry, create_backup
         zip_path = create_backup([BackupEntry(elv.path)], flavor.path, root / "edited" / "edited-x.zip", {})
-        elv.path.write_bytes(b"half written")
-        marker = editor.Marker("_retail_", flavor.path, zip_path,
-                               {"WTF/Account/ACCT1/SavedVariables/ElvUI.lua": scanner.sha256_of(original)},
-                               "now", 1, "1.0.0")
+        elv.path.write_bytes(b"what the run wrote")
+        rel = "WTF/Account/ACCT1/SavedVariables/ElvUI.lua"
+        marker = editor.Marker("_retail_", flavor.path, zip_path, {rel: scanner.sha256_of(original)},
+                               "now", 1, "1.0.0", {rel: scanner.sha256_of(b"what the run wrote")})
         editor.write_marker(root, marker)
         result = undo.recover(marker, root=root)
         self.assertEqual(len(result.restored), 1)
         self.assertEqual(elv.path.read_bytes(), original)
         self.assertIsNone(editor.read_marker(root))
+
+    def test_recover_leaves_files_the_run_did_not_write(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name)
+        wow = build_ace_tree(base / "wow")
+        flavor = WowInstall(wow).flavor("_retail_")
+        root = base / "out"
+        staging = ops.Staging.from_scan(scanner.ScanResult([scanner.scan_flavor(flavor, account="ACCT1")]))
+        key = {k.sv_name: k for k in staging.states}
+        staging.delete({key["ElvDB"]: ["Healer"]}, "Default")
+        staging.remove_leftovers({key["KickCDDB"]: ["Gone - Realm1"]})
+        staging.copy(key["HandyNotesDB"], "Unused - Realm1", "Spare")
+        order = list(dict.fromkeys(s.file.path for s in staging.changed()))
+        self.assertEqual(len(order), 3)
+        first, victim, last = order
+        originals = {p: p.read_bytes() for p in order}
+
+        def write(path, data):
+            if path == first:
+                victim.write_bytes(victim.read_bytes() + b"-- WoW saved this\r\n")  # another program, mid-run
+                atomic_write_bytes(path, data)
+            else:
+                raise OSError("disk full")
+        journal = _journal(base)
+        self.addCleanup(journal.close)
+        with patch("wowtools.tools.ace_profiles.editor.restore_original", side_effect=OSError("no")), \
+                self.assertRaises(editor.ApplyError):
+            editor.apply_flavor(flavor, staging.changed(), root=root, journal=journal, dry_run=False,
+                                keep_snapshots=2, now=WHEN, write=write)
+        saved = victim.read_bytes()
+        marker = editor.read_marker(root)
+        self.assertIsNotNone(marker)
+        first.write_bytes(first.read_bytes())  # unchanged: still what the run wrote
+        result = undo.recover(marker, root=root)
+        self.assertEqual(first.read_bytes(), originals[first])
+        self.assertEqual(victim.read_bytes(), saved)  # the other program's save is kept
+        self.assertEqual(last.read_bytes(), originals[last])
+        self.assertEqual([o.rel.rsplit("/", 1)[-1] for o in result.restored], [first.name])
+        self.assertEqual([o.rel.rsplit("/", 1)[-1] for o in result.skipped], [victim.name])
+        self.assertIn("changed since", result.skipped[0].detail)
+
+    def test_recover_leaves_a_file_wow_saved_after_the_run_wrote_it(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name)
+        wow = build_ace_tree(base / "wow")
+        flavor = WowInstall(wow).flavor("_retail_")
+        sv = flavor.path / "WTF" / "Account" / "ACCT1" / "SavedVariables" / "ElvUI.lua"
+        original = sv.read_bytes()
+        from wowtools.core.backup import BackupEntry, create_backup
+        zip_path = create_backup([BackupEntry(sv)], flavor.path, base / "out" / "edited" / "edited-x.zip", {})
+        rel = "WTF/Account/ACCT1/SavedVariables/ElvUI.lua"
+        marker = editor.Marker("_retail_", flavor.path, zip_path, {rel: scanner.sha256_of(original)}, "now", 1,
+                               "1.0.0", {rel: scanner.sha256_of(b"what the run wrote")})
+        sv.write_bytes(b"what WoW saved after that")
+        result = undo.recover(marker, root=base / "out")
+        self.assertEqual(sv.read_bytes(), b"what WoW saved after that")
+        self.assertEqual(len(result.skipped), 1)
+
+
+def _journal(base):
+    from wowtools.tools.ace_profiles.journal import ProfileJournal
+    return ProfileJournal(base / "journal" / "journal-20261004-120000.jsonl", {"kind": "apply"})

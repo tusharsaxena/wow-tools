@@ -145,6 +145,32 @@ class EditorTest(unittest.TestCase):
         self.assertEqual(marker.flavor, "_retail_")
         self.assertTrue(marker.zip.exists())
 
+    def test_marker_write_failure_changes_nothing(self):
+        self.stage_two_files()
+        before = {p: p.read_bytes() for p in self.flavor.wtf_dir.rglob("*.lua")}
+        with patch("wowtools.tools.ace_profiles.editor.write_marker", side_effect=OSError("no space")), \
+                capture_events() as events, self.assertRaises(editor.ApplyError) as caught:
+            self.apply()
+        self.assertIn("Nothing was changed", str(caught.exception))
+        self.assertIn("ace.marker_failed", [e["event"] for e in events])
+        self.assertIsNotNone(caught.exception.result)
+        self.assertEqual({p: p.read_bytes() for p in self.flavor.wtf_dir.rglob("*.lua")}, before)
+
+    def test_marker_records_what_the_run_writes(self):
+        self.stage_two_files()
+        seen = []
+        real = editor.write_marker
+
+        def spy(root, marker):
+            seen.append(marker)
+            real(root, marker)
+        with patch("wowtools.tools.ace_profiles.editor.write_marker", spy):
+            self.apply()
+        elv = self.key("ElvDB").path
+        rel = "WTF/Account/ACCT1/SavedVariables/ElvUI.lua"
+        self.assertEqual(seen[0].after[rel], scanner.sha256_of(elv.read_bytes()))
+        self.assertEqual(set(seen[0].after), set(seen[0].files))
+
     def test_guard_refuses_a_path_outside_saved_variables(self):
         self.stage_two_files()
         state = self.staging.changed()[0]

@@ -23,6 +23,7 @@ EVENTS: dict[str, EventSpec] = {
     "ace.snapshot_failed": EventSpec("error", "The whole-WTF snapshot failed; nothing was changed."),
     "ace.files_backed_up": EventSpec("info", "The originals of the files to change were zipped and verified."),
     "ace.backup_failed": EventSpec("error", "The zip of the original files failed; nothing was changed."),
+    "ace.marker_failed": EventSpec("error", "The crash marker could not be written; nothing was changed."),
     "ace.file_edited": EventSpec("info", "A SavedVariables file was rewritten with the staged changes."),
     "ace.would_edit": EventSpec("info", "Dry run: a file that would be rewritten, with its changes (checked, not written)."),
     "ace.verify_failed": EventSpec("error", "An edited file did not re-read as expected; it was not written and the run stopped."),

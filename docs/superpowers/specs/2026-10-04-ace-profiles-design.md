@@ -189,7 +189,8 @@ flavor):
 3. Recheck each file: size, mtime and SHA-256 must match the scan; a changed file is skipped ("changed since the
    scan; rescan") with its edits.
 4. Open the journal; lock probe (rename to `.wowtools-lockcheck` and back) on every file to change.
-5. Write the crash marker (`edit-in-progress.json` in the tool root: flavor, files, per-file zip, pid, started).
+5. Write the crash marker (`edit-in-progress.json` in the tool root: flavor, files with the SHA-256 of the
+   original and of what the run writes, per-file zip, pid, started).
 6. Whole-`WTF` snapshot to `<root>/snapshots/snapshot-<flavor>-<stamp>.zip` (`core/snapshot.py`, verified).
 7. Per-file backup zip `<root>/edited/edited-<flavor>-<acct|all>-<stamp>.zip` of every file to change (original
    bytes, manifest with rel path, size, SHA-256), verified.
@@ -201,7 +202,8 @@ flavor):
 Dry run: steps 1–3 and compile + verify for every file, in memory. Nothing is written (no zip, no journal).
 
 Crash marker on next open: a recovery popup lists the files and offers **Put the originals back** (from the per-file
-zip, only files whose hash differs from the original) or **Leave as is**. Same flow as the WTF Cleaner's.
+zip, only files whose hash is still what the run wrote; a file at neither hash, skipped by the run or saved since by
+WoW, is left as it is) or **Leave as is**. Same flow as the WTF Cleaner's.
 
 ## 10. Undo (`undo.py`)
 

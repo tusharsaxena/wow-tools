@@ -8,9 +8,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.fixtures import build_ace_tree
+from wowtools.core.fsutil import atomic_write_bytes
 from wowtools.core.install import WowInstall
 from wowtools.core.journal import list_journals
-from wowtools.tools.ace_profiles import editor, multi, ops, scanner
+from wowtools.tools.ace_profiles import editor, multi, ops, report, scanner
 
 WHEN = datetime(2026, 10, 4, 12, 0, 0)
 
@@ -74,3 +75,44 @@ class MultiTest(unittest.TestCase):
         self.assertEqual(removed, [stray])
         self.assertTrue(all(o.file for o in result.edited))
         self.assertTrue(any(edited.iterdir()))
+
+    def test_prune_keeps_every_zip_when_a_journal_cannot_be_read(self):
+        self.run_plan()
+        edited = self.tmp / "out" / "edited"
+        zips = sorted(edited.iterdir())
+        self.assertTrue(zips)
+        with patch("wowtools.tools.ace_profiles.journal.read_profile_journal", side_effect=PermissionError("held")):
+            removed = multi.prune_edited_zips(self.tmp / "out", self.tmp / "journal")
+        self.assertEqual(removed, [])
+        self.assertEqual(sorted(edited.iterdir()), zips)
+
+    def test_failing_flavor_keeps_its_result_for_the_report(self):
+        real = editor.apply_flavor
+        calls = []
+
+        def flaky(path, data):
+            calls.append(path)
+            if len(calls) == 2:
+                raise OSError("disk full")
+            atomic_write_bytes(path, data)
+
+        def with_flaky_write(*args, **kwargs):
+            return real(*args, write=flaky, **kwargs)
+        with patch("wowtools.tools.ace_profiles.multi.apply_flavor", with_flaky_write):
+            result = self.run_plan()
+        self.assertEqual([r.status for r in result.runs], ["stopped", "not_started"])
+        stopped = result.stopped.result
+        self.assertIsNotNone(stopped)
+        self.assertIsNotNone(stopped.snapshot)
+        self.assertIsNotNone(stopped.backup_zip)
+        self.assertEqual(len(result.rolled_back), 1)  # the file written before the failure
+        self.assertEqual(len(result.failed), 1)  # the file whose write failed
+        self.assertIn("disk full", result.failed[0].detail)
+        self.assertEqual(result.edited, [])
+        summary = dict(report.apply_summary_rows(result))
+        self.assertEqual(summary["Put back after a failure"], "1 file")
+        self.assertEqual(summary["Failed"], "1 file")
+        self.assertIn("WTF backup (Retail)", summary)
+        self.assertIn("Original files (Retail)", summary)
+        details = report.apply_detail_rows(result)
+        self.assertTrue(any(row[4].startswith("put back") for row in details))

@@ -41,13 +41,15 @@ ApplyProgress = Callable[[str, int, int, str], None]
 
 class ApplyError(Exception):
     """Apply was refused or stopped. rolled_back: files put back after a failure; files_left: files that could
-    not be put back (the marker is kept; the originals are in the edited-*.zip it names)."""
+    not be put back (the marker is kept; the originals are in the edited-*.zip it names); result: what the run
+    did before it stopped (outcomes, snapshot, originals zip), set by apply_flavor."""
 
     def __init__(self, message: str, *, rolled_back: list[str] | None = None,
                  files_left: list[str] | None = None) -> None:
         super().__init__(message)
         self.rolled_back = list(rolled_back or [])
         self.files_left = list(files_left or [])
+        self.result: ApplyResult | None = None
 
 
 @dataclass
@@ -100,6 +102,7 @@ class Marker:
     started: str
     pid: int
     suite_version: str
+    after: dict[str, str] = field(default_factory=dict)  # rel -> SHA-256 of what the run writes
 
 
 def write_marker(root: Path, marker: Marker) -> None:
@@ -115,12 +118,12 @@ def read_marker(root: Path | None) -> Marker | None:
         return None
     try:
         data = json.loads((root / MARKER_NAME).read_text(encoding="utf-8"))
-        files = data["files"]
-        if not isinstance(files, dict) or not all(isinstance(k, str) and isinstance(v, str)
-                                                  for k, v in files.items()):
+        files, after = data["files"], data.get("after", {})
+        if not all(isinstance(d, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in d.items())
+                   for d in (files, after)):
             return None
         return Marker(str(data["flavor"]), Path(data["flavor_path"]), Path(data["zip"]), dict(files),
-                      str(data["started"]), int(data["pid"]), str(data["suite_version"]))
+                      str(data["started"]), int(data["pid"]), str(data["suite_version"]), dict(after))
     except Exception:  # noqa: BLE001 - an unreadable marker is no usable marker
         return None
 
@@ -194,9 +197,20 @@ def apply_flavor(flavor: Flavor, states: list[DbState], *, root: Path, journal: 
                  dry_run: bool, keep_snapshots: int, account: str | None = None, now: datetime | None = None,
                  progress: ApplyProgress | None = None,
                  write: Callable[[Path, bytes], None] = atomic_write_bytes) -> ApplyResult:
-    report = safe_progress(progress)
-    now = now or datetime.now()
+    """Raises ApplyError when refused or stopped; its result holds what was done until then."""
     result = ApplyResult(flavor, dry_run)
+    try:
+        return _apply(result, states, root=root, journal=journal, keep_snapshots=keep_snapshots, account=account,
+                      now=now or datetime.now(), report=safe_progress(progress), write=write)
+    except ApplyError as exc:
+        exc.result = result
+        raise
+
+
+def _apply(result: ApplyResult, states: list[DbState], *, root: Path, journal: ProfileJournal | None,
+           keep_snapshots: int, account: str | None, now: datetime, report: ApplyProgress,
+           write: Callable[[Path, bytes], None]) -> ApplyResult:
+    flavor, dry_run = result.flavor, result.dry_run
     log_event("ace.apply_started", flavor=flavor.folder, dry_run=dry_run, databases=len(states))
     ready = _prepare(flavor, states, result, report)
     if dry_run:
@@ -235,11 +249,18 @@ def apply_flavor(flavor: Flavor, states: list[DbState], *, root: Path, journal: 
         log_event("ace.backup_failed", flavor=flavor.folder, error=str(exc))
         raise ApplyError(f"Saving the original files failed ({exc}). Nothing was changed.") from exc
     log_event("ace.files_backed_up", flavor=flavor.folder, path=str(result.backup_zip), files=len(ready))
-    write_marker(root, Marker(flavor.folder, flavor.path, result.backup_zip,
-                              {file.rel: file.sha256 for file, _, _ in ready}, now_iso(), os.getpid(), __version__))
+    try:
+        write_marker(root, Marker(flavor.folder, flavor.path, result.backup_zip,
+                                  {file.rel: file.sha256 for file, _, _ in ready}, now_iso(), os.getpid(),
+                                  __version__, {file.rel: sha256_of(edit.data) for file, edit, _ in ready}))
+    except OSError as exc:
+        log_event("ace.marker_failed", flavor=flavor.folder, error=str(exc))
+        raise ApplyError(f"The crash marker could not be written ({exc}). Nothing was changed.") from exc
     written: list[tuple[SvFile, bytes]] = []
+    current_file: SvFile | None = None
     try:
         for index, (file, edit, data) in enumerate(ready, 1):
+            current_file = file
             current = file.path.read_bytes()
             if sha256_of(current) != file.sha256:
                 result.outcomes.append(FileOutcome(file, "skipped", CHANGED))
@@ -255,8 +276,9 @@ def apply_flavor(flavor: Flavor, states: list[DbState], *, root: Path, journal: 
             result.outcomes.append(FileOutcome(file, "edited", changes=edit.changes))
             log_event("ace.file_edited", flavor=flavor.folder, path=file.rel, changes=edit.changes[:50])
             report("edit", index, len(ready), file.rel)
+            current_file = None
     except BaseException as exc:  # noqa: BLE001 - roll back on anything (even Ctrl+C), then re-raise
-        _roll_back(exc, written, result, journal, root, flavor, write)
+        _roll_back(exc, written, current_file, result, journal, root, flavor)
     clear_marker(root)
     result.pruned = prune_snapshots(root / SNAPSHOT_SUBDIR, SNAPSHOT_PREFIX, flavor.short_name, keep_snapshots)
     if result.pruned:
@@ -269,9 +291,10 @@ def restore_original(path: Path, data: bytes) -> None:
     atomic_write_bytes(path, data)
 
 
-def _roll_back(exc: BaseException, written: list[tuple[SvFile, bytes]], result: ApplyResult,
-               journal: ProfileJournal, root: Path, flavor: Flavor, write: Callable[[Path, bytes], None]) -> None:
-    """Put back every file this run wrote, newest first, then raise ApplyError (or re-raise a non-Exception)."""
+def _roll_back(exc: BaseException, written: list[tuple[SvFile, bytes]], failing: SvFile | None,
+               result: ApplyResult, journal: ProfileJournal, root: Path, flavor: Flavor) -> None:
+    """Put back every file this run wrote, newest first, then raise ApplyError (or re-raise a non-Exception).
+    failing is the file being written when it failed; its outcome is added here."""
     put_back, left = [], []
     for file, original in reversed(written):
         try:
@@ -285,10 +308,20 @@ def _roll_back(exc: BaseException, written: list[tuple[SvFile, bytes]], result: 
             journal.add_rolled_back(flavor=flavor.folder, rels=put_back)
         except OSError:
             pass
-    done = set(put_back)
+    done, not_back = set(put_back), set(left)
+    left_detail = f"could not be put back after the failure; its original is in {result.backup_zip}"
     for outcome in result.outcomes:
         if outcome.status == "edited" and outcome.file.rel in done:
             outcome.status = "rolled_back"
+        elif outcome.status == "edited" and outcome.file.rel in not_back:
+            outcome.status, outcome.detail = "failed", left_detail
+    if failing is not None and not any(o.file is failing for o in result.outcomes):
+        if failing.rel in done:
+            result.outcomes.append(FileOutcome(failing, "rolled_back", f"writing it failed ({exc})"))
+        elif failing.rel in not_back:
+            result.outcomes.append(FileOutcome(failing, "failed", left_detail))
+        else:
+            result.outcomes.append(FileOutcome(failing, "failed", f"not written ({exc})"))
     log_event("ace.rolled_back", flavor=flavor.folder, files=put_back, left=left, error=str(exc))
     if not left:
         clear_marker(root)

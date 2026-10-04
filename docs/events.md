@@ -173,6 +173,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ace.journal_failed` | error | The run journal could not be written; nothing was changed. |
 | `ace.journal_pruned` | info | Older journals (and the zips only they used) were deleted to keep the newest N (keep_journals). |
 | `ace.lookalike` | debug | A table looks like an AceDB database but is not one; it is left alone. |
+| `ace.marker_failed` | error | The crash marker could not be written; nothing was changed. |
 | `ace.parse_failed` | warning | A SavedVariables file is not readable Lua; it is shown as a warning and never changed. |
 | `ace.probe_recovered` | warning | A SavedVariables file left as <name>.wowtools-lockcheck by an interrupted lock check was renamed back. |
 | `ace.recovery_done` | info | The user chose what to do about an unfinished Apply (put back or leave). |

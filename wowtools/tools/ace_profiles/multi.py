@@ -77,10 +77,14 @@ class MultiApplyResult:
 
 
 def prune_edited_zips(root: Path, journal_dir: Path | None, keep_names: set[str] = frozenset()) -> list[Path]:
-    """Delete edited-*.zip files no journal names any more (and not the crash marker's)."""
+    """Delete edited-*.zip files no journal names any more (and not the crash marker's). Deletes nothing when a
+    journal could not be read."""
     folder = root / EDITED_SUBDIR
+    referenced = referenced_zips(journal_dir)
+    if referenced is None:
+        return []
     marker = read_marker(root)
-    keep = set(keep_names) | referenced_zips(journal_dir) | ({marker.zip.name} if marker else set())
+    keep = set(keep_names) | referenced | ({marker.zip.name} if marker else set())
     removed = []
     try:
         candidates = sorted(p for p in folder.iterdir() if EDITED_NAME.match(p.name) and p.is_file())
@@ -121,6 +125,7 @@ def apply_flavors(plan: list[tuple[Flavor, list[DbState]]], *, root: Path, journ
                                           keep_snapshots=keep_snapshots, account=account, now=now, progress=report)
             except ApplyError as exc:
                 run.error = str(exc)
+                run.result = exc.result
                 later = [r.flavor.folder for r in result.runs if r.status == "not_started" and r is not run]
                 if later:
                     log_event("ace.flavors_stopped", flavor=flavor.folder, not_started=later)
