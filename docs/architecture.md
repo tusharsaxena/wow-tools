@@ -266,7 +266,7 @@ again (the WTF Cleaner's rule).
     restore(plan, root, journal_dir, keep_journals, progress=None) → RestoreResult(flavor, backup, parts[PartOutcome], safety_zip, journal_path)
     undo_restore(journal_path, wow_root, root, progress=None) → RestoreResult(undo=True)
 
-Modules in `tools/interface_backup/` (all UI-free except `app.py`, `summary_screen.py` and `restore_screen.py`):
+Modules in `tools/interface_backup/` (all UI-free except `app.py`, `review_screen.py` and `restore_screen.py`):
 `settings` (`BackupSettings`, `resolve_backup_root` = `<backup_dir or WoW/wow-tools>/interface-backup`,
 `resolve_journal_dir` = `<WoW>/wow-tools/interface-backup/journal`, `validate_backup_dir`), `catalog` (names
 `backup-<flavor>-<stamp>[-N].zip` and `pre-restore-<flavor>-<stamp>[-N].zip`, `list_backups` newest first,
@@ -279,7 +279,7 @@ short name.
 never zipped); a part that is itself a link is `linked` and is neither backed up nor restored. An unreadable
 sub-folder is a `PartScan.errors` line (at most 20 logged per part as `ibackup.scan_warning`). `leftovers` are
 `<part>.restoring` / `<part>.replaced` beside the parts. `CHEAP_STATS` is `os.name == "nt"`: `DirEntry.stat()` is
-free on Windows but a round trip per file over WSL drvfs, so elsewhere the summary scan leaves sizes `None` (counts
+free on Windows but a round trip per file over WSL drvfs, so elsewhere the review's scan leaves sizes `None` (counts
 only, no space alert on the backup confirm). The restore screen always scans with stats (it needs mtimes for
 `newer`).
 
@@ -291,7 +291,7 @@ entries plus `manifest.json` (`version`, `kind` backup | pre-restore, `flavor`, 
 lstat first), and each ancestor folder is lstat-checked once: a file gone, turned into a link or no longer regular
 since the scan is left out and listed in `missing`; a part that vanished or lost every file is not claimed in the
 manifest. Entry dates are clamped to the DOS range. `back_up` skips a flavor with no real part (`skip_reason`:
-no folder, or links; the summary passes every flavor shown, so it comes back as a Skipped row), then prunes the
+no folder, or links; the review has no tick for such a flavor and passes only ticked flavors with data, so from the UI no Skipped row comes back), then prunes the
 flavor's `backup-*` zips to `keep_backups` after a success only (`protect=` the new zip; 0 keeps all; never safety
 zips, other flavors or foreign files). `back_up_all` runs flavors in turn; one failing never stops the next.
 Stages `backup`, `verify`, `prune`.
@@ -351,41 +351,59 @@ unless every part was left as it was (then Undo can be tried again).
 ### Interface Backup screens
 
 `app.py` holds `InterfaceBackupFlow` (`FLOW`: `require_install` → `BackupSettingsScreen` on the tool's first open
-→ `FlavorScreen(include_all=True, last=last_flavor_choice)`, whose notes ("N backups, last …" / "no backups yet")
-a worker fills from `list_backups` → `BackupSummaryScreen`) and `BackupSettingsScreen` (backup folder with a live
-"Zips go to:" line, backups to keep, journals to keep; `validate_backup_dir` errors inline). `s` opens the shared
-WoW-folder settings, then this tool's. If the WoW folder changes, the summary (or the picker's choice) goes back
-to the flavor picker. `summary_screen.py` holds:
+→ `FlavorScreen(include_all=True, last=last_flavor_choice)`, whose notes (`report.picker_note`: "N backups, last
+…" / "no backups yet") a worker fills from `list_backups` → `BackupReviewScreen`) and `BackupSettingsScreen`
+(backup folder with a live "Zips go to:" line, backups to keep, journals to keep; `validate_backup_dir` errors
+inline). `s` opens the shared WoW-folder settings, then this tool's. If the WoW folder changes, the review (or the
+picker's choice) goes back to the flavor picker. The screens follow the Screenshot Organizer's shape (left pane,
+tree, bottom `#summary` line, popups for confirm and progress) and its shared CSS. `review_screen.py` holds:
 
-- `BackupSummaryScreen(cfg, tool_cfg, flavors, scope_label, *, wow_check, disk_usage, wow_root)`: a worker scans
-  (`scan_flavors`, `list_backups`, `latest_undoable`), then a row per flavor (`report.SUMMARY_COLUMNS`), the
-  notices (leftovers, scan warnings, links) and where backups and journals go, in a `VerticalScroll` (PgUp/PgDn).
-  Buttons **Back up (b)**, **Restore (e)**, **Undo (z)** (amber; disabled when nothing is undoable) and **Rescan
-  (r)**; `f`/Esc, `t`, `q` leave. Back up, restore and undo each run the running-WoW check (and, for a backup,
-  the backup drive's free space, also for a restore's safety backup) in a worker, then a `ConfirmScreen` (Back up starts on Yes, Restore and Undo on
-  No); the job runs in a worker with `app.busy` set, inside `activity.running()`, its per-file progress reaching
-  the progress screen through `ThrottledProgress` (on a stage change, at a stage's end, or every
-  `PROGRESS_INTERVAL` = 0.1 s: each `call_from_thread` blocks the worker, and an `Interface` folder can hold tens of
-  thousands of files). A `RestoreError` is a "Nothing
-  was changed" notice, a `RestoreStopped` a notice plus its result screen; then a rescan;
+- `BackupReviewScreen(cfg, tool_cfg, flavors, scope_label, *, wow_check, disk_usage, wow_root)`: `TwoPaneFocus`,
+  `two_pane_css`. Left pane `#filters`: "Backup folder", "Keep" ("newest N per flavor" / "all backups"), the
+  action row **Back up** (apply), **Restore** (neutral: it opens the restore screen), **Rescan**, **Undo last
+  restore** (revert; disabled when nothing is undoable), and the NavHint. Right: `BackupTree` (`#flavors`), filled
+  after a worker scans (`scan_flavors`, `list_backups`, `latest_undoable`): the root (scope label, files and size
+  ticked) → a node per flavor (tick, `report.flavor_text`) → read-only children: `Interface` and `WTF`
+  (`part_text`), `Links (n)`, a leftover notice, `Scan warnings (n)` and `Backups (n)` (`backups_title`; safety
+  zips counted apart). Links, warnings and Backups load their children on expand; a Backups node lists the
+  flavor's zips newest first (`backup_text`: kind and time first, then day, parts, size), their parts read per
+  zip by a worker (`read_parts`; `PARTS_PENDING` until read). Ticks are on flavors with something to back up only
+  (and the root): `READ_ONLY` nodes keep their label on `relabel_branch`; ticks survive a rescan. `#summary` is
+  `selection_text` plus the highlighted backup in full (`backup_detail`) or how to pick one, then "Restore blocked
+  for …" and scan-warning counts. Keys Space, `a`, `n`, `b`, `e` (or Enter on a backup node: restores the
+  highlighted backup; with none highlighted a notice says how), `r`, `z`; `f`/Esc, `t`, `q` leave. Back up,
+  restore and undo each run the running-WoW check (and the backup drive's free space, for a backup and for a
+  restore's safety backup; the undo also reads its journal there) in a worker, with "Checking for running
+  programs…" on `#summary`, then a `ConfirmScreen` (Back up starts on Yes, Restore and Undo on No); the job runs
+  in a worker with `app.busy` set, inside `activity.running()`, its per-file progress reaching the progress
+  screen through `ThrottledProgress` (on a stage change, at a stage's end, or every `PROGRESS_INTERVAL` = 0.1 s:
+  each `call_from_thread` blocks the worker, and an `Interface` folder can hold tens of thousands of files). A
+  `RestoreError` is a "Nothing was changed" notice, a `RestoreStopped` a notice plus its result screen; then a
+  rescan;
 - `BackupProgressScreen`, a `ProgressScreen` (ids `ibackup-*`) for a backup, restore or undo;
-- `BackupResultScreen`: a row per flavor (`report.BACKUP_RESULT_COLUMNS`); `r`, `e` (rescan, then Restore), `f`,
-  `t`, `q`.
+- `BackupResultScreen`: `result_css`; `#result-summary` (Item/Value, `report.backup_summary_rows`) above
+  `#result-table` (a row per flavor, `report.BACKUP_RESULT_COLUMNS`); `r`, `e` (rescan, then open every flavor's
+  Backups and put the cursor on the newest non-safety zip, the one just made), `f`, `t`, `q`.
 
 `restore_screen.py` holds:
 
-- `BackupListScreen(root, flavors)`: the chosen flavors' backups and safety zips, newest first
-  (`report.LIST_COLUMNS`: Date, Flavor, Kind, Parts, Size); a worker lists the folder, a second one reads each
-  zip's parts (`read_parts`) into the Parts column;
-- `RestoreScreen(info, flavor, *, disk_usage)`: the backup's details, an `Interface` and a `WTF` box (disabled for
-  a part the backup lacks or that is a link; both off when a leftover or another flavor's backup blocks it), and
-  `report.restore_warnings`. `open_backup` + `scan_flavor` run in one worker, `plan_restore` in another on every
-  box change (a generation counter drops stale plans); **Restore (o)** is enabled only once the current plan is
-  in. The confirm shows `report.restore_confirm_alerts` (one counted line per kind);
-- `RestoreResultScreen(result)`: a row per part (`report.RESTORE_RESULT_COLUMNS`), the zip, safety zip and journal;
-  **Undo (z)** only for a restore whose journal recorded a swapped part (`RestoreResult.swapped`: a part
-  `restored` or `replaced_left`; a swap the journal could not record does not count; it rescans, then undoes if that journal is still the
-  undoable one); `r`, `f`, `t`, `q`.
+- `RestoreScreen(info, flavor, *, disk_usage)`: `TwoPaneFocus`, `two_pane_css(width=46)` (two buttons only, and
+  the tree's root and effect titles must fit at 80 columns). Left: "Backup" (flavor, kind and date; size, parts
+  and files once read; "made …" when the manifest's date differs), "Restore" with an `Interface` and a `WTF`
+  `Ka0sCheckbox` (`#part-Interface`, `#part-WTF`; disabled for a part the backup lacks or that is a link; both off
+  when a leftover, another flavor's backup or an unreadable zip blocks it), **Restore** (apply, `o`) and **Back**
+  (`b`/Esc). Right: `RestoreTree` (`#effects`) rooted at "<flavor> · <date>": "Will be removed (N files)" and
+  "Newer now than in the backup (N files)" (open, one node per folder group from `report.group_items`, files on
+  expand), "Links kept", "Links replaced", "Could not be read" (lines on expand), a low-space leaf, or "Nothing on
+  disk would be lost"; while loading, with no box ticked or when blocked, one line saying so. `open_backup` +
+  `scan_flavor` run in one worker, `plan_restore` in another on every box change (a generation counter drops
+  stale plans); **Restore** is enabled only once the current plan is in. `#summary` is `report.restore_summary`.
+  The confirm shows `report.restore_confirm_alerts` (one counted line per kind);
+- `RestoreResultScreen(result)`: `result_css`; `#result-summary` (`report.restore_summary_rows`: flavor, finished
+  or not, zip, safety zip and journal names, the zips' folder) above `#result-table` (a row per part,
+  `report.RESTORE_RESULT_COLUMNS`); **Undo (z)** only for a restore whose journal recorded a swapped part
+  (`RestoreResult.swapped`: a part `restored` or `replaced_left`; a swap the journal could not record does not
+  count; it rescans, then undoes if that journal is still the undoable one); `r`, `f`, `t`, `q`.
 
 ## UI
 
@@ -393,7 +411,7 @@ to the flavor picker. `summary_screen.py` holds:
 the `after_mount()` hook. Every screen shows a `Header`, the `BrandBar` and a `Footer`. Long-running or blocking work
 runs in thread workers and reports back with `call_from_thread`: scan, clean, organize, backup, restore, undo, and also the
 running-programs check before a clean, backup, restore or undo confirm (PowerShell/`tasklist`; the
-review or summary screen shows "Checking for running programs…" and ignores its action keys meanwhile), install detection on the setup screen, the organizer's
+review screen shows "Checking for running programs…" and ignores its action keys meanwhile), install detection on the setup screen, the organizer's
 per-flavor waiting counts (`FlavorScreen.set_notes()`), and an accepted in-app update (`UpdateProgressScreen`,
 with `app.busy` set). While a clean, organize, backup, restore or undo runs, `app.busy` is set: every key that would leave the screen is refused, and so is Ctrl+Q
 (`Ka0sApp.action_quit`, logged as `ui.quit_refused`).
@@ -410,15 +428,15 @@ Shared screens and widgets in `wowtools/ui/`:
 | `setup_screen` | General setup: the WoW folder only |
 | `flavor_screen` | `FlavorScreen(cfg, install, *, include_all=False, last=None, flavors=None)`: the flavor picker. `include_all` adds "All flavors" first (dismisses with `ALL_FLAVORS`); `last` is the folder to pre-select (`""` = All flavors, `None` = `[general] last_flavor`); `flavors` replaces `install.flavors()`; `note`/`all_note` fill the remarks column and `set_notes()` replaces them later. Picking one flavor saves `[general] last_flavor`. |
 | `account_screen` | `AccountScreen(cfg, flavor, last)`: "All accounts" plus each account. Dismisses with the name, `""` for all, or `None` for back. The WTF Cleaner shows it only when a flavor has more than one account and saves the choice as `[wtf_cleaner] last_account`. |
-| `dialogs` | What every tool's screens share, so no tool imports another tool's screens: `ConfirmScreen(title, body, alerts=(), *, default_yes=False)` (yes/no; `alerts` in red; risky actions start on No), `ProgressScreen` (stage, bar and current file of a run; a tool subclasses it with `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, and calls `update_progress(stage, current, total, detail)`, plus `set_flavor(label)` across several flavors), `tick_mark(items, unchecked, key, success=)` (✔ / ◩ / ✘ for a review-tree line), `relabel_branch(tree, node, label, skip=)` (after a tick), the `TwoPaneFocus` mixin (←/→ between the left `#filters` panel and the tree), `theme_colour(app, name)` (the theme's colour, or the Ka0s one before a theme is set), and the one look every tool's screens are built from: `two_pane_css(screen, tree, width=FILTERS_WIDTH)` (review: left pane, one-row actions, scan box, summary), `result_css(screen)`, `settings_css(screen)`, and the hint starts `REVIEW_HINT` / `review_hint(space)` and `RESULT_HINT` |
-| `widgets` | `action_button(label, action)` and `ACTION_VARIANTS` (one colour per kind of action in every tool: delete red, apply green, simulate blue, revert amber, confirm blue, neutral grey), `LIST_NAME_STYLE` / `LIST_CURSOR_BACKGROUND` (pick lists), `Ka0sCheckbox` (✔/✘ marks), `ButtonRow` (←/→ move focus between its buttons, Space presses the focused one), `NAV_BINDINGS` (↑/↓ move focus; not priority bindings, so a focused tree, list, table or input keeps its arrow keys), and `NavHint` (the one-line key hint every screen shows), `FormScroll` (a scrolling form where ↑/↓ still move focus) |
+| `dialogs` | What every tool's screens share, so no tool imports another tool's screens: `ConfirmScreen(title, body, alerts=(), *, default_yes=False)` (yes/no; `alerts` in red; risky actions start on No), `ProgressScreen` (stage, bar and current file of a run; a tool subclasses it with `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, and calls `update_progress(stage, current, total, detail)`, plus `set_flavor(label)` across several flavors), `tick_mark(items, unchecked, key, success=)` (✔ / ◩ / ✘ for a review-tree line), `relabel_branch(tree, node, label, skip=)` (after a tick), the `TwoPaneFocus` mixin (←/→ between the left `#filters` panel and the tree), `theme_colour(app, name)` (the theme's colour, or the Ka0s one before a theme is set), and the one look every tool's screens are built from: `two_pane_css(screen, tree, width=FILTERS_WIDTH)` (review: left pane `#filters`, `FILTERS_WIDTH` = 50, one-row actions, scan box, summary), `ACCENT` (names in a tree) and `BUSY_STYLE` (a summary line while work runs), `result_css(screen)`, `settings_css(screen)`, and the hint starts `REVIEW_HINT` / `review_hint(space)` and `RESULT_HINT` |
+| `widgets` | `action_button(label, action)` and `ACTION_VARIANTS` (one colour per kind of action in every tool: delete red, apply green, simulate blue, revert amber, confirm blue, neutral grey), `LIST_NAME_STYLE` / `LIST_CURSOR_BACKGROUND` (pick lists), `Ka0sCheckbox` (✔/✘ marks), `ButtonRow` (←/→ move focus between its buttons, Space presses the focused one), `NAV_BINDINGS` (↑/↓ move focus; not priority bindings, so a focused tree, list, table or input keeps its arrow keys), and `NavHint` (the one-line key hint every screen shows), `FormScroll` (a scrolling form where ↑/↓ still move focus; `open_at_top()` after the first focus) |
 
 The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfCleanerFlow` (`FLOW`) and
 `CleanerSettingsScreen` (criteria, max age, backup on/off, backup folder, WTF backups and journals to keep). The flow shows `FlavorScreen` with
 `include_all=True` and `last=last_flavor_choice`; All flavors skips the account screen. `review_screen.py` holds:
 
 - `ReviewScreen(cfg, tool_cfg, flavors, *, account, wow_check, locker_check)`: tree, criteria, the Clean /
-  Dry run / Rescan buttons and **Undo last clean** (amber, key `z`, on its own row; disabled when nothing is
+  Dry run / Rescan buttons and **Undo last clean** (amber, key `z`, last in the same row; disabled when nothing is
   undoable, while scanning and while busy; its confirm starts on No and names the clean's time, flavors and file
   count). `flavors` is one `Flavor` (root = the flavor, accounts below) or a list (root = All
   flavors, a node per flavor, a "not scanned" leaf for a flavor whose scan failed). `wow_check` covers every

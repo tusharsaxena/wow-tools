@@ -40,7 +40,9 @@ clean, the last sort or the last restore.
 
 ![Screenshot Organizer review screen](docs/assets/screenshot-05-screenshot-organizer-main.png)
 
-More pictures of every screen are in each tool's guide.
+Every tool looks and works the same way: a panel on the left with its settings and buttons, a tree on the right
+with what it found (tick what you want), and a bar at the bottom that totals your choice. Before it changes
+anything, a window asks you to confirm. More pictures of every screen are in each tool's guide.
 
 ## What you need
 
