@@ -203,11 +203,13 @@ Dry run: steps 1–3 and compile + verify for every file, in memory. Nothing is 
 
 Crash marker on next open: a recovery popup lists the files and offers **Put the originals back** (from the per-file
 zip, only files whose hash is still what the run wrote; a file at neither hash, skipped by the run or saved since by
-WoW, is left as it is) or **Leave as is**. Same flow as the WTF Cleaner's.
+WoW, is left as it is) or **Leave as is**. Same flow as the WTF Cleaner's. Putting the originals back is guarded as
+Undo is: refused while the marker's flavor's WoW runs, lock probe, WTF snapshot first.
 
 ## 10. Undo (`undo.py`)
 
-Latest undoable journal (`core/journal.latest_undoable`). Refused while that flavor's WoW runs; lock probe; snapshot
+Latest undoable journal (`core/journal.latest_undoable`). Refused while that flavor's WoW runs (the flavors the
+journal changed, which need not be the ones reviewed; the confirm names them); lock probe; snapshot
 first. For each `edited` entry, newest first: current SHA-256 equals `sha_after` → write the original bytes from the
 per-file zip atomically and check `sha_before` → "restored"; otherwise "skipped: changed since". The journal is
 marked undone unless nothing was restored and something failed (WTF Cleaner rule).
@@ -268,9 +270,13 @@ highlighted profile, `k` copy highlighted profile, `o` remove ticked leftover ch
 (Keep only Default, Everyone → Default, Tick all leftover characters, Discard staged changes), `x` discard staged,
 `b` blacklist/unblacklist highlighted addon, `u` unlock highlighted blacklisted addon for this session, `v` switch
 view, `/` search, `w` Apply, `y` Dry run, `r` Rescan, `z` Undo, `f`/Esc flavors, `t` tools, `q` quit, ←/→ panes.
+The `m` menu also lists every key the footer has no room for (`e`, `k`, `o`, `b`, `u`, `v`, `/`, `x`). Leaving
+(`f`/Esc/`t`/`q`) with changes staged asks first; Esc in the search box returns to the tree. Blacklisting (or
+locking again) an addon drops the changes staged on it.
 
 **Popups** (`ModalScreen`s in `popups.py`, styled like `ConfirmScreen`): delete (lists profiles and affected
-characters, target selector preselected "Default"), assign (target selector listing the union of profile names of the
+characters, target selector preselected "Default" unless it is being deleted, then the first profile left; with
+none left only a new name is asked for), assign (target selector listing the union of profile names of the
 ticked databases plus a "New name" input, missing-target note), rename and copy (name input, validation message),
 quick actions (a list). Apply and Undo use `ConfirmScreen` (alerts in red: WoW running, LibDualSpec overrides,
 targets that will be created at login, Default being deleted) and a `ProgressScreen` subclass (stages: check,
@@ -279,7 +285,8 @@ snapshot, back up, edit, verify).
 **Result screen** (`result_css`): Item/Value summary (files changed, skipped, failed, profiles deleted/renamed/
 copied, characters reassigned/removed, snapshot, per-file backup, journal) above one `.result-detail` table (flavor,
 account, addon, change, result). Buttons Rescan (r) … Other flavor (f), Tools (t), Quit (q). The same screen shows
-dry-run and undo results.
+dry-run and undo results. A dry run's result adds **Back to review (Esc)**, focused: back with the staged changes
+kept.
 
 ## 14. Testing
 

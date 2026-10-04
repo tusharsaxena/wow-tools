@@ -133,6 +133,23 @@ class OpsTest(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("blacklisted", result.refused[0][1])
 
+    def test_addon_locked_after_staging_is_never_written(self):
+        locked: set[str] = set()
+        staging = ops.Staging.from_scan(self.scan, locked=lambda addon: addon in locked)
+        elv = next(k for k in staging.states if k.sv_name == "ElvDB")
+        kick = next(k for k in staging.states if k.sv_name == "KickCDDB")
+        staging.delete({elv: ["Healer"]}, "Default")
+        staging.delete({kick: ["Backup"]}, "Default")
+        self.assertEqual(staging.summary().files, 2)
+        locked.add("ElvUI")  # blacklisted after the change was staged
+        self.assertEqual([s.file.addon for s in staging.changed()], ["KickCD"])
+        self.assertEqual((staging.summary().files, staging.summary().deleted), (1, 1))
+        self.assertEqual(staging.drop_locked(), ["ElvUI"])
+        self.assertFalse(staging.state(elv).changed)
+        self.assertTrue(staging.state(kick).changed)
+        locked.clear()
+        self.assertEqual(staging.summary().files, 1)  # dropped, not just hidden
+
     def test_summary_and_discard(self):
         self.staging.delete({self.key("ElvDB"): ["Healer"]}, "Default")
         self.staging.remove_leftovers({self.key("KickCDDB"): ["Gone - Realm1"]})

@@ -19,33 +19,49 @@ from wowtools.tools.ace_profiles.ops import valid_name
 from wowtools.ui.dialogs import ALERT_STYLE
 from wowtools.ui.widgets import ButtonRow, NavHint, action_button
 
+# The quick actions, and every review key the footer has no room for (each label names its key).
 ACTIONS = (
     ("keep_default", "Keep only Default (ticked or highlighted addons)"),
     ("everyone_default", "Everyone → Default (ticked or highlighted addons)"),
     ("tick_leftovers", "Tick all leftover characters"),
-    ("discard", "Discard staged changes"),
+    ("rename", "Rename the highlighted profile (e)"),
+    ("copy", "Copy the highlighted profile (k)"),
+    ("remove_leftovers", "Remove leftover characters (o)"),
+    ("blacklist", "Blacklist or un-blacklist the highlighted addon (b)"),
+    ("unlock", "Unlock a blacklisted addon for this session, or lock it again (u)"),
+    ("switch_view", "Switch view: by addon / by character (v)"),
+    ("search", "Search (/)"),
+    ("discard", "Discard staged changes (x)"),
 )
 
 
 def popup_css(screen: str) -> str:
-    """ConfirmScreen's look: a centred box with an accent border, a bold title and right-aligned buttons."""
+    """ConfirmScreen's look: a centred box with an accent border, a bold title and right-aligned buttons. It fits
+    80x24 (tests/test_ace_app.py): the list and the name field are compact, the error line takes no room until
+    there is an error, and a long body scrolls inside its share of the height."""
     return f"""
     {screen} {{ align: center middle; }}
-    {screen} .popup-box {{ width: 80; height: auto; max-height: 90%; border: thick $accent; background: $panel;
-                          padding: 1 2; }}
+    {screen} .popup-box {{ width: 80; max-width: 100%; height: auto; max-height: 100%; overflow-y: auto;
+                          border: thick $accent; background: $panel; padding: 1 2; }}
     {screen} .title {{ color: $accent; text-style: bold; margin-bottom: 1; }}
-    {screen} .popup-body {{ height: auto; max-height: 16; overflow-y: auto; }}
+    {screen} .popup-body {{ height: auto; max-height: 35vh; overflow-y: auto; }}
     {screen} Select, {screen} Input {{ margin-top: 1; }}
-    {screen} .popup-error {{ height: auto; }}
+    {screen} .popup-error {{ height: auto; display: none; }}
     {screen} .popup-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
     {screen} Button {{ margin-left: 2; }}
     {screen} OptionList {{ height: auto; max-height: 12; }}
     """
 
 
+def show_error(line: Static, problem: str | None) -> None:
+    line.update(Text(problem, style=ALERT_STYLE) if problem else "")
+    line.display = bool(problem)
+
+
 class TargetScreen(ModalScreen[str | None]):
-    """Choose the profile that characters move to (delete, assign): a list of the profiles there are, or a new
-    name typed below it (which wins when not blank). Dismisses with the name, or None."""
+    """Choose the profile that characters move to (delete, assign): a list of the profiles there are (preselected:
+    `default` when it is one of them, else the first), or a new name typed below it (which wins when not blank).
+    With no profile to offer only the new name is asked for. Dismisses with the name, or None."""
 
     DEFAULT_CSS = popup_css("TargetScreen")
     BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel")]
@@ -54,16 +70,18 @@ class TargetScreen(ModalScreen[str | None]):
         super().__init__()
         self.title_text = title
         self.body_text = body
-        self.targets = list(targets) if default in targets else [default, *targets]
-        self.default = default
+        self.targets = list(dict.fromkeys(targets))
+        self.default = default if default in self.targets else (self.targets[0] if self.targets else "")
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="popup-box"):
             yield Static(Text(self.title_text), classes="title")
             yield Static(Text(self.body_text), classes="popup-body")
-            yield Select([(Text(name), name) for name in self.targets], value=self.default, allow_blank=False,
-                         id="target")
-            yield Input(placeholder="or type a new profile name", id="new-name")
+            if self.targets:
+                yield Select([(Text(name), name) for name in self.targets], value=self.default, allow_blank=False,
+                             id="target", compact=True)
+            yield Input(placeholder="or type a new profile name" if self.targets else "new profile name",
+                        id="new-name", compact=True)
             yield Static("", id="target-error", classes="popup-error")
             with ButtonRow(classes="popup-buttons"):
                 yield action_button("OK", "confirm", id="ok")
@@ -71,11 +89,11 @@ class TargetScreen(ModalScreen[str | None]):
             yield NavHint("Tab move · Enter choose · Esc cancel")
 
     def on_mount(self) -> None:
-        self.query_one("#target", Select).focus()
+        self.query_one("#target" if self.targets else "#new-name").focus()
 
     def chosen(self) -> str:
         typed = self.query_one("#new-name", Input).value
-        if typed.strip():
+        if typed.strip() or not self.targets:
             return typed
         value = self.query_one("#target", Select).value
         return value if isinstance(value, str) else self.default
@@ -84,7 +102,7 @@ class TargetScreen(ModalScreen[str | None]):
         name = self.chosen()
         problem = valid_name(name)
         if problem is not None:
-            self.query_one("#target-error", Static).update(Text(problem, style=ALERT_STYLE))
+            show_error(self.query_one("#target-error", Static), problem)
             return
         log_event("ui.selection", screen="ace_target", control="target", value=name)
         self.dismiss(name)
@@ -123,7 +141,7 @@ class NameScreen(ModalScreen[str | None]):
         with Vertical(classes="popup-box"):
             yield Static(Text(self.title_text), classes="title")
             yield Static(Text(self.body_text), classes="popup-body")
-            yield Input(self.initial, placeholder="profile name", id="name")
+            yield Input(self.initial, placeholder="profile name", id="name", compact=True)
             yield Static("", id="name-error", classes="popup-error")
             with ButtonRow(classes="popup-buttons"):
                 yield action_button("OK", "confirm", id="ok")
@@ -137,12 +155,12 @@ class NameScreen(ModalScreen[str | None]):
         name = self.query_one("#name", Input).value
         problem = self.check(name)
         if problem is not None:
-            self.query_one("#name-error", Static).update(Text(problem, style=ALERT_STYLE))
+            show_error(self.query_one("#name-error", Static), problem)
             return
         self.dismiss(name)
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        self.query_one("#name-error", Static).update("")
+        show_error(self.query_one("#name-error", Static), None)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         event.stop()

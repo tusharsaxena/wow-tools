@@ -54,6 +54,22 @@ class AceAppBase(TuiTestCase):
         self.assertIsInstance(app.screen, ProfileReviewScreen)
         return app.screen
 
+    async def highlight(self, app, pilot, review, kind, *rest):
+        tree = review.query_one("#profiles", Tree)
+        tree.root.expand_all()
+        await settle(app, pilot)
+        node = find(tree, kind, *rest)
+        tree.move_cursor(node)
+        await settle(app, pilot)
+        return node
+
+    async def highlight_addon(self, app, pilot, review, name, account="ACCT1"):
+        tree = review.query_one("#profiles", Tree)
+        tree.root.expand_all()
+        await settle(app, pilot)
+        tree.move_cursor(find_addon(tree, name, account))
+        await settle(app, pilot)
+
 
 class FlowTest(AceAppBase):
     async def test_first_open_shows_settings_then_flavors(self):
@@ -237,14 +253,6 @@ class ReviewTest(AceAppBase):
 
 
 class StagingTest(AceAppBase):
-    async def highlight(self, app, pilot, review, kind, *rest):
-        tree = review.query_one("#profiles", Tree)
-        tree.root.expand_all()
-        await settle(app, pilot)
-        node = find(tree, kind, *rest)
-        tree.move_cursor(node)
-        await settle(app, pilot)
-        return node
 
     async def test_delete_to_default(self):
         app = self.make_app()
@@ -407,3 +415,321 @@ class RunTest(AceAppBase):
             await settle(app, pilot)
             self.assertEqual(path.read_bytes(), original)
             self.assertIsNone(editor.read_marker(root))
+
+
+def inside(widget, box) -> bool:
+    """The widget is drawn whole inside box (and on screen)."""
+    w, b = widget.region, box.region
+    screen = widget.screen.size
+    return (w.width > 0 and w.height > 0 and w.x >= b.x and w.y >= b.y and w.right <= b.right
+            and w.bottom <= b.bottom and b.right <= screen.width and b.bottom <= screen.height)
+
+
+class ReviewFixesTest(AceAppBase):
+    """M3 review: blacklisting after staging, the Undo and recovery WoW checks, leaving with staged changes, the
+    popups at 80x24, the delete target, the extra keys in the menu, the dry-run result and search expansion."""
+
+    async def stage_elv(self, app, pilot, review):
+        key = next(k for k in review.staging.states if k.sv_name == "ElvDB")
+        review.staging.delete({key: ["Healer"]}, "Default")
+        review.refresh_view()
+        await settle(app, pilot)
+        self.assertEqual(review.staging.summary().total, 3)
+        return key.path
+
+    def blacklist(self, names):
+        tool = Config(self.config_dir / "ace-profiles.cfg").load()
+        tool.set("ace_profiles", "blacklist", names, log=False)
+        tool.save()
+
+    async def assert_apply_writes_nothing(self, app, pilot, review, path):
+        before = path.read_bytes()
+        await pilot.press("w")
+        await settle(app, pilot)
+        if isinstance(app.screen, ConfirmScreen):
+            app.screen.dismiss(True)
+            await settle(app, pilot)
+        self.assertIs(app.screen, review)
+        self.assertEqual(path.read_bytes(), before)
+
+    async def test_blacklisting_an_addon_drops_its_staged_changes(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            path = await self.stage_elv(app, pilot, review)
+            await self.highlight_addon(app, pilot, review, "ElvUI")
+            await pilot.press("b")
+            await settle(app, pilot)
+            self.assertTrue(review.locked("ElvUI"))
+            self.assertEqual(review.staging.summary().total, 0)
+            self.assertTrue(review.query_one("#btn-apply").disabled)
+            await self.assert_apply_writes_nothing(app, pilot, review, path)
+
+    async def test_locking_again_drops_its_staged_changes(self):
+        self.blacklist("ElvUI")
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.highlight_addon(app, pilot, review, "ElvUI")
+            await pilot.press("u")
+            await settle(app, pilot)
+            path = await self.stage_elv(app, pilot, review)
+            await self.highlight_addon(app, pilot, review, "ElvUI")
+            await pilot.press("u")
+            await settle(app, pilot)
+            self.assertTrue(review.locked("ElvUI"))
+            self.assertEqual(review.staging.summary().total, 0)
+            await self.assert_apply_writes_nothing(app, pilot, review, path)
+
+    async def test_blacklisted_in_settings_after_staging_is_not_written(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            path = await self.stage_elv(app, pilot, review)
+            review.tool_cfg.set("ace_profiles", "blacklist", "ElvUI", log=False)  # what `s` saves, no rescan
+            await self.assert_apply_writes_nothing(app, pilot, review, path)
+            self.assertEqual(review.staging.summary().total, 0)
+
+    async def test_undo_checks_the_flavor_of_the_journal(self):
+        from unittest.mock import patch
+
+        from wowtools.core import process
+        from wowtools.core.process import WowProcess
+        procs: list[WowProcess] = []
+        asked: list[list[str]] = []
+
+        def check_for(folders, **_):
+            asked.append(list(folders))
+            return process.wow_check_for(folders, lister=lambda: list(procs))
+        app = WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list)
+        with patch("wowtools.tools.ace_profiles.review_screen.wow_check_for", side_effect=check_for):
+            async with app.run_test(size=(140, 50)) as pilot:
+                review = await self.open_review(app, pilot)
+                path = await self.stage_elv(app, pilot, review)  # a Retail file
+                await pilot.press("w")
+                await settle(app, pilot)
+                app.screen.dismiss(True)
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, ProfileResultScreen)
+                edited = path.read_bytes()
+                await pilot.press("f")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, FlavorScreen)
+                era = WowInstall(self.root).flavor("_classic_era_")
+                app.screen.dismiss(era)
+                await settle(app, pilot)
+                review = app.screen
+                self.assertIsInstance(review, ProfileReviewScreen)
+                self.assertIsNotNone(review.undoable)  # the Retail journal
+                procs.append(WowProcess("Wow.exe", str(self.root / "_retail_" / "Wow.exe")))
+                await pilot.press("z")
+                await settle(app, pilot)
+                self.assertIs(app.screen, review)  # refused: Retail runs
+                self.assertIn(["_retail_"], asked)
+                self.assertEqual(path.read_bytes(), edited)
+                procs.clear()
+                await pilot.press("z")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, ConfirmScreen)
+                self.assertIn("Retail", app.screen.body_text)
+
+    async def write_torn_marker(self, review):
+        path = next(k for k in review.staging.states if k.sv_name == "ElvDB").path
+        original = path.read_bytes()
+        root = self.root / "wow-tools" / "ace-profiles"
+        flavor = next(s for s in review.staging.states.values() if s.file.path == path).file.flavor
+        zip_path = create_backup([BackupEntry(path)], flavor.path,
+                                 root / "edited" / "edited-retail-all-20261004-120000.zip", {})
+        path.write_bytes(b"torn")
+        rel = path.relative_to(flavor.path).as_posix()
+        editor.write_marker(root, editor.Marker("_retail_", flavor.path, zip_path, {rel: sha256_of(original)},
+                                                "2026-10-04T12:00:00+00:00", 1, "1.0.0", {rel: sha256_of(b"torn")}))
+        return root, path
+
+    async def test_recovery_refused_while_wow_runs(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            root, path = await self.write_torn_marker(review)
+            await pilot.press("r")
+            await settle(app, pilot)
+            self.running.append("Wow.exe")
+            app.screen.dismiss("put_back")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(path.read_bytes(), b"torn")
+            self.assertIsNotNone(editor.read_marker(root))  # offered again at the next scan
+
+    async def test_recovery_popup_fits_80_columns(self):
+        app = self.make_app()
+        async with app.run_test(size=(80, 24)) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.write_torn_marker(review)
+            await pilot.press("r")
+            await settle(app, pilot)
+            box = app.screen.query_one("#recovery-box")
+            for button in app.screen.query("Button"):
+                self.assertTrue(inside(button, box), button.id)
+
+    async def test_leaving_with_staged_changes_asks_first(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.stage_elv(app, pilot, review)
+            await pilot.press("slash")
+            await pilot.press("h", "e", "a", "d")
+            await settle(app, pilot)
+            await pilot.press("escape")  # out of the search box, not out of the review
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertIs(review.focused, review.query_one("#profiles", Tree))
+            for key in ("escape", "f", "t", "q"):
+                await pilot.press(key)
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, ConfirmScreen, key)
+                app.screen.dismiss(False)
+                await settle(app, pilot)
+                self.assertIs(app.screen, review)
+                self.assertEqual(review.staging.summary().total, 3)
+            await pilot.press("f")
+            await settle(app, pilot)
+            app.screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, FlavorScreen)
+
+    async def test_undo_confirm_says_staged_changes_are_dropped(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.stage_elv(app, pilot, review)
+            await pilot.press("w")
+            await settle(app, pilot)
+            app.screen.dismiss(True)
+            await settle(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            await self.stage_elv_kick(app, pilot, review)
+            await pilot.press("z")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertIn("staged change", app.screen.body_text)
+
+    async def stage_elv_kick(self, app, pilot, review):
+        key = next(k for k in review.staging.states if k.sv_name == "KickCDDB" and "ACCT1" in k.path.parts)
+        review.staging.delete({key: ["Backup"]}, "Default")
+        review.refresh_view()
+        await settle(app, pilot)
+
+    async def test_dry_run_result_escape_goes_back_with_the_staging(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.stage_elv(app, pilot, review)
+            await pilot.press("y")
+            await settle(app, pilot)
+            app.screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ProfileResultScreen)
+            await pilot.press("escape")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(review.staging.summary().total, 3)
+            await pilot.press("y")
+            await settle(app, pilot)
+            app.screen.dismiss(True)
+            await settle(app, pilot)
+            await pilot.press("enter")  # the focused button: Back to review
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(review.staging.summary().total, 3)
+
+    async def test_delete_target_never_offers_a_profile_being_deleted(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            key = next(k for k in review.staging.states if k.sv_name == "KickCDDB" and "ACCT1" in k.path.parts)
+            await self.highlight(app, pilot, review, "profile", key, "Default")
+            await pilot.press("d")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, TargetScreen)
+            self.assertNotIn("Default", app.screen.targets)
+            self.assertEqual(app.screen.default, app.screen.targets[0])
+
+    async def test_delete_everything_asks_for_a_new_name(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            await self.open_review(app, pilot)
+            await pilot.press("a")
+            await settle(app, pilot)
+            await pilot.press("d")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, TargetScreen)
+            self.assertNotIn("Default", app.screen.targets)
+
+    async def test_addon_name_tells_accounts_apart(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            kicks = [k for k in review.staging.states if k.sv_name == "KickCDDB"]
+            names = {review._addon_name(k) for k in kicks}
+            self.assertEqual(len(names), len(kicks))
+            self.assertTrue(any("ACCT2" in n for n in names))
+
+    async def test_popups_fit_80x24(self):
+        app = self.make_app()
+        async with app.run_test(size=(80, 24)) as pilot:
+            review = await self.open_review(app, pilot)
+            for keys, kind in ((("a", "d"), TargetScreen), (("p",), TargetScreen), (("m",), ActionsScreen)):
+                for key in keys:
+                    await pilot.press(key)
+                    await settle(app, pilot)
+                screen = app.screen
+                self.assertIsInstance(screen, kind)
+                box = screen.query_one(".popup-box")
+                for widget in screen.query("Button, Input, Select, NavHint, OptionList"):
+                    if not widget.display:  # the Select's closed overlay
+                        continue
+                    self.assertTrue(inside(widget, box), f"{kind.__name__} {keys}: {widget}")
+                screen.dismiss(None)
+                await settle(app, pilot)
+                self.assertIs(app.screen, review)
+                review.ticked.clear()
+            await self.highlight(app, pilot, review, "profile", "Healer")
+            await pilot.press("e")
+            await settle(app, pilot)
+            box = app.screen.query_one(".popup-box")
+            for widget in app.screen.query("Button, Input, NavHint"):
+                self.assertTrue(inside(widget, box), f"NameScreen: {widget}")
+
+    async def test_more_menu_lists_every_hidden_key(self):
+        from wowtools.tools.ace_profiles.popups import ACTIONS
+        ids = {action for action, _ in ACTIONS}
+        for action in ("rename", "copy", "remove_leftovers", "blacklist", "unlock", "switch_view", "search",
+                       "discard"):
+            self.assertIn(action, ids)
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.highlight(app, pilot, review, "profile", "Healer")
+            await pilot.press("m")
+            await settle(app, pilot)
+            app.screen.dismiss("rename")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, NameScreen)
+
+    async def test_search_opens_the_groups_it_leaves(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await pilot.press("slash")
+            for ch in "mierin":
+                await pilot.press(ch)
+            await pilot.press("enter")
+            await settle(app, pilot)
+            tree = review.query_one("#profiles", Tree)
+            shown = [str(tree.get_node_at_line(i).label) for i in range(tree.last_line + 1)]
+            self.assertTrue(any("Mierin" in line for line in shown), shown)
+            review.query_one("#search", Input).value = ""
+            await settle(app, pilot)
+            addon = find_addon(tree, "ElvUI")
+            self.assertFalse(addon.is_expanded)  # back to how it was before the search

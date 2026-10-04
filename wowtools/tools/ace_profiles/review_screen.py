@@ -82,7 +82,8 @@ class ProfileRecoveryScreen(ModalScreen[str]):
 
     DEFAULT_CSS = """
     ProfileRecoveryScreen { align: center middle; }
-    ProfileRecoveryScreen #recovery-box { width: 90; height: auto; border: thick $warning; background: $panel;
+    ProfileRecoveryScreen #recovery-box { width: 80; max-width: 100%; height: auto; max-height: 100%;
+                                          overflow-y: auto; border: thick $warning; background: $panel;
                                           padding: 1 2; }
     ProfileRecoveryScreen #recovery-title { color: $warning; text-style: bold; margin-bottom: 1; }
     ProfileRecoveryScreen #recovery-buttons { height: auto; align-horizontal: right; margin-top: 1; }
@@ -162,7 +163,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         Binding("f", "leave('flavors')", "Flavors"),
         Binding("t", "leave('tools')", "Tools"),
         Binding("q", "leave('quit')", "Quit"),
-        Binding("escape", "leave('flavors')", "Flavors", show=False),
+        Binding("escape", "back", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
         *NAV_BINDINGS,
@@ -177,7 +178,8 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self.scope_label = scope_label
         self.account = account
         self.unlocked = unlocked
-        self.wow_check = wow_check if wow_check is not None else wow_check_for(self.flavors)
+        self._injected_check = wow_check  # tests inject one; it then stands for every flavor
+        self.wow_check = self.check_for([f.folder for f in self.flavors])
         # The WoW folder these flavors were read from (see wow_folder_changed).
         self.wow_root = cfg.wow_path
         self._leaving_for_new_folder = False
@@ -252,8 +254,12 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         return True
 
     def on_screen_resume(self) -> None:
-        if not self.wow_folder_changed() and self._stale and self.idle and self.app.screen is self:
+        if self.wow_folder_changed():
+            return
+        if self._stale and self.idle and self.app.screen is self:
             self._scan()
+        elif self.scan is not None:
+            self._reload_settings()
 
     # --- state ---------------------------------------------------------------------------------
     @property
@@ -274,6 +280,11 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
     def locked(self, addon: str) -> bool:
         """Blacklisted and not unlocked this session: shown, never changed."""
         return is_blacklisted(self.settings.blacklist, addon) and addon.casefold() not in self.unlocked
+
+    def check_for(self, folders: Iterable[str]) -> WowCheck:
+        """The running-WoW check of these flavor folders (an Undo or a recovery may touch a flavor that is not
+        being reviewed)."""
+        return self._injected_check if self._injected_check is not None else wow_check_for(sorted(set(folders)))
 
     def _blacklisted(self, addon: str) -> bool:
         return is_blacklisted(self.settings.blacklist, addon)
@@ -394,7 +405,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         if self.scan is None or self.staging is None or not self.is_attached:
             return
         tree = self.query_one("#profiles", Tree)
-        if self._builder is not None:  # remember what the user opened and closed
+        if self._builder is not None and not self._builder.searching:  # remember what the user opened and closed
             for node in self._walk_tree():
                 if node.data is not None and node.allow_expand:
                     self._expanded[ident(node.data)] = node.is_expanded
@@ -564,11 +575,10 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
             self.settings.blacklist = [n for n in self.settings.blacklist if n.casefold() != addon.casefold()]
         else:
             self.settings.blacklist = parse_blacklist(", ".join([*self.settings.blacklist, addon]))
-            self.ticked = {k for k in self.ticked if self.staging is None
-                           or self.staging.state(k[1]).file.addon.casefold() != addon.casefold()}
         save_settings(self.tool_cfg, self.settings, source="review")
         log_event("ace.blacklist_changed", addon=addon, blacklisted=not listed)
         self.notify(f"{addon} is {'no longer' if listed else 'now'} on the blacklist.")
+        self._drop_locked()
         self._schedule_rebuild()
 
     def action_unlock(self) -> None:
@@ -586,42 +596,81 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
             self.unlocked.add(name)
         else:
             self.unlocked.discard(name)
-            self.ticked = {k for k in self.ticked if self.staging is None
-                           or self.staging.state(k[1]).file.addon.casefold() != name}
         log_event("ace.unlocked", addon=addon, unlocked=unlocked)
         self.notify(f"{addon} is {'unlocked for this session' if unlocked else 'locked again'}.")
+        self._drop_locked()
         self._schedule_rebuild()
+
+    def _drop_locked(self) -> bool:
+        """A blacklisted (locked) addon is never changed: drop what is staged on one, and its ticks, and say so.
+        True when something was dropped."""
+        if self.staging is None:
+            return False
+        locked = {k for k in self.ticked if self.locked(self.staging.state(k[1]).file.addon)}
+        self.ticked -= locked
+        dropped = self.staging.drop_locked()
+        if dropped:
+            self.notify(f"Dropped the staged changes of {', '.join(dropped)}: blacklisted addons are never "
+                        "changed.", title="Blacklisted", severity="warning", timeout=10)
+        return bool(dropped or locked)
+
+    def _reload_settings(self) -> None:
+        """Read the settings again (changed with `s`): a newly blacklisted addon loses its staged changes."""
+        self.settings = load_settings(self.tool_cfg)
+        if self._drop_locked() and self.is_attached:
+            self.refresh_view()
 
     # --- staging -------------------------------------------------------------------------------------
     def _ready(self) -> bool:
         return self.idle and self.staging is not None and not self.wow_folder_changed()
 
     def _addon_name(self, key: DbKey) -> str:
+        """The addon, with its database when its file has several, and its flavor and account when the same
+        addon is in another one too (All flavors, or a flavor with several accounts)."""
         assert self.staging is not None
         state = self.staging.state(key)
-        several = sum(1 for k in self.staging.states if k.path == key.path) > 1
-        return f"{state.file.addon} ({key.sv_name})" if several else state.file.addon
+        name = state.file.addon
+        if sum(1 for k in self.staging.states if k.path == key.path) > 1:
+            name += f" ({key.sv_name})"
+        others = [s.file for s in self.staging.states.values()
+                  if s.file.addon.casefold() == state.file.addon.casefold() and s.file.path != key.path]
+        if others:
+            where = [state.file.account] + ([state.file.owner] if state.file.character is not None else [])
+            if any(f.flavor != state.file.flavor for f in others):
+                where.insert(0, flavor_name(state.file.flavor.folder))
+            name += f" [{' · '.join(where)}]"
+        return name
 
     def _targets(self, keys: Iterable[DbKey], exclude: dict[DbKey, list[str]] | None = None) -> list[str]:
-        """"Default" first, then every profile name of these databases (minus the ones being deleted)."""
+        """"Default" first, then every profile name of these databases, minus the ones being deleted (a profile
+        deleted in any of them can't take their characters)."""
         assert self.staging is not None
-        names: list[str] = [DEFAULT]
+        gone = {n for names in (exclude or {}).values() for n in names}
+        names: list[str] = [] if DEFAULT in gone else [DEFAULT]
         for key in keys:
-            gone = set((exclude or {}).get(key, ()))
             names += [n for n in self.staging.state(key).names() if n not in gone and n not in names]
         return names
 
     def _staged(self, result: OpResult) -> None:
-        """After an operation: say what was refused and noted, clear the ticks of the databases it changed and
-        show the new staged state."""
+        """After an operation: say what was refused and noted (one notification each, however many databases),
+        clear the ticks of the databases it changed and show the new staged state."""
         assert self.staging is not None
-        for key, reason in result.refused:
-            self.notify(f"{self._addon_name(key)}: {reason}", title="Not staged", severity="warning", timeout=10)
-        for note in result.notes:
-            self.notify(note, timeout=10)
+        if result.refused:
+            lines = [f"{self._addon_name(key)}: {reason}" for key, reason in result.refused]
+            self.notify(self._lines(lines), title=f"Not staged ({len(lines)})", severity="warning", timeout=15)
+        notes = list(dict.fromkeys(result.notes))
+        if notes:
+            self.notify(self._lines(notes), timeout=15)
         changed = set(result.applied)
         self.ticked = {k for k in self.ticked if k[1] not in changed}
         self.refresh_view()
+
+    @staticmethod
+    def _lines(lines: list[str], most: int = 8) -> str:
+        shown = lines[:most]
+        if len(lines) > most:
+            shown.append(f"… and {len(lines) - most} more")
+        return "\n".join(shown)
 
     def action_delete(self) -> None:
         if not self._ready():
@@ -753,10 +802,14 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         def done(choice: str | None) -> None:
             if choice is None or self.staging is None:
                 return
+            keys = {"discard": self.action_discard, "rename": self.action_rename, "copy": self.action_copy,
+                    "remove_leftovers": self.action_remove_leftovers, "blacklist": self.action_blacklist,
+                    "unlock": self.action_unlock, "switch_view": self.action_switch_view,
+                    "search": self.action_focus_search}
             if choice == "tick_leftovers":
                 self._tick_leftovers()
-            elif choice == "discard":
-                self.action_discard()
+            elif choice in keys:
+                keys[choice]()
             elif choice in ("keep_default", "everyone_default"):
                 keys = self._databases()
                 if not keys:
@@ -795,13 +848,14 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
             self.app.call_from_thread(show)
         return progress
 
-    def _run_preflight(self, then: Callable[[list[str] | None], None]) -> None:
-        """Run the running-WoW check in a worker (it can take seconds), then call `then` with its answer on the UI
-        thread: process names, [] when none run, None when it could not run."""
+    def _run_preflight(self, then: Callable[[list[str] | None], None], check: WowCheck | None = None) -> None:
+        """Run the running-WoW check (`check`, else the reviewed flavors') in a worker (it can take seconds), then
+        call `then` with its answer on the UI thread: process names, [] when none run, None when it could not
+        run."""
         self._checking = True
         self._refresh_buttons()
         self.query_one("#summary", Static).update(Text("Checking whether WoW is running…", style=BUSY_STYLE))
-        check = self.wow_check
+        check = check or self.wow_check
         self.run_worker(lambda: self._preflight_worker(check, then), thread=True, group="preflight")
 
     def _preflight_worker(self, check: WowCheck, then: Callable[[list[str] | None], None]) -> None:
@@ -843,6 +897,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
             return
         assert self.staging is not None
         log_event("ui.selection", screen="ace_review", control="dry_run" if dry_run else "apply", value=True)
+        self._reload_settings()
         if not self.staging.summary().total:
             self.notify("Nothing staged")
             return
@@ -934,11 +989,14 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
                         severity="error", timeout=20)
         self.app.push_screen(ProfileResultScreen("Dry run" if result.dry_run else "Apply",
                                                  apply_summary_rows(result), DETAIL_COLUMNS,
-                                                 apply_detail_rows(result), self.scope_label), self._after_result)
+                                                 apply_detail_rows(result), self.scope_label,
+                                                 back=result.dry_run), self._after_result)
 
     def _after_result(self, choice: str | None) -> None:
         if choice in ("flavors", "tools", "quit"):
-            self.dismiss(choice)
+            self.action_leave(choice)
+        elif choice == "back":  # after a dry run: back to the review, the staged changes kept
+            return
         elif self._stale:
             self._scan()
         else:
@@ -957,17 +1015,24 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         except (OSError, ValueError) as exc:
             self.notify(f"The journal could not be read: {exc}", severity="error")
             return
-        self._run_preflight(lambda running: self._after_undo_preflight(path, journal, running))
+        # the journal may be another flavor's (the newest of the whole tool): check the flavors it changed
+        folders = {e["flavor"] for e in journal.entries}
+        check = self.check_for(folders)
+        self._run_preflight(lambda running: self._after_undo_preflight(path, journal, check, running), check)
 
-    def _after_undo_preflight(self, path: Path, journal: Journal, running: list[str] | None) -> None:
+    def _after_undo_preflight(self, path: Path, journal: Journal, check: WowCheck,
+                              running: list[str] | None) -> None:
         extra: list[str] = []
         if self._refused_while_running(running, extra):
             return
+        staged = self.staging.summary().total if self.staging is not None else 0
+        if staged:
+            extra.append(f"The {plural(staged, 'staged change')} not applied yet will be dropped.")
         title, body, alerts = undo_confirm(journal)
         self.app.push_screen(ConfirmScreen(title, body, (*alerts, *extra)),
-                             lambda ok: self._undo_confirmed(ok, path))
+                             lambda ok: self._undo_confirmed(ok, path, check))
 
-    def _undo_confirmed(self, ok: bool | None, path: Path) -> None:
+    def _undo_confirmed(self, ok: bool | None, path: Path, check: WowCheck) -> None:
         log_event("ui.selection", screen="confirm", control="undo_confirm", value=bool(ok))
         wow_root = self.cfg.wow_path
         if not ok or wow_root is None:
@@ -981,10 +1046,10 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         screen = ProfileProgressScreen(dry_run=False, first_stage="undo")
         self.app.push_screen(screen)
         keep = self.settings.keep_snapshots
-        self.run_worker(lambda: self._undo_worker(path, wow_root, root, keep, screen), thread=True, exclusive=True,
-                        group="run")
+        self.run_worker(lambda: self._undo_worker(path, wow_root, root, keep, check, screen), thread=True,
+                        exclusive=True, group="run")
 
-    def _undo_worker(self, path: Path, wow_root: Path, root: Path, keep_snapshots: int,
+    def _undo_worker(self, path: Path, wow_root: Path, root: Path, keep_snapshots: int, check: WowCheck,
                      screen: ProfileProgressScreen) -> None:
         def progress(stage: str, current: int, total: int, detail: str) -> None:
             self.app.call_from_thread(lambda: screen.update_progress(stage, current, total, detail)
@@ -993,7 +1058,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         try:
             with activity.running():
                 result = undo_run(path, wow_root=wow_root, root=root, keep_snapshots=keep_snapshots,
-                                  wow_check=self.wow_check, progress=progress)
+                                  wow_check=check, progress=progress)
         except UndoError as exc:  # WoW running, locked files, the backup failed: nothing was changed
             log_exception("ace.undo", exc)
             self.app.call_from_thread(self._run_failed, screen, str(exc), False)
@@ -1027,17 +1092,32 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
             log_event("ace.recovery_done", choice="leave")
             self.marker = None
             return
+        check = self.check_for([marker.flavor])  # the marker's flavor, which may not be the one reviewed
+        self._run_preflight(lambda running: self._after_recover_preflight(marker, root, check, running), check)
+
+    def _after_recover_preflight(self, marker: Marker, root: Path, check: WowCheck,
+                                 running: list[str] | None) -> None:
+        if self._refused_while_running(running, []):
+            return  # the marker stays: offered again at the next scan
         self.app.busy = True
         self._refresh_buttons()
         screen = ProfileProgressScreen(dry_run=False, first_stage="undo")
         self.app.push_screen(screen)
-        self.run_worker(lambda: self._recover_worker(marker, root, screen), thread=True, exclusive=True,
+        self.run_worker(lambda: self._recover_worker(marker, root, check, screen), thread=True, exclusive=True,
                         group="run")
 
-    def _recover_worker(self, marker: Marker, root: Path, screen: ProfileProgressScreen) -> None:
+    def _recover_worker(self, marker: Marker, root: Path, check: WowCheck, screen: ProfileProgressScreen) -> None:
+        def progress(stage: str, current: int, total: int, detail: str) -> None:
+            self.app.call_from_thread(lambda: screen.update_progress(stage, current, total, detail)
+                                      if screen.is_attached else None)
+
         try:
             with activity.running():
-                result = recover(marker, root=root)
+                result = recover(marker, root=root, wow_check=check, progress=progress)
+        except UndoError as exc:  # WoW running, locked files, the backup failed: nothing was changed
+            log_exception("ace.recover", exc)
+            self.app.call_from_thread(self._run_failed, screen, str(exc), False)
+            return
         except Exception as exc:  # noqa: BLE001 - shown and logged, never a crash
             log_exception("ace.recover", exc)
             self.app.call_from_thread(self._run_failed, screen, f"Putting the originals back stopped: "
@@ -1058,9 +1138,24 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self._scan()
 
     # --- leaving -------------------------------------------------------------------------------
+    def action_back(self) -> None:
+        """Esc: out of the search box back to the tree; else back to the flavor picker."""
+        if isinstance(self.focused, Input):
+            self.query_one("#profiles", Tree).focus()
+            return
+        self.action_leave("flavors")
+
     def action_leave(self, choice: str) -> None:
-        if not self.app.busy:
+        if self.app.busy:
+            return
+        staged = self.staging.summary().total if self.staging is not None else 0
+        if not staged:
             self.dismiss(choice)
+            return
+        self.app.push_screen(ConfirmScreen("Leave and discard the staged changes?",
+                                           f"{plural(staged, 'staged change')} not applied yet will be dropped; "
+                                           "nothing has been written."),
+                             lambda ok: self.dismiss(choice) if ok else None)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         actions = {"btn-apply": self.action_apply, "btn-dry-run": self.action_dry_run,

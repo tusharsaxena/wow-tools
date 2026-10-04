@@ -163,6 +163,46 @@ class RecoverTest(unittest.TestCase):
         self.assertEqual(sv.read_bytes(), b"what WoW saved after that")
         self.assertEqual(len(result.skipped), 1)
 
+    def _torn(self):
+        """A marker for ElvUI.lua, which holds what the run wrote."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name)
+        wow = build_ace_tree(base / "wow")
+        flavor = WowInstall(wow).flavor("_retail_")
+        sv = flavor.path / "WTF" / "Account" / "ACCT1" / "SavedVariables" / "ElvUI.lua"
+        original = sv.read_bytes()
+        from wowtools.core.backup import BackupEntry, create_backup
+        zip_path = create_backup([BackupEntry(sv)], flavor.path, base / "out" / "edited" / "edited-x.zip", {})
+        rel = "WTF/Account/ACCT1/SavedVariables/ElvUI.lua"
+        marker = editor.Marker("_retail_", flavor.path, zip_path, {rel: scanner.sha256_of(original)}, "now", 1,
+                               "1.0.0", {rel: scanner.sha256_of(b"what the run wrote")})
+        editor.write_marker(base / "out", marker)
+        sv.write_bytes(b"what the run wrote")
+        return base / "out", marker, sv, original
+
+    def test_recover_refused_while_wow_runs(self):
+        root, marker, sv, _original = self._torn()
+        with self.assertRaises(undo.WowRunning):
+            undo.recover(marker, root=root, wow_check=lambda: ["Wow.exe"])
+        self.assertEqual(sv.read_bytes(), b"what the run wrote")
+        self.assertIsNotNone(editor.read_marker(root))
+
+    def test_recover_refused_when_a_file_is_locked(self):
+        root, marker, sv, _original = self._torn()
+        with patch("wowtools.tools.ace_profiles.undo.probe_lock", return_value="in use"), \
+                self.assertRaises(undo.UndoError):
+            undo.recover(marker, root=root, wow_check=list)
+        self.assertEqual(sv.read_bytes(), b"what the run wrote")
+        self.assertIsNotNone(editor.read_marker(root))
+
+    def test_recover_backs_up_the_wtf_folder_first(self):
+        root, marker, sv, original = self._torn()
+        result = undo.recover(marker, root=root, wow_check=list, now=WHEN)
+        self.assertEqual(sv.read_bytes(), original)
+        self.assertEqual(len(result.snapshots), 1)
+        self.assertTrue(result.snapshots[0].is_file())
+
 
 def _journal(base):
     from wowtools.tools.ace_profiles.journal import ProfileJournal

@@ -148,8 +148,10 @@ def apply_confirm(summary: Summary, states: list[DbState], *, dry_run: bool) -> 
 
 def undo_confirm(journal: Journal) -> tuple[str, str, list[str]]:
     files = len(journal.entries)
-    body = (f"Put back {plural(files, 'file')} changed {friendly_stamp(journal.started)}. A file saved since "
-            f"(by WoW) is left as it is.")
+    folders = sorted({e["flavor"] for e in journal.entries})
+    where = f" in {', '.join(flavor_name(f) for f in folders)}" if folders else ""
+    body = (f"Put back {plural(files, 'file')} changed{where} {friendly_stamp(journal.started)}. A file saved "
+            f"since (by WoW) is left as it is.")
     return "Undo the last change?", body, []
 
 

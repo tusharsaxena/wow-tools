@@ -72,6 +72,9 @@ class TreeBuilder:
         self.keys: dict[int, tuple] = {}
         self.bodies: dict[int, Text] = {}
         self._own: set[int] = set()  # nodes whose keys are their own (a profile), not the union of their children
+        # A search opens every group it leaves, so its matches show; what the user opens and closes then is not
+        # remembered (the tree goes back to how it was when the search is cleared).
+        self.searching = bool(filters.search.strip())
 
     # --- nodes -----------------------------------------------------------------------------------
     def _add(self, parent: TreeNode, data, body: Text, keys: tuple | None = None, *, leaf: bool = False) -> TreeNode:
@@ -81,7 +84,11 @@ class TreeBuilder:
             self._own.add(id(data))
         if leaf:
             return parent.add_leaf(Text(""), data=data)
-        return parent.add(Text(""), data=data, expand=self.expanded.get(ident(data), data[0] in EXPANDED))
+        if self.searching and data[0] != "warnings":
+            expand = True
+        else:
+            expand = self.expanded.get(ident(data), data[0] in EXPANDED)
+        return parent.add(Text(""), data=data, expand=expand)
 
     def _drop_if_empty(self, node: TreeNode) -> None:
         if not node.children and self.filters.narrowing:

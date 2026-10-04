@@ -22,19 +22,22 @@ STATUS_COLOURS = (("would change", "accent"), ("changed", "success"), ("restored
 
 
 class ProfileResultScreen(Screen[str]):
-    """`title` is "Apply", "Dry run" or "Undo". Dismisses with "rescan", "flavors", "tools" or "quit"."""
+    """`title` is "Apply", "Dry run" or "Undo". Dismisses with "rescan", "flavors", "tools" or "quit"; with `back`
+    (a dry run: nothing was written, the staged changes are still there) it opens on "Back to review", and Esc
+    dismisses with "back"."""
 
     DEFAULT_CSS = result_css("ProfileResultScreen")
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("r", "choose('rescan')", "Rescan"), Binding("f", "choose('flavors')", "Flavors"),
         Binding("t", "choose('tools')", "Tools"), Binding("q", "choose('quit')", "Quit"),
-        Binding("escape", "choose('rescan')", "Back", show=False),
+        Binding("escape", "escape", "Back", show=False),
         *NAV_BINDINGS,
     ]
 
     def __init__(self, title: str, summary_rows: list[tuple[str, str]], columns: tuple[str, ...],
-                 detail_rows: list[tuple], scope_label: str) -> None:
+                 detail_rows: list[tuple], scope_label: str, *, back: bool = False) -> None:
         super().__init__()
+        self.back = back
         self.title_text = title
         self.summary_rows = list(summary_rows)
         self.columns = tuple(columns)
@@ -49,7 +52,9 @@ class ProfileResultScreen(Screen[str]):
             yield summary
             yield DataTable(id="result-detail", classes="result-detail", cursor_type="row", zebra_stripes=True)
         with ButtonRow(classes="buttons"):
-            yield action_button("Rescan (r)", "neutral", id="rescan")
+            yield action_button("Rescan (r)", "neutral", id="rescan")  # first, as on every result screen
+            if self.back:
+                yield action_button("Back to review (Esc)", "confirm", id="back")
             yield action_button("Other flavor (f)", "neutral", id="flavors")
             yield action_button("Tools (t)", "neutral", id="tools")
             yield action_button("Quit (q)", "neutral", id="quit")
@@ -67,7 +72,7 @@ class ProfileResultScreen(Screen[str]):
         for row in self.detail_rows:
             *cells, status = (str(c) for c in row)
             detail.add_row(*(Text(c) for c in cells), Text(status, style=self._status_style(status)))
-        self.query_one("#rescan", Button).focus()
+        self.query_one("#back" if self.back else "#rescan", Button).focus()
 
     def _status_style(self, status: str) -> str:
         name = next((colour for prefix, colour in STATUS_COLOURS if status.startswith(prefix)), None)
@@ -75,6 +80,9 @@ class ProfileResultScreen(Screen[str]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.action_choose(event.button.id or "quit")
+
+    def action_escape(self) -> None:
+        self.action_choose("back" if self.back else "rescan")
 
     def action_choose(self, choice: str) -> None:
         log_event("ui.selection", screen="ace_result", control="next", value=choice)

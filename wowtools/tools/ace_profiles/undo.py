@@ -1,8 +1,8 @@
 """Undo the latest Apply, and recover from one that did not finish (spec §10). UI-free.
 
 A file is put back from the edited-*.zip only when it is still byte-for-byte what the run wrote (sha_after); a file
-WoW (or anything else) saved since is skipped and never overwritten. Undo is refused while WoW runs, refuses locked
-files, and takes a whole-WTF snapshot of each flavor first.
+WoW (or anything else) saved since is skipped and never overwritten. Undo and recovery are refused while that
+flavor's WoW runs, refuse locked files, and take a whole-WTF snapshot of each flavor first.
 """
 from __future__ import annotations
 
@@ -81,6 +81,13 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _current_sha(path: Path) -> str | None:
+    try:
+        return _sha(path.read_bytes())
+    except OSError:
+        return None
+
+
 def _put_back(zip_path: Path, rel: str, dest: Path, sha_before: str) -> str | None:
     """Write the original bytes of rel from zip_path over dest. Returns a problem, or None when done."""
     try:
@@ -97,6 +104,41 @@ def _put_back(zip_path: Path, rel: str, dest: Path, sha_before: str) -> str | No
     return None
 
 
+def _refuse_running(wow_check: Callable[[], list[str] | None] | None, action: str) -> None:
+    """WowRunning when the check finds that flavor's WoW: it would overwrite the files put back at logout."""
+    if wow_check is None:
+        return
+    running = wow_check()
+    if running:
+        log_event("ace.wow_running", action=action, running=running)
+        raise WowRunning(running)
+
+
+def _refuse_locked(targets: list[tuple[str, Path | None]], action: str) -> None:
+    """UndoError when a file to put back is held by another program (RaiderIO, WeakAuras Companion)."""
+    locked = []
+    for rel, dest in targets:
+        if dest is not None and dest.exists():
+            try:
+                error = probe_lock(dest)
+            except SvFileError as exc:
+                raise UndoError(f"{exc} Nothing was changed.") from exc
+            if error is not None:
+                locked.append(f"{rel} ({error})")
+    if locked:
+        log_event("ace.file_locked", action=action, files=len(locked))
+        raise UndoError(f"{len(locked)} files are locked by another program. Close it and try again.\n  "
+                        + "\n  ".join(locked[:10]))
+
+
+def _snapshot(flavor: Flavor, root: Path, now: datetime | None, report, action: str) -> Path:
+    try:
+        return take_snapshot(flavor, root / SNAPSHOT_SUBDIR, SNAPSHOT_PREFIX, now or datetime.now(), progress=report)
+    except BackupError as exc:
+        log_event("ace.snapshot_failed", flavor=flavor.folder, error=str(exc))
+        raise UndoError(f"The WTF backup before {action} failed ({exc}). Nothing was changed.") from exc
+
+
 def undo_run(journal_path: Path, *, wow_root: Path, root: Path, keep_snapshots: int,
              wow_check: Callable[[], list[str] | None] | None = None, now: datetime | None = None,
              progress: Callable[[str, int, int, str], None] | None = None) -> UndoResult:
@@ -104,33 +146,12 @@ def undo_run(journal_path: Path, *, wow_root: Path, root: Path, keep_snapshots: 
     journal = read_profile_journal(journal_path)
     entries = list(reversed(journal.entries))
     log_event("ace.undo_started", journal=journal_path.name, files=len(entries))
-    if wow_check is not None:
-        running = wow_check()
-        if running:
-            log_event("ace.wow_running", action="undo", running=running)
-            raise WowRunning(running)
+    _refuse_running(wow_check, "undo")
     targets = [(e, destination(wow_root, e["flavor"], e["rel"])) for e in entries]
-    locked = []
-    for entry, dest in targets:
-        if dest is not None and dest.exists():
-            try:
-                error = probe_lock(dest)
-            except SvFileError as exc:
-                raise UndoError(f"{exc} Nothing was changed.") from exc
-            if error is not None:
-                locked.append(f"{entry['rel']} ({error})")
-    if locked:
-        log_event("ace.file_locked", action="undo", files=len(locked))
-        raise UndoError(f"{len(locked)} files are locked by another program. Close it and undo again.\n  "
-                        + "\n  ".join(locked[:10]))
+    _refuse_locked([(entry["rel"], dest) for entry, dest in targets], "undo")
     result = UndoResult(journal_path=journal_path)
     for folder in sorted({e["flavor"] for e in entries}):
-        try:
-            result.snapshots.append(take_snapshot(Flavor(folder, wow_root / folder), root / SNAPSHOT_SUBDIR,
-                                                  SNAPSHOT_PREFIX, now or datetime.now(), progress=report))
-        except BackupError as exc:
-            log_event("ace.snapshot_failed", flavor=folder, error=str(exc))
-            raise UndoError(f"The WTF backup before undo failed ({exc}). Nothing was changed.") from exc
+        result.snapshots.append(_snapshot(Flavor(folder, wow_root / folder), root, now, report, "undo"))
     for index, (entry, dest) in enumerate(targets, 1):
         rel, flavor = entry["rel"], entry["flavor"]
         report("undo", index, len(targets), rel)
@@ -163,21 +184,27 @@ def undo_run(journal_path: Path, *, wow_root: Path, root: Path, keep_snapshots: 
     return result
 
 
-def recover(marker: Marker, *, root: Path) -> UndoResult:
+def recover(marker: Marker, *, root: Path, wow_check: Callable[[], list[str] | None] | None = None,
+            now: datetime | None = None, progress: Callable[[str, int, int, str], None] | None = None) -> UndoResult:
     """After an Apply that did not finish: put back every file of the marker that is still what the run wrote.
     A file still at its original is left alone; one that is neither (the run skipped it as changed since the scan,
-    or WoW saved it since) is skipped and never overwritten."""
+    or WoW saved it since) is skipped and never overwritten. As Undo: refused while that flavor's WoW runs or a
+    file is locked, and the flavor's WTF folder is backed up first (when there is something to put back)."""
+    report = safe_progress(progress)
+    _refuse_running(wow_check, "recover")
+    targets = {rel: destination(marker.flavor_path.parent, marker.flavor, rel) for rel in marker.files}
+    _refuse_locked(sorted(targets.items()), "recover")
     result = UndoResult()
-    for rel, sha_before in sorted(marker.files.items()):
-        dest = destination(marker.flavor_path.parent, marker.flavor, rel)
+    if any(dest is not None and _current_sha(dest) == marker.after.get(rel) for rel, dest in targets.items()):
+        result.snapshots.append(_snapshot(Flavor(marker.flavor, marker.flavor_path), root, now, report, "recovery"))
+    for index, (rel, sha_before) in enumerate(sorted(marker.files.items()), 1):
+        report("undo", index, len(marker.files), rel)
+        dest = targets[rel]
         if dest is None:
             result.outcomes.append(UndoOutcome(marker.flavor, rel, None, "skipped", "it is outside the WTF folder"))
             log_event("ace.file_skipped", flavor=marker.flavor, path=rel, reason="outside")
             continue
-        try:
-            current = _sha(dest.read_bytes())
-        except OSError:
-            current = None
+        current = _current_sha(dest)
         if current == sha_before:
             continue
         if current is None or current != marker.after.get(rel):

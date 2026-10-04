@@ -340,13 +340,30 @@ class Staging:
         for key, state in self.states.items():
             self.states[key] = DbState.fresh(state.file, state.db, state.leftovers)
 
+    def drop_locked(self) -> list[str]:
+        """Reset the staged changes of every addon that is locked now (blacklisted after they were staged).
+        Returns the addons whose changes were dropped."""
+        dropped: list[str] = []
+        for key, state in self.states.items():
+            if state.changed and self.locked(state.file.addon):
+                self.states[key] = DbState.fresh(state.file, state.db, state.leftovers)
+                if state.file.addon not in dropped:
+                    dropped.append(state.file.addon)
+        if dropped:
+            log_event("ace.staged", operation="drop_locked", applied=0, refused=len(dropped))
+        return dropped
+
+    def _live(self) -> list[DbState]:
+        """The states that may be written: a locked (blacklisted) addon never is, even with changes staged."""
+        return [state for state in self.states.values() if not self.locked(state.file.addon)]
+
     def changed(self) -> list[DbState]:
-        return [state for state in self.states.values() if state.changed]
+        return [state for state in self._live() if state.changed]
 
     def summary(self) -> Summary:
         out = Summary()
         files = set()
-        for state in self.states.values():
+        for state in self._live():
             changes = state.changes()
             if not changes.count:
                 continue
