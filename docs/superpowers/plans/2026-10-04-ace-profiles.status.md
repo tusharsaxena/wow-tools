@@ -26,7 +26,7 @@ merge, delete every branch, stash and worktree this run created.
 | 14 | apply, dry run, undo, recovery, result screens | done | 3fbdd3d | `result_screen.py` (`ProfileResultScreen`); `ProfileProgressScreen`, `ProfileRecoveryScreen` and the w/y/z, recovery and stale-rescan flows in `review_screen.py`; `apply_confirm` names the flavors; left pane made to fit 80x24 (look-and-feel test); 4 RunTest tests OK; ace 384 OK; look_and_feel 3 OK; full suite 946 OK (2 skipped), ruff clean; events.md unchanged; milestone push left to the orchestrator |
 | M3 | push milestone 3 | done (pushed) | 131119c | review fixes: blacklisting drops staged changes, Undo/recovery check the WoW of the flavor they touch, recovery guarded like Undo, leaving asks, popups fit 80x24, delete target, menu lists hidden keys, dry-run Back, search expands; full suite 965 OK (2 skipped), ruff clean |
 | 15 | docs + final battery | done | 4b7c156 | full guide `docs/ace-profiles.md` (every key, tags, staged marks, blacklist, never touched, Apply/Dry run/results/Undo, backups, recovery, settings, FAQ, troubleshooting, screenshots placeholder); README settings row, undo, FAQ, version history; architecture: core `snapshot`/`svfiles`/`atomic_write_bytes`, `[ace_profiles]` schema, data flow and screens; adding-a-tool notes the core helpers; CLAUDE.md tool list; events.md unchanged by regeneration; +1 docs test; ace 404 OK; full suite 966 OK (2 skipped), serial run 966 OK; ruff clean; not pushed (milestone push left to the orchestrator) |
-| M4 | push, ask for merge go-ahead | todo | | |
+| M4 | push, ask for merge go-ahead | reviewed (not pushed yet) | 0360805 | review fixes: Apply refuses (and the screen re-offers recovery) while an earlier marker is there, recovery marks the journal, Undo/recovery prune snapshots, backup folder validated before use, Apply checks only the changed flavors' WoW, docs/spec/events corrected; full suite 975 OK (2 skipped), ruff clean |
 
 ## Decisions taken during the build
 
@@ -165,3 +165,28 @@ merge, delete every branch, stash and worktree this run created.
   task's failing test. `docs/adding-a-tool.md` gains one bullet (shared code moves to core: `core/snapshot.py`,
   `core/svfiles.py`, `atomic_write_bytes`), as Task 1 changed that step. The plan's `git add -A docs ...` and
   `git push` are replaced by adding only the changed files; the push is left to the milestone step.
+- M4 (final, whole branch) review:
+  - fixed (two findings, one cause): a new Apply silently overwrote, then cleared, an earlier unfinished Apply's
+    crash marker, losing its recovery (and its edited zip to pruning). `editor._apply` now refuses a real run while
+    a marker is there (`ApplyError`, "Nothing was changed", new event `ace.earlier_unfinished`, error level), as
+    the WTF Cleaner does; a dry run is still allowed. The review screen re-offers `ProfileRecoveryScreen` when Apply
+    is pressed with `self.marker` set. Spec §9 step 2 updated.
+  - fixed: after recovery put files back, the crashed run's journal still offered them for Undo ("changed since").
+    `recover(..., journal_dir=)` appends a `rolled_back` line (`journal.record_recovered`, via the new
+    `core.journal.append_record`, which `mark_undone` now uses) to the journal whose entries came from the
+    marker's zip, for every file now at its original. Spec recovery paragraph updated.
+  - fixed: Undo and recovery never pruned their WTF snapshots. `undo_run` uses its `keep_snapshots`; `recover`
+    gains `keep_snapshots=` (the screen passes the setting). Spec §10 updated.
+  - fixed: the backup folder was validated only on save. The review screen runs `validate_backup_dir` before an
+    Apply, an Undo and a recovery ("Backup folder not allowed", as the WTF Cleaner and Interface Backup do); a dry
+    run writes nothing and is not checked.
+  - fixed (code, not docs): Apply's running-WoW check covered every reviewed flavor; it now covers only the
+    flavors with staged changes (`apply_check`), as the guide and spec §3 say.
+  - fixed (docs): per-character addon label is `Addon (Realm/Name)`; Scan warnings sit at the bottom of the tree;
+    roll-back is per game version (earlier flavors keep their changes); the typed-name delete case needs "Default"
+    deleted too; Details dropped as an Ace3 example (its own profiles aren't covered); `#result-detail` in the
+    architecture; `ace.unlocked` and `ace.recovery_offered` descriptions (docs/events.md regenerated).
+  - fixed (spec): §13 staged marks and result summary rewritten to what was built (the guide already matched).
+  - no finding rejected. Regression tests: `FinalReviewFixesTest` (3, `tests/test_ace_app.py`),
+    `RecoverJournalTest` (3) and an Undo prune test (`tests/test_ace_undo.py`), an editor marker test, a
+    `record_recovered` journal test; each failed on the code before the fix.
