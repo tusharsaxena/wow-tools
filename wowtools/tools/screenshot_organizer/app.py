@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, ClassVar
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Label, Static
 
@@ -19,24 +18,17 @@ from wowtools.tools.screenshot_organizer.review_screen import ShotReviewScreen
 from wowtools.tools.screenshot_organizer.settings import (SECTION, ShotSettings, load_settings, save_settings,
                                                           source_dir, validate_dest)
 from wowtools.ui.branding import BrandBar
+from wowtools.ui.dialogs import settings_css
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.tool_flow import ToolFlow
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, FormScroll, Ka0sCheckbox, NavHint, action_button
 
 if TYPE_CHECKING:
     from wowtools.ui.suite_app import WowToolsApp
 
 
 class ScreenshotSettingsScreen(Screen[bool]):
-    DEFAULT_CSS = """
-    ScreenshotSettingsScreen #settings { padding: 0 2; }
-    ScreenshotSettingsScreen .title { color: $accent; text-style: bold; margin: 1 0; }
-    ScreenshotSettingsScreen Label { width: 1fr; height: auto; }
-    ScreenshotSettingsScreen Ka0sCheckbox { margin: 1 0; }
-    ScreenshotSettingsScreen #settings-error { color: $error; height: auto; }
-    ScreenshotSettingsScreen .buttons { height: auto; margin-top: 1; }
-    ScreenshotSettingsScreen Button { margin-right: 2; }
-    """
+    DEFAULT_CSS = settings_css("ScreenshotSettingsScreen")
     BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
 
     def __init__(self, tool_cfg: Config, install: WowInstall | None, *, source: str) -> None:
@@ -49,7 +41,7 @@ class ScreenshotSettingsScreen(Screen[bool]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with VerticalScroll(id="settings", can_focus=False):
+        with FormScroll(id="settings", can_focus=False):
             yield Static("Screenshot Organizer settings", classes="title")
             yield Label("Destination folder (the archive root). Screenshots are filed into "
                         "<destination>\\<flavor folder>\\YYYY\\MM\\DD, e.g. ...\\_retail_\\2019\\07\\31. "

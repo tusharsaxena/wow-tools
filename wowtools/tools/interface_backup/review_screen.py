@@ -41,12 +41,11 @@ from wowtools.tools.interface_backup.settings import (load_settings, resolve_bac
                                                       validate_backup_dir)
 from wowtools.tools.interface_backup.undo import undo_restore
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import ConfirmScreen, ProgressScreen, TwoPaneFocus, relabel_branch, theme_colour, tick_mark
+from wowtools.ui.dialogs import (ACCENT, BUSY_STYLE, RESULT_HINT, REVIEW_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus,
+                                relabel_branch, result_css, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-ACCENT = "bold #5CC8FF"
-NAV_HINT = ("↑↓/Tab move · ←→ panes and buttons · Space tick · Enter/Space press · a all · n none · "
-            "b back up · e restore · r rescan · z undo · f flavors · t tools")
+NAV_HINT = REVIEW_HINT + "a all · n none · b back up · e restore · r rescan · z undo · f flavors · t tools"
 # Tree nodes that cannot be ticked: a backup always holds a flavor's whole Interface and WTF.
 READ_ONLY = ("part", "links", "link", "leftover", "warnings", "warning", "backups", "backup")
 WowCheck = Callable[[], "list[str] | None"]
@@ -109,14 +108,7 @@ class BackupProgressScreen(ProgressScreen):
 class BackupResultScreen(Screen[str]):
     """The outcome of a backup: a summary table, one row per flavor and what to do next."""
 
-    DEFAULT_CSS = """
-    BackupResultScreen #result { height: 1fr; padding: 1 2; }
-    BackupResultScreen #result-summary { height: auto; margin-bottom: 1; }
-    BackupResultScreen #result-table { height: 1fr; }
-    BackupResultScreen .buttons { height: auto; padding: 0 2; }
-    BackupResultScreen .buttons Button { min-width: 0; width: auto; margin-right: 1; }
-    BackupResultScreen NavHint { padding: 0 2; margin-top: 0; }
-    """
+    DEFAULT_CSS = result_css("BackupResultScreen")
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("r", "choose('review')", "Rescan"), Binding("e", "choose('restore')", "Restore"),
         Binding("f", "choose('flavors')", "Flavors"), Binding("t", "choose('tools')", "Tools"),
@@ -133,15 +125,14 @@ class BackupResultScreen(Screen[str]):
             summary = DataTable(id="result-summary", cursor_type="none", zebra_stripes=True)
             summary.can_focus = False  # read-only summary: not a focus stop
             yield summary
-            yield DataTable(id="result-table", cursor_type="row", zebra_stripes=True)
+            yield DataTable(id="result-table", classes="result-detail", cursor_type="row", zebra_stripes=True)
         with ButtonRow(classes="buttons"):
             yield action_button("Rescan (r)", "neutral", id="review")
             yield action_button("Restore (e)", "neutral", id="restore")
             yield action_button("Other flavor (f)", "neutral", id="flavors")
             yield action_button("Tools (t)", "neutral", id="tools")
             yield action_button("Quit (q)", "neutral", id="quit")
-        yield NavHint("↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · r rescan · e restore · "
-                      "f other flavor · t tools · q quit")
+        yield NavHint(RESULT_HINT + "r rescan · e restore · f other flavor · t tools · q quit")
         yield BrandBar()
         yield Footer()
 
@@ -178,18 +169,7 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
     "quit"."""
 
     TREE_SELECTOR = "#flavors"
-    DEFAULT_CSS = """
-    BackupReviewScreen #body { height: 1fr; }
-    BackupReviewScreen #filters { width: 50; padding: 1; border-right: solid $primary; }
-    BackupReviewScreen #actions { margin-top: 1; height: auto; }
-    BackupReviewScreen #actions Button { min-width: 0; width: auto; margin-right: 1; margin-bottom: 1; }
-    BackupReviewScreen .section { color: $accent; text-style: bold; margin: 1 0 0 0; }
-    BackupReviewScreen #flavors { width: 1fr; padding: 0 1; }
-    BackupReviewScreen #scan-box { width: 1fr; height: auto; padding: 1 2; }
-    BackupReviewScreen #scan-progress { width: 1fr; }
-    BackupReviewScreen #scan-label { color: $text-muted; margin-top: 1; }
-    BackupReviewScreen #summary { height: auto; padding: 0 1; background: $surface; }
-    """
+    DEFAULT_CSS = two_pane_css("BackupReviewScreen", "#flavors")
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("space", "toggle", "Tick/untick", priority=True),
         Binding("a", "select_all", "All"),
@@ -589,7 +569,7 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
         thread if this screen is still the one shown. A failing check is "unknown" (None)."""
         self._checking = True
         self._refresh_buttons()
-        self._set_summary(Text("Checking for running programs…", style="bold #E8B04B"))
+        self._set_summary(Text("Checking for running programs…", style=BUSY_STYLE))
         self.run_worker(lambda: self._preflight_worker(check, extra, then), thread=True, group="preflight")
 
     def _preflight_worker(self, check: WowCheck, extra: Callable[[], Any] | None,

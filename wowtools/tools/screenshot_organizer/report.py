@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from wowtools.core.install import Flavor
 from wowtools.core.paths import to_stored
 from wowtools.tools.screenshot_organizer.organizer import (ALREADY_FILED, CONFLICT_KEPT, COPIED, COPY_REMOVED,
                                                            DUPLICATE_REMOVED, FAILED, MOVED, REFUSED, RESTORED, SKIPPED,
@@ -66,8 +67,13 @@ def mode_label(result: OrganizeResult) -> str:
     return f"Dry run ({verb})" if result.dry_run else verb.capitalize()
 
 
+def flavor_name(folder: str) -> str:
+    """A flavor folder's display name (_retail_ -> Retail), as the other tools' result tables show it."""
+    return Flavor(folder, Path(folder)).display_name
+
+
 def result_rows(result: OrganizeResult) -> list[tuple[str, str, str, str, str]]:
-    return [(KIND_LABELS.get(o.kind, o.kind), o.flavor, o.src.name, str(o.dst.parent), o.reason)
+    return [(KIND_LABELS.get(o.kind, o.kind), flavor_name(o.flavor), o.src.name, str(o.dst.parent), o.reason)
             for o in result.outcomes]
 
 

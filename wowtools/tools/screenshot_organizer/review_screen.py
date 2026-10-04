@@ -29,12 +29,11 @@ from wowtools.tools.screenshot_organizer.report import (RESULT_COLUMNS, STAGE_TI
 from wowtools.tools.screenshot_organizer.settings import load_settings, resolve_journal_dir, validate_dest
 from wowtools.tools.screenshot_organizer.undo import undo
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import ConfirmScreen, ProgressScreen, TwoPaneFocus, relabel_branch, theme_colour, tick_mark
+from wowtools.ui.dialogs import (ACCENT, RESULT_HINT, REVIEW_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus, relabel_branch,
+                                result_css, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-ACCENT = "bold #5CC8FF"
-NAV_HINT = ("↑↓/Tab move · ←→ panes and buttons · Space tick · Enter/Space press · a all · n none · "
-            "o organize · y dry run · r rescan · z undo · f flavors · t tools")
+NAV_HINT = REVIEW_HINT + "a all · n none · o organize · y dry run · r rescan · z undo · f flavors · t tools"
 READ_ONLY = ("conflicts", "skipped", "conflict", "skip")  # tree nodes that cannot be ticked
 
 
@@ -53,14 +52,7 @@ class ShotProgressScreen(ProgressScreen):
 class ShotResultScreen(Screen[str]):
     """The outcome of a run, dry run or undo: a summary table, a per-file table and what to do next."""
 
-    DEFAULT_CSS = """
-    ShotResultScreen #result { height: 1fr; padding: 1 2; }
-    ShotResultScreen #result-summary { height: auto; margin-bottom: 1; }
-    ShotResultScreen #result-files { height: 1fr; }
-    ShotResultScreen .buttons { height: auto; padding: 0 2; }
-    ShotResultScreen Button { margin-right: 2; }
-    ShotResultScreen NavHint { padding: 0 2; margin-top: 0; }
-    """
+    DEFAULT_CSS = result_css("ShotResultScreen")
     BINDINGS: ClassVar[list[Binding]] = [Binding("r", "choose('review')", "Rescan"), Binding("f", "choose('flavors')", "Flavors"),
                 Binding("t", "choose('tools')", "Tools"), Binding("q", "choose('quit')", "Quit"),
                 Binding("escape", "choose('review')", "Back", show=False),
@@ -76,14 +68,13 @@ class ShotResultScreen(Screen[str]):
             summary = DataTable(id="result-summary", cursor_type="none", zebra_stripes=True)
             summary.can_focus = False  # read-only summary: not a focus stop
             yield summary
-            yield DataTable(id="result-files", cursor_type="row", zebra_stripes=True)
+            yield DataTable(id="result-files", classes="result-detail", cursor_type="row", zebra_stripes=True)
         with ButtonRow(classes="buttons"):
             yield action_button("Rescan (r)", "neutral", id="review")
             yield action_button("Other flavor (f)", "neutral", id="flavors")
             yield action_button("Tools (t)", "neutral", id="tools")
             yield action_button("Quit (q)", "neutral", id="quit")
-        yield NavHint("↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · r rescan · f other flavor · "
-                      "t tools · q quit")
+        yield NavHint(RESULT_HINT + "r rescan · f other flavor · t tools · q quit")
         yield BrandBar()
         yield Footer()
 
@@ -124,18 +115,7 @@ class ShotTree(Tree):
 
 class ShotReviewScreen(TwoPaneFocus, Screen[str]):
     TREE_SELECTOR = "#shots"
-    DEFAULT_CSS = """
-    ShotReviewScreen #body { height: 1fr; }
-    ShotReviewScreen #filters { width: 50; padding: 1; border-right: solid $primary; }
-    ShotReviewScreen #actions { margin-top: 1; height: auto; }
-    ShotReviewScreen #actions Button { min-width: 0; width: auto; margin-right: 1; margin-bottom: 1; }
-    ShotReviewScreen .section { color: $accent; text-style: bold; margin: 1 0 0 0; }
-    ShotReviewScreen #shots { width: 1fr; padding: 0 1; }
-    ShotReviewScreen #scan-box { width: 1fr; height: auto; padding: 1 2; }
-    ShotReviewScreen #scan-progress { width: 1fr; }
-    ShotReviewScreen #scan-label { color: $text-muted; margin-top: 1; }
-    ShotReviewScreen #summary { height: auto; padding: 0 1; background: $surface; }
-    """
+    DEFAULT_CSS = two_pane_css("ShotReviewScreen", "#shots")
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("space", "toggle", "Tick/untick", priority=True),
         Binding("a", "select_all", "All"),
@@ -147,6 +127,7 @@ class ShotReviewScreen(TwoPaneFocus, Screen[str]):
         Binding("f", "flavors", "Flavors"),
         Binding("t", "tools", "Tools"),
         Binding("q", "quit_tool", "Quit"),
+        Binding("escape", "flavors", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
         *NAV_BINDINGS,

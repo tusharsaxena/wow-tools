@@ -1268,7 +1268,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             box = screen.query_one("#part-Interface", Checkbox)
             box.label = "Interface (link: restore by hand)"  # the longest label a box gets
             await settle(app, pilot)
-            self.assertEqual(box.region.height, 3, box.region)  # one line: not wrapped
+            self.assertEqual(box.region.height, 1, box.region)  # compact, as in every left pane: one line, not wrapped
             self.assertLessEqual(box.region.right, filters.content_region.right)
 
     async def test_restore_tree_lists_links_and_unreadable_on_expand(self):

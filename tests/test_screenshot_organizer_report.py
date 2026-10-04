@@ -51,7 +51,7 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(rows[KIND_LABELS[MOVED]], "1")
         self.assertNotIn(KIND_LABELS[WOULD_MOVE], rows)  # zero counts are left out
         self.assertEqual(rows["Journal"], str(Path("/j/journal-x.jsonl")))
-        self.assertEqual(result_rows(result)[1], (KIND_LABELS[CONFLICT_KEPT], "_retail_", src.name,
+        self.assertEqual(result_rows(result)[1], (KIND_LABELS[CONFLICT_KEPT], "Retail", src.name,
                                                   str(dst.parent), "different"))
         dry = OrganizeResult(True, False, [Outcome("_retail_", src, dst, WOULD_MOVE)])
         self.assertEqual(dict(summary_rows(dry))["Journal"], "not written (dry run)")

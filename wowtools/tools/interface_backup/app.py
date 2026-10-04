@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, ClassVar
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Label, Static
 
@@ -23,9 +22,10 @@ from wowtools.tools.interface_backup.review_screen import BackupReviewScreen
 from wowtools.tools.interface_backup.settings import (SECTION, BackupSettings, load_settings, resolve_backup_root,
                                                       save_settings, validate_backup_dir)
 from wowtools.ui.branding import BrandBar
+from wowtools.ui.dialogs import settings_css
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.tool_flow import ToolFlow
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, FormScroll, NavHint, action_button
 
 if TYPE_CHECKING:
     from wowtools.ui.suite_app import WowToolsApp
@@ -34,14 +34,8 @@ COUNTING = "checking…"
 
 
 class BackupSettingsScreen(Screen[bool]):
-    DEFAULT_CSS = """
-    BackupSettingsScreen #settings { padding: 0 2; }
-    BackupSettingsScreen .title { color: $accent; text-style: bold; margin: 1 0; }
-    BackupSettingsScreen Label { width: 1fr; height: auto; }
+    DEFAULT_CSS = settings_css("BackupSettingsScreen") + """
     BackupSettingsScreen #destination { color: $text-muted; height: auto; }
-    BackupSettingsScreen #settings-error { color: $error; height: auto; }
-    BackupSettingsScreen .buttons { height: auto; margin-top: 1; }
-    BackupSettingsScreen Button { margin-right: 2; }
     """
     BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
 
@@ -55,7 +49,7 @@ class BackupSettingsScreen(Screen[bool]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with VerticalScroll(id="settings", can_focus=False):
+        with FormScroll(id="settings", can_focus=False):
             yield Static("Interface Backup settings", classes="title")
             yield Label("Backup folder. Zips go to <backup folder>\\interface-backup\\backup-<flavor>-<date>.zip. "
                         "Leave it empty to use <WoW folder>\\wow-tools.")

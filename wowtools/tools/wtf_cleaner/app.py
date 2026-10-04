@@ -23,6 +23,7 @@ from wowtools.tools.wtf_cleaner.settings import (SECTION, CleanerSettings, load_
                                                  save_settings)
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.branding import BrandBar
+from wowtools.ui.dialogs import settings_css
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.tool_flow import ToolFlow
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, FormScroll, Ka0sCheckbox, NavHint, action_button
@@ -32,15 +33,7 @@ if TYPE_CHECKING:
 
 
 class CleanerSettingsScreen(Screen[bool]):
-    DEFAULT_CSS = """
-    CleanerSettingsScreen #settings { padding: 0 2; }
-    CleanerSettingsScreen .title { color: $accent; text-style: bold; margin: 1 0; }
-    CleanerSettingsScreen Label { width: 1fr; height: auto; }
-    CleanerSettingsScreen Ka0sCheckbox { margin-bottom: 1; }
-    CleanerSettingsScreen #settings-error { color: $error; height: auto; }
-    CleanerSettingsScreen .buttons { height: auto; margin-top: 1; }
-    CleanerSettingsScreen Button { margin-right: 2; }
-    """
+    DEFAULT_CSS = settings_css("CleanerSettingsScreen")
     BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
 
     def __init__(self, tool_cfg: Config, wow_path: Path | None, *, source: str) -> None:

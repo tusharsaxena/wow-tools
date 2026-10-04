@@ -25,12 +25,11 @@ from wowtools.tools.interface_backup.restore import (BackupContents, RestoreErro
                                                      case_key, open_backup, plan_restore)
 from wowtools.tools.interface_backup.scanner import PARTS, FlavorScan, scan_flavor
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import TwoPaneFocus, theme_colour
+from wowtools.ui.dialogs import ACCENT, RESULT_HINT, REVIEW_HINT, TwoPaneFocus, result_css, theme_colour, two_pane_css
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
-ACCENT = "bold #5CC8FF"
-# Two lines in the 46-wide pane, so it stays on screen at 80x24.
-NAV_HINT = "↑↓/Tab move · ←→ panes · Space tick or open · Enter press · o restore · b/Esc back"
+# The review's hint shape (REVIEW_HINT, then the keys of this screen).
+NAV_HINT = REVIEW_HINT + "o restore · b/Esc back"
 # The tree's top nodes: (kind, title, note). Their children are loaded on expand (groups of files, links, lines).
 EFFECTS = (
     ("removed", "Will be removed", "on disk now, not in the backup"),
@@ -67,15 +66,9 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
     below. Dismisses with the plan to restore, or None."""
 
     TREE_SELECTOR = "#effects"
-    DEFAULT_CSS = """
-    RestoreScreen #body { height: 1fr; }
-    RestoreScreen #filters { width: 46; padding: 1; border-right: solid $primary; }
-    RestoreScreen #actions { height: auto; }  /* no margin: the hint must fit at 80x24 */
-    RestoreScreen #actions Button { min-width: 0; width: auto; margin-right: 1; }
-    RestoreScreen .section { color: $accent; text-style: bold; margin: 1 0 0 0; }
-    RestoreScreen #effects { width: 1fr; padding: 0 1; }
-    RestoreScreen #summary { height: auto; padding: 0 1; background: $surface; }
-    """
+    # Narrower than the review (FILTERS_WIDTH): two buttons only, and at 80 columns the tree must show its root
+    # and the effect titles ("Newer now than in the backup (N files)") without clipping.
+    DEFAULT_CSS = two_pane_css("RestoreScreen", "#effects", width=46)
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("o", "restore", "Restore"),
         Binding("b", "cancel", "Back"),
@@ -111,7 +104,7 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
                 yield Static(self._info_text(), id="backup-info")
                 yield Label("Restore", classes="section")
                 for part in PARTS:
-                    yield Ka0sCheckbox(part, True, id=f"part-{part}", disabled=True)
+                    yield Ka0sCheckbox(part, True, id=f"part-{part}", disabled=True, compact=True)
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Restore", "apply", id="btn-restore", disabled=True)
                     yield action_button("Back", "neutral", id="btn-back")
@@ -334,14 +327,7 @@ class RestoreResultScreen(Screen[str]):
     """The outcome of a restore or an undo, per part. Dismisses with "undo", "review", "flavors", "tools" or
     "quit"."""
 
-    DEFAULT_CSS = """
-    RestoreResultScreen #result { height: 1fr; padding: 1 2; }
-    RestoreResultScreen #result-summary { height: auto; margin-bottom: 1; }
-    RestoreResultScreen #result-table { height: 1fr; }
-    RestoreResultScreen .buttons { height: auto; padding: 0 2; }
-    RestoreResultScreen .buttons Button { min-width: 0; width: auto; margin-right: 1; }
-    RestoreResultScreen NavHint { padding: 0 2; margin-top: 0; }
-    """
+    DEFAULT_CSS = result_css("RestoreResultScreen")
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("z", "choose('undo')", "Undo"), Binding("r", "choose('review')", "Rescan"),
         Binding("f", "choose('flavors')", "Flavors"), Binding("t", "choose('tools')", "Tools"),
@@ -369,7 +355,7 @@ class RestoreResultScreen(Screen[str]):
             summary = DataTable(id="result-summary", cursor_type="none", zebra_stripes=True)
             summary.can_focus = False  # read-only summary: not a focus stop
             yield summary
-            yield DataTable(id="result-table", cursor_type="row", zebra_stripes=True)
+            yield DataTable(id="result-table", classes="result-detail", cursor_type="row", zebra_stripes=True)
         with ButtonRow(classes="buttons"):
             if self.can_undo:
                 yield action_button("Undo (z)", "revert", id="undo")
@@ -377,7 +363,7 @@ class RestoreResultScreen(Screen[str]):
             yield action_button("Other flavor (f)", "neutral", id="flavors")
             yield action_button("Tools (t)", "neutral", id="tools")
             yield action_button("Quit (q)", "neutral", id="quit")
-        hint = "↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · " + ("z undo · " if self.can_undo else "")
+        hint = RESULT_HINT + ("z undo · " if self.can_undo else "")
         yield NavHint(hint + "r rescan · f other flavor · t tools · q quit")
         yield BrandBar()
         yield Footer()
