@@ -36,7 +36,7 @@ _BAD_CHARS = frozenset('<>:"|?*\x00')  # refused everywhere: Windows cannot writ
 _WINDOWS_BAD_CHARS = frozenset(chr(c) for c in range(1, 32))
 _RESERVED = frozenset({"CON", "PRN", "AUX", "NUL"} | {f"{p}{n}" for p in ("COM", "LPT") for n in range(1, 10)})
 # Reading a zip: a damaged file, an unsupported compression method or an encrypted entry.
-_ZIP_ERRORS = (OSError, zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError, RuntimeError, ValueError)
+ZIP_ERRORS = (OSError, zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError, RuntimeError, ValueError)
 
 
 def _case_key(name: str) -> str:
@@ -119,7 +119,7 @@ def open_backup(path: Path) -> BackupContents:
                 raw = zf.read(MANIFEST_NAME)
             except KeyError:
                 raise RestoreError("not an Interface Backup zip (it has no manifest.json)") from None
-    except _ZIP_ERRORS as exc:
+    except ZIP_ERRORS as exc:
         raise RestoreError(f"the backup cannot be read: {exc}") from exc
     try:
         manifest = json.loads(raw)
@@ -228,7 +228,7 @@ def plan_restore(contents: BackupContents, scan: FlavorScan, parts: tuple[str, .
 
 Rename = Callable[[Path, Path], None]
 # A part whose extraction or swap fails with one of these is rolled back and the restore goes on to the next part.
-_PART_ERRORS = _ZIP_ERRORS
+_PART_ERRORS = ZIP_ERRORS
 
 
 class SwapError(OSError):
@@ -429,7 +429,7 @@ def restore(plan: RestorePlan, *, root: Path, journal_dir: Path, keep_journals: 
         try:
             verify_backup(contents.path, contents.sizes(),
                           progress=lambda i, n, name: report("verify", i, n, name))
-        except (BackupError, *_ZIP_ERRORS) as exc:
+        except (BackupError, *ZIP_ERRORS) as exc:
             raise RestoreError(f"the backup did not verify, nothing was changed: {exc}") from exc
         scan = scan_flavor(flavor, with_stats=False, parts=plan.parts)
         _check_parts(scan, plan.parts)
