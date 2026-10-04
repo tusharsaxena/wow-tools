@@ -16,7 +16,7 @@ merge, delete every branch, stash and worktree this run created.
 | 6 | ops: staging | done | b0a42fe | plan code verbatim; test drops the unused `DbKey` import (ruff F401); 16 ace_ops tests OK; full suite 870 OK (2 skipped), ruff clean |
 | 7 | compile + verify | done | 98f572d | plan code verbatim (`FileEdit.file` typed `SvFile \| None` as the plan notes); test file drops the plan's `# tests/...` path comment; 11 ace_compile tests OK; full suite 881 OK (2 skipped), ruff clean; not pushed by the task agent (milestone push left to the orchestrator) |
 | M1 | push milestone 1 | done (pushed) | 0e27823 | review fixes: module-only profiles kept, verify covers namespaces, partial write never follows a link; full suite 888 OK (2 skipped), ruff clean |
-| 8 | journal + editor | todo | | |
+| 8 | journal + editor | done | fe6fc85 | plan code verbatim apart from one ruff `noqa: BLE001` on the deliberate `except BaseException` (roll back, then re-raise); 3 ace_journal + 11 ace_editor tests OK; ace 340 OK; full suite 902 OK (2 skipped), ruff clean |
 | 9 | undo, recovery, multi | todo | | |
 | 10 | report helpers | todo | | |
 | M2 | push milestone 2 | todo | | |
@@ -54,3 +54,5 @@ merge, delete every branch, stash and worktree this run created.
 - M1 review: fixed: `atomic_write_bytes` followed a symlink sitting at `<name>.partial`. It now removes whatever is
   there (a link is unlinked, never followed) and creates the partial with `O_CREAT|O_EXCL` (+`O_NOFOLLOW`).
 - M1 review: no finding rejected.
+- Task 8: `editor.apply_flavor`'s `except BaseException` (roll back on anything, even Ctrl+C, then re-raise)
+  carries `# noqa: BLE001` with that reason; ruff flagged it, behaviour unchanged.
