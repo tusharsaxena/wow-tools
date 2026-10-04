@@ -13,7 +13,7 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
      register_events(TOOL_NAME, EVENTS)
      ```
      Event names share one registry across all tools (the same name with a different spec is an error), so give
-     every name a tool prefix: `shots.*` here. The WTF Cleaner already owns bare names such as `scan.started`
+     every name a tool prefix: `shots.*` here (`ibackup.*` for Interface Backup). The WTF Cleaner already owns bare names such as `scan.started`
      and `backup.created`, which predate this rule.
    - UI-free logic modules over plain dataclasses, which never import `textual`. The organizer has `naming.py`
      (parse the file name), `planner.py` (`scan(flavors, dest_dir, progress)` returns a `Plan` of `ShotItem`s),
@@ -25,7 +25,7 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
      cannot be written; `add_entry({"action": ..., ...})` after each change; `finish()` and `discard_if_empty()` at
      the end; `prune_journals(dir, keep_journals)` with a `keep_journals` setting (default 10, at least 1). Keep the
      tool's own entry fields, `read_journal` wrapper and undo rules in its own `journal.py` / `undo.py` (see
-     `screenshot_organizer/` and `wtf_cleaner/`), offer only `latest_undoable(dir)`, `mark_undone()` after an
+     `screenshot_organizer/`, `wtf_cleaner/` and `interface_backup/`, whose journal records restores only), offer only `latest_undoable(dir)`, `mark_undone()` after an
      undo, and give the review screen an amber Undo button (`action_button(..., "revert")`, key `z`, confirm
      starting on No). A dry run writes no journal.
    - `settings.py` for the tool's own settings: the `[screenshot_organizer]` section of `config/screenshot-organizer.cfg`.

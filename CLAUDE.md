@@ -1,7 +1,8 @@
 # wow-tools: notes for Claude
 
 Out-of-game WoW companion tools (Ka0s branded). Tools: WTF Cleaner (`wtf-cleaner`), Screenshot Organizer
-(`screenshot-organizer`, package `tools/screenshot_organizer`). Specs and plans:
+(`screenshot-organizer`, package `tools/screenshot_organizer`), Interface Backup (`interface-backup`, package
+`tools/interface_backup`). Specs and plans:
 `docs/superpowers/`.
 
 - Tests: `python3 scripts/run_tests.py` (parallel, ~10s; `-k TEXT` to filter, `-j N` processes). Serial, verbose:
