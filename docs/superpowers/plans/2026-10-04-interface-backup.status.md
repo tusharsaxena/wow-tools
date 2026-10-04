@@ -20,6 +20,10 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | M2 | push milestone 2 | done (pushed) | 763a34b | Milestone 2 review: 20 findings fixed (see decisions, "M2 review") |
 | 11 | docs, events, final checks | done | 4e3aa0d | Full guide (no images yet: an HTML comment marks where the screenshots go); README, architecture, adding-a-tool, CLAUDE.md; events.md regenerated (22 events, unchanged); 766 tests OK (2 skipped) parallel and serial; ruff clean; reviewed, fixes in 42958c4 |
 | M3 | push milestone 3, ask for merge go-ahead | done (pushed; awaiting merge go-ahead) | 42958c4 | final review: 13 findings fixed |
+| R1 | redesign: two-pane review screen with flavor ticks and Backups nodes (spec Addendum A) | todo | | |
+| R2 | redesign: two-pane restore screen with warnings tree; result screens in the organizer's shape | todo | | |
+| R3 | look-and-feel parity pass across all three tools | todo | | |
+| R4 | redesign review, docs (guide, architecture), push | todo | | |
 
 ## Decisions taken during the build
 

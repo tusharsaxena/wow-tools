@@ -250,3 +250,33 @@ the other guides; `docs/architecture.md` config schema, data flow and screens; `
 
 Restoring into a different flavor, restoring single files or addons, scheduled or automatic backups, encryption,
 incremental backups, a cancel button during a run (consistent with the other tools).
+
+## Addendum A: two-pane layout like the other tools (2026-10-04)
+
+The user asked for Interface Backup to follow the Screenshot Organizer's UX pattern (left pane, main tree, bottom
+selection line, popups), and for all tools to keep one look and feel. This replaces the summary table and the
+separate backup-list screen of §10; logic modules are unchanged.
+
+- **Review screen** (replaces `BackupSummaryScreen`; `TwoPaneFocus` like `ShotReviewScreen`): left pane (`#filters`,
+  same width and CSS as the organizer) with sections "Backup folder" (the zip folder) and "Keep" ("newest N per
+  flavor" / "all backups"), the action row **Back up** (apply style), **Restore**, **Rescan**, **Undo last restore**
+  (revert style), and the NavHint. Right: a tree rooted at the scope label (✓ All flavors, totals) → one node per
+  flavor (tick mark; files · size · backups count/last) → read-only children: `Interface` and `WTF` (files · size, or
+  "missing" / "link, skipped"), `Links (n)` (expandable, paths), a leftover notice node, scan-warning node, and
+  `Backups (n)` (expandable; one node per zip, newest first: date, kind, parts, size; parts read in a worker).
+  Ticks are on flavors only (and the root); a backup always holds the flavor's whole Interface + WTF. Keys: Space
+  tick, a all, n none, b back up, e restore, r rescan, z undo, f flavors, t tools, q quit, ←/→ panes. Bottom
+  `#summary` line: "Selected: N flavors · files · size · L links not backed up" plus a hint "highlight a backup and
+  press e to restore". Restore (e or Enter on a backup node) opens the restore screen for the highlighted backup;
+  with no backup highlighted it says how to pick one.
+- **Restore screen**: the same two-pane shape. Left: "Backup" (date, flavor, kind, size, parts), "Restore" with the
+  Interface / WTF checkboxes (`Ka0sCheckbox`, like the cleaner's criteria), buttons **Restore** (apply) and **Back**,
+  NavHint. Right: a tree of what the restore changes: "Will be removed (N files)" → grouped folders → files (lazy),
+  "Newer now than in the backup (N)" → groups → files, "Links kept (n)", "Links replaced (n)", "Could not be read
+  (n)", or "Nothing on disk would be lost". Bottom line: "Restore <parts> of <flavor> from <date> · N removed · M
+  newer · needs X, Y free". Confirm and progress stay popups.
+- **Result screens**: the organizer's shape: a summary DataTable (Item / Value) above a detail DataTable, buttons in
+  a ButtonRow below, NavHint.
+- **All tools**: a parity pass renders every screen of the three tools at 80x24 and 140x50 and removes drift (left
+  pane width and sections, action-row style and labels, bottom summary line, result-screen shape, footer keys);
+  a difference stays only for a stated reason.
