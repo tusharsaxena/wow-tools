@@ -12,7 +12,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | 4 | backup | done | 9609ac3, 59349ac | API as planned; lstat before open (a file turned link is not followed); DOS date clamped both ends; extra tests for links, interrupt, locked file, progress stages, old mtime. Review fix 59349ac: ancestor folders lstat-checked (no reading through an addon folder turned link), O_NOFOLLOW open, vanished/linked parts not claimed in the manifest, linked parts reported, prune never deletes the new zip |
 | 5 | open backup + plan restore | done | 7127e9d, 7a2a5b5 | API as planned; stricter entry checks (duplicates over infolist, file/folder clash, files in an unclaimed part); plan_restore raises for a part not in the backup. Review fix: device names and control chars refused only on Windows (backups made on POSIX with an `Aux` character folder restore there), manifest mtimes must be finite and >= 0, `parts` must be a list, `sizes(())` is empty, plan_restore refuses a backup of another flavor. Review fix 2: negative (pre-1970) manifest mtimes accepted (only NaN/inf refused), names compare with per-character `lower()` not `casefold()` (NTFS: `ß` is not `ss`), flavor folder `fullmatch`, plan_restore refuses an unknown or empty part list, `RestorePlan.unreadable` carries the chosen parts' scan errors; 29 tests |
 | 6 | run restore + journal | done | cc1c768 | API as planned plus `on_swapped` (journal `replaced` entry written before the old copy is deleted, as the spec orders); Ctrl+C before the swap rolls the part back; part turned link since the plan refused; new `ibackup.restore_failed` event; `log_part` public; 21 new tests |
-| 7 | undo | todo | | |
+| 7 | undo | done | c753f94 | API as planned; all guards run before anything changes (also: zip kind pre-restore, leftovers, unknown/duplicate parts, existed part absent from the zip); per-part outcomes rolled_back/failed like restore; journal left undoable when nothing changed; `ZIP_ERRORS` public; 19 tests |
 | M1 | push milestone 1 | todo | | |
 | 8 | report helpers | todo | | |
 | 9 | flow, settings, summary, backup screens, registration | todo | | |
@@ -81,3 +81,18 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   install's prune delete the other's safety zips (the spec's "no remaining journal names it" rule).
 - Task 6: `scripts/run_tests.py -k X` reports "Ran 0 tests ... OK" when a test module fails to import; the
   red step was checked with `python3 -m unittest tests.test_interface_backup_restore`.
+- Task 7: `undo_restore` refuses (RestoreError, logged as `ibackup.undo_failed` with `refused=True`) before anything
+  changes, also when the safety zip is not of kind `pre-restore` or not of the journal's flavor, a `.restoring` /
+  `.replaced` leftover is there, a `replaced` entry names an unknown or repeated part or has no boolean `existed`, or
+  a part that existed is missing from the safety zip (the plan only checked this per part, mid-run). The verify
+  failure is a refusal too.
+- Task 7: a failed part is `rolled_back` (left as it was) or `failed`, as in restore (the plan used `failed` for
+  every error). The journal is marked undone only when at least one part changed: an undo whose parts were all
+  left as they were (WoW locking the folder) stays on offer to retry. Partial success is marked undone (spec).
+- Task 7: a part the restore created is skipped when already gone, left alone when it is now a link, and its
+  `.replaced` copy is deleted with `remove_tree_no_follow`. A stop part-way logs `ibackup.undo_failed`
+  (`stopped=True`), since there is no `undo_stopped` event; `undo_completed` is logged at warning when a part
+  failed. `restore._ZIP_ERRORS` became public `ZIP_ERRORS` (undo catches the same zip errors); `log_part` imported
+  as Task 6 made it public. No new events, so `docs/events.md` is unchanged.
+- Task 7: tests rewrite the journal by parsing its JSON lines and storing paths with `to_stored()` (the plan did a
+  raw string replace of the path), and damage the safety zip at the entry's first data byte.
