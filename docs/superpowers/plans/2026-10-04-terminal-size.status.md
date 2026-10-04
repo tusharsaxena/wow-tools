@@ -9,7 +9,7 @@ task; push after the round. Never merge without the user's go-ahead.
 | S1 | shared sizes, tests, CSS; Ace3 headings back | done | 8c94fac | BASE/LARGE/TINY; look-and-feel at BASE + LARGE grow/popup checks + 80x24 smoke; POPUP_WIDTH; flow WrapButtonRow; View/Show headings. Suite 1024 tests, 0 failures; ruff clean. Renders in /tmp/wow-tools-shots/S1/ |
 | S2 | WTF Cleaner, Screenshot Organizer, Interface Backup at 120x30 | done | 7cb47cf | Footer keys whole (palette key hidden); settings forms <= 100 cols, centred, compact checkboxes (WTF form fits at 120x30); WTF result names zips inside a Backup folder row; IB backup lines show the full date and time; 80-column tests moved to BASE. Suite 1027 tests, 0 failures; ruff clean. Renders in /tmp/wow-tools-shots/S2/ (before: S2-before/) |
 | S3 | Ace3 screens at 120x30 | done | 5b86bc3 | Action bar 1 row at 160x45, 2 at 120x30 (shorter labels); guide shows pending line + hint, one row each, at 120x30; footer whole (d/p/m off it); quick actions list and 12-line target body without scrolling; result rows inside a Backup folder row; recovery path on its own line; 80x24 Ace3 tests at BASE. Suite 1031 tests, 0 failures (2 skipped); ruff clean. Renders in /tmp/wow-tools-shots/S3/ (before: S3-before/) |
-| S4 | docs | todo | | |
+| S4 | docs | done | 99132af | README "Terminal size" section (+ troubleshooting row links it); CLAUDE.md convention line; architecture "Look and feel and terminal size" subsection under UI (sizes, widths, tests) and Testing note; adding-a-tool layout note; RestoreScreen "80 columns" line fixed. Suite 1031 tests, 0 failures (2 skipped); -k ace 451, 0 failures; ruff clean. |
 | R | review, fixes, push | todo | | |
 
 ## Decisions taken during the build
@@ -91,3 +91,7 @@ task; push after the round. Never merge without the user's go-ahead.
   they are: tree lines longer than the tree pane at 120x30 (for example "Default copy · 0 characters · copy of
   Default · unused") end at the pane's edge and the tree scrolls sideways, as S2 left them; the result screens leave
   blank rows under a short detail table; the left pane's hint takes 5 rows at 120x30 and still fits.
+- Task S4: the four tool guides (`docs/wtf-cleaner.md`, `screenshot-organizer.md`, `interface-backup.md`,
+  `ace-profiles.md`) mention neither 80x24 nor a layout compromise, so they were left unchanged (S1 and S3 had
+  already updated `docs/ace-profiles.md` for the new labels and headings). `docs/adding-a-tool.md` got a line on
+  designing for 120x30. The architecture doc had no look-and-feel section; one was added under UI.
