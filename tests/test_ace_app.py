@@ -10,6 +10,7 @@ from tests.fixtures import TuiTestCase, build_ace_tree, make_config, settle
 from wowtools.core.config import Config
 from wowtools.core.install import WowInstall
 from wowtools.tools.ace_profiles.app import ProfileSettingsScreen
+from wowtools.tools.ace_profiles.popups import ActionsScreen, NameScreen, TargetScreen
 from wowtools.tools.ace_profiles.review_screen import ProfileReviewScreen
 from wowtools.tools.ace_profiles.settings import load_settings
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
@@ -228,3 +229,92 @@ class ReviewTest(AceAppBase):
             review.query_one("#search", Input).value = ""
             await settle(app, pilot)
             self.assertTrue(review.ticked)  # hidden items keep their ticks
+
+
+class StagingTest(AceAppBase):
+    async def highlight(self, app, pilot, review, kind, *rest):
+        tree = review.query_one("#profiles", Tree)
+        tree.root.expand_all()
+        await settle(app, pilot)
+        node = find(tree, kind, *rest)
+        tree.move_cursor(node)
+        await settle(app, pilot)
+        return node
+
+    async def test_delete_to_default(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.highlight(app, pilot, review, "profile", "Healer")
+            await pilot.press("d")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, TargetScreen)
+            app.screen.dismiss("Default")
+            await settle(app, pilot)
+            summary = review.staging.summary()
+            self.assertEqual((summary.deleted, summary.reassigned), (1, 1))
+            self.assertIn("✘ deleted", "\n".join(labels(review.query_one("#profiles", Tree))))
+            self.assertIn("Staged: ", review.summary_text)
+
+    async def test_rename_refuses_existing_name_then_accepts(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.highlight(app, pilot, review, "profile", "Healer")
+            await pilot.press("e")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, NameScreen)
+            app.screen.dismiss("Default")
+            await settle(app, pilot)
+            self.assertEqual(review.staging.summary().total, 0)  # refused, notified
+            await self.highlight(app, pilot, review, "profile", "Healer")
+            await pilot.press("e")
+            await settle(app, pilot)
+            app.screen.dismiss("Heals")
+            await settle(app, pilot)
+            self.assertEqual(review.staging.summary().renamed, 1)
+
+    async def test_assign_from_character_view(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await pilot.press("v")
+            await settle(app, pilot)
+            node = await self.highlight(app, pilot, review, "character", "Kaelys - Realm1")
+            node.expand()
+            await pilot.press("space")
+            await settle(app, pilot)
+            await pilot.press("p")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, TargetScreen)
+            app.screen.dismiss("Default")
+            await settle(app, pilot)
+            self.assertGreater(review.staging.summary().reassigned, 0)
+            self.assertEqual(review.ticked, set())
+
+    async def test_quick_action_keep_only_default_and_discard(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.highlight(app, pilot, review, "profile", "Healer")
+            await pilot.press("m")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ActionsScreen)
+            app.screen.dismiss("keep_default")
+            await settle(app, pilot)
+            self.assertEqual(review.staging.summary().deleted, 1)
+            review.action_discard()
+            await settle(app, pilot)
+            app.screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertEqual(review.staging.summary().total, 0)
+
+    async def test_locked_addon_refuses_quick_action(self):
+        self.cfg_tool = Config(self.config_dir / "ace-profiles.cfg")
+        self.cfg_tool.set("ace_profiles", "blacklist", "ElvUI", log=False)
+        self.cfg_tool.save()
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            review.staging.keep_only_default([k for k in review.staging.states if k.sv_name == "ElvDB"])
+            self.assertEqual(review.staging.summary().total, 0)

@@ -4,7 +4,7 @@ last change."""
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Hashable, Iterator
+from collections.abc import Callable, Hashable, Iterable, Iterator
 from pathlib import Path
 from typing import ClassVar
 
@@ -23,8 +23,10 @@ from wowtools.core.install import Flavor
 from wowtools.core.process import wow_check_for
 from wowtools.tools.ace_profiles.editor import Marker, read_marker
 from wowtools.tools.ace_profiles.journal import latest_undoable
-from wowtools.tools.ace_profiles.ops import DbKey, Staging
-from wowtools.tools.ace_profiles.report import selection_text, staged_text
+from wowtools.tools.ace_profiles.model import DEFAULT
+from wowtools.tools.ace_profiles.ops import DbKey, OpResult, Staging, valid_name
+from wowtools.tools.ace_profiles.popups import ActionsScreen, NameScreen, TargetScreen
+from wowtools.tools.ace_profiles.report import plural, selection_text, staged_text
 from wowtools.tools.ace_profiles.scanner import ScanResult, scan_flavors
 from wowtools.tools.ace_profiles.settings import (is_blacklisted, load_settings, parse_blacklist, resolve_journal_dir,
                                                   resolve_root, save_settings)
@@ -522,30 +524,202 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self.notify(f"{addon} is {'unlocked for this session' if unlocked else 'locked again'}.")
         self._schedule_rebuild()
 
-    # --- staging and runs (Tasks 13 and 14) -------------------------------------------------------
-    def _not_yet(self, what: str) -> None:
-        self.notify(f"{what} is not available yet.")
+    # --- staging -------------------------------------------------------------------------------------
+    def _ready(self) -> bool:
+        return self.idle and self.staging is not None and not self.wow_folder_changed()
+
+    def _addon_name(self, key: DbKey) -> str:
+        assert self.staging is not None
+        state = self.staging.state(key)
+        several = sum(1 for k in self.staging.states if k.path == key.path) > 1
+        return f"{state.file.addon} ({key.sv_name})" if several else state.file.addon
+
+    def _targets(self, keys: Iterable[DbKey], exclude: dict[DbKey, list[str]] | None = None) -> list[str]:
+        """"Default" first, then every profile name of these databases (minus the ones being deleted)."""
+        assert self.staging is not None
+        names: list[str] = [DEFAULT]
+        for key in keys:
+            gone = set((exclude or {}).get(key, ()))
+            names += [n for n in self.staging.state(key).names() if n not in gone and n not in names]
+        return names
+
+    def _staged(self, result: OpResult) -> None:
+        """After an operation: say what was refused and noted, clear the ticks of the databases it changed and
+        show the new staged state."""
+        assert self.staging is not None
+        for key, reason in result.refused:
+            self.notify(f"{self._addon_name(key)}: {reason}", title="Not staged", severity="warning", timeout=10)
+        for note in result.notes:
+            self.notify(note, timeout=10)
+        changed = set(result.applied)
+        self.ticked = {k for k in self.ticked if k[1] not in changed}
+        self.refresh_view()
 
     def action_delete(self) -> None:
-        self._not_yet("Delete")
+        if not self._ready():
+            return
+        assert self.staging is not None
+        selection = self.selected_profiles()
+        if not selection:
+            self.notify("Tick or highlight a profile first")
+            return
+        lines = []
+        for key, names in selection.items():
+            state = self.staging.state(key)
+            moved = sum(len(state.users(n)) for n in names)
+            lines.append(f"{self._addon_name(key)}: {', '.join(names)} ({plural(moved, 'character')} move)")
+        body = "\n".join(["Delete these profiles and move their characters to the profile chosen below:", *lines])
+
+        def done(target: str | None) -> None:
+            if target is not None and self.staging is not None:
+                self._staged(self.staging.delete(selection, target))
+        self.app.push_screen(TargetScreen("Delete profiles", body, self._targets(selection, selection)), done)
 
     def action_assign(self) -> None:
-        self._not_yet("Assign")
+        if not self._ready():
+            return
+        assert self.staging is not None
+        selection = self.selected_chars()
+        if not selection:
+            self.notify("Tick or highlight a character first")
+            return
+        lines = [f"{self._addon_name(key)}: {plural(len(chars), 'character')}" for key, chars in selection.items()]
+        body = "\n".join(["Move these characters to the profile chosen below:", *lines])
+
+        def done(target: str | None) -> None:
+            if target is not None and self.staging is not None:
+                self._staged(self.staging.assign(selection, target))
+        self.app.push_screen(TargetScreen("Assign a profile", body, self._targets(selection)), done)
+
+    def _highlighted_profile(self) -> tuple[DbKey, str] | None:
+        node = self.query_one("#profiles", Tree).cursor_node
+        data = node.data if node is not None else None
+        if data is None or data[0] != "profile":
+            self.notify("Highlight a profile")
+            return None
+        return data[1], data[2]
+
+    def _name_check(self, key: DbKey) -> Callable[[str], str | None]:
+        def check(name: str) -> str | None:
+            problem = valid_name(name)
+            if problem is None and self.staging is not None and self.staging.state(key).taken(name):
+                problem = f'"{name}" is already a profile of this database.'
+            return problem
+        return check
 
     def action_rename(self) -> None:
-        self._not_yet("Rename")
+        if not self._ready():
+            return
+        picked = self._highlighted_profile()
+        if picked is None:
+            return
+        key, name = picked
+
+        def done(new: str | None) -> None:
+            if new is not None and self.staging is not None:
+                self._staged(self.staging.rename(key, name, new))
+        body = f'{self._addon_name(key)}: rename "{name}". Its characters follow it.'
+        self.app.push_screen(NameScreen("Rename a profile", body, name, self._name_check(key)), done)
 
     def action_copy(self) -> None:
-        self._not_yet("Copy")
+        if not self._ready():
+            return
+        picked = self._highlighted_profile()
+        if picked is None:
+            return
+        key, name = picked
+
+        def done(new: str | None) -> None:
+            if new is not None and self.staging is not None:
+                self._staged(self.staging.copy(key, name, new))
+        body = f'{self._addon_name(key)}: copy "{name}" (its settings) under a new name.'
+        self.app.push_screen(NameScreen("Copy a profile", body, f"{name} copy", self._name_check(key)), done)
 
     def action_remove_leftovers(self) -> None:
-        self._not_yet("Remove leftover characters")
+        if not self._ready():
+            return
+        assert self.staging is not None
+        staging = self.staging
+        selection = {key: [c for c in chars if c in staging.state(key).leftovers]
+                     for key, chars in self.selected_chars().items()}
+        selection = {key: chars for key, chars in selection.items() if chars}
+        if not selection:
+            self.notify("Tick or highlight a leftover character first")
+            return
+        lines = [f"{self._addon_name(key)}: {', '.join(chars)}" for key, chars in selection.items()]
+        body = "\n".join(["These characters have no folder in WTF any more. Remove their entries:", *lines])
+
+        def done(ok: bool | None) -> None:
+            if ok and self.staging is not None:
+                self._staged(self.staging.remove_leftovers(selection))
+        self.app.push_screen(ConfirmScreen("Remove leftover characters?", body), done)
+
+    def _databases(self) -> list[DbKey]:
+        """The databases of the ticked keys, else of the highlighted node's addon or database."""
+        if self.ticked:
+            return sorted({k[1] for k in self.ticked}, key=lambda k: (str(k.path), k.sv_name))
+        node = self.query_one("#profiles", Tree).cursor_node
+        data = node.data if node is not None else None
+        if data is not None and data[0] == "addon":
+            return [DbKey(data[1].file.path, db.sv_name) for db in data[1].dbs]
+        if data is not None and len(data) > 1 and isinstance(data[1], DbKey):
+            return [data[1]]
+        return []
+
+    def _tick_leftovers(self) -> None:
+        assert self.staging is not None
+        staging = self.staging
+        visible = self._tick_keys(self.query_one("#profiles", Tree).root)
+        leftovers = {k for k in visible if k[0] == "c" and k[2] in staging.state(k[1]).leftovers}
+        if not leftovers:
+            self.notify("No leftover characters are shown.")
+            return
+        self.ticked.update(leftovers)
+        log_event("ui.selection", screen="ace_review", control="tick_leftovers", value=len(leftovers))
+        self._refresh_labels()
 
     def action_more(self) -> None:
-        self._not_yet("Quick actions")
+        if not self._ready():
+            return
+
+        def done(choice: str | None) -> None:
+            if choice is None or self.staging is None:
+                return
+            if choice == "tick_leftovers":
+                self._tick_leftovers()
+            elif choice == "discard":
+                self.action_discard()
+            elif choice in ("keep_default", "everyone_default"):
+                keys = self._databases()
+                if not keys:
+                    self.notify("Tick or highlight an addon first")
+                    return
+                operation = (self.staging.keep_only_default if choice == "keep_default"
+                             else self.staging.everyone_to_default)
+                self._staged(operation(keys))
+        self.app.push_screen(ActionsScreen(), done)
 
     def action_discard(self) -> None:
-        self._not_yet("Discard")
+        if not self._ready():
+            return
+        assert self.staging is not None
+        summary = self.staging.summary()
+        if not summary.total:
+            self.notify("Nothing staged")
+            return
+
+        def done(ok: bool | None) -> None:
+            if ok and self.staging is not None:
+                self.staging.discard()
+                log_event("ui.selection", screen="ace_review", control="discard", value=True)
+                self.refresh_view()
+        self.app.push_screen(ConfirmScreen("Discard staged changes?",
+                                           f"{staged_text(summary)}. Nothing has been written; the files stay as "
+                                           "they are."), done)
+
+    # --- runs (Task 14) -------------------------------------------------------------------------------
+    def _not_yet(self, what: str) -> None:
+        self.notify(f"{what} is not available yet.")
 
     def action_apply(self) -> None:
         self._not_yet("Apply")
