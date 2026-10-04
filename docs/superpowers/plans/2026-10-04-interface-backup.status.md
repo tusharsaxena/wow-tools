@@ -16,7 +16,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | M1 | push milestone 1 | done (pushed) | 2b66d80 | Milestone 1 review: 15 findings fixed (see decisions, "M1 review") |
 | 8 | report helpers | done | 4cbafec | API as planned plus `RestorePlan.unreadable` warnings, missing files in the backup result, notices capped per part; 12 tests |
 | 9 | flow, settings, summary, backup screens, registration | done | e6e3ab6 | API as planned with explicit `wow_check`/`disk_usage` flow kwargs; journal lookup and free space moved off the UI thread; own `_checking` flag for the WoW check; 19 TUI tests |
-| 10 | restore and undo screens | todo | | |
+| 10 | restore and undo screens | done | ae15647 | API as planned; backup list, backup load/scan and every plan built in workers; Undo on the result screen only for a restore that changed a part; 12 new TUI tests |
 | M2 | push milestone 2 | todo | | |
 | 11 | docs, events, final checks | todo | | |
 | M3 | push milestone 3, ask for merge go-ahead | todo | | |
@@ -161,3 +161,31 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   and WoW check off the UI thread, WoW-running alert, hand-edited folder refused, busy guard during a backup
   (inside `activity.running`), result → flavors with the new counts, a failing job clearing busy. No menu-count
   test needed a change. `docs/events.md` unchanged (no new events).
+- Task 10: nothing slow on the UI thread: `BackupListScreen` lists the folder in a worker (title "Listing the
+  backups…" until then), `RestoreScreen` opens the zip and scans in one worker and runs `plan_restore` in another
+  each time a box changes (spec §10; the plan ran it on the UI thread). A generation counter drops a plan worked
+  out for boxes that changed since; Restore (o) stays off until the current plan is in.
+- Task 10: `RestoreScreen` buttons are **Restore (o)** and **Back (b)** with `b` and Esc bound (spec §10; the plan
+  had "Back (Esc)" only). The boxes are labelled `Interface` / `WTF`; a part the backup lacks reads "(not in this
+  backup)", a linked part "(a link to another folder: restore it by hand)", both unticked and disabled. The flavor
+  check compares with `case_key`. The screen shows the zip's path, parts, file count and `created`.
+- Task 10: the confirm's date comes from the `BackupInfo` the list returned (kept in a closure), not from a
+  `list_backups` call on the UI thread as in the plan. `_restore_confirmed` reloads the settings and re-checks the
+  backup folder (`_folder_problem`) before running, as Back up does.
+- Task 10: Undo reads the journal inside the preflight worker (the WoW check needs its flavor folder); the plan
+  read it and called `latest_undoable` on the UI thread. The summary uses `self.undoable` from its scan.
+- Task 10: `RestoreResultScreen` offers Undo (button, `z`, hint) only for a restore with a journal that changed a
+  part (`can_undo`); after a restore whose parts were all rolled back, `latest_undoable` would pick an older,
+  unrelated restore. Undo from the result screen rescans and then undoes only if the scan still finds that
+  result's journal the undoable one (else "That restore can no longer be undone."). Task 9's `_then_restore` flag
+  became `_after_scan` (`("restore", None)` or `("undo", journal)`), since the plan's `action_rescan();
+  action_undo()` would have been refused while the scan ran.
+- Task 10: the result head also names the zip restored from (or put back from, for an undo) and says when a part
+  did not finish. The progress screen gets the flavor label (`on_flavor`).
+- Task 10: `job_failed`: RestoreError → "Nothing was changed" notice; RestoreStopped → notice (pointing at Undo
+  only when a part changed and it was not an undo) plus its `RestoreResultScreen`; anything else as in Task 9.
+  Each then rescans.
+- Task 10: tests beyond the plan's three: no part ticked, a part missing from the backup, leftover blocks, Back
+  and declined confirm change nothing, list/open/scan/plan off the UI thread, WoW-running alert on the restore
+  confirm, refused and stopped restores, Undo from the summary starting on No. No menu-count test changed; no new
+  events, so `docs/events.md` is unchanged.
