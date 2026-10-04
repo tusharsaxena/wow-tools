@@ -1,16 +1,23 @@
+from __future__ import annotations
+
 import tempfile
+import threading
 from pathlib import Path
+from unittest.mock import patch
 
 from textual.widgets import Button, DataTable, Input, OptionList, Static, Tree
 
-from tests.fixtures import TuiTestCase, build_screenshot_tree, build_wow_tree, make_config
+from tests.fixtures import TuiTestCase, settle, build_screenshot_tree, build_wow_tree, make_config
+from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
+from wowtools.tools.screenshot_organizer import app as app_module
+from wowtools.tools.screenshot_organizer import review_screen as review_module
 from wowtools.tools.screenshot_organizer.app import ScreenshotSettingsScreen
 from wowtools.tools.screenshot_organizer.journal import latest_undoable
 from wowtools.tools.screenshot_organizer.review_screen import ShotResultScreen, ShotReviewScreen
 from wowtools.tools.screenshot_organizer.settings import load_settings
-from wowtools.tools.wtf_cleaner.review_screen import ConfirmScreen
+from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 
@@ -49,8 +56,7 @@ class ShotsAppTest(TuiTestCase):
         self.assertIsInstance(app.screen, FlavorScreen)
         await pilot.press("enter")  # "All flavors" is highlighted by default
         await pilot.pause()
-        await app.workers.wait_for_complete()
-        await pilot.pause()
+        await settle(app, pilot)
         self.assertIsInstance(app.screen, ShotReviewScreen)
         return app.screen
 
@@ -60,8 +66,7 @@ class ShotsAppTest(TuiTestCase):
         self.assertIsInstance(app.screen, ConfirmScreen)
         await pilot.press(answer)
         await pilot.pause()
-        await app.workers.wait_for_complete()
-        await pilot.pause()
+        await settle(app, pilot)
 
     async def test_first_open_asks_for_settings(self):
         app = self.make_app()
@@ -72,6 +77,8 @@ class ShotsAppTest(TuiTestCase):
             app.screen.query_one("#save", Button).press()
             await pilot.pause()
             self.assertIsInstance(app.screen, FlavorScreen)
+            await settle(app, pilot)  # let the new screen finish mounting: on slow Windows CI, leaving run_test
+            # straight away raced the Header's title update (NoMatches: HeaderTitle)
         self.assertEqual(load_settings(Config(self.config_dir / "screenshot-organizer.cfg").load()).dest_dir, self.dest)
 
     async def test_settings_refuse_destination_inside_screenshots(self):
@@ -91,6 +98,25 @@ class ShotsAppTest(TuiTestCase):
             self.assertIn("at least 1", app.screen.error_text)
         self.assertFalse((self.config_dir / "screenshot-organizer.cfg").exists())
 
+    async def test_rescan_refuses_invalid_stored_dest(self):
+        self.save_tool_cfg(dest_dir=str(self.root / "_retail_" / "WTF" / "shots"))
+        scans = []
+        real_scan = review_module.scan
+        app = self.make_app()
+        try:
+            review_module.scan = lambda *args, **kwargs: scans.append(args) or real_scan(*args, **kwargs)
+            async with app.run_test(size=SIZE) as pilot:
+                review = await self.open_review(app, pilot)
+                self.assertIsNone(review.plan)
+                self.assertTrue(any("Fix the folder in settings" in n.message for n in app._notifications))
+                await pilot.press("o")
+                await pilot.pause()
+                self.assertIs(app.screen, review)
+        finally:
+            review_module.scan = real_scan
+        self.assertEqual(scans, [])
+        self.assertFalse((self.root / "_retail_" / "WTF" / "shots").exists())
+
     async def test_all_flavors_organize_then_undo(self):
         self.save_tool_cfg(dest_dir=str(self.dest))
         app = self.make_app()
@@ -105,8 +131,7 @@ class ShotsAppTest(TuiTestCase):
                 self.assertEqual(app.screen.query_one("#result-files", DataTable).row_count, 6)
                 await pilot.press("r")  # back to the review: rescans
                 await pilot.pause()
-                await app.workers.wait_for_complete()
-                await pilot.pause()
+                await settle(app, pilot)
                 self.assertIsInstance(app.screen, ShotReviewScreen)
                 self.assertTrue(app.screen.query_one("#btn-organize", Button).disabled)
                 self.assertIn("Nothing to file.", app.screen.summary_text)
@@ -128,8 +153,7 @@ class ShotsAppTest(TuiTestCase):
             await self.run_action(app, pilot, "o")
             await pilot.press("r")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             await self.run_action(app, pilot, "z", answer="n")
             self.assertIsInstance(app.screen, ShotReviewScreen)
         self.assertFalse((self.shots / A).exists())
@@ -149,8 +173,7 @@ class ShotsAppTest(TuiTestCase):
             self.assertIsInstance(app.screen, FlavorScreen)
             await pilot.press("enter")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             review = app.screen
             self.assertIsInstance(review, ShotReviewScreen)
             self.assertFalse(review.query_one("#btn-undo", Button).disabled)
@@ -161,8 +184,7 @@ class ShotsAppTest(TuiTestCase):
             self.assertIn("Put back 6 files?", app.screen.body_text)
             await pilot.press("y")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             self.assertIsInstance(app.screen, ShotResultScreen)
             self.assertTrue(app.screen.result.undo)
         self.assertTrue((self.shots / A).exists())
@@ -175,8 +197,7 @@ class ShotsAppTest(TuiTestCase):
             await self.run_action(app, pilot, "o")
             await pilot.press("r")
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             review = app.screen
             self.assertFalse(review.query_one("#btn-undo", Button).disabled)
             review.action_rescan()  # the scan result can only arrive once the event loop runs again
@@ -184,8 +205,7 @@ class ShotsAppTest(TuiTestCase):
             review.action_undo()
             await pilot.pause()
             self.assertIs(app.screen, review)
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             self.assertFalse(review.query_one("#btn-undo", Button).disabled)
 
     async def test_dry_run_changes_nothing(self):
@@ -198,6 +218,25 @@ class ShotsAppTest(TuiTestCase):
             self.assertEqual(app.screen.result.count("would_move"), 6)
         self.assertFalse(self.dest.exists())
         self.assertTrue((self.shots / A).exists())
+
+    async def test_runs_happen_inside_activity_running(self):
+        self.save_tool_cfg(dest_dir=str(self.dest))
+        seen = []
+        real = review_module.execute
+
+        def execute(*args, **kwargs):
+            seen.append(activity.wait_idle(0))
+            return real(*args, **kwargs)
+
+        review_module.execute = execute
+        self.addCleanup(setattr, review_module, "execute", real)
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await self.run_action(app, pilot, "y")
+            self.assertTrue(app.screen.result.dry_run)
+        self.assertEqual(seen, [False])
+        self.assertTrue(activity.wait_idle(0))
 
     async def test_unticking_a_day_excludes_it(self):
         self.save_tool_cfg()  # in place
@@ -255,8 +294,7 @@ class ShotsAppTest(TuiTestCase):
             await self.open_tool(app, pilot)
             await pilot.press("down", "enter")  # first real flavor after "All flavors"
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             review = app.screen
             self.assertIsInstance(review, ShotReviewScreen)
             self.assertEqual(len(review.flavors), 1)
@@ -286,9 +324,88 @@ class ShotsAppTest(TuiTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_tool(app, pilot)
-            await pilot.pause()
+            await settle(app, pilot)
+            # Decided before the picker opens (opening and dismissing it at once raced its Header).
             self.assertIsInstance(app.screen, ToolMenuScreen)
+            self.assertFalse(any(isinstance(s, FlavorScreen) for s in app.screen_stack))
 
+
+    async def test_flavor_counts_fill_in_after_mount(self):
+        """F-005: the picker opens at once; the waiting counts are filled in by a worker."""
+        self.save_tool_cfg()
+        release = threading.Event()
+        self.addCleanup(release.set)
+        real = app_module.waiting_count
+        threads = []
+
+        def slow_count(flavor, *args, **kwargs):
+            threads.append(threading.current_thread() is threading.main_thread())
+            release.wait(5)
+            return real(flavor, *args, **kwargs)
+
+        app = self.make_app()
+        with patch.object(app_module, "waiting_count", slow_count):
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_tool(app, pilot)
+                picker = app.screen
+                self.assertIsInstance(picker, FlavorScreen)
+                options = picker.query_one("#flavors", OptionList)
+                labels = [str(options.get_option_at_index(n).prompt) for n in range(options.option_count)]
+                self.assertTrue(all("counting" in label for label in labels), labels)
+                release.set()
+                await settle(app, pilot)
+                ids = [options.get_option_at_index(i).id for i in range(options.option_count)]
+                labels = {i: str(options.get_option_at_index(n).prompt) for n, i in enumerate(ids)}
+                self.assertIn("4 screenshots to file", labels["_retail_"])
+                self.assertIn("6 screenshots to file", labels[ids[0]])
+                self.assertEqual(options.highlighted, 0)
+        self.assertTrue(threads)
+        self.assertFalse(any(threads))
+
+    async def test_copy_mode_filed_copies_are_not_waiting(self):
+        """F-027: copy mode in place: screenshots already copied are not counted, show as already filed and
+        start unticked."""
+        from wowtools.core.install import WowInstall
+        from wowtools.tools.screenshot_organizer.organizer import execute
+        from wowtools.tools.screenshot_organizer.planner import scan
+        self.save_tool_cfg(copy_mode=True)
+        install = WowInstall(self.root)
+        plan = scan(install.flavors(), None, copy=True)
+        execute(plan.selectable, dest_dir=None, copy=True, dry_run=False, journal_dir=None, keep_journals=10)
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_tool(app, pilot)
+            await settle(app, pilot)
+            options = app.screen.query_one("#flavors", OptionList)
+            ids = [options.get_option_at_index(i).id for i in range(options.option_count)]
+            labels = {i: str(options.get_option_at_index(n).prompt) for n, i in enumerate(ids)}
+            self.assertIn("nothing to file", labels["_retail_"])
+            self.assertIn("nothing to file", labels[ids[0]])
+            await pilot.press("enter")
+            await pilot.pause()
+            await settle(app, pilot)
+            review = app.screen
+            self.assertIsInstance(review, ShotReviewScreen)
+            self.assertEqual(review.selection(), [])
+            self.assertIn("Nothing to file", review.summary_text)
+            self.assertIn("6 already filed", review.summary_text)
+            tree = review.query_one("#shots", Tree)
+            groups = [n for n in _walk(tree.root) if n.data and n.data[0] == "filed"]
+            self.assertEqual(len(groups), 2)
+            retail = next(g for g in groups if g.data[1].flavor.folder == "_retail_")
+            self.assertIn("Already filed (4)", str(retail.label))
+            self.assertFalse([n for n in _walk(tree.root) if n.data and n.data[0] == "day"])
+            tree.focus()
+            tree.move_cursor(retail)
+            await pilot.press("space")  # tickable by hand
+            await pilot.pause()
+            self.assertEqual(len(review.selection()), 4)
+            await pilot.press("a")  # ticks everything to file; leaves the already-filed choice alone
+            await pilot.pause()
+            self.assertEqual(len(review.selection()), 4)
+            await pilot.press("n")
+            await pilot.pause()
+            self.assertEqual(review.selection(), [])
 
     async def test_every_flavor_is_listed_and_empty_ones_are_marked(self):
         self.save_tool_cfg()
@@ -296,6 +413,7 @@ class ShotsAppTest(TuiTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_tool(app, pilot)
+            await settle(app, pilot)  # the counts come from a worker
             picker = app.screen
             self.assertIsInstance(picker, FlavorScreen)
             options = picker.query_one("#flavors", OptionList)
@@ -315,8 +433,7 @@ class ShotsAppTest(TuiTestCase):
             self.assertEqual(len(set(remarks)), 1)
             await pilot.press("down", "enter")  # Anniversary: no Screenshots folder
             await pilot.pause()
-            await app.workers.wait_for_complete()
-            await pilot.pause()
+            await settle(app, pilot)
             self.assertIsInstance(app.screen, ShotReviewScreen)
             self.assertIn("Nothing to file (no Screenshots folder)", app.screen.summary_text)
             self.assertTrue(app.screen.query_one("#btn-organize", Button).disabled)

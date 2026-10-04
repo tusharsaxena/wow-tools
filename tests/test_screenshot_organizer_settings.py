@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -54,11 +57,16 @@ class SettingsTest(unittest.TestCase):
         self.assertIsNotNone(validate_dest(self.root, self.install))
         self.assertIsNotNone(validate_dest(self.root / "_retail_" / "Screenshots", self.install))
         self.assertIsNotNone(validate_dest(self.root / "_retail_" / "Screenshots" / "x", self.install))
+        self.assertIsNotNone(validate_dest(self.root / "_retail_" / "WTF" / "x", self.install))
+        self.assertIsNotNone(validate_dest(self.root / "_retail_" / "Interface" / "AddOns" / "x", self.install))
 
     def test_validate_dest_needs_a_full_path(self):
         # A relative destination would be filed under whatever folder the suite was started from.
         for raw in ("Shots", "~/shots", "D:Shots"):
             self.assertIn("full path", validate_dest(Path(raw), self.install) or "", raw)
+
+    @unittest.skipIf(os.name == "nt", "simulates WSL: on Windows a UNC path is a full path")
+    def test_validate_dest_rejects_unc_under_wsl(self):
         unc = to_native(r"\\nas\share\Shots", wsl=True)  # a UNC path has no WSL form: it stays relative
         self.assertIn("full path", validate_dest(unc, self.install) or "")
 

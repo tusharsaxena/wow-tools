@@ -58,14 +58,27 @@ class FlavorScreen(Screen[Union[Flavor, str, None]]):
         self.note = note
         self.all_note = all_note
 
-    def compose(self) -> ComposeResult:
+    def _rows(self) -> tuple[list[str], list[Text]]:
         ids = [f.folder for f in self.flavors]
         rows = [(f.display_name, f"({f.folder})", (self.note(f) if self.note else None) or "") for f in self.flavors]
         if self.include_all:
             ids.insert(0, ALL_FLAVORS)
             count = len(self.flavors)
             rows.insert(0, ("All flavors", f"({count} flavor{'' if count == 1 else 's'})", self.all_note or ""))
-        options = [Option(label, id=option_id) for option_id, label in zip(ids, flavor_rows(rows))] if rows else []
+        return ids, flavor_rows(rows) if rows else []
+
+    def set_notes(self, note: Callable[[Flavor], str | None] | None, all_note: str | None = None) -> None:
+        """Replace the remarks column (e.g. once counts worked out in the background are ready). The highlighted
+        row stays where it is."""
+        self.note = note
+        self.all_note = all_note
+        options = self.query_one("#flavors", OptionList)
+        for option_id, label in zip(*self._rows()):
+            options.replace_option_prompt(option_id, label)
+
+    def compose(self) -> ComposeResult:
+        ids, labels = self._rows()
+        options = [Option(label, id=option_id) for option_id, label in zip(ids, labels)]
         yield Header()
         yield Banner()
         yield Static("Choose a WoW flavor", classes="title")

@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import IO, Any, Callable, Iterable
 
+from wowtools.core.fsutil import free_name
 from wowtools.core.paths import to_native, to_stored
 
 JOURNAL_VERSION = 1
@@ -46,13 +47,7 @@ def friendly_stamp(stamp: str) -> str:
 
 def new_journal_path(folder: Path, now: datetime | None = None) -> Path:
     """journal-<stamp>.jsonl in folder, with -2, -3, ... when that name is taken."""
-    stamp = (now or datetime.now()).strftime("%Y%m%d-%H%M%S")
-    path = folder / f"journal-{stamp}.jsonl"
-    n = 2
-    while path.exists():
-        path = folder / f"journal-{stamp}-{n}.jsonl"
-        n += 1
-    return path
+    return free_name(folder, f"journal-{(now or datetime.now()):%Y%m%d-%H%M%S}", ".jsonl")
 
 
 def _stored(value: Any) -> Any:
@@ -75,10 +70,6 @@ class JournalWriter:
         assert self._handle is not None
         self._handle.write(json.dumps(record, ensure_ascii=False) + "\n")
         self._handle.flush()
-
-    @property
-    def is_open(self) -> bool:
-        return self._handle is not None
 
     def open(self) -> None:
         if self._handle is not None:
@@ -185,7 +176,7 @@ def latest_undoable(folder: Path | None, reader: Callable[[Path], Journal] = rea
     for path in list_journals(folder):
         try:
             journal = reader(path)
-        except (OSError, ValueError):
+        except (OSError, ValueError, TypeError):  # unreadable: never offered, and never a crash
             continue
         if journal.undone is not None:
             return None

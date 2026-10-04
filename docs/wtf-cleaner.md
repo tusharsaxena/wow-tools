@@ -75,6 +75,10 @@ everything by mistake. With All flavors, that version shows "not scanned" and th
 A character that has never changed its addon list counts as having every addon enabled, because that's what WoW
 does.
 
+If there are no characters at all (an account, or a whole game version, with only account-wide settings), the
+cleaner can't tell what is switched off, so it counts every installed addon as enabled and the "Not enabled" rule
+suggests nothing there. The scan notes this in its warnings.
+
 ### Keys on the review screen
 
 | Key | Does |
@@ -95,7 +99,10 @@ does.
 
 ## Cleaning
 
-When you press **Clean** and confirm, a progress window shows each step and the file it's working on:
+When you press **Clean**, the bottom bar says "Checking for running programs…" for a moment while the cleaner
+looks for WoW and for programs that lock these files. Your ticks and filters can't be changed during that moment,
+so what you confirm is exactly what the list shows. Then it asks you to confirm. Once you do, a progress window
+shows each step and the file it's working on:
 
 **_A clean in progress_**
 
@@ -105,7 +112,9 @@ Before anything is deleted, the cleaner:
 
 1. **Checks that no other program has the files open.** The Raider.IO client and the WeakAuras Companion are
    known to lock these files. If any file is locked, the clean stops with nothing deleted and tells you which
-   ones. Close that program and try again.
+   ones. Close that program and try again. (It checks by renaming each file to `<name>.wowtools-lockcheck` and
+   straight back. If the app is closed in that split second, the next clean puts the file back first, and the
+   scan warns about it until then.)
 2. **Backs up your whole `WTF` folder** into a zip file and checks the zip. If the backup fails, nothing is
    deleted.
 3. **Zips the files it's about to remove** and checks that zip too. If it fails, nothing is deleted.
@@ -133,7 +142,9 @@ From here, `r` scans again, `f` picks another game version, `t` goes back to the
 ### Dry run
 
 A **Dry run** does everything a clean does except the deleting. It still writes the zip of the files it *would*
-remove, and shows you the same results screen. When in doubt, do a dry run first.
+remove (named `dryrun-…zip`, so you can tell it from a real clean's zip), and shows you the same results screen.
+When in doubt, do a dry run first. Since dry runs tend to be repeated, only the newest few dry-run zips of each
+game version are kept (the same number as WTF backups, 5 unless you change it).
 
 ## Undo last clean
 
@@ -156,14 +167,18 @@ Everything the cleaner saves goes into its backup folder. Unless you change it i
 wow-tools\wtf-cleaner\
   backup\backup-<flavor>-<YYYYMMDD-HHMMSS>.zip                 your whole WTF folder, taken before each clean
   cleaned\cleaned-<flavor>-<account>-<YYYYMMDD-HHMMSS>.zip     just the files that clean removed
+  cleaned\dryrun-<flavor>-<account>-<YYYYMMDD-HHMMSS>.zip      the files a dry run would have removed
   journal\journal-<YYYYMMDD-HHMMSS>.jsonl                      the record Undo last clean uses
 ```
 
 `<flavor>` is the game version (`retail`, `classic_era` and so on) and `<account>` is the account you picked, or
-`all`. For example: `cleaned-retail-all-20261003-140311.zip`.
+`all`. For example: `cleaned-retail-all-20261003-140311.zip`. If two cleans start in the same second, the second
+gets `-2` added before `.zip`, so no backup ever replaces another.
 
 - The **cleaned** zips are never deleted by the app.
 - Only the newest 5 **backups** of each game version are kept (you can change this in settings).
+- Only the newest 5 **dry-run** zips of each game version are kept (the same setting). Dry-run zips made by
+  older versions of the app are named `cleaned-…` like real ones, so they're kept until you delete them.
 - Only the newest 10 **journals** are kept.
 
 ## Restoring a backup
@@ -196,8 +211,8 @@ Press `s` in the cleaner. The settings are saved in `config\wtf-cleaner.cfg`.
 | Max age in days | 90 | The age limit for rule 3 |
 | The four rules | all on | Which rules are on when the review screen opens |
 | Zip the files before deleting | on | Keep a zip of everything a clean removes (recommended) |
-| Backup folder | empty | Where zips and backups go. Empty means `<WoW folder>\wow-tools\wtf-cleaner` |
-| WTF backups to keep | 5 | How many whole-folder backups to keep for each game version |
+| Backup folder | empty | Where zips and backups go. Empty means `<WoW folder>\wow-tools\wtf-cleaner`. It must be a full path, and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
+| WTF backups to keep | 5 | How many whole-folder backups to keep for each game version. Dry-run zips are kept to the same number |
 | Journals to keep | 10 | How many journals to keep for Undo |
 
 The file itself uses these names, if you edit it by hand: `max_age_days`, `criterion_not_installed`,
@@ -214,7 +229,7 @@ The file itself uses these names, if you edit it by hand: `max_age_days`, `crite
 | Does it touch my keybindings, macros or UI layout? | No. It only ever looks at addon settings files. Blizzard's own settings, keybindings, macros, chat setup, UI layout and your list of enabled addons are never touched. |
 | What's the difference between a Dry run and Clean? | A **Dry run** does every step except deleting, so you can see the full results first. **Clean** deletes the ticked files after backing them up. |
 | Can I clean one account only? | Yes. Pick a single game version; if it has more than one account, the next screen lets you pick one. |
-| How much space do the backups take? | Each WTF backup is a zip of your whole `WTF` folder, so it depends on how big that folder is (zipping shrinks these text files a lot). Only the newest 5 per game version are kept (you can change that in settings). The zips of cleaned files are kept until you delete them. |
+| How much space do the backups take? | Each WTF backup is a zip of your whole `WTF` folder, so it depends on how big that folder is (zipping shrinks these text files a lot). Only the newest 5 per game version are kept (you can change that in settings), and the same number of dry-run zips. The zips of cleaned files are kept until you delete them. |
 | Can I undo a clean from last week? | **Undo last clean** only goes back to the most recent clean. For an older one, unzip its files by hand; see [Restoring a backup](#restoring-a-backup). |
 
 ## Troubleshooting
@@ -223,7 +238,10 @@ The file itself uses these names, if you edit it by hand: `max_age_days`, `crite
 |---------|-----|
 | Files come back after cleaning | WoW was running. Close it and clean again. |
 | "files are locked by another program" | Close the Raider.IO client or the WeakAuras Companion, then clean again. Nothing was deleted. |
+| A warning about a `.wowtools-lockcheck` file | The app was closed during a lock check and left a settings file renamed. The next clean renames it back (a clean of one account only fixes that account's files). To fix it now, close WoW and remove `.wowtools-lockcheck` from the end of the name. If the original file is there too, the leftover is an old copy you can delete. |
 | "Refusing to scan" | That game version has no addons installed, so there's nothing safe to suggest. |
+| "The clean stopped unexpectedly" | Something went wrong that the cleaner didn't expect. Press `r` to scan again and see what's left. If settings you wanted are missing, **Undo last clean** (`z`) or the WTF backup puts them back. Then follow [Reporting a bug](../README.md#reporting-a-bug); the details are in the log. |
+| "Backup folder not allowed" | The backup folder in settings is a relative path, your WoW folder, or inside a game version's `WTF`, `Interface` or `Screenshots` folder (a backup inside `WTF` would be zipped into every later backup). Press `s` and pick another folder, or leave it empty for the default. Nothing was cleaned. |
 | "An earlier clean did not finish" | See [If a clean was interrupted](#if-a-clean-was-interrupted). |
 | **Undo last clean** is greyed out | There's nothing to undo: you haven't cleaned yet, or you already undid the last clean. |
 | The scan takes a long time | A big `WTF` folder takes a while, especially from WSL; see the main [Troubleshooting](../README.md#troubleshooting). The progress bar shows it's still working. |

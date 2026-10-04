@@ -9,71 +9,44 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.screen import ModalScreen, Screen
+from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Button, DataTable, Footer, Header, Label, ProgressBar, Static, Tree
 
+from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
-from wowtools.core.install import Flavor
+from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.journal import friendly_stamp
 from wowtools.tools.screenshot_organizer.journal import latest_undoable, read_journal
 from wowtools.tools.screenshot_organizer.naming import day_parts
 from wowtools.tools.screenshot_organizer.organizer import OrganizeError, OrganizeResult, execute
-from wowtools.tools.screenshot_organizer.planner import MAYBE_DUPLICATE, FlavorPlan, Plan, ShotItem, scan
+from wowtools.tools.screenshot_organizer.planner import MAYBE_DUPLICATE, Plan, ShotItem, scan
 from wowtools.tools.screenshot_organizer.report import (RESULT_COLUMNS, STAGE_TITLES, confirm_text, destination_label,
                                                         kind_class, plural, result_rows, stopped_text,
                                                         summary_rows)
-from wowtools.tools.screenshot_organizer.settings import load_settings, resolve_journal_dir
+from wowtools.tools.screenshot_organizer.settings import load_settings, resolve_journal_dir, validate_dest
 from wowtools.tools.screenshot_organizer.undo import undo
-from wowtools.tools.wtf_cleaner.review_screen import ConfirmScreen
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, NavHint, action_button
+from wowtools.ui.dialogs import ConfirmScreen, ProgressScreen, TwoPaneFocus, relabel_branch, theme_colour, tick_mark
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 ACCENT = "bold #5CC8FF"
-SUCCESS_FALLBACK = "#4CC38A"
-CLASS_FALLBACK = {"success": SUCCESS_FALLBACK, "accent": "#5CC8FF", "warning": "#E8C547", "error": "#E5534B"}
 NAV_HINT = ("↑↓/Tab move · ←→ panes and buttons · Space tick · Enter/Space press · a all · n none · "
             "o organize · y dry run · r rescan · z undo · f flavors · t tools")
 READ_ONLY = ("conflicts", "skipped", "conflict", "skip")  # tree nodes that cannot be ticked
 
 
-class ShotProgressScreen(ModalScreen[None]):
-    """Shown while a run, dry run or undo runs: the stage, a progress bar and the current file."""
+class ShotProgressScreen(ProgressScreen):
+    """Shown while a run, dry run or undo runs (the widget ids keep their shots- prefix)."""
 
-    DEFAULT_CSS = """
-    ShotProgressScreen { align: center middle; }
-    ShotProgressScreen #shots-box { width: 80; height: auto; border: thick $accent; background: $panel;
-                                    padding: 1 2; }
-    ShotProgressScreen #shots-stage { color: $accent; text-style: bold; margin-bottom: 1; }
-    ShotProgressScreen #shots-progress { width: 1fr; }
-    ShotProgressScreen #shots-file { color: $text-muted; margin-top: 1; height: 2; overflow: hidden hidden; }
-    """
+    ID_PREFIX = "shots"
+    STAGE_TITLES = STAGE_TITLES
+    SIMULATED_STAGE = "organize"
 
     def __init__(self, stage_titles: dict[str, str] = STAGE_TITLES, dry_run: bool = False,
                  first_stage: str = "organize") -> None:
-        super().__init__()
-        self.stage_titles = stage_titles
-        self.dry_run = dry_run
-        self.stage = first_stage
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="shots-box"):
-            yield Static(Text(self.stage_title(self.stage)), id="shots-stage")
-            yield ProgressBar(id="shots-progress", show_eta=False)
-            yield Static("", id="shots-file")
-
-    def stage_title(self, stage: str) -> str:
-        if stage == "organize" and self.dry_run:
-            return "Simulating"
-        return self.stage_titles.get(stage, stage)
-
-    def update_progress(self, stage: str, current: int, total: int, detail: str = "") -> None:
-        self.stage = stage
-        self.query_one("#shots-stage", Static).update(Text(self.stage_title(stage)))
-        # A total of 0 means "not known" (pruning): the bar runs as indeterminate.
-        self.query_one("#shots-progress", ProgressBar).update(total=total if total > 0 else None, progress=current)
-        self.query_one("#shots-file", Static).update(Text(detail))
+        super().__init__(dry_run=dry_run, first_stage=first_stage, stage_titles=stage_titles)
 
 
 class ShotResultScreen(Screen[str]):
@@ -132,13 +105,7 @@ class ShotResultScreen(Screen[str]):
 
     def _kind_style(self, kind: str) -> str:
         name = kind_class(kind)
-        if not name:
-            return ""
-        try:
-            colour = getattr(self.app.current_theme, name, None)
-        except Exception:  # noqa: BLE001 - no theme yet: use the Ka0s colours
-            colour = None
-        return f"bold {colour or CLASS_FALLBACK[name]}"
+        return f"bold {theme_colour(self.app, name)}" if name else ""
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.action_choose(event.button.id or "quit")
@@ -154,7 +121,8 @@ class ShotTree(Tree):
     BINDINGS = [Binding("left", "screen.focus_filters", "Filters", show=False)]
 
 
-class ShotReviewScreen(Screen[str]):
+class ShotReviewScreen(TwoPaneFocus, Screen[str]):
+    TREE_SELECTOR = "#shots"
     DEFAULT_CSS = """
     ShotReviewScreen #body { height: 1fr; }
     ShotReviewScreen #filters { width: 50; padding: 1; border-right: solid $primary; }
@@ -240,26 +208,9 @@ class ShotReviewScreen(Screen[str]):
         busy = self._scanning or getattr(self.app, "busy", False)
         self.query_one("#btn-undo", Button).disabled = busy or latest_undoable(self._journal_dir()) is None
 
-    # --- panes (←/→) --------------------------------------------------------------------------------
-    def on_descendant_focus(self, event) -> None:
-        widget = event.widget
-        if any(ancestor.id == "filters" for ancestor in widget.ancestors):
-            self._last_filter = widget
-
-    def action_focus_filters(self) -> None:
-        focused = self.focused
-        if focused is not None and any(a.id == "filters" for a in focused.ancestors):
-            return  # already in the left panel
-        target = self._last_filter
-        if target is None or not target.is_attached or not target.focusable:
-            target = next((b for b in self.query("#actions Button").results(Button) if b.focusable), None)
-        if target is not None:
-            target.focus()
-
-    def action_focus_tree(self) -> None:
-        tree = self.query_one("#shots", Tree)
-        if tree.display and self.focused is not tree:
-            tree.focus()
+    # --- panes (←/→): TwoPaneFocus ------------------------------------------------------------------
+    def first_filter(self) -> Widget | None:
+        return next((b for b in self.query("#actions Button").results(Button) if b.focusable), None)
 
     # --- scanning ------------------------------------------------------------------------------
     def action_rescan(self) -> None:
@@ -270,8 +221,27 @@ class ShotReviewScreen(Screen[str]):
         self.query_one("#mode-label", Static).update(Text(self._mode_text()))
         self.plan = None
         self.unchecked.clear()  # a new scan means new items
+        problem = self._dest_problem()
+        if problem:  # checked again before use: the file may have been edited by hand
+            self._show_scan_progress(False)
+            tree = self.query_one("#shots", Tree)
+            tree.clear()
+            message = f"{problem} Fix the folder in settings (s)."
+            self.summary_text = message
+            self.query_one("#summary", Static).update(Text(message))
+            for button_id in ("#btn-organize", "#btn-dry"):
+                self.query_one(button_id, Button).disabled = True
+            self._refresh_undo()
+            self.notify(message, title="Destination not allowed", severity="error", timeout=15)
+            return
         self._show_scan_progress(True)
         self.run_worker(self._scan_worker, thread=True, exclusive=True, group="scan")
+
+    def _dest_problem(self) -> str | None:
+        wow_path = self.cfg.wow_path
+        if wow_path is None:
+            return None
+        return validate_dest(self.settings.dest_dir, WowInstall(wow_path))
 
     def _show_scan_progress(self, scanning: bool) -> None:
         """While scanning, the tree is replaced by a progress bar and the folder being read."""
@@ -293,13 +263,13 @@ class ShotReviewScreen(Screen[str]):
         self.query_one("#scan-label", Static).update(Text(label))
 
     def _scan_worker(self) -> None:
-        dest_dir = self.settings.dest_dir
+        dest_dir, copy = self.settings.dest_dir, self.settings.copy_mode
 
         def progress(current: int, total: int, label: str) -> None:
             self.app.call_from_thread(self._scan_progress, current, total, label)
 
         try:
-            plan = scan(self.flavors, dest_dir, progress)
+            plan = scan(self.flavors, dest_dir, progress, copy=copy)
         except Exception as exc:  # noqa: BLE001 - shown to the user, never a crash
             log_exception("shots.scan", exc)
             self.app.call_from_thread(self._scan_failed, f"The scan failed: {exc}")
@@ -315,6 +285,7 @@ class ShotReviewScreen(Screen[str]):
 
     def _scanned(self, plan: Plan) -> None:
         self.plan = plan
+        self.unchecked = {i.src for i in plan.filed}  # copy mode: already filed, so they start unticked
         self._show_scan_progress(False)
         self._rebuild()
         self._refresh_undo()
@@ -333,15 +304,19 @@ class ShotReviewScreen(Screen[str]):
             return ("year", folder, data[2])
         if kind == "month":
             return ("month", folder, data[2], data[3])
+        if kind == "filed":
+            return ("filed", folder)
         return ("day", folder, data[2])
 
     def _index(self, plan: Plan) -> None:
-        """Precompute the selectable items under every flavor, year, month and day, so marks stay cheap."""
+        """Precompute the items to file under every flavor, year, month and day, and each flavor's already-filed
+        group (copy mode), so marks stay cheap."""
         index: dict[tuple, list[ShotItem]] = {("root",): []}
         for fp in plan.flavors:
             folder = fp.flavor.folder
             index.setdefault(("flavor", folder), [])
-            for item in sorted(fp.selectable, key=lambda i: (i.day, i.src.name.casefold())):
+            index[("filed", folder)] = sorted(fp.filed, key=lambda i: (i.day, i.src.name.casefold()))
+            for item in sorted(fp.to_file, key=lambda i: (i.day, i.src.name.casefold())):
                 year, month, _ = day_parts(item.day)
                 for key in (("root",), ("flavor", folder), ("year", folder, year), ("month", folder, year, month),
                             ("day", folder, item.day)):
@@ -382,6 +357,9 @@ class ShotReviewScreen(Screen[str]):
                     for day in years[year][month]:
                         data = ("day", fp, day)
                         month_node.add(self._label(data), data=data, allow_expand=True)  # files load on expand
+            if fp.filed:
+                data = ("filed", fp)
+                flavor_node.add(self._label(data), data=data, allow_expand=True)  # files load on expand
             if fp.conflicts:
                 data = ("conflicts", fp)
                 node = flavor_node.add(self._label(data), data=data)
@@ -400,23 +378,14 @@ class ShotReviewScreen(Screen[str]):
 
     def on_tree_node_expanded(self, event: Tree.NodeExpanded) -> None:
         node = event.node
-        if node.data is None or node.data[0] != "day" or node.children:
+        if node.data is None or node.data[0] not in ("day", "filed") or node.children:
             return
         for item in self._items(node.data):
             data = ("file", item)
             node.add_leaf(self._label(data), data=data)
 
     def _mark(self, items: list[ShotItem]) -> tuple[str, str]:
-        unchecked = sum(1 for i in items if i.src in self.unchecked)
-        if items and unchecked == len(items):
-            return f"{CHECK_OFF} ", "dim"
-        if unchecked:
-            return "◩ ", "bold"
-        try:
-            success = self.app.current_theme.success or SUCCESS_FALLBACK
-        except Exception:  # noqa: BLE001 - no theme yet: use the Ka0s colour
-            success = SUCCESS_FALLBACK
-        return f"{CHECK_ON} ", f"bold {success}"
+        return tick_mark(items, self.unchecked, lambda i: i.src, success=theme_colour(self.app, "success"))
 
     def _label(self, data) -> Text:
         kind = data[0]
@@ -432,6 +401,9 @@ class ShotReviewScreen(Screen[str]):
             item = data[1]
             extra = ("  possible duplicate", "dim") if item.state == MAYBE_DUPLICATE else ""
             return Text.assemble(mark, item.src.name, extra)
+        if kind == "filed":
+            return Text.assemble(mark, (f"Already filed ({len(items)})", ACCENT),
+                                 ("  an identical copy is already in its date folder", "dim"))
         if kind == "root":
             name = self.scope_label
         elif kind == "flavor":
@@ -449,19 +421,7 @@ class ShotReviewScreen(Screen[str]):
 
     def _refresh_labels(self, node=None) -> None:
         """Relabel node's branch and its ancestors (everything a tick there can change), or the whole tree."""
-        tree = self.query_one("#shots", Tree)
-        if node is not None:
-            parent = node.parent
-            while parent is not None:
-                if parent.data is not None:
-                    parent.set_label(self._label(parent.data))
-                parent = parent.parent
-        stack = [node or tree.root]
-        while stack:
-            current = stack.pop()
-            if current.data is not None and current.data[0] not in READ_ONLY:
-                current.set_label(self._label(current.data))
-            stack.extend(current.children)
+        relabel_branch(self.query_one("#shots", Tree), node, self._label, skip=READ_ONLY)
         self._update_summary()
 
     def selection(self) -> list[ShotItem]:
@@ -478,13 +438,14 @@ class ShotReviewScreen(Screen[str]):
         conflicts = sum(len(fp.conflicts) for fp in plan.flavors)
         text = (f"Selected: {plural(len(selection), 'shot')} · {plural(dupes, 'possible duplicate')} · "
                 f"{plural(conflicts, 'conflict')} · {len(plan.skipped)} skipped (name not recognised)")
-        nothing = not plan.selectable
-        if nothing:
+        if plan.filed:
+            text += f" · {len(plan.filed)} already filed"
+        if not plan.to_file:
             # Only worth saying when none of the chosen flavors has a Screenshots folder at all.
             reason = "" if any(not fp.missing for fp in plan.flavors) else " (no Screenshots folder)"
             text = f"Nothing to file{reason}.    " + text
-        for button_id in ("#btn-organize", "#btn-dry"):
-            self.query_one(button_id, Button).disabled = nothing
+        for button_id in ("#btn-organize", "#btn-dry"):  # already-filed copies can still be ticked by hand
+            self.query_one(button_id, Button).disabled = not plan.selectable
         if plan.warnings:
             text += f"    ⚠ {plural(len(plan.warnings), 'folder')} could not be read (see the log)"
         self.summary_text = text
@@ -517,7 +478,9 @@ class ShotReviewScreen(Screen[str]):
         return (str(data[1].src),) if data[0] == "file" else self._key(data)
 
     def action_select_all(self) -> None:
-        self.unchecked.clear()
+        # Everything to file; already-filed copies (copy mode) keep whatever the user chose for them.
+        filed = {i.src for i in self.plan.filed} if self.plan is not None else set()
+        self.unchecked &= filed
         log_event("ui.selection", screen="shots_review", control="select_all", value=True)
         self._refresh_labels()
 
@@ -592,7 +555,8 @@ class ShotReviewScreen(Screen[str]):
             self.app.call_from_thread(progress_screen.update_progress, *args)
 
         try:
-            result = job(progress)
+            with activity.running():
+                result = job(progress)
         except OrganizeError as exc:
             self.app.call_from_thread(self._job_stopped, exc)
             return

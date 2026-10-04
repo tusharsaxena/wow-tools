@@ -56,7 +56,10 @@ def _launch(index: int, count: int, pattern: str | None) -> tuple[int, dict | No
     command = [sys.executable, str(Path(__file__).resolve()), "--shard", f"{index}/{count}"]
     if pattern:
         command += ["-k", pattern]
-    proc = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, check=False)
+    # Pin the pipe encoding so a Windows code page can't break decoding of a shard's output.
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    proc = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          env=env, check=False)
     summary = None
     for line in proc.stdout.splitlines():
         if line.startswith(RESULT_PREFIX):

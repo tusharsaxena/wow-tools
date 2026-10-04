@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import os
 import tempfile
 import unittest
 from pathlib import Path
 
-from tests.fixtures import NOW, build_wow_tree
+from tests.fixtures import NOW, build_solo_tree, build_wow_tree
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
@@ -70,6 +72,11 @@ class RulesTest(unittest.TestCase):
     def test_unknown_criterion_rejected(self):
         with self.assertRaises(ValueError):
             Criteria.from_names(["bogus"])
+
+    def test_no_characters_proposes_only_not_installed(self):
+        solo = WowInstall(build_solo_tree(self.tmp / "Solo WoW")).flavor("retail")
+        proposal = evaluate(scan(solo), Criteria(), now=NOW)
+        self.assertEqual([(i.addon, i.reasons) for i in proposal.items], [("Gone", ["not_installed"])])
 
     def test_criterion_counts(self):
         # Files each criterion proposes on its own (see the fixture docstring): Uninstalled.lua + .bak +

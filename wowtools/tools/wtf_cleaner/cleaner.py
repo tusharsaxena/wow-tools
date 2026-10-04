@@ -8,6 +8,7 @@ and journals each file right after deleting it.
 from __future__ import annotations
 
 import os
+import re
 import stat
 import time
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ from typing import Callable
 from wowtools import __version__
 from wowtools.core.backup import BackupEntry, BackupError, create_backup
 from wowtools.core.events import log_event
+from wowtools.core.fsutil import free_name, rename_no_replace, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
 from wowtools.tools.wtf_cleaner.journal import CleanJournal
@@ -25,10 +27,13 @@ from wowtools.tools.wtf_cleaner.rules import ProposalItem
 from wowtools.tools.wtf_cleaner.safety import (DEFAULT_KEEP_SNAPSHOTS, MARKER_NAME, Marker, check_clean, clear_marker,
                                                prune_snapshots, read_marker, restore_deleted, take_snapshot,
                                                write_marker)
-from wowtools.tools.wtf_cleaner.scanner import SVFile
+from wowtools.tools.wtf_cleaner.scanner import LOCK_PROBE_SUFFIX, SVFile
 
 CleanProgress = Callable[[str, int, int, str], None]
 CLEANED_SUBDIR = "cleaned"
+# A dry run's zip of the files it would remove. Only these are pruned (keep_backups per flavor); a real clean's
+# cleaned-*.zip is never deleted by the app (F-018).
+DRY_RUN_ZIP_NAME = re.compile(r"^dryrun-(?P<flavor>.+?)-(?P<account>.+)-(?P<stamp>\d{8}-\d{6})(?:-(?P<n>\d+))?\.zip$")
 ALL_ACCOUNTS_LABEL = "all"
 
 
@@ -36,8 +41,10 @@ class CleanError(Exception):
     """The clean was refused or stopped. `restored` lists files put back from the snapshot, if any.
     `files_missing` is True when files were deleted and could not be put back (restore from the WTF backup)."""
 
-    restored: list[str] = []
-    files_missing: bool = False
+    def __init__(self, message: str, *, restored: list[str] | None = None, files_missing: bool = False) -> None:
+        super().__init__(message)
+        self.restored: list[str] = list(restored) if restored is not None else []
+        self.files_missing = files_missing
 
 
 @dataclass(frozen=True)
@@ -58,6 +65,7 @@ class CleanResult:
     restored: list[str] = field(default_factory=list)
     check_problems: list[str] = field(default_factory=list)  # what the post-clean check found ([] = passed)
     pruned: list[Path] = field(default_factory=list)  # older WTF backups removed to keep the newest N
+    dry_runs_pruned: list[Path] = field(default_factory=list)  # older dry-run zips removed to keep the newest N
     journal_path: Path | None = None  # the run journal this clean wrote to (set by execute_flavors)
 
     def _with(self, status: str) -> list[FileOutcome]:
@@ -129,7 +137,38 @@ def _recheck(sv: SVFile, info: os.stat_result | None) -> str | None:
     return None
 
 
-LOCK_PROBE_SUFFIX = ".wowtools-lockcheck"
+def recover_probe_leftovers(folders: list[Path], flavor: Flavor) -> list[Path]:
+    """Rename back every <name>.wowtools-lockcheck left in these SavedVariables folders by a crash during an
+    earlier lock check, when <name> itself is absent (never overwriting). Runs before a real clean's lock check and
+    WTF backup, over every SavedVariables folder in the clean's scope. Returns the files put back; a leftover that cannot be renamed is left alone."""
+    recovered: list[Path] = []
+    for folder in folders:
+        try:
+            leftovers = sorted(p for p in folder.iterdir() if p.name.endswith(LOCK_PROBE_SUFFIX))
+        except OSError:
+            continue
+        for leftover in leftovers:
+            original = leftover.with_name(leftover.name[:-len(LOCK_PROBE_SUFFIX)])
+            try:
+                rename_no_replace(leftover, original)
+            except OSError:
+                continue  # the original exists again, or the rename failed: the scan keeps warning about it
+            recovered.append(original)
+            log_event("clean.probe_recovered", flavor=flavor.folder, path=_relative(original, flavor))
+    return recovered
+
+
+def saved_variables_folders(flavor: Flavor, account: str | None = None) -> list[Path]:
+    """Every SavedVariables folder a scan of this scope reads: each account's and each character's (one account,
+    any case, when `account` is given). Unreadable folders are left out."""
+    accounts = flavor.accounts()
+    if account is not None:
+        accounts = [a for a in accounts if a.name.casefold() == account.casefold()]
+    folders: list[Path] = []
+    for acct in accounts:
+        folders.append(acct.saved_variables_dir)
+        folders.extend(c.saved_variables_dir for c in acct.characters())
+    return folders
 
 
 def _probe_lock(path: Path) -> str | None:
@@ -137,20 +176,18 @@ def _probe_lock(path: Path) -> str | None:
     file open without allowing deletion, so a failure here means the delete would fail too. Returns the error, or
     None if the file can be deleted (or is gone, which the recheck already reported)."""
     aside = path.with_name(path.name + LOCK_PROBE_SUFFIX)
-    if aside.exists():
-        return None  # never overwrite anything; the delete itself will report a real problem
     try:
-        os.rename(path, aside)
-    except FileNotFoundError:
-        return None
+        rename_no_replace(path, aside)
+    except (FileNotFoundError, FileExistsError):
+        return None  # gone (the recheck reported it), or never overwrite anything; the delete reports real problems
     except OSError as exc:
         return exc.strerror or str(exc)
     for attempt in range(5):
         try:
-            os.rename(aside, path)
+            rename_no_replace(aside, path)
             return None
         except OSError as exc:
-            if attempt == 4:
+            if attempt == 4 or isinstance(exc, FileExistsError):  # a new file at path: never replace it
                 raise CleanError(f"Could not put {path.name} back after a lock check ({exc}). It is at {aside}: "
                                  f"rename it back to {path.name}. Nothing was deleted.") from exc
             time.sleep(0.1)
@@ -179,18 +216,6 @@ def _relative(path: Path, flavor: Flavor) -> str:
         return path.relative_to(flavor.path).as_posix()
     except ValueError:
         return str(path)
-
-
-def _safe_progress(progress: CleanProgress | None) -> CleanProgress:
-    """Wrap a progress callback so an error inside it can never disturb (or roll back) a clean."""
-    def report(stage: str, current: int, total: int, detail: str = "") -> None:
-        if progress is None:
-            return
-        try:
-            progress(stage, current, total, detail)
-        except Exception:  # noqa: BLE001 - a broken progress display must not stop the clean
-            pass
-    return report
 
 
 def _take_safety_snapshot(flavor: Flavor, backup_dir: Path | None, now: datetime, rels: list[str],
@@ -237,17 +262,14 @@ def _restore_after(exc: BaseException, snapshot: Path, backup_dir: Path, flavor:
     except Exception as restore_exc:  # noqa: BLE001 - any failure keeps the marker and the snapshot
         log_event("restore.failed", flavor=flavor.folder, snapshot=str(snapshot), files=len(deleted),
                   reason=reason, error=str(restore_exc))
-        error = CleanError(f"Clean stopped ({reason}) and restoring the {len(deleted)} deleted files failed "
-                           f"({restore_exc}). The WTF backup is at {snapshot}: close WoW, then unzip "
-                           f"it into {flavor.path} to restore.")
-        error.files_missing = bool(deleted)
-        return error
+        return CleanError(f"Clean stopped ({reason}) and restoring the {len(deleted)} deleted files failed "
+                          f"({restore_exc}). The WTF backup is at {snapshot}: close WoW, then unzip "
+                          f"it into {flavor.path} to restore.", files_missing=bool(deleted))
     log_event("restore.completed", flavor=flavor.folder, snapshot=str(snapshot), restored=len(restored),
               reason=reason, files=restored)
     clear_marker(backup_dir)
-    error = CleanError(f"Clean stopped ({reason}); {len(restored)} deleted files were restored from {snapshot}")
-    error.restored = restored
-    return error
+    return CleanError(f"Clean stopped ({reason}); {len(restored)} deleted files were restored from {snapshot}",
+                      restored=restored)
 
 
 def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup: bool,
@@ -257,7 +279,7 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
     """account is the scope of the clean (None = all accounts); it names the cleaned-files zip. journal (real
     cleans) is the run journal: opened before anything is touched, one entry after each delete."""
     now = now or datetime.now()
-    report = _safe_progress(progress)
+    report: CleanProgress = safe_progress(progress)
     selected = [(item, sv) for item in items for sv in item.files]
     log_event("clean.started", dry_run=dry_run, flavor=flavor.folder, items=len(items), files=len(selected),
               bytes=sum(sv.size for _, sv in selected), backup=backup)
@@ -283,6 +305,8 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
     if not dry_run and ready:
         if journal is not None:
             _open_journal(journal, flavor)
+        folders = set(saved_variables_folders(flavor, account)) | {sv.path.parent for _, sv in ready}
+        recover_probe_leftovers(sorted(folders), flavor)
         _refuse_locked(ready, flavor, report)
         snapshot = _take_safety_snapshot(flavor, backup_dir, now, [_relative(sv.path, flavor) for _, sv in ready],
                                          report)
@@ -291,6 +315,8 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
     try:
         if backup and ready:
             _selective_backup(result, ready, flavor, backup_dir, now, dry_run, report, account)
+            if dry_run and backup_dir is not None:
+                _prune_dry_run_zips(result, backup_dir, flavor, keep_backups)
     except BaseException:
         if snapshot is not None and backup_dir is not None:
             clear_marker(backup_dir)  # nothing was deleted; the WTF backup is kept like any other
@@ -359,10 +385,40 @@ def _finish_safety(result: CleanResult, snapshot: Path, backup_dir: Path, flavor
         log_event("clean.validated", flavor=flavor.folder, deleted=len(deleted), zip=str(snapshot))
 
 
-def cleaned_zip_path(backup_dir: Path, flavor_short: str, account: str | None, now: datetime) -> Path:
-    """<backup folder>/cleaned/cleaned-<flavor>-<account or all>-<YYYYMMDD-HHMMSS>.zip"""
-    return (backup_dir / CLEANED_SUBDIR
-            / f"cleaned-{flavor_short}-{account or ALL_ACCOUNTS_LABEL}-{now:%Y%m%d-%H%M%S}.zip")
+def cleaned_zip_path(backup_dir: Path, flavor_short: str, account: str | None, now: datetime, *,
+                     dry_run: bool = False) -> Path:
+    """<backup folder>/cleaned/cleaned-<flavor>-<account or all>-<YYYYMMDD-HHMMSS>.zip (a dry run: dryrun-...),
+    with -2, -3, ... before .zip when that name is taken (two runs in the same second)."""
+    prefix = "dryrun" if dry_run else "cleaned"
+    return free_name(backup_dir / CLEANED_SUBDIR,
+                     f"{prefix}-{flavor_short}-{account or ALL_ACCOUNTS_LABEL}-{now:%Y%m%d-%H%M%S}", ".zip")
+
+
+def prune_dry_run_zips(backup_dir: Path, flavor_short: str, keep: int) -> list[Path]:
+    """Delete all but the newest `keep` (at least 1) dry-run zips of this flavor (any account) in
+    <backup_dir>/cleaned. Real cleaned-files zips, other flavors' zips and other files are never touched."""
+    folder = backup_dir / CLEANED_SUBDIR
+    try:
+        matches = [(m, p) for p in folder.iterdir() if (m := DRY_RUN_ZIP_NAME.match(p.name)) and p.is_file()]
+    except OSError:
+        return []
+    found = [p for m, p in sorted(matches, key=lambda mp: (mp[0]["stamp"], int(mp[0]["n"] or 1)), reverse=True)
+             if m["flavor"] == flavor_short]
+    removed: list[Path] = []
+    for path in found[max(1, keep):]:
+        try:
+            path.unlink()
+            removed.append(path)
+        except OSError:
+            pass
+    return removed
+
+
+def _prune_dry_run_zips(result: CleanResult, backup_dir: Path, flavor: Flavor, keep: int) -> None:
+    result.dry_runs_pruned = prune_dry_run_zips(backup_dir, flavor.short_name, keep)
+    if result.dry_runs_pruned:
+        log_event("backup.dry_runs_pruned", flavor=flavor.folder, keep=keep,
+                  removed=[str(p) for p in result.dry_runs_pruned])
 
 
 def _selective_backup(result: CleanResult, ready: list[tuple[ProposalItem, SVFile]], flavor: Flavor,
@@ -370,7 +426,7 @@ def _selective_backup(result: CleanResult, ready: list[tuple[ProposalItem, SVFil
                       account: str | None) -> None:
     if backup_dir is None:
         raise BackupError("no backup folder is configured")
-    dest = cleaned_zip_path(backup_dir, flavor.short_name, account, now)
+    dest = cleaned_zip_path(backup_dir, flavor.short_name, account, now, dry_run=dry_run)
     ready_bytes = sum(sv.size for _, sv in ready)
     meta = {"tool": TOOL_NAME, "suite_version": __version__, "flavor": flavor.folder,
             "account": account, "created": now.isoformat(timespec="seconds")}

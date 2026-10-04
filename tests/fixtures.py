@@ -103,6 +103,18 @@ def make_config(directory: Path, wow_root: Path, **general: str) -> Config:
     return cfg
 
 
+def build_solo_tree(root: Path) -> Path:
+    """A retail install whose only account, SOLO, has account-wide SavedVariables and no character folders.
+    Details and WeakAuras are installed; Gone is not."""
+    retail = root / "_retail_"
+    for name in ("Details", "WeakAuras"):
+        _addon(retail, name)
+    sv = retail / "WTF" / "Account" / "SOLO" / "SavedVariables"
+    for name in ("Details.lua", "WeakAuras.lua", "Gone.lua"):
+        _write(sv / name)
+    return root
+
+
 class TuiTestCase(unittest.IsolatedAsyncioTestCase):
     """Base for Textual tests. IsolatedAsyncioTestCase runs its loop in asyncio debug mode, which makes Textual
     about 15x slower (every callback is timed and logged); the tests do not need it, so it is switched off."""
@@ -110,6 +122,20 @@ class TuiTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         asyncio.get_running_loop().set_debug(False)
+
+
+async def settle(app, pilot, timeout: float = 10.0) -> None:
+    """Wait until background workers are done and the screen has drawn what they produced. One pause after
+    `wait_for_complete()` is not always enough on a slow machine (CI on Windows): a worker may not have started
+    yet, or a list rebuild scheduled with `call_after_refresh` may still be pending."""
+    deadline = time.monotonic() + timeout
+    while True:
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        busy = (any(not worker.is_finished for worker in app.workers)
+                or getattr(app.screen, "_rebuild_pending", False))
+        if not busy or time.monotonic() > deadline:
+            return
 
 
 SHOT_BYTES = {

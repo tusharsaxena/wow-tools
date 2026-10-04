@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import tempfile
 import unittest
 import unittest.mock
 from pathlib import Path
 
 from tests.fixtures import build_wow_tree
+from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.core.journal import list_journals
@@ -14,8 +17,6 @@ from wowtools.tools.wtf_cleaner.journal import (A_DELETED, clean_journal_dir, la
 from wowtools.tools.wtf_cleaner.multi import execute_flavors, scan_flavors
 from wowtools.tools.wtf_cleaner.rules import Criteria, evaluate
 from wowtools.tools.wtf_cleaner.settings import DEFAULT_KEEP_JOURNALS, SECTION, load_settings
-
-from wowtools.core.config import Config
 
 
 class CleanJournalTest(unittest.TestCase):

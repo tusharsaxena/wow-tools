@@ -19,10 +19,13 @@ from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, MULTI_RESULT_CO
                                                format_size, multi_result_rows, result_rows, undo_row,
                                                undo_summary_rows)
 from wowtools.tools.wtf_cleaner.undo import UndoResult
+from wowtools.ui.dialogs import theme_colour
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-SUCCESS_FALLBACK = "#4CC38A"
 BLOCK_STYLE = "bold #5CC8FF"
+# Theme colour per file status in the result table.
+STATUS_COLOURS = {"deleted": "success", "restored": "success", "would_delete": "accent", "skipped": "warning",
+                  "failed": "error"}
 
 
 def reasons_text(reasons: list[str]) -> Text:
@@ -167,15 +170,8 @@ class ResultScreen(Screen[str]):
         return summary_rows(self.result)
 
     def _status_style(self, status: str) -> str:
-        try:
-            theme = self.app.current_theme
-            colours = {"deleted": theme.success, "restored": theme.success, "would_delete": theme.accent,
-                       "skipped": theme.warning, "failed": theme.error}
-        except Exception:  # noqa: BLE001 - no theme yet: use the Ka0s colours
-            colours = {}
-        fallback = {"deleted": SUCCESS_FALLBACK, "restored": SUCCESS_FALLBACK, "would_delete": "#5CC8FF", "skipped": "#E8C547",
-                    "failed": "#E5534B"}
-        return f"bold {colours.get(status) or fallback.get(status, '')}".strip()
+        name = STATUS_COLOURS.get(status)
+        return f"bold {theme_colour(self.app, name)}" if name else "bold"
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.action_choose(event.button.id or "quit")

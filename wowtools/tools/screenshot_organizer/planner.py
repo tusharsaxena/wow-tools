@@ -18,6 +18,10 @@ ScanProgress = Callable[[int, int, str], None]
 NEW = "new"
 MAYBE_DUPLICATE = "maybe_duplicate"  # a file of the same size is at the target; execute compares hashes
 CONFLICT = "conflict"  # a file of another size is at the target: never touched
+# Copy mode only: the original stays in Screenshots, and a file of the same size is already at the target (the
+# modified time is not compared: not every copy keeps it). Not waiting, as in waiting_count: listed as already
+# filed and unticked; execute still compares hashes if it is ticked.
+FILED = "filed"
 UNRECOGNISED = "name not recognised"
 TICK = 500  # progress tick every N files inside one folder
 SAMPLE = 20
@@ -67,6 +71,15 @@ class FlavorPlan:
         return self._state(CONFLICT)
 
     @property
+    def filed(self) -> list[ShotItem]:
+        return self._state(FILED)
+
+    @property
+    def to_file(self) -> list[ShotItem]:
+        """What is waiting to be filed: the selectable items minus those already filed (copy mode)."""
+        return [i for i in self.items if i.state not in (CONFLICT, FILED)]
+
+    @property
     def selectable(self) -> list[ShotItem]:
         return [i for i in self.items if i.state != CONFLICT]
 
@@ -84,6 +97,14 @@ class Plan:
     @property
     def selectable(self) -> list[ShotItem]:
         return [i for fp in self.flavors for i in fp.selectable]
+
+    @property
+    def to_file(self) -> list[ShotItem]:
+        return [i for fp in self.flavors for i in fp.to_file]
+
+    @property
+    def filed(self) -> list[ShotItem]:
+        return [i for fp in self.flavors for i in fp.filed]
 
     @property
     def skipped(self) -> list[Skipped]:
@@ -113,21 +134,35 @@ def list_names(folder: Path) -> set[str]:
         return set()
 
 
-def waiting_count(flavor: Flavor) -> int | None:
+def waiting_count(flavor: Flavor, dest_dir: Path | None = None, *, copy: bool = False) -> int | None:
     """How many screenshots are waiting in a flavor's Screenshots folder (top level only: files already in date
-    folders are filed), or None if it has no Screenshots folder. One listing, no stat."""
+    folders are filed), or None if it has no Screenshots folder. One listing, no stat. In copy mode the originals
+    stay where they are, so a name already at its target is not waiting (an earlier copy, or a conflict that is
+    never filed): one names-only listing per target day folder as well."""
     folder = source_dir(flavor)
     if not folder.is_dir():
         return None
     try:
-        return sum(1 for name in list_names(folder) if parse_shot_name(name) is not None)
+        shots = [(name, day) for name in list_names(folder) if (day := parse_shot_name(name)) is not None]
+        if not copy:
+            return len(shots)
+        root = target_root(flavor, dest_dir)
+        targets: dict[Path, set[str]] = {}
+        count = 0
+        for name, day in shots:
+            day_dir = root.joinpath(*day_parts(day))
+            if day_dir not in targets:
+                targets[day_dir] = list_names(day_dir)
+            count += name not in targets[day_dir]
+        return count
     except OSError:
         return None
 
 
-def scan(flavors: list[Flavor], dest_dir: Path | None, progress: ScanProgress | None = None) -> Plan:
+def scan(flavors: list[Flavor], dest_dir: Path | None, progress: ScanProgress | None = None, *,
+         copy: bool = False) -> Plan:
     log_event("shots.scan_started", flavors=[f.folder for f in flavors],
-              dest_dir=str(dest_dir) if dest_dir else None)
+              dest_dir=str(dest_dir) if dest_dir else None, copy=copy)
     plan = Plan([], dest_dir)
     targets: dict[Path, set[str]] = {}
     total = len(flavors)
@@ -170,14 +205,20 @@ def scan(flavors: list[Flavor], dest_dir: Path | None, progress: ScanProgress | 
             state = NEW
             if name in targets[day_dir]:  # stat only the names already at the target, not the whole day folder
                 try:
-                    existing_size = os.stat(day_dir / name, follow_symlinks=False).st_size
+                    existing = os.stat(day_dir / name, follow_symlinks=False)
                 except FileNotFoundError:
-                    existing_size = None
-                if existing_size is not None:
-                    state = MAYBE_DUPLICATE if existing_size == st.st_size else CONFLICT
+                    existing = None
+                if existing is not None:
+                    if existing.st_size != st.st_size:
+                        state = CONFLICT
+                    elif copy:
+                        state = FILED
+                    else:
+                        state = MAYBE_DUPLICATE
             fp.items.append(ShotItem(flavor, src_dir / name, day_dir / name, day, st.st_size, st.st_mtime, state))
         summary[flavor.folder] = {"to_file": len(fp.new), "maybe_duplicates": len(fp.maybe_duplicates),
-                                  "conflicts": len(fp.conflicts), "unrecognised": len(fp.skipped),
+                                  "conflicts": len(fp.conflicts), "already_filed": len(fp.filed),
+                                  "unrecognised": len(fp.skipped),
                                   "unrecognised_sample": [s.path.name for s in fp.skipped[:SAMPLE]]}
     if progress:
         progress(total, total, "Done")

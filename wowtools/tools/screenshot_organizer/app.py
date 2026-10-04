@@ -17,7 +17,7 @@ from wowtools.core.paths import to_native, to_stored
 from wowtools.tools.screenshot_organizer.planner import waiting_count
 from wowtools.tools.screenshot_organizer.review_screen import ShotReviewScreen
 from wowtools.tools.screenshot_organizer.settings import (SECTION, ShotSettings, load_settings, save_settings,
-                                                          validate_dest)
+                                                          source_dir, validate_dest)
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.tool_flow import ToolFlow
@@ -105,6 +105,9 @@ class ScreenshotSettingsScreen(Screen[bool]):
         self.dismiss(True)
 
 
+COUNTING = "counting…"
+
+
 def waiting_text(count: int | None) -> str:
     """The flavor picker's third column: how many screenshots are waiting to be filed."""
     if count is None:
@@ -138,16 +141,39 @@ class ScreenshotsFlow(ToolFlow):
             self.start()
             return
         self.flavors = install.flavors()
-        counts = {f.folder: waiting_count(f) for f in self.flavors}
-        if all(count is None for count in counts.values()):
-            self.app.notify(f"No Screenshots folders found in {to_stored(install.root)}.", severity="warning")
-            self.close()
+        if not any(source_dir(f).is_dir() for f in self.flavors):  # a few stats: cheap enough for the UI thread
+            # Decided before the picker opens: pushing it and dismissing it at once races the picker's Header.
+            self._no_screenshots(install)
             return
         settings = load_settings(self.tool_cfg)
-        self.app.push_screen(FlavorScreen(self.cfg, install, include_all=True, last=settings.last_flavor_choice,
-                                          flavors=self.flavors, note=lambda f: waiting_text(counts[f.folder]),
-                                          all_note=waiting_text(sum(c or 0 for c in counts.values()))),
-                             self._after_flavor)
+        # Counting lists every flavor's Screenshots folder: the picker opens at once and a worker fills the counts
+        # in (F-005).
+        picker = FlavorScreen(self.cfg, install, include_all=True, last=settings.last_flavor_choice,
+                              flavors=self.flavors, note=lambda f: COUNTING, all_note=COUNTING)
+        self.app.push_screen(picker, self._after_flavor)
+        flavors = list(self.flavors)
+        picker.run_worker(lambda: self._count_worker(picker, install, flavors, settings), thread=True,
+                          group="counts")
+
+    def _count_worker(self, picker: FlavorScreen, install: WowInstall, flavors: list[Flavor],
+                      settings: ShotSettings) -> None:
+        # Never raises: an unreadable folder is None. Copy mode leaves out what an earlier copy already filed.
+        counts = {f.folder: waiting_count(f, settings.dest_dir, copy=settings.copy_mode) for f in flavors}
+        self.app.call_from_thread(self._counts_ready, picker, install, counts)
+
+    def _counts_ready(self, picker: FlavorScreen, install: WowInstall, counts: dict[str, int | None]) -> None:
+        if self.app.screen is not picker:
+            return  # a flavor was already chosen (or Esc pressed) before the counts were ready
+        if all(count is None for count in counts.values()):  # every Screenshots folder is unreadable
+            self.app.notify(f"No Screenshots folders found in {to_stored(install.root)}.", severity="warning")
+            picker.dismiss(None)  # back to the tool menu
+            return
+        picker.set_notes(lambda f: waiting_text(counts.get(f.folder)),
+                         waiting_text(sum(c or 0 for c in counts.values())))
+
+    def _no_screenshots(self, install: WowInstall) -> None:
+        self.app.notify(f"No Screenshots folders found in {to_stored(install.root)}.", severity="warning")
+        self.close()
 
     def _after_flavor(self, choice: Union[Flavor, str, None]) -> None:
         if choice is None:

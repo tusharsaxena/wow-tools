@@ -14,10 +14,10 @@ from textual.screen import ModalScreen, Screen
 from textual.widget import Widget
 from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, ProgressBar, Static, Tree
 
-from wowtools.core.backup import BackupError
+from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
-from wowtools.core.install import ACCOUNT_WIDE, Flavor
+from wowtools.core.install import ACCOUNT_WIDE, Flavor, WowInstall, validate_output_dir
 from wowtools.core.journal import friendly_stamp
 from wowtools.core.process import running_wtf_lockers, wow_check_for
 from wowtools.tools.wtf_cleaner.cleaner import CLEANED_SUBDIR, CleanError
@@ -26,99 +26,34 @@ from wowtools.tools.wtf_cleaner.multi import (FlavorScan, MultiCleanResult, exec
                                               scan_flavors)
 from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, STAGE_TITLES, age_days,
                                                flavor_name, format_size, locker_warning)
-from wowtools.tools.wtf_cleaner.result_screen import SUCCESS_FALLBACK, ResultScreen, reasons_text
-from wowtools.tools.wtf_cleaner.rules import CRITERIA, Proposal, ProposalItem, criterion_counts, evaluate
+from wowtools.tools.wtf_cleaner.result_screen import ResultScreen, reasons_text
+from wowtools.tools.wtf_cleaner.rules import (CRITERIA, Proposal, ProposalItem, criterion_counts, evaluate,
+                                             log_proposal_built, log_proposal_items)
 from wowtools.tools.wtf_cleaner.safety import SNAPSHOT_SUBDIR, Marker, clear_marker, read_marker, recovery_message
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir
 from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
+from wowtools.ui.dialogs import ConfirmScreen, ProgressScreen, TwoPaneFocus, relabel_branch, theme_colour, tick_mark
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
 ACCENT = "bold #5CC8FF"
 WARNING_STYLE = "#E8B04B"
 ALL_FLAVORS_LABEL = "All flavors"
+# ConfirmScreen now lives in wowtools.ui.dialogs; it stays importable from here for one release.
 __all__ = ["CleanProgressScreen", "ConfirmScreen", "RecoveryScreen", "ResultScreen", "ReviewScreen"]
 NAV_HINT = ("↑↓/Tab move · ←→ panes and buttons · Space tick · Enter/Space press · 1-4 criteria · c clean · "
             "y dry run · r rescan · z undo · t tools")
 
 
-class ConfirmScreen(ModalScreen[bool]):
-    DEFAULT_CSS = """
-    ConfirmScreen { align: center middle; }
-    ConfirmScreen #confirm-box { width: 80; height: auto; border: thick $accent; background: $panel; padding: 1 2; }
-    ConfirmScreen #confirm-title { color: $accent; text-style: bold; margin-bottom: 1; }
-    ConfirmScreen #confirm-buttons { height: auto; align-horizontal: right; margin-top: 1; }
-    ConfirmScreen Button { margin-left: 2; }
-    """
-    BINDINGS = [Binding("y", "answer(True)", "Yes"), Binding("n,escape", "answer(False)", "No"), *NAV_BINDINGS]
+class CleanProgressScreen(ProgressScreen):
+    """Shown while a clean, dry run or undo runs (the widget ids keep their clean- prefix)."""
 
-    def __init__(self, title: str, body: str, alerts: tuple[str, ...] = (), *, default_yes: bool = False) -> None:
-        super().__init__()
-        self.default_yes = default_yes
-        self.title_text = title
-        self.alerts = alerts
-        self.body_text = "\n".join([body, *alerts]) if alerts else body
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="confirm-box"):
-            yield Static(Text(self.title_text), id="confirm-title")
-            body = Text(self.body_text)
-            for alert in self.alerts:
-                body.highlight_words([alert], style="bold #E5534B")
-            yield Static(body)
-            with ButtonRow(id="confirm-buttons"):
-                yield action_button("Yes (y)", "confirm", id="yes")
-                yield action_button("No (n)", "neutral", id="no")
-            yield NavHint("←→ choose · Enter/Space press · y yes · n/Esc no")
-
-    def on_mount(self) -> None:
-        self.query_one("#yes" if self.default_yes else "#no", Button).focus()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        self.dismiss(event.button.id == "yes")
-
-    def action_answer(self, value: bool) -> None:
-        self.dismiss(value)
-
-
-class CleanProgressScreen(ModalScreen[None]):
-    """Shown while a clean or dry run runs: the stage, a progress bar and the current file."""
-
-    DEFAULT_CSS = """
-    CleanProgressScreen { align: center middle; }
-    CleanProgressScreen #clean-box { width: 80; height: auto; border: thick $accent; background: $panel;
-                                     padding: 1 2; }
-    CleanProgressScreen #clean-stage { color: $accent; text-style: bold; margin-bottom: 1; }
-    CleanProgressScreen #clean-progress { width: 1fr; }
-    CleanProgressScreen #clean-file { color: $text-muted; margin-top: 1; height: 2; overflow: hidden hidden; }
-    """
+    ID_PREFIX = "clean"
+    STAGE_TITLES = STAGE_TITLES
+    SIMULATED_STAGE = "delete"
 
     def __init__(self, dry_run: bool, first_stage: str = "check") -> None:
-        super().__init__()
-        self.dry_run = dry_run
-        self.first_stage = first_stage
-        self.stage = ""
-        self.flavor_label = ""  # set while cleaning several flavors: the stage title names the flavor
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="clean-box"):
-            yield Static(Text(self.stage_title(self.first_stage)), id="clean-stage")
-            yield ProgressBar(id="clean-progress", show_eta=False)
-            yield Static("", id="clean-file")
-
-    def stage_title(self, stage: str) -> str:
-        title = "Simulating" if stage == "delete" and self.dry_run else STAGE_TITLES.get(stage, stage)
-        return f"{self.flavor_label}: {title}" if self.flavor_label else title
-
-    def set_flavor(self, label: str) -> None:
-        self.flavor_label = label
-
-    def update_progress(self, stage: str, current: int, total: int, detail: str = "") -> None:
-        self.stage = stage
-        self.query_one("#clean-stage", Static).update(Text(self.stage_title(stage)))
-        # A total of 0 means "not known yet" (listing a folder): the bar runs as indeterminate.
-        self.query_one("#clean-progress", ProgressBar).update(total=total if total > 0 else None, progress=current)
-        self.query_one("#clean-file", Static).update(Text(detail))
+        super().__init__(dry_run=dry_run, first_stage=first_stage)
 
 
 class RecoveryScreen(ModalScreen[str]):
@@ -164,7 +99,8 @@ class ProposalTree(Tree):
     BINDINGS = [Binding("left", "screen.focus_filters", "Filters", show=False)]
 
 
-class ReviewScreen(Screen[str]):
+class ReviewScreen(TwoPaneFocus, Screen[str]):
+    TREE_SELECTOR = "#proposal"
     DEFAULT_CSS = """
     ReviewScreen #body { height: 1fr; }
     ReviewScreen #filters { width: 46; padding: 1; border-right: solid $primary; }
@@ -223,6 +159,8 @@ class ReviewScreen(Screen[str]):
         self._rebuild_pending = False
         self._last_filter: Widget | None = None
         self._scanning = False
+        self._log_next_build = False  # the first rebuild after a scan logs proposal.built
+        self._checking = False  # the running-programs check before a confirm is in a worker
 
     # --- layout -------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -257,25 +195,9 @@ class ReviewScreen(Screen[str]):
         self.action_rescan()
         self._check_recovery()
 
-    # --- panes (←/→) --------------------------------------------------------------------------------
-    def on_descendant_focus(self, event) -> None:
-        widget = event.widget
-        if any(ancestor.id == "filters" for ancestor in widget.ancestors):
-            self._last_filter = widget
-
-    def action_focus_filters(self) -> None:
-        focused = self.focused
-        if focused is not None and any(a.id == "filters" for a in focused.ancestors):
-            return  # already in the filters panel
-        target = self._last_filter
-        if target is None or not target.is_attached or not target.focusable:
-            target = self.query_one(f"#crit_{CRITERIA[0]}", Ka0sCheckbox)
-        target.focus()
-
-    def action_focus_tree(self) -> None:
-        tree = self.query_one("#proposal", Tree)
-        if tree.display and self.focused is not tree:
-            tree.focus()
+    # --- panes (←/→): TwoPaneFocus ------------------------------------------------------------------
+    def first_filter(self) -> Widget:
+        return self.query_one(f"#crit_{CRITERIA[0]}", Ka0sCheckbox)
 
     # --- recovery notice (spec A.4.5: never restores on its own) -------------------------------------
     def _check_recovery(self) -> None:
@@ -292,6 +214,8 @@ class ReviewScreen(Screen[str]):
 
     # --- scanning ------------------------------------------------------------------------------
     def action_rescan(self) -> None:
+        if self._checking:
+            return
         self.settings = load_settings(self.tool_cfg)
         self.scans = []
         self._show_scan_progress(True)
@@ -344,6 +268,7 @@ class ReviewScreen(Screen[str]):
 
     def _scanned(self, scans: list[FlavorScan]) -> None:
         self.scans = scans
+        self._log_next_build = True
         self._show_scan_progress(False)
         self._update_criterion_labels()
         self._schedule_rebuild()
@@ -393,7 +318,14 @@ class ReviewScreen(Screen[str]):
     def _rebuild(self) -> None:
         if not self._scanned_ok():
             return
-        self.proposals = [(s.flavor, evaluate(s.result, self.criteria)) for s in self._scanned_ok()]  # type: ignore[arg-type]
+        # Interactive rebuilds (criterion toggles, max age) log nothing: proposal.built once per scan, and the
+        # proposal.item events only for a run the user confirms (F-006).
+        self.proposals = [(s.flavor, evaluate(s.result, self.criteria, log=False))  # type: ignore[arg-type]
+                          for s in self._scanned_ok()]
+        if self._log_next_build:
+            self._log_next_build = False
+            for flavor, proposal in self.proposals:
+                log_proposal_built(proposal, flavor.folder)
         if self.multi:
             self.proposal = Proposal([i for _, p in self.proposals for i in p.items], self.criteria.copy(),
                                      [w for _, p in self.proposals for w in p.warnings])
@@ -450,16 +382,7 @@ class ReviewScreen(Screen[str]):
         return [f.path for item in data[1] for f in item.files]
 
     def _mark(self, paths: list[Path]) -> tuple[str, str]:
-        unchecked = sum(1 for p in paths if p in self.unchecked)
-        if paths and unchecked == len(paths):
-            return f"{CHECK_OFF} ", "dim"
-        if unchecked:
-            return "◩ ", "bold"
-        try:
-            success = self.app.current_theme.success or SUCCESS_FALLBACK
-        except Exception:  # noqa: BLE001 - no theme yet: use the Ka0s colour
-            success = SUCCESS_FALLBACK
-        return f"{CHECK_ON} ", f"bold {success}"
+        return tick_mark(paths, self.unchecked, success=theme_colour(self.app, "success"))
 
     @staticmethod
     def _reasons(reasons: list[str]) -> Text:
@@ -485,19 +408,7 @@ class ReviewScreen(Screen[str]):
 
     def _refresh_labels(self, node=None) -> None:
         """Relabel node's branch and its ancestors (everything a tick there can change), or the whole tree."""
-        tree = self.query_one("#proposal", Tree)
-        if node is not None:
-            parent = node.parent
-            while parent is not None:
-                if parent.data is not None:
-                    parent.set_label(self._label(parent.data))
-                parent = parent.parent
-        stack = [node or tree.root]
-        while stack:
-            node = stack.pop()
-            if node.data is not None:
-                node.set_label(self._label(node.data))
-            stack.extend(node.children)
+        relabel_branch(self.query_one("#proposal", Tree), node, self._label)
         self._update_summary()
 
     def _selection(self) -> list[ProposalItem]:
@@ -547,7 +458,7 @@ class ReviewScreen(Screen[str]):
         if isinstance(focused, Button):  # Space activates the focused button (§A.8), never the tree
             focused.press()
             return
-        if not isinstance(focused, Tree):
+        if not isinstance(focused, Tree) or self._checking:  # the selection is frozen while the check runs
             return
         node = self.query_one("#proposal", Tree).cursor_node
         if node is None or node.data is None:
@@ -564,17 +475,23 @@ class ReviewScreen(Screen[str]):
         self._refresh_labels(node)
 
     def action_select_all(self) -> None:
+        if self._checking:
+            return
         self.unchecked.clear()
         log_event("ui.selection", screen="review", control="select_all", value=True)
         self._refresh_labels()
 
     def action_select_none(self) -> None:
+        if self._checking:
+            return
         if self.proposal is not None:
             self.unchecked = {f.path for item in self.proposal.items for f in item.files}
         log_event("ui.selection", screen="review", control="select_none", value=True)
         self._refresh_labels()
 
     def action_criterion(self, index: int) -> None:
+        if self._checking:
+            return
         self.query_one(f"#crit_{CRITERIA[index]}", Checkbox).toggle()
 
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
@@ -586,7 +503,7 @@ class ReviewScreen(Screen[str]):
         self._schedule_rebuild()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id != "max_age":
+        if event.input.id != "max_age" or self._checking:
             return
         try:
             days = int(event.value)
@@ -628,20 +545,82 @@ class ReviewScreen(Screen[str]):
     def action_dry_run(self) -> None:
         self._start(dry_run=True)
 
+    def _backup_dir_problem(self) -> str | None:
+        """The saved backup folder is checked again before it is used: the file may have been edited by hand."""
+        wow_path = self.cfg.wow_path
+        if wow_path is None:
+            return None
+        return validate_output_dir(self.settings.backup_dir, WowInstall(wow_path), what="backup folder")
+
     def _start(self, dry_run: bool) -> None:
-        if self.proposal is None or self.app.busy:
+        if self.proposal is None or self.app.busy or self._checking:
             return
         log_event("ui.selection", screen="review", control="dry_run" if dry_run else "clean", value=True)
+        self.settings = load_settings(self.tool_cfg)
+        problem = self._backup_dir_problem()
+        if problem:
+            self.notify(f"{problem} Fix the folder in settings (s).", title="Backup folder not allowed",
+                        severity="error", timeout=15)
+            return
         plan = self._selection_by_flavor()
         if not plan:
             self.notify("Nothing is selected.")
             return
-        selection = [item for _, items in plan for item in items]
         check = self.wow_check or wow_check_for([flavor for flavor, _ in plan])
-        running = check()  # every flavor in the selection, one process listing
+        locker_check = None if dry_run else self.locker_check
+        self._run_preflight(check, locker_check, lambda running, lockers: self._after_preflight(dry_run, running,
+                                                                                               lockers))
+
+    def _after_preflight(self, dry_run: bool, running: list[str] | None, lockers: list[str] | None) -> None:
+        # The selection is frozen while the check runs; it is read again here so the confirm and the clean always
+        # use what the tree shows.
+        plan = self._selection_by_flavor()
+        if not plan:
+            self.notify("Nothing is selected.")
+            return
+        self._show_confirm(plan, dry_run, running, lockers)
+
+    # --- running-programs check (PowerShell/tasklist can take seconds: never on the UI thread) ----------------
+    def _run_preflight(self, check: Callable[[], list[str] | None],
+                       locker_check: Callable[[], list[str] | None] | None,
+                       then: Callable[[list[str] | None, list[str] | None], None]) -> None:
+        self._set_checking(True)
+        self.query_one("#summary", Static).update(Text("Checking for running programs…", style="bold #E8B04B"))
+        self.run_worker(lambda: self._preflight_worker(check, locker_check, then), thread=True, group="preflight")
+
+    def _set_checking(self, checking: bool) -> None:
+        """While the check runs the selection cannot change: the criteria and max age are disabled, and the
+        tick/untick keys are ignored."""
+        self._checking = checking
+        if not self.is_attached:
+            return
+        for widget in [*self.query(Ka0sCheckbox), *self.query("#max_age")]:
+            widget.disabled = checking
+
+    def _preflight_worker(self, check: Callable[[], list[str] | None],
+                          locker_check: Callable[[], list[str] | None] | None,
+                          then: Callable[[list[str] | None, list[str] | None], None]) -> None:
+        running = lockers = None
+        try:
+            running = check()  # every flavor in the selection, one process listing
+            lockers = locker_check() if locker_check is not None else None
+        except Exception as exc:  # noqa: BLE001 - a failed check is "unknown", as when PowerShell is missing
+            log_exception("preflight", exc)
+        self.app.call_from_thread(self._preflight_done, running, lockers, then)
+
+    def _preflight_done(self, running: list[str] | None, lockers: list[str] | None,
+                        then: Callable[[list[str] | None, list[str] | None], None]) -> None:
+        self._set_checking(False)
+        if not self.is_attached or self.app.screen is not self:
+            return  # the user left the screen while the check ran
+        self._update_summary()
+        then(running, lockers)
+
+    def _show_confirm(self, plan: list[tuple[Flavor, list[ProposalItem]]], dry_run: bool,
+                      running: list[str] | None, lockers: list[str] | None) -> None:
+        selection = [item for _, items in plan for item in items]
         if running:
             log_event("wow.running_warning", executables=running)
-        self.settings = load_settings(self.tool_cfg)
         backup = self.settings.backup_before_delete
         backup_dir = resolve_backup_dir(self.settings, self.cfg.wow_path)
         lines = [self._counts(selection) + "."]
@@ -660,14 +639,15 @@ class ReviewScreen(Screen[str]):
                          f"(the newest {self.settings.keep_backups} of {'each' if self.multi else 'this'} "
                          f"flavor are kept)")
         if dry_run:
-            lines.append(("DRY RUN: the cleaned-files zip is written, nothing is deleted." if backup
+            lines.append((f"DRY RUN: a dryrun-... zip of the files is written (the newest "
+                          f"{self.settings.keep_backups} of {'each' if self.multi else 'this'} flavor are kept), "
+                          "nothing is deleted." if backup
                           else "DRY RUN: nothing will be written or deleted."))
         else:
             lines.append("A run journal is written, so Undo last clean (z) can put the files back.")
         if running:
             alerts.append(f"WoW appears to be running ({', '.join(running)}). Close it first: WoW rewrites "
                           "SavedVariables when you log out.")
-        lockers = None if dry_run else self.locker_check()
         if lockers:
             log_event("locker.running_warning", executables=lockers)
             alerts.append(locker_warning(lockers))
@@ -685,6 +665,7 @@ class ReviewScreen(Screen[str]):
         log_event("ui.selection", screen="confirm", control="confirm", value=bool(ok), dry_run=dry_run)
         if not ok:
             return
+        log_proposal_items([item for _, items in plan for item in items], dry_run=dry_run)
         self.app.busy = True
         self._refresh_undo()
         progress_screen = CleanProgressScreen(dry_run)
@@ -704,10 +685,16 @@ class ReviewScreen(Screen[str]):
                 self.app.call_from_thread(progress_screen.set_flavor,
                                           f"{flavor.display_name} ({index + 1}/{count})")
 
-        result = execute_flavors(plan, dry_run=dry_run, backup=backup, backup_dir=backup_dir,
-                                 account=self.account, keep_backups=self.settings.keep_backups,
-                                 progress=progress, on_flavor=on_flavor, journal_dir=self._journal_dir(),
-                                 keep_journals=self.settings.keep_journals)
+        try:
+            with activity.running():
+                result = execute_flavors(plan, dry_run=dry_run, backup=backup, backup_dir=backup_dir,
+                                         account=self.account, keep_backups=self.settings.keep_backups,
+                                         progress=progress, on_flavor=on_flavor, journal_dir=self._journal_dir(),
+                                         keep_journals=self.settings.keep_journals)
+        except Exception as exc:  # noqa: BLE001 - anything unexpected is shown and logged, never a crash
+            log_exception("clean", exc)
+            self.app.call_from_thread(self._clean_crashed, exc, dry_run, backup_dir if backup else None)
+            return
         stopped = result.stopped
         if stopped is not None and isinstance(stopped.error, CleanError):
             log_exception("clean", stopped.error)
@@ -731,6 +718,23 @@ class ReviewScreen(Screen[str]):
             if result.not_started:
                 message += f"\nNot started: {', '.join(r.flavor.display_name for r in result.not_started)}."
         self.notify(message, title="Clean stopped", severity="error", timeout=20)
+
+    def _clean_crashed(self, exc: Exception, dry_run: bool, backup_dir: Path | None) -> None:
+        """An error execute_flavors() does not handle. Unlike _clean_failed, nothing is known about what was
+        deleted, so the message never claims "Nothing was deleted" for a real clean."""
+        self.app.busy = False
+        self._close_progress()
+        self._refresh_undo()
+        what = "simulation" if dry_run else "clean"
+        message = f"The {what} stopped unexpectedly: {type(exc).__name__}: {exc}"
+        if dry_run:
+            message += "\nNothing was deleted (it was a dry run)."
+        else:
+            restore = "Undo last clean (z)"
+            if backup_dir is not None:
+                restore += f" or the WTF backup in {backup_dir / SNAPSHOT_SUBDIR}"
+            message += f"\nCheck the result with Rescan (r). If files are missing, {restore} can put them back."
+        self.notify(message, title="Clean stopped", severity="error", timeout=30)
 
     def _cleaned(self, result: MultiCleanResult) -> None:
         self.app.busy = False
@@ -756,7 +760,7 @@ class ReviewScreen(Screen[str]):
 
     # --- undo last clean --------------------------------------------------------------------------
     def action_undo(self) -> None:
-        if self.app.busy or self._scanning:
+        if self.app.busy or self._scanning or self._checking:
             return
         log_event("ui.selection", screen="review", control="undo", value=True)
         path = latest_undoable(self._journal_dir())
@@ -775,14 +779,16 @@ class ReviewScreen(Screen[str]):
         body = (f"Put back {files} file{'' if files == 1 else 's'} deleted from {names}? Each comes back from the "
                 "cleaned-files zip, or from the WTF backup when there is no zip. A file that is back at its path "
                 "is left alone; nothing is overwritten.")
-        alerts: list[str] = []
+        title = f"Undo the clean from {friendly_stamp(journal.started)}?"
         check = self.wow_check or wow_check_for(folders)
-        running = check()
+        self._run_preflight(check, None, lambda running, _: self._show_undo_confirm(path, title, body, running))
+
+    def _show_undo_confirm(self, path: Path, title: str, body: str, running: list[str] | None) -> None:
+        alerts: list[str] = []
         if running:
             log_event("wow.running_warning", executables=running)
             alerts.append(f"WoW appears to be running ({', '.join(running)}). Close it first: WoW rewrites "
                           "SavedVariables when you log out.")
-        title = f"Undo the clean from {friendly_stamp(journal.started)}?"
         self.app.push_screen(ConfirmScreen(title, body, tuple(alerts), default_yes=False),
                              lambda ok: self._undo_confirmed(ok, path))
 
@@ -804,7 +810,8 @@ class ReviewScreen(Screen[str]):
             self.app.call_from_thread(progress_screen.update_progress, *args)
 
         try:
-            result = undo_clean(path, wow_root=wow_root, progress=progress)
+            with activity.running():
+                result = undo_clean(path, wow_root=wow_root, progress=progress)
         except Exception as exc:  # noqa: BLE001 - e.g. an unreadable journal: shown, never a crash
             log_exception("clean.undo", exc)
             self.app.call_from_thread(self._undo_failed, exc)

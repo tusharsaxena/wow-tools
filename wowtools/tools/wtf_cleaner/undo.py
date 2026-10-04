@@ -16,6 +16,7 @@ from pathlib import Path, PurePosixPath
 from typing import Callable
 
 from wowtools.core.events import log_event
+from wowtools.core.fsutil import remove_quietly, safe_progress
 from wowtools.core.journal import mark_undone
 from wowtools.tools.wtf_cleaner.journal import read_journal
 
@@ -61,17 +62,6 @@ class UndoResult:
     @property
     def failed(self) -> list[UndoOutcome]:
         return self._with(FAILED)
-
-
-def _safe_progress(progress: UndoProgress | None) -> UndoProgress:
-    def report(stage: str, current: int, total: int, detail: str = "") -> None:
-        if progress is None:
-            return
-        try:
-            progress(stage, current, total, detail)
-        except Exception:  # noqa: BLE001 - a broken progress display must not stop the undo
-            pass
-    return report
 
 
 def destination(wow_root: Path, flavor: str, rel: str) -> Path | None:
@@ -139,12 +129,12 @@ def _extract(zf: zipfile.ZipFile, info: zipfile.ZipInfo, dest: Path, size: int, 
                 out.write(chunk)
                 written += len(chunk)
     except BaseException as exc:
-        _remove(dest)
+        remove_quietly(dest)
         if isinstance(exc, Exception):
             return f"could not be written: {exc}"
         raise
     if written != size:
-        _remove(dest)
+        remove_quietly(dest)
         return f"the restored size ({written} bytes) does not match the journal ({size} bytes)"
     if mtime is not None:
         try:
@@ -191,7 +181,7 @@ def _restore_one(entry: dict, wow_root: Path, zips: _Zips) -> UndoOutcome:
 
 def undo_clean(journal_path: Path, *, wow_root: Path, progress: UndoProgress | None = None) -> UndoResult:
     """Undo the clean recorded in journal_path. Raises OSError/ValueError only if the journal cannot be read."""
-    report = _safe_progress(progress)
+    report: UndoProgress = safe_progress(progress)
     journal = read_journal(journal_path)
     flavors = [str(f) for f in journal.header.get("flavors") or []]
     result = UndoResult(journal_path, journal.started, flavors)
@@ -228,10 +218,3 @@ def undo_clean(journal_path: Path, *, wow_root: Path, progress: UndoProgress | N
               restored=len(result.restored), skipped=len(result.skipped), failed=len(result.failed),
               marked_undone=result.marked_undone)
     return result
-
-
-def _remove(path: Path) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        pass

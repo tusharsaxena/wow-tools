@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import tempfile
 from pathlib import Path
 
@@ -87,3 +89,19 @@ class FlavorScreenTest(TuiTestCase):
             await pilot.press("escape")
             await pilot.pause()
         self.assertIsNone(app.result)
+
+    async def test_set_notes_replaces_remarks_and_keeps_the_highlight(self):
+        picker = FlavorScreen(self.cfg, self.install, include_all=True, last="_classic_era_",
+                              note=lambda f: "counting…", all_note="counting…")
+        app = Host(picker)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            options = picker.query_one("#flavors", OptionList)
+            highlighted = options.highlighted
+            picker.set_notes(lambda f: f"{len(f.folder)} here", "all here")
+            await pilot.pause()
+            labels = [str(options.get_option_at_index(i).prompt) for i in range(options.option_count)]
+            self.assertTrue(labels[0].endswith("all here"))
+            self.assertTrue(all("counting" not in label for label in labels))
+            self.assertIn(f"{len('_retail_')} here", labels[_ids(options).index("_retail_")])
+            self.assertEqual(options.highlighted, highlighted)

@@ -9,7 +9,7 @@ TOOL_NAME = "screenshot-organizer"
 
 EVENTS: dict[str, EventSpec] = {
     "shots.scan_started": EventSpec("info", "A scan of the chosen flavors' Screenshots folders started."),
-    "shots.scan_completed": EventSpec("info", "A scan finished: per flavor, files to file, possible duplicates, conflicts and unrecognised names."),
+    "shots.scan_completed": EventSpec("info", "A scan finished: per flavor, files to file, possible duplicates, conflicts, copies already filed (copy mode) and unrecognised names."),
     "shots.scan_warning": EventSpec("warning", "A Screenshots or target folder could not be read during a scan."),
     "shots.organize_started": EventSpec("info", "A run (or dry run) started: mode, destination and file count."),
     "shots.moved": EventSpec("info", "A screenshot was moved into its date folder."),

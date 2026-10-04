@@ -12,13 +12,14 @@ are left where they are, and the old folder is removed only if it ends up empty.
 from __future__ import annotations
 
 import configparser
+import io
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from wowtools.core.config import Config, tool_config_path
-
-WOW_TOOLS_DIR = "wow-tools"  # <WoW folder>/wow-tools/<tool>/: where tools keep their data next to the game
+from wowtools.core.fsutil import atomic_write_text
+from wowtools.core.journal import TOOLS_SUBDIR
 
 
 @dataclass(frozen=True)
@@ -39,10 +40,6 @@ class FolderMerge:
     clashes: list[str] = field(default_factory=list)   # entries left in the old folder: the new one has them
     errors: list[str] = field(default_factory=list)    # "<entry>: <error>" for moves that failed
     old_removed: bool = False
-
-    @property
-    def changed(self) -> bool:
-        return self.renamed or bool(self.moved)
 
 
 @dataclass
@@ -141,10 +138,9 @@ def migrate_tool_config(config_dir: Path, rename: ToolRename) -> ConfigMigration
 
 
 def _write(path: Path, parser: configparser.ConfigParser) -> None:
-    partial = path.with_name(path.name + ".partial")
-    with partial.open("w", encoding="utf-8") as handle:
-        parser.write(handle)
-    partial.replace(path)
+    buffer = io.StringIO()
+    parser.write(buffer)
+    atomic_write_text(path, buffer.getvalue())
 
 
 def _free_name(path: Path) -> Path:
@@ -161,5 +157,5 @@ def tool_folder_pairs(rename: ToolRename, log_dir: Path | None, wow_path: Path |
     if log_dir is not None:
         pairs.append((log_dir / rename.old, log_dir / rename.new))
     if wow_path is not None:
-        pairs.append((wow_path / WOW_TOOLS_DIR / rename.old, wow_path / WOW_TOOLS_DIR / rename.new))
+        pairs.append((wow_path / TOOLS_SUBDIR / rename.old, wow_path / TOOLS_SUBDIR / rename.new))
     return pairs

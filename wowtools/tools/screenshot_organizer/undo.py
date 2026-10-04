@@ -3,15 +3,19 @@ recorded. Never overwrites. Afterwards, empty YYYY/MM/DD folders the run filed i
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 from pathlib import Path
 
 from wowtools.core.events import log_event
+from wowtools.core.fsutil import rename_no_replace, safe_progress
+from wowtools.core.install import Flavor
+from wowtools.core.paths import to_native
 from wowtools.tools.screenshot_organizer.journal import (A_COPIED, A_DUPLICATE, A_MOVED, A_SOURCE_LEFT, mark_undone,
                                                          read_journal)
+from wowtools.tools.screenshot_organizer.naming import day_parts, parse_shot_name
 from wowtools.tools.screenshot_organizer.organizer import (COPY_REMOVED, FAILED, RESTORED, UNDO_SKIPPED, OrganizeResult,
-                                                           Outcome, Progress, Rename, copy_verified, move_file,
-                                                           safe_progress)
-from wowtools.tools.screenshot_organizer.settings import SCREENSHOTS_DIR
+                                                           Outcome, Progress, Rename, copy_verified, move_file)
+from wowtools.tools.screenshot_organizer.settings import SCREENSHOTS_DIR, target_root
 
 _DATE_PARTS = (4, 2, 2)  # YYYY, MM, DD
 
@@ -23,24 +27,48 @@ def _size(path: Path) -> int | None:
         return None
 
 
-def _guard(src: Path, dst: Path, wow_root: Path) -> str | None:
+def _guard(src: Path, dst: Path, wow_root: Path, dest_dir: Path | None) -> str | None:
+    """src must be a screenshot directly in a flavor's Screenshots folder, and dst exactly where that run filed it:
+    <dest_dir or the Screenshots folder>/<flavor>/YYYY/MM/DD/<name>, the date taken from the name."""
     if src.parent.name != SCREENSHOTS_DIR or src.parent.parent.parent != wow_root:
         return "outside the WoW folder or not a date folder"
-    parts = dst.parts
-    if (len(parts) < 4 or parts[-1] != src.name or ".." in parts
-            or not all(p.isdigit() and len(p) == n for p, n in zip(parts[-4:-1], _DATE_PARTS))):
-        return "outside the WoW folder or not a date folder"
+    day = parse_shot_name(src.name)
+    if day is None:
+        return "not a WoW screenshot name"
+    flavor = Flavor(src.parent.parent.name, src.parent.parent)
+    expected = target_root(flavor, dest_dir).joinpath(*day_parts(day), src.name)
+    if dst != expected or ".." in dst.parts:
+        return f"not where this run filed it ({expected})"
     return None
 
 
-def _undo_one(entry: dict, wow_root: Path, rename: Rename) -> tuple[str, str]:
+def _missing(dst: Path) -> bool:
+    return not os.path.lexists(dst)
+
+
+MISSING_FILED = ("the filed copy is missing (if it is on a drive that is not connected, connect it and try Undo "
+                 "again)")
+MISSING_FILED_FINAL = "the filed copy is missing"  # the journal was marked undone: Undo is not offered again
+COPY_GONE = "the copy was already gone"
+ALREADY_BACK = "the screenshot is already back in the Screenshots folder"
+
+
+def _undo_one(entry: dict, wow_root: Path, dest_dir: Path | None, rename: Rename) -> tuple[str, str]:
+    """A filed screenshot that is missing altogether is FAILED (it may be on an unplugged drive: Undo can be tried
+    again); one that changed is UNDO_SKIPPED (left alone for good). In copy mode a missing copy next to an intact
+    original is already undone (COPY_REMOVED). A moved screenshot whose filed copy is gone but whose original is back
+    (same size: an interrupted Undo, or put back by hand) is UNDO_SKIPPED, so the journal can be closed."""
     src, dst, size, action = entry["src"], entry["dst"], entry["size"], entry["action"]
-    refusal = _guard(src, dst, wow_root)
+    refusal = _guard(src, dst, wow_root, dest_dir)
     if refusal:
         return UNDO_SKIPPED, refusal
     if action == A_MOVED:
+        if _missing(dst):
+            if _size(src) == size:
+                return UNDO_SKIPPED, ALREADY_BACK
+            return FAILED, MISSING_FILED
         if _size(dst) != size:
-            return UNDO_SKIPPED, "the filed copy is missing or was changed"
+            return UNDO_SKIPPED, "the filed copy was changed"
         if os.path.lexists(src):
             return UNDO_SKIPPED, "a file with this name is back in the Screenshots folder"
         if move_file(dst, src, rename):
@@ -52,15 +80,19 @@ def _undo_one(entry: dict, wow_root: Path, rename: Rename) -> tuple[str, str]:
     if action in (A_COPIED, A_SOURCE_LEFT):
         if _size(src) != size:
             return UNDO_SKIPPED, "the original is missing or was changed, so the copy is kept"
+        if _missing(dst):
+            return COPY_REMOVED, COPY_GONE
         if _size(dst) != size:
-            return UNDO_SKIPPED, "the copy is missing or was changed"
+            return UNDO_SKIPPED, "the copy was changed"
         os.remove(dst)
         return COPY_REMOVED, ""
     if action == A_DUPLICATE:
         if os.path.lexists(src):
             return UNDO_SKIPPED, "a file with this name is back in the Screenshots folder"
+        if _missing(dst):
+            return FAILED, MISSING_FILED
         if _size(dst) != size:
-            return UNDO_SKIPPED, "the filed copy is missing or was changed"
+            return UNDO_SKIPPED, "the filed copy was changed"
         copy_verified(dst, src)
         return RESTORED, ""
     return UNDO_SKIPPED, f"unknown action {action!r}"
@@ -80,19 +112,21 @@ def _prune_date_folders(day_dirs: set[Path]) -> None:
 
 
 def undo(journal_path: Path, *, wow_root: Path, progress: Progress | None = None,
-         rename: Rename = os.rename) -> OrganizeResult:
-    report = safe_progress(progress)
+         rename: Rename = rename_no_replace) -> OrganizeResult:
+    report: Progress = safe_progress(progress)
     journal = read_journal(journal_path)
     result = OrganizeResult(dry_run=False, copy=bool(journal.header.get("copy")), journal_path=journal_path,
                             undo=True)
     entries = list(reversed(journal.entries))
+    raw_dest = journal.header.get("dest_dir")
+    dest_dir = to_native(raw_dest) if isinstance(raw_dest, str) and raw_dest else None
     log_event("shots.undo_started", journal=str(journal_path), entries=len(entries))
     day_dirs: set[Path] = set()
     for index, entry in enumerate(entries):
         report("undo", index, len(entries), entry["dst"].name)
         flavor = entry["src"].parent.parent.name
         try:
-            kind, reason = _undo_one(entry, wow_root, rename)
+            kind, reason = _undo_one(entry, wow_root, dest_dir, rename)
         except OSError as exc:
             kind, reason = FAILED, str(exc)
         if kind in (RESTORED, COPY_REMOVED):
@@ -105,7 +139,13 @@ def undo(journal_path: Path, *, wow_root: Path, progress: Progress | None = None
     _prune_date_folders(day_dirs)
     restored = result.count(RESTORED) + result.count(COPY_REMOVED)
     skipped = result.count(UNDO_SKIPPED) + result.count(FAILED)
-    mark_undone(journal_path, restored, skipped)
+    # As the WTF Cleaner does: nothing put back and something failed means the journal stays undoable.
+    result.marked_undone = restored > 0 or result.count(FAILED) == 0
+    if result.marked_undone:
+        mark_undone(journal_path, restored, skipped)
+        # Undo is not offered again, so don't tell the user to retry it.
+        result.outcomes = [replace(o, reason=MISSING_FILED_FINAL) if o.reason == MISSING_FILED else o
+                           for o in result.outcomes]
     log_event("shots.undo_completed", level="warning" if skipped else None, journal=str(journal_path),
-              restored=restored, skipped=skipped)
+              restored=restored, skipped=skipped, marked_undone=result.marked_undone)
     return result

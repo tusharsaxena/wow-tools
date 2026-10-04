@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import json
+import os
 import tempfile
 import unittest
 from datetime import datetime
@@ -52,6 +55,7 @@ class JournalTest(unittest.TestCase):
         self.assertIsNotNone(journal.finished)
         self.assertIsNone(journal.undone)
 
+    @unittest.skipIf(os.name == "nt", "simulates WSL: /mnt/g paths only exist on POSIX")
     def test_paths_are_stored_in_windows_form_under_wsl(self):
         original = journal_mod.to_stored
         journal_mod.to_stored = lambda value: original(value, wsl=True)

@@ -8,7 +8,7 @@ from wowtools.tools.screenshot_organizer.organizer import (ALREADY_FILED, CONFLI
                                                            DUPLICATE_REMOVED, FAILED, MOVED, REFUSED, RESTORED, SKIPPED,
                                                            SOURCE_LEFT, UNDO_SKIPPED, WOULD_COPY, WOULD_MOVE,
                                                            WOULD_REMOVE_DUPLICATE, OrganizeResult)
-from wowtools.tools.screenshot_organizer.planner import MAYBE_DUPLICATE, Plan, ShotItem
+from wowtools.tools.screenshot_organizer.planner import FILED, MAYBE_DUPLICATE, Plan, ShotItem
 from wowtools.tools.screenshot_organizer.settings import ShotSettings
 
 # Every outcome kind, in the order the result summary lists them.
@@ -102,6 +102,8 @@ def summary_rows(result: OrganizeResult) -> list[tuple[str, str]]:
     rows.append(("Journal", journal))
     if result.pruned:
         rows.append(("Older journals removed", str(len(result.pruned))))
+    if result.undo and not result.marked_undone:
+        rows.append(("Undo", "not finished: nothing was put back, so it can be tried again"))
     return rows
 
 
@@ -118,12 +120,16 @@ def confirm_text(selection: list[ShotItem], plan: Plan, settings: ShotSettings, 
     lines = []
     for folder, items in per_flavor.items():
         dupes = sum(1 for i in items if i.state == MAYBE_DUPLICATE)
+        filed = sum(1 for i in items if i.state == FILED)
+        notes = [plural(dupes, 'possible duplicate')] if dupes else []
+        if filed:
+            notes.append(f"{filed} already filed")
         line = f"{folder}: {plural(len(items), 'screenshot')}"
-        if dupes:
-            line += f" ({plural(dupes, 'possible duplicate')})"
+        if notes:
+            line += f" ({', '.join(notes)})"
         lines.append(line)
     lines.append(f"Destination: {destination_label(plan.dest_dir)}")
-    if any(i.state == MAYBE_DUPLICATE for i in selection):
+    if any(i.state in (MAYBE_DUPLICATE, FILED) for i in selection):
         lines.append("Possible duplicates are compared by content: an identical source is "
                      + ("left alone." if settings.copy_mode else "removed.")
                      + " A different file is a conflict and both are kept.")

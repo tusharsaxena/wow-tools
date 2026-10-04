@@ -13,7 +13,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Label, Static
 
 from wowtools.core.config import Config
-from wowtools.core.install import Flavor, WowInstall
+from wowtools.core.install import Flavor, WowInstall, validate_output_dir
 from wowtools.core.paths import to_native, to_stored
 from wowtools.tools.wtf_cleaner.report import CRITERION_LABELS
 from wowtools.tools.wtf_cleaner.review_screen import ReviewScreen
@@ -60,7 +60,7 @@ class CleanerSettingsScreen(Screen[bool]):
                         "Leave empty to use <WoW folder>/wow-tools/wtf-cleaner")
             yield Input(to_stored(self.settings.backup_dir) if self.settings.backup_dir else "",
                         placeholder=_default_backup_hint(self.wow_path), id="backup_dir")
-            yield Label("Keep this many WTF backups per flavor (older ones are deleted after each clean)")
+            yield Label("Keep this many WTF backups (and dry-run zips) per flavor; older ones are deleted")
             yield Input(str(self.settings.keep_backups), type="integer", id="keep_backups")
             yield Label("Journals to keep (each real clean writes one; Undo last clean uses the newest)")
             yield Input(str(self.settings.keep_journals), type="integer", id="keep_journals")
@@ -118,10 +118,17 @@ class CleanerSettingsScreen(Screen[bool]):
         criteria = Criteria(**{name: self.query_one(f"#sw_{name}", Ka0sCheckbox).value for name in CRITERIA},
                             max_age_days=days)
         backup_raw = self.query_one("#backup_dir", Input).value.strip()
+        backup_dir = to_native(backup_raw) if backup_raw else None
+        if self.wow_path is not None:
+            problem = validate_output_dir(backup_dir, WowInstall(self.wow_path), what="backup folder")
+            if problem:
+                self.error_text = problem
+                self.query_one("#settings-error", Static).update(Text(self.error_text))
+                return
         stored = load_settings(self.tool_cfg)  # keeps the remembered flavor and account choices
         save_settings(self.tool_cfg, replace(stored, criteria=criteria,
                                              backup_before_delete=self.query_one("#sw_backup", Ka0sCheckbox).value,
-                                             backup_dir=to_native(backup_raw) if backup_raw else None,
+                                             backup_dir=backup_dir,
                                              keep_backups=keep, keep_journals=keep_journals),
                       source=self.source)
         self.dismiss(True)

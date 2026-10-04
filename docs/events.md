@@ -44,15 +44,20 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `folder.renamed` | info | A renamed tool's folder (logs/<tool>/ or <WoW>/wow-tools/<tool>/) was moved to its new name; logged as a warning when entries clashed or failed to move. |
 | `lock.conflict` | warning | Another copy of Ka0s WoW Tools appears to be running (its lock file exists). |
 | `lock.overridden` | warning | The user took over an existing lock file and carried on. |
-| `session.end` | info | The process is exiting. |
+| `session.end` | info | The process is exiting (waited_for_worker is set when it first waited for a running clean, organize or undo to finish). |
 | `session.start` | info | The launcher or a tool started. |
+| `session.waiting_for_worker` | warning | The app closed while a clean, organize or undo was still running; the lock is kept until it finishes. |
 | `ui.item_toggled` | debug | The user ticked or unticked a single item. |
+| `ui.quit_refused` | info | Ctrl+Q was pressed while a run was in progress and was refused. |
 | `ui.selection` | info | The user made a choice in the TUI or CLI. |
 | `update.applied` | info | The suite was updated. |
 | `update.available` | info | A newer suite release exists. |
+| `update.backups_pruned` | info | After a zip update, older .update-backup folders were deleted (kept: the one just made plus the newest other). |
 | `update.check_failed` | debug | The release check failed (offline, rate limited, bad data). |
 | `update.checked` | debug | The GitHub release check ran or was throttled. |
 | `update.failed` | error | Applying an update failed. |
+| `update.unverified` | warning | A zip update was applied without a checksum (allow_unverified_updates = true and the release has no SHA256SUMS). |
+| `update.verified` | info | A zip update's download matched the release's published SHA-256 (SHA256SUMS). |
 | `wow.running_warning` | warning | World of Warcraft appears to be running. |
 
 ## `wtf-cleaner` events
@@ -60,6 +65,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | Event | Level | Description |
 |---|---|---|
 | `backup.created` | info | The cleaned-files zip was written and verified (a dry run writes it too). |
+| `backup.dry_runs_pruned` | info | After a dry run, older dry-run zips of the flavor were deleted to keep its newest N (keep_backups). |
 | `backup.failed` | error | The cleaned-files zip failed; nothing was deleted. |
 | `clean.check_failed` | warning | The post-clean check found problems; see the WTF backup it names. |
 | `clean.completed` | info | A clean finished (logged at warning if any file failed). |
@@ -67,6 +73,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `clean.journal_failed` | error | The run journal could not be written; the clean stopped before deleting anything. |
 | `clean.journal_pruned` | info | Older clean journals were deleted to keep the newest N (keep_journals). |
 | `clean.locked` | error | A real clean stopped before the WTF backup: selected files are locked by another program. |
+| `clean.probe_recovered` | warning | A real clean renamed back a SavedVariables file left as <name>.wowtools-lockcheck by an interrupted lock check. |
 | `clean.started` | info | A clean (or dry run) started. |
 | `clean.undo_completed` | info | Undo last clean finished (logged at warning if any file was skipped or failed). |
 | `clean.undo_failed` | error | Undo: a file could not be put back (no zip holds it, or the size did not match). |
@@ -75,15 +82,15 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `clean.undo_started` | info | Undo last clean started, from the newest clean journal. |
 | `clean.validated` | info | After a clean, the WTF folder matched the WTF backup and the cleaned-files zip. |
 | `locker.running_warning` | warning | A program known to lock WTF files (e.g. the Raider.IO client) appears to be running. |
-| `proposal.built` | info | The cleanup proposal was built from scan results and criteria. |
-| `proposal.item` | debug | One addon group in the proposal. |
+| `proposal.built` | info | The cleanup proposal was built from scan results and criteria (once per scan and flavor; changing criteria does not log it again). |
+| `proposal.item` | debug | One addon group in a clean or dry run the user confirmed. |
 | `recovery.incomplete_clean` | warning | A marker from an unfinished clean was found at startup. |
 | `restore.completed` | warning | A clean stopped unexpectedly; the files it had deleted were restored. |
 | `restore.failed` | error | Restoring from the WTF backup failed; the marker was kept. |
 | `scan.addons` | debug | Installed and enabled addon lists found by the scan. |
 | `scan.completed` | info | A scan finished, with counts. |
 | `scan.started` | info | A scan of one flavor started. |
-| `scan.warning` | warning | Something was skipped during a scan (unreadable folder, bad AddOns.txt line). |
+| `scan.warning` | warning | Something was skipped during a scan (unreadable folder, bad AddOns.txt line, no characters to judge 'not enabled' by). |
 | `snapshot.created` | info | The backup of the whole WTF folder (backup/backup-<flavor>-<stamp>.zip) was written and verified. |
 | `snapshot.failed` | error | The WTF backup failed; nothing was deleted. |
 | `snapshot.pruned` | info | Older WTF backups of the flavor were deleted to keep its newest N (keep_backups). |
@@ -107,7 +114,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `shots.organize_started` | info | A run (or dry run) started: mode, destination and file count. |
 | `shots.organize_stopped` | error | A run stopped unexpectedly; the journal holds what was done so far. |
 | `shots.refused` | error | The path guard refused a screenshot (its source or target is not where it should be). |
-| `shots.scan_completed` | info | A scan finished: per flavor, files to file, possible duplicates, conflicts and unrecognised names. |
+| `shots.scan_completed` | info | A scan finished: per flavor, files to file, possible duplicates, conflicts, copies already filed (copy mode) and unrecognised names. |
 | `shots.scan_started` | info | A scan of the chosen flavors' Screenshots folders started. |
 | `shots.scan_warning` | warning | A Screenshots or target folder could not be read during a scan. |
 | `shots.skipped` | warning | A screenshot was skipped because it vanished or changed after the scan. |

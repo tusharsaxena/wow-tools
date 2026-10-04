@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import json
 import tempfile
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -56,7 +59,87 @@ class SinkTest(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
+        self.addCleanup(events.close_all_logs)  # runs first: Windows cannot delete a file that is still open
         self.dir = Path(tmp.name)
+
+    def test_append_reuses_one_handle_per_file(self):
+        opened = []
+        real_open = Path.open
+
+        def counting_open(path, *args, **kwargs):
+            opened.append(path)
+            return real_open(path, *args, **kwargs)
+
+        log = EventLog(self.dir, clock=lambda: FIXED)
+        with mock.patch.object(Path, "open", counting_open):
+            for index in range(100):
+                log.emit("config.created", path=f"x{index}")
+        self.assertLessEqual(len(opened), 2)  # one events file, one readable file
+        log.close()
+        lines = (self.dir / "suite" / "events-2026-09-27.log").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(lines), 100)
+        self.assertEqual(len((self.dir / "suite" / "logfile-2026-09-27.log").read_text().splitlines()), 100)
+
+    def test_each_line_is_on_disk_before_close(self):
+        log = EventLog(self.dir, clock=lambda: FIXED)
+        log.emit("config.created", path="a")
+        self.assertIn("path=a", (self.dir / "suite" / "logfile-2026-09-27.log").read_text(encoding="utf-8"))
+
+    def test_day_rollover_closes_old_handles(self):
+        now = [FIXED.replace(hour=23, minute=59)]
+        handles = []
+        real_open = Path.open
+
+        def tracking_open(path, *args, **kwargs):
+            handle = real_open(path, *args, **kwargs)
+            handles.append((path.name, handle))
+            return handle
+
+        log = EventLog(self.dir, clock=lambda: now[0])
+        with mock.patch.object(Path, "open", tracking_open):
+            log.emit("config.created", path="before")
+            now[0] = now[0] + timedelta(minutes=2)
+            log.emit("config.created", path="after")
+        closed = {name: handle.closed for name, handle in handles}
+        self.assertEqual(closed, {"events-2026-09-27.log": True, "logfile-2026-09-27.log": True,
+                                  "events-2026-09-28.log": False, "logfile-2026-09-28.log": False})
+        log.close()
+        self.assertTrue(all(handle.closed for _, handle in handles))
+        old = (self.dir / "suite" / "logfile-2026-09-27.log").read_text(encoding="utf-8")
+        new = (self.dir / "suite" / "logfile-2026-09-28.log").read_text(encoding="utf-8")
+        self.assertIn("path=before", old)
+        self.assertNotIn("path=after", old)
+        self.assertIn("path=after", new)
+
+    def test_close_then_emit_reopens(self):
+        log = EventLog(self.dir, clock=lambda: FIXED)
+        log.emit("config.created", path="a")
+        log.close()
+        log.emit("config.created", path="b")
+        log.close()
+        text = (self.dir / "suite" / "logfile-2026-09-27.log").read_text(encoding="utf-8")
+        self.assertIn("path=a", text)
+        self.assertIn("path=b", text)
+
+    def test_init_event_log_closes_the_previous_log(self):
+        previous = events.get_event_log()
+        self.addCleanup(setattr, events, "_current", previous)
+        first = events.init_event_log(self.dir, clock=lambda: FIXED)
+        first.emit("config.created", path="a")
+        self.assertTrue(first._handles)
+        events.init_event_log(self.dir, clock=lambda: FIXED)
+        self.assertEqual(first._handles, {})
+
+    def test_write_failure_after_open_disables_the_sink(self):
+        warnings = []
+        log = EventLog(self.dir, clock=lambda: FIXED, on_sink_error=warnings.append)
+        log.emit("config.created", path="a")
+        for handle in log._handles.values():
+            handle.close()  # a write to a closed file raises ValueError, not OSError
+        log.emit("config.created", path="b")
+        self.assertEqual(len(warnings), 2)
+        log.emit("config.created", path="c")
+        self.assertEqual(len(warnings), 2)
 
     def test_jsonl_keeps_debug_text_respects_level(self):
         log = EventLog(self.dir, text_level="info", clock=lambda: FIXED)

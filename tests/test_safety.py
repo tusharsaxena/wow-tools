@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import tempfile
 import unittest
@@ -10,9 +12,9 @@ from wowtools.core.backup import BackupError
 from wowtools.core.install import WowInstall
 from wowtools.tools.wtf_cleaner.cleaner import execute
 from wowtools.tools.wtf_cleaner.rules import Criteria, evaluate
-from wowtools.tools.wtf_cleaner.scanner import scan
 from wowtools.tools.wtf_cleaner.safety import (MARKER_NAME, Marker, clear_marker, read_marker, recovery_message,
-                                               restore_deleted, take_snapshot, write_marker)
+                                               prune_snapshots, restore_deleted, take_snapshot, write_marker)
+from wowtools.tools.wtf_cleaner.scanner import scan
 
 WHEN = datetime(2026, 9, 27, 14, 3, 11)
 
@@ -52,6 +54,30 @@ class SafetyTest(unittest.TestCase):
             last = [c for c in calls if c[0] == stage][-1]
             self.assertEqual(last[1], last[2], stage)
         self.assertEqual(len([c for c in calls if c[0] == "snapshot"]), len(names))
+
+    def test_same_second_snapshot_gets_suffix(self):
+        first = take_snapshot(self.retail, self.backup_dir, WHEN)
+        second = take_snapshot(self.retail, self.backup_dir, WHEN)
+        third = take_snapshot(self.retail, self.backup_dir, WHEN)
+        self.assertEqual([first.name, second.name, third.name],
+                         ["backup-retail-20260927-140311.zip", "backup-retail-20260927-140311-2.zip",
+                          "backup-retail-20260927-140311-3.zip"])
+        self.assertTrue(first.exists() and second.exists() and third.exists())
+        removed = prune_snapshots(self.backup_dir, "retail", keep=1)
+        self.assertEqual({p.name for p in removed}, {first.name, second.name})
+        self.assertEqual([p.name for p in (self.backup_dir / "backup").iterdir()], [third.name])
+
+    def test_prune_orders_suffixes_numerically_within_a_second(self):
+        folder = self.backup_dir / "backup"
+        folder.mkdir(parents=True)
+        for name in ("backup-retail-20260927-140311.zip", "backup-retail-20260927-140311-2.zip",
+                     "backup-retail-20260927-140311-10.zip", "backup-retail-20260101-000000.zip",
+                     "backup-classic_era-20260927-140311-3.zip"):
+            (folder / name).write_bytes(b"")
+        prune_snapshots(self.backup_dir, "retail", keep=2)
+        self.assertEqual(sorted(p.name for p in folder.iterdir()),
+                         ["backup-classic_era-20260927-140311-3.zip", "backup-retail-20260927-140311-10.zip",
+                          "backup-retail-20260927-140311-2.zip"])
 
     def test_snapshot_failure_raises_backup_error(self):
         blocker = self.tmp / "blocker"

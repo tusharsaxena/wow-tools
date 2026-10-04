@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import subprocess
 import tempfile
 import unittest
@@ -143,3 +145,14 @@ class WowProcessTest(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(wow_check_for([era], lister=lambda: procs)(),
                          ["WowClassic.exe", "WowB.exe (flavor unknown)"])
+
+    def test_unknown_processes_listed_once_for_many_flavors(self):
+        retail = Flavor("_retail_", Path("/wow/_retail_"))
+        era = Flavor("_classic_era_", Path("/wow/_classic_era_"))
+        procs = [WowProcess("Wow.exe", None)]
+        self.assertEqual(wow_check_for([retail, era], lister=lambda: procs)(), ["Wow.exe (flavor unknown)"])
+
+    def test_unknown_processes_do_not_depend_on_the_flavors(self):
+        # F-025: unknown used to be whatever the last folder's call returned, so no folders meant none.
+        procs = [WowProcess("Wow.exe", None)]
+        self.assertEqual(wow_check_for([], lister=lambda: procs)(), ["Wow.exe (flavor unknown)"])

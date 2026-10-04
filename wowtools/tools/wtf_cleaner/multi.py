@@ -6,10 +6,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from wowtools import __version__
 from wowtools.core.backup import BackupError
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor
-from wowtools import __version__
 from wowtools.core.journal import new_journal_path
 from wowtools.core.paths import to_stored
 from wowtools.tools.wtf_cleaner.cleaner import CleanError, CleanProgress, CleanResult, FileOutcome, execute

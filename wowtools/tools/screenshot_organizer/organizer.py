@@ -16,6 +16,7 @@ from typing import Callable
 
 from wowtools import __version__
 from wowtools.core.events import log_event
+from wowtools.core.fsutil import rename_no_replace, safe_progress
 from wowtools.core.paths import to_stored
 from wowtools.tools.screenshot_organizer.journal import (A_COPIED, A_DUPLICATE, A_MOVED, A_SOURCE_LEFT, JournalWriter,
                                                          new_journal_path, prune_journals)
@@ -58,6 +59,9 @@ class OrganizeResult:
     journal_path: Path | None = None
     pruned: list[Path] = field(default_factory=list)
     undo: bool = False
+    # Undo only: False when nothing was put back and something failed (say the archive drive is unplugged), so
+    # the journal stays undoable and Undo can be tried again.
+    marked_undone: bool = False
 
     def of(self, kind: str) -> list[Outcome]:
         return [o for o in self.outcomes if o.kind == kind]
@@ -121,7 +125,7 @@ def copy_verified(src: Path, dst: Path) -> None:
             raise OSError(errno.EIO, "copy verification failed", str(dst))
         if os.path.lexists(dst):
             raise FileExistsError(errno.EEXIST, "target appeared during copy", str(dst))
-        os.rename(partial, dst)
+        rename_no_replace(partial, dst)  # never replaces a file that appeared at dst
     except BaseException:
         try:
             os.remove(partial)
@@ -130,8 +134,8 @@ def copy_verified(src: Path, dst: Path) -> None:
         raise
 
 
-def move_file(src: Path, dst: Path, rename: Rename = os.rename) -> bool:
-    """Rename src to dst. Across devices (EXDEV), copy it verified instead and return True: the source is then
+def move_file(src: Path, dst: Path, rename: Rename = rename_no_replace) -> bool:
+    """Rename src to dst, never replacing an existing dst (FileExistsError). Across devices (EXDEV), copy it verified instead and return True: the source is then
     still there and the caller deletes it."""
     if os.path.lexists(dst):
         raise FileExistsError(errno.EEXIST, "target exists", str(dst))
@@ -155,17 +159,6 @@ def _guard(item: ShotItem, dest_dir: Path | None) -> str | None:
     if item.dst != expected or ".." in item.dst.parts:
         return f"target is not {expected}"
     return None
-
-
-def safe_progress(progress: Progress | None) -> Progress:
-    def call(stage: str, current: int, total: int, detail: str = "") -> None:
-        if progress is None:
-            return
-        try:
-            progress(stage, current, total, detail)
-        except Exception:  # noqa: BLE001 - a broken progress callback must never disturb a run
-            pass
-    return call
 
 
 class _Run:
@@ -262,8 +255,8 @@ def _log_outcome(result: OrganizeResult, outcome: Outcome, dry_run: bool) -> Non
 
 def execute(items: list[ShotItem], *, dest_dir: Path | None, copy: bool, dry_run: bool,
             journal_dir: Path | None, keep_journals: int, progress: Progress | None = None,
-            rename: Rename = os.rename) -> OrganizeResult:
-    report = safe_progress(progress)
+            rename: Rename = rename_no_replace) -> OrganizeResult:
+    report: Progress = safe_progress(progress)
     result = OrganizeResult(dry_run=dry_run, copy=copy)
     journal = None
     if not dry_run and journal_dir is not None:

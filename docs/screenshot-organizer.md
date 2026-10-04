@@ -33,14 +33,16 @@ You choose this with the **destination folder** setting:
 - File names are never changed.
 - The date comes from the file name WoW gives each screenshot, `WoWScrnShot_MMDDYY_HHMMSS.jpg`.
 - The destination folder doesn't need to exist yet; it's created the first time.
+- It can't be your WoW folder itself, or inside a game version's `Screenshots`, `WTF` or `Interface` folder.
 - The organizer only adds dated folders and screenshots there. It never touches anything else in that folder,
   such as a photo program's own files.
 
 ## Picking a game version
 
 The list shows every game version in your WoW folder, with **All flavors** at the top. Next to each one you see
-how many screenshots are waiting to be sorted. A version you've never taken a screenshot in says "no Screenshots
-folder". Your choice is remembered for next time.
+how many screenshots are waiting to be sorted. The counts take a moment to appear ("counting…"), but you can
+pick straight away. A version you've never taken a screenshot in says "no Screenshots folder". In copy mode,
+screenshots you've already copied aren't counted. Your choice is remembered for next time.
 
 ## The review screen
 
@@ -66,7 +68,7 @@ explained below).
 | Key | Does |
 |---|---|
 | `Space` | Tick or untick the highlighted line |
-| `a` / `n` | Tick everything / untick everything |
+| `a` / `n` | Tick everything to sort / untick everything |
 | `o` | **Organize** the ticked screenshots (asks first; the answer starts on **No**) |
 | `y` | **Dry run** (asks first; the answer starts on **Yes**) |
 | `r` | Scan again |
@@ -128,19 +130,30 @@ name not recognised".
 Turn on **Copy instead of move** in settings to copy screenshots into the dated folders and keep the originals in
 `Screenshots` too. Every copy is checked before it counts.
 
+Next time you scan, the originals you've already copied aren't "waiting" any more. When a file of the same name and
+size is already in its dated folder, the review screen lists it under "Already filed" for that game
+version, unticked, and the game version list doesn't count it. You can still tick it by hand (`a` leaves these
+alone); the run then compares the two files and says "Already filed" or "Conflict".
+
 ## Undo last run
 
 Changed your mind? **Undo last run** (`z`, the amber button) reverses the most recent run:
 
 - Moved screenshots go back to their `Screenshots` folder.
-- Copies are removed (only if the original is still there).
+- Copies are removed (only if the original is still there). A copy you already deleted yourself counts as
+  undone.
 - Duplicates that were removed are put back.
 
 Undo is careful too:
 
-- It only touches screenshots that haven't changed since the run. Anything else is left alone and listed.
+- It only touches screenshots that haven't changed since the run, and only where that run filed them. Anything
+  else is left alone and listed.
 - Dated folders that end up empty are removed; no other folders are.
 - Undo only goes back **one run**. After you undo, the button stays greyed out until your next run.
+- If nothing could be put back because the filed screenshots are missing (for example the archive drive isn't
+  connected), the undo doesn't count: connect the drive and press **Undo last run** again.
+- A screenshot that's already back in its `Screenshots` folder (say an earlier undo was cut short, or you moved
+  it back yourself) is left alone and listed as already back.
 
 Each run's record (its **journal**) is kept in `<your WoW folder>\wow-tools\screenshot-organizer\journal`, never
 in your screenshot archive. The newest 10 are kept.
@@ -180,7 +193,7 @@ The file itself uses these names, if you edit it by hand: `dest_dir`, `copy_mode
 |---------|-----|
 | "No Screenshots folders found" | You haven't taken a screenshot in any game version yet. Take one in game first (the Print Screen key). |
 | A screenshot stays in `Screenshots` after organizing | Its name isn't a WoW screenshot name, or a different file with the same name is already sorted (a conflict). Both are listed on the review and results screens. |
-| The destination is refused in settings | It can't be your WoW folder itself or inside a `Screenshots` folder. To sort in place, leave it empty. |
+| The destination is refused | It must be a full path (such as `D:\Screenshots`), and it can't be your WoW folder itself or inside a game version's `Screenshots`, `WTF` or `Interface` folder. To sort in place, leave it empty. The organizer checks this when you save the settings and again before each scan, in case the file was edited by hand. |
 | **Undo last run** is greyed out | There's nothing to undo: you haven't run it yet, or you already undid the last run. |
 | Moving to another drive is slow | Each screenshot is copied and checked before the original is removed, so a big first run takes a while. Later runs only handle new screenshots. From WSL it's slower still; see the main [Troubleshooting](../README.md#troubleshooting). |
 | Something else looks wrong | Follow [Reporting a bug](../README.md#reporting-a-bug) in the main README. |

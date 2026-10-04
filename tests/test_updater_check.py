@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import io
 import json
 import tempfile
@@ -43,6 +45,20 @@ class FetchTest(unittest.TestCase):
             "tag_name": "v0.2.0", "body": "Notes", "draft": False, "prerelease": False,
             "zipball_url": "https://api.github.com/zip", "html_url": "https://github.com/r"}))
         self.assertEqual((release.version, release.tag, release.notes), ("0.2.0", "v0.2.0", "Notes"))
+
+    def test_fetch_latest_records_assets(self):
+        release = fetch_latest(opener=opener_for({
+            "tag_name": "v0.2.0", "draft": False, "prerelease": False,
+            "assets": [{"name": "wow-tools-v0.2.0.zip", "browser_download_url": "https://dl/zip"},
+                       {"name": "SHA256SUMS", "browser_download_url": "https://dl/sums"},
+                       {"name": "broken"}]}))
+        self.assertEqual(release.assets, {"wow-tools-v0.2.0.zip": "https://dl/zip", "SHA256SUMS": "https://dl/sums"})
+
+    def test_from_version_guesses_the_asset_urls(self):
+        release = ReleaseInfo.from_version("0.2.0")
+        base = "https://github.com/tusharsaxena/wow-tools/releases/download/v0.2.0/"
+        self.assertEqual(release.assets, {"wow-tools-v0.2.0.zip": base + "wow-tools-v0.2.0.zip",
+                                          "SHA256SUMS": base + "SHA256SUMS"})
 
     def test_404_means_no_release(self):
         def not_found(request, timeout):
@@ -104,3 +120,22 @@ class CheckTest(unittest.TestCase):
         fresh = Config(self.tmp / "new.cfg")
         check_for_update(fresh, current="0.1.0", now=NOW, fetch=lambda: ReleaseInfo.from_version("0.2.0"))
         self.assertFalse(fresh.path.exists())
+
+    def test_persist_callback_receives_values_and_config_is_untouched(self):
+        handed = []
+        release = check_for_update(self.cfg, current="0.1.0", now=NOW,
+                                   fetch=lambda: ReleaseInfo.from_version("0.2.0"), persist=handed.append)
+        self.assertEqual(release.version, "0.2.0")
+        self.assertEqual(handed, [{"last_update_check": NOW.isoformat(timespec="seconds"),
+                                   "latest_seen_version": "0.2.0"}])
+        self.assertIsNone(self.cfg.latest_seen_version)
+        self.assertIsNone(Config(self.cfg.path).load().latest_seen_version)
+
+    def test_future_last_check_is_ignored(self):
+        self.cfg.set("general", "last_update_check", (NOW + timedelta(days=2)).isoformat(), log=False)
+        self.cfg.save()
+        fetch = Mock(return_value=ReleaseInfo.from_version("0.2.0"))
+        release = check_for_update(self.cfg, current="0.1.0", now=NOW, fetch=fetch)
+        fetch.assert_called_once()
+        self.assertEqual(release.version, "0.2.0")
+        self.assertEqual(Config(self.cfg.path).load().last_update_check, NOW)

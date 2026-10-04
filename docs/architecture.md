@@ -2,7 +2,8 @@
 
 ## Layers
 
-    wow-tools.sh / .cmd    the only entry point (runs python -m wowtools)
+    wow-tools.sh / .cmd    the only entry point (runs python -m wowtools). The .cmd starts Python and exits on its
+                           last line, so a zip update can replace it while it runs (tests/test_launcher.py)
     wowtools/__main__.py   Python check + vendor/ on sys.path, then suite.run()
     wowtools/suite.py      no args: config migration, instance lock, the suite app; or `update`, `--version`, `--help`
     wowtools/core/         UI-free framework shared by every tool (never imports textual)
@@ -25,19 +26,21 @@ stay thin.
 |---|---|
 | `bootstrap` | `REPO_ROOT`, `VENDOR_DIR`, Python ≥ 3.10 check, `add_vendor_path()` |
 | `paths` | WSL detection; `to_native()` / `to_stored()` translate `G:\X` ⇄ `/mnt/g/X` |
-| `config` | `config/wow-tools.cfg` (`[general]`) plus `config/<tool>.cfg` per tool (`tool_config_path()`); typed accessors; `config.changed` events; `migrate_legacy_config()` splits the old root `wow-tools.cfg` |
+| `config` | `config/wow-tools.cfg` (`[general]`) plus `config/<tool>.cfg` per tool (`tool_config_path()`); typed accessors; `config.changed` events; `migrate_legacy_config()` splits the old root `wow-tools.cfg`. `save()` is atomic and runs on the UI thread only (the background update check hands its values back through `check_for_update(persist=...)`) |
 | `migrate` | Start-up moves for renamed tools (`wowtools.tools.RENAMED_TOOLS`, one `ToolRename` line each): `migrate_tool_config()` turns `config/<old>.cfg` into `config/<new>.cfg` with the section renamed; `merge_folder()` moves `logs/<old>/` and `<WoW>/wow-tools/<old>/` to the new name. Never overwrites (details below) |
-| `lock` | `InstanceLock` on `wow-tools.lock` (O_EXCL create; holder pid, host, start time, platform, token). `acquire()` returns the holder on conflict; `take_over()`; `release()` removes the file only if it is still ours. `LockInfo.stale` is known only on POSIX for a lock from this host |
-| `events` | Registry of event names with fixed levels; JSONL + text sinks; `log_event()`; `capture_events()` for tests |
-| `install` | `WowInstall` → `Flavor` → `Account` → `Character`; install auto-detection. A flavor is any `_name_` folder in the WoW folder, whatever it holds |
+| `lock` | `InstanceLock` on `wow-tools.lock` (O_EXCL create; holder pid, host, start time, platform (WSL via `paths.is_wsl`, the suite's one check), token). `acquire()` returns the holder on conflict; `take_over()`; `release()` removes the file only if it is still ours. `LockInfo.stale` is known only on POSIX for a lock from this host |
+| `fsutil` | `atomic_write_text()` (write `<name>.partial`, then `os.replace`), used for every config write; `rename_no_replace()` (refuses an existing target with no check-then-act window: a hard link then unlink on POSIX, `os.rename` on Windows; falls back to check + rename where hard links are unsupported); `free_name(folder, stem, suffix)` (`-2`, `-3`, ... for same-second names: journals, WTF backups, cleaned zips); `remove_quietly()` (delete one of our own temporary or partial files, ignoring errors); `safe_progress(cb)` (wraps a run's progress callback so an error in it never disturbs the run; every clean, organize and undo uses it) |
+| `activity` | `running()` context manager that file-changing workers (clean, organize, undo) enter; `wait_idle(timeout)`. `suite.run()` waits on it before releasing the lock, so a worker still writing never shares its folders with a second copy |
+| `events` | Registry of event names with fixed levels; JSONL + text sinks (files kept open, flushed per line, closed on a new day and at exit); `log_event()`; `capture_events()` for tests |
+| `install` | `WowInstall` → `Flavor` → `Account` → `Character`; install auto-detection. A flavor is any `_name_` folder in the WoW folder, whatever it holds. `validate_output_dir()` refuses a tool output folder that is relative, the WoW folder, or inside a flavor's `WTF`/`Interface`/`Screenshots` (both tools use it on save and before use) |
 | `journal` | Run journals, the suite standard for any tool that changes files: JSON Lines (header, one line per completed change flushed at once, `{"finished"}`, `{"undone"}`). `journal_dir(wow_path, tool)` = `<WoW>/wow-tools/<tool>/journal/`; `new_journal_path`, `JournalWriter` (`open()` exclusive-creates and writes the header, `add_entry()`, `finish()`, `discard_if_empty()`), `read_journal(path, path_fields=)`, `list_journals` (newest first), `latest_undoable` (newest journal with entries, never past an undone one), `mark_undone`, `prune_journals(dir, keep)`, `friendly_stamp`. Path values go through `to_stored()` / `to_native()`. Tools add their own entry fields and undo rules |
 | `backup` | Zip + `manifest.json`, verified before it is moved into place; optional `on_file(current, total, name)` hook for progress |
 | `process` | Best-effort "is WoW running?" per flavor: `running_wow_processes()` returns `WowProcess(name, path)` (PowerShell `Get-CimInstance Win32_Process` on Windows/WSL, `/proc/<pid>/cmdline` on Linux, name-only `tasklist` fallback, `None` on macOS); `processes_for_flavor()` matches the executable's parent folder to the flavor folder, ignoring case and `\`/`/`; `wow_check_for(flavor)` is the check the review screen and CLI call |
-| `updater` | GitHub Releases check (24 h throttle), git fast-forward or zip replace with rollback; a zip update also removes `RETIRED_FILES` (the old `wtf-cleaner.cmd/.sh`) |
+| `updater` | GitHub Releases check (24 h throttle; a future stamp never throttles; records the release's assets), git fast-forward (120 s timeout per step that kills git's whole process tree, output via temp files, no prompts: `GIT_TERMINAL_PROMPT=0`, and `ssh -oBatchMode=yes` only when no `GIT_SSH_COMMAND`/`GIT_SSH`/`core.sshCommand` is set; untracked files ignored) or zip replace with rollback (downloads the `wow-tools-vX.Y.Z.zip` asset and checks its SHA-256 against the `SHA256SUMS` asset before touching anything; without `SHA256SUMS` it refuses unless `allow_unverified_updates`, then falls back to the zip asset or the source zipball; replaces the managed names plus only the root `*.md` files the release ships; keeps 2 `.update-backup/<version>` folders: the one this update made plus the highest other version); a zip update also removes `RETIRED_FILES` (the old `wtf-cleaner.cmd/.sh`) |
 
 ## Config schema
 
-`config/wow-tools.cfg` `[general]`: `wow_path`, `last_flavor`, `check_for_updates`, `auto_update`,
+`config/wow-tools.cfg` `[general]`: `wow_path`, `last_flavor`, `check_for_updates`, `auto_update`, `allow_unverified_updates`,
 `last_update_check`, `latest_seen_version`, `log_level`, `log_retention_days`.
 Each tool owns one file with one section. `config/wtf-cleaner.cfg` `[wtf_cleaner]`: `max_age_days`, `criterion_*`, `backup_before_delete`,
 `backup_dir` (empty = `<wow_path>/wow-tools/wtf-cleaner`, resolved by `settings.resolve_backup_dir()`) and
@@ -93,8 +96,9 @@ before the next flavor (`clean.flavors_stopped`), and each `FlavorRun.status` is
 `execute` guards every path (it must resolve inside `<flavor>/WTF/Account/**/SavedVariables`) and re-checks
 size and mtime. For a real clean it then opens the run journal (when given one), takes the safety snapshot and
 writes the marker (`safety.py`), writes and verifies the selective backup, and only then deletes, journaling each
-file right after it is deleted. A dry run writes the backup and deletes nothing; it takes no snapshot and writes
-no journal.
+file right after it is deleted. A dry run writes the backup (as `cleaned/dryrun-<flavor>-<account>-<stamp>.zip`) and deletes nothing; it takes
+no snapshot, writes no journal, and then prunes the flavor's dry-run zips to the newest `keep_backups`
+(`prune_dry_run_zips`). Real `cleaned-*.zip` files are never pruned.
 
 ### Run journal and Undo last clean (`tools/wtf_cleaner/journal.py`, `undo.py`)
 
@@ -108,7 +112,10 @@ the whole run, across All flavors:
     {"undone": iso, "restored": n, "skipped": n}
 
 `execute_flavors` creates the `CleanJournal` and passes it to each `execute()`. `execute` opens it (header
-written, once per run) before the lock check and the WTF backup; if that fails it raises `CleanError` and nothing
+written, once per run) before the lock check and the WTF backup (the lock check is preceded by
+`recover_probe_leftovers`, which renames back any `<name>.wowtools-lockcheck` an interrupted probe left in any
+SavedVariables folder in the clean's scope (`saved_variables_folders(flavor, account)`), never overwriting, `clean.probe_recovered`; the scanner never proposes such a file
+and adds a `ScanWarning` for it); if that fails it raises `CleanError` and nothing
 is deleted (`clean.journal_failed`). An entry is appended after each delete; if that append fails the delete loop
 stops like any unexpected error, so that flavor's deletions are restored from its WTF backup. A journal with no
 entries is removed, and after a clean that wrote one `prune_journals` keeps the newest `keep_journals`
@@ -132,8 +139,8 @@ that is missing for now, such as an unplugged backup drive), so Undo can be trie
 UI-free. `take_snapshot()` zips the whole `<flavor>/WTF` folder to `backup/backup-<flavor>-<stamp>.zip`
 in the backup folder and verifies it; the user-facing name is "WTF backup". It is kept after the clean, and
 `prune_snapshots(backup_dir, flavor_short, keep)` deletes all but that flavor's newest `keep_backups`
-(`backup-<flavor>-<stamp>.zip` names only).
-The zip of the files a clean removes is `cleaned/cleaned-<flavor>-<account or all>-<stamp>.zip` (`cleaner.cleaned_zip_path`). `write_marker()` / `read_marker()` / `clear_marker()` manage
+(`backup-<flavor>-<stamp>[-N].zip` names only, newest by stamp then N).
+The zip of the files a clean removes is `cleaned/cleaned-<flavor>-<account or all>-<stamp>.zip` (`cleaner.cleaned_zip_path`). Both names get `-2`, `-3`, ... (`fsutil.free_name`) when a run in the same second already used them, and finished zips are moved into place with `fsutil.rename_no_replace`, so a backup is never replaced. `write_marker()` / `read_marker()` / `clear_marker()` manage
 `clean-in-progress.json` (`Marker`: snapshot, flavor, flavor_path, started, pid, suite_version, files).
 `restore_deleted()` extracts exactly the given relative paths and never overwrites an existing file.
 `recovery_message()` is the text the TUI's `RecoveryScreen` shows for a leftover marker.
@@ -172,12 +179,17 @@ Modules in `tools/screenshot_organizer/` (all UI-free except `app.py` and `revie
 
 **Targets.** `target_root(flavor, dest_dir)` is `<dest_dir>/<flavor folder>`, or the flavor's `Screenshots`
 folder when `dest_dir` is `None` (in place). A shot goes to `target_root/YYYY/MM/DD/<name>`; the day comes from
-`WoWScrnShot_MMDDYY_HHMMSS.<jpg|jpeg|png|tga>` only. `validate_dest` (settings screen only) refuses the WoW folder
-itself and anything inside a flavor's `Screenshots` folder.
+`WoWScrnShot_MMDDYY_HHMMSS.<jpg|jpeg|png|tga>` only. `validate_dest` wraps `install.validate_output_dir` (a full path, not
+the WoW folder, not inside any flavor's `WTF`, `Interface` or `Screenshots`); it runs on the settings screen and
+again in `action_rescan`, which refuses to scan a hand-edited bad `dest_dir`.
 
 **Scan.** One listing per `Screenshots` folder (top-level files only) and one names-only listing
 (`planner.list_names`) per target day folder. Only a name already at the target is stat'ed, to set the state:
-`new`, `maybe_duplicate` (same size) or `conflict` (other size). Unparsable names become `Skipped`. Progress is
+`new`, `maybe_duplicate` (same size) or `conflict` (other size). In copy mode (`scan(..., copy=True)`) a same-size
+target is `filed` instead (the modified time is not compared: not every copy keeps it): the original stays in `Screenshots` after a copy, so it is not "to file" (`FlavorPlan.to_file` leaves it out), the review
+screen lists it in an unticked Already filed group, and `execute` still compares hashes if it is ticked.
+`waiting_count(flavor, dest_dir, copy=)` (the flavor picker's counts) lists names only; in copy mode it also lists
+each target day folder and leaves out names already there. Unparsable names become `Skipped`. Progress is
 `cb(current, total, label)` once per flavor, plus a tick every 500 files.
 
 **No per-file resolve or stat.** `resolve()` and per-entry `stat` are slow over WSL drvfs, so neither the scan
@@ -194,13 +206,14 @@ refuse every file.
 
 **Filing.** A same-name file at the target is hashed (SHA-256): identical means `duplicate_removed` (move: the
 source is deleted) or `already_filed` (copy); different means `conflict`, and neither file is touched. A move is
-`os.rename`; on `EXDEV` (and always in copy mode) `copy_verified` copies to `<name>.partial`, checks size and
+`fsutil.rename_no_replace` (POSIX: hard link then unlink, so a file that appears at the target is never
+replaced; Windows: `os.rename`); on `EXDEV` (and always in copy mode) `copy_verified` copies to `<name>.partial`, checks size and
 SHA-256, then renames into place. After a cross-device move a failed source delete is `source_left`, a warning. A
 `FileExistsError` from the last check is `conflict`. Nothing is ever overwritten. A dry run walks the same checks,
 hashing included, and reports `would_move` / `would_copy` / `would_remove_duplicate`; it creates no folders and
 writes no journal. A per-file `OSError` is `failed` and the run continues; anything else (including
 `KeyboardInterrupt`) raises `OrganizeError` with `.result`. Progress is `cb(stage, current, total, detail)` with
-the stages in `report.STAGE_TITLES` (`organize`, `prune`, `undo`), wrapped by `organizer.safe_progress`.
+the stages in `report.STAGE_TITLES` (`organize`, `prune`, `undo`), wrapped by `fsutil.safe_progress`.
 
 **Journal** (`journal.py`, the organizer's entries on top of `core/journal.py`). A real run writes `<WoW>/wow-tools/screenshot-organizer/journal/journal-<YYYYMMDD-HHMMSS>.jsonl`
 (`-2`, `-3`… on a clash), JSON Lines:
@@ -219,23 +232,41 @@ the newest `keep_journals` (undone ones count). `read_journal` skips torn lines 
 
 **Undo** (`undo.py`). `latest_undoable(journal_dir)` returns the newest journal with entries that is not undone,
 and never reaches back past an undone one: one level of undo only. `undo()` walks the entries newest first. Each
-entry passes a lexical guard (`src` directly in a `Screenshots` folder of a flavor under `wow_root`; `dst` ending
-in `YYYY/MM/DD/<src name>`), then:
+entry passes a guard: `src` directly in a `Screenshots` folder of a flavor under `wow_root`, with a WoW screenshot
+name; `dst` exactly `target_root(flavor, header dest_dir)/YYYY/MM/DD/<src name>`, the date from the name (so a
+tampered journal cannot point Undo at a file anywhere else). `read_journal` drops entries without paths or with a
+size that is not a number, and `latest_undoable` treats an unreadable journal as not offered. Then:
 
 - `moved`: if `dst` has the recorded size and `src` is free, move it back (`move_file`, copy-verify-delete across
-  devices; a failed delete of the archive copy is still `restored`, with a reason);
+  devices; a failed delete of the archive copy is still `restored`, with a reason); a missing `dst` with `src` back
+  at the recorded size (an interrupted Undo, or put back by hand) is `undo_skipped` ("the screenshot is already
+  back in the Screenshots folder"), so the journal is closed;
 - `copied` / `copied_source_left`: delete `dst` if both `src` and `dst` have the recorded size (`copy_removed`);
+  a missing `dst` next to an intact `src` is already undone (`copy_removed`, "the copy was already gone");
 - `duplicate_removed`: if `src` is free and `dst` has the recorded size, `copy_verified(dst, src)`;
-- anything else, or a failed check, is `undo_skipped`; an `OSError` is `failed`.
+- for `moved` and `duplicate_removed`, a `dst` that is missing altogether is `failed` (it may be on an unplugged
+  archive drive; its reason says to connect it and try Undo again, shortened to "the filed copy is missing" when
+  the journal is marked undone anyway); anything else, or a
+  failed check, is `undo_skipped`; an `OSError` is `failed`.
 
 Then the `DD`, `MM` and `YYYY` folders it touched are removed bottom-up while empty and digit-named, and an
-`undone` line is appended (even when every entry was skipped).
+`undone` line is appended (even when every entry was skipped), unless nothing was put back and something failed:
+then `OrganizeResult.marked_undone` is False, the journal stays undoable and the result says Undo can be tried
+again (the WTF Cleaner's rule).
 
 ## UI
 
 `Ka0sApp` registers the `ka0s` theme, starts the background update check, handles `u`, and exposes
-the `after_mount()` hook. Every screen shows a `Header`, the `BrandBar` and a `Footer`. Long-running work
-(scan, clean, organize, undo) runs in thread workers and reports back with `call_from_thread`.
+the `after_mount()` hook. Every screen shows a `Header`, the `BrandBar` and a `Footer`. Long-running or blocking work
+runs in thread workers and reports back with `call_from_thread`: scan, clean, organize, undo, and also the
+running-programs check before a clean or undo confirm (PowerShell/`tasklist`; the review screen shows "Checking for
+running programs…" and ignores `c`/`y`/`z`/`r` meanwhile), install detection on the setup screen, the organizer's
+per-flavor waiting counts (`FlavorScreen.set_notes()`), and an accepted in-app update (`UpdateProgressScreen`,
+with `app.busy` set). While a clean, organize or undo runs, `app.busy` is set: every key that would leave the screen is refused, and so is Ctrl+Q
+(`Ka0sApp.action_quit`, logged as `ui.quit_refused`).
+An unhandled exception in a handler or worker is logged as `error` with `where=ui` by `Ka0sApp._handle_exception`
+(a private Textual hook, pinned by a test) before Textual exits; `suite.run()` returns the app's `return_code`, so
+`session.end` and the process exit status show the crash.
 
 Shared screens and widgets in `wowtools/ui/`:
 
@@ -244,8 +275,9 @@ Shared screens and widgets in `wowtools/ui/`:
 | `suite_app` | `WowToolsApp`, `ToolMenuScreen` (the first screen), `LockScreen` (another copy may be running: Quit, or Override and continue) |
 | `tool_flow` | `ToolFlow` base: `start()`, `open_settings()`, `close()`, `require_install()` (shared WoW-folder setup) |
 | `setup_screen` | General setup: the WoW folder only |
-| `flavor_screen` | `FlavorScreen(cfg, install, *, include_all=False, last=None, flavors=None)`: the flavor picker. `include_all` adds "All flavors" first (dismisses with `ALL_FLAVORS`); `last` is the folder to pre-select (`""` = All flavors, `None` = `[general] last_flavor`); `flavors` replaces `install.flavors()`. Picking one flavor saves `[general] last_flavor`. |
+| `flavor_screen` | `FlavorScreen(cfg, install, *, include_all=False, last=None, flavors=None)`: the flavor picker. `include_all` adds "All flavors" first (dismisses with `ALL_FLAVORS`); `last` is the folder to pre-select (`""` = All flavors, `None` = `[general] last_flavor`); `flavors` replaces `install.flavors()`; `note`/`all_note` fill the remarks column and `set_notes()` replaces them later. Picking one flavor saves `[general] last_flavor`. |
 | `account_screen` | `AccountScreen(cfg, flavor, last)`: "All accounts" plus each account. Dismisses with the name, `""` for all, or `None` for back. The WTF Cleaner shows it only when a flavor has more than one account and saves the choice as `[wtf_cleaner] last_account`. |
+| `dialogs` | What every tool's screens share, so no tool imports another tool's screens: `ConfirmScreen(title, body, alerts=(), *, default_yes=False)` (yes/no; `alerts` in red; risky actions start on No), `ProgressScreen` (stage, bar and current file of a run; a tool subclasses it with `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, and calls `update_progress(stage, current, total, detail)`, plus `set_flavor(label)` across several flavors), `tick_mark(items, unchecked, key, success=)` (✔ / ◩ / ✘ for a review-tree line), `relabel_branch(tree, node, label, skip=)` (after a tick), the `TwoPaneFocus` mixin (←/→ between the left `#filters` panel and the tree), and `theme_colour(app, name)` (the theme's colour, or the Ka0s one before a theme is set) |
 | `widgets` | `action_button(label, action)` and `ACTION_VARIANTS` (one colour per kind of action in every tool: delete red, apply green, simulate blue, revert amber, confirm blue, neutral grey), `LIST_NAME_STYLE` / `LIST_CURSOR_BACKGROUND` (pick lists), `Ka0sCheckbox` (✔/✘ marks), `ButtonRow` (←/→ move focus between its buttons, Space presses the focused one), `NAV_BINDINGS` (↑/↓ move focus; not priority bindings, so a focused tree, list, table or input keeps its arrow keys), and `NavHint` (the one-line key hint every screen shows), `FormScroll` (a scrolling form where ↑/↓ still move focus) |
 
 The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfCleanerFlow` (`FLOW`) and
@@ -258,8 +290,10 @@ The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfC
   count). `flavors` is one `Flavor` (root = the flavor, accounts below) or a list (root = All
   flavors, a node per flavor, a "not scanned" leaf for a flavor whose scan failed). `wow_check` covers every
   flavor (`core.process.wow_check_for(list)` lists the processes once);
-- `ConfirmScreen`: starts on No for a real clean and on Yes for a dry run; lists each flavor's counts;
-- `CleanProgressScreen`: with several flavors the stage title names the flavor; also shown for an undo;
+- the shared `ConfirmScreen` (`wowtools.ui.dialogs`; still importable from here for one release): starts on No
+  for a real clean and on Yes for a dry run; lists each flavor's counts;
+- `CleanProgressScreen`, a `ProgressScreen` (ids `clean-*`): with several flavors the stage title names the
+  flavor; also shown for an undo;
 - `RecoveryScreen`: Dismiss or Remind me next time.
 
 `result_screen.py` holds `ResultScreen(result, flavor=None)`: a summary table plus a per-file `DataTable`. With a
@@ -273,9 +307,9 @@ note=<"no Screenshots folder" where missing>)` → review; every flavor is liste
 keep, copy mode; `validate_dest` errors show inline). `review_screen.py` holds:
 
 - `ShotReviewScreen`: the flavor → year → month → day → file tree (day files load on expand; read-only
-  Conflicts and Skipped nodes) and the Organize / Dry run / Rescan / Undo last run buttons. It reuses the
-  cleaner's `ConfirmScreen`;
-- `ShotProgressScreen`: stage, bar and current file for a run, dry run or undo;
+  Conflicts and Skipped nodes; in copy mode an Already filed node, unticked, that `a` leaves alone) and the Organize / Dry run / Rescan / Undo last run buttons. It uses the
+  shared `ConfirmScreen`;
+- `ShotProgressScreen`, a `ProgressScreen` (ids `shots-*`): stage, bar and current file for a run, dry run or undo;
 - `ShotResultScreen`: a summary table plus a per-file `DataTable`.
 
 ## Testing
@@ -284,3 +318,7 @@ keep, copy mode; `validate_dest` errors show inline). `review_screen.py` holds:
 unittest discover -s tests -t .` runs them in one process. Textual tests subclass `tests.fixtures.TuiTestCase`,
 which turns off asyncio debug mode. `tests/fixtures.py` builds a synthetic install in a temp
 folder, and TUI tests use Textual's `App.run_test()` pilot. No test touches a real WoW folder or the network.
+
+CI (`.github/workflows/tests.yml`) runs on every push and pull request: Ubuntu and Windows, Python 3.10 (the floor)
+and 3.13. Each job byte-compiles `wowtools`, `scripts` and `tests`, runs `gen_event_docs.py --check`, then
+`run_tests.py`.

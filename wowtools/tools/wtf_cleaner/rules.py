@@ -60,10 +60,6 @@ class ProposalItem:
         return self.group.addon
 
     @property
-    def scope(self) -> str:
-        return self.group.scope
-
-    @property
     def owner_label(self) -> str:
         return self.group.owner_label
 
@@ -130,15 +126,25 @@ def evaluate(scan: ScanResult, criteria: Criteria, *, now: float | None = None, 
         elif criteria.stray_copies and strays:
             items.append(ProposalItem(group, strays, ["stray_copies"]))
     proposal = Proposal(items, criteria.copy(), list(scan.warnings))
-    if not log:
-        return proposal
-    log_event("proposal.built", flavor=scan.flavor.folder, criteria=criteria.enabled_names(),
-              max_age_days=criteria.max_age_days, items=len(items), files=proposal.total_files,
-              bytes=proposal.total_size, by_reason=proposal.by_reason())
-    for item in items:
-        log_event("proposal.item", account=item.account, character=item.owner_label, addon=item.addon,
-                  reasons=item.reasons, files=[f.name for f in item.files])
+    if log:
+        log_proposal_built(proposal, scan.flavor.folder)
+        log_proposal_items(items)
     return proposal
+
+
+def log_proposal_built(proposal: Proposal, flavor_folder: str) -> None:
+    """One proposal.built summary (counts, per-reason totals) for a flavor's proposal."""
+    criteria = proposal.criteria
+    log_event("proposal.built", flavor=flavor_folder, criteria=criteria.enabled_names(),
+              max_age_days=criteria.max_age_days, items=len(proposal.items), files=proposal.total_files,
+              bytes=proposal.total_size, by_reason=proposal.by_reason())
+
+
+def log_proposal_items(items: list[ProposalItem], *, dry_run: bool | None = None) -> None:
+    """One proposal.item per addon group. The review screen logs these only for a run the user confirmed."""
+    for item in items:
+        log_event("proposal.item", dry_run=dry_run, account=item.account, character=item.owner_label,
+                  addon=item.addon, reasons=item.reasons, files=[f.name for f in item.files])
 
 
 def criterion_counts(scan: ScanResult, *, max_age_days: int, now: float | None = None) -> dict[str, int]:

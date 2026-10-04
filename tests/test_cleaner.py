@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os
 import tempfile
@@ -179,6 +181,76 @@ class CleanerTest(unittest.TestCase):
         self.assertIn("sv.failed", [r["event"] for r in records])
 
 
+class ProbeLeftoverTest(unittest.TestCase):
+    setUp = CleanerTest.setUp
+    item = CleanerTest.item
+
+    def test_execute_recovers_probe_leftover_before_snapshot(self):
+        canonical = self.sv / "Details.lua"
+        original = canonical.read_bytes()
+        canonical.rename(self.sv / "Details.lua.wowtools-lockcheck")  # left by a crash during an earlier probe
+        with capture_events() as records:
+            execute([self.item("Uninstalled")], self.retail, dry_run=False, backup=True,
+                    backup_dir=self.backup_dir, now=WHEN)
+        self.assertEqual(canonical.read_bytes(), original)
+        self.assertFalse((self.sv / "Details.lua.wowtools-lockcheck").exists())
+        recovered = [r for r in records if r["event"] == "clean.probe_recovered"]
+        self.assertEqual(len(recovered), 1)
+        self.assertTrue(recovered[0]["data"]["path"].endswith("Details.lua"))
+        names = [r["event"] for r in records]
+        self.assertLess(names.index("clean.probe_recovered"), names.index("snapshot.created"))
+        with zipfile.ZipFile(self.backup_dir / SNAPSHOT) as zf:
+            self.assertIn("WTF/Account/ACCT1/SavedVariables/Details.lua", zf.namelist())
+
+    def test_execute_recovers_leftovers_in_folders_with_nothing_selected(self):
+        """A leftover in a character folder and in another account is put back by a clean of account-wide files."""
+        char_file = self.retail.account_dir / "ACCT1" / "Realm1" / "CharA" / "SavedVariables" / "Auctionator.lua"
+        other_file = self.retail.account_dir / "ACCT2" / "SavedVariables" / "Details.lua"
+        for path in (char_file, other_file):
+            path.rename(path.with_name(path.name + ".wowtools-lockcheck"))
+        execute([self.item("Uninstalled")], self.retail, dry_run=False, backup=True,
+                backup_dir=self.backup_dir, now=WHEN)
+        self.assertTrue(char_file.exists())
+        self.assertTrue(other_file.exists())
+        self.assertEqual(list(self.retail.account_dir.rglob("*.wowtools-lockcheck")), [])
+
+    def test_account_scoped_clean_leaves_other_accounts_alone(self):
+        other_file = self.retail.account_dir / "ACCT2" / "SavedVariables" / "Details.lua"
+        other_file.rename(other_file.with_name("Details.lua.wowtools-lockcheck"))
+        execute([self.item("Uninstalled")], self.retail, dry_run=False, backup=True,
+                backup_dir=self.backup_dir, now=WHEN, account="ACCT1")
+        self.assertTrue(other_file.with_name("Details.lua.wowtools-lockcheck").exists())
+
+    def test_leftover_is_kept_when_the_original_exists_again(self):
+        leftover = self.sv / "Details.lua.wowtools-lockcheck"
+        leftover.write_bytes(b"old copy")
+        with capture_events() as records:
+            execute([self.item("Uninstalled")], self.retail, dry_run=False, backup=True,
+                    backup_dir=self.backup_dir, now=WHEN)
+        self.assertEqual(leftover.read_bytes(), b"old copy")
+        self.assertEqual((self.sv / "Details.lua").read_text(encoding="utf-8"), "-- saved variables\n")
+        self.assertNotIn("clean.probe_recovered", [r["event"] for r in records])
+
+    def test_dry_run_changes_no_leftover(self):
+        (self.sv / "Details.lua").rename(self.sv / "Details.lua.wowtools-lockcheck")
+        execute([self.item("Uninstalled")], self.retail, dry_run=True, backup=False, backup_dir=self.backup_dir,
+                now=WHEN)
+        self.assertTrue((self.sv / "Details.lua.wowtools-lockcheck").exists())
+        self.assertFalse((self.sv / "Details.lua").exists())
+
+
+class CleanErrorTest(unittest.TestCase):
+    def test_clean_error_instances_do_not_share_lists(self):
+        first, second = CleanError("a"), CleanError("b")
+        self.assertIsNot(first.restored, second.restored)
+        first.restored.append("x")
+        self.assertEqual(second.restored, [])
+        self.assertEqual(CleanError("c", restored=["y"], files_missing=True).restored, ["y"])
+        self.assertTrue(CleanError("c", files_missing=True).files_missing)
+        self.assertFalse(second.files_missing)
+        self.assertEqual(str(first), "a")
+
+
 class SafetySnapshotCleanTest(unittest.TestCase):
     """Safety snapshot, marker and restore around a real clean (spec A.4), and progress stages (A.5)."""
 
@@ -296,7 +368,7 @@ class SafetySnapshotCleanTest(unittest.TestCase):
     def test_dry_run_takes_no_snapshot(self):
         with capture_events() as records:
             result = self.run_clean(dry_run=True)
-        self.assertEqual(files_under(self.backup_dir), [CLEANED])
+        self.assertEqual(files_under(self.backup_dir), [CLEANED.replace("cleaned/cleaned-", "cleaned/dryrun-")])
         self.assertIsNone(result.snapshot_path)
         names = [r["event"] for r in records]
         self.assertNotIn("snapshot.created", names)
@@ -344,13 +416,14 @@ class LockAndCheckTest(unittest.TestCase):
     item = CleanerTest.item
 
     def _lock(self, locked_name):
-        original = os.rename
+        """Windows refuses to rename a file another program holds open; simulate that for one file."""
+        original = cleaner_module.rename_no_replace
 
-        def rename(src, dst, *args, **kwargs):
+        def rename(src, dst):
             if Path(src).name == locked_name:
                 raise PermissionError(13, "The process cannot access the file because it is being used")
-            return original(src, dst, *args, **kwargs)
-        return patch.object(cleaner_module.os, "rename", rename)
+            return original(src, dst)
+        return patch.object(cleaner_module, "rename_no_replace", rename)
 
     def test_locked_file_stops_a_real_clean_before_anything(self):
         before = snapshot(self.root)
@@ -431,11 +504,51 @@ class ZipLayoutTest(unittest.TestCase):
     setUp = CleanerTest.setUp
 
     def test_cleaned_zip_is_named_after_the_account(self):
-        result = execute(self.proposal.items, self.retail, dry_run=True, backup=True, backup_dir=self.backup_dir,
+        result = execute(self.proposal.items, self.retail, dry_run=False, backup=True, backup_dir=self.backup_dir,
                          now=WHEN, account="ACCT1")
         self.assertEqual(result.backup_path, self.backup_dir / "cleaned" / "cleaned-retail-ACCT1-20260927-140311.zip")
         with zipfile.ZipFile(result.backup_path) as zf:
             self.assertEqual(json.loads(zf.read("manifest.json"))["account"], "ACCT1")
+
+    def test_dry_run_zip_has_its_own_name(self):
+        result = execute(self.proposal.items, self.retail, dry_run=True, backup=True, backup_dir=self.backup_dir,
+                         now=WHEN, account="ACCT1")
+        self.assertEqual(result.backup_path, self.backup_dir / "cleaned" / "dryrun-retail-ACCT1-20260927-140311.zip")
+
+    def test_dry_run_zips_are_pruned_per_flavor_and_cleaned_zips_never(self):
+        # F-018: dry runs are repeated often; keep the newest keep_backups dry-run zips of the flavor. Real
+        # cleaned-files zips stay forever (a documented promise), as do other flavors' and the user's files.
+        folder = self.backup_dir / "cleaned"
+        folder.mkdir(parents=True)
+        for day in range(1, 6):
+            (folder / f"dryrun-retail-all-202609{day:02d}-120000.zip").write_bytes(b"old")
+        (folder / "dryrun-retail-ACCT1-20260904-120000-2.zip").write_bytes(b"old, other account")
+        (folder / "dryrun-classic_era-all-20260901-120000.zip").write_bytes(b"other flavor")
+        for day in range(1, 4):
+            (folder / f"cleaned-retail-all-202609{day:02d}-120000.zip").write_bytes(b"real")
+        (folder / "notes.txt").write_text("mine")
+        with capture_events() as records:
+            result = execute(self.proposal.items, self.retail, dry_run=True, backup=True,
+                             backup_dir=self.backup_dir, now=WHEN, keep_backups=3)
+        self.assertEqual(sorted(p.name for p in folder.iterdir()), sorted([
+            "cleaned-retail-all-20260901-120000.zip", "cleaned-retail-all-20260902-120000.zip",
+            "cleaned-retail-all-20260903-120000.zip", "dryrun-classic_era-all-20260901-120000.zip",
+            "dryrun-retail-all-20260905-120000.zip", "dryrun-retail-ACCT1-20260904-120000-2.zip",
+            "dryrun-retail-all-20260927-140311.zip", "notes.txt"]))
+        self.assertEqual(len(result.dry_runs_pruned), 4)
+        pruned = [r for r in records if r["event"] == "backup.dry_runs_pruned"]
+        self.assertEqual(len(pruned), 1)
+        self.assertEqual(pruned[0]["data"]["keep"], 3)
+
+    def test_real_clean_prunes_no_dry_run_zips(self):
+        folder = self.backup_dir / "cleaned"
+        folder.mkdir(parents=True)
+        for day in range(1, 4):
+            (folder / f"dryrun-retail-all-202609{day:02d}-120000.zip").write_bytes(b"old")
+        result = execute(self.proposal.items, self.retail, dry_run=False, backup=True,
+                         backup_dir=self.backup_dir, now=WHEN, keep_backups=1)
+        self.assertEqual(result.dry_runs_pruned, [])
+        self.assertEqual(len([p for p in folder.iterdir() if p.name.startswith("dryrun-")]), 3)
 
     def test_only_the_newest_backups_are_kept(self):
         folder = self.backup_dir / "backup"

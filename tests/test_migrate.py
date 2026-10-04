@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import tempfile
 import unittest
@@ -33,7 +35,7 @@ class MergeFolderTest(unittest.TestCase):
     def test_only_old_is_renamed(self):
         write(self.old / "journal" / "a.jsonl", "a")
         result = merge_folder(self.old, self.new)
-        self.assertTrue(result.renamed and result.old_removed and result.changed)
+        self.assertTrue(result.renamed and result.old_removed)
         self.assertFalse(self.old.exists())
         self.assertEqual((self.new / "journal" / "a.jsonl").read_text(encoding="utf-8"), "a")
 
@@ -78,7 +80,7 @@ class MergeFolderTest(unittest.TestCase):
         write(self.old / "a")
         write(self.new, "file")
         result = merge_folder(self.old, self.new)
-        self.assertEqual((result.clashes, result.changed), (["."], False))
+        self.assertEqual((result.clashes, result.renamed, result.moved), (["."], False, []))
         self.assertTrue((self.old / "a").is_file())
 
     def test_failed_move_is_recorded_and_others_carry_on(self):

@@ -12,10 +12,11 @@ from pathlib import Path
 from typing import Callable
 
 from wowtools import __version__
+from wowtools.core import activity
 from wowtools.core.bootstrap import REPO_ROOT
 from wowtools.core.config import (CONFIG_DIR, LEGACY_CONFIG_PATH, SUITE_CONFIG_NAME, Config, ConfigError,
                                   migrate_legacy_config)
-from wowtools.core.events import init_event_log, log_event, log_exception
+from wowtools.core.events import get_event_log, init_event_log, log_event, log_exception
 from wowtools.core.lock import LOCK_PATH, InstanceLock, LockInfo
 from wowtools.core.migrate import ConfigMigration, merge_folder, migrate_tool_config, tool_folder_pairs
 from wowtools.core.paths import is_wsl
@@ -23,6 +24,7 @@ from wowtools.core.updater import UpdateError, apply_update, check_for_update, r
 from wowtools.tools import RENAMED_TOOLS, TOOLS
 
 LOG_DIR = REPO_ROOT / "logs"
+WORKER_WAIT_S = 600.0  # how long to wait for a running clean/organize/undo before releasing the lock anyway
 
 
 def usage() -> str:
@@ -97,9 +99,16 @@ def run(argv: list[str], *, cfg: Config | None = None, log_dir: Path | None = LO
         log_exception("suite", exc)
         raise
     finally:
+        # Never hand the lock to another copy while a worker thread is still changing files.
+        waited = not activity.wait_idle(0)
+        if waited:
+            log_event("session.waiting_for_worker", timeout_s=WORKER_WAIT_S)
+            idle = activity.wait_idle(WORKER_WAIT_S)
         lock.release()
-        log_event("session.end", level="warning" if code not in (0, 10) else None,
-                  exit_code=code, duration_s=round(time.monotonic() - started, 3))
+        extra = {"waited_for_worker": True, "worker_finished": idle} if waited else {}
+        log_event("session.end", level="warning" if code not in (0, 10) or (waited and not idle) else None,
+                  exit_code=code, duration_s=round(time.monotonic() - started, 3), **extra)
+        get_event_log().close()
 
 
 def _migrate_renamed_folders(log_dir: Path | None, wow_path: Path | None) -> None:
@@ -127,7 +136,7 @@ def _auto_update(cfg: Config) -> bool:
     if release is None:
         return False
     try:
-        print(apply_update(release))
+        print(apply_update(release, allow_unverified=cfg.allow_unverified_updates))
     except UpdateError as exc:
         print(f"Automatic update failed: {exc}", file=sys.stderr)
         return False
@@ -167,4 +176,5 @@ def _dispatch(argv: list[str], cfg: Config, config_dir: Path, lock: InstanceLock
         app_factory = WowToolsApp
     app = app_factory(cfg, config_dir=config_dir, lock=lock, conflict=conflict)
     app.run()
-    return 0
+    # Textual returns normally after an unhandled exception; it sets return_code = 1 (logged by Ka0sApp).
+    return getattr(app, "return_code", None) or 0

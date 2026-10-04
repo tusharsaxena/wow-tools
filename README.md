@@ -80,7 +80,7 @@ That's the only thing you install. Everything else the tools need comes in the d
 ## Getting Ka0s WoW Tools
 
 1. Go to the [Releases page](https://github.com/tusharsaxena/wow-tools/releases).
-2. Under the newest version, download the **Source code (zip)** file.
+2. Under the newest version, download the **wow-tools-vX.Y.Z.zip** file (X.Y.Z is the version number).
 3. Unzip it anywhere you like, for example `Documents\wow-tools`.
 
 If you use git, you can clone it instead, which makes updates a single command:
@@ -111,7 +111,8 @@ The app opens in a terminal window. You drive it with the keyboard:
 | `s` | Settings |
 | `q` | Quit |
 
-Each screen lists its keys along the bottom, so you don't have to remember them. A mouse works too.
+Each screen lists its keys along the bottom, so you don't have to remember them. A mouse works too. While a clean, organize or
+undo is running, the app won't quit until it has finished.
 
 ### The first time
 
@@ -119,7 +120,7 @@ The first time you open a tool, it asks for two things:
 
 1. **Your World of Warcraft folder.** This is the folder that holds `_retail_`, `_classic_` and so on, for
    example `C:\Program Files (x86)\World of Warcraft`. The app looks in the usual places and suggests what it
-   finds. You only answer this once; every tool shares it.
+   finds (this can take a few seconds; you can type the folder meanwhile). You only answer this once; every tool shares it.
 2. **That tool's settings.** Each guide explains them. If you're not sure, keep the suggested values.
 
 Then you pick which version of the game to work on, or **All flavors** for every version at once. ("Flavor" is
@@ -136,14 +137,27 @@ Each tool has its own guide, with pictures, that walks through every screen:
 ## Updates
 
 The app checks for a new version once a day while it's open. If there is one, the bottom bar says so; press `u`
-to install it. You can also update from a terminal in the app's folder:
+to install it. A small window stays up while it downloads and installs, then the app closes so you can start the
+new version. You can also update from a terminal in the app's folder:
 
 - `wow-tools update --check` (on Windows `wow-tools.cmd update --check`, on Mac and Linux
   `./wow-tools.sh update --check`) tells you whether an update is available.
 - `wow-tools update` installs it.
 
-Updating never touches your settings, logs or backups. If an update fails partway, the app puts the old version
-back.
+Before installing, the app checks that the download is exactly the file that was published with that version
+(its checksum, listed in the release's `SHA256SUMS` file). If it doesn't match, nothing is changed. If a release
+has no `SHA256SUMS` file, the update is refused and you're pointed to the Releases page to download it yourself.
+If you'd rather update anyway in that case, add `allow_unverified_updates = true` under `[general]` in
+`config\wow-tools.cfg` (it starts as `false`; leaving it that way is safer).
+
+Updating never touches your settings, logs or backups, or files you put directly in the app's folder (notes, say).
+The app's own folders (`wowtools`, `vendor`, `scripts` and `docs`) are replaced as a whole, so don't keep your own
+files in them. If an update fails partway, the app puts the old version back. A copy of the version you replaced is
+kept in the `.update-backup` folder; only two are kept (the one this update made and the newest other one).
+
+If you cloned with git, the update is a fast-forward to the new version. It stops if you've edited the app's own
+files, but files you added yourself (notes, say) don't get in its way. It never waits for a password: if git
+would ask for one, or takes more than two minutes, the update stops and tells you why.
 
 ## Your settings
 
