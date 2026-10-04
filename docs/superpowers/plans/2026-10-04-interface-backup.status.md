@@ -21,7 +21,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | 11 | docs, events, final checks | done | 4e3aa0d | Full guide (no images yet: an HTML comment marks where the screenshots go); README, architecture, adding-a-tool, CLAUDE.md; events.md regenerated (22 events, unchanged); 766 tests OK (2 skipped) parallel and serial; ruff clean; reviewed, fixes in 42958c4 |
 | M3 | push milestone 3, ask for merge go-ahead | done (pushed; awaiting merge go-ahead) | 42958c4 | final review: 13 findings fixed |
 | R1 | redesign: two-pane review screen with flavor ticks and Backups nodes (spec Addendum A) | done | d9d2d31 | `BackupReviewScreen` in `review_screen.py` (renamed from `summary_screen.py`); BackupListScreen removed; tests rewritten for the tree |
-| R2 | redesign: two-pane restore screen with warnings tree; result screens in the organizer's shape | todo | | |
+| R2 | redesign: two-pane restore screen with warnings tree; result screens in the organizer's shape | done | c5c6976 | `RestoreScreen` two panes (`RestoreTree` `#effects`, `#summary`); result screens get `#result-summary` (Item/Value) above `#result-table` |
 | R3 | look-and-feel parity pass across all three tools | todo | | |
 | R4 | redesign review, docs (guide, architecture), push | todo | | |
 
@@ -296,3 +296,22 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   removed (no caller left); added `part_text`, `flavor_text`, `leftover_text`, `warnings_text`, `held_text`,
   `selection_text`, `backup_text` (tested). No other logic module changed. Esc on the review still goes to the
   flavor picker (f), as before. docs/architecture.md and the guide still describe the summary: R4.
+- R2: `RestoreScreen` is `TwoPaneFocus` (`#filters` 50 wide, like the review): "Backup" (flavor, kind and date,
+  size · parts · files once read, "made" when it differs, the zip path), "Restore" with the two `Ka0sCheckbox`
+  boxes (ids `part-Interface` / `part-WTF` kept), **Restore** (apply style, was confirm) and **Back**, NavHint.
+  Keys unchanged: o restore, b/Esc back; ←/→ panes. Right: `RestoreTree` (`#effects`) rooted at "<flavor> ·
+  <kind> from <date>": "Will be removed (N files)" and "Newer now than in the backup (N files)" start expanded
+  with one node per folder group (`report.group_items`, depth 3; a group that is one file is a leaf), files load
+  on expand (shown relative to the group); "Links kept (n)", "Links replaced (n)", "Could not be read (n)" load
+  their lines on expand; a low-space leaf; or "Nothing on disk would be lost". While loading or planning, with
+  no box ticked, or blocked (leftover, wrong flavor, unreadable zip), the tree holds one line saying so and the
+  `#summary` line repeats it. `#summary` = `report.restore_summary` ("Restore <parts> of <flavor> from <date> · N
+  removed · M newer · needs X, Y free", "⚠ low disk space" in the warning colour). The linked-part box label is
+  shortened to "(a link: restore it by hand)" to fit the pane.
+- R2: result screens: `#result-head` (Static) replaced by `#result-summary`, a non-focusable Item/Value
+  DataTable (`report.backup_summary_rows`: Backed up "n of m flavors", Skipped, Failed, Files, Zip size, Zips in,
+  Old backups removed; `report.restore_summary_rows`: Flavor, Restore/Undo finished or not, Restored from / Put
+  back from, Safety backup, Journal). The detail table keeps id `#result-table`, now `height: 1fr`. Button rows
+  keep their compact CSS (five buttons must fit 80 columns; the organizer has four): R3 decides.
+- R2: `report.restore_warnings` (and `_grouped`, `_more`) removed, no caller left; `group_paths` now wraps
+  `group_items`. Logic modules unchanged. docs/architecture.md still describes the old restore screen: R4.
