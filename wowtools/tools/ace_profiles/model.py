@@ -116,7 +116,7 @@ def _table_map(value) -> dict[str, Field] | None:
     return out
 
 
-def _namespaces(db_table: Table) -> dict[str, NamespaceProfiles]:
+def namespace_profiles(db_table: Table) -> dict[str, NamespaceProfiles]:
     found: dict[str, NamespaceProfiles] = {}
     holder = db_table.get("namespaces")
     if holder is None or not isinstance(holder.value, Table):
@@ -131,7 +131,7 @@ def _namespaces(db_table: Table) -> dict[str, NamespaceProfiles]:
     return found
 
 
-def _lds(db_table: Table) -> dict[str, LdsChar]:
+def lds_chars(db_table: Table) -> dict[str, LdsChar]:
     found: dict[str, LdsChar] = {}
     holder = db_table.get("namespaces")
     if holder is None or not isinstance(holder.value, Table):
@@ -176,5 +176,5 @@ def find_dbs(chunk: Chunk, data: bytes) -> tuple[list[AceDb], list[str]]:
                     for n, f in profile_fields.items()}
         dbs.append(AceDb(name, keys.value, {k: f.value.value for k, f in key_fields.items()}, key_fields,
                          profiles_field.value if profiles_field is not None else None, profiles,
-                         _namespaces(table), _lds(table)))
+                         namespace_profiles(table), lds_chars(table)))
     return dbs, notes

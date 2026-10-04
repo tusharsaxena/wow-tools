@@ -125,6 +125,68 @@ class CompileTest(unittest.TestCase):
         self.assertEqual(verify.verify_edit(edit, data), [])
         self.assertEqual(list(self.reparse(edit.data, "X").profiles), ["P", "Q"])
 
+    def standalone(self, data):
+        path = Path(self.scan.flavors[0].flavor.account_dir / "ACCT1" / "SavedVariables" / "X.lua")
+        path.write_bytes(data)
+        dbs, _ = model.find_dbs(luasv.parse(data, model.ace_descend), data)
+        file = scanner.SvFile(path, self.scan.flavors[0].flavor, "ACCT1", None, len(data), 0.0,
+                              scanner.sha256_of(data))
+        state = ops.DbState.fresh(file, dbs[0], frozenset(c for c in dbs[0].profile_keys if c.startswith("Gone")))
+        return state, ops.Staging({state.key: state})
+
+    def compile_state(self, state, data):
+        edit = ops.compile_file([state], data)
+        self.assertEqual(verify.verify_edit(edit, data), [])
+        return edit
+
+    def test_unchanged_state_compiles_byte_identical(self):
+        for sv_name in ("ElvDB", "KickCDDB", "HandyNotesDB"):
+            key = self.key(sv_name)
+            data = key.path.read_bytes()
+            edit = ops.compile_file([self.staging.state(key)], data)
+            self.assertEqual(edit.data, data, sv_name)
+            self.assertEqual(verify.verify_edit(edit, data), [])
+
+    def test_module_profiles_without_a_main_table_survive(self):
+        data = (b'X = {\r\n["profileKeys"] = {\r\n["A - R"] = "Default",\r\n["Gone - R"] = "Default",\r\n},\r\n'
+                b'["namespaces"] = {\r\n["Mod"] = {\r\n["profiles"] = {\r\n["Default"] = {\r\n["x"] = 1,\r\n},\r\n'
+                b'},\r\n},\r\n},\r\n}\r\n')
+        state, staging = self.standalone(data)
+        self.assertTrue(staging.remove_leftovers({state.key: ["Gone - R"]}).ok)
+        edit = self.compile_state(state, data)
+        self.assertEqual(edit.data, data.replace(b'["Gone - R"] = "Default",\r\n', b"", 1))
+
+    def test_module_only_profile_survives_an_unrelated_edit(self):
+        data = (b'X = {\r\n["profileKeys"] = {\r\n["A - R"] = "Default",\r\n["B - R"] = "Default",\r\n},\r\n'
+                b'["profiles"] = {\r\n["Default"] = {\r\n},\r\n},\r\n'
+                b'["namespaces"] = {\r\n["Mod"] = {\r\n["profiles"] = {\r\n["Default"] = {\r\n},\r\n'
+                b'["Old"] = {\r\n["y"] = 2,\r\n},\r\n},\r\n},\r\n},\r\n}\r\n')
+        state, staging = self.standalone(data)
+        staging.assign({state.key: ["A - R"]}, "Healer")
+        edit = self.compile_state(state, data)
+        self.assertEqual(edit.data, data.replace(b'["A - R"] = "Default"', b'["A - R"] = "Healer"', 1))
+        self.assertEqual(edit.changes, ['X: "A - R": "Default" to "Healer"'])
+
+    def test_module_only_profile_follows_delete_and_rename_and_blocks_collisions(self):
+        data = (b'X = {\r\n["profileKeys"] = {\r\n["A - R"] = "Default",\r\n["B - R"] = "Old",\r\n},\r\n'
+                b'["profiles"] = {\r\n["Default"] = {\r\n},\r\n},\r\n'
+                b'["namespaces"] = {\r\n["Mod"] = {\r\n["profiles"] = {\r\n["Default"] = {\r\n},\r\n'
+                b'["Old"] = {\r\n["y"] = 2,\r\n},\r\n["Orphan"] = {\r\n},\r\n},\r\n},\r\n},\r\n}\r\n')
+        state, staging = self.standalone(data)
+        self.assertFalse(staging.rename(state.key, "Default", "Orphan").ok)
+        self.assertFalse(staging.copy(state.key, "Default", "Orphan").ok)
+        self.assertTrue(staging.rename(state.key, "Old", "New").ok)
+        edit = self.compile_state(state, data)
+        db = self.reparse(edit.data, "X")
+        self.assertEqual(list(db.namespaces["Mod"].entries), ["Default", "New", "Orphan"])
+        self.assertIn('X: rename profile "Old" to "New"', edit.changes)
+        self.assertTrue(staging.delete({state.key: ["New"]}, "Default").ok)
+        edit = self.compile_state(state, data)
+        db = self.reparse(edit.data, "X")
+        self.assertEqual(list(db.namespaces["Mod"].entries), ["Default", "Orphan"])
+        self.assertEqual(db.profile_keys["B - R"], "Default")
+        self.assertIn('X: delete profile "Old"', edit.changes)
+
 
 class VerifyTest(unittest.TestCase):
     def test_catches_a_wrong_mapping_and_a_changed_neighbour(self):
@@ -146,3 +208,18 @@ class VerifyTest(unittest.TestCase):
         self.assertTrue(any("global" in p for p in verify.verify_edit(bad, data)))
         bad = ops.FileEdit(edit.file, edit.data[:-10], edit.changes, edit.expected)
         self.assertTrue(verify.verify_edit(bad, data))
+
+    def test_catches_a_changed_module_setting(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = build_ace_tree(Path(tmp.name) / "wow")
+        scan = scanner.ScanResult([scanner.scan_flavor(WowInstall(root).flavor("_retail_"), account="ACCT1")])
+        staging = ops.Staging.from_scan(scan)
+        key = next(k for k in staging.states if k.sv_name == "ElvDB")
+        staging.assign({key: ["Kaelys - Realm1"]}, "Healer")
+        data = key.path.read_bytes()
+        edit = ops.compile_file([staging.state(key)], data)
+        self.assertEqual(verify.verify_edit(edit, data), [])
+        bad = ops.FileEdit(edit.file, edit.data.replace(b'["enabled"] = true', b'["enabled"] = false', 1),
+                           edit.changes, edit.expected)
+        self.assertTrue(any("namespaces" in p for p in verify.verify_edit(bad, data)))

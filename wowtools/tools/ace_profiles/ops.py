@@ -1,7 +1,9 @@
 """Staged changes to AceDB databases, on a byte-free model (spec §7). UI-free.
 
 Each database gets a DbState: the staged profileKeys mapping (None = entry removed), the staged profile table
-(name -> Original(name in the file) or CopyOf(original name)) and the staged LibDualSpec spec values. Operations
+(name -> Original(name in the file) or CopyOf(original name)), the staged names of module-only profiles (a
+namespaces[*].profiles entry with no main `profiles` entry: original name -> staged name, None = deleted) and the
+staged LibDualSpec spec values. Operations
 only change these; compile_file() turns them into byte edits. Changes() is always the difference from the
 file, so operations compose and discard() is just a reset.
 """
@@ -82,12 +84,15 @@ class DbState:
     keys: dict[str, str | None]
     profiles: dict[str, Source]
     lds: dict[tuple[str, int], str]
+    module_only: dict[str, str | None] = field(default_factory=dict)
 
     @classmethod
     def fresh(cls, file: SvFile, db: AceDb, leftovers: frozenset[str]) -> DbState:
+        module_only = {n: n for ns in db.namespaces.values() for n in ns.entries if n not in db.profiles}
         return cls(DbKey(file.path, db.sv_name), file, db, leftovers, dict(db.profile_keys),
                    {name: Original(name) for name in db.profiles},
-                   {(c, i): f.value.value for c, entry in db.lds.items() for i, f in entry.specs.items()})
+                   {(c, i): f.value.value for c, entry in db.lds.items() for i, f in entry.specs.items()},
+                   module_only)
 
     def users(self, name: str) -> list[str]:
         return [c for c, p in self.keys.items() if p == name]
@@ -95,6 +100,19 @@ class DbState:
     def names(self) -> list[str]:
         referenced = sorted({p for p in self.keys.values() if p is not None and p not in self.profiles})
         return list(self.profiles) + referenced
+
+    def taken(self, name: str) -> bool:
+        """name is a profile, a referenced profile or a module-only profile (a new name would collide)."""
+        return name in self.names() or name in self.module_only.values()
+
+    def module_profiles(self, ns_entries: Iterable[str]) -> dict[str, Source]:
+        """The staged profile table of one namespace: the main table plus its module-only profiles."""
+        staged = dict(self.profiles)
+        for original in ns_entries:
+            new = self.module_only.get(original)
+            if new is not None:
+                staged[new] = Original(original)
+        return staged
 
     def exists(self, name: str) -> bool:
         return name in self.profiles
@@ -110,6 +128,11 @@ class DbState:
                 out.deleted.append(name)
             elif placed[name] != name:
                 out.renamed.append((name, placed[name]))
+        for name, new in self.module_only.items():
+            if new is None:
+                out.deleted.append(name)
+            elif new != name:
+                out.renamed.append((name, new))
         out.copied = [(src.name, name) for name, src in self.profiles.items() if isinstance(src, CopyOf)]
         for char, old in self.db.profile_keys.items():
             new = self.keys.get(char)
@@ -134,6 +157,16 @@ class DbState:
         for spot, profile in self.lds.items():
             if profile == old:
                 self.lds[spot] = new
+
+    def _drop_module_only(self, name: str) -> None:
+        for original, staged in self.module_only.items():
+            if staged == name:
+                self.module_only[original] = None
+
+    def _rename_module_only(self, old: str, new: str) -> None:
+        for original, staged in self.module_only.items():
+            if staged == old:
+                self.module_only[original] = new
 
 
 @dataclass
@@ -217,6 +250,7 @@ class Staging:
                 return "none of those profiles is in this database any more"
             for name in names:
                 state.profiles.pop(name, None)
+                state._drop_module_only(name)
                 state._move_users(name, target)
             if not state.exists(target) and state.users(target):
                 result.notes.append(f'{state.file.addon}: "{target}" {CREATED_AT_LOGIN}.')
@@ -253,10 +287,11 @@ class Staging:
             problem = valid_name(new)
             if problem is not None:
                 return problem
-            if new in state.names():
+            if state.taken(new):
                 return f'"{new}" is already a profile of this database'
             if old in state.profiles:
                 state.profiles = {(new if name == old else name): src for name, src in state.profiles.items()}
+            state._rename_module_only(old, new)
             state._move_users(old, new)
             return None
         return self._each([key], result, apply, "rename")
@@ -270,7 +305,7 @@ class Staging:
             problem = valid_name(new)
             if problem is not None:
                 return problem
-            if new in state.names():
+            if state.taken(new):
                 return f'"{new}" is already a profile of this database'
             state.profiles[new] = CopyOf(state.profiles[source].name)
             return None
@@ -395,7 +430,8 @@ def compile_file(states: list[DbState], data: bytes) -> FileEdit:
         edits += main_edits
         namespaces = {}
         for ns in db.namespaces.values():
-            ns_edits, namespaces[ns.name] = _table_edits(data, ns.table, ns.entries, state.profiles, nl)
+            ns_edits, namespaces[ns.name] = _table_edits(data, ns.table, ns.entries,
+                                                         state.module_profiles(ns.entries), nl)
             edits += ns_edits
         lds: dict[str, dict[int, str]] = {}
         for (char, spec), new in state.lds.items():

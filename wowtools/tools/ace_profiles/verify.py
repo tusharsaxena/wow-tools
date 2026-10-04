@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from wowtools.tools.ace_profiles.luasv import Chunk, LuaParseError, Table, parse
-from wowtools.tools.ace_profiles.model import ace_descend, find_dbs
+from wowtools.tools.ace_profiles.model import ace_descend, find_dbs, lds_chars, namespace_profiles
 from wowtools.tools.ace_profiles.ops import FileEdit
 
 PROFILE_SECTIONS = ("profileKeys", "profiles", "namespaces")
@@ -18,8 +18,27 @@ def _gaps(data: bytes, chunk: Chunk) -> list[bytes]:
     return out
 
 
+def _namespaces_rest(data: bytes, table: Table) -> bytes | None:
+    """The bytes of the namespaces section with only what the tool may change cut out: the inside of each
+    module's profiles table (checked entry by entry against the expected model) and each LibDualSpec spec value.
+    Everything else in it (a module's global or char data, LibDualSpec's enabled flags) must stay as it was."""
+    holder = table.get("namespaces")
+    if holder is None:
+        return None
+    cuts = [(ns.table.start + 1, ns.table.close) for ns in namespace_profiles(table).values()]
+    cuts += [(f.value.start, f.value.end) for entry in lds_chars(table).values() for f in entry.specs.values()]
+    out, pos = [], holder.value.start
+    for start, end in sorted(cuts):
+        out.append(data[pos:start])
+        pos = end
+    out.append(data[pos:holder.value.end])
+    return b"\0".join(out)
+
+
 def _other_sections(data: bytes, table: Table) -> dict:
-    return {f.key: data[f.value.start:f.value.end] for f in table.fields if f.key not in PROFILE_SECTIONS}
+    out = {f.key: data[f.value.start:f.value.end] for f in table.fields if f.key not in PROFILE_SECTIONS}
+    out["namespaces"] = _namespaces_rest(data, table)
+    return out
 
 
 def verify_edit(edit: FileEdit, old: bytes) -> list[str]:

@@ -266,3 +266,28 @@ class AtomicWriteBytesTest(unittest.TestCase):
                 atomic_write_bytes(path, b"new")
             self.assertEqual(path.read_bytes(), b"old")
             self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["a.lua"])
+
+    def test_a_link_at_the_partial_name_is_never_followed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            victim = folder / "victim"
+            victim.write_bytes(b"precious")
+            path = folder / "a.lua"
+            path.write_bytes(b"old")
+            try:
+                os.symlink(victim, folder / "a.lua.partial")
+            except (OSError, NotImplementedError):
+                self.skipTest("symlinks are not available here")
+            atomic_write_bytes(path, b"new")
+            self.assertEqual(victim.read_bytes(), b"precious")
+            self.assertFalse(path.is_symlink())
+            self.assertEqual(path.read_bytes(), b"new")
+            self.assertEqual(sorted(p.name for p in folder.iterdir()), ["a.lua", "victim"])
+
+    def test_a_stale_partial_is_replaced(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "a.lua"
+            (Path(tmp) / "a.lua.partial").write_bytes(b"stale leftover from a crash")
+            atomic_write_bytes(path, b"new")
+            self.assertEqual(path.read_bytes(), b"new")
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["a.lua"])
