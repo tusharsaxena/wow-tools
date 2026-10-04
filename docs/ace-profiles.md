@@ -91,8 +91,8 @@ A staged change shows in the tree as if it were already done, marked so you can 
 | `was Old` | The character moves to this profile; it used Old before |
 | `✘ removed` | The leftover character will be removed |
 
-The **Staged** line on the left counts each kind ("2 deletes · 5 reassigns · 1 rename"). Press `x` to throw all
-staged changes away. **Rescan** with changes staged asks first, and so does leaving the screen.
+The **Staged** line on the left counts each kind ("2 deletes · 5 reassigns · 1 rename"). Press `Backspace` to throw
+all staged changes away. **Rescan** with changes staged asks first, and so does leaving the screen.
 
 ### The filters
 
@@ -136,7 +136,7 @@ ticked:
 - **Tick all leftover characters**: ticks every character tagged "no character folder" that's shown, ready for
   `o`.
 - **Discard staged changes**, and every key the bottom bar has no room for (`e`, `k`, `o`, `b`, `u`, `v`, `/`,
-  `x`), so you can find them without this guide.
+  `Backspace`), so you can find them without this guide.
 
 ### The blacklist
 
@@ -164,13 +164,14 @@ matter.
 | `k` | Copy the highlighted profile |
 | `o` | Remove the ticked leftover characters |
 | `m` | Quick actions, and every key the bottom bar doesn't show |
-| `x` | Discard all staged changes |
+| `Backspace` | Discard all staged changes |
 | `b` | Put the highlighted addon on the blacklist, or take it off |
 | `u` | Unlock the highlighted blacklisted addon for this session, or lock it again |
 | `v` | Switch view: By addon / By character |
 | `/` | Search |
 | `w` | **Apply** the staged changes (asks first; the answer starts on **No**) |
 | `y` | **Dry run** (asks first; the answer starts on **Yes**) |
+| `x` / `c` | Expand every line of the tree / collapse them all |
 | `r` | Scan again |
 | `z` | **Undo last change** (asks first; the answer starts on **No**) |
 | `f` or `Esc` | Pick another game version (from the search box, `Esc` goes back to the tree) |

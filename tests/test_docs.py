@@ -55,7 +55,7 @@ class DocsTest(unittest.TestCase):
                        "Put the originals back", "## Settings", "keep_backups", "## FAQ", "LibDualSpec",
                        "missing", "no character folder", "## Troubleshooting", "<!-- screenshots:"):
             self.assertIn(needle, guide)
-        for key in ("Space", "`a`", "`n`", "`d`", "`p`", "`e`", "`k`", "`o`", "`m`", "`x`", "`b`", "`u`", "`v`",
+        for key in ("Space", "`a`", "`n`", "`d`", "`p`", "`e`", "`k`", "`o`", "`m`", "`Backspace`", "`x`", "`c`", "`b`", "`u`", "`v`",
                     "`/`", "`w`", "`y`", "`r`", "`z`", "`f`", "`t`", "`s`", "`q`"):
             self.assertIn(key, guide)
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")

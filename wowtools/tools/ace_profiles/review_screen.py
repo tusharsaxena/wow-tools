@@ -40,12 +40,12 @@ from wowtools.tools.ace_profiles.settings import (is_blacklisted, load_settings,
 from wowtools.tools.ace_profiles.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
 from wowtools.tools.ace_profiles.undo import UndoError, UndoResult, recover, undo_run
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (BUSY_STYLE, REVIEW_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus,
+from wowtools.ui.dialogs import (BUSY_STYLE, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus,
                                 relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
-NAV_HINT = (REVIEW_HINT + "a all · n none · d delete · p assign · m more · w apply · y dry run · r rescan · "
-            "z undo · f flavors · t tools")
+NAV_HINT = (REVIEW_HINT + "a all · n none · d delete · p assign · m more · w apply · y dry run · " + TREE_HINT +
+            "r rescan · z undo · f flavors · t tools")
 WowCheck = Callable[[], "list[str] | None"]
 SHOW_FILTERS = {"only-multi": "only_multi", "only-unused": "only_unused", "show-leftovers": "leftovers",
                 "show-blacklisted": "blacklisted"}
@@ -134,11 +134,9 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
     copied)."""
 
     TREE_SELECTOR = "#profiles"
-    # The left pane fits 80x24 (tests/test_look_and_feel.py): the two View boxes share a row, the search box and
-    # the staged line carry their own names instead of a section heading each.
+    # The left pane fits 80x24 (tests/test_look_and_feel.py) with one control per row: the two View boxes, the
+    # search box and the staged line carry their own names instead of a section heading each.
     DEFAULT_CSS = two_pane_css("ProfileReviewScreen", "#profiles") + """
-    ProfileReviewScreen #view { height: auto; }
-    ProfileReviewScreen #view Ka0sCheckbox { width: auto; margin-right: 2; }
     ProfileReviewScreen #staged { margin-top: 1; }
     """
     BINDINGS: ClassVar[list[Binding]] = [
@@ -151,7 +149,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         Binding("k", "copy", "Copy", show=False),
         Binding("o", "remove_leftovers", "Remove leftovers", show=False),
         Binding("m", "more", "More"),
-        Binding("x", "discard", "Discard", show=False),
+        Binding("backspace", "discard", "Discard", show=False),
         Binding("b", "blacklist", "Blacklist", show=False),
         Binding("u", "unlock", "Unlock", show=False),
         Binding("v", "switch_view", "View", show=False),
@@ -166,6 +164,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         Binding("escape", "back", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
+        *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
 
@@ -205,10 +204,8 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         yield Header()
         with Horizontal(id="body"):
             with Vertical(id="filters"):
-                yield Label("View", classes="section")
-                with Horizontal(id="view"):
-                    yield Ka0sCheckbox("By addon", True, id="view-addon", compact=True)
-                    yield Ka0sCheckbox("By character", False, id="view-character", compact=True)
+                yield Ka0sCheckbox("View by addon", True, id="view-addon", compact=True)
+                yield Ka0sCheckbox("View by character", False, id="view-character", compact=True)
                 yield Label("Show", classes="section")
                 yield Ka0sCheckbox("Only addons with 2+ profiles", False, id="only-multi", compact=True)
                 yield Ka0sCheckbox("Only unused profiles", False, id="only-unused", compact=True)

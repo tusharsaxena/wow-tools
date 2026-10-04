@@ -33,6 +33,12 @@ def review_hint(space: str = "tick") -> str:
 
 
 REVIEW_HINT = review_hint()
+TREE_HINT = "x expand all · c collapse all · "  # every tree screen's hint names these, before r rescan
+# Every tree screen binds these (with TreeKeys' actions, which TwoPaneFocus has).
+TREE_BINDINGS = [
+    Binding("x", "expand_all", "Expand all", show=False),
+    Binding("c", "collapse_all", "Collapse all", show=False),
+]
 RESULT_HINT = "↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · "
 
 
@@ -123,11 +129,55 @@ def relabel_branch(tree: Tree, node, label: Callable[[object], Text], skip: Coll
         stack.extend(current.children)
 
 
-class TwoPaneFocus:
-    """Mixin for a review screen with a left panel (id "filters") and a tree (TREE_SELECTOR): ← goes back to the
-    control last focused in the panel (or first_filter()), → goes to the tree."""
+class TreeKeys:
+    """Mixin for a screen with a tree (TREE_SELECTOR): x expands every node below the root, c collapses them (the
+    root stays open). Bind them with TREE_BINDINGS. A node whose children load on expand (on_tree_node_expanded)
+    loads them too: those children are leaves in every tool."""
 
     TREE_SELECTOR = "Tree"
+
+    def _tree_for_keys(self) -> Tree | None:
+        tree = self.query_one(self.TREE_SELECTOR, Tree)
+        return tree if tree.display else None  # hidden while a scan runs
+
+    def action_expand_all(self) -> None:
+        tree = self._tree_for_keys()
+        if tree is None:
+            return
+        cursor = tree.cursor_node
+        stack = list(tree.root.children)
+        while stack:
+            node = stack.pop()
+            if node.allow_expand and not node.is_expanded:
+                node.expand()
+            stack.extend(node.children)
+        self._keep_cursor(tree, cursor)
+
+    def action_collapse_all(self) -> None:
+        tree = self._tree_for_keys()
+        if tree is None:
+            return
+        cursor = tree.cursor_node
+        while cursor is not None and cursor.parent is not None and cursor.parent is not tree.root:
+            cursor = cursor.parent  # the top-level node it was under stays highlighted
+        for node in tree.root.children:
+            node.collapse_all()
+        self._keep_cursor(tree, cursor)
+
+    @staticmethod
+    def _keep_cursor(tree: Tree, node) -> None:
+        if node is None:
+            return
+        tree.get_node_at_line(0)  # lay the lines out now, so move_cursor finds the node's new line
+        if node.line >= 0:
+            tree.move_cursor(node)
+
+
+class TwoPaneFocus(TreeKeys):
+    """Mixin for a review screen with a left panel (id "filters") and a tree (TREE_SELECTOR): ← goes back to the
+    control last focused in the panel (or first_filter()), → goes to the tree. x and c expand and collapse the
+    whole tree (TreeKeys)."""
+
     _last_filter: Widget | None = None
 
     def first_filter(self) -> Widget | None:

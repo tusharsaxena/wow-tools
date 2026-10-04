@@ -71,6 +71,7 @@ explained below).
 | `a` / `n` | Tick everything to sort / untick everything |
 | `o` | **Organize** the ticked screenshots (asks first; the answer starts on **No**) |
 | `y` | **Dry run** (asks first; the answer starts on **Yes**) |
+| `x` / `c` | Expand every line of the tree / collapse them all |
 | `r` | Scan again |
 | `z` | **Undo last run** (asks first; the answer starts on **No**) |
 | `f` or `Esc` | Pick another game version |

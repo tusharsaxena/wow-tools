@@ -108,6 +108,21 @@ class ReviewFlowTest(AppTestCase):
         self.assertIn({"screen": "review", "control": "dry_run", "value": True},
                       [r["data"] for r in records if r["event"] == "ui.selection"])
 
+    async def test_clean_is_on_w_and_c_collapses(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            self.assertIn("w clean", str(review.query_one(NavHint).render()))
+            await pilot.press("c")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)  # c collapses the tree, it never cleans
+            tree = review.query_one("#proposal", Tree)
+            self.assertTrue(all(not n.is_expanded for n in tree.root.children))
+            await pilot.press("w")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertEqual(app.screen.title_text, "Back up and delete these files?")
+
     async def test_real_clean_backs_up_and_deletes(self):
         app = self.make_app()
         pushed = []
@@ -120,7 +135,7 @@ class ReviewFlowTest(AppTestCase):
         app.push_screen = spy
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)  # the running-programs check runs in a worker
             self.assertIsInstance(app.screen, ConfirmScreen)
             await pilot.press("y")
@@ -157,7 +172,7 @@ class ReviewFlowTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)
             await pilot.press("y")
             await settle(app, pilot)
@@ -186,7 +201,7 @@ class ReviewFlowTest(AppTestCase):
                 review = await self.open_review(app, pilot)
                 messages = []
                 review.notify = lambda message, **kwargs: messages.append(message)
-                await pilot.press("c")
+                await pilot.press("w")
                 await settle(app, pilot)
                 await pilot.press("y")
                 await settle(app, pilot)
@@ -228,7 +243,7 @@ class ReviewFlowTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)
             await pilot.press("n")
             await pilot.pause()
@@ -257,7 +272,7 @@ class ReviewFlowTest(AppTestCase):
         with capture_events() as records:
             async with app.run_test(size=SIZE) as pilot:
                 await self.open_review(app, pilot)
-                await pilot.press("c")
+                await pilot.press("w")
                 await settle(app, pilot)  # the running-programs check runs in a worker
                 self.assertIsInstance(app.screen, ConfirmScreen)
                 self.assertIn("Wow.exe", app.screen.body_text)
@@ -269,7 +284,7 @@ class ReviewFlowTest(AppTestCase):
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
             app.flow.tool_cfg.set("wtf_cleaner", "backup_before_delete", False)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)  # the running-programs check runs in a worker
             self.assertIsInstance(app.screen, ConfirmScreen)
             self.assertIn("will not be zipped", app.screen.alerts[0])
@@ -467,7 +482,7 @@ class RecoveryDialogTest(AppTestCase):
                 await pilot.pause()
                 self.assertIsInstance(app.screen, ReviewScreen)
                 # A real clean is refused while the marker exists: nothing is deleted.
-                await pilot.press("c")
+                await pilot.press("w")
                 await settle(app, pilot)
                 await pilot.press("y")
                 await pilot.pause()
@@ -620,7 +635,7 @@ class BackupFolderValidationTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
-            for key in ("c", "y"):
+            for key in ("w", "y"):
                 app._notifications.clear()
                 await pilot.press(key)
                 await pilot.pause()
@@ -647,7 +662,7 @@ class KeyboardNavigationTest(AppTestCase):
             await pilot.press("enter")
             await pilot.pause()
             self.assertIs(app.screen, review)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)  # the running-programs check runs in a worker
             confirm = app.screen
             self.assertIsInstance(confirm, ConfirmScreen)
@@ -664,7 +679,7 @@ class KeyboardNavigationTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)
             self.assertEqual(app.screen.focused.id, "no")
             await pilot.press("space")  # Space on the focused No button: cancel
@@ -731,7 +746,7 @@ class KeyboardNavigationTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)
             await pilot.press("y")
             await pilot.pause()
@@ -918,7 +933,7 @@ class ProposalLoggingTest(AppTestCase):
         with capture_events() as records:
             async with app.run_test(size=SIZE) as pilot:
                 await self.open_review(app, pilot)
-                await pilot.press("c")
+                await pilot.press("w")
                 await settle(app, pilot)
                 await pilot.press("n")
                 await pilot.pause()
@@ -945,12 +960,12 @@ class PreflightWorkerTest(AppTestCase):
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
             started = time.monotonic()
-            await pilot.press("c")
+            await pilot.press("w")
             await pilot.pause()
             self.assertLess(time.monotonic() - started, 1.0)
             self.assertIs(app.screen, review)
             self.assertIn("Checking for running programs", str(review.query_one("#summary", Static).render()))
-            await pilot.press("c")  # ignored while the check runs
+            await pilot.press("w")  # ignored while the check runs
             await pilot.press("y")
             await pilot.pause()
             release.set()
@@ -969,7 +984,7 @@ class PreflightWorkerTest(AppTestCase):
         app = self.make_slow_app(release)
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)
             await pilot.press("y")
             await settle(app, pilot)
@@ -1000,7 +1015,7 @@ class PreflightWorkerTest(AppTestCase):
             review = await self.open_review(app, pilot)
             before = review._selection_by_flavor()
             self.assertTrue(before)
-            await pilot.press("c")
+            await pilot.press("w")
             await pilot.pause()
             for key in ("n", "space", "1", "3"):  # select none, untick, two criteria: all ignored meanwhile
                 await pilot.press(key)
@@ -1024,7 +1039,7 @@ class PreflightWorkerTest(AppTestCase):
         app = self.make_slow_app(release)
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
-            await pilot.press("c")
+            await pilot.press("w")
             await pilot.pause()
             await pilot.press("f")  # back to the flavor picker
             await pilot.pause()
@@ -1066,7 +1081,7 @@ class LockerWarningTest(AppTestCase):
                 self.assertNotIn("RaiderIO", app.screen.body_text)
                 await pilot.press("n")
                 await pilot.pause()
-                await pilot.press("c")
+                await pilot.press("w")
                 await settle(app, pilot)
                 self.assertIn("RaiderIO.exe appears to be running", app.screen.body_text)
             self.assertIn("locker.running_warning", [r["event"] for r in records])
@@ -1103,7 +1118,7 @@ class AllFlavorsTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_all(app, pilot)
-            await self.run_mode(app, pilot, "c")
+            await self.run_mode(app, pilot, "w")
             await pilot.press("r")
             await pilot.pause()
             await settle(app, pilot)
@@ -1205,7 +1220,7 @@ class AllFlavorsTest(AppTestCase):
         app = self.make_app(running=["WowClassic.exe"])
         async with app.run_test(size=SIZE) as pilot:
             await self.open_all(app, pilot)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)  # the running-programs check runs in a worker
             confirm = app.screen
             self.assertIsInstance(confirm, ConfirmScreen)
@@ -1241,7 +1256,7 @@ class AllFlavorsTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_all(app, pilot)
-            await self.run_mode(app, pilot, "c")
+            await self.run_mode(app, pilot, "w")
             screen = app.screen
             self.assertIsInstance(screen, ResultScreen)
             self.assertEqual(len(screen.result.deleted), 9)
@@ -1267,7 +1282,7 @@ class AllFlavorsTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_all(app, pilot)
-            await self.run_mode(app, pilot, "c")
+            await self.run_mode(app, pilot, "w")
             self.assertIs(app.screen, review)
         self.assertEqual(calls, ["_classic_era_"])
         self.assertTrue((self.sv / "Uninstalled.lua").exists())
@@ -1286,7 +1301,7 @@ class AllFlavorsTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_all(app, pilot)
-            await self.run_mode(app, pilot, "c")
+            await self.run_mode(app, pilot, "w")
             screen = app.screen
             self.assertIsInstance(screen, ResultScreen)
             self.assertEqual(len(screen.result.deleted), 1)
@@ -1314,7 +1329,7 @@ class AllFlavorsTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_all(app, pilot)
-            await self.run_mode(app, pilot, "c")
+            await self.run_mode(app, pilot, "w")
             screen = app.screen
             self.assertIsInstance(screen, ResultScreen)
             summary = screen.query_one("#result-summary", DataTable)
@@ -1336,7 +1351,7 @@ class AllFlavorsTest(AppTestCase):
             review = await self.open_all(app, pilot)
             messages = []
             review.notify = lambda message, **kwargs: messages.append(message)
-            await self.run_mode(app, pilot, "c")
+            await self.run_mode(app, pilot, "w")
             self.assertIs(app.screen, review)
         self.assertEqual(len(messages), 1)
         self.assertTrue(messages[0].startswith("Classic Era: Clean stopped"), messages[0])
@@ -1355,7 +1370,7 @@ class AllFlavorsTest(AppTestCase):
             review = await self.open_all(app, pilot)
             messages = []
             review.notify = lambda message, **kwargs: messages.append(message)
-            await self.run_mode(app, pilot, "c")
+            await self.run_mode(app, pilot, "w")
         self.assertEqual(messages, ["Classic Era: Nothing was deleted: disk full\nNot started: Retail."])
 
     async def test_summary_scrolls_from_the_keyboard_with_several_flavors(self):
@@ -1392,7 +1407,7 @@ class AllFlavorsTest(AppTestCase):
             review = await self.open_all(app, pilot)
             full = review._selection_by_flavor()
             review._selection_by_flavor = lambda: [(f, items) for f, items in full if f.folder == "_retail_"]
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)  # the running-programs check runs in a worker
             confirm = app.screen
             self.assertIsInstance(confirm, ConfirmScreen)
@@ -1478,7 +1493,7 @@ class UndoLastCleanTest(AppTestCase):
                 await pilot.press("z")
                 await settle(app, pilot)
                 self.assertIs(app.screen, review)
-                await self.run_key(app, pilot, "c")
+                await self.run_key(app, pilot, "w")
                 self.assertIsInstance(app.screen, ResultScreen)
                 rows = dict(app.screen.summary_rows())
                 self.assertIn("Undo last clean (z)", rows["Run journal"])
@@ -1514,7 +1529,7 @@ class UndoLastCleanTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
-            await self.run_key(app, pilot, "c")
+            await self.run_key(app, pilot, "w")
             await self.back_to_review(app, pilot)
             await self.run_key(app, pilot, "z", answer="n")
             self.assertIsInstance(app.screen, ReviewScreen)
@@ -1535,7 +1550,7 @@ class UndoLastCleanTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
-            await self.run_key(app, pilot, "c")
+            await self.run_key(app, pilot, "w")
             review = await self.back_to_review(app, pilot)
             button = review.query_one("#btn-undo", Button)
             self.assertFalse(button.disabled)
@@ -1560,7 +1575,7 @@ class UndoLastCleanTest(AppTestCase):
         app = self.make_app(running=["Wow.exe (pid 1)"])
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
-            await self.run_key(app, pilot, "c")
+            await self.run_key(app, pilot, "w")
             await self.back_to_review(app, pilot)
             await pilot.press("z")
             await settle(app, pilot)  # the running-programs check runs in a worker

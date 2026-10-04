@@ -687,6 +687,37 @@ class InterfaceBackupAppTest(TuiTestCase):
         self.assertIsInstance(app.screen, RestoreScreen)
         return app.screen
 
+    async def test_restore_tree_expands_and_collapses_all(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        extra = self.root / "_retail_" / "Interface" / "AddOns" / "WeakAuras" / "wa.lua"
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            extra.parent.mkdir(parents=True)
+            extra.write_text("wa", encoding="utf-8")
+            screen = await self.open_restore(app, pilot)
+            self.assertIn("x expand all · c collapse all", str(screen.query_one(NavHint).render()))
+            tree = screen.query_one("#effects", Tree)
+            tree.focus()
+            await pilot.press("x")
+            await settle(app, pilot)
+            group = self.effect(screen, "removed").children[0]
+            self.assertTrue(group.is_expanded)
+            self.assertEqual([str(c.label) for c in group.children], ["wa.lua"])  # loaded by expand-all
+            await pilot.press("c")
+            await settle(app, pilot)
+            self.assertIs(app.screen, screen)
+            expanded, stack = [], [tree.root]
+            while stack:
+                node = stack.pop()
+                if node.is_expanded:
+                    expanded.append(node)
+                stack.extend(node.children)
+            self.assertEqual(expanded, [tree.root])
+
     async def test_restore_with_warnings_then_undo(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
         retail = self.root / "_retail_"

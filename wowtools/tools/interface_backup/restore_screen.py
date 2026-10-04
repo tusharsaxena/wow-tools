@@ -25,11 +25,11 @@ from wowtools.tools.interface_backup.restore import (BackupContents, RestoreErro
                                                      case_key, open_backup, plan_restore)
 from wowtools.tools.interface_backup.scanner import PARTS, FlavorScan, scan_flavor
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import ACCENT, RESULT_HINT, TwoPaneFocus, result_css, review_hint, theme_colour, two_pane_css
+from wowtools.ui.dialogs import ACCENT, RESULT_HINT, TREE_BINDINGS, TREE_HINT, TwoPaneFocus, result_css, review_hint, theme_colour, two_pane_css
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
 # The review's hint shape, then the keys of this screen. Space here ticks a part or opens a node of the effects tree.
-NAV_HINT = review_hint("tick or open") + "o restore · b/Esc back"
+NAV_HINT = review_hint("tick or open") + TREE_HINT + "o restore · b/Esc back"
 # The tree's top nodes: (kind, title, note). Their children are loaded on expand (groups of files, links, lines).
 EFFECTS = (
     ("removed", "Will be removed", "on disk now, not in the backup"),
@@ -75,6 +75,7 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
         Binding("escape", "cancel", "Back", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
+        *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
 

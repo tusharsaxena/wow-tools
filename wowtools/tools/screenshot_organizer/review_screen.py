@@ -29,11 +29,11 @@ from wowtools.tools.screenshot_organizer.report import (RESULT_COLUMNS, STAGE_TI
 from wowtools.tools.screenshot_organizer.settings import load_settings, resolve_journal_dir, validate_dest
 from wowtools.tools.screenshot_organizer.undo import undo
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (ACCENT, RESULT_HINT, REVIEW_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus, relabel_branch,
+from wowtools.ui.dialogs import (ACCENT, RESULT_HINT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus, relabel_branch,
                                 result_css, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-NAV_HINT = REVIEW_HINT + "a all · n none · o organize · y dry run · r rescan · z undo · f flavors · t tools"
+NAV_HINT = REVIEW_HINT + "a all · n none · o organize · y dry run · " + TREE_HINT + "r rescan · z undo · f flavors · t tools"
 READ_ONLY = ("conflicts", "skipped", "conflict", "skip")  # tree nodes that cannot be ticked
 
 
@@ -130,6 +130,7 @@ class ShotReviewScreen(TwoPaneFocus, Screen[str]):
         Binding("escape", "flavors", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
+        *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
 

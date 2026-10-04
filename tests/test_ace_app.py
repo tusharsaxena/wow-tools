@@ -335,6 +335,32 @@ class StagingTest(AceAppBase):
             await settle(app, pilot)
             self.assertEqual(review.staging.summary().total, 0)
 
+    async def test_backspace_discards_and_x_expands_for_good(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#profiles", Tree)
+            tree.focus()
+            await pilot.press("x")
+            await settle(app, pilot)
+            review.refresh_view()  # a rebuild keeps what x opened
+            await settle(app, pilot)
+            parents = [n for n in review._walk_tree() if n.children]
+            self.assertGreater(len(parents), 1)
+            self.assertEqual([n for n in parents if not n.is_expanded], [])
+            review.staging.everyone_to_default(list(review.staging.states))
+            review.refresh_view()
+            await pilot.press("x")  # no longer discard
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            await pilot.press("backspace")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertIn("Discard", app.screen.title_text)
+            app.screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertEqual(review.staging.summary().total, 0)
+
     async def test_locked_addon_refuses_quick_action(self):
         self.cfg_tool = Config(self.config_dir / "ace-profiles.cfg")
         self.cfg_tool.set("ace_profiles", "blacklist", "ElvUI", log=False)

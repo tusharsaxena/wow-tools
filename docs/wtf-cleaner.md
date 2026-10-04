@@ -22,7 +22,7 @@ ones you leave ticked. If you regret it later, you can undo the clean.
 5. The cleaner scans and shows you the review screen. Look through the list and untick anything you want to
    keep.
 6. Press **Dry run** (`y`) if you'd like to see what would happen without deleting anything.
-7. Press **Clean** (`c`), read the summary, and press **Yes**.
+7. Press **Clean** (`w`), read the summary, and press **Yes**.
 8. The results screen lists every file and what happened to it.
 
 ## The review screen
@@ -89,8 +89,9 @@ suggests nothing there. The scan notes this in its warnings.
 | `Space` | Tick or untick the highlighted line |
 | `a` / `n` | Tick everything / untick everything |
 | `1` `2` `3` `4` | Switch a rule on or off |
-| `c` | **Clean** the ticked files (asks first; the answer starts on **No**) |
+| `w` | **Clean** the ticked files (asks first; the answer starts on **No**) |
 | `y` | **Dry run** (asks first; the answer starts on **Yes**) |
+| `x` / `c` | Expand every line of the tree / collapse them all |
 | `r` | Scan again |
 | `z` | **Undo last clean** (asks first; the answer starts on **No**) |
 | `f` or `Esc` | Pick another game version |

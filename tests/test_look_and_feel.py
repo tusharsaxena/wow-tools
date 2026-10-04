@@ -6,13 +6,13 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from textual.widgets import Button, Checkbox, DataTable
+from textual.widgets import Button, Checkbox, DataTable, Tree
 
 from tests.fixtures import (TuiTestCase, build_ace_tree, build_interface_tree, build_screenshot_tree, build_wow_tree,
                             make_config, settle)
 from wowtools.tools import TOOLS as TOOL_INFO
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, ConfirmScreen
+from wowtools.ui.dialogs import FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_HINT, ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
 from wowtools.ui.widgets import NavHint
@@ -25,6 +25,15 @@ RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "inte
 # What a review needs before its run action has something to do (the Ace3 Profile Manager runs staged changes).
 PREPARE = {"ace-profiles": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
                                            review.refresh_view())}
+
+
+def walk(node):
+    """node and every node below it."""
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        yield current
+        stack.extend(current.children)
 
 
 class LookAndFeelTest(TuiTestCase):
@@ -88,6 +97,40 @@ class LookAndFeelTest(TuiTestCase):
                     await pilot.press("escape")  # Esc: back to the flavor picker, as f
                     await settle(app, pilot)
                     self.assertIsInstance(app.screen, FlavorScreen)
+
+    async def test_review_left_pane_has_one_control_per_row(self):
+        """Every focusable control of the left pane sits on its own row, so up/down reaches each one; only the
+        action buttons share a row (left/right moves there)."""
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=SMALL) as pilot:
+                    review = await self.open_review(app, pilot, tool)
+                    actions = review.query_one("#actions")
+                    controls = [w for w in review.query_one("#filters").query("*")
+                                if w.focusable and actions not in w.ancestors]
+                    rows = [w.region.y for w in controls]
+                    self.assertEqual(len(rows), len(set(rows)), [(w.id, w.region) for w in controls])
+
+    async def test_review_tree_expands_and_collapses_all(self):
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=SMALL) as pilot:
+                    review = await self.open_review(app, pilot, tool)
+                    self.assertIn(TREE_HINT + "r rescan", str(review.query_one(NavHint).render()))
+                    self.assertTrue(TREE_HINT.startswith("x expand all · c collapse all"))
+                    tree = review.query_one(review.TREE_SELECTOR, Tree)
+                    tree.focus()
+                    await pilot.press("x")
+                    await settle(app, pilot)
+                    parents = [n for n in walk(tree.root) if n.children]
+                    self.assertGreater(len(parents), 1)
+                    self.assertEqual([n for n in parents if not n.is_expanded], [])
+                    await pilot.press("c")
+                    await settle(app, pilot)
+                    self.assertEqual([n for n in walk(tree.root) if n.is_expanded], [tree.root])
+                    self.assertIs(app.screen, review)  # c collapses: it never starts a run
 
     async def test_result_screens_share_one_layout(self):
         for tool in TOOLS:

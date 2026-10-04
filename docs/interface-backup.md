@@ -123,6 +123,7 @@ files. The backup itself works the same, and the results screen shows the sizes.
 | `Enter` | Open or close the highlighted line; on a backup, **Restore** it |
 | `b` | **Back up** the ticked game versions (asks first; the answer starts on **Yes**) |
 | `e` | **Restore** the highlighted backup |
+| `x` / `c` | Expand every line of the tree / collapse them all |
 | `r` | Scan again |
 | `z` | **Undo last restore** (asks first; the answer starts on **No**) |
 | `f` or `Esc` | Pick another game version |
@@ -227,6 +228,7 @@ lost, the tree says so: "Nothing on disk would be lost".
 |---|---|
 | `Space` | Tick or untick the highlighted box, or open a line of the tree |
 | `o` | **Restore** the ticked folders (asks first) |
+| `x` / `c` | Expand every line of the tree / collapse them all |
 | `b` or `Esc` | Back to the review screen |
 | `←` `→` | Jump between the tree and the left panel |
 | `↑` `↓` `Tab` | Move between the boxes and buttons |
