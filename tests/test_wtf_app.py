@@ -761,6 +761,10 @@ class KeyboardNavigationTest(AppTestCase):
             await pilot.press(*str(self.root)[-3:])
             self.assertEqual(box.value, str(self.root))
             await pilot.press("down")
+            self.assertEqual(setup.focused.id, "keep-backups")
+            await pilot.press("down")
+            self.assertEqual(setup.focused.id, "keep-journals")
+            await pilot.press("down")
             self.assertEqual(setup.focused.id, "save")
             await pilot.press("enter")
             await pilot.pause()
@@ -770,11 +774,10 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertTrue(settings.query(NavHint))
             self.assertFalse(settings.query("Switch"))
             order = [settings.focused.id]
-            for _ in range(9):
+            for _ in range(7):
                 await pilot.press("down")
                 order.append(settings.focused.id)
-            self.assertEqual(order, ["max_age", "backup_dir", "keep_backups", "keep_journals",
-                                     *[f"sw_{n}" for n in CRITERIA],
+            self.assertEqual(order, ["max_age", "backup_dir", *[f"sw_{n}" for n in CRITERIA],
                                      "sw_backup", "save"])
             for name in (*[f"sw_{n}" for n in CRITERIA], "sw_backup"):
                 self.assertIsInstance(settings.query_one(f"#{name}"), Ka0sCheckbox)
@@ -1564,21 +1567,29 @@ class UndoLastCleanTest(AppTestCase):
             self.assertIsInstance(app.screen, ConfirmScreen)
             self.assertIn("WoW appears to be running", app.screen.body_text)
 
-    async def test_settings_keep_journals(self):
+    async def test_settings_have_no_retention_inputs(self):
+        """Feedback round 1: backups and journals to keep are global ([general], the `s` screen)."""
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await pilot.pause()
             screen = CleanerSettingsScreen(self.tool_cfg, self.root, source="settings")
             app.push_screen(screen)
             await pilot.pause()
-            self.assertEqual(screen.query_one("#keep_journals", Input).value, "10")
-            screen.query_one("#keep_journals", Input).value = "0"
-            screen.query_one("#save", Button).press()
-            await pilot.pause()
-            self.assertIs(app.screen, screen)
-            self.assertEqual(screen.error_text, "Keep at least 1 journal.")
-            screen.query_one("#keep_journals", Input).value = "3"
-            screen.query_one("#save", Button).press()
-            await pilot.pause()
-            self.assertIsNot(app.screen, screen)
-        self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).keep_journals, 3)
+            for box in ("#keep_backups", "#keep_journals", "#keep-backups", "#keep-journals"):
+                self.assertFalse(screen.query(box), box)
+
+    async def test_retention_comes_from_general_not_the_tool_file(self):
+        """Feedback round 1: a stale per-tool keep_backups is ignored; the global value is used (0 = keep all)."""
+        self.tool_cfg.set("wtf_cleaner", "keep_backups", "3", log=False)
+        self.tool_cfg.save()
+        for keep, wanted in (("7", "the newest 7 of this flavor are kept"), ("0", "all of this flavor are kept")):
+            self.cfg.set("general", "keep_backups", keep, log=False)
+            app = self.make_app()
+            async with app.run_test(size=SIZE) as pilot:
+                review = await self.open_review(app, pilot)
+                review.query_one("#btn-dry", Button).focus()
+                await pilot.pause()
+                await pilot.press("enter")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, ConfirmScreen)
+                self.assertIn(wanted, app.screen.body_text)

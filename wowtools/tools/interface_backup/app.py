@@ -56,10 +56,6 @@ class BackupSettingsScreen(Screen[bool]):
             yield Input(to_stored(self.settings.backup_dir) if self.settings.backup_dir else "",
                         placeholder="Empty = <WoW folder>\\wow-tools", id="backup_dir")
             yield Static("", id="destination")
-            yield Label("Backups to keep per flavor (0 = never delete old backups)")
-            yield Input(str(self.settings.keep_backups), type="integer", id="keep_backups")
-            yield Label("Restore journals to keep (each names its safety backup; Undo uses the newest)")
-            yield Input(str(self.settings.keep_journals), type="integer", id="keep_journals")
             yield Static("", id="settings-error")
             with ButtonRow(classes="buttons"):
                 yield action_button("Save", "confirm", id="save")
@@ -99,20 +95,7 @@ class BackupSettingsScreen(Screen[bool]):
         self.error_text = text
         self.query_one("#settings-error", Static).update(Text(text))
 
-    def _int(self, widget_id: str) -> int | None:
-        try:
-            return int(self.query_one(f"#{widget_id}", Input).value)
-        except ValueError:
-            return None
-
     def _save(self) -> None:
-        keep, journals = self._int("keep_backups"), self._int("keep_journals")
-        if keep is None or keep < 0:
-            self._error("Backups to keep must be 0 (never delete) or more.")
-            return
-        if journals is None or journals < 1:
-            self._error("Keep at least 1 journal.")
-            return
         raw = self.query_one("#backup_dir", Input).value.strip()
         folder = to_native(raw) if raw else None
         if self.install is not None:
@@ -120,8 +103,7 @@ class BackupSettingsScreen(Screen[bool]):
             if problem:
                 self._error(problem)
                 return
-        save_settings(self.tool_cfg, BackupSettings(folder, keep, journals,
-                                                    load_settings(self.tool_cfg).last_flavor_choice),
+        save_settings(self.tool_cfg, BackupSettings(folder, load_settings(self.tool_cfg).last_flavor_choice),
                       source=self.source)
         self.dismiss(True)
 

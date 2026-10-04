@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 from textual.widgets import DataTable, Input, Tree
 
@@ -11,6 +12,7 @@ from wowtools.core.backup import BackupEntry, create_backup
 from wowtools.core.config import Config
 from wowtools.core.install import WowInstall
 from wowtools.tools.ace_profiles import editor
+from wowtools.tools.ace_profiles import review_screen as review_module
 from wowtools.tools.ace_profiles.app import ProfileSettingsScreen
 from wowtools.tools.ace_profiles.popups import ActionsScreen, NameScreen, TargetScreen
 from wowtools.tools.ace_profiles.result_screen import ProfileResultScreen
@@ -85,6 +87,17 @@ class FlowTest(AceAppBase):
             self.assertIsInstance(app.screen, FlavorScreen)
         saved = load_settings(Config(self.config_dir / "ace-profiles.cfg").load())
         self.assertEqual(saved.blacklist, ["ElvUI", "Questie"])
+
+    async def test_settings_have_no_retention_inputs(self):
+        """Feedback round 1: backups and journals to keep are global ([general], the `s` screen)."""
+        app = self.make_app()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.open_tool(TOOL)
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ProfileSettingsScreen)
+            for box in ("#keep-snapshots", "#keep-journals", "#keep-backups", "#keep_backups", "#keep_journals"):
+                self.assertFalse(app.screen.query(box), box)
 
     async def test_settings_refuse_a_folder_inside_wtf(self):
         app = self.make_app()
@@ -355,6 +368,31 @@ class RunTest(AceAppBase):
             self.assertIsInstance(app.screen, ProfileResultScreen)
             self.assertTrue(app.screen.sub_title.endswith("Dry run result"))
             self.assertEqual(path.read_bytes(), before)
+
+    async def test_runs_use_the_global_retention(self):
+        """Feedback round 1: Apply prunes to [general] keep_backups / keep_journals; stale tool keys are ignored."""
+        tool = Config(self.config_dir / "ace-profiles.cfg")
+        for key in ("keep_snapshots", "keep_backups", "keep_journals"):
+            tool.set("ace_profiles", key, "2", log=False)
+        tool.save()
+        self.cfg.set("general", "keep_backups", "0", log=False)
+        self.cfg.set("general", "keep_journals", "4", log=False)
+        calls = []
+        real = review_module.apply_flavors
+
+        def spy(*args, **kwargs):
+            calls.append((kwargs["keep_snapshots"], kwargs["keep_journals"]))
+            return real(*args, **kwargs)
+
+        app = self.make_app()
+        with patch.object(review_module, "apply_flavors", spy):
+            async with app.run_test(size=(140, 50)) as pilot:
+                await self.stage(app, pilot)
+                await pilot.press("y")
+                await settle(app, pilot)
+                app.screen.dismiss(True)
+                await settle(app, pilot)
+        self.assertEqual(calls, [(0, 4)])
 
     async def test_apply_then_undo(self):
         app = self.make_app()

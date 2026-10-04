@@ -250,6 +250,43 @@ class SetupScreenTest(UiTestCase):
         changed = [r for r in records if r["event"] == "config.changed"]
         self.assertEqual(changed[0]["data"]["source"], "wizard")
 
+    async def test_saves_retention_to_general(self):
+        """Feedback round 1: backups and journals to keep are global, edited here."""
+        self.cfg.set("general", "wow_path", str(self.root), log=False)
+        screen = SetupScreen(self.cfg, first_run=False, detect=list)
+        app = Host(self.cfg, screen)
+        async with app.run_test(size=(120, 50)) as pilot:
+            await pilot.pause()
+            self.assertEqual(screen.query_one("#keep-backups", Input).value, "10")
+            self.assertEqual(screen.query_one("#keep-journals", Input).value, "10")
+            screen.query_one("#keep-backups", Input).value = "0"
+            screen.query_one("#keep-journals", Input).value = "4"
+            await pilot.click("#save")
+            await pilot.pause()
+        self.assertEqual(app.results, [True])
+        saved = Config(self.cfg.path).load()
+        self.assertEqual((saved.keep_backups, saved.keep_journals), (0, 4))
+        self.assertEqual(saved.get("general", "keep_backups"), "0")
+
+    async def test_rejects_bad_retention_values(self):
+        self.cfg.set("general", "wow_path", str(self.root), log=False)
+        screen = SetupScreen(self.cfg, first_run=False, detect=list)
+        app = Host(self.cfg, screen)
+        cases = (("keep-backups", "lots"), ("keep-backups", "-1"), ("keep-journals", "x"), ("keep-journals", "0"))
+        async with app.run_test(size=(120, 50)) as pilot:
+            await pilot.pause()
+            for box, value in cases:
+                screen.error_text = ""
+                screen.query_one("#keep-backups", Input).value = "10"
+                screen.query_one("#keep-journals", Input).value = "10"
+                screen.query_one(f"#{box}", Input).value = value
+                screen._save()
+                await pilot.pause()
+                self.assertTrue(screen.error_text, (box, value))
+                self.assertEqual(app.results, [], (box, value))
+        self.assertIsNone(Config(self.cfg.path).load().get("general", "keep_backups"))
+        self.assertIsNone(Config(self.cfg.path).load().get("general", "keep_journals"))
+
     async def test_detects_installs_in_background(self):
         """F-005: the drive scan runs in a worker; the screen opens at once and fills in what it finds."""
         release = threading.Event()

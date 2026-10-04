@@ -21,19 +21,25 @@ class SettingsTest(unittest.TestCase):
     def test_defaults(self):
         loaded = s.load_settings(self.cfg)
         self.assertEqual(loaded, s.ProfileSettings())
-        self.assertEqual((loaded.keep_snapshots, loaded.keep_journals, loaded.blacklist), (2, 10, []))
+        self.assertEqual(loaded.blacklist, [])
 
     def test_round_trip(self):
-        saved = s.ProfileSettings(backup_dir=self.tmp / "out", keep_snapshots=4, keep_journals=3,
-                                  blacklist=["ElvUI", "Questie"], last_flavor_choice="", last_account="ACCT1")
+        saved = s.ProfileSettings(backup_dir=self.tmp / "out", blacklist=["ElvUI", "Questie"],
+                                  last_flavor_choice="", last_account="ACCT1")
         s.save_settings(self.cfg, saved)
         self.assertEqual(s.load_settings(Config(self.tmp / "ace-profiles.cfg").load()), saved)
 
-    def test_bad_numbers_fall_back_and_floor_at_one(self):
-        self.cfg.set(s.SECTION, "keep_snapshots", "0", log=False)
-        self.cfg.set(s.SECTION, "keep_journals", "abc", log=False)
+    def test_retention_is_global_and_stale_keys_go_on_save(self):
+        """Feedback round 1: retention lives in [general]; the old per-tool keys are ignored, then removed."""
+        for key, value in (("keep_backups", "3"), ("keep_journals", "2"), ("keep_snapshots", "2")):
+            self.cfg.set(s.SECTION, key, value, log=False)
         loaded = s.load_settings(self.cfg)
-        self.assertEqual((loaded.keep_snapshots, loaded.keep_journals), (1, 10))
+        for name in ("keep_backups", "keep_journals", "keep_snapshots"):
+            self.assertFalse(hasattr(loaded, name), name)
+        s.save_settings(self.cfg, loaded)
+        again = Config(self.cfg.path).load()
+        for key in ("keep_backups", "keep_journals", "keep_snapshots"):
+            self.assertIsNone(again.get(s.SECTION, key), key)
 
     def test_blacklist_parsing(self):
         self.assertEqual(s.parse_blacklist(" ElvUI, questie\nQuestie ,, Bartender4 "), ["Bartender4", "ElvUI", "questie"])

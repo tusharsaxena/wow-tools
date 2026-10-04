@@ -34,7 +34,7 @@ EVENTS: dict[str, EventSpec] = {
     "ace.apply_completed": EventSpec("info", "Apply finished (logged at warning if any file was skipped or failed)."),
     "ace.dry_run_completed": EventSpec("info", "A dry run finished."),
     "ace.flavors_stopped": EventSpec("warning", "An Apply over several flavors stopped at one flavor; the flavors after it were not started."),
-    "ace.snapshots_pruned": EventSpec("info", "Older whole-WTF snapshots of the flavor were deleted to keep the newest N (keep_snapshots)."),
+    "ace.snapshots_pruned": EventSpec("info", "Older whole-WTF snapshots of the flavor were deleted to keep the newest N (keep_backups)."),
     "ace.journal_failed": EventSpec("error", "The run journal could not be written; nothing was changed."),
     "ace.journal_pruned": EventSpec("info", "Older journals (and the zips only they used) were deleted to keep the newest N (keep_journals)."),
     "ace.undo_started": EventSpec("info", "Undo last change started, from the newest journal."),

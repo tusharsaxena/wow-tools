@@ -90,13 +90,16 @@ class ShotsAppTest(TuiTestCase):
             await pilot.pause()
             self.assertIsInstance(app.screen, ScreenshotSettingsScreen)
             self.assertIn("Screenshots", app.screen.error_text)
-            app.screen.query_one("#dest_dir", Input).value = ""
-            app.screen.query_one("#keep_journals", Input).value = "0"
-            app.screen.query_one("#save", Button).press()
-            await pilot.pause()
-            self.assertIsInstance(app.screen, ScreenshotSettingsScreen)
-            self.assertIn("at least 1", app.screen.error_text)
         self.assertFalse((self.config_dir / "screenshot-organizer.cfg").exists())
+
+    async def test_settings_have_no_retention_inputs(self):
+        """Feedback round 1: journals to keep is global ([general], the `s` screen)."""
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_tool(app, pilot)
+            self.assertIsInstance(app.screen, ScreenshotSettingsScreen)
+            for box in ("#keep_journals", "#keep-journals"):
+                self.assertFalse(app.screen.query(box), box)
 
     async def test_rescan_refuses_invalid_stored_dest(self):
         self.save_tool_cfg(dest_dir=str(self.root / "_retail_" / "WTF" / "shots"))

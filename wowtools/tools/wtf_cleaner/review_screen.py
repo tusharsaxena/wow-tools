@@ -622,17 +622,16 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
             lines.append(f"The files to clean are zipped to: {backup_dir / CLEANED_SUBDIR if backup_dir else '?'}")
         else:
             alerts.append("The files to clean will not be zipped (turned off in settings).")
+        keep = self.cfg.keep_backups
+        kept = (f"{'the newest ' + str(keep) if keep > 0 else 'all'} of {'each' if self.multi else 'this'} "
+                "flavor are kept")
         if not dry_run:
             what = "Each flavor's whole WTF folder is backed up first" if self.multi else \
                 "The whole WTF folder is backed up first"
-            lines.append(f"{what} to: {backup_dir / SNAPSHOT_SUBDIR if backup_dir else '?'} "
-                         f"(the newest {self.settings.keep_backups} of {'each' if self.multi else 'this'} "
-                         f"flavor are kept)")
+            lines.append(f"{what} to: {backup_dir / SNAPSHOT_SUBDIR if backup_dir else '?'} ({kept})")
         if dry_run:
-            lines.append(f"DRY RUN: a dryrun-... zip of the files is written (the newest "
-                          f"{self.settings.keep_backups} of {'each' if self.multi else 'this'} flavor are kept), "
-                          "nothing is deleted." if backup
-                          else "DRY RUN: nothing will be written or deleted.")
+            lines.append(f"DRY RUN: a dryrun-... zip of the files is written ({kept}), nothing is deleted."
+                         if backup else "DRY RUN: nothing will be written or deleted.")
         else:
             lines.append("A run journal is written, so Undo last clean (z) can put the files back.")
         if running:
@@ -679,9 +678,9 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         try:
             with activity.running():
                 result = execute_flavors(plan, dry_run=dry_run, backup=backup, backup_dir=backup_dir,
-                                         account=self.account, keep_backups=self.settings.keep_backups,
+                                         account=self.account, keep_backups=self.cfg.keep_backups,
                                          progress=progress, on_flavor=on_flavor, journal_dir=self._journal_dir(),
-                                         keep_journals=self.settings.keep_journals)
+                                         keep_journals=self.cfg.keep_journals)
         except Exception as exc:  # noqa: BLE001 - anything unexpected is shown and logged, never a crash
             log_exception("clean", exc)
             self.app.call_from_thread(self._clean_crashed, exc, dry_run, backup_dir if backup else None)

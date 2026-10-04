@@ -35,9 +35,8 @@ from wowtools.tools.ace_profiles.report import (DETAIL_COLUMNS, STAGE_TITLES, UN
                                                 undo_summary_rows)
 from wowtools.tools.ace_profiles.result_screen import ProfileResultScreen
 from wowtools.tools.ace_profiles.scanner import ScanResult, scan_flavors
-from wowtools.tools.ace_profiles.settings import (ProfileSettings, is_blacklisted, load_settings, parse_blacklist,
-                                                  resolve_journal_dir, resolve_root, save_settings,
-                                                  validate_backup_dir)
+from wowtools.tools.ace_profiles.settings import (is_blacklisted, load_settings, parse_blacklist, resolve_journal_dir,
+                                                  resolve_root, save_settings, validate_backup_dir)
 from wowtools.tools.ace_profiles.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
 from wowtools.tools.ace_profiles.undo import UndoError, UndoResult, recover, undo_run
 from wowtools.ui.branding import BrandBar
@@ -960,18 +959,19 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self._refresh_buttons()
         screen = ProfileProgressScreen(dry_run=dry_run)
         self.app.push_screen(screen)
-        settings = self.settings
+        keep = (self.cfg.keep_backups, self.cfg.keep_journals)
         check = None if dry_run else self.apply_check()
-        self.run_worker(lambda: self._apply_worker(plan, root, journal_dir, settings, dry_run, screen, check),
+        self.run_worker(lambda: self._apply_worker(plan, root, journal_dir, keep, dry_run, screen, check),
                         thread=True, exclusive=True, group="run")
 
     def _apply_worker(self, plan: list[tuple[Flavor, list[DbState]]], root: Path, journal_dir: Path,
-                      settings: ProfileSettings, dry_run: bool, screen: ProfileProgressScreen,
+                      keep: tuple[int, int], dry_run: bool, screen: ProfileProgressScreen,
                       check: WowCheck | None = None) -> None:
+        """keep: (backups, journals) to keep, from [general]."""
         try:
             with activity.running():
                 result = apply_flavors(plan, root=root, journal_dir=journal_dir,
-                                       keep_journals=settings.keep_journals, keep_snapshots=settings.keep_snapshots,
+                                       keep_journals=keep[1], keep_snapshots=keep[0],
                                        dry_run=dry_run, account=self.account,
                                        wow_check=check,
                                        progress=self._progress_cb(screen))
@@ -1073,7 +1073,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self._refresh_buttons()
         screen = ProfileProgressScreen(dry_run=False, first_stage="undo")
         self.app.push_screen(screen)
-        keep = self.settings.keep_snapshots
+        keep = self.cfg.keep_backups
         self.run_worker(lambda: self._undo_worker(path, wow_root, root, keep, check, screen), thread=True,
                         exclusive=True, group="run")
 
@@ -1133,7 +1133,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self._refresh_buttons()
         screen = ProfileProgressScreen(dry_run=False, first_stage="undo")
         self.app.push_screen(screen)
-        keep = load_settings(self.tool_cfg).keep_snapshots
+        keep = self.cfg.keep_backups
         self.run_worker(lambda: self._recover_worker(marker, root, check, screen, keep), thread=True,
                         exclusive=True, group="run")
 

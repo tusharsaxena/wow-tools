@@ -17,6 +17,7 @@ from pathlib import Path
 
 from wowtools import __version__
 from wowtools.core.backup import BackupEntry, BackupError, create_backup
+from wowtools.core.config import DEFAULT_KEEP_BACKUPS
 from wowtools.core.events import log_event
 from wowtools.core.fsutil import free_name, safe_progress
 from wowtools.core.install import Flavor
@@ -26,9 +27,8 @@ from wowtools.core.svfiles import recover_probe_leftovers as core_recover_probe_
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
 from wowtools.tools.wtf_cleaner.journal import CleanJournal
 from wowtools.tools.wtf_cleaner.rules import ProposalItem
-from wowtools.tools.wtf_cleaner.safety import (DEFAULT_KEEP_SNAPSHOTS, MARKER_NAME, Marker, check_clean, clear_marker,
-                                               prune_snapshots, read_marker, restore_deleted, take_snapshot,
-                                               write_marker)
+from wowtools.tools.wtf_cleaner.safety import (MARKER_NAME, Marker, check_clean, clear_marker, prune_snapshots,
+                                               read_marker, restore_deleted, take_snapshot, write_marker)
 from wowtools.tools.wtf_cleaner.scanner import SVFile
 
 CleanProgress = Callable[[str, int, int, str], None]
@@ -215,7 +215,7 @@ def _restore_after(exc: BaseException, snapshot: Path, backup_dir: Path, flavor:
 
 def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup: bool,
             backup_dir: Path | None, now: datetime | None = None, progress: CleanProgress | None = None,
-            account: str | None = None, keep_backups: int = DEFAULT_KEEP_SNAPSHOTS,
+            account: str | None = None, keep_backups: int = DEFAULT_KEEP_BACKUPS,
             journal: CleanJournal | None = None) -> CleanResult:
     """account is the scope of the clean (None = all accounts); it names the cleaned-files zip. journal (real
     cleans) is the run journal: opened before anything is touched, one entry after each delete."""
@@ -336,8 +336,10 @@ def cleaned_zip_path(backup_dir: Path, flavor_short: str, account: str | None, n
 
 
 def prune_dry_run_zips(backup_dir: Path, flavor_short: str, keep: int) -> list[Path]:
-    """Delete all but the newest `keep` (at least 1) dry-run zips of this flavor (any account) in
-    <backup_dir>/cleaned. Real cleaned-files zips, other flavors' zips and other files are never touched."""
+    """Delete all but the newest `keep` dry-run zips of this flavor (any account) in <backup_dir>/cleaned; keep 0
+    (or less) keeps all. Real cleaned-files zips, other flavors' zips and other files are never touched."""
+    if keep <= 0:
+        return []
     folder = backup_dir / CLEANED_SUBDIR
     try:
         matches = [(m, p) for p in folder.iterdir() if (m := DRY_RUN_ZIP_NAME.match(p.name)) and p.is_file()]
@@ -346,7 +348,7 @@ def prune_dry_run_zips(backup_dir: Path, flavor_short: str, keep: int) -> list[P
     found = [p for m, p in sorted(matches, key=lambda mp: (mp[0]["stamp"], int(mp[0]["n"] or 1)), reverse=True)
              if m["flavor"] == flavor_short]
     removed: list[Path] = []
-    for path in found[max(1, keep):]:
+    for path in found[keep:]:
         try:
             path.unlink()
             removed.append(path)

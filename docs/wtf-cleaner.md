@@ -179,10 +179,11 @@ wow-tools\wtf-cleaner\
 gets `-2` added before `.zip`, so no backup ever replaces another.
 
 - The **cleaned** zips are never deleted by the app.
-- Only the newest 5 **backups** of each game version are kept (you can change this in settings).
-- Only the newest 5 **dry-run** zips of each game version are kept (the same setting). Dry-run zips made by
+- Only the newest 10 **backups** of each game version are kept (you can change this in the shared settings, the
+  first screen `s` opens; `0` keeps them all).
+- Only the newest 10 **dry-run** zips of each game version are kept (the same setting). Dry-run zips made by
   older versions of the app are named `cleaned-…` like real ones, so they're kept until you delete them.
-- Only the newest 10 **journals** are kept.
+- Only the newest 10 **journals** are kept (also a shared setting).
 
 ## Restoring a backup
 
@@ -207,7 +208,8 @@ backup.
 
 ## Settings
 
-Press `s` in the cleaner. The settings are saved in `config\wtf-cleaner.cfg`.
+Press `s` in the cleaner (you get the shared settings first, then the cleaner's). The cleaner's settings are saved
+in `config\wtf-cleaner.cfg`.
 
 | Setting | Starts as | What it means |
 |---|---|---|
@@ -215,12 +217,15 @@ Press `s` in the cleaner. The settings are saved in `config\wtf-cleaner.cfg`.
 | The four rules | all on | Which rules are on when the review screen opens |
 | Zip the files before deleting | on | Keep a zip of everything a clean removes (recommended) |
 | Backup folder | empty | Where zips and backups go. Empty means `<WoW folder>\wow-tools\wtf-cleaner`. It must be a full path, and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
-| WTF backups to keep | 5 | How many whole-folder backups to keep for each game version. Dry-run zips are kept to the same number |
-| Journals to keep | 10 | How many journals to keep for Undo |
 
 The file itself uses these names, if you edit it by hand: `max_age_days`, `criterion_not_installed`,
 `criterion_not_enabled`, `criterion_older_than`, `criterion_stray_copies`, `backup_before_delete`, `backup_dir`,
-`keep_backups`, `keep_journals`, `last_account` and `last_flavor_choice`.
+`last_account` and `last_flavor_choice`.
+
+Backups and journals to keep are shared by every tool: they're on the first screen `s` opens (the one with
+your WoW folder), and saved as `keep_backups` (10; `0` keeps all) and `keep_journals` (10) under `[general]`
+in `config\wow-tools.cfg`. The WTF backups and the dry-run zips both follow
+`keep_backups`.
 
 ## FAQ
 
@@ -232,7 +237,7 @@ The file itself uses these names, if you edit it by hand: `max_age_days`, `crite
 | Does it touch my keybindings, macros or UI layout? | No. It only ever looks at addon settings files. Blizzard's own settings, keybindings, macros, chat setup, UI layout and your list of enabled addons are never touched. |
 | What's the difference between a Dry run and Clean? | A **Dry run** does every step except deleting, so you can see the full results first. **Clean** deletes the ticked files after backing them up. |
 | Can I clean one account only? | Yes. Pick a single game version; if it has more than one account, the next screen lets you pick one. |
-| How much space do the backups take? | Each WTF backup is a zip of your whole `WTF` folder, so it depends on how big that folder is (zipping shrinks these text files a lot). Only the newest 5 per game version are kept (you can change that in settings), and the same number of dry-run zips. The zips of cleaned files are kept until you delete them. |
+| How much space do the backups take? | Each WTF backup is a zip of your whole `WTF` folder, so it depends on how big that folder is (zipping shrinks these text files a lot). Only the newest 10 per game version are kept (you can change that in the shared settings; `0` keeps them all), and the same number of dry-run zips. The zips of cleaned files are kept until you delete them. |
 | Can I undo a clean from last week? | **Undo last clean** only goes back to the most recent clean. For an older one, unzip its files by hand; see [Restoring a backup](#restoring-a-backup). |
 
 ## Troubleshooting

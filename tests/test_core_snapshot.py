@@ -48,8 +48,12 @@ class SnapshotTest(unittest.TestCase):
                           "snapshot-classic_era-20260101-000000.zip", "snapshot-retail-20260102-000000.zip",
                           "snapshot-retail-20260103-000000.zip"])
 
-    def test_prune_keeps_at_least_one(self):
+    def test_prune_keep_zero_or_less_keeps_all(self):
+        """Feedback round 1: the global keep_backups 0 means keep all, never delete every snapshot."""
         folder = self.tmp / "s"
         folder.mkdir()
-        (folder / "snapshot-retail-20260101-000000.zip").write_bytes(b"x")
+        for day in range(1, 4):
+            (folder / f"snapshot-retail-2026010{day}-000000.zip").write_bytes(b"x")
         self.assertEqual(snapshot.prune_snapshots(folder, "snapshot", "retail", 0), [])
+        self.assertEqual(snapshot.prune_snapshots(folder, "snapshot", "retail", -1), [])
+        self.assertEqual(len(list(folder.iterdir())), 3)

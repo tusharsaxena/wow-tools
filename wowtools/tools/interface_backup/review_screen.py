@@ -247,7 +247,7 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
 
     def _show_settings(self) -> None:
         root = self._root()
-        keep = self.settings.keep_backups
+        keep = self.cfg.keep_backups
         self.query_one("#folder-label", Static).update(Text(to_stored(root) if root else "?"))
         self.query_one("#keep-label", Static).update(Text("all backups" if keep == 0 else
                                                           f"newest {keep} per flavor"))
@@ -646,7 +646,7 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
 
     def _confirm_backup(self, scans: list[FlavorScan], root: Path, running: list[str] | None,
                         free: int | None) -> None:
-        keep = self.settings.keep_backups
+        keep = self.cfg.keep_backups
         title, body, alerts = backup_confirm(scans, root, keep, running, free)
         self.app.push_screen(ConfirmScreen(title, body, alerts, default_yes=True),
                              lambda ok: self._backup_confirmed(ok, scans, root, keep))
@@ -787,7 +787,7 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
     def _restore_confirmed(self, ok: bool | None, plan: RestorePlan) -> None:
         log_event("ui.selection", screen="confirm", control="restore_confirm", value=bool(ok))
         self.settings = load_settings(self.tool_cfg)
-        root, journal_dir, keep = self._root(), self._journal_dir(), self.settings.keep_journals
+        root, journal_dir, keep = self._root(), self._journal_dir(), self.cfg.keep_journals
         if not ok or not self.idle or self.wow_folder_changed():
             return
         problem = self._folder_problem()

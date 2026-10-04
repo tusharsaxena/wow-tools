@@ -127,6 +127,8 @@ The first time you open a tool, it asks for two things:
 1. **Your World of Warcraft folder.** This is the folder that holds `_retail_`, `_classic_` and so on, for
    example `C:\Program Files (x86)\World of Warcraft`. The app looks in the usual places and suggests what it
    finds (this can take a few seconds; you can type the folder meanwhile). You only answer this once; every tool shares it.
+   The same screen asks how many backups to keep per game version (10; 0 keeps them all) and how many journals
+   each tool keeps (10). Both apply to every tool.
 2. **That tool's settings.** Each guide explains them. If you're not sure, keep the suggested values.
 
 Then you pick which version of the game to work on, or **All flavors** for every version at once. ("Flavor" is
@@ -175,13 +177,14 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 
 | File | Holds |
 |---|---|
-| `config\wow-tools.cfg` | Your WoW folder, plus update and log options, shared by every tool |
+| `config\wow-tools.cfg` | Shared by every tool (`[general]`): your WoW folder, how many backups to keep per game version (`keep_backups`, 10; 0 keeps all) and journals per tool (`keep_journals`, 10), plus update and log options |
 | `config\wtf-cleaner.cfg` | The WTF Cleaner's settings |
 | `config\screenshot-organizer.cfg` | The Screenshot Organizer's settings |
 | `config\interface-backup.cfg` | Interface Backup's settings |
-| `config\ace-profiles.cfg` | The Ace3 Profile Manager's settings (`[ace_profiles]`): backup folder, WTF backups and journals to keep, and the blacklist of addons it never changes |
+| `config\ace-profiles.cfg` | The Ace3 Profile Manager's settings (`[ace_profiles]`): backup folder and the blacklist of addons it never changes |
 
-The easiest way to change them is to press `s` in the app. You can also open the files in Notepad while the app
+The easiest way to change them is to press `s` in the app: the first screen is the shared one (WoW folder,
+backups and journals to keep), then the tool's own. You can also open the files in Notepad while the app
 is closed. The guides list every setting.
 
 ## Undo and run journals

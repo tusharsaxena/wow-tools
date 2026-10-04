@@ -48,8 +48,6 @@ class ScreenshotSettingsScreen(Screen[bool]):
                         "Leave it empty to organise each flavor's Screenshots folder in place.")
             yield Input(to_stored(self.settings.dest_dir) if self.settings.dest_dir else "",
                         placeholder="Empty = in place: <flavor>\\Screenshots\\YYYY\\MM\\DD", id="dest_dir")
-            yield Label("Run journals to keep (each real run writes one; Undo uses the newest)")
-            yield Input(str(self.settings.keep_journals), type="integer", id="keep_journals")
             yield Ka0sCheckbox("Copy instead of move (the originals stay in Screenshots)",
                                self.settings.copy_mode, id="sw_copy")
             yield Static("", id="settings-error")
@@ -79,13 +77,6 @@ class ScreenshotSettingsScreen(Screen[bool]):
         self.query_one("#settings-error", Static).update(Text(text))
 
     def _save(self) -> None:
-        try:
-            keep = int(self.query_one("#keep_journals", Input).value)
-        except ValueError:
-            keep = 0
-        if keep < 1:
-            self._error("Keep at least 1 journal.")
-            return
         raw = self.query_one("#dest_dir", Input).value.strip()
         dest = to_native(raw) if raw else None
         if self.install is not None:
@@ -94,7 +85,7 @@ class ScreenshotSettingsScreen(Screen[bool]):
                 self._error(problem)
                 return
         save_settings(self.tool_cfg, ShotSettings(dest, self.query_one("#sw_copy", Ka0sCheckbox).value,
-                                                  load_settings(self.tool_cfg).last_flavor_choice, keep),
+                                                  load_settings(self.tool_cfg).last_flavor_choice),
                       source=self.source)
         self.dismiss(True)
 

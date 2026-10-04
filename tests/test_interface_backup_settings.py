@@ -23,22 +23,25 @@ class SettingsTest(unittest.TestCase):
 
     def test_defaults(self):
         s = load_settings(self.cfg)
-        self.assertEqual((s.backup_dir, s.keep_backups, s.keep_journals, s.last_flavor_choice), (None, 10, 10, ""))
+        self.assertEqual((s.backup_dir, s.last_flavor_choice), (None, ""))
         self.assertEqual(s, BackupSettings())
 
-    def test_round_trip_and_zero_means_keep_all(self):
-        save_settings(self.cfg, BackupSettings(self.tmp / "bk", 0, 3, "_retail_"))
+    def test_round_trip(self):
+        save_settings(self.cfg, BackupSettings(self.tmp / "bk", "_retail_"))
         s = load_settings(Config(self.tmp / "interface-backup.cfg").load())
-        self.assertEqual((s.backup_dir, s.keep_backups, s.keep_journals, s.last_flavor_choice),
-                         (self.tmp / "bk", 0, 3, "_retail_"))
+        self.assertEqual((s.backup_dir, s.last_flavor_choice), (self.tmp / "bk", "_retail_"))
 
-    def test_bad_values_fall_back(self):
-        self.cfg.set(SECTION, "keep_backups", "-4", log=False)
-        self.cfg.set(SECTION, "keep_journals", "zero", log=False)
+    def test_retention_is_global_and_stale_keys_go_on_save(self):
+        """Feedback round 1: retention lives in [general]; the old per-tool keys are ignored, then removed."""
+        for key, value in (("keep_backups", "3"), ("keep_journals", "2"), ("keep_snapshots", "2")):
+            self.cfg.set(SECTION, key, value, log=False)
         s = load_settings(self.cfg)
-        self.assertEqual((s.keep_backups, s.keep_journals), (10, 10))
-        self.cfg.set(SECTION, "keep_journals", "0", log=False)
-        self.assertEqual(load_settings(self.cfg).keep_journals, 10)
+        for name in ("keep_backups", "keep_journals", "keep_snapshots"):
+            self.assertFalse(hasattr(s, name), name)
+        save_settings(self.cfg, s)
+        again = Config(self.cfg.path).load()
+        for key in ("keep_backups", "keep_journals", "keep_snapshots"):
+            self.assertIsNone(again.get(SECTION, key), key)
 
     def test_roots(self):
         wow = self.tmp / "WoW"

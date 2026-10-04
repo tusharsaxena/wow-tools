@@ -143,13 +143,12 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertIsInstance(app.screen, BackupSettingsScreen)
             self.assertEqual(app.screen.sub_title, "Interface Backup settings")
             app.screen.query_one("#backup_dir", Input).value = str(self.bk)
-            app.screen.query_one("#keep_backups", Input).value = "0"
             app.screen.query_one("#save", Button).press()
             await pilot.pause()
             self.assertIsInstance(app.screen, FlavorScreen)
             await settle(app, pilot)
         s = load_settings(Config(self.config_dir / "interface-backup.cfg").load())
-        self.assertEqual((s.backup_dir, s.keep_backups, s.keep_journals), (self.bk, 0, 10))
+        self.assertEqual(s.backup_dir, self.bk)
 
     async def test_settings_refuse_folder_inside_wtf(self):
         app = self.make_app()
@@ -162,22 +161,14 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertIn("WTF", app.screen.error_text)
         self.assertFalse((self.config_dir / "interface-backup.cfg").exists())
 
-    async def test_settings_refuse_bad_counts(self):
+    async def test_settings_have_no_retention_inputs(self):
+        """Feedback round 1: backups and journals to keep are global ([general], the `s` screen)."""
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_tool(app, pilot)
-            screen = app.screen
-            screen.query_one("#keep_backups", Input).value = "-1"
-            screen.query_one("#save", Button).press()
-            await pilot.pause()
-            self.assertIn("Backups to keep", screen.error_text)
-            screen.query_one("#keep_backups", Input).value = "3"
-            screen.query_one("#keep_journals", Input).value = "0"
-            screen.query_one("#save", Button).press()
-            await pilot.pause()
-            self.assertIs(app.screen, screen)
-            self.assertIn("at least 1 journal", screen.error_text)
-        self.assertFalse((self.config_dir / "interface-backup.cfg").exists())
+            self.assertIsInstance(app.screen, BackupSettingsScreen)
+            for box in ("#keep_backups", "#keep_journals", "#keep-backups", "#keep-journals"):
+                self.assertFalse(app.screen.query(box), box)
 
     async def test_cancel_first_settings_still_opens_the_picker(self):
         app = self.make_app()
@@ -241,7 +232,8 @@ class InterfaceBackupAppTest(TuiTestCase):
 
     # --- review ----------------------------------------------------------------------------------
     async def test_review_lists_every_flavor_and_where_zips_go(self):
-        self.save_tool_cfg(backup_dir=str(self.bk), keep_backups="3")
+        self.save_tool_cfg(backup_dir=str(self.bk), keep_backups="5")  # stale per-tool key: ignored
+        self.cfg.set("general", "keep_backups", "3", log=False)
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
@@ -250,6 +242,9 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertEqual(set(nodes), {"Retail", "Classic Era", "Anniversary", "Retail PTR"})
             self.assertIn("interface-backup", str(review.query_one("#folder-label", Static).render()))
             self.assertEqual(str(review.query_one("#keep-label", Static).render()), "newest 3 per flavor")
+            self.cfg.set("general", "keep_backups", "0", log=False)  # 0 = keep all, through the global setting
+            review._show_settings()
+            self.assertEqual(str(review.query_one("#keep-label", Static).render()), "all backups")
             tree = review.query_one("#flavors", Tree)
             self.assertIs(review.focused, tree)
             self.assertIn("All flavors", str(tree.root.label))

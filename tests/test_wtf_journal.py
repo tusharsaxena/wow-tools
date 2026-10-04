@@ -6,7 +6,6 @@ import unittest.mock
 from pathlib import Path
 
 from tests.fixtures import build_wow_tree
-from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.core.journal import list_journals
@@ -16,7 +15,6 @@ from wowtools.tools.wtf_cleaner.journal import (A_DELETED, clean_journal_dir, la
                                                 read_journal)
 from wowtools.tools.wtf_cleaner.multi import execute_flavors, scan_flavors
 from wowtools.tools.wtf_cleaner.rules import Criteria, evaluate
-from wowtools.tools.wtf_cleaner.settings import DEFAULT_KEEP_JOURNALS, SECTION, load_settings
 
 
 class CleanJournalTest(unittest.TestCase):
@@ -185,15 +183,6 @@ class CleanJournalTest(unittest.TestCase):
         self.assertEqual(len(result.journals_pruned), 3)
         self.assertIn("clean.journal_pruned", [r["event"] for r in records])
         self.assertEqual(prune_journals(self.journals, 5), [])
-
-    def test_keep_journals_setting(self):
-        cfg = Config(self.tmp / "wtf-cleaner.cfg")
-        self.assertEqual(load_settings(cfg).keep_journals, DEFAULT_KEEP_JOURNALS)
-        self.assertEqual(DEFAULT_KEEP_JOURNALS, 10)
-        cfg.set(SECTION, "keep_journals", "0", log=False)
-        self.assertEqual(load_settings(cfg).keep_journals, 1)
-        cfg.set(SECTION, "keep_journals", "4", log=False)
-        self.assertEqual(load_settings(cfg).keep_journals, 4)
 
 
 if __name__ == "__main__":

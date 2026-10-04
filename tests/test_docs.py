@@ -52,7 +52,7 @@ class DocsTest(unittest.TestCase):
                        "Keep only Default", "Everyone → Default", "blacklist", "unlock", "## What the tool never touches",
                        "## Dry run", "## Undo last change", "changed since", "snapshots\\snapshot-<flavor>-",
                        "edited\\edited-<flavor>-<account>-", "journal\\journal-", "edit-in-progress.json",
-                       "Put the originals back", "## Settings", "keep_snapshots", "## FAQ", "LibDualSpec",
+                       "Put the originals back", "## Settings", "keep_backups", "## FAQ", "LibDualSpec",
                        "missing", "no character folder", "## Troubleshooting", "<!-- screenshots:"):
             self.assertIn(needle, guide)
         for key in ("Space", "`a`", "`n`", "`d`", "`p`", "`e`", "`k`", "`o`", "`m`", "`x`", "`b`", "`u`", "`v`",

@@ -2,7 +2,7 @@
 
 UI-free. Shared by the WTF Cleaner (<backup folder>/backup/backup-<flavor>-<stamp>.zip) and the Ace3 Profile
 Manager (<tool root>/snapshots/snapshot-<flavor>-<stamp>.zip): the folder and the name prefix are parameters.
-prune_snapshots() keeps the newest N of one prefix and flavor.
+prune_snapshots() keeps the newest N of one prefix and flavor (0 = all).
 """
 from __future__ import annotations
 
@@ -88,9 +88,11 @@ def _name_pattern(prefix: str) -> re.Pattern[str]:
 
 
 def prune_snapshots(folder: Path, prefix: str, flavor_short: str, keep: int) -> list[Path]:
-    """Delete all but the newest `keep` (at least 1) snapshots of this prefix and flavor
-    (<prefix>-<flavor>-<stamp>.zip) in folder. Other prefixes, other flavors and other files are never touched.
-    Returns what was removed."""
+    """Delete all but the newest `keep` snapshots of this prefix and flavor (<prefix>-<flavor>-<stamp>.zip) in
+    folder; keep 0 (or less) keeps all. Other prefixes, other flavors and other files are never touched. Returns
+    what was removed."""
+    if keep <= 0:
+        return []
     pattern = _name_pattern(prefix)
     try:
         matches = [(m, p) for p in folder.iterdir() if (m := pattern.match(p.name)) and p.is_file()]
@@ -99,7 +101,7 @@ def prune_snapshots(folder: Path, prefix: str, flavor_short: str, keep: int) -> 
     found = [p for m, p in sorted(matches, key=lambda mp: (mp[0]["stamp"], int(mp[0]["n"] or 1)), reverse=True)
              if m["flavor"] == flavor_short]
     removed: list[Path] = []
-    for path in found[max(1, keep):]:
+    for path in found[keep:]:
         try:
             path.unlink()
             removed.append(path)

@@ -43,20 +43,21 @@ stay thin.
 ## Config schema
 
 `config/wow-tools.cfg` `[general]`: `wow_path`, `last_flavor`, `check_for_updates`, `auto_update`, `allow_unverified_updates`,
-`last_update_check`, `latest_seen_version`, `log_level`, `log_retention_days`.
+`last_update_check`, `latest_seen_version`, `log_level`, `log_retention_days`, and the retention every tool shares:
+`keep_backups` (`Config.keep_backups`: backups kept per flavor, WTF Cleaner snapshots and dry-run zips, Interface
+Backup zips and Ace3 snapshots; default 10, 0 = keep all, negative or bad = 10) and `keep_journals`
+(`Config.keep_journals`: run journals kept per tool, default 10, at least 1). Both are edited on the setup screen
+(`#keep-backups`, `#keep-journals`). The per-tool `keep_backups` / `keep_snapshots` / `keep_journals` they replaced
+are ignored, and each tool's `save_settings` drops them (`Config.remove_retired`).
 Each tool owns one file with one section. `config/wtf-cleaner.cfg` `[wtf_cleaner]`: `max_age_days`, `criterion_*`, `backup_before_delete`,
 `backup_dir` (empty = `<wow_path>/wow-tools/wtf-cleaner`, resolved by `settings.resolve_backup_dir()`) and
-`last_account` (empty = all accounts), `keep_backups`, `keep_journals` (run journals to keep, default 10, at least
-1) and `last_flavor_choice` (empty = all flavors, else a flavor
+`last_account` (empty = all accounts) and `last_flavor_choice` (empty = all flavors, else a flavor
 folder; absent until first chosen, and then the picker pre-selects `[general] last_flavor`). `config/screenshot-organizer.cfg` `[screenshot_organizer]`: `dest_dir` (empty = in place),
-`copy_mode`, `last_flavor_choice` (empty = all flavors, else a flavor folder) and `keep_journals` (default 10, at
-least 1). `config/interface-backup.cfg` `[interface_backup]`: `backup_dir` (empty = `<wow_path>/wow-tools`;
-zips go to its `interface-backup` folder, `settings.resolve_backup_root()`), `keep_backups` (per flavor, default
-10, 0 = never delete, negative or bad = 10), `keep_journals` (restore journals, default 10, at least 1) and
+`copy_mode` and `last_flavor_choice` (empty = all flavors, else a flavor folder). `config/interface-backup.cfg` `[interface_backup]`: `backup_dir` (empty = `<wow_path>/wow-tools`;
+zips go to its `interface-backup` folder, `settings.resolve_backup_root()`) and
 `last_flavor_choice` (empty = all flavors, else a flavor folder). `config/ace-profiles.cfg` `[ace_profiles]`:
 `backup_dir` (empty = `<wow_path>/wow-tools`; files go to its `ace-profiles` folder, `settings.resolve_root()`),
-`keep_snapshots` (whole-WTF snapshots per flavor, default 2, at least 1), `keep_journals` (default 10, at least 1;
-an `edited-*.zip` goes with the last journal naming it), `blacklist` (comma-separated addon names, matched
+`blacklist` (comma-separated addon names, matched
 ignoring case), `last_flavor_choice` and `last_account` (empty = all accounts). The retired `[general] backup_dir` is dropped by the migration. Paths are stored in Windows form when they point at a
 Windows drive. Unknown keys are preserved, and bad values fall back to defaults.
 
@@ -148,7 +149,7 @@ that is missing for now, such as an unplugged backup drive), so Undo can be trie
 UI-free; thin wrappers over `core/snapshot.py` and `core/svfiles.py` (names, messages and file names unchanged). `take_snapshot()` zips the whole `<flavor>/WTF` folder to `backup/backup-<flavor>-<stamp>.zip`
 in the backup folder and verifies it; the user-facing name is "WTF backup". It is kept after the clean, and
 `prune_snapshots(backup_dir, flavor_short, keep)` deletes all but that flavor's newest `keep_backups`
-(`backup-<flavor>-<stamp>[-N].zip` names only, newest by stamp then N).
+(`backup-<flavor>-<stamp>[-N].zip` names only, newest by stamp then N; 0 keeps all, as does `core/snapshot`).
 The zip of the files a clean removes is `cleaned/cleaned-<flavor>-<account or all>-<stamp>.zip` (`cleaner.cleaned_zip_path`). Both names get `-2`, `-3`, ... (`fsutil.free_name`) when a run in the same second already used them, and finished zips are moved into place with `fsutil.rename_no_replace`, so a backup is never replaced. `write_marker()` / `read_marker()` / `clear_marker()` manage
 `clean-in-progress.json` (`Marker`: snapshot, flavor, flavor_path, started, pid, suite_version, files).
 `restore_deleted()` extracts exactly the given relative paths and never overwrites an existing file.
@@ -418,6 +419,7 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
     compile_file(states_of_one_file, data) → FileEdit(file, data, changes, expected{sv_name: Expected})
     verify_edit(edit, old_bytes) → [problems]
     apply_flavors([(flavor, [DbState]), ...], root, journal_dir, keep_journals, keep_snapshots, dry_run, account, wow_check, progress)
+      (the review passes [general] keep_backups as keep_snapshots and keep_journals; 0 snapshots = keep all)
                       → MultiApplyResult(dry_run, runs[FlavorRun(flavor, result: ApplyResult, error)], journal_path)
     undo_run(journal_path, wow_root, root, keep_snapshots, wow_check, progress) → UndoResult(outcomes, snapshots)
     recover(marker, root, journal_dir, keep_snapshots, wow_check, progress) → UndoResult

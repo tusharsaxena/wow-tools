@@ -59,10 +59,10 @@ Inside a zip you find the `Interface` and `WTF` folders, exactly as they are in 
 small `manifest.json` that lists every file. The app uses the manifest to check the zip before it restores
 anything.
 
-- After each backup, only the newest 10 **backups** of that game version are kept (you can change this in
-  settings; `0` keeps every backup). Older ones are deleted, and only after the new zip has been checked.
+- After each backup, only the newest 10 **backups** of that game version are kept (you can change this in the
+  shared settings, the first screen `s` opens; `0` keeps every backup). Older ones are deleted, and only after the new zip has been checked.
 - A **safety backup** is kept as long as the journal of its restore is kept: the newest 10 restores, unless you
-  change it in settings. They don't count towards the backups to keep.
+  change the journals to keep in the shared settings. They don't count towards the backups to keep.
 - Files in that folder that the app didn't make are never touched.
 
 ## Picking a game version
@@ -356,18 +356,22 @@ how you want them, restore a backup or the restore's safety backup from the game
 
 ## Settings
 
-Press `s` in the tool (you get the WoW folder first, then this tool's settings). The settings are saved in
+Press `s` in the tool (you get the shared settings first: WoW folder, backups and journals to keep; then this
+tool's settings). The tool's settings are saved in
 `config\interface-backup.cfg`.
 
 | Setting | Starts as | What it means |
 |---|---|---|
 | Backup folder | empty | Where zips go: they're put in its `interface-backup` folder. Empty means `<WoW folder>\wow-tools`. The line under the box shows where zips will go as you type. It must be a full path (such as `D:\WoW backups`), and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
-| Backups to keep per flavor | 10 | How many backups to keep for each game version; older ones are deleted after a new backup. `0` keeps every backup |
-| Restore journals to keep | 10 | How many restores to remember (at least 1). Each keeps its safety backup; Undo uses the newest |
 
-The file itself uses these names, if you edit it by hand: `backup_dir`, `keep_backups`, `keep_journals` and
-`last_flavor_choice` (the game version you picked last time; empty means **All flavors**). The backup folder is
-checked again before every backup and restore, in case the file was edited by hand.
+The file itself uses these names, if you edit it by hand: `backup_dir` and `last_flavor_choice` (the game version
+you picked last time; empty means **All flavors**). The backup folder is checked again before every backup and
+restore, in case the file was edited by hand.
+
+Backups and journals to keep are shared by every tool: they're on the first screen `s` opens (the one with
+your WoW folder), and saved as `keep_backups` (10; `0` keeps all) and `keep_journals` (10) under `[general]`
+in `config\wow-tools.cfg`. Restore journals follow `keep_journals`, and each keeps its
+safety backup.
 
 If you move the backup folder, move the zips in its `interface-backup` folder along with it, or the app won't
 find them. Undo needs the safety backup in the folder the settings name.
@@ -379,7 +383,7 @@ find them. Undo needs the safety backup in the folder the settings name.
 | Do I need to close WoW first? | For a restore or an undo, yes: WoW rewrites `WTF` when you log out and can lock `Interface` files. For a backup it's better to, since the backup could miss your latest settings, but it's not required. The app warns you either way. On a Mac it can't tell whether WoW is running, so close it yourself. |
 | What exactly is in a backup? | Everything in the game version's `Interface` and `WTF` folders: your addons, their settings, and your own keybindings, macros, chat and UI layout. Links (see [Links and junctions](#links-and-junctions)) are left out. Nothing else from the WoW folder is included. |
 | Is there a Dry run? | No need: a backup only reads your folders. Before a restore, the restore screen lists everything it would remove or change, and nothing happens until you confirm. |
-| How much space do backups take? | It depends on your addons. Addon files and settings are text, so a zip is often a fraction of the folders' size. The backup results show both. The newest 10 per game version are kept, plus a safety backup for each of the last 10 restores; both numbers can be changed in settings. |
+| How much space do backups take? | It depends on your addons. Addon files and settings are text, so a zip is often a fraction of the folders' size. The backup results show both. The newest 10 per game version are kept, plus a safety backup for each of the last 10 restores; both numbers can be changed in the shared settings. |
 | Can I restore just one addon, or one file? | Not from the app: it restores whole folders. To get one addon back, close WoW, open the zip, and extract its folder (for example `Interface\AddOns\WeakAuras`) into the game version's folder. |
 | Can I restore a Retail backup into Classic? | No. A backup only restores into the game version it came from. |
 | Can I undo a restore from last week? | **Undo last restore** only goes back to the most recent restore. For an older one, restore its safety backup: open the game version's **Backups** on the review screen; its line starts with **safety**. |

@@ -13,19 +13,16 @@ from wowtools.tools.ace_profiles.events import TOOL_NAME
 
 SECTION = "ace_profiles"
 ROOT_NAME = TOOL_NAME
-DEFAULT_KEEP_SNAPSHOTS = 2
-DEFAULT_KEEP_JOURNALS = 10
 _SPLIT = re.compile(r"[,\r\n]+")
 
 
 @dataclass
 class ProfileSettings:
     backup_dir: Path | None = None  # None: <WoW folder>/wow-tools; the tool's files go to <backup_dir>/ace-profiles
-    keep_snapshots: int = DEFAULT_KEEP_SNAPSHOTS  # whole-WTF snapshots kept per flavor (at least 1)
-    keep_journals: int = DEFAULT_KEEP_JOURNALS  # run journals kept (at least 1); their per-file zips go with them
     blacklist: list[str] = field(default_factory=list)  # addon names (SavedVariables file name without .lua)
     last_flavor_choice: str | None = None  # "" = All flavors, else a flavor folder; None = never chosen
     last_account: str | None = None  # None (stored as empty) = all accounts
+    # Snapshots and journals to keep are global: Config.keep_backups / keep_journals ([general]).
 
 
 def parse_blacklist(text: str) -> list[str]:
@@ -48,16 +45,9 @@ def is_blacklisted(names: list[str], addon: str) -> bool:
     return any(name.casefold() == wanted for name in names)
 
 
-def _count(cfg: Config, key: str, default: int) -> int:
-    value = cfg.get_int(SECTION, key, default)
-    return max(1, value)
-
-
 def load_settings(cfg: Config) -> ProfileSettings:
     choice = cfg.get(SECTION, "last_flavor_choice")
     return ProfileSettings(cfg.get_path(SECTION, "backup_dir"),
-                           _count(cfg, "keep_snapshots", DEFAULT_KEEP_SNAPSHOTS),
-                           _count(cfg, "keep_journals", DEFAULT_KEEP_JOURNALS),
                            parse_blacklist(cfg.get(SECTION, "blacklist") or ""),
                            None if choice is None else choice.strip(),
                            (cfg.get(SECTION, "last_account") or "").strip() or None)
@@ -65,8 +55,7 @@ def load_settings(cfg: Config) -> ProfileSettings:
 
 def save_settings(cfg: Config, settings: ProfileSettings, *, source: str = "settings") -> None:
     cfg.set_path(SECTION, "backup_dir", settings.backup_dir, source=source)
-    cfg.set(SECTION, "keep_snapshots", settings.keep_snapshots, source=source)
-    cfg.set(SECTION, "keep_journals", settings.keep_journals, source=source)
+    cfg.remove_retired(SECTION, source=source)
     cfg.set(SECTION, "blacklist", format_blacklist(settings.blacklist), source=source)
     cfg.set(SECTION, "last_account", settings.last_account or "", source=source)
     if settings.last_flavor_choice is not None:

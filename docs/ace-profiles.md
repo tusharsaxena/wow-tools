@@ -273,10 +273,11 @@ Unless you change it in settings, the backup folder is `<your WoW folder>\wow-to
 `all`. If two runs start in the same second, the second gets `-2` added before `.zip`, so no backup ever replaces
 another. The journals always stay in your WoW folder, even if you pick another backup folder.
 
-- Only the newest 2 **WTF backups** (`snapshots`) of each game version are kept (you can change this in settings).
+- Only the newest 10 **WTF backups** (`snapshots`) of each game version are kept (you can change this in the shared
+  settings, the first screen `s` opens; `0` keeps them all).
   One is taken before each change, each Undo and each recovery. They're a safety net in case something goes badly
   wrong.
-- Only the newest 10 **journals** are kept. An `edited` zip is deleted along with the last journal that needs it.
+- Only the newest 10 **journals** are kept (also a shared setting). An `edited` zip is deleted along with the last journal that needs it.
 - To put files back by hand (an older change, say): close WoW, open the `edited\edited-…zip`, and extract it **into
   the game version's folder** (for example `World of Warcraft\_retail_`), keeping the folders. You can ignore
   `manifest.json`.
@@ -297,19 +298,21 @@ can't start until you've chosen, since it would lose the way back for the earlie
 
 ## Settings
 
-Press `s` in the tool (you get the WoW folder first, then this tool's settings). The settings are saved in
+Press `s` in the tool (you get the shared settings first: WoW folder, backups and journals to keep; then this
+tool's settings). The tool's settings are saved in
 `config\ace-profiles.cfg`.
 
 | Setting | Starts as | What it means |
 |---|---|---|
 | Backup folder | empty | Where the `WTF` backups and the zips of edited files go: they're put in its `ace-profiles` folder. Empty means `<WoW folder>\wow-tools`. It must be a full path (such as `D:\WoW backups`), and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
-| WTF backups to keep per flavor | 2 | How many whole-`WTF` backups to keep for each game version (at least 1) |
-| Journals to keep | 10 | How many changes to remember (at least 1). Undo uses the newest |
 | Blacklist | empty | Addon names, separated by commas, that are shown but never changed |
 
-The file itself uses these names, if you edit it by hand: `backup_dir`, `keep_snapshots`, `keep_journals`,
-`blacklist`, `last_flavor_choice` (the game version you picked last time; empty means **All flavors**) and
-`last_account` (empty means all accounts).
+The file itself uses these names, if you edit it by hand: `backup_dir`, `blacklist`, `last_flavor_choice` (the
+game version you picked last time; empty means **All flavors**) and `last_account` (empty means all accounts).
+
+Backups and journals to keep are shared by every tool: they're on the first screen `s` opens (the one with
+your WoW folder), and saved as `keep_backups` (10; `0` keeps all) and `keep_journals` (10) under `[general]`
+in `config\wow-tools.cfg`. The WTF backups (`snapshots`) follow `keep_backups`.
 
 ## FAQ
 

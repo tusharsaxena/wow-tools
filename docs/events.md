@@ -36,7 +36,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 
 | Event | Level | Description |
 |---|---|---|
-| `config.changed` | info | A config value changed, or was overridden for one run. |
+| `config.changed` | info | A config value changed or was removed, or was overridden for one run. |
 | `config.created` | info | A config file in config/ was written for the first time. |
 | `config.migrated` | info | The old shared wow-tools.cfg was split into config/ (one file per tool). |
 | `config.renamed` | info | A renamed tool's config file was moved to its new name (merged into the new file when both existed). |
@@ -185,7 +185,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ace.scan_started` | info | A scan of one flavor's SavedVariables for AceDB databases started. |
 | `ace.snapshot_failed` | error | The whole-WTF snapshot failed; nothing was changed. |
 | `ace.snapshot_taken` | info | The whole-WTF snapshot was written and verified. |
-| `ace.snapshots_pruned` | info | Older whole-WTF snapshots of the flavor were deleted to keep the newest N (keep_snapshots). |
+| `ace.snapshots_pruned` | info | Older whole-WTF snapshots of the flavor were deleted to keep the newest N (keep_backups). |
 | `ace.staged` | debug | A change was staged on the review screen (operation and counts). |
 | `ace.undo_completed` | info | Undo last change finished (logged at warning if any file was skipped or failed). |
 | `ace.undo_failed` | error | Undo or recovery: a file could not be put back (its zip is missing or does not match). |

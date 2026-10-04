@@ -55,10 +55,6 @@ class CleanerSettingsScreen(Screen[bool]):
                         "Leave empty to use <WoW folder>/wow-tools/wtf-cleaner")
             yield Input(to_stored(self.settings.backup_dir) if self.settings.backup_dir else "",
                         placeholder=_default_backup_hint(self.wow_path), id="backup_dir")
-            yield Label("Keep this many WTF backups (and dry-run zips) per flavor; older ones are deleted")
-            yield Input(str(self.settings.keep_backups), type="integer", id="keep_backups")
-            yield Label("Journals to keep (each real clean writes one; Undo last clean uses the newest)")
-            yield Input(str(self.settings.keep_journals), type="integer", id="keep_journals")
             yield Static("Propose SavedVariables when:", classes="title")
             for name in CRITERIA:
                 yield Ka0sCheckbox(CRITERION_LABELS[name], getattr(criteria, name), id=f"sw_{name}")
@@ -95,22 +91,6 @@ class CleanerSettingsScreen(Screen[bool]):
             self.error_text = "Max age must be a whole number of days, at least 1."
             self.query_one("#settings-error", Static).update(Text(self.error_text))
             return
-        try:
-            keep = int(self.query_one("#keep_backups", Input).value)
-        except ValueError:
-            keep = 0
-        if keep < 1:
-            self.error_text = "Keep at least 1 WTF backup."
-            self.query_one("#settings-error", Static).update(Text(self.error_text))
-            return
-        try:
-            keep_journals = int(self.query_one("#keep_journals", Input).value)
-        except ValueError:
-            keep_journals = 0
-        if keep_journals < 1:
-            self.error_text = "Keep at least 1 journal."
-            self.query_one("#settings-error", Static).update(Text(self.error_text))
-            return
         criteria = Criteria(**{name: self.query_one(f"#sw_{name}", Ka0sCheckbox).value for name in CRITERIA},
                             max_age_days=days)
         backup_raw = self.query_one("#backup_dir", Input).value.strip()
@@ -124,8 +104,7 @@ class CleanerSettingsScreen(Screen[bool]):
         stored = load_settings(self.tool_cfg)  # keeps the remembered flavor and account choices
         save_settings(self.tool_cfg, replace(stored, criteria=criteria,
                                              backup_before_delete=self.query_one("#sw_backup", Ka0sCheckbox).value,
-                                             backup_dir=backup_dir,
-                                             keep_backups=keep, keep_journals=keep_journals),
+                                             backup_dir=backup_dir),
                       source=self.source)
         self.dismiss(True)
 

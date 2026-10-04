@@ -1,4 +1,4 @@
-"""First-run and general settings: the WoW folder ([general] in wow-tools.cfg)."""
+"""First-run and general settings: the WoW folder and retention, shared by every tool ([general] in wow-tools.cfg)."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -51,6 +51,10 @@ class SetupScreen(Screen[bool]):
             yield Input(value=self._initial_wow_path(), placeholder=r"C:\Program Files (x86)\World of Warcraft",
                         id="wow_path")
             yield Static(Text(self._detected_hint()), classes="hint", id="setup-hint")
+            yield Label("Backups to keep per flavor (0 = keep all; applies to every tool)")
+            yield Input(str(self.cfg.keep_backups), type="integer", id="keep-backups")
+            yield Label("Journals to keep per tool (Undo uses the newest)")
+            yield Input(str(self.cfg.keep_journals), type="integer", id="keep-journals")
             yield Static("", id="setup-error")
             with ButtonRow(classes="buttons"):
                 yield action_button("Save", "confirm", id="save")
@@ -109,15 +113,35 @@ class SetupScreen(Screen[bool]):
         log_event("ui.selection", screen="setup", control="cancel", value=True)
         self.dismiss(False)
 
+    def _error(self, text: str) -> None:
+        self.error_text = text
+        self.query_one("#setup-error", Static).update(Text(text))
+
+    def _count(self, widget_id: str, least: int) -> int | None:
+        try:
+            value = int(self.query_one(f"#{widget_id}", Input).value.strip())
+        except ValueError:
+            return None
+        return value if value >= least else None
+
     def _save(self) -> None:
         raw = self.query_one("#wow_path", Input).value.strip()
         wow = to_native(raw) if raw else None
         if wow is None or not WowInstall(wow).is_valid():
-            self.error_text = ("No WoW flavor folders (_retail_, _classic_ ...) were found there. "
-                               "Choose the World of Warcraft folder itself.")
-            self.query_one("#setup-error", Static).update(Text(self.error_text))
+            self._error("No WoW flavor folders (_retail_, _classic_ ...) were found there. "
+                        "Choose the World of Warcraft folder itself.")
+            return
+        keep_backups = self._count("keep-backups", 0)
+        if keep_backups is None:
+            self._error("Backups to keep must be a whole number: 0 (keep all) or more.")
+            return
+        keep_journals = self._count("keep-journals", 1)
+        if keep_journals is None:
+            self._error("Journals to keep must be a whole number, at least 1.")
             return
         source = "wizard" if self.first_run else "settings"
         self.cfg.set_path(GENERAL, "wow_path", wow, source=source)
+        self.cfg.set(GENERAL, "keep_backups", keep_backups, source=source)
+        self.cfg.set(GENERAL, "keep_journals", keep_journals, source=source)
         self.cfg.save()
         self.dismiss(True)

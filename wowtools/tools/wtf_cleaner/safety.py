@@ -27,7 +27,6 @@ MARKER_NAME = "clean-in-progress.json"
 SNAPSHOT_SUBDIR = "backup"
 SNAPSHOT_PREFIX = "backup"
 SNAPSHOT_NAME = re.compile(r"^backup-(?P<flavor>.+?)-(?P<stamp>\d{8}-\d{6})(?:-(?P<n>\d+))?\.zip$")
-DEFAULT_KEEP_SNAPSHOTS = 5
 
 
 @dataclass(frozen=True)
@@ -57,7 +56,7 @@ def snapshot_path(backup_dir: Path, flavor_short: str, now: datetime) -> Path:
 
 
 def prune_snapshots(backup_dir: Path, flavor_short: str, keep: int) -> list[Path]:
-    """Delete all but the newest `keep` (at least 1) WTF backups of this flavor (backup-<flavor>-<stamp>.zip) in
+    """Delete all but the newest `keep` (0 = keep all) WTF backups of this flavor (backup-<flavor>-<stamp>.zip) in
     <backup_dir>/backup. Other flavors' backups and other files are never touched. Returns what was removed."""
     return core_snapshot.prune_snapshots(backup_dir / SNAPSHOT_SUBDIR, SNAPSHOT_PREFIX, flavor_short, keep)
 

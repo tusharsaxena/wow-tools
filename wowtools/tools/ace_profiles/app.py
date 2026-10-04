@@ -53,10 +53,6 @@ class ProfileSettingsScreen(Screen[bool]):
                         "was). Leave empty to use <WoW folder>/wow-tools/ace-profiles")
             yield Input(to_stored(settings.backup_dir) if settings.backup_dir else "",
                         placeholder=_default_backup_hint(self.wow_path), id="backup-dir")
-            yield Label("WTF backups to keep per flavor (older ones are deleted)")
-            yield Input(str(settings.keep_snapshots), type="integer", id="keep-snapshots")
-            yield Label("Journals to keep (each change writes one; Undo last change uses the newest)")
-            yield Input(str(settings.keep_journals), type="integer", id="keep-journals")
             yield Label("Blacklist (addon names, comma-separated): their profiles are shown but never changed")
             yield Input(format_blacklist(settings.blacklist), placeholder="ElvUI, Questie", id="blacklist")
             yield Static("", id="settings-error")
@@ -85,20 +81,7 @@ class ProfileSettingsScreen(Screen[bool]):
         self.error_text = text
         self.query_one("#settings-error", Static).update(Text(text))
 
-    def _int(self, widget_id: str) -> int | None:
-        try:
-            return int(self.query_one(f"#{widget_id}", Input).value)
-        except ValueError:
-            return None
-
     def _save(self) -> None:
-        keep, journals = self._int("keep-snapshots"), self._int("keep-journals")
-        if keep is None or keep < 1:
-            self._error("Keep at least 1 WTF backup.")
-            return
-        if journals is None or journals < 1:
-            self._error("Keep at least 1 journal.")
-            return
         raw = self.query_one("#backup-dir", Input).value.strip()
         backup_dir = to_native(raw) if raw else None
         if self.wow_path is not None:
@@ -108,8 +91,7 @@ class ProfileSettingsScreen(Screen[bool]):
                 return
         blacklist = parse_blacklist(self.query_one("#blacklist", Input).value)
         stored = load_settings(self.tool_cfg)  # keeps the remembered flavor and account choices
-        save_settings(self.tool_cfg, replace(stored, backup_dir=backup_dir, keep_snapshots=keep,
-                                             keep_journals=journals, blacklist=blacklist),
+        save_settings(self.tool_cfg, replace(stored, backup_dir=backup_dir, blacklist=blacklist),
                       source=self.source)
         self.dismiss(True)
 

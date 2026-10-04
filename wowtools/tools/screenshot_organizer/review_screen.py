@@ -517,9 +517,10 @@ class ShotReviewScreen(TwoPaneFocus, Screen[str]):
             return
         # The scanned plan's destination, not the current settings: the plan's targets were computed from it.
         dest_dir, settings, journal_dir = self.plan.dest_dir, self.settings, self._journal_dir()
+        keep_journals = self.cfg.keep_journals
         self._run(ShotProgressScreen(dry_run=dry_run),
                   lambda progress: execute(selection, dest_dir=dest_dir, copy=settings.copy_mode, dry_run=dry_run,
-                                           journal_dir=journal_dir, keep_journals=settings.keep_journals,
+                                           journal_dir=journal_dir, keep_journals=keep_journals,
                                            progress=progress))
 
     def _run(self, progress_screen: ShotProgressScreen, job) -> None:
