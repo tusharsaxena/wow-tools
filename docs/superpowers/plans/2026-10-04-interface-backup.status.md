@@ -18,7 +18,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | 9 | flow, settings, summary, backup screens, registration | done | e6e3ab6 | API as planned with explicit `wow_check`/`disk_usage` flow kwargs; journal lookup and free space moved off the UI thread; own `_checking` flag for the WoW check; 19 TUI tests |
 | 10 | restore and undo screens | done | ae15647, ed8ee75 | API as planned; backup list, backup load/scan and every plan built in workers; Undo on the result screen only for a restore that changed a part; 12 new TUI tests. Follow-up ed8ee75: Parts column in the backup list (spec §10), manifests read in a worker |
 | M2 | push milestone 2 | done (pushed) | 763a34b | Milestone 2 review: 20 findings fixed (see decisions, "M2 review") |
-| 11 | docs, events, final checks | todo | | |
+| 11 | docs, events, final checks | done | 4e3aa0d | Full guide (no images yet: an HTML comment marks where the screenshots go); README, architecture, adding-a-tool, CLAUDE.md; events.md regenerated (22 events, unchanged); 766 tests OK (2 skipped) parallel and serial; ruff clean |
 | M3 | push milestone 3, ask for merge go-ahead | todo | | |
 
 ## Decisions taken during the build
@@ -230,3 +230,12 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   (Parts "…"), then a second worker reads each zip and fills the cell (`report.parts_cell`: "Interface, WTF",
   "WTF", "?" for an unreadable zip, which stays listed); it checks `is_cancelled` and the update is skipped once
   the screen has left. Columns are keyed by label. Flavor stays the display name (M2 fix).
+- Task 11: the guide has no image links (no Interface Backup screenshots yet); `<!-- screenshots: summary, restore
+  screen, result -->` marks the place. It uses the M2 labels (Undo (z), no Flavors/Tools buttons on the summary).
+- Task 11: `docs/events.md` lists 22 `ibackup.*` events (the plan said 21; Task 6 added `restore_failed`); the
+  regeneration changed nothing.
+- Task 11: README Version History gets an "Unreleased" row (no `__version__` bump); the 1.0.0 row's "two tools"
+  is left as it describes that version. README FAQ/navigation wording now covers three tools. The Tests badge
+  (405) is not updated here (left to the release bump).
+- Task 11: no `git push` in this run (the orchestrator forbids it); milestone 3 push and the merge go-ahead stay
+  with the user. `./wow-tools.sh` is interactive, so the TUI tests are the end-to-end check.
