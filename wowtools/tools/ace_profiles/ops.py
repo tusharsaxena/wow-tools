@@ -2,7 +2,7 @@
 
 Each database gets a DbState: the staged profileKeys mapping (None = entry removed), the staged profile table
 (name -> Original(name in the file) or CopyOf(original name)) and the staged LibDualSpec spec values. Operations
-only change these; compile_file() (Task 7) turns them into byte edits. Changes() is always the difference from the
+only change these; compile_file() turns them into byte edits. Changes() is always the difference from the
 file, so operations compose and discard() is just a reset.
 """
 from __future__ import annotations
@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from wowtools.core.events import log_event
+from wowtools.tools.ace_profiles.luasv import Field, Table, encode_string, line_start, newline_of, splice
 from wowtools.tools.ace_profiles.model import DEFAULT, AceDb
 from wowtools.tools.ace_profiles.scanner import ScanResult, SvFile
 
@@ -323,3 +324,86 @@ class Staging:
             out.lds += len(changes.lds)
         out.files = len(files)
         return out
+
+
+@dataclass
+class Expected:
+    """What a database must read back as after the edit (verify.verify_edit)."""
+    profile_keys: dict[str, str]
+    profiles: dict[str, bytes]
+    namespaces: dict[str, dict[str, bytes]]
+    lds: dict[str, dict[int, str]]
+
+
+@dataclass
+class FileEdit:
+    file: SvFile | None
+    data: bytes
+    changes: list[str]
+    expected: dict[str, Expected]
+
+
+def _table_edits(data: bytes, table: Table | None, entries: dict[str, Field], staged: dict[str, Source],
+                 nl: bytes) -> tuple[list[tuple[int, int, bytes]], dict[str, bytes]]:
+    """Edits that turn this profiles table into the staged one, and the expected {name: value bytes}."""
+    if table is None:
+        return [], {}
+    edits: list[tuple[int, int, bytes]] = []
+    placed = {src.name: name for name, src in staged.items() if isinstance(src, Original)}
+    for original, item in entries.items():
+        if original not in placed:
+            edits.append((item.remove_span[0], item.remove_span[1], b""))
+        elif placed[original] != original:
+            edits.append((item.key_span[0], item.key_span[1], b"[" + encode_string(placed[original]) + b"]"))
+    expected = {}
+    for name, src in staged.items():
+        item = entries.get(src.name)
+        if item is not None:
+            expected[name] = data[item.value.start:item.value.end]
+    inserts = [b"[" + encode_string(name) + b"] = " + expected[name] + b"," + nl
+               for name, src in staged.items() if isinstance(src, CopyOf) and name in expected]
+    if inserts:
+        kept = [item for name, item in entries.items() if name in placed]
+        last = kept[-1] if kept else None
+        if last is not None and data[last.entry_end - 1:last.entry_end] not in (b",", b";"):
+            edits.append((last.value.end, last.value.end, b","))
+        at = line_start(data, table.close)
+        if data[at:table.close].strip(b" \t"):
+            edits.append((table.close, table.close, nl + b"".join(inserts)))
+        else:
+            edits.append((at, at, b"".join(inserts)))
+    return edits, expected
+
+
+def compile_file(states: list[DbState], data: bytes) -> FileEdit:
+    """Byte edits for every changed database of one file, applied in one splice."""
+    nl = newline_of(data)
+    edits: list[tuple[int, int, bytes]] = []
+    changes: list[str] = []
+    expected: dict[str, Expected] = {}
+    file = states[0].file if states else None
+    for state in states:
+        db = state.db
+        for char, item in db.key_fields.items():
+            new = state.keys.get(char)
+            if new is None:
+                edits.append((item.remove_span[0], item.remove_span[1], b""))
+            elif new != db.profile_keys[char]:
+                edits.append((item.value.start, item.value.end, encode_string(new)))
+        main_edits, main_expected = _table_edits(
+            data, db.profiles_table, {n: e.field for n, e in db.profiles.items()}, state.profiles, nl)
+        edits += main_edits
+        namespaces = {}
+        for ns in db.namespaces.values():
+            ns_edits, namespaces[ns.name] = _table_edits(data, ns.table, ns.entries, state.profiles, nl)
+            edits += ns_edits
+        lds: dict[str, dict[int, str]] = {}
+        for (char, spec), new in state.lds.items():
+            item = db.lds[char].specs[spec]
+            if new != item.value.value:
+                edits.append((item.value.start, item.value.end, encode_string(new)))
+            lds.setdefault(char, {})[spec] = new
+        expected[db.sv_name] = Expected({c: p for c, p in state.keys.items() if p is not None}, main_expected,
+                                        namespaces, lds)
+        changes += [f"{db.sv_name}: {line}" for line in state.changes().lines()]
+    return FileEdit(file, splice(data, edits), changes, expected)
