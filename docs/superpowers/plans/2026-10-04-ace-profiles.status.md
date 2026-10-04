@@ -22,7 +22,7 @@ merge, delete every branch, stash and worktree this run created.
 | M2 | push milestone 2 | done (pushed) | 8c6f4fd | review fixes: zips kept when a journal is unreadable, recovery only reverts what the run wrote, a stopped flavor's result reaches the report, marker write failure is an ApplyError, removed characters under the right profile row; full suite 928 OK (2 skipped), ruff clean |
 | 11 | flow, settings screen, registration | done | 60460ad | tool registered after Interface Backup; settings screen + flow mirror the WTF Cleaner's; review screen is the Task 12 layout stub (filters pane, four buttons, `ProfileTree #profiles`, f/Esc/t/q); README row + guide link, `docs/ace-profiles.md` stub; events.md unchanged by regeneration; 3 ace_app tests OK; ace 369 OK; full suite 931 OK (2 skipped), ruff clean |
 | 12 | review screen: tree, ticks, filters, blacklist | done | 33bbe9a | tree building split into `tree_view.py` (`TreeBuilder`, `Filters`, `ident`) as the plan allows; screen 570 lines; d/p/e/k/o/m/x/w/y/z are notify stubs for Tasks 13–14; recovery marker is read and kept on `self.marker` (`offer_recovery` notifies until Task 14); 9 ace_app tests OK (+1 added); ace 375 OK; full suite 937 OK (2 skipped), ruff clean; events.md unchanged |
-| 13 | popups + staging from the tree | todo | | |
+| 13 | popups + staging from the tree | done | 9a888c0 | `popups.py` (`TargetScreen`, `NameScreen`, `ActionsScreen`, shared `popup_css`); d/p/e/k/o/m/x staged from the tree, refusals notified as warnings, ticks of changed databases cleared; w/y/z stay stubs for Task 14; 5 StagingTest tests OK; ace 380 OK; structure OK; full suite 942 OK (2 skipped), ruff clean |
 | 14 | apply, dry run, undo, recovery, result screens | todo | | |
 | M3 | push milestone 3 | todo | | |
 | 15 | docs + final battery | todo | | |
@@ -101,3 +101,9 @@ merge, delete every branch, stash and worktree this run created.
   filters per database. Space typed in the search box goes into it (Space is priority-bound for ticking).
 - Task 12: added `test_all_ticks_visible_profiles_and_characters` (`a` ticks profiles and characters, only
   visible ones under a search; hidden ticks survive clearing the search).
+- Task 13: the popups import goes in the sorted import block of `tests/test_ace_app.py`, not appended with
+  `# noqa: E402`. Quick actions (Keep only Default, Everyone → Default) with nothing ticked act on the highlighted
+  node's database (a profile, character or database node) or every database of a highlighted addon; on any other
+  node they notify "Tick or highlight an addon first". The rename/copy `NameScreen` also refuses a name already
+  taken in that database (staging refuses it too). Ticks are cleared only for databases the operation changed;
+  refused ones keep theirs.
