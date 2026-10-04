@@ -28,6 +28,10 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
      `screenshot_organizer/`, `wtf_cleaner/` and `interface_backup/`, whose journal records restores only), offer only `latest_undoable(dir)`, `mark_undone()` after an
      undo, and give the review screen an amber Undo button (`action_button(..., "revert")`, key `z`, confirm
      starting on No). A dry run writes no journal.
+   - **Code another tool already has** moves to `wowtools/core/` first, never imported across tools. A tool that
+     changes SavedVariables files takes the whole-`WTF` snapshot from `core/snapshot.py` (folder and name prefix are
+     parameters), the path guard and lock probe from `core/svfiles.py`, and `core.fsutil.atomic_write_bytes` for its
+     writes, as the WTF Cleaner and the Ace3 Profile Manager do.
    - `settings.py` for the tool's own settings: the `[screenshot_organizer]` section of `config/screenshot-organizer.cfg`.
      Follow `wtf_cleaner/settings.py`; it takes the tool's `Config`, never the suite one.
    - `app.py` with `class ScreenshotsFlow(ToolFlow)` and `FLOW = ScreenshotsFlow`. `start()` pushes the first

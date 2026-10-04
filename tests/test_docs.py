@@ -45,3 +45,20 @@ class DocsTest(unittest.TestCase):
             self.assertIn(needle, readme)
         for gone in ("wtf-cleaner.cmd", "wtf-cleaner.sh", "--flavor", "python -m wowtools"):
             self.assertNotIn(gone, readme)
+
+    def test_ace_profiles_guide_and_readme(self):
+        guide = (REPO_ROOT / "docs" / "ace-profiles.md").read_text(encoding="utf-8")
+        for needle in ("Close WoW", "## Step by step", "## The review screen", "## Keys on the review screen",
+                       "Keep only Default", "Everyone → Default", "blacklist", "unlock", "## What the tool never touches",
+                       "## Dry run", "## Undo last change", "changed since", "snapshots\\snapshot-<flavor>-",
+                       "edited\\edited-<flavor>-<account>-", "journal\\journal-", "edit-in-progress.json",
+                       "Put the originals back", "## Settings", "keep_snapshots", "## FAQ", "LibDualSpec",
+                       "missing", "no character folder", "## Troubleshooting", "<!-- screenshots:"):
+            self.assertIn(needle, guide)
+        for key in ("Space", "`a`", "`n`", "`d`", "`p`", "`e`", "`k`", "`o`", "`m`", "`x`", "`b`", "`u`", "`v`",
+                    "`/`", "`w`", "`y`", "`r`", "`z`", "`f`", "`t`", "`s`", "`q`"):
+            self.assertIn(key, guide)
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("config\\ace-profiles.cfg", readme)
+        claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertIn("Ace3 Profile Manager (`ace-profiles`, package `tools/ace_profiles`)", claude)

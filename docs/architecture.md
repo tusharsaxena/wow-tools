@@ -29,12 +29,14 @@ stay thin.
 | `config` | `config/wow-tools.cfg` (`[general]`) plus `config/<tool>.cfg` per tool (`tool_config_path()`); typed accessors; `config.changed` events; `migrate_legacy_config()` splits the old root `wow-tools.cfg`. `save()` is atomic and runs on the UI thread only (the background update check hands its values back through `check_for_update(persist=...)`) |
 | `migrate` | Start-up moves for renamed tools (`wowtools.tools.RENAMED_TOOLS`, one `ToolRename` line each): `migrate_tool_config()` turns `config/<old>.cfg` into `config/<new>.cfg` with the section renamed; `merge_folder()` moves `logs/<old>/` and `<WoW>/wow-tools/<old>/` to the new name. Never overwrites (details below) |
 | `lock` | `InstanceLock` on `wow-tools.lock` (O_EXCL create; holder pid, host, start time, platform (WSL via `paths.is_wsl`, the suite's one check), token). `acquire()` returns the holder on conflict; `take_over()`; `release()` removes the file only if it is still ours. `LockInfo.stale` is known only on POSIX for a lock from this host |
-| `fsutil` | `atomic_write_text()` (write `<name>.partial`, then `os.replace`), used for every config write; `rename_no_replace()` (refuses an existing target with no check-then-act window: a hard link then unlink on POSIX, `os.rename` on Windows; falls back to check + rename where hard links are unsupported); `free_name(folder, stem, suffix)` (`-2`, `-3`, ... for same-second names: journals, WTF backups, cleaned zips, Interface Backup zips); `remove_quietly()` (delete one of our own temporary or partial files, ignoring errors); `safe_progress(cb)` (wraps a run's progress callback so an error in it never disturbs the run; every clean, organize, backup, restore and undo uses it); `is_link(entry_or_path)` (a symlink, or on Windows a junction or directory symlink by its reparse tag; never raises); `is_real_dir(path)` (a folder that is not itself a link, from one lstat); `read_link(path)` → `(target, junction)` or None, and `make_link(target, path, junction=)` (a junction on Windows when it was one, else a symlink), which Interface Backup's Undo uses to make again a link a restore removed; `remove_tree_no_follow(path)` (delete a folder tree, removing links inside it as links and never descending into them; a link given as `path` is just unlinked) |
+| `fsutil` | `atomic_write_bytes()` (remove whatever sits at `<name>.partial` without following it, create it with `O_CREAT\|O_EXCL` (+`O_NOFOLLOW`), write, then `os.replace`; the Ace3 Profile Manager's SavedVariables writes) and its wrapper `atomic_write_text()` (`\n` written as `os.linesep`), used for every config write; `rename_no_replace()` (refuses an existing target with no check-then-act window: a hard link then unlink on POSIX, `os.rename` on Windows; falls back to check + rename where hard links are unsupported); `free_name(folder, stem, suffix)` (`-2`, `-3`, ... for same-second names: journals, WTF backups, cleaned zips, Interface Backup zips); `remove_quietly()` (delete one of our own temporary or partial files, ignoring errors); `safe_progress(cb)` (wraps a run's progress callback so an error in it never disturbs the run; every clean, organize, backup, restore and undo uses it); `is_link(entry_or_path)` (a symlink, or on Windows a junction or directory symlink by its reparse tag; never raises); `is_real_dir(path)` (a folder that is not itself a link, from one lstat); `read_link(path)` → `(target, junction)` or None, and `make_link(target, path, junction=)` (a junction on Windows when it was one, else a symlink), which Interface Backup's Undo uses to make again a link a restore removed; `remove_tree_no_follow(path)` (delete a folder tree, removing links inside it as links and never descending into them; a link given as `path` is just unlinked) |
 | `activity` | `running()` context manager that file-changing workers (clean, organize, backup, restore, undo) enter; `wait_idle(timeout)`. `suite.run()` waits on it before releasing the lock, so a worker still writing never shares its folders with a second copy |
 | `events` | Registry of event names with fixed levels; JSONL + text sinks (files kept open, flushed per line, closed on a new day and at exit); `log_event()`; `capture_events()` for tests |
 | `install` | `WowInstall` → `Flavor` → `Account` → `Character`; install auto-detection. A flavor is any `_name_` folder in the WoW folder, whatever it holds. `validate_output_dir()` refuses a tool output folder that is relative, the WoW folder, or inside a flavor's `WTF`/`Interface`/`Screenshots` (every tool with an output folder uses it on save and before use) |
 | `journal` | Run journals, the suite standard for any tool that changes files: JSON Lines (header, one line per completed change flushed at once, `{"finished"}`, `{"undone"}`). `journal_dir(wow_path, tool)` = `<WoW>/wow-tools/<tool>/journal/`; `new_journal_path`, `JournalWriter` (`open()` exclusive-creates and writes the header, `add_entry()`, `finish()`, `discard_if_empty()`), `read_journal(path, path_fields=)`, `list_journals` (newest first), `latest_undoable` (newest journal with entries, never past an undone one), `mark_undone`, `prune_journals(dir, keep)`, `friendly_stamp`. Path values go through `to_stored()` / `to_native()`. Tools add their own entry fields and undo rules |
 | `backup` | Zip + `manifest.json`, verified before it is moved into place; optional `on_file(current, total, name)` hook for progress. `verify_backup(zip, expected, progress)` reads every entry back (CRC) and compares sizes. `walk_files(folder, on_link=, on_error=, on_count=)`: every regular file under a folder as `DirEntry`s (depth first, names sorted), never following a link (each goes to `on_link`), an unreadable sub-folder to `on_error`; the WTF Cleaner's `wtf_files` and Interface Backup's scanner use it |
+| `snapshot` | The whole-`WTF` safety zip shared by the tools that change SavedVariables: `wtf_files(flavor, progress)` (every regular file under `<flavor>/WTF`, links skipped), `take_snapshot(flavor, folder, prefix, now, progress=, must_hold=)` (zip to `folder/<prefix>-<flavor>-<stamp>.zip`, verify, `rename_no_replace` into place), `snapshot_path`, `prune_snapshots(folder, prefix, flavor_short, keep)`. The WTF Cleaner uses `backup/backup-…`, the Ace3 Profile Manager `snapshots/snapshot-…` |
+| `svfiles` | SavedVariables safety checks shared by those tools: `SvGuard(flavor)` (refuses a path that resolves outside `<flavor>/WTF/Account` or not directly in a `SavedVariables` folder, `SvFileError`; each parent folder is resolved once, a file that is a link in full), `lstat_or_none`, `probe_lock(path)` (rename to `<name>.wowtools-lockcheck` and straight back; the error when another program holds it), `recover_probe_leftovers(folders)` (renames a probe leftover back after a crash) and `saved_variables_folders(flavor, account)` |
 | `process` | Best-effort "is WoW running?" per flavor: `running_wow_processes()` returns `WowProcess(name, path)` (PowerShell `Get-CimInstance Win32_Process` on Windows/WSL, `/proc/<pid>/cmdline` on Linux, name-only `tasklist` fallback, `None` on macOS); `processes_for_flavor()` matches the executable's parent folder to the flavor folder, ignoring case and `\`/`/`; `wow_check_for(flavor)` is the check the review screen and CLI call |
 | `updater` | GitHub Releases check (24 h throttle; a future stamp never throttles; records the release's assets), git fast-forward (120 s timeout per step that kills git's whole process tree, output via temp files, no prompts: `GIT_TERMINAL_PROMPT=0`, and `ssh -oBatchMode=yes` only when no `GIT_SSH_COMMAND`/`GIT_SSH`/`core.sshCommand` is set; untracked files ignored) or zip replace with rollback (downloads the `wow-tools-vX.Y.Z.zip` asset and checks its SHA-256 against the `SHA256SUMS` asset before touching anything; without `SHA256SUMS` it refuses unless `allow_unverified_updates`, then falls back to the zip asset or the source zipball; replaces the managed names plus only the root `*.md` files the release ships; keeps 2 `.update-backup/<version>` folders: the one this update made plus the highest other version); a zip update also removes `RETIRED_FILES` (the old `wtf-cleaner.cmd/.sh`) |
 
@@ -51,7 +53,11 @@ folder; absent until first chosen, and then the picker pre-selects `[general] la
 least 1). `config/interface-backup.cfg` `[interface_backup]`: `backup_dir` (empty = `<wow_path>/wow-tools`;
 zips go to its `interface-backup` folder, `settings.resolve_backup_root()`), `keep_backups` (per flavor, default
 10, 0 = never delete, negative or bad = 10), `keep_journals` (restore journals, default 10, at least 1) and
-`last_flavor_choice` (empty = all flavors, else a flavor folder). The retired `[general] backup_dir` is dropped by the migration. Paths are stored in Windows form when they point at a
+`last_flavor_choice` (empty = all flavors, else a flavor folder). `config/ace-profiles.cfg` `[ace_profiles]`:
+`backup_dir` (empty = `<wow_path>/wow-tools`; files go to its `ace-profiles` folder, `settings.resolve_root()`),
+`keep_snapshots` (whole-WTF snapshots per flavor, default 2, at least 1), `keep_journals` (default 10, at least 1;
+an `edited-*.zip` goes with the last journal naming it), `blacklist` (comma-separated addon names, matched
+ignoring case), `last_flavor_choice` and `last_account` (empty = all accounts). The retired `[general] backup_dir` is dropped by the migration. Paths are stored in Windows form when they point at a
 Windows drive. Unknown keys are preserved, and bad values fall back to defaults.
 
 **Renamed tools.** `suite.run()` applies every `RENAMED_TOOLS` line on each start, after the instance lock is
@@ -139,7 +145,7 @@ that is missing for now, such as an unplugged backup drive), so Undo can be trie
 
 ### Safety snapshot (`tools/wtf_cleaner/safety.py`)
 
-UI-free. `take_snapshot()` zips the whole `<flavor>/WTF` folder to `backup/backup-<flavor>-<stamp>.zip`
+UI-free; thin wrappers over `core/snapshot.py` and `core/svfiles.py` (names, messages and file names unchanged). `take_snapshot()` zips the whole `<flavor>/WTF` folder to `backup/backup-<flavor>-<stamp>.zip`
 in the backup folder and verifies it; the user-facing name is "WTF backup". It is kept after the clean, and
 `prune_snapshots(backup_dir, flavor_short, keep)` deletes all but that flavor's newest `keep_backups`
 (`backup-<flavor>-<stamp>[-N].zip` names only, newest by stamp then N).
@@ -405,15 +411,135 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
   (`RestoreResult.swapped`: a part `restored` or `replaced_left`; a swap the journal could not record does not
   count; it rescans, then undoes if that journal is still the undoable one); `r`, `f`, `t`, `q`.
 
+## Ace3 Profile Manager data flow
+
+    scan_flavors(flavors, account=None, progress=None) → ScanResult(flavors[FlavorScan(flavor, accounts[AccountScan(files[AddonFile(SvFile, dbs[AceDb])], characters)], warnings, error)])
+    Staging.from_scan(scan, locked=) → delete / assign / rename / copy / remove_leftovers / keep_only_default / everyone_to_default → OpResult(applied, refused, notes)
+    compile_file(states_of_one_file, data) → FileEdit(file, data, changes, expected{sv_name: Expected})
+    verify_edit(edit, old_bytes) → [problems]
+    apply_flavors([(flavor, [DbState]), ...], root, journal_dir, keep_journals, keep_snapshots, dry_run, account, wow_check, progress)
+                      → MultiApplyResult(dry_run, runs[FlavorRun(flavor, result: ApplyResult, error)], journal_path)
+    undo_run(journal_path, wow_root, root, keep_snapshots, wow_check, progress) → UndoResult(outcomes, snapshots)
+    recover(marker, root, wow_check, progress) → UndoResult
+
+Modules in `tools/ace_profiles/` (all UI-free except `app.py`, `review_screen.py`, `tree_view.py`, `popups.py` and
+`result_screen.py`): `events`, `settings`, `luasv`, `model`, `scanner`, `ops`, `verify`, `editor`, `multi`,
+`journal`, `undo` and `report` (labels, tags, stage titles, confirm texts, result rows).
+
+**Never re-serialize.** Every change is a byte-span splice; every byte outside the edited spans stays identical.
+Only `profileKeys` entries, `profiles` entries, `namespaces[*].profiles` entries and the LibDualSpec
+`namespaces["LibDualSpec-1.0"].char[*]` spec values may change.
+
+**Parse** (`luasv.py`). A stdlib tokenizer over the file's raw bytes (strings decode as UTF-8 with
+`surrogateescape`). `parse(data, descend)` returns a `Chunk` of `Assignment`s; a table field is a `Field` with
+`entry_start`/`entry_end` (the separator, plus the rest of its line when only whitespace follows, so removing an
+entry removes its line), `key_span` and `value_span`; a `Table` records its braces. Values whose path `descend`
+rejects are skipped by a compiled-regex scanner that only finds their end (`Opaque`), so a 12 MB file parses in
+about a second. Numbers WoW writes oddly (`1.#INF`) stay text (`RawNumber`). `splice(data, edits)` applies
+non-overlapping `(start, end, bytes)` edits from the end; `encode_string`/`decode_string` round-trip Lua
+strings; new text uses the file's own line ending (`newline_of`). A parse error is `LuaParseError(offset)`.
+
+**Model** (`model.py`). `has_profile_keys(data)` pre-filters (no `profileKeys` bytes: never parsed).
+`ace_descend` descends only into the database table, `profileKeys`, the keys of `profiles`, each namespace's
+`profiles` keys and LibDualSpec's `char` tables. `find_dbs(chunk, data)` keeps a top-level table as an `AceDb` when
+`profileKeys` maps `"Name - Realm"` strings to strings and `profiles` (if present) maps strings to tables; any
+other look-alike is a note (`ace.lookalike`) and left alone. `AceDb` holds the mapping, `ProfileEntry` per
+profile (field, empty, size), `NamespaceProfiles` per module and `LdsChar` per character.
+
+**Scan** (`scanner.py`). Per flavor and account (`account=` narrows it): the account's and each character's
+`SavedVariables/*.lua` (`candidate_files`: regular files directly in the folder, exactly `.lua`, not `Blizzard_*`,
+no link), skipping a SavedVariables folder under a link (a scan warning). Each file is read once; `SvFile` keeps
+path, flavor, account, owner character, size, mtime and SHA-256 (not the bytes). Characters come from the
+`<Realm>/<Name>` folders; `AccountScan.is_leftover` compares `"Name - Realm"` ignoring case. Unreadable and
+unparsable files become `ScanWarning`s.
+
+**Staging** (`ops.py`). `Staging` holds a `DbState` per database (`DbKey(path, sv_name)`): `keys` (character →
+profile, or removed), `profiles` (name → `Original(name)` or `CopyOf(name)`), `module_only` (profiles that exist
+only in a namespace: they change only when a delete or rename names them), the LibDualSpec specs and the
+leftovers. Operations change only this model and return `OpResult` (`applied` keys, `refused` with a reason per
+database, `notes`). A locked (blacklisted, not unlocked) addon is refused; `drop_locked()` resets one that became
+locked, and `changed()`/`summary()` never include one. `DbState.changes()` lists deleted, renamed, copied,
+reassigned and removed entries; `Summary` counts them for the left pane and the confirm.
+
+**Compile and verify** (`ops.compile_file`, `verify.py`). Per file, the staged states become edits against the
+parsed original: a changed `profileKeys` value is a value-span replace, a removed one an entry removal; in
+`profiles` and every namespace holding the profile a delete removes the entry, a rename replaces the key span and a
+copy inserts `[new] = <source value bytes verbatim>,` before the closing brace; LibDualSpec spec values follow
+renames and deletes. `FileEdit` carries the new bytes, human-readable change lines and an `Expected` model per database.
+`verify_edit` parses the new bytes again and compares: the mapping, profile names per table, LibDualSpec entries,
+each kept or copied profile byte-identical to its source, every other top-level variable and the gaps between
+them byte-identical, and the namespaces section with only the profile tables and spec values cut out. Any
+mismatch fails the file (`ace.verify_failed`) and stops the run before anything is written.
+
+**Apply** (`editor.apply_flavor`, `multi.apply_flavors`). `apply_flavors` refuses while WoW runs (`WowRunning`,
+skipped for a dry run), opens one `ProfileJournal` for the run, then per flavor: `SvGuard`; recheck each file's
+SHA-256 (a changed file is skipped, "changed since the scan; rescan", `ace.file_changed`); compile and verify. A
+dry run stops here (`would_edit` outcomes, nothing written). A real run: journal open, probe leftovers recovered,
+lock probe (`probe_lock`; any locked file refuses), whole-WTF snapshot (`core.snapshot`,
+`<root>/snapshots/snapshot-<flavor>-<stamp>.zip`), the originals zip `<root>/edited/edited-<flavor>-<acct|all>-<stamp>.zip`
+(`core.backup`, verified), the crash marker `<root>/edit-in-progress.json` (`Marker`: flavor, flavor path, zip,
+`files` rel → original SHA-256, `after` rel → SHA-256 of what the run writes, started, pid, suite version), then
+per file: recheck, `atomic_write_bytes`, read back, journal `edited` entry. Any failure there (Ctrl+C included)
+puts back every file this run wrote, newest first, records `rolled_back` in the journal and raises `ApplyError`
+(its `result` keeps what was done; a file that could not be put back is `failed`, its detail naming the zip, and
+the marker then stays). Then the marker is cleared and snapshots pruned to `keep_snapshots`. Any refusal before the
+writes is an `ApplyError` ending "Nothing was changed."; a flavor that stops ends the run (`ace.flavors_stopped`).
+Afterwards journals are pruned to `keep_journals` and `prune_edited_zips` deletes only `edited-*.zip` files no kept
+journal names (nothing when a journal cannot be read).
+
+**Journal and Undo** (`journal.py`, `undo.py`). `<WoW>/wow-tools/ace-profiles/journal/journal-<stamp>.jsonl`:
+
+    {"version": 1, "started": iso, "tool": "ace-profiles", "kind": "apply", "flavors": [...], "root": stored, "suite_version": "..."}
+    {"action": "edited", "flavor": "_retail_", "path": stored, "rel": "WTF/Account/...", "zip": stored, "sha_before": hex, "sha_after": hex, "size_before": n, "size_after": n, "changes": [...]}
+    {"action": "rolled_back", "flavor": "_retail_", "rels": [...]}
+    {"finished": iso, "entries": n}
+    {"undone": iso, "restored": n, "skipped": n}
+
+`read_profile_journal` drops `edited` entries a `rolled_back` line names. `latest_undoable` is the newest journal of
+the whole tool. `undo_run` refuses while WoW of a flavor the journal changed runs and when a file is locked
+(`UndoError`), snapshots each of those flavors, then newest entry first: a file whose SHA-256 is `sha_after` gets
+its original bytes from the zip (checked against `sha_before`, written atomically: "restored"); any other file is
+"skipped: changed since"; the journal is marked undone unless nothing was restored and something failed.
+`recover(marker)` (the recovery popup's "Put the originals back") is guarded the same way and puts back only files
+still at the marker's `after` hash; a file at its original is left alone, any other is skipped.
+
+### Ace3 Profile Manager screens
+
+`app.py` holds `AceProfilesFlow` (`FLOW`: `require_install` → `ProfileSettingsScreen` on the tool's first open →
+`FlavorScreen(include_all=True, last=last_flavor_choice)` → `AccountScreen` for one flavor with several accounts
+(`last_account`) → `ProfileReviewScreen`; `unlocked`, the addons unlocked this session, lives on the flow) and
+`ProfileSettingsScreen` (backup folder, WTF backups and journals to keep, blacklist; `validate_backup_dir` errors
+inline). `s` opens the shared WoW-folder settings, then this tool's.
+
+- `ProfileReviewScreen` (`review_screen.py`): `TwoPaneFocus`, `two_pane_css`. Left pane `#filters`: the View pair
+  (By addon / By character), the Show boxes, the search `Input`, the `#staged` line (`report.staged_text`) and the
+  action row **Apply** (delete variant), **Dry run**, **Rescan**, **Undo last change** (revert). Right:
+  `ProfileTree` (`#profiles`), built by `tree_view.TreeBuilder` from the scan, the staging and `Filters`; each
+  rebuild keeps expansion and the cursor by `ident`. Labels and tags come from `report.profile_rows` and
+  `char_tags`. Ticks are `("p", DbKey, profile)` and `("c", DbKey, char)`; groups tick their descendants; locked
+  addons, deleted profiles, removed characters and notes are read-only. `#summary` is `report.selection_text`.
+  The scan, the running-WoW preflight, Apply/dry run, Undo and recovery each run in a worker; the jobs set
+  `app.busy` and run inside `activity.running()`.
+- `popups.py`: `TargetScreen` (delete and assign: a target `Select` plus a new-name `Input`), `NameScreen` (rename
+  and copy, with live validation) and `ActionsScreen` (the `m` menu: quick actions plus every key the footer
+  hides), sharing `popup_css`. Apply and Undo use `ConfirmScreen` (`report.apply_confirm`/`undo_confirm`; alerts
+  in red; Apply and Undo start on No, a dry run on Yes).
+- `ProfileProgressScreen` (ids `ace-*`, `report.STAGE_TITLES`) and `ProfileRecoveryScreen` (Put the originals
+  back / Leave as is; Esc leaves the marker for the next scan).
+- `ProfileResultScreen` (`result_screen.py`): `result_css`; `#result-summary` (`apply_summary_rows` or
+  `undo_summary_rows`) above `#result-table` (`DETAIL_COLUMNS` or `UNDO_COLUMNS`); Rescan (r), Other flavor (f),
+  Tools (t), Quit (q), plus a focused **Back to review (Esc)** after a dry run. After a real Apply or Undo the
+  staging is dropped and the review rescans when shown again.
+
 ## UI
 
 `Ka0sApp` registers the `ka0s` theme, starts the background update check, handles `u`, and exposes
 the `after_mount()` hook. Every screen shows a `Header`, the `BrandBar` and a `Footer`. Long-running or blocking work
-runs in thread workers and reports back with `call_from_thread`: scan, clean, organize, backup, restore, undo, and also the
+runs in thread workers and reports back with `call_from_thread`: scan, clean, organize, backup, restore, profile apply, undo, and also the
 running-programs check before a clean, backup, restore or undo confirm (PowerShell/`tasklist`; the
 review screen shows "Checking for running programs…" and ignores its action keys meanwhile), install detection on the setup screen, the organizer's
 per-flavor waiting counts (`FlavorScreen.set_notes()`), and an accepted in-app update (`UpdateProgressScreen`,
-with `app.busy` set). While a clean, organize, backup, restore or undo runs, `app.busy` is set: every key that would leave the screen is refused, and so is Ctrl+Q
+with `app.busy` set). While a clean, organize, backup, restore, profile apply, recovery or undo runs, `app.busy` is set: every key that would leave the screen is refused, and so is Ctrl+Q
 (`Ka0sApp.action_quit`, logged as `ui.quit_refused`).
 An unhandled exception in a handler or worker is logged as `error` with `where=ui` by `Ka0sApp._handle_exception`
 (a private Textual hook, pinned by a test) before Textual exits; `suite.run()` returns the app's `return_code`, so
@@ -427,7 +553,7 @@ Shared screens and widgets in `wowtools/ui/`:
 | `tool_flow` | `ToolFlow` base: `start()`, `open_settings()`, `close()`, `require_install()` (shared WoW-folder setup) |
 | `setup_screen` | General setup: the WoW folder only |
 | `flavor_screen` | `FlavorScreen(cfg, install, *, include_all=False, last=None, flavors=None)`: the flavor picker. `include_all` adds "All flavors" first (dismisses with `ALL_FLAVORS`); `last` is the folder to pre-select (`""` = All flavors, `None` = `[general] last_flavor`); `flavors` replaces `install.flavors()`; `note`/`all_note` fill the remarks column and `set_notes()` replaces them later. Picking one flavor saves `[general] last_flavor`. |
-| `account_screen` | `AccountScreen(cfg, flavor, last)`: "All accounts" plus each account. Dismisses with the name, `""` for all, or `None` for back. The WTF Cleaner shows it only when a flavor has more than one account and saves the choice as `[wtf_cleaner] last_account`. |
+| `account_screen` | `AccountScreen(cfg, flavor, last)`: "All accounts" plus each account. Dismisses with the name, `""` for all, or `None` for back. The WTF Cleaner and the Ace3 Profile Manager show it only when a flavor has more than one account and save the choice as their own `last_account`. |
 | `dialogs` | What every tool's screens share, so no tool imports another tool's screens: `ConfirmScreen(title, body, alerts=(), *, default_yes=False)` (yes/no; `alerts` in red; risky actions start on No), `ProgressScreen` (stage, bar and current file of a run; a tool subclasses it with `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, and calls `update_progress(stage, current, total, detail)`, plus `set_flavor(label)` across several flavors), `tick_mark(items, unchecked, key, success=)` (✔ / ◩ / ✘ for a review-tree line), `relabel_branch(tree, node, label, skip=)` (after a tick), the `TwoPaneFocus` mixin (←/→ between the left `#filters` panel and the tree), `theme_colour(app, name)` (the theme's colour, or the Ka0s one before a theme is set), and the one look every tool's screens are built from: `two_pane_css(screen, tree, width=FILTERS_WIDTH)` (review: left pane `#filters`, `FILTERS_WIDTH` = 50, one-row actions, scan box, summary), `ACCENT` (names in a tree) and `BUSY_STYLE` (a summary line while work runs), `result_css(screen)`, `settings_css(screen)`, and the hint starts `REVIEW_HINT` / `review_hint(space)` and `RESULT_HINT` |
 | `widgets` | `action_button(label, action)` and `ACTION_VARIANTS` (one colour per kind of action in every tool: delete red, apply green, simulate blue, revert amber, confirm blue, neutral grey), `LIST_NAME_STYLE` / `LIST_CURSOR_BACKGROUND` (pick lists), `Ka0sCheckbox` (✔/✘ marks), `ButtonRow` (←/→ move focus between its buttons, Space presses the focused one), `NAV_BINDINGS` (↑/↓ move focus; not priority bindings, so a focused tree, list, table or input keeps its arrow keys), and `NavHint` (the one-line key hint every screen shows), `FormScroll` (a scrolling form where ↑/↓ still move focus; `open_at_top()` after the first focus) |
 

@@ -27,9 +27,9 @@ Every tool works with every version of the game you have installed: Retail, Clas
 and the PTR and Beta clients. You can work on one version at a time or all of them at once.
 
 No tool changes anything until you say so. Each one shows you what it will do first and asks before it
-touches a file. The WTF Cleaner and the Screenshot Organizer can also do a practice run (a **Dry run**) that
-shows what would happen without changing anything. And if you change your mind afterwards, you can undo the last
-clean, the last sort or the last restore.
+touches a file. The WTF Cleaner, the Screenshot Organizer and the Ace3 Profile Manager can also do a practice run
+(a **Dry run**) that shows what would happen without changing anything. And if you change your mind afterwards, you
+can undo the last clean, the last sort, the last restore or the last profile change.
 
 ## Screenshots
 
@@ -117,7 +117,7 @@ The app opens in a terminal window. You drive it with the keyboard:
 | `q` | Quit |
 
 Each screen lists its keys along the bottom, so you don't have to remember them. A mouse works too. While a tool is
-changing or writing files (a clean, a sort, a backup, a restore or an undo), the app won't quit until it has
+changing or writing files (a clean, a sort, a backup, a restore, a profile change or an undo), the app won't quit until it has
 finished.
 
 ### The first time
@@ -179,6 +179,7 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 | `config\wtf-cleaner.cfg` | The WTF Cleaner's settings |
 | `config\screenshot-organizer.cfg` | The Screenshot Organizer's settings |
 | `config\interface-backup.cfg` | Interface Backup's settings |
+| `config\ace-profiles.cfg` | The Ace3 Profile Manager's settings (`[ace_profiles]`): backup folder, WTF backups and journals to keep, and the blacklist of addons it never changes |
 
 The easiest way to change them is to press `s` in the app. You can also open the files in Notepad while the app
 is closed. The guides list every setting.
@@ -186,8 +187,9 @@ is closed. The guides list every setting.
 ## Undo and run journals
 
 Every tool that changes files keeps a short record of what it did, called a **journal**, so it can undo its last
-run. Journals are kept in your WoW folder, under `wow-tools\<tool name>\journal`. Each tool's guide explains its
-undo.
+run: the WTF Cleaner's last clean, the Screenshot Organizer's last sort, Interface Backup's last restore and the Ace3
+Profile Manager's last change. Journals are kept in your WoW folder, under `wow-tools\<tool name>\journal` (for
+example `wow-tools\ace-profiles\journal`). Each tool's guide explains its undo.
 
 ## Logs
 
@@ -204,9 +206,9 @@ If you use WSL (Linux inside Windows), the same folder works from both sides. Ru
 
 | Question | Answer |
 |----------|--------|
-| Is it safe? Can I lose anything? | Every tool shows you what it will do and asks before it changes anything. The WTF Cleaner backs up your whole `WTF` folder and zips every file before deleting it, the Screenshot Organizer never overwrites a file, and Interface Backup takes a safety backup of your folders before every restore. Each can undo its last run (Interface Backup: its last restore). If you're unsure, press **Dry run** in the WTF Cleaner or the Screenshot Organizer first: it shows what would happen without changing anything. |
-| Does it change the game itself? | No. It never touches the game program. The WTF Cleaner and the Screenshot Organizer only work on files the game leaves in your WoW folder: addon settings in `WTF` and pictures in `Screenshots`. Interface Backup only reads your `Interface` and `WTF` folders to back them up; they change only when you restore a backup (or undo a restore) and confirm it. |
-| Do I need to close WoW? | Close it before you clean with the WTF Cleaner: WoW rewrites those files when you log out and can bring deleted ones back. Close it before an Interface Backup restore or undo too; a backup works with the game open but may miss your latest settings. The WTF Cleaner and Interface Backup warn you if WoW is running. The Screenshot Organizer doesn't mind if the game is open. |
+| Is it safe? Can I lose anything? | Every tool shows you what it will do and asks before it changes anything. The WTF Cleaner backs up your whole `WTF` folder and zips every file before deleting it, the Screenshot Organizer never overwrites a file, Interface Backup takes a safety backup of your folders before every restore, and the Ace3 Profile Manager backs up your whole `WTF` folder and every file it edits before changing a profile. Each can undo its last run (Interface Backup: its last restore). If you're unsure, press **Dry run** in the WTF Cleaner, the Screenshot Organizer or the Ace3 Profile Manager first: it shows what would happen without changing anything. |
+| Does it change the game itself? | No. It never touches the game program. The WTF Cleaner and the Screenshot Organizer only work on files the game leaves in your WoW folder: addon settings in `WTF` and pictures in `Screenshots`. Interface Backup only reads your `Interface` and `WTF` folders to back them up; they change only when you restore a backup (or undo a restore) and confirm it. The Ace3 Profile Manager only changes the profile lists in addon settings files in `WTF`, and only when you apply and confirm. |
+| Do I need to close WoW? | Close it before you clean with the WTF Cleaner: WoW rewrites those files when you log out and can bring deleted ones back. Close it before an Interface Backup restore or undo too; a backup works with the game open but may miss your latest settings. The WTF Cleaner and Interface Backup warn you if WoW is running. The Ace3 Profile Manager refuses to apply or undo a change while WoW is running, since the game would overwrite it. The Screenshot Organizer doesn't mind if the game is open. |
 | Do I need to install anything besides Python? | No. Everything else the app needs comes in the download. |
 | Does it work on a Mac? | Yes, with `./wow-tools.sh`. The only thing missing on a Mac is the "WoW is running" warning, so close WoW yourself before cleaning or restoring. |
 | Why does it say another copy may already be running? | Only one copy of the app can run at once. While it's open it keeps a small file called `wow-tools.lock` in its folder. If you start it a second time, or it crashed last time, you get a warning with two buttons: **Quit** if the app really is open somewhere else, or **Override and continue** if it isn't (for example after a crash). When the app can tell the other copy is gone, it says so and puts you on **Override and continue**. |
@@ -246,7 +248,7 @@ Please file reports there, so nothing gets lost.
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| Unreleased | — | - **Interface Backup**, a third tool: zips each game version's `Interface` and `WTF` folders (your addons and their settings) into one dated, checked zip; keeps the newest 10 per game version<br>- Restores a backup exactly, the `Interface` folder, the `WTF` folder or both, after listing what would be removed or changed; takes a safety backup first, and **Undo** puts the folders back<br>- Never follows linked addon folders (symlinks, junctions): they're left out of backups and kept by a restore |
+| Unreleased | — | - **Ace3 Profile Manager**, a fourth tool: shows every Ace3 addon's profiles and which characters use them; delete, rename and copy profiles, move characters between them and remove characters that no longer exist, with a blacklist, **Dry run** and **Undo last change**<br>- Edits only the lines that change in each settings file, after backing up the whole `WTF` folder and every file it edits; refuses while WoW is running<br>- **Interface Backup**, a third tool: zips each game version's `Interface` and `WTF` folders (your addons and their settings) into one dated, checked zip; keeps the newest 10 per game version<br>- Restores a backup exactly, the `Interface` folder, the `WTF` folder or both, after listing what would be removed or changed; takes a safety backup first, and **Undo** puts the folders back<br>- Never follows linked addon folders (symlinks, junctions): they're left out of backups and kept by a restore |
 | 1.0.0 | 2026-10-04 | - First release, with two tools in one app<br>- **WTF Cleaner**: finds settings left behind by addons you no longer use, shows them for review, backs them up and deletes them; works on one game version, one account or **All flavors**; **Dry run** and **Undo last clean**<br>- **Screenshot Organizer**: sorts screenshots into year, month and day folders, in place or into an archive folder; duplicate checks, copy mode, **Dry run** and **Undo last run**<br>- Works with every installed game version (Retail, Classic, Classic Era, Anniversary, PTR and Beta) on Windows, Mac, Linux and WSL<br>- Checks for updates and installs them for you |
 
 ## Credits
