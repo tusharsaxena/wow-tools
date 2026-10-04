@@ -3,7 +3,8 @@ and relabelling for review trees, the two-pane (filters + tree) focus moves, and
 colours as a fallback. A tool's screens import these; no tool imports another tool's screens."""
 from __future__ import annotations
 
-from typing import Callable, Collection, Hashable, Iterable
+from collections.abc import Callable, Collection, Hashable, Iterable
+from typing import ClassVar
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -103,7 +104,7 @@ class ConfirmScreen(ModalScreen[bool]):
     ConfirmScreen #confirm-buttons { height: auto; align-horizontal: right; margin-top: 1; }
     ConfirmScreen Button { margin-left: 2; }
     """
-    BINDINGS = [Binding("y", "answer(True)", "Yes"), Binding("n,escape", "answer(False)", "No"), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("y", "answer(True)", "Yes"), Binding("n,escape", "answer(False)", "No"), *NAV_BINDINGS]
 
     def __init__(self, title: str, body: str, alerts: tuple[str, ...] = (), *, default_yes: bool = False) -> None:
         super().__init__()
@@ -151,7 +152,7 @@ class ProgressScreen(ModalScreen[None]):
     ProgressScreen .progress-file { color: $text-muted; margin-top: 1; height: 2; overflow: hidden hidden; }
     """
     ID_PREFIX = "progress"
-    STAGE_TITLES: dict[str, str] = {}
+    STAGE_TITLES: ClassVar[dict[str, str]] = {}
     SIMULATED_STAGE = ""
 
     def __init__(self, *, dry_run: bool = False, first_stage: str = "",

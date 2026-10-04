@@ -8,8 +8,8 @@ time the suite gets there.
 from __future__ import annotations
 
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator
 
 _condition = threading.Condition()
 _active = 0

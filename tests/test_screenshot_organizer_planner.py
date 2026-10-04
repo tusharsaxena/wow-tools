@@ -83,9 +83,8 @@ class PlannerTest(unittest.TestCase):
     def test_unreadable_folder_is_a_warning(self):
         self.assertEqual(scan([self.retail], None).warnings, [])
         with unittest.mock.patch("wowtools.tools.screenshot_organizer.planner.list_files",
-                                 side_effect=PermissionError(13, "denied")):
-            with capture_events() as records:
-                plan = scan([self.retail, self.era], None)
+                                 side_effect=PermissionError(13, "denied")), capture_events() as records:
+            plan = scan([self.retail, self.era], None)
         self.assertEqual(len(plan.warnings), 2)
         self.assertEqual([fp.items for fp in plan.flavors], [[], []])
         self.assertTrue(all(fp.error for fp in plan.flavors))

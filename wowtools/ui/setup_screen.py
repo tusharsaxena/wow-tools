@@ -1,8 +1,9 @@
 """First-run and general settings: the WoW folder ([general] in wow-tools.cfg)."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
+from typing import ClassVar
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -28,7 +29,7 @@ class SetupScreen(Screen[bool]):
     SetupScreen .buttons { height: auto; margin-top: 1; }
     SetupScreen Button { margin-right: 2; }
     """
-    BINDINGS = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
 
     def __init__(self, cfg: Config, *, first_run: bool,
                  detect: Callable[[], list[Path]] = detect_installs) -> None:

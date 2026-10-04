@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import errno
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 # os.link errors meaning "this file system (or this kind of file) has no hard links", not "the target exists".
 _NO_HARDLINK = {errno.EPERM, errno.EACCES, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EMLINK, errno.ENOSYS}
@@ -91,6 +91,6 @@ def safe_progress(progress: Callable[..., None] | None) -> Callable[..., None]:
             return
         try:
             progress(*args, **kwargs)
-        except Exception:  # noqa: BLE001 - a broken progress display must never stop a run
+        except Exception:  # noqa: BLE001, S110 - a broken progress display must never stop a run
             pass
     return report

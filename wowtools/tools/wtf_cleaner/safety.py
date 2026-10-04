@@ -13,10 +13,10 @@ import os
 import re
 import time
 import zipfile
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
-from typing import Callable
 
 from wowtools.core.backup import BackupError, verify_backup
 from wowtools.core.fsutil import free_name, remove_quietly, rename_no_replace
@@ -182,7 +182,7 @@ def restore_deleted(snapshot: Path, flavor: Flavor, rel_paths: list[str]) -> lis
                 info = zf.getinfo(rel)
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 try:
-                    out = open(dest, "xb")  # exclusive create: never overwrite a file that appeared meanwhile
+                    out = open(dest, "xb")  # noqa: SIM115 - closed by the `with` below; exclusive create: never overwrite a file that appeared meanwhile
                 except FileExistsError:
                     continue
                 try:

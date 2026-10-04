@@ -2,7 +2,8 @@
 per-file table."""
 from __future__ import annotations
 
-from typing import Union
+from typing import ClassVar
+
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -102,12 +103,12 @@ class ResultScreen(Screen[str]):
     ResultScreen Button { margin-right: 2; }
     ResultScreen NavHint { padding: 0 2; margin-top: 0; }
     """
-    BINDINGS = [Binding("r", "choose('review')", "Rescan"), Binding("f", "choose('flavors')", "Flavors"),
+    BINDINGS: ClassVar[list[Binding]] = [Binding("r", "choose('review')", "Rescan"), Binding("f", "choose('flavors')", "Flavors"),
                 Binding("t", "choose('tools')", "Tools"), Binding("q", "choose('quit')", "Quit"),
                 Binding("escape", "choose('review')", "Back", show=False),
                 *NAV_BINDINGS]
 
-    def __init__(self, result: Union[CleanResult, MultiCleanResult, UndoResult], flavor: Flavor | None = None) -> None:
+    def __init__(self, result: CleanResult | MultiCleanResult | UndoResult, flavor: Flavor | None = None) -> None:
         super().__init__()
         self.result = result
         self.flavor = flavor

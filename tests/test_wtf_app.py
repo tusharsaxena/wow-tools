@@ -10,7 +10,7 @@ from pathlib import Path
 from textual.app import App
 from textual.widgets import Button, DataTable, Input, OptionList, ProgressBar, Static, Tree
 
-from tests.fixtures import TuiTestCase, settle, build_wow_tree, make_config
+from tests.fixtures import TuiTestCase, build_wow_tree, make_config, settle
 from wowtools.core import activity
 from wowtools.core.backup import BackupError
 from wowtools.core.config import Config
@@ -54,7 +54,7 @@ class AppTestCase(TuiTestCase):
 
     def make_app(self, cfg=None, running=(), lockers=()):
         cfg = cfg or self.cfg
-        return WowToolsApp(cfg, config_dir=cfg.path.parent, check_updates=False, detect=lambda: [],
+        return WowToolsApp(cfg, config_dir=cfg.path.parent, check_updates=False, detect=list,
                            tool_options={"wtf-cleaner": {"wow_check": lambda: list(running),
                                                          "locker_check": lambda: list(lockers)}})
 
@@ -910,8 +910,8 @@ class PreflightWorkerTest(AppTestCase):
         def slow_check():
             release.wait(5)
             return []
-        return WowToolsApp(self.cfg, config_dir=self.cfg.path.parent, check_updates=False, detect=lambda: [],
-                           tool_options={"wtf-cleaner": {"wow_check": slow_check, "locker_check": lambda: []}})
+        return WowToolsApp(self.cfg, config_dir=self.cfg.path.parent, check_updates=False, detect=list,
+                           tool_options={"wtf-cleaner": {"wow_check": slow_check, "locker_check": list}})
 
     async def test_preflight_runs_in_a_worker(self):
         release = threading.Event()
@@ -1364,8 +1364,8 @@ class AllFlavorsTest(AppTestCase):
         real = review_module.wow_check_for
         review_module.wow_check_for = fake_check_for
         self.addCleanup(setattr, review_module, "wow_check_for", real)
-        app = WowToolsApp(self.cfg, config_dir=self.cfg.path.parent, check_updates=False, detect=lambda: [],
-                          tool_options={"wtf-cleaner": {"locker_check": lambda: []}})
+        app = WowToolsApp(self.cfg, config_dir=self.cfg.path.parent, check_updates=False, detect=list,
+                          tool_options={"wtf-cleaner": {"locker_check": list}})
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_all(app, pilot)
             full = review._selection_by_flavor()

@@ -102,7 +102,7 @@ class ZipUpdateTest(unittest.TestCase):
         self.assertTrue((self.root / "logs" / "events-2026-09-27.jsonl").exists())
         self.assertEqual((self.root / "my-notes.txt").read_text(), "mine")
         self.assertIn("0.1.0", (self.root / ".update-backup" / "0.1.0" / "wowtools" / "__init__.py").read_text())
-        applied = [r for r in records if r["event"] == "update.applied"][0]["data"]
+        applied = next(r for r in records if r["event"] == "update.applied")["data"]
         self.assertEqual((applied["from"], applied["to"], applied["method"]), ("0.1.0", "0.2.0", "zip"))
 
     def test_zip_with_matching_checksum_applies(self):
@@ -124,9 +124,8 @@ class ZipUpdateTest(unittest.TestCase):
                 text = Path(dest).read_text()
                 Path(dest).write_text(("1" if text[0] != "1" else "2") + text[1:])
 
-        with capture_events() as records:
-            with self.assertRaises(UpdateError) as ctx:
-                apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=tampered)
+        with capture_events() as records, self.assertRaises(UpdateError) as ctx:
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=tampered)
         self.assertIn("does not match its published checksum", str(ctx.exception))
         self.assertEqual(self.tree_digest(), before)
         self.assertFalse((self.root / ".update-backup").exists())
@@ -222,19 +221,17 @@ class ZipUpdateTest(unittest.TestCase):
                 raise OSError("disk full")
             real_copy(src, dst)
 
-        with patch.object(updater, "_copy", failing_copy):
-            with self.assertRaises(UpdateError):
-                apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0",
-                             download=self.download)
+        with patch.object(updater, "_copy", failing_copy), self.assertRaises(UpdateError):
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0",
+                         download=self.download)
         self.assertEqual((self.root / "my-notes.md").read_text(), "my notes\n")
         self.assertEqual((self.root / "README.md").read_text(), "readme 0.1.0\n")
 
     def test_wrong_version_in_zip_is_rejected(self):
         make_zipball(self.zipball, "0.3.0")
-        with capture_events() as records:
-            with self.assertRaises(UpdateError):
-                apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0",
-                             download=self.download)
+        with capture_events() as records, self.assertRaises(UpdateError):
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0",
+                         download=self.download)
         self.assertIn("0.1.0", self.version_on_disk())
         self.assertIn("update.failed", [r["event"] for r in records])
 
@@ -253,10 +250,9 @@ class ZipUpdateTest(unittest.TestCase):
                 raise OSError("disk full")
             real_copy(src, dst)
 
-        with patch.object(updater, "_copy", failing_copy):
-            with self.assertRaises(UpdateError) as ctx:
-                apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0",
-                             download=self.download)
+        with patch.object(updater, "_copy", failing_copy), self.assertRaises(UpdateError) as ctx:
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0",
+                         download=self.download)
         self.assertIn("rolled back", str(ctx.exception))
         self.assertIn("0.1.0", self.version_on_disk())
         self.assertTrue((self.root / "docs" / "only-in-0.1.0.md").exists())
@@ -273,10 +269,9 @@ class ZipUpdateTest(unittest.TestCase):
                 return
             raise OSError("disk full")
 
-        with patch.object(updater, "_copy", always_fail):
-            with self.assertRaises(UpdateError) as ctx:
-                apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0",
-                             download=self.download)
+        with patch.object(updater, "_copy", always_fail), self.assertRaises(UpdateError) as ctx:
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0",
+                         download=self.download)
         self.assertIn("rollback also failed", str(ctx.exception))
         self.assertIn(".update-backup", str(ctx.exception))
 
@@ -372,9 +367,8 @@ class GitRunnerTest(unittest.TestCase):
     def test_git_timeout_becomes_update_error(self):
         def hanging(args, **kwargs):
             raise subprocess.TimeoutExpired(args, kwargs.get("timeout"))
-        with capture_events() as records:
-            with self.assertRaises(UpdateError) as ctx:
-                apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", runner=hanging)
+        with capture_events() as records, self.assertRaises(UpdateError) as ctx:
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", runner=hanging)
         self.assertIn("timed out", str(ctx.exception))
         self.assertIn("update.failed", [r["event"] for r in records])
 
@@ -415,8 +409,8 @@ class BoundedRunTest(unittest.TestCase):
 
     def test_output_and_return_code(self):
         with tempfile.TemporaryDirectory() as tmp:
-            proc = updater._run_bounded([sys.executable, "-c", "import sys; print('out'); "
-                                         "print('err', file=sys.stderr); sys.exit(3)"], cwd=tmp,
+            proc = updater._run_bounded([sys.executable, "-c", ("import sys; print('out'); "
+                                         "print('err', file=sys.stderr); sys.exit(3)")], cwd=tmp,
                                         capture_output=True, text=True, check=False, timeout=30,
                                         env=dict(os.environ))
         self.assertEqual((proc.returncode, proc.stdout.strip(), proc.stderr.strip()), (3, "out", "err"))

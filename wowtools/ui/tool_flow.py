@@ -1,7 +1,8 @@
 """ToolFlow: how a tool runs inside the suite app. Each tool has its own screens, workflow and config file."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from wowtools.core.config import Config
 from wowtools.core.install import WowInstall

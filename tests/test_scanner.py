@@ -74,7 +74,7 @@ class ScannerTest(unittest.TestCase):
         self.assertEqual(names[0], "scan.started")
         self.assertIn("scan.addons", names)
         self.assertIn("scan.warning", names)
-        completed = [r for r in records if r["event"] == "scan.completed"][0]["data"]
+        completed = next(r for r in records if r["event"] == "scan.completed")["data"]
         self.assertEqual((completed["groups"], completed["sv_files"], completed["installed"]), (9, 14, 4))
 
     def test_blizzard_and_non_sv_files_are_never_scanned(self):
@@ -112,8 +112,8 @@ class AccountScopeTest(unittest.TestCase):
         proposal = evaluate(result, Criteria(), now=NOW)
         self.assertCountEqual([(i.owner_label, i.addon, i.reasons) for i in proposal.items], [
             ("account-wide", "Details", ["not_enabled"]), ("Realm2/Chârb", "Details", ["not_enabled"])])
-        started = [r for r in records if r["event"] == "scan.started"][0]["data"]
-        completed = [r for r in records if r["event"] == "scan.completed"][0]["data"]
+        started = next(r for r in records if r["event"] == "scan.started")["data"]
+        completed = next(r for r in records if r["event"] == "scan.completed")["data"]
         self.assertEqual((started["account"], completed["account"]), ("ACCT2", "ACCT2"))
 
     def test_scoped_scan_is_case_insensitive_and_unknown_raises(self):
@@ -155,7 +155,7 @@ class AccountScopeTest(unittest.TestCase):
         self.assertIsNone(result.account)
         self.assertEqual(result.enabled, {"auctionator", "details", "oldaddon"})
         self.assertEqual((len(result.groups), result.sv_files, result.accounts, result.characters), (9, 14, 2, 2))
-        started = [r for r in records if r["event"] == "scan.started"][0]["data"]
+        started = next(r for r in records if r["event"] == "scan.started")["data"]
         self.assertIsNone(started["account"])
 
 

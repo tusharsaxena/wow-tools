@@ -2,9 +2,9 @@
 per-flavor scan() and execute(); this module only runs them in turn and collects what happened."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
 
 from wowtools import __version__
 from wowtools.core.backup import BackupError

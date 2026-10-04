@@ -9,10 +9,10 @@ import errno
 import hashlib
 import os
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
 
 from wowtools import __version__
 from wowtools.core.events import log_event
@@ -88,7 +88,7 @@ class JournalWriteError(Exception):
     """A change was made but could not be journaled. `outcome` is that change; the run must stop, because
     every further change would be one Undo cannot reverse."""
 
-    def __init__(self, outcome: "Outcome", cause: BaseException) -> None:
+    def __init__(self, outcome: Outcome, cause: BaseException) -> None:
         super().__init__(f"the journal could not be written after {outcome.src.name} was {outcome.kind}: "
                          f"{type(cause).__name__}: {cause}")
         self.outcome = outcome
@@ -193,7 +193,7 @@ class _Run:
         if self.journal is not None:
             try:
                 self.journal.add(action, item.src, item.dst, item.size)
-            except Exception as exc:  # noqa: BLE001 - OSError, or e.g. UnicodeEncodeError from an odd path
+            except Exception as exc:  # OSError, or e.g. UnicodeEncodeError from an odd path
                 note = f"not journaled ({type(exc).__name__}: {exc}); Undo cannot reverse it"
                 reason = f"{outcome.reason}; {note}" if outcome.reason else note
                 raise JournalWriteError(replace(outcome, reason=reason), exc) from exc
@@ -269,7 +269,7 @@ def execute(items: list[ShotItem], *, dest_dir: Path | None, copy: bool, dry_run
     if journal is not None:
         try:
             journal.open()  # before anything is touched: no change is ever made that Undo cannot see
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log_event("shots.organize_stopped", error=f"{type(exc).__name__}: {exc}", done=0, journal=None)
             raise OrganizeError(f"The run journal could not be written, so nothing was filed: {exc}",
                                 result) from exc

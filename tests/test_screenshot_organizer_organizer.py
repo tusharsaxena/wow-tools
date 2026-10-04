@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import errno
-import json
 import os
 import tempfile
 import unittest
@@ -111,7 +110,7 @@ class OrganizerTest(unittest.TestCase):
         day.mkdir(parents=True)
         (day / A).write_bytes(b"shot-a")   # identical
         (day / B).write_bytes(b"shot-X")   # same size, different content -> conflict at execute
-        plan, result = self.run_plan(self.dest)
+        _plan, result = self.run_plan(self.dest)
         self.assertEqual(result.count(DUPLICATE_REMOVED), 1)
         self.assertEqual(result.count(CONFLICT_KEPT), 1)
         self.assertFalse((self.shots / A).exists())
@@ -216,9 +215,8 @@ class OrganizerTest(unittest.TestCase):
                 raise RuntimeError("boom")
             os.rename(src, dst)
 
-        with capture_events() as records:
-            with self.assertRaises(OrganizeError) as ctx:
-                self.run_plan(self.dest, rename=boom)
+        with capture_events() as records, self.assertRaises(OrganizeError) as ctx:
+            self.run_plan(self.dest, rename=boom)
         self.assertEqual(ctx.exception.result.count(MOVED), 2)
         journal = read_journal(ctx.exception.result.journal_path)
         self.assertEqual(len(journal.entries), 2)
@@ -284,9 +282,11 @@ class OrganizerTest(unittest.TestCase):
                 raise OSError(errno.ENOSPC, "No space left on device")
             return real_add(writer, *a, **k)
 
-        with unittest.mock.patch.object(journal_mod.JournalWriter, "add", failing_add):
-            with self.assertRaises(OrganizeError) as ctx:
-                self.run_plan(self.dest)
+        with (
+            unittest.mock.patch.object(journal_mod.JournalWriter, "add", failing_add),
+            self.assertRaises(OrganizeError) as ctx,
+        ):
+            self.run_plan(self.dest)
         result = ctx.exception.result
         # The first file is moved and journaled; the second is moved but could not be journaled: it is reported
         # as moved (with the journal error) rather than failed, and the run stops there.

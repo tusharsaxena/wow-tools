@@ -74,9 +74,9 @@ class StructureTest(unittest.TestCase):
         found: dict[str, list[str]] = {}
         for path in modules("wowtools"):
             for node in ast.walk(tree(path)):
-                if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
-                    if node.value.value in ("#4CC38A", 86400.0):
-                        found.setdefault(str(node.value.value), []).append(rel(path))
+                if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)
+                        and node.value.value in ("#4CC38A", 86400.0)):
+                    found.setdefault(str(node.value.value), []).append(rel(path))
                 if isinstance(node, ast.Constant) and node.value == "wow-tools":
                     found.setdefault("wow-tools", []).append(rel(path))
         self.assertEqual(found.get("wow-tools"), ["wowtools/core/journal.py"])

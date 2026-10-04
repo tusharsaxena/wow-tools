@@ -20,10 +20,11 @@ import sys
 import threading
 import traceback
 import weakref
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import IO, Any, Callable, Iterator
+from typing import IO, Any
 
 from wowtools import __version__
 

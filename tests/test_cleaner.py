@@ -120,10 +120,9 @@ class CleanerTest(unittest.TestCase):
     def test_backup_failure_deletes_nothing(self):
         blocker = self.tmp / "blocker"
         blocker.write_text("a file where the backup folder should be")
-        with capture_events() as records:
-            with self.assertRaises(BackupError):
-                execute(self.proposal.items, self.retail, dry_run=False, backup=True,
-                        backup_dir=blocker / "sub", now=WHEN)
+        with capture_events() as records, self.assertRaises(BackupError):
+            execute(self.proposal.items, self.retail, dry_run=False, backup=True,
+                    backup_dir=blocker / "sub", now=WHEN)
         for path in self.paths():
             self.assertTrue(path.exists(), path)
         # An unwritable backup folder now fails at the safety snapshot, which comes before the backup.
@@ -170,13 +169,12 @@ class CleanerTest(unittest.TestCase):
                 raise PermissionError("locked by another program")
             return original(path, *args, **kwargs)
 
-        with capture_events() as records:
-            with patch.object(Path, "unlink", flaky):
-                result = execute(self.proposal.items, self.retail, dry_run=False, backup=False,
-                                 backup_dir=self.backup_dir, now=WHEN)
+        with capture_events() as records, patch.object(Path, "unlink", flaky):
+            result = execute(self.proposal.items, self.retail, dry_run=False, backup=False,
+                             backup_dir=self.backup_dir, now=WHEN)
         self.assertEqual(len(result.failed), 1)
         self.assertEqual(len(result.deleted), 7)
-        completed = [r for r in records if r["event"] == "clean.completed"][0]
+        completed = next(r for r in records if r["event"] == "clean.completed")
         self.assertEqual(completed["level"], "warning")
         self.assertIn("sv.failed", [r["event"] for r in records])
 
@@ -258,7 +256,7 @@ class SafetySnapshotCleanTest(unittest.TestCase):
     paths = CleanerTest.paths
 
     def run_clean(self, **kwargs):
-        options = dict(dry_run=False, backup=True, backup_dir=self.backup_dir, now=WHEN)
+        options = {"dry_run": False, "backup": True, "backup_dir": self.backup_dir, "now": WHEN}
         options.update(kwargs)
         return execute(self.proposal.items, self.retail, **options)
 
@@ -280,10 +278,11 @@ class SafetySnapshotCleanTest(unittest.TestCase):
         def boom(*args, **kwargs):
             raise BackupError("disk full")
 
-        with capture_events() as records:
-            with patch.object(cleaner_module, "take_snapshot", boom):
-                with self.assertRaises(BackupError):
-                    self.run_clean()
+        with (
+            capture_events() as records, patch.object(cleaner_module, "take_snapshot", boom),
+            self.assertRaises(BackupError),
+        ):
+            self.run_clean()
         for path in self.paths():
             self.assertTrue(path.exists(), path)
         self.assertFalse((self.backup_dir / MARKER_NAME).exists())
@@ -302,10 +301,8 @@ class SafetySnapshotCleanTest(unittest.TestCase):
             deleted.append(path)
             return original(path, *args, **kwargs)
 
-        with capture_events() as records:
-            with patch.object(Path, "unlink", flaky):
-                with self.assertRaises(CleanError) as ctx:
-                    self.run_clean()
+        with capture_events() as records, patch.object(Path, "unlink", flaky), self.assertRaises(CleanError) as ctx:
+            self.run_clean()
         self.assertEqual(len(deleted), 3)
         for path, data in before.items():
             self.assertTrue(path.exists(), path)
@@ -337,11 +334,12 @@ class SafetySnapshotCleanTest(unittest.TestCase):
         def broken_restore(*args, **kwargs):
             raise BackupError("snapshot unreadable")
 
-        with capture_events() as records:
-            with patch.object(Path, "unlink", flaky), \
-                    patch.object(cleaner_module, "restore_deleted", broken_restore):
-                with self.assertRaises(CleanError) as ctx:
-                    self.run_clean()
+        with (
+            capture_events() as records, patch.object(Path, "unlink", flaky),
+            patch.object(cleaner_module, "restore_deleted", broken_restore),
+            self.assertRaises(CleanError) as ctx,
+        ):
+            self.run_clean()
         self.assertTrue((self.backup_dir / MARKER_NAME).exists())
         self.assertTrue(self.snapshot_path().exists())
         self.assertIn(str(self.snapshot_path()), str(ctx.exception))
@@ -354,10 +352,11 @@ class SafetySnapshotCleanTest(unittest.TestCase):
         def boom(*args, **kwargs):
             raise BackupError("zip broke")
 
-        with capture_events() as records:
-            with patch.object(cleaner_module, "create_backup", boom):
-                with self.assertRaises(BackupError):
-                    self.run_clean()
+        with (
+            capture_events() as records, patch.object(cleaner_module, "create_backup", boom),
+            self.assertRaises(BackupError),
+        ):
+            self.run_clean()
         for path in self.paths():
             self.assertTrue(path.exists(), path)
         self.assertEqual(files_under(self.backup_dir), [SNAPSHOT])  # the WTF backup is kept; no marker
@@ -427,10 +426,8 @@ class LockAndCheckTest(unittest.TestCase):
 
     def test_locked_file_stops_a_real_clean_before_anything(self):
         before = snapshot(self.root)
-        with capture_events() as records:
-            with self._lock("Uninstalled.lua.bak"):
-                with self.assertRaises(CleanError) as ctx:
-                    self.run_clean()
+        with capture_events() as records, self._lock("Uninstalled.lua.bak"), self.assertRaises(CleanError) as ctx:
+            self.run_clean()
         self.assertIn("locked", str(ctx.exception))
         self.assertIn("Uninstalled.lua.bak", str(ctx.exception))
         self.assertEqual(snapshot(self.root), before)
@@ -467,9 +464,8 @@ class LockAndCheckTest(unittest.TestCase):
             original(result, item, sv, flavor, dry_run, deleted)
             if extra.exists():
                 extra.unlink()  # something else removed a file that was not selected
-        with capture_events() as records:
-            with patch.object(cleaner_module, "_delete_one", delete_one):
-                result = self.run_clean()
+        with capture_events() as records, patch.object(cleaner_module, "_delete_one", delete_one):
+            result = self.run_clean()
         self.assertTrue(any("ACCT1/SavedVariables/Details.lua is missing" in p for p in result.check_problems))
         self.assertTrue(self.snapshot_path().exists())
         self.assertFalse((self.backup_dir / MARKER_NAME).exists())

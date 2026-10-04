@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
-from unittest import mock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 
 from wowtools import __version__
 from wowtools.core import events

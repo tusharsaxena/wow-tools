@@ -1,0 +1,15 @@
+# Ruff settings for editors and `ruff check`. Not run in CI (the suite stays stdlib-only).
+target-version = "py310"
+line-length = 120
+extend-exclude = ["vendor"]
+
+[lint]
+# The code documents its deliberate broad excepts and late imports with these codes.
+extend-select = ["BLE", "E402"]
+# The import style is hanging-indent wrapping, which Ruff's sorter cannot produce; `tests/test_structure.py`
+# checks the wowtools import order instead.
+ignore = [
+    "I001",
+    # Times are local wall-clock by design: journal and lock stamps, file ages against local mtimes.
+    "DTZ",
+]

@@ -14,8 +14,8 @@ from wowtools.core.bootstrap import add_vendor_path  # noqa: E402
 
 add_vendor_path()
 
-from wowtools.core.events import LEVELS, SCHEMA_VERSION, TOOL_REGISTRIES  # noqa: E402
 import wowtools.tools  # noqa: E402
+from wowtools.core.events import LEVELS, SCHEMA_VERSION, TOOL_REGISTRIES  # noqa: E402
 from wowtools.tools import TOOLS  # noqa: E402
 
 TARGET = ROOT / "docs" / "events.md"

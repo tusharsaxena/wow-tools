@@ -13,10 +13,10 @@ import tempfile
 import urllib.error
 import urllib.request
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable
 
 from wowtools import __version__
 from wowtools.core.bootstrap import REPO_ROOT
@@ -97,7 +97,7 @@ def fetch_latest(*, timeout: float = 3.0, opener=urllib.request.urlopen) -> Rele
     if payload.get("draft") or payload.get("prerelease"):
         return None
     tag = str(payload.get("tag_name", ""))
-    version = tag[1:] if tag.startswith("v") else tag
+    version = tag.removeprefix("v")
     parse_version(version)
     assets = {str(a["name"]): str(a["browser_download_url"]) for a in payload.get("assets") or []
               if isinstance(a, dict) and a.get("name") and a.get("browser_download_url")}

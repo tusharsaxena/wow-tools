@@ -1,5 +1,5 @@
-from collections.abc import Sequence
 import re
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from markdown_it import MarkdownIt

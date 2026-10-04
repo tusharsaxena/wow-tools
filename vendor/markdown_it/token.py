@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable, MutableMapping
 import dataclasses as dc
+from collections.abc import Callable, MutableMapping
 from typing import Any, Literal
 import warnings
 

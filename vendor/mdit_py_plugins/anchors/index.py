@@ -1,5 +1,5 @@
-from collections.abc import Callable
 import re
+from collections.abc import Callable
 
 from markdown_it import MarkdownIt
 from markdown_it.rules_core import StateCore

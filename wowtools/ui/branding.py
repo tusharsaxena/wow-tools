@@ -6,7 +6,7 @@ from textual.widgets import Static
 
 from wowtools import __version__
 
-BANNER = "\n".join([
+BANNER = "\n".join([  # noqa: FLY002 - one row of the art per line
     "  ▗▄▄▄▄▄▄▄▄▄▄▄▖  ",
     "  ▐ ██  ▄██▀  ▌  ",
     "  ▐ ██▄██▀    ▌  ",
