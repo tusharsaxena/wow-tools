@@ -10,7 +10,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | 2 | events, settings, catalog | done | e7f75e5 | docs/events.md regenerated now (test_docs needs it); extra tests for event registry, info fields, folder named like a zip |
 | 3 | scanner | done | dbd0932 | API as planned; sizes summed without type-ignores; extra tests for chosen parts, unreadable sub-folder, part-as-link warning, broken progress |
 | 4 | backup | done | 9609ac3, 59349ac | API as planned; lstat before open (a file turned link is not followed); DOS date clamped both ends; extra tests for links, interrupt, locked file, progress stages, old mtime. Review fix 59349ac: ancestor folders lstat-checked (no reading through an addon folder turned link), O_NOFOLLOW open, vanished/linked parts not claimed in the manifest, linked parts reported, prune never deletes the new zip |
-| 5 | open backup + plan restore | todo | | |
+| 5 | open backup + plan restore | done | 7127e9d | API as planned; stricter entry checks (control chars, device names, duplicates over infolist, file/folder clash, files in an unclaimed part); plan_restore raises for a part not in the backup; 20 tests |
 | 6 | run restore + journal | todo | | |
 | 7 | undo | todo | | |
 | M1 | push milestone 1 | todo | | |
@@ -48,3 +48,10 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   `links` as `"<Part>"`; `backup_skipped` carries `reason` and `links`. Nothing readable at all is a `BackupError`.
 - Task 4: events carry a little more than the plan: `backup_failed` has the intended `path`, `backup_created` a
   `missing_sample` (up to 20), `pruned` the `keep` value.
+- Task 5: `split_entry` also refuses control characters, `<>"|?*` and Windows device names (`CON`, `nul.lua`,
+  `COM1`..`LPT9`); `open_backup` checks duplicates over `infolist()` (the plan's dict hid exact duplicates), refuses
+  a file whose path another entry needs as a folder, a manifest that lists a file twice, and files in a part the
+  manifest does not claim. A damaged/encrypted/unsupported zip (`zlib.error`, `NotImplementedError`,
+  `RuntimeError`) is a `RestoreError`. `plan_restore` keeps the chosen parts in `PARTS` order. The plan's
+  `test_part_missing_from_backup_refused` only checked `parts`; it now asserts `plan_restore` raises. The spec's
+  `missing_parts` field is not added: a part the backup lacks is refused instead (plan behaviour).
