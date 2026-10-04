@@ -25,7 +25,7 @@ merge, delete every branch, stash and worktree this run created.
 | 13 | popups + staging from the tree | done | 9a888c0 | `popups.py` (`TargetScreen`, `NameScreen`, `ActionsScreen`, shared `popup_css`); d/p/e/k/o/m/x staged from the tree, refusals notified as warnings, ticks of changed databases cleared; w/y/z stay stubs for Task 14; 5 StagingTest tests OK; ace 380 OK; structure OK; full suite 942 OK (2 skipped), ruff clean |
 | 14 | apply, dry run, undo, recovery, result screens | done | 3fbdd3d | `result_screen.py` (`ProfileResultScreen`); `ProfileProgressScreen`, `ProfileRecoveryScreen` and the w/y/z, recovery and stale-rescan flows in `review_screen.py`; `apply_confirm` names the flavors; left pane made to fit 80x24 (look-and-feel test); 4 RunTest tests OK; ace 384 OK; look_and_feel 3 OK; full suite 946 OK (2 skipped), ruff clean; events.md unchanged; milestone push left to the orchestrator |
 | M3 | push milestone 3 | done (pushed) | 131119c | review fixes: blacklisting drops staged changes, Undo/recovery check the WoW of the flavor they touch, recovery guarded like Undo, leaving asks, popups fit 80x24, delete target, menu lists hidden keys, dry-run Back, search expands; full suite 965 OK (2 skipped), ruff clean |
-| 15 | docs + final battery | todo | | |
+| 15 | docs + final battery | done | 4b7c156 | full guide `docs/ace-profiles.md` (every key, tags, staged marks, blacklist, never touched, Apply/Dry run/results/Undo, backups, recovery, settings, FAQ, troubleshooting, screenshots placeholder); README settings row, undo, FAQ, version history; architecture: core `snapshot`/`svfiles`/`atomic_write_bytes`, `[ace_profiles]` schema, data flow and screens; adding-a-tool notes the core helpers; CLAUDE.md tool list; events.md unchanged by regeneration; +1 docs test; ace 404 OK; full suite 966 OK (2 skipped), serial run 966 OK; ruff clean; not pushed (milestone push left to the orchestrator) |
 | M4 | push, ask for merge go-ahead | todo | | |
 
 ## Decisions taken during the build
@@ -160,3 +160,8 @@ merge, delete every branch, stash and worktree this run created.
   open (scan warnings excepted) and the expansion state is not recorded, so clearing the search restores it.
 - M3 review: no finding rejected. Regression tests: `ReviewFixesTest` (15, `tests/test_ace_app.py`), three
   `RecoverTest` cases (`tests/test_ace_undo.py`), one ops test; each failed on the code before the fix.
+- Task 15: `tests/test_docs.py` gains `test_ace_profiles_guide_and_readme` (the guide covers the plan's topics and every
+  review key, the README names `config\ace-profiles.cfg`, CLAUDE.md lists the tool), written before the docs as the
+  task's failing test. `docs/adding-a-tool.md` gains one bullet (shared code moves to core: `core/snapshot.py`,
+  `core/svfiles.py`, `atomic_write_bytes`), as Task 1 changed that step. The plan's `git add -A docs ...` and
+  `git push` are replaced by adding only the changed files; the push is left to the milestone step.
