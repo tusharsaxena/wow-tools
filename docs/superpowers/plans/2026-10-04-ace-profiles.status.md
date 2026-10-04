@@ -17,7 +17,7 @@ merge, delete every branch, stash and worktree this run created.
 | 7 | compile + verify | done | 98f572d | plan code verbatim (`FileEdit.file` typed `SvFile \| None` as the plan notes); test file drops the plan's `# tests/...` path comment; 11 ace_compile tests OK; full suite 881 OK (2 skipped), ruff clean; not pushed by the task agent (milestone push left to the orchestrator) |
 | M1 | push milestone 1 | done (pushed) | 0e27823 | review fixes: module-only profiles kept, verify covers namespaces, partial write never follows a link; full suite 888 OK (2 skipped), ruff clean |
 | 8 | journal + editor | done | fe6fc85 | plan code verbatim apart from one ruff `noqa: BLE001` on the deliberate `except BaseException` (roll back, then re-raise); 3 ace_journal + 11 ace_editor tests OK; ace 340 OK; full suite 902 OK (2 skipped), ruff clean |
-| 9 | undo, recovery, multi | todo | | |
+| 9 | undo, recovery, multi | done | f62f843 | plan code verbatim apart from a ruff fix in the test and the `ace.apply_completed` warning level; 6 ace_undo + 5 ace_multi tests OK; ace 351 OK; full suite 913 OK (2 skipped), ruff clean |
 | 10 | report helpers | todo | | |
 | M2 | push milestone 2 | todo | | |
 | 11 | flow, settings screen, registration | todo | | |
@@ -56,3 +56,7 @@ merge, delete every branch, stash and worktree this run created.
 - M1 review: no finding rejected.
 - Task 8: `editor.apply_flavor`'s `except BaseException` (roll back on anything, even Ctrl+C, then re-raise)
   carries `# noqa: BLE001` with that reason; ruff flagged it, behaviour unchanged.
+- Task 9: `multi.apply_flavors` logs `ace.apply_completed` with `level="warning"` when any file was skipped or
+  failed or a flavor stopped, as the event's registered description says (the plan logged it at info always).
+- Task 9: ruff C408 only: `tests/test_ace_multi.py` builds the `run_plan` options as a dict literal, not `dict()`;
+  no assertion changed.
