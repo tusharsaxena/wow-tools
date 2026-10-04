@@ -73,7 +73,7 @@ explained below).
 | `y` | **Dry run** (asks first; the answer starts on **Yes**) |
 | `r` | Scan again |
 | `z` | **Undo last run** (asks first; the answer starts on **No**) |
-| `f` | Pick another game version |
+| `f` or `Esc` | Pick another game version |
 | `t` | Back to the tool menu |
 | `s` | Settings |
 | `q` | Quit |

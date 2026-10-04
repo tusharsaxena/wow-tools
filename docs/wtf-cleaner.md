@@ -40,6 +40,9 @@ An account or game version with nothing to remove says "nothing to clean".
 
 **On the left** are the rules that decide what gets suggested, the age limit, and the buttons.
 
+**At the bottom** a bar totals what's ticked (items, files and size), plus scan warnings and any game version
+that couldn't be scanned.
+
 ### The four rules
 
 A file is suggested if **any** ticked rule matches it. All four are on to start with, and each has its own
@@ -90,7 +93,7 @@ suggests nothing there. The scan notes this in its warnings.
 | `y` | **Dry run** (asks first; the answer starts on **Yes**) |
 | `r` | Scan again |
 | `z` | **Undo last clean** (asks first; the answer starts on **No**) |
-| `f` | Pick another game version |
+| `f` or `Esc` | Pick another game version |
 | `t` | Back to the tool menu |
 | `s` | Settings |
 | `q` | Quit |

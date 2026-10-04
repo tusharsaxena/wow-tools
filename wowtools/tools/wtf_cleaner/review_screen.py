@@ -26,7 +26,7 @@ from wowtools.tools.wtf_cleaner.journal import clean_journal_dir, latest_undoabl
 from wowtools.tools.wtf_cleaner.multi import (FlavorScan, MultiCleanResult, execute_flavors, nothing_deleted,
                                               scan_flavors)
 from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, STAGE_TITLES, age_days,
-                                               flavor_name, format_size, locker_warning)
+                                               flavor_name, format_size, locker_warning, plural)
 from wowtools.tools.wtf_cleaner.result_screen import ResultScreen, reasons_text
 from wowtools.tools.wtf_cleaner.rules import (CRITERIA, Proposal, ProposalItem, criterion_counts, evaluate,
                                              log_proposal_built, log_proposal_items)
@@ -34,16 +34,16 @@ from wowtools.tools.wtf_cleaner.safety import SNAPSHOT_SUBDIR, Marker, clear_mar
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir
 from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import ConfirmScreen, ProgressScreen, TwoPaneFocus, relabel_branch, theme_colour, tick_mark
+from wowtools.ui.dialogs import (ACCENT, BUSY_STYLE, REVIEW_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus,
+                                relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
-ACCENT = "bold #5CC8FF"
 WARNING_STYLE = "#E8B04B"
 ALL_FLAVORS_LABEL = "All flavors"
 # ConfirmScreen now lives in wowtools.ui.dialogs; it stays importable from here for one release.
 __all__ = ["CleanProgressScreen", "ConfirmScreen", "RecoveryScreen", "ResultScreen", "ReviewScreen"]
-NAV_HINT = ("↑↓/Tab move · ←→ panes and buttons · Space tick · Enter/Space press · 1-4 criteria · c clean · "
-            "y dry run · r rescan · z undo · t tools")
+NAV_HINT = REVIEW_HINT + ("a all · n none · c clean · y dry run · r rescan · z undo · f flavors · t tools · "
+                          "1-4 criteria")
 
 
 class CleanProgressScreen(ProgressScreen):
@@ -102,19 +102,7 @@ class ProposalTree(Tree):
 
 class ReviewScreen(TwoPaneFocus, Screen[str]):
     TREE_SELECTOR = "#proposal"
-    DEFAULT_CSS = """
-    ReviewScreen #body { height: 1fr; }
-    ReviewScreen #filters { width: 46; padding: 1; border-right: solid $primary; }
-    ReviewScreen #actions { margin-top: 1; }
-    ReviewScreen #actions Button, ReviewScreen #undo-row Button { min-width: 0; width: auto; margin-right: 1; }
-    ReviewScreen #undo-row { margin-top: 1; }
-    ReviewScreen .section { color: $accent; text-style: bold; margin: 1 0 0 0; }
-    ReviewScreen #proposal { width: 1fr; padding: 0 1; }
-    ReviewScreen #scan-box { width: 1fr; height: auto; padding: 1 2; }
-    ReviewScreen #scan-progress { width: 1fr; }
-    ReviewScreen #scan-label { color: $text-muted; margin-top: 1; }
-    ReviewScreen #summary { height: auto; padding: 0 1; background: $surface; }
-    """
+    DEFAULT_CSS = two_pane_css("ReviewScreen", "#proposal")
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("space", "toggle", "Tick/untick", priority=True),
         Binding("a", "select_all", "All"),
@@ -126,6 +114,7 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         Binding("f", "flavors", "Flavors"),
         Binding("t", "tools", "Tools"),
         Binding("q", "quit_tool", "Quit"),
+        Binding("escape", "flavors", "Flavors", show=False),
         Binding("1", "criterion(0)", CRITERION_SHORT["not_installed"], show=False),
         Binding("2", "criterion(1)", CRITERION_SHORT["not_enabled"], show=False),
         Binding("3", "criterion(2)", CRITERION_SHORT["older_than"], show=False),
@@ -171,14 +160,13 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
                 yield Label("Criteria (keys 1-4)", classes="section")
                 for index, name in enumerate(CRITERIA, start=1):
                     yield Ka0sCheckbox(self._criterion_label(index, name), getattr(self.criteria, name),
-                                       id=f"crit_{name}")
+                                       id=f"crit_{name}", compact=True)
                 yield Label("Max age in days (Enter)", classes="section")
-                yield Input(str(self.criteria.max_age_days), type="integer", id="max_age")
+                yield Input(str(self.criteria.max_age_days), type="integer", id="max_age", compact=True)
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Clean", "delete", id="btn-clean")
                     yield action_button("Dry run", "simulate", id="btn-dry")
                     yield action_button("Rescan", "neutral", id="btn-rescan")
-                with ButtonRow(id="undo-row", wrap=False):
                     yield action_button("Undo last clean", "revert", id="btn-undo")
                 yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):
@@ -280,7 +268,7 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
     def _criterion_label(index: int, name: str, files: int | None = None) -> Text:
         text = f"{index} {CRITERION_SHORT[name]}"
         if files is not None:
-            text += f" ({files} files)"
+            text += f" ({plural(files, 'file')})"
         return Text(text, style=CRITERION_COLORS[name])
 
     def _scanned_ok(self) -> list[FlavorScan]:
@@ -304,7 +292,7 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         if not self._scanned_ok():
             return
         self.query_one("#proposal", Tree).loading = True
-        self.query_one("#summary", Static).update(Text("Updating the list…", style="bold #E8B04B"))
+        self.query_one("#summary", Static).update(Text("Updating the list…", style=BUSY_STYLE))
         if not self._rebuild_pending:
             self._rebuild_pending = True
             self.call_after_refresh(self._run_scheduled_rebuild)
@@ -400,12 +388,12 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         if kind == "item":
             item = data[1]
             return Text.assemble(mark, (item.addon, "bold"), "  ", self._reasons(item.reasons),
-                                 ((f"  {len(item.files)} files · {format_size(item.total_size)} · "
+                                 ((f"  {plural(len(item.files), 'file')} · {format_size(item.total_size)} · "
                                    f"{age_days(item.newest_mtime, now)}d"), "dim"))
         items, name = data[1], data[2]
         if not items and data is not self.query_one("#proposal", Tree).root.data:
             return Text.assemble("  ", (name, ACCENT), ("  nothing to clean", "dim"))  # an account or flavor
-        return Text.assemble(mark, (name, ACCENT), (f"  {len(items)} items", "dim"))
+        return Text.assemble(mark, (name, ACCENT), (f"  {plural(len(items), 'item')}", "dim"))
 
     def _refresh_labels(self, node=None) -> None:
         """Relabel node's branch and its ancestors (everything a tick there can change), or the whole tree."""
@@ -432,12 +420,13 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         selection = self._selection()
         files = sum(len(i.files) for i in selection)
         size = sum(i.total_size for i in selection)
-        text = (f"Selected: {len(selection)} items · {files} files · {format_size(size)}    "
-                f"Criteria: {self.criteria.describe()}")
+        # The criteria are not repeated here: the left pane shows them.
+        text = f"Selected: {plural(len(selection), 'item')} · {plural(files, 'file')} · {format_size(size)}"
         if self.proposal is not None and not self.proposal.items:
             text = "Nothing to clean with the current criteria.    " + text
         if self.proposal is not None and self.proposal.warnings:
-            text += f"    ⚠ {len(self.proposal.warnings)} scan warnings (see the log)"
+            count = len(self.proposal.warnings)
+            text += f"    ⚠ {count} scan warning{'' if count == 1 else 's'} (see the log)"
         not_scanned = [s.flavor.display_name for s in self.scans if s.result is None]
         if not_scanned:
             text += f"    ⚠ not scanned: {', '.join(not_scanned)}"
@@ -586,7 +575,7 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
                        locker_check: Callable[[], list[str] | None] | None,
                        then: Callable[[list[str] | None, list[str] | None], None]) -> None:
         self._set_checking(True)
-        self.query_one("#summary", Static).update(Text("Checking for running programs…", style="bold #E8B04B"))
+        self.query_one("#summary", Static).update(Text("Checking for running programs…", style=BUSY_STYLE))
         self.run_worker(lambda: self._preflight_worker(check, locker_check, then), thread=True, group="preflight")
 
     def _set_checking(self, checking: bool) -> None:
@@ -659,7 +648,8 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
     @staticmethod
     def _counts(items: list[ProposalItem]) -> str:
         files = sum(len(i.files) for i in items)
-        return f"{len(items)} addon groups, {files} files, {format_size(sum(i.total_size for i in items))}"
+        return (f"{plural(len(items), 'addon group')}, {plural(files, 'file')}, "
+                f"{format_size(sum(i.total_size for i in items))}")
 
     def _confirmed(self, ok: bool | None, plan: list[tuple[Flavor, list[ProposalItem]]], backup: bool,
                    backup_dir: Path | None, dry_run: bool) -> None:

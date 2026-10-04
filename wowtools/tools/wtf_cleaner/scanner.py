@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from wowtools.core.events import log_event
+from wowtools.core.fsutil import is_link
 from wowtools.core.install import ACCOUNT_WIDE, Account, Character, Flavor
 
 PROTECTED_PREFIXES = ("blizzard_",)
@@ -164,9 +165,29 @@ def enabled_addons(characters: Iterable[Character], installed: dict[str, str],
     return enabled
 
 
+def _linked_folder(sv_dir: Path, account: Account, cache: dict[Path, bool]) -> Path | None:
+    """The first folder from WTF/Account down to sv_dir that is a link (symlink or junction), or None. The WTF
+    backup taken before a clean never goes into a link, so files under one could not be put back. cache: one
+    lstat per folder per scan (an account's folders are shared by its characters)."""
+    folder = account.path.parent
+    for name in (account.path.name, *sv_dir.relative_to(account.path).parts, None):
+        if folder not in cache:
+            cache[folder] = is_link(folder)
+        if cache[folder]:
+            return folder
+        if name is not None:
+            folder = folder / name
+    return None
+
+
 def _scan_sv_dir(sv_dir: Path, account: Account, character: Character | None,
-                 warnings: list[ScanWarning]) -> list[SVGroup]:
+                 warnings: list[ScanWarning], links: dict[Path, bool] | None = None) -> list[SVGroup]:
     if not sv_dir.is_dir():
+        return []
+    linked = _linked_folder(sv_dir, account, {} if links is None else links)
+    if linked is not None:
+        warnings.append(ScanWarning(str(sv_dir), f"skipped: {linked} is a link, and the WTF backup does not follow "
+                                                 "links, so nothing under it is cleaned"))
         return []
     try:
         entries = sorted(sv_dir.iterdir(), key=lambda p: p.name.casefold())
@@ -240,12 +261,13 @@ def scan(flavor: Flavor, *, account: str | None = None, progress: ScanProgress |
     done = 0
     _report(progress, done, total, "Reading AddOns")
     groups: list[SVGroup] = []
+    links: dict[Path, bool] = {}
     for acct in accounts:
-        groups += _scan_sv_dir(acct.saved_variables_dir, acct, None, warnings)
+        groups += _scan_sv_dir(acct.saved_variables_dir, acct, None, warnings, links)
         done += 1
         _report(progress, done, total, acct.name)
         for character in (c for c in characters if c.account == acct.name):
-            groups += _scan_sv_dir(character.saved_variables_dir, acct, character, warnings)
+            groups += _scan_sv_dir(character.saved_variables_dir, acct, character, warnings, links)
             done += 1
             _report(progress, done, total, f"{acct.name} · {character.label}")
 

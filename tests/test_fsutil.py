@@ -2,13 +2,23 @@ from __future__ import annotations
 
 import errno
 import os
+import stat
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from wowtools.core import fsutil
-from wowtools.core.fsutil import atomic_write_text, free_name, remove_quietly, rename_no_replace, safe_progress
+from wowtools.core.fsutil import (
+    atomic_write_text,
+    free_name,
+    is_link,
+    is_real_dir,
+    remove_quietly,
+    remove_tree_no_follow,
+    rename_no_replace,
+    safe_progress,
+)
 
 
 class RenameNoReplaceTest(unittest.TestCase):
@@ -102,3 +112,137 @@ class SmallHelpersTest(unittest.TestCase):
         def broken(*_):
             raise RuntimeError("display gone")
         safe_progress(broken)("stage", 1, 2)  # never raises
+
+
+def can_symlink(tmp: Path) -> bool:
+    """True when this platform (and user) may create a directory symlink."""
+    try:
+        (tmp / "probe-target").mkdir()
+        os.symlink(tmp / "probe-target", tmp / "probe-link", target_is_directory=True)
+        return True
+    except (OSError, NotImplementedError):
+        return False
+
+
+class RemoveTreeNoFollowTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+
+    def test_removes_nested_tree_and_read_only_files(self):
+        root = self.tmp / "tree"
+        (root / "a" / "b").mkdir(parents=True)
+        path = root / "a" / "b" / "x.txt"
+        path.write_text("x", encoding="utf-8")
+        os.chmod(path, stat.S_IREAD)
+        remove_tree_no_follow(root)
+        self.assertFalse(root.exists())
+
+    @unittest.skipIf(os.name == "nt" or os.geteuid() == 0, "POSIX permissions, not as root")
+    def test_posix_permission_error_leaves_modes_alone(self):
+        root = self.tmp / "WTF.replaced"
+        (root / "locked").mkdir(parents=True)
+        path = root / "locked" / "x.lua"
+        path.write_text("x", encoding="utf-8")
+        before = stat.S_IMODE(path.stat().st_mode)
+        os.chmod(root / "locked", 0o555)
+        self.addCleanup(os.chmod, root / "locked", 0o755)
+        with self.assertRaises(PermissionError):
+            remove_tree_no_follow(root)
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), before)
+        self.assertEqual(path.read_text(encoding="utf-8"), "x")
+
+    def test_read_only_retry_is_windows_only(self):
+        path = self.tmp / "x.lua"
+        path.write_text("x", encoding="utf-8")
+        real = os.remove
+        calls = []
+
+        def read_only_once(target):
+            calls.append(target)
+            if len(calls) == 1:
+                raise PermissionError(13, "read-only")
+            real(target)
+
+        with patch("os.remove", read_only_once), patch("os.chmod") as chmod, patch.object(fsutil.sys, "platform",
+                                                                                          "linux"):
+            with self.assertRaises(PermissionError):
+                fsutil._delete_entry(path, folder=False)
+            chmod.assert_not_called()
+        calls.clear()
+        with patch("os.remove", read_only_once), patch("os.chmod") as chmod, patch.object(fsutil.sys, "platform",
+                                                                                          "win32"):
+            fsutil._delete_entry(path, folder=False)
+            chmod.assert_called_once_with(path, stat.S_IWRITE)
+        self.assertFalse(path.exists())
+
+    def test_link_inside_is_unlinked_never_followed(self):
+        if not can_symlink(self.tmp):
+            self.skipTest("symlinks not available")
+        repo = self.tmp / "repo"
+        repo.mkdir()
+        (repo / "keep.lua").write_text("k", encoding="utf-8")
+        root = self.tmp / "Interface.replaced"
+        (root / "AddOns").mkdir(parents=True)
+        os.symlink(repo, root / "AddOns" / "MyAddon", target_is_directory=True)
+        self.assertTrue(is_link(root / "AddOns" / "MyAddon"))
+        remove_tree_no_follow(root)
+        self.assertFalse(root.exists())
+        self.assertEqual((repo / "keep.lua").read_text(encoding="utf-8"), "k")
+
+    def test_link_given_as_path_is_just_unlinked(self):
+        if not can_symlink(self.tmp):
+            self.skipTest("symlinks not available")
+        (self.tmp / "probe-target" / "keep.lua").write_text("k", encoding="utf-8")
+        remove_tree_no_follow(self.tmp / "probe-link")
+        self.assertFalse(os.path.lexists(self.tmp / "probe-link"))
+        self.assertEqual((self.tmp / "probe-target" / "keep.lua").read_text(encoding="utf-8"), "k")
+
+    def test_is_link_false_for_plain_folder_and_missing_path(self):
+        (self.tmp / "d").mkdir()
+        self.assertFalse(is_link(self.tmp / "d"))
+        self.assertFalse(is_link(self.tmp / "missing"))
+        with os.scandir(self.tmp) as entries:
+            self.assertEqual([is_link(entry) for entry in entries], [False])
+
+    def test_is_real_dir(self):
+        (self.tmp / "d").mkdir()
+        (self.tmp / "f").write_text("x", encoding="utf-8")
+        self.assertTrue(is_real_dir(self.tmp / "d"))
+        self.assertFalse(is_real_dir(self.tmp / "f"))
+        self.assertFalse(is_real_dir(self.tmp / "missing"))
+        if can_symlink(self.tmp):
+            os.symlink(self.tmp / "d", self.tmp / "link", target_is_directory=True)
+            self.assertFalse(is_real_dir(self.tmp / "link"))
+
+    def test_missing_tree_raises(self):
+        with self.assertRaises(OSError):
+            remove_tree_no_follow(self.tmp / "missing")
+
+
+class ReadMakeLinkTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+
+    def test_link_read_and_made_again(self):
+        target = self.tmp / "repo"
+        target.mkdir()
+        link = self.tmp / "link"
+        try:
+            os.symlink(target, link, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks not permitted here")
+        self.assertEqual(fsutil.read_link(link), (os.fspath(target), False))
+        os.unlink(link)
+        fsutil.make_link(os.fspath(target), link, junction=False)
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(os.readlink(link), os.fspath(target))
+
+    def test_not_a_link_is_none(self):
+        (self.tmp / "file").write_text("x", encoding="utf-8")
+        self.assertIsNone(fsutil.read_link(self.tmp / "file"))
+        self.assertIsNone(fsutil.read_link(self.tmp))
+        self.assertIsNone(fsutil.read_link(self.tmp / "missing"))

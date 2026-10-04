@@ -233,7 +233,7 @@ def _take_safety_snapshot(flavor: Flavor, backup_dir: Path | None, now: datetime
                           f"before it is at {earlier.snapshot}. Dismiss that notice (the backup is kept) or "
                           f"delete {backup_dir / MARKER_NAME}, then clean again.")
     try:
-        snapshot = take_snapshot(flavor, backup_dir, now, progress=report)
+        snapshot = take_snapshot(flavor, backup_dir, now, progress=report, must_hold=rels)
     except BackupError as exc:
         log_event("snapshot.failed", flavor=flavor.folder, error=str(exc))
         raise

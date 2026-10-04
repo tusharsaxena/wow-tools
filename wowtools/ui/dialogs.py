@@ -19,6 +19,67 @@ from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, Na
 
 PARTLY_TICKED = "◩"
 ALERT_STYLE = "bold #E5534B"
+ACCENT = "bold #5CC8FF"  # names in a review tree (flavors, groups) and section headings in the tree
+BUSY_STYLE = "bold #E8B04B"  # a summary line that says work is going on ("Checking for running programs…")
+
+# One look for every tool: the same left pane, action row, bottom line and hints on the two-pane screens, the
+# same layout and hints on the result screens, the same form on the settings screens.
+FILTERS_WIDTH = 50  # the left pane: wide enough for four action buttons in one row
+
+
+def review_hint(space: str = "tick") -> str:
+    """The start of a two-pane screen's hint; `space` says what Space does in its tree ("tick", "tick or open")."""
+    return f"↑↓/Tab move · ←→ panes and buttons · Space {space} · Enter/Space press · "
+
+
+REVIEW_HINT = review_hint()
+RESULT_HINT = "↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · "
+
+
+def two_pane_css(screen: str, tree: str, *, width: int = FILTERS_WIDTH) -> str:
+    """DEFAULT_CSS of a two-pane screen called `screen`: the left pane (#filters: .section headings, compact
+    checkboxes and inputs, the #actions button row in one line), the tree (`tree`), the scan progress that stands
+    in for the tree while a scan runs (#scan-box) and the bottom line (#summary)."""
+    return f"""
+    {screen} #body {{ height: 1fr; }}
+    {screen} #filters {{ width: {width}; padding: 0 1; border-right: solid $primary; }}
+    {screen} #filters .section {{ color: $accent; text-style: bold; margin: 1 0 0 0; }}
+    {screen} #filters Ka0sCheckbox, {screen} #filters Input {{ margin: 0; }}
+    {screen} #actions {{ margin-top: 1; height: auto; }}
+    {screen} #actions Button {{ min-width: 0; width: auto; margin-right: 1; }}
+    {screen} {tree} {{ width: 1fr; padding: 0 1; }}
+    {screen} #scan-box {{ width: 1fr; height: auto; padding: 1 2; }}
+    {screen} #scan-progress {{ width: 1fr; }}
+    {screen} #scan-label {{ color: $text-muted; margin-top: 1; }}
+    {screen} #summary {{ height: auto; padding: 0 1; background: $surface; }}
+    """
+
+
+def result_css(screen: str) -> str:
+    """DEFAULT_CSS of a result screen called `screen`: #result holds the Item/Value #result-summary (at most half
+    the height) above the detail table (class result-detail), then the .buttons row and the NavHint."""
+    return f"""
+    {screen} #result {{ height: 1fr; padding: 1 2; }}
+    {screen} #result-summary {{ height: auto; max-height: 50%; margin-bottom: 1; }}
+    {screen} .result-detail {{ height: 1fr; }}
+    {screen} .buttons {{ height: auto; padding: 0 2; }}
+    {screen} .buttons Button {{ min-width: 0; width: auto; margin-right: 1; }}
+    {screen} NavHint {{ padding: 0 2; margin-top: 0; }}
+    """
+
+
+def settings_css(screen: str) -> str:
+    """DEFAULT_CSS of a tool's settings screen called `screen` (a FormScroll #settings with a .title, labels,
+    inputs, checkboxes, #settings-error and a .buttons row)."""
+    return f"""
+    {screen} #settings {{ padding: 0 2; }}
+    {screen} .title {{ color: $accent; text-style: bold; margin: 1 0; }}
+    {screen} Label {{ width: 1fr; height: auto; }}
+    {screen} Ka0sCheckbox {{ margin-bottom: 1; }}
+    {screen} #settings-error {{ color: $error; height: auto; }}
+    {screen} .buttons {{ height: auto; margin-top: 1; }}
+    {screen} Button {{ margin-right: 2; }}
+    """
 
 
 def theme_colour(app, name: str) -> str:

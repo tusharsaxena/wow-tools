@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 import zipfile
@@ -9,7 +10,7 @@ from unittest.mock import patch
 
 from tests.fixtures import build_wow_tree
 from wowtools.core import backup
-from wowtools.core.backup import BackupEntry, BackupError, create_backup
+from wowtools.core.backup import BackupEntry, BackupError, create_backup, walk_files
 
 
 class BackupTest(unittest.TestCase):
@@ -98,3 +99,54 @@ class BackupTest(unittest.TestCase):
         (self.tmp / "World of Warcraft" / "elsewhere.lua").write_text("x")
         with self.assertRaises(BackupError):
             create_backup([BackupEntry(sneaky)], self.flavor_dir, self.dest, {})
+
+
+class WalkFilesTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+        self.root = self.tmp / "root"
+        for rel in ("b/2.txt", "a/1.txt", "top.txt"):
+            path = self.root / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(rel, encoding="utf-8")
+
+    def test_files_depth_first_sorted(self):
+        names = [Path(entry.path).relative_to(self.root).as_posix() for entry in walk_files(self.root)]
+        self.assertEqual(names, ["top.txt", "a/1.txt", "b/2.txt"])
+
+    def test_links_reported_not_followed(self):
+        target = self.tmp / "elsewhere"
+        target.mkdir()
+        (target / "x.txt").write_text("x", encoding="utf-8")
+        try:
+            os.symlink(target, self.root / "link", target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks not available")
+        links = []
+        files = walk_files(self.root, on_link=links.append)
+        self.assertEqual(links, [self.root / "link"])
+        self.assertNotIn("x.txt", [entry.name for entry in files])
+
+    def test_on_count_and_missing_root_raises(self):
+        counts = []
+        walk_files(self.root, on_count=counts.append, every=2)
+        self.assertEqual(counts, [2])
+        with self.assertRaises(OSError):
+            walk_files(self.tmp / "nope", on_error=lambda path, exc: None)  # the root itself always raises
+
+    def test_unreadable_subfolder_goes_to_on_error(self):
+        real_scandir = os.scandir
+
+        def scandir(path):
+            if Path(path).name == "a":
+                raise PermissionError(13, "denied", str(path))
+            return real_scandir(path)
+        errors = []
+        with patch.object(backup.os, "scandir", scandir):
+            files = walk_files(self.root, on_error=lambda path, exc: errors.append(path))
+            self.assertEqual([entry.name for entry in files], ["top.txt", "2.txt"])
+            self.assertEqual(errors, [self.root / "a"])
+            with self.assertRaises(PermissionError):
+                walk_files(self.root)

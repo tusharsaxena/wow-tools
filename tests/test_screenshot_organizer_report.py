@@ -51,7 +51,7 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(rows[KIND_LABELS[MOVED]], "1")
         self.assertNotIn(KIND_LABELS[WOULD_MOVE], rows)  # zero counts are left out
         self.assertEqual(rows["Journal"], str(Path("/j/journal-x.jsonl")))
-        self.assertEqual(result_rows(result)[1], (KIND_LABELS[CONFLICT_KEPT], "_retail_", src.name,
+        self.assertEqual(result_rows(result)[1], (KIND_LABELS[CONFLICT_KEPT], "Retail", src.name,
                                                   str(dst.parent), "different"))
         dry = OrganizeResult(True, False, [Outcome("_retail_", src, dst, WOULD_MOVE)])
         self.assertEqual(dict(summary_rows(dry))["Journal"], "not written (dry run)")
@@ -92,5 +92,5 @@ class ReportTest(unittest.TestCase):
         plan = Plan([FlavorPlan(flavor, Path("/w/_retail_/Screenshots"), Path("/w/_retail_/Screenshots"), [item])],
                     None)
         _, body = confirm_text([item], plan, ShotSettings(copy_mode=True), False)
-        self.assertIn("_retail_: 1 screenshot (1 already filed)", body)
+        self.assertIn("Retail: 1 screenshot (1 already filed)", body)
         self.assertIn("compared by content", body)

@@ -13,7 +13,7 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
      register_events(TOOL_NAME, EVENTS)
      ```
      Event names share one registry across all tools (the same name with a different spec is an error), so give
-     every name a tool prefix: `shots.*` here. The WTF Cleaner already owns bare names such as `scan.started`
+     every name a tool prefix: `shots.*` here (`ibackup.*` for Interface Backup). The WTF Cleaner already owns bare names such as `scan.started`
      and `backup.created`, which predate this rule.
    - UI-free logic modules over plain dataclasses, which never import `textual`. The organizer has `naming.py`
      (parse the file name), `planner.py` (`scan(flavors, dest_dir, progress)` returns a `Plan` of `ShotItem`s),
@@ -25,7 +25,7 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
      cannot be written; `add_entry({"action": ..., ...})` after each change; `finish()` and `discard_if_empty()` at
      the end; `prune_journals(dir, keep_journals)` with a `keep_journals` setting (default 10, at least 1). Keep the
      tool's own entry fields, `read_journal` wrapper and undo rules in its own `journal.py` / `undo.py` (see
-     `screenshot_organizer/` and `wtf_cleaner/`), offer only `latest_undoable(dir)`, `mark_undone()` after an
+     `screenshot_organizer/`, `wtf_cleaner/` and `interface_backup/`, whose journal records restores only), offer only `latest_undoable(dir)`, `mark_undone()` after an
      undo, and give the review screen an amber Undo button (`action_button(..., "revert")`, key `z`, confirm
      starting on No). A dry run writes no journal.
    - `settings.py` for the tool's own settings: the `[screenshot_organizer]` section of `config/screenshot-organizer.cfg`.
@@ -43,6 +43,11 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
      run's `progress(stage, current, total, detail)` through `app.call_from_thread`. Wrap that callback with
      `core.fsutil.safe_progress` inside the run. A review tree can use `tick_mark`, `relabel_branch` and the
      `TwoPaneFocus` mixin; `theme_colour(app, "success")` gives theme colours with the Ka0s fallback.
+   - **One look.** Build the screens' CSS and hints from the same module, so a new tool looks like the others:
+     `two_pane_css(screen, tree)` for the review (left pane `FILTERS_WIDTH` wide, four action buttons in one row),
+     `result_css(screen)` for the result, `settings_css(screen)` for the settings form, and hints that start with
+     `REVIEW_HINT` (or `review_hint("tick or open")` when Space does more in your tree) and `RESULT_HINT`.
+     `tests/test_look_and_feel.py` checks every tool against them; add yours to its `TOOLS`.
 2. **Register** it in `wowtools/tools/__init__.py`:
    `Tool("screenshot-organizer", "Screenshot Organizer", "File screenshots into year/month/day folders, per flavor.",
    "wowtools.tools.screenshot_organizer.app", "screenshot_organizer")`. It appears in the tool menu. There are no per-tool wrappers or command-line modes: every tool
@@ -62,3 +67,6 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
    to `RENAMED_TOOLS` in `wowtools/tools/__init__.py`, e.g.
    `ToolRename("screenshots", "screenshot-organizer", "screenshots", "screenshot_organizer")`. On the next start
    the old config file, `logs/<old>/` and `<WoW folder>/wow-tools/<old>/` move to the new name (`core/migrate.py`).
+   Nothing else moves: a tool whose output folder is named after `TOOL_NAME` inside a folder the user chose
+   (Interface Backup's `<backup folder>/interface-backup`, when the backup folder is set) needs that subfolder
+   moved too, which migrate does not do. Without it the tool lists no backups and Undo refuses the moved journals.

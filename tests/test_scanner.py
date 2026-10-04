@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -34,6 +36,29 @@ class ScannerTest(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.install = WowInstall(build_wow_tree(Path(tmp.name) / "World of Warcraft"))
         self.retail = self.install.flavor("retail")
+
+    def symlink(self, target, link):
+        try:
+            os.symlink(target, link, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks not permitted here")
+
+    def test_linked_folders_are_skipped_with_a_warning(self):
+        # The WTF backup a clean takes first never goes into a link, so nothing under one may be cleaned.
+        account_dir = self.retail.account_dir
+        shared = self.install.root.parent / "shared-sv"
+        char_sv = account_dir / "ACCT1" / "Realm1" / "CharA" / "SavedVariables"
+        shutil.move(str(char_sv), str(shared))
+        self.symlink(shared, char_sv)
+        self.symlink(account_dir / "ACCT2", account_dir / "ACCT3")  # an account sharing another's folder
+        result = scan(self.retail)
+        owners = {(g.account, g.character.name if g.character else None) for g in result.groups}
+        self.assertNotIn(("ACCT1", "CharA"), owners)
+        self.assertFalse([o for o in owners if o[0] == "ACCT3"])
+        self.assertIn(("ACCT2", None), owners)
+        linked = [w for w in result.warnings if "is a link" in w.message]
+        self.assertEqual(len(linked), 3)  # CharA's SavedVariables; ACCT3's own and its character's
+        self.assertTrue(any(w.path == str(char_sv) for w in linked))
 
     def test_installed_addons_needs_a_toc(self):
         self.assertEqual(installed_addons(self.retail.addons_dir), {

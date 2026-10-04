@@ -362,6 +362,48 @@ class ShotsAppTest(TuiTestCase):
         self.assertTrue(threads)
         self.assertFalse(any(threads))
 
+    async def test_flavor_counts_arrive_while_settings_cover_the_picker(self):
+        self.save_tool_cfg()
+        release = threading.Event()
+        self.addCleanup(release.set)
+        real = app_module.waiting_count
+
+        def slow_count(flavor, *args, **kwargs):
+            release.wait(5)
+            return real(flavor, *args, **kwargs)
+
+        app = self.make_app()
+        with patch.object(app_module, "waiting_count", slow_count):
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_tool(app, pilot)
+                picker = app.screen
+                self.assertIsInstance(picker, FlavorScreen)
+                await pilot.press("s")  # the WoW folder, then the tool's settings, cover the picker
+                await pilot.pause()
+                release.set()
+                await settle(app, pilot)
+                await pilot.press("escape")
+                await settle(app, pilot)
+                await pilot.press("escape")
+                await settle(app, pilot)
+                self.assertIs(app.screen, picker)
+                options = picker.query_one("#flavors", OptionList)
+                labels = [str(options.get_option_at_index(n).prompt) for n in range(options.option_count)]
+                self.assertFalse(any("counting" in label for label in labels), labels)
+
+    async def test_settings_labels_wrap_at_80_columns(self):
+        app = self.make_app()
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            screen = ScreenshotSettingsScreen(Config(self.config_dir / "screenshot-organizer.cfg"), None,
+                                              source="settings")
+            app.push_screen(screen)
+            await pilot.pause()
+            for label in screen.query("Label"):
+                text = str(label.render())
+                self.assertLessEqual(label.region.right, 80, text)
+                self.assertGreaterEqual(label.region.width * label.region.height, len(text), text)
+
     async def test_copy_mode_filed_copies_are_not_waiting(self):
         """F-027: copy mode in place: screenshots already copied are not counted, show as already filed and
         start unticked."""

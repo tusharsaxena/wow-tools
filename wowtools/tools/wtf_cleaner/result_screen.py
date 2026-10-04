@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -16,11 +15,12 @@ from wowtools.core.events import log_event
 from wowtools.core.install import Flavor
 from wowtools.tools.wtf_cleaner.cleaner import CleanResult
 from wowtools.tools.wtf_cleaner.multi import FlavorRun, MultiCleanResult, nothing_deleted
-from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, MULTI_RESULT_COLUMNS, RESULT_COLUMNS, UNDO_COLUMNS,
-                                               format_size, multi_result_rows, result_rows, undo_row,
-                                               undo_summary_rows)
+from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, MULTI_RESULT_COLUMNS,
+                                               RESULT_COLUMNS, UNDO_COLUMNS, format_size, multi_result_rows,
+                                               result_rows, undo_row, undo_summary_rows)
 from wowtools.tools.wtf_cleaner.undo import UndoResult
-from wowtools.ui.dialogs import theme_colour
+from wowtools.ui.branding import BrandBar
+from wowtools.ui.dialogs import RESULT_HINT, result_css, theme_colour
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 BLOCK_STYLE = "bold #5CC8FF"
@@ -30,12 +30,12 @@ STATUS_COLOURS = {"deleted": "success", "restored": "success", "would_delete": "
 
 
 def reasons_text(reasons: list[str]) -> Text:
-    """Reasons, comma separated, each in its criterion's colour."""
+    """Reasons by their short names ("Not installed"), comma separated, each in its criterion's colour."""
     text = Text()
     for index, reason in enumerate(reasons):
         if index:
             text.append(", ")
-        text.append(reason, style=CRITERION_COLORS.get(reason, ""))
+        text.append(CRITERION_SHORT.get(reason, reason), style=CRITERION_COLORS.get(reason, ""))
     return text
 
 
@@ -95,14 +95,7 @@ class ResultScreen(Screen[str]):
     CleanResult (with its flavor), a MultiCleanResult (several flavors: one summary block each, and a Flavor
     column) or an UndoResult (Undo last clean: the same layout, titled "undo result")."""
 
-    DEFAULT_CSS = """
-    ResultScreen #result { height: 1fr; padding: 1 2; }
-    ResultScreen #result-summary { height: auto; max-height: 50%; margin-bottom: 1; }
-    ResultScreen #result-files { height: 1fr; }
-    ResultScreen .buttons { height: auto; padding: 0 2; }
-    ResultScreen Button { margin-right: 2; }
-    ResultScreen NavHint { padding: 0 2; margin-top: 0; }
-    """
+    DEFAULT_CSS = result_css("ResultScreen")
     BINDINGS: ClassVar[list[Binding]] = [Binding("r", "choose('review')", "Rescan"), Binding("f", "choose('flavors')", "Flavors"),
                 Binding("t", "choose('tools')", "Tools"), Binding("q", "choose('quit')", "Quit"),
                 Binding("escape", "choose('review')", "Back", show=False),
@@ -121,14 +114,14 @@ class ResultScreen(Screen[str]):
             # cap, so it takes focus there and the arrow keys scroll it (no cursor).
             summary.can_focus = isinstance(self.result, MultiCleanResult)
             yield summary
-            yield DataTable(id="result-files", cursor_type="row", zebra_stripes=True)
+            yield DataTable(id="result-files", classes="result-detail", cursor_type="row", zebra_stripes=True)
         with ButtonRow(classes="buttons"):
             yield action_button("Rescan (r)", "neutral", id="review")
             yield action_button("Other flavor (f)", "neutral", id="flavors")
             yield action_button("Tools (t)", "neutral", id="tools")
             yield action_button("Quit (q)", "neutral", id="quit")
-        yield NavHint("↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · r rescan · f other flavor · "
-                      "t tools · q quit")
+        yield NavHint(RESULT_HINT + "r rescan · f other flavor · t tools · q quit")
+        yield BrandBar()
         yield Footer()
 
     def on_mount(self) -> None:

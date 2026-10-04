@@ -20,13 +20,15 @@ you land back on the menu.
 |---|---|---|
 | **WTF Cleaner** | Finds settings files left behind by addons you no longer use, backs them up, and deletes them. | [WTF Cleaner guide](docs/wtf-cleaner.md) |
 | **Screenshot Organizer** | Sorts your WoW screenshots into folders by year, month and day, one set per game version. | [Screenshot Organizer guide](docs/screenshot-organizer.md) |
+| **Interface Backup** | Zips a game version's `Interface` and `WTF` folders (your addons and their settings), and puts them back from a zip. | [Interface Backup guide](docs/interface-backup.md) |
 
-Both tools work with every version of the game you have installed: Retail, Classic, Classic Era, Anniversary,
+Every tool works with every version of the game you have installed: Retail, Classic, Classic Era, Anniversary,
 and the PTR and Beta clients. You can work on one version at a time or all of them at once.
 
-Neither tool changes anything until you say so. Each one shows you the full list first and asks before it
-touches a file. If you'd rather see what would happen first, do a practice run (a **Dry run**). And if you
-change your mind afterwards, you can undo the last run.
+No tool changes anything until you say so. Each one shows you what it will do first and asks before it
+touches a file. The WTF Cleaner and the Screenshot Organizer can also do a practice run (a **Dry run**) that
+shows what would happen without changing anything. And if you change your mind afterwards, you can undo the last
+clean, the last sort or the last restore.
 
 ## Screenshots
 
@@ -38,7 +40,9 @@ change your mind afterwards, you can undo the last run.
 
 ![Screenshot Organizer review screen](docs/assets/screenshot-05-screenshot-organizer-main.png)
 
-More pictures of every screen are in each tool's guide.
+Every tool looks and works the same way: a panel on the left with its settings and buttons, a tree on the right
+with what it found (tick what you want), and a bar at the bottom that totals your choice. Before it changes
+anything, a window asks you to confirm. More pictures of every screen are in each tool's guide.
 
 ## What you need
 
@@ -111,8 +115,9 @@ The app opens in a terminal window. You drive it with the keyboard:
 | `s` | Settings |
 | `q` | Quit |
 
-Each screen lists its keys along the bottom, so you don't have to remember them. A mouse works too. While a clean, organize or
-undo is running, the app won't quit until it has finished.
+Each screen lists its keys along the bottom, so you don't have to remember them. A mouse works too. While a tool is
+changing or writing files (a clean, a sort, a backup, a restore or an undo), the app won't quit until it has
+finished.
 
 ### The first time
 
@@ -133,6 +138,8 @@ Each tool has its own guide, with pictures, that walks through every screen:
 - [WTF Cleaner guide](docs/wtf-cleaner.md): clean out old addon settings safely, and undo a clean.
 - [Screenshot Organizer guide](docs/screenshot-organizer.md): sort screenshots into dated folders, and undo a
   run.
+- [Interface Backup guide](docs/interface-backup.md): back up your addons and their settings, restore them, and
+  undo a restore.
 
 ## Updates
 
@@ -168,6 +175,7 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 | `config\wow-tools.cfg` | Your WoW folder, plus update and log options, shared by every tool |
 | `config\wtf-cleaner.cfg` | The WTF Cleaner's settings |
 | `config\screenshot-organizer.cfg` | The Screenshot Organizer's settings |
+| `config\interface-backup.cfg` | Interface Backup's settings |
 
 The easiest way to change them is to press `s` in the app. You can also open the files in Notepad while the app
 is closed. The guides list every setting.
@@ -193,13 +201,13 @@ If you use WSL (Linux inside Windows), the same folder works from both sides. Ru
 
 | Question | Answer |
 |----------|--------|
-| Is it safe? Can I lose anything? | Both tools show you the full list and ask before they change anything. The WTF Cleaner backs up your whole `WTF` folder and zips every file before deleting it, and the Screenshot Organizer never overwrites a file. Both can undo their last run. If you're unsure, press **Dry run** first: it shows what would happen without changing anything. |
-| Does it change the game itself? | No. It never touches the game program or your addons. It only works on files the game leaves in your WoW folder: addon settings in `WTF` and pictures in `Screenshots`. |
-| Do I need to close WoW? | Close it before you clean with the WTF Cleaner: WoW rewrites those files when you log out and can bring deleted ones back. The cleaner warns you if WoW is running. The Screenshot Organizer doesn't mind if the game is open. |
+| Is it safe? Can I lose anything? | Every tool shows you what it will do and asks before it changes anything. The WTF Cleaner backs up your whole `WTF` folder and zips every file before deleting it, the Screenshot Organizer never overwrites a file, and Interface Backup takes a safety backup of your folders before every restore. Each can undo its last run (Interface Backup: its last restore). If you're unsure, press **Dry run** in the WTF Cleaner or the Screenshot Organizer first: it shows what would happen without changing anything. |
+| Does it change the game itself? | No. It never touches the game program. The WTF Cleaner and the Screenshot Organizer only work on files the game leaves in your WoW folder: addon settings in `WTF` and pictures in `Screenshots`. Interface Backup only reads your `Interface` and `WTF` folders to back them up; they change only when you restore a backup (or undo a restore) and confirm it. |
+| Do I need to close WoW? | Close it before you clean with the WTF Cleaner: WoW rewrites those files when you log out and can bring deleted ones back. Close it before an Interface Backup restore or undo too; a backup works with the game open but may miss your latest settings. The WTF Cleaner and Interface Backup warn you if WoW is running. The Screenshot Organizer doesn't mind if the game is open. |
 | Do I need to install anything besides Python? | No. Everything else the app needs comes in the download. |
-| Does it work on a Mac? | Yes, with `./wow-tools.sh`. The only thing missing on a Mac is the "WoW is running" warning, so close WoW yourself before cleaning. |
+| Does it work on a Mac? | Yes, with `./wow-tools.sh`. The only thing missing on a Mac is the "WoW is running" warning, so close WoW yourself before cleaning or restoring. |
 | Why does it say another copy may already be running? | Only one copy of the app can run at once. While it's open it keeps a small file called `wow-tools.lock` in its folder. If you start it a second time, or it crashed last time, you get a warning with two buttons: **Quit** if the app really is open somewhere else, or **Override and continue** if it isn't (for example after a crash). When the app can tell the other copy is gone, it says so and puts you on **Override and continue**. |
-| Can I work on all my game versions at once? | Yes. Pick **All flavors** at the top of the list, in either tool. |
+| Can I work on all my game versions at once? | Yes. Pick **All flavors** at the top of the list, in any tool. |
 | Where are my settings, backups and logs? | Settings are in the app's `config` folder and logs in its `logs` folder. Backups and undo journals are in your WoW folder, under `wow-tools`. See [Your settings](#your-settings) and the guides. |
 | How do I update? | The app tells you on its bottom bar when a new version is out; press `u`. See [Updates](#updates). |
 | How do I uninstall it? | Delete the app's folder. If you also want the backups and undo journals gone, delete the `wow-tools` folder inside your WoW folder. Nothing else is installed anywhere. |
@@ -235,6 +243,7 @@ Please file reports there, so nothing gets lost.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| Unreleased | — | - **Interface Backup**, a third tool: zips each game version's `Interface` and `WTF` folders (your addons and their settings) into one dated, checked zip; keeps the newest 10 per game version<br>- Restores a backup exactly, the `Interface` folder, the `WTF` folder or both, after listing what would be removed or changed; takes a safety backup first, and **Undo** puts the folders back<br>- Never follows linked addon folders (symlinks, junctions): they're left out of backups and kept by a restore |
 | 1.0.0 | 2026-10-04 | - First release, with two tools in one app<br>- **WTF Cleaner**: finds settings left behind by addons you no longer use, shows them for review, backs them up and deletes them; works on one game version, one account or **All flavors**; **Dry run** and **Undo last clean**<br>- **Screenshot Organizer**: sorts screenshots into year, month and day folders, in place or into an archive folder; duplicate checks, copy mode, **Dry run** and **Undo last run**<br>- Works with every installed game version (Retail, Classic, Classic Era, Anniversary, PTR and Beta) on Windows, Mac, Linux and WSL<br>- Checks for updates and installs them for you |
 
 ## Credits

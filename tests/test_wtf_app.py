@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import threading
 import time
@@ -335,7 +336,8 @@ class ReviewFlowTest(AppTestCase):
             self.assertEqual(counts, {"not_installed": 3, "not_enabled": 1, "older_than": 2, "stray_copies": 2})
             for index, name in enumerate(CRITERIA, start=1):
                 label = review.query_one(f"#crit_{name}", Ka0sCheckbox).label
-                self.assertIn(f"({counts[name]} files)", label.plain)
+                files = counts[name]
+                self.assertIn(f"({files} file{'' if files == 1 else 's'})", label.plain)  # "(1 file)", never "1 files"
                 self.assertTrue(label.plain.startswith(f"{index} "))
             max_age = review.query_one("#max_age", Input)
             max_age.focus()
@@ -371,8 +373,13 @@ class ReviewFlowTest(AppTestCase):
             label = node.label
             colour = CRITERION_COLORS["not_installed"].lower()
             spans = [label.plain[sp.start:sp.end] for sp in label.spans if colour in str(sp.style).lower()]
-            self.assertIn("not_installed", spans)
+            self.assertIn("Not installed", spans)  # the criterion's short name, as in the left pane
             self.assertIn("✔", label.plain)
+            labels = [str(n.label) for n in _walk(review.query_one(Tree).root)]
+            for raw in CRITERIA:
+                self.assertFalse([t for t in labels if raw in t], raw)  # never a raw criterion key
+            self.assertFalse([t for t in labels if re.search(r"\b1 (files|items)\b", t)], labels)  # singular
+            self.assertTrue([t for t in labels if re.search(r"\b1 (file|item)\b", t)], labels)
 
     async def test_tree_marks_follow_selection(self):
         app = self.make_app()
@@ -576,6 +583,18 @@ class FirstRunTest(AppTestCase):
             self.assertIsNot(app.screen, screen)
         self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).backup_dir, target)
 
+
+    async def test_settings_labels_wrap_at_80_columns(self):
+        app = self.make_app()
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            screen = CleanerSettingsScreen(self.tool_cfg, self.root, source="settings")
+            app.push_screen(screen)
+            await pilot.pause()
+            for label in screen.query("Label"):
+                text = str(label.render())
+                self.assertLessEqual(label.region.right, 80, text)
+                self.assertGreaterEqual(label.region.width * label.region.height, len(text), text)
 
 class BackupFolderValidationTest(AppTestCase):
     async def test_settings_reject_backup_dir_inside_wtf_or_relative(self):
@@ -1187,7 +1206,7 @@ class AllFlavorsTest(AppTestCase):
             await settle(app, pilot)  # the running-programs check runs in a worker
             confirm = app.screen
             self.assertIsInstance(confirm, ConfirmScreen)
-            self.assertIn("Classic Era: 1 addon groups, 1 files", confirm.body_text)
+            self.assertIn("Classic Era: 1 addon group, 1 file", confirm.body_text)
             self.assertIn("Retail: 6 addon groups, 8 files", confirm.body_text)
             self.assertIn("WowClassic.exe", confirm.body_text)
             self.assertNotIn("Anniversary", confirm.body_text)

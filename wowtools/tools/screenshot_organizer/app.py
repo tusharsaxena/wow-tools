@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, ClassVar
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Label, Static
 
@@ -19,23 +18,17 @@ from wowtools.tools.screenshot_organizer.review_screen import ShotReviewScreen
 from wowtools.tools.screenshot_organizer.settings import (SECTION, ShotSettings, load_settings, save_settings,
                                                           source_dir, validate_dest)
 from wowtools.ui.branding import BrandBar
+from wowtools.ui.dialogs import settings_css
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.tool_flow import ToolFlow
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, FormScroll, Ka0sCheckbox, NavHint, action_button
 
 if TYPE_CHECKING:
     from wowtools.ui.suite_app import WowToolsApp
 
 
 class ScreenshotSettingsScreen(Screen[bool]):
-    DEFAULT_CSS = """
-    ScreenshotSettingsScreen #settings { padding: 0 2; }
-    ScreenshotSettingsScreen .title { color: $accent; text-style: bold; margin: 1 0; }
-    ScreenshotSettingsScreen Ka0sCheckbox { margin: 1 0; }
-    ScreenshotSettingsScreen #settings-error { color: $error; height: auto; }
-    ScreenshotSettingsScreen .buttons { height: auto; margin-top: 1; }
-    ScreenshotSettingsScreen Button { margin-right: 2; }
-    """
+    DEFAULT_CSS = settings_css("ScreenshotSettingsScreen")
     BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
 
     def __init__(self, tool_cfg: Config, install: WowInstall | None, *, source: str) -> None:
@@ -48,7 +41,7 @@ class ScreenshotSettingsScreen(Screen[bool]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with VerticalScroll(id="settings", can_focus=False):
+        with FormScroll(id="settings", can_focus=False):
             yield Static("Screenshot Organizer settings", classes="title")
             yield Label("Destination folder (the archive root). Screenshots are filed into "
                         "<destination>\\<flavor folder>\\YYYY\\MM\\DD, e.g. ...\\_retail_\\2019\\07\\31. "
@@ -57,7 +50,7 @@ class ScreenshotSettingsScreen(Screen[bool]):
                         placeholder="Empty = in place: <flavor>\\Screenshots\\YYYY\\MM\\DD", id="dest_dir")
             yield Label("Run journals to keep (each real run writes one; Undo uses the newest)")
             yield Input(str(self.settings.keep_journals), type="integer", id="keep_journals")
-            yield Ka0sCheckbox("Copy instead of move (the screenshots stay in the Screenshots folder too)",
+            yield Ka0sCheckbox("Copy instead of move (the originals stay in Screenshots)",
                                self.settings.copy_mode, id="sw_copy")
             yield Static("", id="settings-error")
             with ButtonRow(classes="buttons"):
@@ -70,6 +63,7 @@ class ScreenshotSettingsScreen(Screen[bool]):
     def on_mount(self) -> None:
         self.sub_title = "Screenshot Organizer settings"
         self.query_one("#dest_dir", Input).focus()
+        self.query_one("#settings", FormScroll).open_at_top()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "save":
@@ -162,9 +156,11 @@ class ScreenshotsFlow(ToolFlow):
         self.app.call_from_thread(self._counts_ready, picker, install, counts)
 
     def _counts_ready(self, picker: FlavorScreen, install: WowInstall, counts: dict[str, int | None]) -> None:
-        if self.app.screen is not picker:
+        if picker not in self.app.screen_stack:
             return  # a flavor was already chosen (or Esc pressed) before the counts were ready
-        if all(count is None for count in counts.values()):  # every Screenshots folder is unreadable
+        # A picker only covered (settings opened with s) still gets its counts: it shows them when it is back.
+        if all(count is None for count in counts.values()) and self.app.screen is picker:
+            # every Screenshots folder is unreadable
             self.app.notify(f"No Screenshots folders found in {to_stored(install.root)}.", severity="warning")
             picker.dismiss(None)  # back to the tool menu
             return

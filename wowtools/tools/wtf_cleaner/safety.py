@@ -18,7 +18,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
-from wowtools.core.backup import BackupError, verify_backup
+from wowtools.core.backup import BackupError, verify_backup, walk_files
 from wowtools.core.fsutil import free_name, remove_quietly, rename_no_replace
 from wowtools.core.install import Flavor
 
@@ -45,30 +45,22 @@ class Marker:
 def wtf_files(flavor: Flavor, progress: SnapshotProgress | None = None, stage: str = "snapshot_list") -> list[Path]:
     """Every regular file under <flavor>/WTF, sorted. Uses directory entries only (no per-file stat), so it stays
     fast on slow drives. progress(stage, found, 0, label) is called every LIST_REPORT_EVERY files and once at the
-    end with found == total."""
-    found: list[Path] = []
-    pending = [flavor.wtf_dir]
-    while pending:
-        folder = pending.pop()
-        with os.scandir(folder) as entries:
-            children = sorted(entries, key=lambda e: e.name)
-        subdirs = []
-        for entry in children:
-            if entry.is_dir(follow_symlinks=False):
-                subdirs.append(Path(entry.path))
-            elif entry.is_file(follow_symlinks=False):
-                found.append(Path(entry.path))
-                if progress is not None and len(found) % LIST_REPORT_EVERY == 0:
-                    progress(stage, len(found), 0, f"{len(found)} files found")
-        pending.extend(reversed(subdirs))
+    end with found == total. Links are skipped."""
+    def counted(found: int) -> None:
+        progress(stage, found, 0, f"{found} files found")
+
+    found = [Path(entry.path) for entry in walk_files(flavor.wtf_dir, on_count=None if progress is None else counted,
+                                                      every=LIST_REPORT_EVERY)]
     if progress is not None:
         progress(stage, len(found), len(found), f"{len(found)} files found")
     return found
 
 
 def take_snapshot(flavor: Flavor, backup_dir: Path, now: datetime,
-                  progress: SnapshotProgress | None = None) -> Path:
-    """Zip every regular file under <flavor>/WTF (stored as WTF/...), verify it, then move it into place."""
+                  progress: SnapshotProgress | None = None, must_hold: list[str] | None = None) -> Path:
+    """Zip every regular file under <flavor>/WTF (stored as WTF/...), verify it, then move it into place.
+    must_hold: the flavor-relative paths ("WTF/...") the clean will delete; a BackupError if any of them is not
+    among the files backed up (e.g. under a link, which the backup never follows): nothing could put it back."""
     dest = snapshot_path(backup_dir, flavor.short_name, now)
     partial = dest.with_name(dest.name + ".partial")
     try:
@@ -76,6 +68,12 @@ def take_snapshot(flavor: Flavor, backup_dir: Path, now: datetime,
             raise BackupError(f"{flavor.wtf_dir} is not a folder")
         files = wtf_files(flavor, progress)
         base = flavor.path
+        if must_hold:
+            held = {path.relative_to(base).as_posix() for path in files}
+            absent = [rel for rel in must_hold if rel not in held]
+            if absent:
+                raise BackupError(f"{len(absent)} file(s) to delete would not be in the WTF backup (under a link?), "
+                                  f"so nothing was deleted: {', '.join(absent[:5])}")
         expected: dict[str, int] = {}
         dest.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(partial, "w", compression=zipfile.ZIP_DEFLATED, strict_timestamps=False) as zf:
