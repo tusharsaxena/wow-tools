@@ -160,7 +160,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ace.apply_completed` | info | Apply finished (logged at warning if any file was skipped or failed). |
 | `ace.apply_started` | info | Apply (or a dry run) of the staged changes started. |
 | `ace.backup_failed` | error | The zip of the original files failed; nothing was changed. |
-| `ace.blacklist_changed` | info | An addon was added to or removed from the blacklist. |
+| `ace.blacklist_changed` | info | A (flavor, addon) pair was added to or removed from the blacklist (flavor, addon, blacklisted), or the whole list was saved from the blacklist screen (pairs). |
 | `ace.dry_run_completed` | info | A dry run finished. |
 | `ace.earlier_unfinished` | error | Apply was refused: an earlier Apply did not finish (its crash marker is there); nothing was changed. |
 | `ace.file_changed` | warning | A file changed since the scan; its changes were skipped. |
@@ -190,7 +190,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ace.undo_completed` | info | Undo last change finished (logged at warning if any file was skipped or failed). |
 | `ace.undo_failed` | error | Undo or recovery: a file could not be put back (its zip is missing or does not match). |
 | `ace.undo_started` | info | Undo last change started, from the newest journal. |
-| `ace.unlocked` | info | A blacklisted addon was unlocked for this session, or locked again (unlocked=false). |
+| `ace.unlocked` | info | A blacklisted addon of one flavor was unlocked for this session, or locked again (unlocked=false). |
 | `ace.verify_failed` | error | An edited file did not re-read as expected; it was not written and the run stopped. |
 | `ace.would_edit` | info | Dry run: a file that would be rewritten, with its changes (checked, not written). |
 | `ace.wow_running` | warning | Apply or Undo was refused because WoW of that flavor is running. |

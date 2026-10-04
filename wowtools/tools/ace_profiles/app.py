@@ -14,11 +14,14 @@ from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Label, Static
 
 from wowtools.core.config import Config
+from wowtools.core.events import log_event
 from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.paths import to_native, to_stored
+from wowtools.tools.ace_profiles.blacklist_screen import BlacklistScreen
+from wowtools.tools.ace_profiles.report import plural
 from wowtools.tools.ace_profiles.review_screen import ProfileReviewScreen
-from wowtools.tools.ace_profiles.settings import (SECTION, ProfileSettings, format_blacklist, load_settings,
-                                                  parse_blacklist, resolve_root, save_settings, validate_backup_dir)
+from wowtools.tools.ace_profiles.settings import (SECTION, Pair, ProfileSettings, format_blacklist, load_settings,
+                                                  resolve_root, save_settings, unique_pairs, validate_backup_dir)
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.dialogs import settings_css
@@ -42,6 +45,7 @@ class ProfileSettingsScreen(Screen[bool]):
         self.wow_path = wow_path
         self.source = source
         self.settings = load_settings(tool_cfg)
+        self.blacklist = list(self.settings.blacklist)  # edited with "Edit blacklist…", written by Save
         self.error_text = ""
 
     def compose(self) -> ComposeResult:
@@ -53,8 +57,9 @@ class ProfileSettingsScreen(Screen[bool]):
                         "was). Leave empty to use <WoW folder>/wow-tools/ace-profiles")
             yield Input(to_stored(settings.backup_dir) if settings.backup_dir else "",
                         placeholder=_default_backup_hint(self.wow_path), id="backup-dir")
-            yield Label("Blacklist (addon names, comma-separated): their profiles are shown but never changed")
-            yield Input(format_blacklist(settings.blacklist), placeholder="ElvUI, Questie", id="blacklist")
+            yield Label("Blacklist: addons whose profiles are shown but never changed, per flavor")
+            yield Static(Text(blacklist_summary(self.blacklist)), id="blacklist-summary")
+            yield action_button("Edit blacklist…", "neutral", id="edit-blacklist")
             yield Static("", id="settings-error")
             with ButtonRow(classes="buttons"):
                 yield action_button("Save", "confirm", id="save")
@@ -71,8 +76,24 @@ class ProfileSettingsScreen(Screen[bool]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "save":
             self._save()
+        elif event.button.id == "edit-blacklist":
+            self.edit_blacklist()
         else:
             self.action_cancel()
+
+    def edit_blacklist(self) -> None:
+        """The blacklist tree (BlacklistScreen) for every flavor of the WoW folder; its result waits for Save."""
+        flavors = WowInstall(self.wow_path).flavors() if self.wow_path is not None else []
+        if not flavors:
+            self._error("Set the WoW folder first: the blacklist lists the addons it finds there.")
+            return
+        self.app.push_screen(BlacklistScreen(self.app.cfg, flavors, self.blacklist), self._blacklist_edited)
+
+    def _blacklist_edited(self, pairs: list[Pair] | None) -> None:
+        if pairs is None:
+            return
+        self.blacklist = pairs
+        self.query_one("#blacklist-summary", Static).update(Text(blacklist_summary(pairs)))
 
     def action_cancel(self) -> None:
         self.dismiss(False)
@@ -89,11 +110,17 @@ class ProfileSettingsScreen(Screen[bool]):
             if problem:
                 self._error(problem)
                 return
-        blacklist = parse_blacklist(self.query_one("#blacklist", Input).value)
+        blacklist = unique_pairs(self.blacklist)
         stored = load_settings(self.tool_cfg)  # keeps the remembered flavor and account choices
         save_settings(self.tool_cfg, replace(stored, backup_dir=backup_dir, blacklist=blacklist),
                       source=self.source)
+        if blacklist != stored.blacklist:
+            log_event("ace.blacklist_changed", pairs=format_blacklist(blacklist))
         self.dismiss(True)
+
+
+def blacklist_summary(pairs: list[Pair]) -> str:
+    return f"{plural(len(pairs), 'addon')} blacklisted" if pairs else "None"
 
 
 def _default_backup_hint(wow_path: Path | None) -> str:
@@ -103,15 +130,15 @@ def _default_backup_hint(wow_path: Path | None) -> str:
 
 class AceProfilesFlow(ToolFlow):
     """The profile manager's workflow. Its settings live in config/ace-profiles.cfg; the WoW folder is shared.
-    `unlocked` holds the (casefolded) blacklisted addons unlocked this session: it lives on the flow, so it
-    survives going back to the flavor picker, and goes when the tool closes."""
+    `unlocked` holds the (casefolded) blacklisted (flavor folder, addon) pairs unlocked this session: it lives on
+    the flow, so it survives going back to the flavor picker, and goes when the tool closes."""
 
     def __init__(self, app: WowToolsApp, tool_cfg: Config, *,
                  wow_check: Callable[[], list[str] | None] | None = None) -> None:
         super().__init__(app, tool_cfg)
         self._wow_check = wow_check  # tests inject it; None: the review builds one for its flavors
         self.flavors: list[Flavor] = []
-        self.unlocked: set[str] = set()
+        self.unlocked: set[tuple[str, str]] = set()
 
     def start(self) -> None:
         self.require_install(self._ready)

@@ -127,15 +127,29 @@ class OpsTest(unittest.TestCase):
         self.assertEqual(self.st("ElvDB").names(), ["Default"])
 
     def test_locked_addon_is_refused(self):
-        staging = ops.Staging.from_scan(self.scan, locked=lambda addon: addon == "ElvUI")
+        staging = ops.Staging.from_scan(self.scan, locked=lambda flavor, addon: addon == "ElvUI")
         k = next(k for k in staging.states if k.sv_name == "ElvDB")
         result = staging.delete({k: ["Healer"]}, "Default")
         self.assertFalse(result.ok)
         self.assertIn("blacklisted", result.refused[0][1])
 
+    def test_lock_takes_the_files_flavor(self):
+        """Feedback round 1: a blacklist pair is (flavor, addon); the lock is asked with the file's flavor."""
+        seen: list[tuple[str, str]] = []
+
+        def locked(flavor, addon):
+            seen.append((flavor, addon))
+            return (flavor, addon) == ("_classic_era_", "ElvUI")  # ElvUI is only in Retail here
+
+        staging = ops.Staging.from_scan(self.scan, locked=locked)
+        k = next(k for k in staging.states if k.sv_name == "ElvDB")
+        self.assertTrue(staging.delete({k: ["Healer"]}, "Default").ok)
+        self.assertIn(("_retail_", "ElvUI"), seen)
+        self.assertEqual([s.file.addon for s in staging.changed()], ["ElvUI"])
+
     def test_addon_locked_after_staging_is_never_written(self):
         locked: set[str] = set()
-        staging = ops.Staging.from_scan(self.scan, locked=lambda addon: addon in locked)
+        staging = ops.Staging.from_scan(self.scan, locked=lambda flavor, addon: addon in locked)
         elv = next(k for k in staging.states if k.sv_name == "ElvDB")
         kick = next(k for k in staging.states if k.sv_name == "KickCDDB")
         staging.delete({elv: ["Healer"]}, "Default")

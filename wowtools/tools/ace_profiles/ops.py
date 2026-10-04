@@ -195,13 +195,20 @@ class Summary:
         return self.deleted + self.renamed + self.copied + self.reassigned + self.removed + self.lds
 
 
+Locked = Callable[[str, str], bool]  # (flavor folder, addon) -> blacklisted and not unlocked
+
+
+def _never_locked(flavor: str, addon: str) -> bool:
+    return False
+
+
 class Staging:
-    def __init__(self, states: dict[DbKey, DbState], locked: Callable[[str], bool] = lambda addon: False) -> None:
+    def __init__(self, states: dict[DbKey, DbState], locked: Locked = _never_locked) -> None:
         self.states = states
         self.locked = locked
 
     @classmethod
-    def from_scan(cls, scan: ScanResult, *, locked: Callable[[str], bool] = lambda addon: False) -> Staging:
+    def from_scan(cls, scan: ScanResult, *, locked: Locked = _never_locked) -> Staging:
         states: dict[DbKey, DbState] = {}
         for flavor in scan.flavors:
             for account in flavor.accounts:
@@ -215,9 +222,12 @@ class Staging:
     def state(self, key: DbKey) -> DbState:
         return self.states[key]
 
+    def _is_locked(self, state: DbState) -> bool:
+        return self.locked(state.file.flavor.folder, state.file.addon)
+
     def _refuse_locked(self, key: DbKey, result: OpResult) -> bool:
         state = self.states[key]
-        if self.locked(state.file.addon):
+        if self._is_locked(state):
             result.refused.append((key, f"{state.file.addon} is blacklisted (press u to unlock it)"))
             return True
         return False
@@ -345,7 +355,7 @@ class Staging:
         Returns the addons whose changes were dropped."""
         dropped: list[str] = []
         for key, state in self.states.items():
-            if state.changed and self.locked(state.file.addon):
+            if state.changed and self._is_locked(state):
                 self.states[key] = DbState.fresh(state.file, state.db, state.leftovers)
                 if state.file.addon not in dropped:
                     dropped.append(state.file.addon)
@@ -355,7 +365,7 @@ class Staging:
 
     def _live(self) -> list[DbState]:
         """The states that may be written: a locked (blacklisted) addon never is, even with changes staged."""
-        return [state for state in self.states.values() if not self.locked(state.file.addon)]
+        return [state for state in self.states.values() if not self._is_locked(state)]
 
     def changed(self) -> list[DbState]:
         return [state for state in self._live() if state.changed]

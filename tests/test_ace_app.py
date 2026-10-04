@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from textual.widgets import DataTable, Input, Tree
+from textual.widgets import Button, DataTable, Input, Tree
 
 from tests.fixtures import TuiTestCase, build_ace_tree, make_config, settle
 from wowtools.core.backup import BackupEntry, create_backup
@@ -14,6 +14,7 @@ from wowtools.core.install import WowInstall
 from wowtools.tools.ace_profiles import editor
 from wowtools.tools.ace_profiles import review_screen as review_module
 from wowtools.tools.ace_profiles.app import ProfileSettingsScreen
+from wowtools.tools.ace_profiles.blacklist_screen import BlacklistScreen
 from wowtools.tools.ace_profiles.popups import ActionsScreen, NameScreen, TargetScreen
 from wowtools.tools.ace_profiles.result_screen import ProfileResultScreen
 from wowtools.tools.ace_profiles.review_screen import ProfileReviewScreen
@@ -65,6 +66,17 @@ class AceAppBase(TuiTestCase):
         await settle(app, pilot)
         return node
 
+    async def tick_pair(self, app, pilot, tree, flavor, addon):
+        """Highlight (flavor, addon) on a blacklist tree and press Space."""
+        tree.root.expand_all()
+        await settle(app, pilot)
+        node = find(tree, "addon", flavor, addon)
+        tree.focus()
+        tree.move_cursor(node)
+        await settle(app, pilot)
+        await pilot.press("space")
+        await settle(app, pilot)
+
     async def highlight_addon(self, app, pilot, review, name, account="ACCT1"):
         tree = review.query_one("#profiles", Tree)
         tree.root.expand_all()
@@ -80,13 +92,25 @@ class FlowTest(AceAppBase):
             await pilot.pause()
             app.open_tool(TOOL)
             await settle(app, pilot)
-            self.assertIsInstance(app.screen, ProfileSettingsScreen)
-            app.screen.query_one("#blacklist", Input).value = "ElvUI, Questie"
-            app.screen._save()
+            settings = app.screen
+            self.assertIsInstance(settings, ProfileSettingsScreen)
+            self.assertIn("None", str(settings.query_one("#blacklist-summary").render()))
+            settings.query_one("#edit-blacklist", Button).press()  # "Edit blacklist…": the tree screen
+            await settle(app, pilot)
+            screen = app.screen
+            self.assertIsInstance(screen, BlacklistScreen)
+            tree = screen.query_one("#blacklist-tree", Tree)
+            await self.tick_pair(app, pilot, tree, "_retail_", "ElvUI")
+            screen.query_one("#save", Button).press()
+            await settle(app, pilot)
+            self.assertIs(app.screen, settings)
+            self.assertIn("1 addon blacklisted", str(settings.query_one("#blacklist-summary").render()))
+            settings._save()
             await settle(app, pilot)
             self.assertIsInstance(app.screen, FlavorScreen)
-        saved = load_settings(Config(self.config_dir / "ace-profiles.cfg").load())
-        self.assertEqual(saved.blacklist, ["ElvUI", "Questie"])
+        tool = Config(self.config_dir / "ace-profiles.cfg").load()
+        self.assertEqual(tool.get("ace_profiles", "blacklist"), "_retail_:ElvUI")
+        self.assertEqual(load_settings(tool).blacklist, [("_retail_", "ElvUI")])
 
     async def test_settings_have_no_retention_inputs(self):
         """Feedback round 1: backups and journals to keep are global ([general], the `s` screen)."""
@@ -199,17 +223,50 @@ class ReviewTest(AceAppBase):
             tree.move_cursor(find_addon(tree, "ElvUI"))
             await pilot.press("b")
             await settle(app, pilot)
-            self.assertTrue(review.locked("ElvUI"))
+            self.assertTrue(review.locked("_retail_", "ElvUI"))
             self.assertIn("blacklisted", "\n".join(labels(tree)))
-            self.assertEqual(load_settings(Config(self.config_dir / "ace-profiles.cfg").load()).blacklist, ["ElvUI"])
+            self.assertEqual(load_settings(Config(self.config_dir / "ace-profiles.cfg").load()).blacklist, [("_retail_", "ElvUI")])
             tree.move_cursor(find_addon(tree, "ElvUI"))
             await pilot.press("space")
             await settle(app, pilot)
             self.assertEqual(review.ticked, set())  # locked: nothing to tick
             await pilot.press("u")
             await settle(app, pilot)
-            self.assertFalse(review.locked("ElvUI"))
+            self.assertFalse(review.locked("_retail_", "ElvUI"))
             self.assertIn("unlocked", "\n".join(labels(tree)))
+
+    async def test_b_locks_the_pair_in_its_flavor_only(self):
+        """Feedback round 1: b blacklists (Retail, ElvUI); Classic Era's Questie stays tickable."""
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.highlight_addon(app, pilot, review, "ElvUI")
+            await pilot.press("b")
+            await settle(app, pilot)
+            self.assertTrue(review.locked("_retail_", "ElvUI"))
+            self.assertFalse(review.locked("_classic_era_", "ElvUI"))
+            self.assertFalse(review.locked("_classic_era_", "Questie"))
+            await self.highlight_addon(app, pilot, review, "Questie")
+            await pilot.press("space")
+            await settle(app, pilot)
+            self.assertTrue(review.ticked)
+            self.assertTrue(all(review.staging.state(k[1]).file.addon == "Questie" for k in review.ticked))
+
+    async def test_blacklist_dialog_from_the_review_saves_at_once(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            review.action_edit_blacklist()
+            await settle(app, pilot)
+            screen = app.screen
+            self.assertIsInstance(screen, BlacklistScreen)
+            await self.tick_pair(app, pilot, screen.query_one("#blacklist-tree", Tree), "_classic_era_", "Questie")
+            screen.query_one("#save", Button).press()
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertTrue(review.locked("_classic_era_", "Questie"))
+            tool = Config(self.config_dir / "ace-profiles.cfg").load()
+            self.assertEqual(load_settings(tool).blacklist, [("_classic_era_", "Questie")])
 
     async def test_character_view_and_search(self):
         app = self.make_app()
@@ -524,7 +581,7 @@ class ReviewFixesTest(AceAppBase):
             await self.highlight_addon(app, pilot, review, "ElvUI")
             await pilot.press("b")
             await settle(app, pilot)
-            self.assertTrue(review.locked("ElvUI"))
+            self.assertTrue(review.locked("_retail_", "ElvUI"))
             self.assertEqual(review.staging.summary().total, 0)
             self.assertTrue(review.query_one("#btn-apply").disabled)
             await self.assert_apply_writes_nothing(app, pilot, review, path)
@@ -541,7 +598,7 @@ class ReviewFixesTest(AceAppBase):
             await self.highlight_addon(app, pilot, review, "ElvUI")
             await pilot.press("u")
             await settle(app, pilot)
-            self.assertTrue(review.locked("ElvUI"))
+            self.assertTrue(review.locked("_retail_", "ElvUI"))
             self.assertEqual(review.staging.summary().total, 0)
             await self.assert_apply_writes_nothing(app, pilot, review, path)
 
@@ -882,3 +939,104 @@ class FinalReviewFixesTest(AceAppBase):
                 self.assertIsInstance(app.screen, ProfileResultScreen)
                 self.assertIn(["_retail_"], asked)
                 self.assertNotEqual(path.read_bytes(), before)
+
+
+class BlacklistScreenTest(AceAppBase):
+    """Feedback round 1: the blacklist as a flavor → addon tree; nothing ticked but what is blacklisted."""
+
+    async def open_screen(self, app, pilot, pairs):
+        await pilot.pause()
+        install = WowInstall(self.root)
+        results: list = []
+        app.push_screen(BlacklistScreen(self.cfg, install.flavors(), pairs), results.append)
+        await settle(app, pilot)
+        self.assertIsInstance(app.screen, BlacklistScreen)
+        return app.screen, results
+
+    def ticked_labels(self, tree):
+        return [lbl for lbl in labels(tree) if lbl.startswith("✔")]
+
+    async def test_opens_with_nothing_ticked_and_saves_the_ticked_pair(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            screen, results = await self.open_screen(app, pilot, [])
+            tree = screen.query_one("#blacklist-tree", Tree)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            text = "\n".join(labels(tree))
+            for expected in ("Retail", "Classic Era", "ElvUI", "KickCD", "Questie"):
+                self.assertIn(expected, text)
+            self.assertNotIn("Memento", text)  # no Ace3 data
+            self.assertEqual(screen.ticked, set())
+            self.assertEqual(self.ticked_labels(tree), [])
+            await self.tick_pair(app, pilot, tree, "_retail_", "ElvUI")
+            screen.query_one("#save", Button).press()
+            await settle(app, pilot)
+            self.assertEqual(results, [[("_retail_", "ElvUI")]])
+
+    async def test_cancel_and_escape_return_none(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            screen, results = await self.open_screen(app, pilot, [("_retail_", "ElvUI")])
+            await self.tick_pair(app, pilot, screen.query_one("#blacklist-tree", Tree), "_retail_", "KickCD")
+            screen.query_one("#cancel", Button).press()
+            await settle(app, pilot)
+            self.assertEqual(results, [None])
+            screen, results = await self.open_screen(app, pilot, [])
+            await pilot.press("escape")
+            await settle(app, pilot)
+            self.assertEqual(results, [None])
+
+    async def test_select_none_and_all_and_tree_keys(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            screen, results = await self.open_screen(app, pilot, [("_retail_", "ElvUI")])
+            tree = screen.query_one("#blacklist-tree", Tree)
+            tree.focus()
+            await pilot.press("x")
+            await settle(app, pilot)
+            self.assertTrue(all(n.is_expanded for n in tree.root.children if n.allow_expand))
+            await pilot.press("c")
+            await settle(app, pilot)
+            self.assertFalse(any(n.is_expanded for n in tree.root.children))
+            await pilot.press("a")
+            await settle(app, pilot)
+            self.assertIn(("_classic_era_", "questie"), screen.ticked)
+            screen.query_one("#select-none", Button).press()
+            await settle(app, pilot)
+            self.assertEqual(screen.ticked, set())
+            screen.query_one("#save", Button).press()
+            await settle(app, pilot)
+            self.assertEqual(results, [[]])
+
+    async def test_legacy_wildcard_and_missing_pairs(self):
+        """A bare name is ticked under every flavor that has it, and saved as explicit pairs; a pair no longer
+        found is shown "(not found)" and kept while ticked; a flavor not shown keeps its pairs."""
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            install = WowInstall(self.root)
+            results: list = []
+            pairs = [("*", "KickCD"), ("_retail_", "Gone"), ("_classic_era_", "Questie")]
+            app.push_screen(BlacklistScreen(self.cfg, [install.flavor("_retail_")], pairs), results.append)
+            await settle(app, pilot)
+            screen = app.screen
+            tree = screen.query_one("#blacklist-tree", Tree)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            self.assertIn(("_retail_", "kickcd"), screen.ticked)
+            self.assertTrue(any("Gone" in lbl and "(not found)" in lbl for lbl in labels(tree)))
+            screen.query_one("#save", Button).press()
+            await settle(app, pilot)
+            # KickCD: the wildcard becomes explicit (Retail shown and ticked; Classic Era not shown, so kept).
+            self.assertEqual(results, [[("_retail_", "Gone"), ("_classic_era_", "KickCD"), ("_retail_", "KickCD"),
+                                        ("_classic_era_", "Questie")]])
+
+    async def test_fits_80x24(self):
+        app = self.make_app()
+        async with app.run_test(size=(80, 24)) as pilot:
+            screen, _ = await self.open_screen(app, pilot, [])
+            pane = screen.query_one("#filters")
+            for widget in (*screen.query("#filters Button"), screen.query_one("NavHint")):
+                self.assertTrue(inside(widget, pane), widget)
+            hint = str(screen.query_one("NavHint").render())
+            self.assertIn("x expand all · c collapse all", hint)

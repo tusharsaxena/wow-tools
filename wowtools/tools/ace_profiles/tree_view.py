@@ -12,7 +12,7 @@ from textual.widgets.tree import TreeNode
 
 from wowtools.tools.ace_profiles.ops import DbKey, DbState, Staging
 from wowtools.tools.ace_profiles.report import char_tags, profile_rows
-from wowtools.tools.ace_profiles.scanner import AccountScan, AddonFile, FlavorScan, ScanResult
+from wowtools.tools.ace_profiles.scanner import AccountScan, AddonFile, FlavorScan, ScanResult, SvFile
 from wowtools.ui.dialogs import ACCENT
 
 READ_ONLY = ("deleted", "removed", "note", "warnings")
@@ -56,10 +56,11 @@ def ident(data) -> Hashable:
 
 class TreeBuilder:
     """Fills a Tree. `keys` and `bodies` are keyed by id(node.data): the tick keys a node covers (empty for a
-    read-only or locked node) and its label without the tick mark."""
+    read-only or locked node) and its label without the tick mark. `locked` and `blacklisted` take the file's
+    flavor folder and its addon."""
 
     def __init__(self, scan: ScanResult, staging: Staging, filters: Filters, *, scope_label: str,
-                 locked: Callable[[str], bool], blacklisted: Callable[[str], bool],
+                 locked: Callable[[str, str], bool], blacklisted: Callable[[str, str], bool],
                  expanded: dict[Hashable, bool], warning_style: str) -> None:
         self.scan = scan
         self.staging = staging
@@ -153,22 +154,22 @@ class TreeBuilder:
             states = [s for s in states if len(s.names()) >= 2]
         return states
 
-    def _shown(self, addon: str) -> bool:
-        return self.filters.blacklisted or not self.blacklisted(addon)
+    def _shown(self, file: SvFile) -> bool:
+        return self.filters.blacklisted or not self.blacklisted(file.flavor.folder, file.addon)
 
     # --- By addon ------------------------------------------------------------------------------
     def _addon(self, parent: TreeNode, addon_file: AddonFile) -> None:
         file = addon_file.file
         addon = file.addon
-        if not self._shown(addon):
+        if not self._shown(file):
             return
-        locked = self.locked(addon)
+        locked = self.locked(file.flavor.folder, addon)
         body = Text(addon, style="dim" if locked else "bold")
         if file.character is not None:
             body.append(f" ({file.character.label})", style="dim")
         if locked:
             body.append(" · blacklisted", style=self.warning_style)
-        elif self.blacklisted(addon):
+        elif self.blacklisted(file.flavor.folder, addon):
             body.append(" · unlocked", style=self.warning_style)
         node = self._add(parent, ("addon", addon_file), body)
         several = len(addon_file.dbs) > 1
@@ -210,7 +211,7 @@ class TreeBuilder:
     def _characters(self, parent: TreeNode, account: AccountScan) -> None:
         pairs: dict[str, list[tuple[AddonFile, DbState]]] = {}
         for addon_file in account.files:
-            if not self._shown(addon_file.file.addon):
+            if not self._shown(addon_file.file):
                 continue
             for state in self._states(addon_file):
                 for char in state.keys:
@@ -237,7 +238,7 @@ class TreeBuilder:
         if not self.filters.matches(addon, key.sv_name, shown, char):
             return
         name = f"{addon} ({key.sv_name})" if len(addon_file.dbs) > 1 else addon
-        locked = self.locked(addon)
+        locked = self.locked(addon_file.file.flavor.folder, addon)
         tags = [t for t in char_tags(state, char) if t != LEFTOVER_TAG]
         body = Text(" · ".join([f"{name}: {shown}", *tags]), style="dim" if locked or removed else "")
         if removed:

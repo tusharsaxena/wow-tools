@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -14,35 +15,74 @@ from wowtools.tools.ace_profiles.events import TOOL_NAME
 SECTION = "ace_profiles"
 ROOT_NAME = TOOL_NAME
 _SPLIT = re.compile(r"[,\r\n]+")
+WILDCARD = "*"  # the flavor of a bare (legacy) blacklist name: every flavor
+Pair = tuple[str, str]  # (flavor folder, addon)
 
 
 @dataclass
 class ProfileSettings:
     backup_dir: Path | None = None  # None: <WoW folder>/wow-tools; the tool's files go to <backup_dir>/ace-profiles
-    blacklist: list[str] = field(default_factory=list)  # addon names (SavedVariables file name without .lua)
+    # (flavor folder, addon) pairs; the addon is the SavedVariables file name without .lua; flavor "*" = every flavor
+    blacklist: list[Pair] = field(default_factory=list)
     last_flavor_choice: str | None = None  # "" = All flavors, else a flavor folder; None = never chosen
     last_account: str | None = None  # None (stored as empty) = all accounts
     # Snapshots and journals to keep are global: Config.keep_backups / keep_journals ([general]).
 
 
-def parse_blacklist(text: str) -> list[str]:
-    """Names separated by commas or new lines; blanks dropped; duplicates (ignoring case) keep the first spelling;
-    sorted ignoring case."""
-    seen: dict[str, str] = {}
+def _pair_order(pair: Pair) -> tuple[str, str]:
+    return pair[1].casefold(), pair[0].casefold()
+
+
+def unique_pairs(pairs: Iterable[Pair]) -> list[Pair]:
+    """Duplicates (ignoring case) keep the first spelling; sorted by addon, then flavor, ignoring case."""
+    seen: dict[tuple[str, str], Pair] = {}
+    for flavor, addon in pairs:
+        seen.setdefault((flavor.casefold(), addon.casefold()), (flavor, addon))
+    return sorted(seen.values(), key=_pair_order)
+
+
+def parse_blacklist(text: str) -> list[Pair]:
+    """`flavor:addon` entries separated by commas or new lines (`_retail_:ElvUI, Questie`). A bare name (the first
+    build's form) becomes ("*", name): every flavor. Blanks dropped, duplicates (ignoring case) keep the first
+    spelling."""
+    pairs: list[Pair] = []
     for part in _SPLIT.split(text or ""):
-        name = part.strip()
-        if name and name.casefold() not in seen:
-            seen[name.casefold()] = name
-    return sorted(seen.values(), key=str.casefold)
+        flavor, sep, addon = part.partition(":")
+        flavor, addon = (flavor.strip(), addon.strip()) if sep else (WILDCARD, flavor.strip())
+        if addon and flavor:
+            pairs.append((flavor, addon))
+    return unique_pairs(pairs)
 
 
-def format_blacklist(names: list[str]) -> str:
-    return ", ".join(names)
+def format_blacklist(pairs: Iterable[Pair]) -> str:
+    """`flavor:addon, ...`, sorted; a wildcard pair stays a bare name."""
+    return ", ".join(addon if flavor == WILDCARD else f"{flavor}:{addon}" for flavor, addon in unique_pairs(pairs))
 
 
-def is_blacklisted(names: list[str], addon: str) -> bool:
-    wanted = addon.casefold()
-    return any(name.casefold() == wanted for name in names)
+def is_blacklisted(pairs: Iterable[Pair], flavor: str, addon: str) -> bool:
+    """(flavor folder, addon) is on the blacklist, ignoring case; "*" matches every flavor."""
+    wanted_flavor, wanted_addon = flavor.casefold(), addon.casefold()
+    return any(name.casefold() == wanted_addon and (where == WILDCARD or where.casefold() == wanted_flavor)
+               for where, name in pairs)
+
+
+def toggle_pair(pairs: Iterable[Pair], flavor: str, addon: str, folders: Iterable[str]) -> tuple[list[Pair], bool]:
+    """Blacklist (flavor, addon), or take it off when it is on. Taking it off drops its pair and turns a wildcard
+    for that addon into explicit pairs for the other flavor folders in `folders`, so they stay blacklisted.
+    Returns the new list and whether the pair is now blacklisted."""
+    pairs = list(pairs)
+    if not is_blacklisted(pairs, flavor, addon):
+        return unique_pairs([*pairs, (flavor, addon)]), True
+    name, here = addon.casefold(), flavor.casefold()
+    kept: list[Pair] = []
+    for where, other in pairs:
+        if other.casefold() != name:
+            kept.append((where, other))
+        elif where == WILDCARD:
+            kept += [(folder, other) for folder in folders if folder.casefold() != here]
+        elif where.casefold() != here:
+            kept.append((where, other))
+    return unique_pairs(kept), False
 
 
 def load_settings(cfg: Config) -> ProfileSettings:

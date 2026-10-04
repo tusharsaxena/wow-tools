@@ -23,6 +23,7 @@ from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.journal import Journal, friendly_stamp
 from wowtools.core.process import wow_check_for
+from wowtools.tools.ace_profiles.blacklist_screen import BlacklistScreen
 from wowtools.tools.ace_profiles.editor import ApplyError, Marker, clear_marker, read_marker
 from wowtools.tools.ace_profiles.journal import latest_undoable, read_profile_journal
 from wowtools.tools.ace_profiles.model import DEFAULT
@@ -34,9 +35,10 @@ from wowtools.tools.ace_profiles.report import (DETAIL_COLUMNS, STAGE_TITLES, UN
                                                 selection_text, staged_text, undo_confirm, undo_detail_rows,
                                                 undo_summary_rows)
 from wowtools.tools.ace_profiles.result_screen import ProfileResultScreen
-from wowtools.tools.ace_profiles.scanner import ScanResult, scan_flavors
-from wowtools.tools.ace_profiles.settings import (is_blacklisted, load_settings, parse_blacklist, resolve_journal_dir,
-                                                  resolve_root, save_settings, validate_backup_dir)
+from wowtools.tools.ace_profiles.scanner import ScanResult, SvFile, scan_flavors
+from wowtools.tools.ace_profiles.settings import (Pair, format_blacklist, is_blacklisted, load_settings,
+                                                  resolve_journal_dir, resolve_root, save_settings, toggle_pair,
+                                                  validate_backup_dir)
 from wowtools.tools.ace_profiles.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
 from wowtools.tools.ace_profiles.undo import UndoError, UndoResult, recover, undo_run
 from wowtools.ui.branding import BrandBar
@@ -130,8 +132,8 @@ class ProfileTree(Tree):
 
 class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
     """The AceDB databases of the chosen flavors (and account) as a tree. Dismisses with "flavors", "tools" or
-    "quit". `unlocked` is the flow's set of casefolded blacklisted addons unlocked this session (shared, not
-    copied)."""
+    "quit". `unlocked` is the flow's set of casefolded blacklisted (flavor folder, addon) pairs unlocked this
+    session (shared, not copied)."""
 
     TREE_SELECTOR = "#profiles"
     # The left pane fits 80x24 (tests/test_look_and_feel.py) with one control per row: the two View boxes, the
@@ -169,7 +171,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
     ]
 
     def __init__(self, cfg: Config, tool_cfg: Config, flavors: list[Flavor], scope_label: str, *,
-                 account: str | None, unlocked: set[str], wow_check: WowCheck | None = None) -> None:
+                 account: str | None, unlocked: set[tuple[str, str]], wow_check: WowCheck | None = None) -> None:
         super().__init__()
         self.cfg = cfg  # the suite config (WoW folder)
         self.tool_cfg = tool_cfg  # config/ace-profiles.cfg
@@ -274,17 +276,18 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self.query_one("#btn-rescan", Button).disabled = not idle
         self.query_one("#btn-undo", Button).disabled = not idle or self.undoable is None
 
-    def locked(self, addon: str) -> bool:
-        """Blacklisted and not unlocked this session: shown, never changed."""
-        return is_blacklisted(self.settings.blacklist, addon) and addon.casefold() not in self.unlocked
+    def locked(self, flavor: str, addon: str) -> bool:
+        """(flavor folder, addon) is blacklisted and not unlocked this session: shown, never changed."""
+        return (is_blacklisted(self.settings.blacklist, flavor, addon)
+                and (flavor.casefold(), addon.casefold()) not in self.unlocked)
 
     def check_for(self, folders: Iterable[str]) -> WowCheck:
         """The running-WoW check of these flavor folders (an Undo or a recovery may touch a flavor that is not
         being reviewed)."""
         return self._injected_check if self._injected_check is not None else wow_check_for(sorted(set(folders)))
 
-    def _blacklisted(self, addon: str) -> bool:
-        return is_blacklisted(self.settings.blacklist, addon)
+    def _blacklisted(self, flavor: str, addon: str) -> bool:
+        return is_blacklisted(self.settings.blacklist, flavor, addon)
 
     # --- scan ----------------------------------------------------------------------------------
     def action_rescan(self) -> None:
@@ -548,52 +551,80 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self.query_one("#search", Input).focus()
 
     # --- blacklist -------------------------------------------------------------------------------
-    def _addon_at_cursor(self) -> str | None:
+    def _file_at_cursor(self) -> SvFile | None:
+        """The SavedVariables file (flavor and addon) of the highlighted addon, or of what is highlighted in one."""
         node = self.query_one("#profiles", Tree).cursor_node
         while node is not None and node.data is not None:
             data = node.data
             if data[0] == "addon":
-                return data[1].file.addon
+                return data[1].file
             if len(data) > 1 and isinstance(data[1], DbKey) and self.staging is not None:
-                return self.staging.state(data[1]).file.addon
+                return self.staging.state(data[1]).file
             node = node.parent
         self.notify("Highlight an addon (or something inside one) first.")
         return None
 
+    def _flavor_folders(self) -> list[str]:
+        """Every flavor folder of the install (a wildcard pair taken off in one flavor stays in the others)."""
+        try:
+            folders = [f.folder for f in WowInstall(self.cfg.wow_path).flavors()] if self.cfg.wow_path else []
+        except OSError:
+            folders = []
+        return folders or [f.folder for f in self.flavors]
+
     def action_blacklist(self) -> None:
+        """b: blacklist the highlighted addon in its flavor, or take it off."""
         if not self.idle or self.scan is None:
             return
-        addon = self._addon_at_cursor()
-        if addon is None:
+        file = self._file_at_cursor()
+        if file is None:
+            return
+        flavor, addon = file.flavor.folder, file.addon
+        self.settings = load_settings(self.tool_cfg)
+        self.settings.blacklist, listed = toggle_pair(self.settings.blacklist, flavor, addon, self._flavor_folders())
+        save_settings(self.tool_cfg, self.settings, source="review")
+        log_event("ace.blacklist_changed", flavor=flavor, addon=addon, blacklisted=listed)
+        where = flavor_name(flavor)
+        self.notify(f"{addon} ({where}) is {'now' if listed else 'no longer'} on the blacklist.")
+        self._drop_locked()
+        self._schedule_rebuild()
+
+    def action_edit_blacklist(self) -> None:
+        """The blacklist tree for the reviewed flavors; what it saves is written at once."""
+        if not self.idle or self.wow_folder_changed():
             return
         self.settings = load_settings(self.tool_cfg)
-        listed = is_blacklisted(self.settings.blacklist, addon)
-        if listed:
-            self.settings.blacklist = [n for n in self.settings.blacklist if n.casefold() != addon.casefold()]
-        else:
-            self.settings.blacklist = parse_blacklist(", ".join([*self.settings.blacklist, addon]))
+        self.app.push_screen(BlacklistScreen(self.cfg, self.flavors, self.settings.blacklist),
+                             self._blacklist_edited)
+
+    def _blacklist_edited(self, pairs: list[Pair] | None) -> None:
+        if pairs is None:
+            return
+        self.settings = load_settings(self.tool_cfg)
+        self.settings.blacklist = pairs
         save_settings(self.tool_cfg, self.settings, source="review")
-        log_event("ace.blacklist_changed", addon=addon, blacklisted=not listed)
-        self.notify(f"{addon} is {'no longer' if listed else 'now'} on the blacklist.")
+        log_event("ace.blacklist_changed", pairs=format_blacklist(pairs))
+        self.notify("Blacklist saved.")
         self._drop_locked()
         self._schedule_rebuild()
 
     def action_unlock(self) -> None:
         if not self.idle or self.scan is None:
             return
-        addon = self._addon_at_cursor()
-        if addon is None:
+        file = self._file_at_cursor()
+        if file is None:
             return
-        if not self._blacklisted(addon):
+        flavor, addon = file.flavor.folder, file.addon
+        if not self._blacklisted(flavor, addon):
             self.notify(f"{addon} is not blacklisted.")
             return
-        name = addon.casefold()
-        unlocked = name not in self.unlocked
+        pair = (flavor.casefold(), addon.casefold())
+        unlocked = pair not in self.unlocked
         if unlocked:
-            self.unlocked.add(name)
+            self.unlocked.add(pair)
         else:
-            self.unlocked.discard(name)
-        log_event("ace.unlocked", addon=addon, unlocked=unlocked)
+            self.unlocked.discard(pair)
+        log_event("ace.unlocked", flavor=flavor, addon=addon, unlocked=unlocked)
         self.notify(f"{addon} is {'unlocked for this session' if unlocked else 'locked again'}.")
         self._drop_locked()
         self._schedule_rebuild()
@@ -603,7 +634,8 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         True when something was dropped."""
         if self.staging is None:
             return False
-        locked = {k for k in self.ticked if self.locked(self.staging.state(k[1]).file.addon)}
+        files = {k: self.staging.state(k[1]).file for k in self.ticked}
+        locked = {k for k, f in files.items() if self.locked(f.flavor.folder, f.addon)}
         self.ticked -= locked
         dropped = self.staging.drop_locked()
         if dropped:
@@ -801,6 +833,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
                 return
             keys = {"discard": self.action_discard, "rename": self.action_rename, "copy": self.action_copy,
                     "remove_leftovers": self.action_remove_leftovers, "blacklist": self.action_blacklist,
+                    "edit_blacklist": self.action_edit_blacklist,
                     "unlock": self.action_unlock, "switch_view": self.action_switch_view,
                     "search": self.action_focus_search}
             if choice == "tick_leftovers":

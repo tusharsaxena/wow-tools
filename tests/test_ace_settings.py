@@ -24,7 +24,7 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(loaded.blacklist, [])
 
     def test_round_trip(self):
-        saved = s.ProfileSettings(backup_dir=self.tmp / "out", blacklist=["ElvUI", "Questie"],
+        saved = s.ProfileSettings(backup_dir=self.tmp / "out", blacklist=[("_retail_", "ElvUI"), ("*", "Questie")],
                                   last_flavor_choice="", last_account="ACCT1")
         s.save_settings(self.cfg, saved)
         self.assertEqual(s.load_settings(Config(self.tmp / "ace-profiles.cfg").load()), saved)
@@ -41,11 +41,41 @@ class SettingsTest(unittest.TestCase):
         for key in ("keep_backups", "keep_journals", "keep_snapshots"):
             self.assertIsNone(again.get(s.SECTION, key), key)
 
-    def test_blacklist_parsing(self):
-        self.assertEqual(s.parse_blacklist(" ElvUI, questie\nQuestie ,, Bartender4 "), ["Bartender4", "ElvUI", "questie"])
-        self.assertEqual(s.format_blacklist(["ElvUI", "Questie"]), "ElvUI, Questie")
-        self.assertTrue(s.is_blacklisted(["ElvUI"], "elvui"))
-        self.assertFalse(s.is_blacklisted(["ElvUI"], "ElvUI_Options"))
+    def test_blacklist_pairs_parse_and_format(self):
+        """Feedback round 1: the blacklist holds (flavor folder, addon) pairs; a bare (legacy) name is "*"."""
+        self.assertEqual(s.parse_blacklist("_retail_:ElvUI, Questie"), [("_retail_", "ElvUI"), ("*", "Questie")])
+        self.assertEqual(s.parse_blacklist(" _retail_:ElvUI\n_RETAIL_:elvui ,, _classic_era_ : Questie "),
+                         [("_retail_", "ElvUI"), ("_classic_era_", "Questie")])
+        pairs = [("_classic_era_", "Questie"), ("_retail_", "ElvUI")]
+        text = s.format_blacklist(pairs)
+        self.assertEqual(text, "_retail_:ElvUI, _classic_era_:Questie")
+        self.assertEqual(s.parse_blacklist(text), sorted(pairs, key=lambda p: (p[1], p[0])))
+        self.assertEqual(s.format_blacklist([("*", "Questie")]), "Questie")  # a wildcard stays a bare name
+        self.assertEqual(s.parse_blacklist(s.format_blacklist([("*", "Questie")])), [("*", "Questie")])
+        self.assertEqual(s.parse_blacklist(""), [])
+
+    def test_blacklist_matches_flavor_and_addon(self):
+        retail = [("_retail_", "ElvUI")]
+        self.assertTrue(s.is_blacklisted(retail, "_retail_", "elvui"))
+        self.assertTrue(s.is_blacklisted([("_Retail_", "ELVUI")], "_retail_", "ElvUI"))
+        self.assertFalse(s.is_blacklisted(retail, "_classic_era_", "ElvUI"))  # Retail's pair: not Classic Era
+        self.assertFalse(s.is_blacklisted(retail, "_retail_", "ElvUI_Options"))
+        legacy = [("*", "Questie")]  # a bare name from the first build: every flavor
+        self.assertTrue(s.is_blacklisted(legacy, "_retail_", "Questie"))
+        self.assertTrue(s.is_blacklisted(legacy, "_classic_era_", "questie"))
+
+    def test_toggle_pair(self):
+        folders = ["_retail_", "_classic_era_"]
+        pairs, now = s.toggle_pair([], "_retail_", "ElvUI", folders)
+        self.assertEqual((pairs, now), ([("_retail_", "ElvUI")], True))
+        self.assertEqual(s.toggle_pair(pairs, "_RETAIL_", "elvui", folders), ([], False))
+        # Un-blacklisting a wildcard in one flavor keeps it in the others, as explicit pairs.
+        self.assertEqual(s.toggle_pair([("*", "ElvUI"), ("_retail_", "KickCD")], "_retail_", "ElvUI", folders),
+                         ([("_classic_era_", "ElvUI"), ("_retail_", "KickCD")], False))
+
+    def test_legacy_names_load_as_wildcards(self):
+        self.cfg.set(s.SECTION, "blacklist", "ElvUI, _retail_:KickCD", log=False)
+        self.assertEqual(s.load_settings(self.cfg).blacklist, [("*", "ElvUI"), ("_retail_", "KickCD")])
 
     def test_root_and_journal_dir(self):
         wow = self.tmp / "World of Warcraft"
