@@ -18,8 +18,8 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | 9 | flow, settings, summary, backup screens, registration | done | e6e3ab6 | API as planned with explicit `wow_check`/`disk_usage` flow kwargs; journal lookup and free space moved off the UI thread; own `_checking` flag for the WoW check; 19 TUI tests |
 | 10 | restore and undo screens | done | ae15647, ed8ee75 | API as planned; backup list, backup load/scan and every plan built in workers; Undo on the result screen only for a restore that changed a part; 12 new TUI tests. Follow-up ed8ee75: Parts column in the backup list (spec §10), manifests read in a worker |
 | M2 | push milestone 2 | done (pushed) | 763a34b | Milestone 2 review: 20 findings fixed (see decisions, "M2 review") |
-| 11 | docs, events, final checks | done | 4e3aa0d | Full guide (no images yet: an HTML comment marks where the screenshots go); README, architecture, adding-a-tool, CLAUDE.md; events.md regenerated (22 events, unchanged); 766 tests OK (2 skipped) parallel and serial; ruff clean |
-| M3 | push milestone 3, ask for merge go-ahead | todo | | |
+| 11 | docs, events, final checks | done | 4e3aa0d | Full guide (no images yet: an HTML comment marks where the screenshots go); README, architecture, adding-a-tool, CLAUDE.md; events.md regenerated (22 events, unchanged); 766 tests OK (2 skipped) parallel and serial; ruff clean; reviewed, fixes in 42958c4 |
+| M3 | push milestone 3, ask for merge go-ahead | todo | | reviewed, fixes in 42958c4 |
 
 ## Decisions taken during the build
 
@@ -239,3 +239,35 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   (405) is not updated here (left to the release bump).
 - Task 11: no `git push` in this run (the orchestrator forbids it); milestone 3 push and the merge go-ahead stay
   with the user. `./wow-tools.sh` is interactive, so the TUI tests are the end-to-end check.
+- Final review (42958c4): a restore journals each link it removes (`{"action": "link_removed", "part", "rel",
+  "target", "junction"}`, read with the new `fsutil.read_link` just before the swap, written in `on_swapped`
+  before the `replaced` entry) and Undo makes it again after swapping the part back (`fsutil.make_link`: a
+  junction on Windows when it was one, else a symlink), where nothing is now; one it cannot make turns the part
+  `failed`, the reason naming the link and its target. A damaged `link_removed` entry (unknown part, unsafe rel,
+  no target) refuses the Undo. The safety zip still holds no links.
+- Final review: `action_back_up` passes every flavor shown to `back_up_all`, so a flavor with no folders or only
+  links comes back **Skipped** with its reason (spec §6.1); the check for "Nothing to back up" and the button's
+  state still use `has_data`. `backup.skip_reason` is shared by `back_up` and `report.backup_confirm`, whose body
+  gains a "Skipped: <flavor> (<reason>)." line. `test_back_up_all_flavors` now expects 4 result rows (Retail PTR
+  Skipped).
+- Final review: `RestorePlan.current_bytes` (what the chosen parts hold now; None without sizes) and
+  `restore_confirm(..., backup_free=)`: the restore preflight also works out `free_bytes(root)`, and the confirm
+  alerts when the safety zip (taken as at most the folders' size) may not fit on the backup drive. Same drive as
+  WoW is not summed with `bytes_needed` (each drive is checked on its own).
+- Final review: `summary_screen.ThrottledProgress` forwards a job's progress to the UI thread only on a stage
+  change, a report with no count or at a stage's end, or once per `PROGRESS_INTERVAL` (0.1 s); `on_flavor` resets
+  it. Logic modules unchanged.
+- Final review: `RestoreResult.swapped` (a part `restored` or `replaced_left`, i.e. recorded by the journal);
+  `RestoreResultScreen.can_undo` and `job_failed`'s "Undo (z) puts back what was replaced" hint use it, so a swap
+  the journal could not record (SwapNotRecorded, `failed`) offers no Undo.
+- Final review: TUI tests for the WoW-running alert on the Undo confirm (warn and allow) and for the Undo check
+  using the journal's flavor; they cover existing code, so they passed before.
+- Final review: `ibackup.part_rolled_back` description covers kind `failed` (at error); `docs/events.md`
+  regenerated. Scan notices say "N more <part> warnings (the log lists the first 20)".
+- Final review: guide fixes: Undo works on the most recent restore that changed a folder (an all-rolled-back one
+  is passed over), the greyed-out Undo row, links made again by Undo, Skipped flavors on the confirm and results,
+  Parts values ("Interface" and "none" added), "up to 20" in the log, the safety-backup space alert on the
+  restore confirm. architecture.md updated to match.
+- Final review: `docs/adding-a-tool.md` step 6, CLAUDE.md and the `RENAMED_TOOLS` comment say a rename does not
+  move a `<TOOL_NAME>` folder inside a user-chosen folder (Interface Backup's `<backup_dir>/interface-backup`);
+  the code was not changed.
