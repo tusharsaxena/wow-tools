@@ -8,7 +8,7 @@ task; push after the round. Never merge without the user's go-ahead.
 |---|---|---|---|---|
 | S1 | shared sizes, tests, CSS; Ace3 headings back | done | 8c94fac | BASE/LARGE/TINY; look-and-feel at BASE + LARGE grow/popup checks + 80x24 smoke; POPUP_WIDTH; flow WrapButtonRow; View/Show headings. Suite 1024 tests, 0 failures; ruff clean. Renders in /tmp/wow-tools-shots/S1/ |
 | S2 | WTF Cleaner, Screenshot Organizer, Interface Backup at 120x30 | done | 7cb47cf | Footer keys whole (palette key hidden); settings forms <= 100 cols, centred, compact checkboxes (WTF form fits at 120x30); WTF result names zips inside a Backup folder row; IB backup lines show the full date and time; 80-column tests moved to BASE. Suite 1027 tests, 0 failures; ruff clean. Renders in /tmp/wow-tools-shots/S2/ (before: S2-before/) |
-| S3 | Ace3 screens at 120x30 | todo | | |
+| S3 | Ace3 screens at 120x30 | done | 5b86bc3 | Action bar 1 row at 160x45, 2 at 120x30 (shorter labels); guide shows pending line + hint, one row each, at 120x30; footer whole (d/p/m off it); quick actions list and 12-line target body without scrolling; result rows inside a Backup folder row; recovery path on its own line; 80x24 Ace3 tests at BASE. Suite 1031 tests, 0 failures (2 skipped); ruff clean. Renders in /tmp/wow-tools-shots/S3/ (before: S3-before/) |
 | S4 | docs | todo | | |
 | R | review, fixes, push | todo | | |
 
@@ -61,3 +61,33 @@ task; push after the round. Never merge without the user's go-ahead.
   before Target would leave Target ~25 columns whenever a row has a reason); Interface Backup's result leaves blank
   rows under a short detail table (the table takes the rest of the height, buttons stay at the bottom as on every
   result screen). A multi-flavor real clean shows "Run journal" both on top and in the flavor's block (as before).
+- Task S3: the action bar's labels are shorter than the spec's (feedback round 1, item 5): "Delete (d)", "Assign
+  (p)" and "Leftovers (o)" instead of "Delete profile (d)", "Assign profile (p)" and "Remove leftovers (o)". At
+  160x45 the bar has 108 columns; the eight buttons took 128 (label + 2 padding + 1 gap each). Dropping "profile"
+  twice still left 112, and no padding or gap change closes the rest without merging the grey buttons into one bar,
+  so a third label had to shrink. The More menu still says "Remove leftover characters (o)". `docs/ace-profiles.md`
+  and `docs/architecture.md` were updated in the same commit; the spec keeps its original labels as history.
+- Task S3: the guide's texts were shortened so each takes one row at 120x30 (68 columns, with a name of up to 16
+  characters, `test_guide_lines_fit_one_row_of_the_tree_pane_at_base`): the pending line is "N pending changes, not
+  written yet: w apply · y dry run · ⌫ discard" (the file count is on the bottom line; `guidance()` lost its
+  `pending_files` argument), the profile hint is the spec's `Profile "Healer": Delete, Rename or Copy it`, the
+  locked hint "ElvUI is blacklisted: u unlocks it for this session". The squeeze (GUIDE_MAX_ROWS) stays: it no
+  longer triggers for ordinary names, but a long profile, character or addon name, or 100+ pending changes, still
+  makes the guide wrap, and the plan's condition for dropping it ("if it no longer triggers") is not met.
+- Task S3: the review footer was still cut at 120 columns (it lost "q Quit" and "s Settings"). `d`, `p` and `m` are
+  no longer in the footer (show=False): each is on an action bar button with its key, and in the left pane's hint.
+  `SETTINGS_FIT_TOOLS` / `FOOTER_TOOLS` are gone: those checks run for every tool. The Ace3 settings form has no
+  checkboxes; it already fit at 120x30.
+- Task S3: popups. The quick actions list (`max-height` is now its 12 actions + 2) showed 10 of 12 actions; the target
+  popup's body (`40vh`, was `35vh`) cut the last line of a 10-addon delete at 120x30. The recovery popup puts the zip
+  path on a line of its own; a path with a space ("World of Warcraft") still wraps at that space when it is longer
+  than the popup (84 columns), which was left as it is.
+- Task S3: the Ace3 result screens named whole paths (WTF backup, Original files, Journal), cut at 120 columns. As in
+  the WTF Cleaner (S2): a "Backup folder" row, then `snapshots/<name>`, `edited/<name>` and `journal/<name>`
+  (`report.in_backup_folder`; a file outside the backup folder, such as the journal when the backup folder is set
+  elsewhere, keeps its whole path).
+- Task S3: tests moved to BASE and renamed: `test_recovery_popup_fits_at_base` (now also checks the path's own
+  line), `test_popups_fit_at_base`, blacklist `test_fits_at_base`. None was removed. Seen in the renders and left as
+  they are: tree lines longer than the tree pane at 120x30 (for example "Default copy · 0 characters · copy of
+  Default · unused") end at the pane's edge and the tree scrolls sideways, as S2 left them; the result screens leave
+  blank rows under a short detail table; the left pane's hint takes 5 rows at 120x30 and still fits.
