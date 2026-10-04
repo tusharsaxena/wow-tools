@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
-from wowtools.tools.interface_backup.catalog import list_backups, new_backup_path, prune_backups, prune_safety
+from wowtools.tools.interface_backup.catalog import (list_backups, new_backup_path, prune_backups, prune_safety,
+                                                     read_parts)
 
 NOW = datetime(2026, 10, 4, 15, 30, 12)
 
@@ -92,3 +95,43 @@ class CatalogTest(unittest.TestCase):
         self.assertTrue(protected.exists())
         self.assertTrue(backup.exists())
         self.assertFalse(drop.exists())
+
+    def write_zip(self, name: str, manifest: object | None, raw: bytes | None = None) -> Path:
+        path = self.root / name
+        with zipfile.ZipFile(path, "w") as zf:
+            zf.writestr("WTF/Config.wtf", "SET a 1")
+            if raw is not None:
+                zf.writestr("manifest.json", raw)
+            elif manifest is not None:
+                zf.writestr("manifest.json", json.dumps(manifest))
+        return path
+
+    def test_read_parts_from_the_manifest_in_parts_order(self):
+        full = self.write_zip("backup-retail-20261004-153012.zip", {"parts": ["WTF", "Interface"]})
+        self.assertEqual(read_parts(full), ("Interface", "WTF"))
+        wtf = self.write_zip("backup-retail-20261004-153013.zip", {"parts": ["WTF", "Fonts"]})
+        self.assertEqual(read_parts(wtf), ("WTF",))  # an unknown part name is left out
+        odd = self.write_zip("backup-retail-20261004-153015.zip", {"parts": [["WTF"], 3, "Interface"]})
+        self.assertEqual(read_parts(odd), ("Interface",))  # as open_backup reads it: other items ignored
+        # Only the manifest is read: an entry the manifest does not list (open_backup would refuse it) is fine.
+        self.assertEqual(read_parts(self.write_zip("backup-retail-20261004-153014.zip", {"parts": []})), ())
+
+    def test_read_parts_none_when_unreadable(self):
+        self.assertIsNone(read_parts(self.root / "missing.zip"))
+        self.assertIsNone(read_parts(self.touch("backup-retail-20261004-153012.zip")))  # not a zip
+        self.assertIsNone(read_parts(self.write_zip("a.zip", None)))  # no manifest
+        self.assertIsNone(read_parts(self.write_zip("b.zip", None, raw=b"{not json")))
+        self.assertIsNone(read_parts(self.write_zip("c.zip", None, raw=b"\xff\xfe")))  # not UTF-8
+        self.assertIsNone(read_parts(self.write_zip("d.zip", [1, 2])))  # not an object
+        self.assertIsNone(read_parts(self.write_zip("e.zip", {"version": 1})))  # no parts
+        self.assertIsNone(read_parts(self.write_zip("f.zip", {"parts": "WTF"})))  # parts not a list
+
+    def test_read_parts_damaged_manifest_data(self):
+        path = self.write_zip("backup-retail-20261004-153012.zip", {"parts": ["WTF"]})
+        data = bytearray(path.read_bytes())
+        with zipfile.ZipFile(path) as zf:
+            info = zf.getinfo("manifest.json")
+        start = info.header_offset + 30 + len(info.filename.encode()) + len(info.extra)
+        data[start] ^= 0xFF  # stored, so the CRC check fails on read
+        path.write_bytes(bytes(data))
+        self.assertIsNone(read_parts(path))

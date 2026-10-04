@@ -78,11 +78,19 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(report.picker_note([info("20261005-101010", "pre-restore")]), "no backups yet")
         self.assertEqual(report.picker_note([info("20261004-153012")]), "1 backup, last 2026-10-04 15:30")
         rows = report.list_rows([info("20261004-153012"), info("20261003-010203", "pre-restore", 100)])
-        self.assertEqual(rows[0], ("2026-10-04 15:30:12", "retail", "backup", "2.0 KB"))
+        self.assertEqual(rows[0], ("2026-10-04 15:30:12", "retail", "backup", "…", "2.0 KB"))
         self.assertEqual(rows[1][2], "safety (pre-restore)")
         self.assertEqual(len(rows[0]), len(report.LIST_COLUMNS))
         named = report.list_rows([info("20261004-153012")], {"retail": "Retail"})
         self.assertEqual(named[0][1], "Retail")  # the display name; the short name only for an unknown flavor
+
+    def test_list_rows_parts(self):
+        a, b, c, d = (info(f"2026100{i}-010203") for i in range(1, 5))
+        parts = {a.path: ("Interface", "WTF"), b.path: ("WTF",), c.path: None}
+        rows = report.list_rows([a, b, c, d], parts=parts)
+        self.assertEqual(report.LIST_COLUMNS[3], "Parts")
+        self.assertEqual([r[3] for r in rows], ["Interface, WTF", "WTF", "?", report.PARTS_PENDING])
+        self.assertEqual(report.parts_cell(()), "none")
 
     def test_friendly_created(self):
         self.assertEqual(report.friendly_created("2026-10-04T12:57:33+05:30"), "2026-10-04 12:57:33")

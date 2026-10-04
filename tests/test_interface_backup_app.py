@@ -18,6 +18,7 @@ from wowtools.core.events import capture_events
 from wowtools.tools import TOOLS
 from wowtools.tools.interface_backup import app as app_module
 from wowtools.tools.interface_backup import summary_screen as summary_module
+from wowtools.tools.interface_backup import report as report_module
 from wowtools.tools.interface_backup import restore_screen as restore_module
 from wowtools.tools.interface_backup.app import BackupSettingsScreen
 from wowtools.tools.interface_backup.restore import PartOutcome, RestoreError, RestoreResult, RestoreStopped
@@ -875,6 +876,64 @@ class InterfaceBackupAppTest(TuiTestCase):
             table = app.screen.query_one("#backups", DataTable)
             names = {str(table.get_row_at(i)[1]) for i in range(table.row_count)}
             self.assertEqual(names, {"Retail", "Classic Era", "Anniversary"})
+
+    async def test_backup_list_shows_parts(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_summary(app, pilot)
+            await self.make_backup(app, pilot)  # Retail and Classic Era in full; Anniversary has WTF only
+            damaged = self.bk / "interface-backup" / "backup-retail-20000101-000000.zip"
+            damaged.write_bytes(b"not a zip")
+            await pilot.press("r")
+            await settle(app, pilot)
+            await pilot.press("e")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, BackupListScreen)
+            table = app.screen.query_one("#backups", DataTable)
+            self.assertEqual(tuple(str(c.label) for c in table.ordered_columns), report_module.LIST_COLUMNS)
+            rows = {info.path.name: tuple(str(c) for c in table.get_row_at(i))
+                    for i, info in enumerate(app.screen.infos)}
+            self.assertEqual(rows.pop(damaged.name)[1:4], ("Retail", "backup", "?"))  # unreadable: still listed
+            self.assertEqual(sorted((r[1], r[3]) for r in rows.values()),
+                             [("Anniversary", "WTF"), ("Classic Era", "Interface, WTF"), ("Retail", "Interface, WTF")])
+
+    async def test_backup_list_parts_read_in_a_worker(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        threads = []
+        gate = threading.Event()
+        self.addCleanup(gate.set)
+        real = restore_module.read_parts
+
+        def gated(path):
+            threads.append(threading.current_thread() is threading.main_thread())
+            gate.wait(5)
+            return real(path)
+
+        app = self.make_app()
+        with patch.object(restore_module, "read_parts", gated):
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_summary(app, pilot)
+                await self.make_backup(app, pilot)
+                await pilot.press("r")
+                await settle(app, pilot)
+                await pilot.press("e")
+                for _ in range(50):
+                    await pilot.pause()
+                    if isinstance(app.screen, BackupListScreen) and threads:
+                        break
+                screen = app.screen
+                self.assertIsInstance(screen, BackupListScreen)
+                table = screen.query_one("#backups", DataTable)
+                self.assertEqual(str(table.get_row_at(0)[3]), "…")  # listed before the parts are read
+                await pilot.press("escape")  # leave while the worker is still reading
+                await pilot.pause()
+                self.assertIsInstance(app.screen, BackupSummaryScreen)
+                gate.set()
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, BackupSummaryScreen)
+        self.assertTrue(threads)
+        self.assertFalse(any(threads), threads)
 
     # --- queued actions and other screens --------------------------------------------------------
     async def test_queued_restore_is_not_opened_over_settings(self):

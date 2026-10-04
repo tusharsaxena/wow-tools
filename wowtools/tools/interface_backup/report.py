@@ -21,7 +21,7 @@ STAGE_TITLES = {
 }
 SUMMARY_COLUMNS = ("Flavor", "Interface", "WTF", "Links", "Backups", "Newest backup")
 BACKUP_RESULT_COLUMNS = ("Flavor", "Outcome", "Zip", "Files", "Size", "Zip size", "Old backups removed")
-LIST_COLUMNS = ("Date", "Flavor", "Kind", "Size")
+LIST_COLUMNS = ("Date", "Flavor", "Kind", "Parts", "Size")
 RESTORE_RESULT_COLUMNS = ("Part", "Outcome", "Details")
 NOTICE_ERRORS = 3  # scan warnings shown per part in the summary's notices
 _BACKUP_KINDS = {"created": "Backed up", "skipped": "Skipped", "failed": "Failed"}
@@ -132,12 +132,25 @@ def backup_result_rows(outcomes: list[BackupOutcome]) -> list[tuple[str, ...]]:
     return rows
 
 
-def list_rows(infos: list[BackupInfo], names: dict[str, str] | None = None) -> list[tuple[str, ...]]:
+def parts_cell(parts: tuple[str, ...] | None) -> str:
+    """A backup's parts for the list ("Interface, WTF"); "?" when its manifest could not be read."""
+    if parts is None:
+        return "?"
+    return ", ".join(parts) or "none"
+
+
+PARTS_PENDING = "…"  # the Parts cell until the list's worker has read that zip's manifest
+
+
+def list_rows(infos: list[BackupInfo], names: dict[str, str] | None = None,
+              parts: dict[Path, tuple[str, ...] | None] | None = None) -> list[tuple[str, ...]]:
     """LIST_COLUMNS rows. `names` maps a flavor's short name to its display name (the short name is the fallback
-    for a flavor this install does not have)."""
+    for a flavor this install does not have); `parts` maps a zip's path to its parts (read_parts), and a zip not
+    in it shows PARTS_PENDING."""
     names = names or {}
+    parts = parts or {}
     return [(b.when, names.get(b.flavor_short, b.flavor_short), "safety (pre-restore)" if b.is_safety else "backup",
-             human_size(b.size)) for b in infos]
+             parts_cell(parts[b.path]) if b.path in parts else PARTS_PENDING, human_size(b.size)) for b in infos]
 
 
 def friendly_created(created: str) -> str:

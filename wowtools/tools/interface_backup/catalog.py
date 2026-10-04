@@ -2,13 +2,18 @@
 and pruning. UI-free."""
 from __future__ import annotations
 
+import json
 import os
 import re
+import zipfile
+import zlib
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from wowtools.core.backup import MANIFEST_NAME
 from wowtools.core.fsutil import free_name
+from wowtools.tools.interface_backup.scanner import PARTS
 
 BACKUP = "backup"
 SAFETY = "pre-restore"
@@ -67,6 +72,22 @@ def list_backups(root: Path | None, flavor_shorts: set[str] | None = None, *,
             continue
         found.append(BackupInfo(Path(entry.path), m["kind"], m["flavor"], m["stamp"], int(m["n"] or 1), size))
     return sorted(found, key=lambda b: (b.stamp, b.n), reverse=True)
+
+
+def read_parts(path: Path) -> tuple[str, ...] | None:
+    """The parts a backup's manifest claims, in PARTS order, or None when the zip or its manifest cannot be read.
+    Reads the manifest entry only: no entry is checked and nothing is verified (open_backup and verify_backup
+    do that before a restore). Never raises."""
+    try:
+        with zipfile.ZipFile(path) as zf:
+            manifest = json.loads(zf.read(MANIFEST_NAME))
+        parts = manifest["parts"]
+    except (OSError, zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError, RuntimeError, ValueError,
+            KeyError, TypeError, RecursionError):
+        return None
+    if not isinstance(parts, list):
+        return None
+    return tuple(p for p in PARTS if p in parts)
 
 
 def _delete(paths: list[Path]) -> list[Path]:

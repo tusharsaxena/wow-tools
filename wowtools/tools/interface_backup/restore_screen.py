@@ -12,13 +12,14 @@ from textual.binding import Binding
 from textual.containers import Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Checkbox, DataTable, Footer, Header, Static
+from textual.worker import get_current_worker
 
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor
 from wowtools.core.paths import to_stored
-from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups
+from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups, read_parts
 from wowtools.tools.interface_backup.report import (LIST_COLUMNS, RESTORE_RESULT_COLUMNS, friendly_created,
-                                                    human_size, list_rows, ordered_parts, plural,
+                                                    human_size, list_rows, ordered_parts, parts_cell, plural,
                                                     restore_result_rows, restore_warnings)
 from wowtools.tools.interface_backup.restore import (BackupContents, RestoreError, RestorePlan, RestoreResult,
                                                      case_key, open_backup, plan_restore)
@@ -34,7 +35,8 @@ def _error_text(exc: Exception) -> str:
 
 class BackupListScreen(Screen[BackupInfo | None]):
     """The backups (and, marked, the safety zips) of the chosen flavors, newest first. Dismisses with the one
-    picked, or None."""
+    picked, or None. A second worker reads each zip's manifest for the Parts column ("?" for one it cannot
+    read; that zip is still listed)."""
 
     DEFAULT_CSS = """
     BackupListScreen #list { height: 1fr; padding: 1 2; }
@@ -49,6 +51,7 @@ class BackupListScreen(Screen[BackupInfo | None]):
         self.root = root
         self.flavors = list(flavors)
         self.infos: list[BackupInfo] | None = None  # None until the worker has listed the folder
+        self.parts: dict[Path, tuple[str, ...] | None] = {}  # filled per zip by the parts worker
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -61,8 +64,10 @@ class BackupListScreen(Screen[BackupInfo | None]):
 
     def on_mount(self) -> None:
         self.sub_title = "Interface Backup · choose a backup"
-        self.query_one("#backups", DataTable).add_columns(*LIST_COLUMNS)
-        self.query_one("#backups", DataTable).focus()
+        table = self.query_one("#backups", DataTable)
+        for label in LIST_COLUMNS:
+            table.add_column(label, key=label)  # keyed by label: the parts worker fills "Parts"
+        table.focus()
         root, shorts = self.root, {f.short_name for f in self.flavors}
         self.run_worker(lambda: self._list_worker(root, shorts), thread=True, group="backup-list")
 
@@ -75,12 +80,33 @@ class BackupListScreen(Screen[BackupInfo | None]):
         if not self.is_attached:
             return
         table = self.query_one("#backups", DataTable)
-        for row in list_rows(infos, {f.short_name: f.display_name for f in self.flavors}):
-            table.add_row(*(Text(c) for c in row))
+        rows = list_rows(infos, {f.short_name: f.display_name for f in self.flavors}, self.parts)
+        for info, row in zip(infos, rows):
+            table.add_row(*(Text(c) for c in row), key=str(info.path))
         where = to_stored(self.root) if self.root else "?"
         title = (f"{plural(len(infos), 'backup')} in {where}. Safety backups are the folders as they were before "
                  "a restore." if infos else f"No backups of these flavors in {where} yet. Press Esc.")
         self.query_one("#list-title", Static).update(Text(title))
+        if infos:
+            paths = [info.path for info in infos]
+            self.run_worker(lambda: self._parts_worker(paths), thread=True, group="backup-parts")
+
+    def _parts_worker(self, paths: list[Path]) -> None:
+        worker = get_current_worker()
+        for path in paths:
+            if worker.is_cancelled:
+                return
+            parts = read_parts(path)  # never raises
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._parts_read, path, parts)
+
+    def _parts_read(self, path: Path, parts: tuple[str, ...] | None) -> None:
+        self.parts[path] = parts
+        if not self.is_attached:
+            return
+        self.query_one("#backups", DataTable).update_cell(str(path), "Parts", Text(parts_cell(parts)),
+                                                          update_width=True)
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         event.stop()
