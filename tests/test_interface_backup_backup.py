@@ -112,15 +112,25 @@ class BackupTest(unittest.TestCase):
     def test_grown_while_zipping_stores_what_was_read(self):
         config = self.wow / "_retail_" / "WTF" / "Config.wtf"
         grown = b"SET a 1\n" + b"x" * 5000
-        real_open = open
+        real_open, real_fstat = os.open, os.fstat
+        opened = []
 
-        def grow(path, *args, **kwargs):
+        def open_(path, *args, **kwargs):
+            fd = real_open(path, *args, **kwargs)
             if str(path).endswith("Config.wtf"):
-                config.write_bytes(grown)  # after write_zip's lstat, before the read
-            return real_open(path, *args, **kwargs)
+                opened.append(fd)
+                if os.name == "nt":  # stat taken before the open there
+                    config.write_bytes(grown)
+            return fd
+
+        def fstat(fd):
+            st = real_fstat(fd)
+            if fd in opened:
+                config.write_bytes(grown)  # after write_zip's stat, before the read
+            return st
 
         scan = self.scan()
-        with capture_events(), patch("builtins.open", side_effect=grow):
+        with capture_events(), patch("os.open", side_effect=open_), patch("os.fstat", side_effect=fstat):
             outcome = back_up(scan, self.root, keep=10, now=NOW)
         self.assertEqual(outcome.kind, "created")
         with zipfile.ZipFile(outcome.path) as zf:
@@ -177,7 +187,7 @@ class BackupTest(unittest.TestCase):
         config = self.wow / "_retail_" / "WTF" / "Config.wtf"
         secret = self.tmp / "secret.txt"
         secret.write_bytes(b"outside")
-        real_open = open
+        real_open = os.open
 
         def swap(path, *args, **kwargs):
             if str(path).endswith("Config.wtf"):
@@ -186,12 +196,40 @@ class BackupTest(unittest.TestCase):
             return real_open(path, *args, **kwargs)
 
         scan = self.scan()
-        with capture_events(), patch("builtins.open", side_effect=swap):
+        with capture_events(), patch("os.open", side_effect=swap):
             outcome = back_up(scan, self.root, keep=10, now=NOW)
         self.assertEqual(outcome.kind, "created")
         self.assertIn("WTF/Config.wtf", outcome.missing)
         with zipfile.ZipFile(outcome.path) as zf:
             self.assertNotIn("WTF/Config.wtf", zf.namelist())
+
+    @unittest.skipIf(os.name == "nt", "Windows has no O_NOFOLLOW: it lstats before the open")
+    def test_no_lstat_per_file_on_posix(self):
+        scan = self.scan()
+        files = {str(part.path.joinpath(*info.rel.split("/"))) for part in scan.parts.values() for info in part.files}
+        real = os.lstat
+        seen = []
+
+        def lstat(path, *args, **kwargs):
+            seen.append(str(path))
+            return real(path, *args, **kwargs)
+
+        with capture_events(), patch("os.lstat", lstat):
+            outcome = back_up(scan, self.root, keep=10, now=NOW)
+        self.assertEqual(outcome.kind, "created")
+        self.assertTrue(files)
+        self.assertEqual(sorted(files & set(seen)), [])
+
+    @unittest.skipIf(not hasattr(os, "mkfifo"), "needs FIFOs")
+    def test_file_turned_fifo_is_left_out_without_waiting(self):
+        scan = self.scan()
+        config = self.wow / "_retail_" / "WTF" / "Config.wtf"
+        config.unlink()
+        os.mkfifo(config)
+        with capture_events():
+            outcome = back_up(scan, self.root, keep=10, now=NOW)
+        self.assertEqual(outcome.kind, "created")
+        self.assertIn("WTF/Config.wtf", outcome.missing)
 
     def test_part_folder_gone_after_scan_is_not_claimed(self):
         scan = self.scan()
@@ -307,14 +345,14 @@ class BackupTest(unittest.TestCase):
         self.assertEqual(list(self.root.iterdir()), [])
 
     def test_unreadable_file_fails_the_backup(self):
-        real_open = open
+        real_open = os.open
 
         def locked(path, *args, **kwargs):
             if str(path).endswith("Config.wtf"):
                 raise PermissionError(13, "locked", str(path))
             return real_open(path, *args, **kwargs)
 
-        with capture_events(), patch("builtins.open", side_effect=locked):
+        with capture_events(), patch("os.open", side_effect=locked):
             outcome = back_up(self.scan(), self.root, keep=10, now=NOW)
         self.assertEqual(outcome.kind, "failed")
         self.assertIn("locked", outcome.reason)

@@ -9,14 +9,16 @@ import unittest
 import zipfile
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 from tests.fixtures import build_interface_tree, build_wow_tree
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.core.paths import to_stored
+from wowtools.tools.interface_backup import undo as undo_module
 from wowtools.tools.interface_backup.backup import back_up
 from wowtools.tools.interface_backup.journal import latest_undoable, read_restore_journal
-from wowtools.tools.interface_backup.restore import RestoreError, open_backup, plan_restore, restore
+from wowtools.tools.interface_backup.restore import RestoreError, RestoreStopped, open_backup, plan_restore, restore
 from wowtools.tools.interface_backup.scanner import scan_flavor
 from wowtools.tools.interface_backup.undo import undo_restore
 
@@ -281,6 +283,50 @@ class UndoTest(unittest.TestCase):
 
         undone, _ = self.undo(result.journal_path, rename=flaky)
         self.assertEqual({p.part: p.kind for p in undone.parts}, {"WTF": "restored", "Interface": "rolled_back"})
+        self.assertIsNone(latest_undoable(self.journal_dir))
+
+    def test_unexpected_error_stops_with_the_finished_part(self):
+        result = self.do_restore()
+        real = undo_module.replace_part
+        calls = []
+
+        def second_fails(*args, **kwargs):
+            calls.append(args[3])
+            if len(calls) == 2:
+                raise TypeError("boom")
+            return real(*args, **kwargs)
+
+        with patch.object(undo_module, "replace_part", second_fails), capture_events() as events, \
+                self.assertRaises(RestoreStopped) as caught:
+            undo_restore(result.journal_path, wow_root=self.wow, root=self.root)
+        stopped = caught.exception.result
+        self.assertTrue(stopped.undo)
+        self.assertEqual([(p.part, p.kind) for p in stopped.parts], [("WTF", "restored")])
+        self.assertIn("boom", str(caught.exception))
+        failed = [e for e in events if e["event"] == "ibackup.undo_failed"]
+        self.assertEqual(len(failed), 1)
+        self.assertIs(failed[0]["data"]["stopped"], True)
+        self.assertNotIn("ibackup.undo_completed", [e["event"] for e in events])
+
+    def test_created_part_that_cannot_be_fully_deleted_is_replaced_left(self):
+        shutil.rmtree(self.retail / "Interface")
+        result = self.do_restore(("Interface",))
+        real = undo_module.remove_tree_no_follow
+
+        def refuse(path):
+            if str(path).endswith("Interface.replaced"):
+                raise PermissionError(13, "in use")
+            real(path)
+
+        with patch.object(undo_module, "remove_tree_no_follow", refuse):
+            undone, events = self.undo(result.journal_path)
+        self.assertEqual(undone.parts[0].kind, "replaced_left")
+        self.assertIn("Interface.replaced", undone.parts[0].reason)
+        self.assertTrue(undone.ok)
+        self.assertFalse(os.path.lexists(self.retail / "Interface"))
+        left = [e for e in events if e["event"] == "ibackup.replaced_left"]
+        self.assertEqual(len(left), 1)
+        self.assertIs(left[0]["data"]["undo"], True)
         self.assertIsNone(latest_undoable(self.journal_dir))
 
 

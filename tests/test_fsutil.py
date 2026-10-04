@@ -139,6 +139,44 @@ class RemoveTreeNoFollowTest(unittest.TestCase):
         remove_tree_no_follow(root)
         self.assertFalse(root.exists())
 
+    @unittest.skipIf(os.name == "nt" or os.geteuid() == 0, "POSIX permissions, not as root")
+    def test_posix_permission_error_leaves_modes_alone(self):
+        root = self.tmp / "WTF.replaced"
+        (root / "locked").mkdir(parents=True)
+        path = root / "locked" / "x.lua"
+        path.write_text("x", encoding="utf-8")
+        before = stat.S_IMODE(path.stat().st_mode)
+        os.chmod(root / "locked", 0o555)
+        self.addCleanup(os.chmod, root / "locked", 0o755)
+        with self.assertRaises(PermissionError):
+            remove_tree_no_follow(root)
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), before)
+        self.assertEqual(path.read_text(encoding="utf-8"), "x")
+
+    def test_read_only_retry_is_windows_only(self):
+        path = self.tmp / "x.lua"
+        path.write_text("x", encoding="utf-8")
+        real = os.remove
+        calls = []
+
+        def read_only_once(target):
+            calls.append(target)
+            if len(calls) == 1:
+                raise PermissionError(13, "read-only")
+            real(target)
+
+        with patch("os.remove", read_only_once), patch("os.chmod") as chmod, patch.object(fsutil.sys, "platform",
+                                                                                          "linux"):
+            with self.assertRaises(PermissionError):
+                fsutil._delete_entry(path, folder=False)
+            chmod.assert_not_called()
+        calls.clear()
+        with patch("os.remove", read_only_once), patch("os.chmod") as chmod, patch.object(fsutil.sys, "platform",
+                                                                                          "win32"):
+            fsutil._delete_entry(path, folder=False)
+            chmod.assert_called_once_with(path, stat.S_IWRITE)
+        self.assertFalse(path.exists())
+
     def test_link_inside_is_unlinked_never_followed(self):
         if not can_symlink(self.tmp):
             self.skipTest("symlinks not available")

@@ -16,10 +16,13 @@ from tests.fixtures import build_interface_tree, build_wow_tree
 from wowtools.core.backup import BackupError
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
+from wowtools.core.journal import JournalWriter
+from wowtools.tools.interface_backup import catalog, undo
+from wowtools.tools.interface_backup import restore as restore_module
 from wowtools.tools.interface_backup.backup import back_up
 from wowtools.tools.interface_backup.journal import latest_undoable, read_restore_journal, referenced_safety_zips
 from wowtools.tools.interface_backup.restore import (RestoreError, RestoreStopped, open_backup, plan_restore, restore,
-                                                     split_entry)
+                                                     split_entry, windows_target)
 from wowtools.tools.interface_backup.scanner import scan_flavor
 
 NOW = datetime(2026, 10, 4, 15, 30, 12)
@@ -83,11 +86,33 @@ class SplitEntryTest(unittest.TestCase):
         # Device names and control characters are ordinary names on POSIX (a character called Aux gets a folder).
         for name in ("Interface/CON", "Interface/AddOns/nul.lua", "WTF/com1.txt", "WTF/LPT9",
                      "WTF/Account/A/Realm/Aux/SavedVariables/x.lua", "Interface/AddOns/Foo/Aux.Tooltip.lua",
-                     "Interface/AddOns/Con/x.lua", "Interface/a\x01b"):
+                     "Interface/AddOns/Con/x.lua", "Interface/a\x01b", "Interface/AddOns/nul .lua", "WTF/CON .txt",
+                     "Interface/COM\u00b9.lua", "WTF/lpt\u00b3", "WTF/Aux  .x.lua"):
             with self.subTest(name=name):
                 self.assertEqual(split_entry(name, windows=False)[0], name.split("/")[0])
                 with self.assertRaises(RestoreError):
                     split_entry(name, windows=True)
+
+
+@unittest.skipIf(os.name == "nt", "Windows applies its own name rules everywhere")
+class WindowsTargetTest(RestoreTestBase):
+    def test_drvfs_paths(self):
+        self.assertTrue(windows_target(Path("/mnt/c/Games/World of Warcraft/_retail_"), wsl=True))
+        self.assertTrue(windows_target(Path("/mnt/D"), wsl=True))
+        self.assertFalse(windows_target(Path("/mnt/c/Games"), wsl=False))
+        self.assertFalse(windows_target(Path("/mnt/wsl/x"), wsl=True))
+        self.assertFalse(windows_target(Path("/home/me/Games/_retail_"), wsl=True))
+
+    def test_device_name_refused_for_a_windows_drive(self):
+        (self.wow / "_retail_" / "WTF" / "aux.lua").write_bytes(b"x")
+        with capture_events():
+            backup = back_up(scan_flavor(self.flavor, with_stats=False), self.root, keep=10,
+                             now=datetime(2026, 10, 4, 16, 0, 0)).path
+        contents = open_backup(backup)  # fine on POSIX
+        self.assertEqual(plan_restore(contents, self.scan(), ("WTF",)).parts, ("WTF",))
+        with patch.object(restore_module, "windows_target", return_value=True), \
+                self.assertRaisesRegex(RestoreError, "aux.lua"):
+            plan_restore(contents, self.scan(), ("WTF",))
 
 
 class OpenBackupTest(RestoreTestBase):
@@ -509,10 +534,14 @@ class RunRestoreTest(RestoreTestBase):
 
     def test_leftover_blocks(self):
         (self.retail / "WTF.replaced").mkdir()
-        with self.assertRaises(RestoreError):
-            self.run_restore(("Interface",))
+        plan = plan_restore(open_backup(self.backup), self.scan(), ("Interface",))
+        with capture_events() as events, self.assertRaises(RestoreError):
+            restore(plan, root=self.root, journal_dir=self.journal_dir, keep_journals=10)
         self.assertFalse(list(self.root.glob("pre-restore-*")))
         self.assertEqual(list_or_empty(self.journal_dir), [])
+        failed = [e for e in events if e["event"] == "ibackup.restore_failed"]
+        self.assertEqual(len(failed), 1)
+        self.assertIn("WTF.replaced", failed[0]["data"]["error"])
 
     def test_corrupt_backup_changes_nothing(self):
         plan = plan_restore(open_backup(self.backup), self.scan(), ("Interface",))
@@ -540,10 +569,12 @@ class RunRestoreTest(RestoreTestBase):
         self.journal_dir.parent.mkdir(parents=True, exist_ok=True)
         self.journal_dir.write_text("not a folder", encoding="utf-8")
         (self.retail / "Interface" / "new.txt").write_text("n", encoding="utf-8")
-        with self.assertRaises(RestoreError):
-            self.run_restore(("Interface",))
+        plan = plan_restore(open_backup(self.backup), self.scan(), ("Interface",))
+        with capture_events() as events, self.assertRaises(RestoreError):
+            restore(plan, root=self.root, journal_dir=self.journal_dir, keep_journals=10)
         self.assertTrue((self.retail / "Interface" / "new.txt").exists())
         self.assertFalse(list(self.root.glob("pre-restore-*")))
+        self.assertIn("ibackup.restore_failed", [e["event"] for e in events])
 
     def test_part_turned_link_since_plan_refused(self):
         plan = plan_restore(open_backup(self.backup), self.scan(), ("WTF",))
@@ -591,19 +622,184 @@ class RunRestoreTest(RestoreTestBase):
     def test_journal_and_safety_pruning(self):
         first = self.run_restore(("WTF",))
         plan = plan_restore(open_backup(self.backup), self.scan(), ("WTF",))
-        with capture_events():
+        with capture_events() as events:
             second = restore(plan, root=self.root, journal_dir=self.journal_dir, keep_journals=1)
         self.assertFalse(first.journal_path.exists())
         self.assertFalse(first.safety_zip.exists())
         self.assertTrue(second.journal_path.exists())
         self.assertTrue(second.safety_zip.exists())
         self.assertTrue(self.backup.exists())
+        pruned = [e["data"] for e in events if e["event"] == "ibackup.journal_pruned"]
+        self.assertEqual(pruned, [{"journals": [first.journal_path.name], "safety": [first.safety_zip.name]}])
+
+    def test_journal_stamped_before_newer_ones_is_never_pruned(self):
+        self.journal_dir.mkdir(parents=True)
+        later = [self.journal_dir / f"journal-20991231-0000{i:02d}.jsonl" for i in range(10)]
+        for path in later:
+            path.write_text("", encoding="utf-8")
+        result = self.run_restore(("WTF",), now=NOW)  # a clock set back: ten journals sort above this one
+        self.assertTrue(result.journal_path.exists())
+        self.assertTrue(result.safety_zip.exists())
+        self.assertTrue(all(path.exists() for path in later))
+
+    def test_unreadable_pruned_journal_keeps_its_safety_zip(self):
+        first = self.run_restore(("WTF",))
+        import wowtools.tools.interface_backup.journal as journal_module
+        real = journal_module.read_restore_journal
+
+        def locked(path):
+            if path.name == first.journal_path.name:
+                raise OSError("locked")
+            return real(path)
+
+        plan = plan_restore(open_backup(self.backup), self.scan(), ("WTF",))
+        with patch.object(journal_module, "read_restore_journal", locked), capture_events():
+            second = restore(plan, root=self.root, journal_dir=self.journal_dir, keep_journals=1)
+        self.assertTrue(first.safety_zip.exists())
+        self.assertTrue(second.safety_zip.exists())
+
+    def test_safety_zip_of_another_wow_folder_is_never_pruned(self):
+        self.root.mkdir(parents=True, exist_ok=True)
+        foreign = self.root / "pre-restore-retail-20250101-000000.zip"  # named by another install's journal
+        foreign.write_bytes(b"theirs")
+        first = self.run_restore(("WTF",))
+        plan = plan_restore(open_backup(self.backup), self.scan(), ("WTF",))
+        with capture_events():
+            restore(plan, root=self.root, journal_dir=self.journal_dir, keep_journals=1)
+        self.assertFalse(first.safety_zip.exists())
+        self.assertEqual(foreign.read_bytes(), b"theirs")
+
+    def test_restore_from_a_safety_zip_never_prunes_it(self):
+        first = self.run_restore(("WTF",))
+        plan = plan_restore(open_backup(first.safety_zip), self.scan(), ("WTF",))
+        with capture_events():
+            second = restore(plan, root=self.root, journal_dir=self.journal_dir, keep_journals=1)
+        self.assertEqual(second.parts[0].kind, "restored")
+        self.assertFalse(first.journal_path.exists())
+        self.assertTrue(first.safety_zip.exists())
+
+    def test_restore_that_changed_nothing_prunes_nothing(self):
+        first = self.run_restore(("WTF",))
+        real = os.rename
+
+        def locked(src, dst):
+            if str(src).endswith("WTF.restoring"):
+                raise PermissionError(13, "locked by WoW")
+            real(src, dst)
+
+        plan = plan_restore(open_backup(first.safety_zip), self.scan(), ("WTF",))
+        with capture_events():
+            second = restore(plan, root=self.root, journal_dir=self.journal_dir, keep_journals=1, rename=locked)
+        self.assertEqual(second.parts[0].kind, "rolled_back")
+        self.assertTrue(first.safety_zip.exists())
+        self.assertTrue(first.journal_path.exists())
+        self.assertEqual(latest_undoable(self.journal_dir), first.journal_path)
+
+    def test_link_under_a_path_the_backup_holds_as_a_file_goes(self):
+        dev = self.retail / "Interface" / "AddOns" / "Dev"
+        dev.write_bytes(b"file")
+        with capture_events():
+            backup = back_up(scan_flavor(self.flavor, with_stats=False), self.root, keep=10,
+                             now=datetime(2026, 10, 4, 16, 0, 0)).path
+        dev.unlink()
+        dev.mkdir()
+        repo = self.tmp / "repo"
+        repo.mkdir()
+        (repo / "lib.lua").write_text("lib", encoding="utf-8")
+        _symlink(self, repo, dev / "Libs")
+        plan = plan_restore(open_backup(backup), self.scan(), ("Interface",))
+        self.assertEqual((plan.links_removed, plan.links_kept), ([("Interface", "AddOns/Dev/Libs")], []))
+        with capture_events():
+            result = restore(plan, root=self.root, journal_dir=self.journal_dir, keep_journals=10)
+        self.assertEqual(result.parts[0].kind, "restored")
+        self.assertEqual(dev.read_bytes(), b"file")
+        self.assertEqual((repo / "lib.lua").read_text(encoding="utf-8"), "lib")
+        self.assert_no_staging()
+
+    def test_part_the_safety_backup_does_not_hold_is_left_alone(self):
+        real = restore_module.write_zip
+
+        def vanish(scan, *args, **kwargs):  # WoW rewrote every WTF file while the safety backup was written
+            for path in sorted((self.retail / "WTF").rglob("*"), reverse=True):
+                if path.is_file():
+                    path.unlink()
+            return real(scan, *args, **kwargs)
+
+        with patch.object(restore_module, "write_zip", vanish):
+            result = self.run_restore(("Interface", "WTF"))
+        self.assertEqual([(p.part, p.kind) for p in result.parts], [("Interface", "restored"), ("WTF", "rolled_back")])
+        self.assertIn("safety backup does not hold", result.parts[1].reason)
+        self.assertTrue((self.retail / "WTF").is_dir())
+        self.assertFalse((self.retail / "WTF" / "Config.wtf").exists())
+        journal = read_restore_journal(result.journal_path)
+        self.assertEqual([(e["part"], e["existed"]) for e in journal.entries if e["action"] == "replaced"],
+                         [("Interface", True)])
+
+    def test_safety_zip_undo_would_refuse_stops_the_restore(self):
+        wtf = self.retail / "WTF"
+        (wtf / "foo.lua").write_bytes(b"lower")
+        if (wtf / "FOO.lua").exists():
+            self.skipTest("case-insensitive file system")
+        (wtf / "FOO.lua").write_bytes(b"upper")
+        plan = plan_restore(open_backup(self.backup), self.scan(), ("WTF",))
+        with capture_events() as events, self.assertRaisesRegex(RestoreError, "Undo"):
+            restore(plan, root=self.root, journal_dir=self.journal_dir, keep_journals=10)
+        self.assertEqual(((wtf / "foo.lua").read_bytes(), (wtf / "FOO.lua").read_bytes()), (b"lower", b"upper"))
+        self.assertFalse(list(self.root.glob("pre-restore-*")))
+        self.assertEqual(list_or_empty(self.journal_dir), [])
+        self.assertIn("ibackup.restore_failed", [e["event"] for e in events])
+
+    def test_extract_makes_each_folder_once(self):
+        real = os.mkdir
+        existing = []
+
+        def mkdir(path, *args, **kwargs):
+            try:
+                return real(path, *args, **kwargs)
+            except FileExistsError:
+                existing.append(str(path))
+                raise
+
+        with patch("os.mkdir", mkdir):
+            result = self.run_restore(("Interface",))
+        self.assertEqual(result.parts[0].kind, "restored")
+        self.assertEqual([p for p in existing if ".restoring" in p], [])
+
+    def test_swap_the_journal_cannot_record_is_reported(self):
+        real = JournalWriter.add_entry
+
+        def disk_full(writer, entry):
+            if entry.get("action") == "replaced":
+                raise OSError(28, "No space left on device")
+            return real(writer, entry)
+
+        plan = plan_restore(open_backup(self.backup), self.scan(), ("Interface", "WTF"))
+        with patch.object(JournalWriter, "add_entry", disk_full), capture_events() as events, \
+                self.assertRaises(RestoreStopped) as caught:
+            restore(plan, root=self.root, journal_dir=self.journal_dir, keep_journals=10)
+        result = caught.exception.result
+        message = str(caught.exception)
+        self.assertIn("Interface.replaced", message)
+        self.assertIn(result.safety_zip.name, message)
+        self.assertIn("No space left", message)
+        self.assertEqual([(p.part, p.kind) for p in result.parts], [("Interface", "failed")])
+        self.assertTrue((self.retail / "Interface.replaced").is_dir())
+        self.assertTrue((self.retail / "Interface" / "AddOns" / "Details" / "core.lua").exists())
+        names = [e["event"] for e in events]
+        self.assertIn("ibackup.part_rolled_back", names)
+        self.assertIn("ibackup.restore_stopped", names)
 
     def test_unreadable_journal_keeps_every_safety_zip(self):
         first = self.run_restore(("WTF",))
         with patch("wowtools.tools.interface_backup.journal.read_restore_journal", side_effect=OSError("locked")):
             self.assertIsNone(referenced_safety_zips(self.journal_dir))
         self.assertEqual(referenced_safety_zips(self.journal_dir), {first.safety_zip.name})
+
+
+class SharedDefinitionsTest(unittest.TestCase):
+    def test_one_definition_each(self):
+        self.assertIs(restore_module.KINDS, catalog.KINDS)
+        self.assertIs(undo.Rename, restore_module.Rename)
 
 
 def list_or_empty(folder: Path) -> list[Path]:

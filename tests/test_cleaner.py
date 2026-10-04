@@ -479,6 +479,20 @@ class LockAndCheckTest(unittest.TestCase):
         self.assertEqual(result.check_problems, ["the check could not run: boom"])
         self.assertTrue(self.snapshot_path().exists())
 
+    def test_file_under_a_linked_account_is_never_deleted(self):
+        account_dir = self.retail.account_dir
+        try:
+            os.symlink(account_dir / "ACCT2", account_dir / "ACCT3", target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks not available")
+        linked = account_dir / "ACCT3" / "SavedVariables" / "Details.lua"
+        stat = linked.stat()
+        item = self.item("Uninstalled").with_files([SVFile(linked, stat.st_size, stat.st_mtime, False)])
+        with capture_events(), self.assertRaisesRegex(BackupError, "would not be in the WTF backup"):
+            execute([item], self.retail, dry_run=False, backup=False, backup_dir=self.backup_dir, now=WHEN)
+        self.assertTrue((account_dir / "ACCT2" / "SavedVariables" / "Details.lua").exists())
+        self.assertFalse((self.backup_dir / MARKER_NAME).exists())
+
     def test_guard_refuses_a_link_out_of_the_account_folder(self):
         outside = self.tmp / "outside.lua"
         outside.write_text("x")

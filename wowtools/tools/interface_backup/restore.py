@@ -13,33 +13,37 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import NoReturn
 
 from wowtools import __version__
 from wowtools.core.backup import MANIFEST_NAME, BackupError, verify_backup
 from wowtools.core.events import log_event
-from wowtools.core.fsutil import is_real_dir, remove_tree_no_follow, safe_progress
+from wowtools.core.fsutil import is_real_dir, remove_quietly, remove_tree_no_follow, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.core.journal import JournalWriter, list_journals, new_journal_path, prune_journals
-from wowtools.core.paths import to_stored
+from wowtools.core.paths import is_wsl, to_stored
 from wowtools.tools.interface_backup.backup import write_zip
-from wowtools.tools.interface_backup.catalog import SAFETY, new_backup_path, prune_safety
-from wowtools.tools.interface_backup.journal import referenced_safety_zips
+from wowtools.tools.interface_backup.catalog import KINDS, SAFETY, new_backup_path, prune_safety
+from wowtools.tools.interface_backup.journal import referenced_safety_zips, safety_zips_named
 from wowtools.tools.interface_backup.scanner import PARTS, FlavorScan, leftover_folders, scan_flavor
 
 NEWER_SLACK = 2.0  # zip timestamps have 2-second steps
-KINDS = ("backup", "pre-restore")
 _DRIVE = re.compile(r"^[A-Za-z]:")
 _FLAVOR_FOLDER = re.compile(r"_[A-Za-z0-9_]+_")  # fullmatch: no trailing newline
 _BAD_CHARS = frozenset('<>:"|?*\x00')  # refused everywhere: Windows cannot write them, NUL nowhere can
 # Windows only: control characters, and device names ("CON", "nul.lua") that open the device, not a file. On POSIX
 # these are ordinary names (a character called Aux gets an "Aux" folder), so a backup made there must restore there.
 _WINDOWS_BAD_CHARS = frozenset(chr(c) for c in range(1, 32))
-_RESERVED = frozenset({"CON", "PRN", "AUX", "NUL"} | {f"{p}{n}" for p in ("COM", "LPT") for n in range(1, 10)})
+# COM¹ to LPT³: Windows 10 treats the superscript digits as device numbers too.
+_RESERVED = frozenset({"CON", "PRN", "AUX", "NUL"}
+                      | {f"{p}{n}" for p in ("COM", "LPT") for n in (*range(1, 10), "\u00b9", "\u00b2", "\u00b3")})
+# A Windows drive under WSL (drvfs): the files land on NTFS, where Win32 WoW reads them, so Windows' rules apply.
+_DRVFS = re.compile(r"^/mnt/[A-Za-z](?:/|$)")
 # Reading a zip: a damaged file, an unsupported compression method or an encrypted entry.
 ZIP_ERRORS = (OSError, zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError, RuntimeError, ValueError)
 
 
-def _case_key(name: str) -> str:
+def case_key(name: str) -> str:
     """A name as Windows compares it: per-character lower case, not casefold()'s full folding ("ß" is not "ss" on
     NTFS, so "Straße.lua" and "STRASSE.lua" are two files)."""
     return name.lower()
@@ -57,7 +61,8 @@ def _unsafe(name: str) -> RestoreError:
 def _bad_component(part: str, windows: bool) -> bool:
     if part in ("", ".", "..") or part != part.rstrip(". ") or _BAD_CHARS & set(part):
         return True
-    return windows and (bool(_WINDOWS_BAD_CHARS & set(part)) or part.split(".")[0].upper() in _RESERVED)
+    # "nul .lua" is NUL too: Win32 drops the spaces before the extension.
+    return windows and (bool(_WINDOWS_BAD_CHARS & set(part)) or part.split(".")[0].rstrip(" ").upper() in _RESERVED)
 
 
 def split_entry(name: str, *, windows: bool | None = None) -> tuple[str, str]:
@@ -74,6 +79,16 @@ def split_entry(name: str, *, windows: bool | None = None) -> tuple[str, str]:
     if len(pieces) < 2 or pieces[0] not in PARTS or any(_bad_component(p, windows) for p in pieces[1:]):
         raise _unsafe(name)
     return pieces[0], "/".join(pieces[1:])
+
+
+def windows_target(path: Path, *, wsl: bool | None = None) -> bool:
+    """True when files written under path land where Windows' name rules apply: running on Windows, or a Windows
+    drive mounted under WSL (/mnt/<letter>/...)."""
+    if os.name == "nt":
+        return True
+    if wsl is None:
+        wsl = is_wsl()
+    return bool(wsl) and bool(_DRVFS.match(Path(path).as_posix()))
 
 
 @dataclass
@@ -98,7 +113,7 @@ def _check_names(names: list[str]) -> None:
     seen: set[str] = set()
     for name in names:
         split_entry(name)
-        key = _case_key(name)
+        key = case_key(name)
         if key in seen:
             raise RestoreError(f"the backup has two entries for the same file (case ignored): {name}")
         seen.add(key)
@@ -176,6 +191,16 @@ class RestorePlan:
         return self.free_bytes is not None and self.bytes_needed > self.free_bytes
 
 
+def check_target_names(contents: BackupContents, parts: tuple[str, ...], target: Path) -> None:
+    """Under WSL, a flavor on a Windows drive gets Windows' name rules (device names, control characters) for the
+    chosen parts' files; open_backup applied only the running system's. Raises RestoreError."""
+    if os.name == "nt" or not windows_target(target):
+        return
+    for part in parts:
+        for rel in contents.files.get(part, {}):
+            split_entry(f"{part}/{rel}", windows=True)
+
+
 def _free_space(path: Path, disk_usage: Callable) -> int | None:
     try:
         return int(disk_usage(path).free)
@@ -191,9 +216,10 @@ def plan_restore(contents: BackupContents, scan: FlavorScan, parts: tuple[str, .
     unknown = [p for p in parts if p not in PARTS]
     if unknown or not parts:
         raise RestoreError(f"no such part to restore: {unknown!r}" if unknown else "no part chosen to restore")
-    if _case_key(contents.flavor_folder) != _case_key(scan.flavor.folder):
+    if case_key(contents.flavor_folder) != case_key(scan.flavor.folder):
         raise RestoreError(f"the backup is of {contents.flavor_folder}, not {scan.flavor.folder}: a backup restores "
                            "only into its own flavor")
+    check_target_names(contents, parts, scan.flavor.path)
     removed: list[tuple[str, str]] = []
     newer: list[tuple[str, str]] = []
     kept: list[tuple[str, str]] = []
@@ -208,18 +234,21 @@ def plan_restore(contents: BackupContents, scan: FlavorScan, parts: tuple[str, .
         if live.linked:
             raise RestoreError(f"{part} is a link to another folder; restore it by hand")
         unreadable.extend(live.errors)
-        backup_files = {_case_key(rel): (size, mtime) for rel, (size, mtime) in contents.files[part].items()}
+        backup_files = {case_key(rel): (size, mtime) for rel, (size, mtime) in contents.files[part].items()}
         folders = {"/".join(rel.split("/")[:i]) for rel in backup_files for i in range(1, rel.count("/") + 1)}
         needed += sum(size for size, _ in backup_files.values())
         for info in live.files:
-            match = backup_files.get(_case_key(info.rel))
+            match = backup_files.get(case_key(info.rel))
             if match is None:
                 removed.append((part, info.rel))
             elif info.mtime is not None and info.mtime > match[1] + NEWER_SLACK:
                 newer.append((part, info.rel))
         for link in live.links:
-            key = _case_key(link)
-            (dropped if key in backup_files or key in folders else kept).append((part, link))
+            key = case_key(link)
+            pieces = key.split("/")
+            # Under a path the backup holds as a file, the link has no folder to stay in: it goes too.
+            under_file = any("/".join(pieces[:i]) in backup_files for i in range(1, len(pieces)))
+            (dropped if key in backup_files or key in folders or under_file else kept).append((part, link))
     return RestorePlan(contents, scan.flavor, chosen, removed, newer, kept, dropped, needed,
                        _free_space(scan.flavor.path, disk_usage), list(scan.leftovers), unreadable)
 
@@ -229,6 +258,16 @@ def plan_restore(contents: BackupContents, scan: FlavorScan, parts: tuple[str, .
 Rename = Callable[[Path, Path], None]
 # A part whose extraction or swap fails with one of these is rolled back and the restore goes on to the next part.
 _PART_ERRORS = ZIP_ERRORS
+
+
+class SwapNotRecorded(Exception):
+    """A part was swapped in, but on_swapped (the journal entry) failed: the swap stands and is not recorded.
+    `old` is the <part>.replaced folder still holding the old copy (None when the part did not exist)."""
+
+    def __init__(self, part: str, old: Path | None) -> None:
+        super().__init__(f"{part} was replaced but the swap could not be recorded")
+        self.part = part
+        self.old = old
 
 
 class SwapError(OSError):
@@ -284,10 +323,16 @@ def _set_mtime(path: Path, mtime: float) -> None:
 def _extract(zf: zipfile.ZipFile, part: str, files: dict[str, tuple[int, float]], staging: Path,
              report: Callable[..., None]) -> None:
     staging.mkdir()  # FileExistsError if a staging folder is already there
+    made = {staging}  # staging is brand new: only this loop makes folders in it, so each is made once
     total = len(files)
     for index, (rel, (_, mtime)) in enumerate(sorted(files.items()), 1):
         target = _native(staging, rel)
-        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.parent not in made:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            folder = target.parent
+            while folder not in made:
+                made.add(folder)
+                folder = folder.parent
         with zf.open(f"{part}/{rel}") as src, open(target, "xb") as out:
             shutil.copyfileobj(src, out, 1 << 20)
         _set_mtime(target, mtime)
@@ -332,12 +377,13 @@ def _move_links(live: Path, staging: Path, keep_links: list[str], moved: list[st
 
 def replace_part(zf: zipfile.ZipFile, files: dict[str, tuple[int, float]], flavor_path: Path, part: str,
                  keep_links: list[str], *, progress: Callable[..., None] | None = None, rename: Rename = os.rename,
-                 on_swapped: Callable[[], None] | None = None) -> str | None:
+                 on_swapped: Callable[[bool], None] | None = None) -> str | None:
     """Swap <flavor>/<part> for the zip's copy: extract to <part>.restoring, move the links to keep into it, rename
-    <part> to <part>.replaced and <part>.restoring to <part>, call on_swapped() (the journal entry), then delete
-    <part>.replaced (never through a link). Returns why the old copy could not be fully deleted, or None. Raises
-    SwapError when the part could not be replaced (rolled_back=True: it is exactly as it was). Interrupted
-    (Ctrl+C) before the swap, the part is rolled back too and the interrupt goes on."""
+    <part> to <part>.replaced and <part>.restoring to <part>, call on_swapped(existed) (the journal entry; existed:
+    the part was there before), then delete <part>.replaced (never through a link). Returns why the old copy could
+    not be fully deleted, or None. Raises SwapError when the part could not be replaced (rolled_back=True: it is
+    exactly as it was), and SwapNotRecorded when on_swapped failed (the swap stands; <part>.replaced is kept).
+    Interrupted (Ctrl+C) before the swap, the part is rolled back too and the interrupt goes on."""
     report = safe_progress(progress)
     live, staging, old = flavor_path / part, flavor_path / f"{part}.restoring", flavor_path / f"{part}.replaced"
     if os.path.lexists(staging) or os.path.lexists(old):
@@ -362,7 +408,10 @@ def replace_part(zf: zipfile.ZipFile, files: dict[str, tuple[int, float]], flavo
         raise SwapError(f"{part} could not be replaced: {exc}" + (f"; {problem}" if problem else ""),
                         rolled_back=problem is None) from exc
     if on_swapped is not None:
-        on_swapped()
+        try:
+            on_swapped(existed)
+        except Exception as exc:
+            raise SwapNotRecorded(part, old if existed else None) from exc
     if not existed:
         return None
     report("cleanup", 0, 0, to_stored(old))
@@ -382,16 +431,46 @@ def log_part(flavor: Flavor, outcome: PartOutcome, *, undo: bool = False) -> Non
               kind=outcome.kind, reason=outcome.reason, undo=undo)
 
 
-def _prune(root: Path, journal_dir: Path, keep_journals: int, current: Path) -> None:
-    """Keep the newest keep_journals journals, then delete the safety zips no remaining journal names. Skipped when
-    this run's journal would not be kept (a clock set back), so its safety zip is never lost."""
-    if current not in list_journals(journal_dir)[:max(1, keep_journals)]:
+def _prune(root: Path, journal_dir: Path, keep_journals: int, current: Path, protect: Path) -> None:
+    """Keep the newest keep_journals journals, then delete the safety zips that only the pruned journals named:
+    one no journal of this folder ever named (another WoW folder's, in a shared backup folder) is never touched,
+    nor is `protect` (the backup this run restored from). Skipped when this run's journal would not be kept (a
+    clock set back), so its safety zip is never lost; no safety zip is deleted when a journal cannot be read."""
+    keep = max(1, keep_journals)
+    journals = list_journals(journal_dir)
+    if current not in journals[:keep]:
         return
+    named = safety_zips_named(journals[keep:])
     pruned = prune_journals(journal_dir, keep_journals)
     referenced = referenced_safety_zips(journal_dir)
-    dropped = prune_safety(root, referenced) if referenced is not None else []
+    dropped = [] if named is None or referenced is None else prune_safety(root, named - referenced, protect=protect)
     if pruned or dropped:
         log_event("ibackup.journal_pruned", journals=[p.name for p in pruned], safety=[p.name for p in dropped])
+
+
+def _refuse(flavor: Flavor, message: str, cause: BaseException | None = None) -> NoReturn:
+    log_event("ibackup.restore_failed", flavor=flavor.folder, error=message)
+    raise RestoreError(message) from cause
+
+
+def _check_safety(safety: Path, parts: tuple[str, ...], flavor: Flavor) -> None:
+    """Undo opens the safety zip with open_backup and plan_restore: refuse now (deleting it) if it would be refused
+    then (two names that differ only in case, a name Windows cannot hold), before anything is swapped."""
+    try:
+        check_target_names(open_backup(safety), parts, flavor.path)
+    except RestoreError as exc:
+        remove_quietly(safety)
+        raise RestoreError(f"the safety backup could not be used by Undo, nothing was changed: {exc}") from exc
+
+
+def _not_recorded(exc: SwapNotRecorded, safety: Path) -> str:
+    cause = exc.__cause__
+    text = (f"{exc.part} was replaced, but the restore journal could not record it ({cause}), so Undo cannot put "
+            f"it back. ")
+    if exc.old is not None:
+        text += (f"The old copy is still in {to_stored(exc.old)}; move it back by hand or delete it before the next "
+                 f"restore. ")
+    return text + f"The copy from before the restore is also in the safety backup {to_stored(safety)}."
 
 
 def _check_parts(scan: FlavorScan, parts: tuple[str, ...]) -> None:
@@ -410,8 +489,8 @@ def restore(plan: RestorePlan, *, root: Path, journal_dir: Path, keep_journals: 
     flavor, contents = plan.flavor, plan.contents
     leftovers = leftover_folders(flavor)
     if leftovers:
-        raise RestoreError("a folder from an interrupted restore is still there: "
-                           + ", ".join(to_stored(p) for p in leftovers))
+        _refuse(flavor, "a folder from an interrupted restore is still there: "
+                + ", ".join(to_stored(p) for p in leftovers))
     when = now or datetime.now()
     result = RestoreResult(flavor, contents.path)
     writer = JournalWriter(new_journal_path(journal_dir, when),
@@ -420,7 +499,7 @@ def restore(plan: RestorePlan, *, root: Path, journal_dir: Path, keep_journals: 
     try:
         writer.open()
     except OSError as exc:
-        raise RestoreError(f"the restore journal cannot be written: {exc}") from exc
+        _refuse(flavor, f"the restore journal cannot be written: {exc}", exc)
     result.journal_path = writer.path
     log_event("ibackup.restore_started", flavor=flavor.folder, backup=to_stored(contents.path),
               parts=list(plan.parts), removed=len(plan.removed), newer=len(plan.newer),
@@ -440,6 +519,7 @@ def restore(plan: RestorePlan, *, root: Path, journal_dir: Path, keep_journals: 
                                                                  i, n, d))
         except BackupError as exc:
             raise RestoreError(f"the safety backup failed, nothing was changed: {exc}") from exc
+        _check_safety(safety, plan.parts, flavor)
         try:
             writer.add_entry({"action": "safety_backup", "zip": safety, "parts_existing": stats.parts_existing})
         except OSError as exc:
@@ -453,15 +533,8 @@ def restore(plan: RestorePlan, *, root: Path, journal_dir: Path, keep_journals: 
                   parts_existing=stats.parts_existing, missing=len(stats.missing))
         with zipfile.ZipFile(contents.path) as zf:
             for part in plan.parts:
-                keep = [rel for p, rel in plan.links_kept if p == part]
-                entry = {"action": "replaced", "part": part, "existed": part in stats.parts_existing}
-                try:
-                    left = replace_part(zf, contents.files[part], flavor.path, part, keep, progress=report,
-                                        rename=rename, on_swapped=lambda entry=entry: writer.add_entry(entry))
-                except SwapError as exc:
-                    outcome = PartOutcome(part, "rolled_back" if exc.rolled_back else "failed", str(exc))
-                else:
-                    outcome = PartOutcome(part, "replaced_left" if left else "restored", left or "")
+                outcome = _restore_part(zf, plan, part, stats.parts_existing, writer, safety, rename, report,
+                                        result)
                 result.parts.append(outcome)
                 log_part(flavor, outcome)
         writer.finish()
@@ -469,13 +542,45 @@ def restore(plan: RestorePlan, *, root: Path, journal_dir: Path, keep_journals: 
         log_event("ibackup.restore_failed", flavor=flavor.folder, error=str(exc))
         raise
     except Exception as exc:
-        log_event("ibackup.restore_stopped", flavor=flavor.folder, error=f"{type(exc).__name__}: {exc}",
-                  journal=to_stored(writer.path))
-        raise RestoreStopped(f"{type(exc).__name__}: {exc}", result) from exc
+        error = str(exc) if isinstance(exc, _Stop) else f"{type(exc).__name__}: {exc}"
+        log_event("ibackup.restore_stopped", flavor=flavor.folder, error=error, journal=to_stored(writer.path))
+        raise RestoreStopped(error, result) from exc
     finally:
         writer.discard_if_empty()
     log_event("ibackup.restore_completed", level=None if result.ok else "warning", flavor=flavor.folder,
               parts={p.part: p.kind for p in result.parts}, ok=result.ok)
-    report("cleanup", 0, 0, "journals")
-    _prune(root, journal_dir, keep_journals, writer.path)
+    if any(p.kind != "rolled_back" for p in result.parts):  # a restore that changed nothing prunes nothing
+        report("cleanup", 0, 0, "journals")
+        _prune(root, journal_dir, keep_journals, writer.path, contents.path)
     return result
+
+
+class _Stop(Exception):
+    """Stops a restore with a message that already says everything (RestoreStopped carries it as is)."""
+
+
+def _restore_part(zf: zipfile.ZipFile, plan: RestorePlan, part: str, parts_existing: list[str], writer: JournalWriter,
+                  safety: Path, rename: Rename, report: Callable[..., None], result: RestoreResult) -> PartOutcome:
+    """One part of a restore. A part that is there now but that the safety backup does not hold (its files all
+    vanished or turned into links while it was written) is left alone: Undo could not put it back. A swap the
+    journal could not record is logged as failed and stops the restore (_Stop)."""
+    flavor = plan.flavor
+    if part not in parts_existing and os.path.lexists(flavor.path / part):
+        return PartOutcome(part, "rolled_back", f"{part} changed while the safety backup was written, so the safety "
+                                                "backup does not hold it; it was left alone")
+    keep = [rel for p, rel in plan.links_kept if p == part]
+
+    def record(existed: bool) -> None:
+        writer.add_entry({"action": "replaced", "part": part, "existed": existed})
+
+    try:
+        left = replace_part(zf, plan.contents.files[part], flavor.path, part, keep, progress=report, rename=rename,
+                            on_swapped=record)
+    except SwapError as exc:
+        return PartOutcome(part, "rolled_back" if exc.rolled_back else "failed", str(exc))
+    except SwapNotRecorded as exc:
+        outcome = PartOutcome(part, "failed", _not_recorded(exc, safety))
+        result.parts.append(outcome)
+        log_part(flavor, outcome)
+        raise _Stop(outcome.reason) from exc
+    return PartOutcome(part, "replaced_left" if left else "restored", left or "")

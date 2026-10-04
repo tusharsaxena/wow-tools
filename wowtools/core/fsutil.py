@@ -136,11 +136,15 @@ def _unlink_link(path: Path) -> None:
 
 
 def _delete_entry(path: Path, *, folder: bool) -> None:
-    """Remove a plain file or an empty folder, clearing a read-only flag (Windows) when that is what stops it."""
+    """Remove a plain file or an empty folder, clearing a read-only flag (Windows) when that is what stops it. On
+    POSIX the error is raised as it is: there a mode never blocks its own removal (the parent's does), and a chmod
+    would only leave the entry write-only."""
     remover = os.rmdir if folder else os.remove
     try:
         remover(path)
     except PermissionError:
+        if sys.platform != "win32":
+            raise
         os.chmod(path, stat.S_IWRITE)  # a read-only file or folder on Windows
         remover(path)
 

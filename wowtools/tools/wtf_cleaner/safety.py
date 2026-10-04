@@ -57,8 +57,10 @@ def wtf_files(flavor: Flavor, progress: SnapshotProgress | None = None, stage: s
 
 
 def take_snapshot(flavor: Flavor, backup_dir: Path, now: datetime,
-                  progress: SnapshotProgress | None = None) -> Path:
-    """Zip every regular file under <flavor>/WTF (stored as WTF/...), verify it, then move it into place."""
+                  progress: SnapshotProgress | None = None, must_hold: list[str] | None = None) -> Path:
+    """Zip every regular file under <flavor>/WTF (stored as WTF/...), verify it, then move it into place.
+    must_hold: the flavor-relative paths ("WTF/...") the clean will delete; a BackupError if any of them is not
+    among the files backed up (e.g. under a link, which the backup never follows): nothing could put it back."""
     dest = snapshot_path(backup_dir, flavor.short_name, now)
     partial = dest.with_name(dest.name + ".partial")
     try:
@@ -66,6 +68,12 @@ def take_snapshot(flavor: Flavor, backup_dir: Path, now: datetime,
             raise BackupError(f"{flavor.wtf_dir} is not a folder")
         files = wtf_files(flavor, progress)
         base = flavor.path
+        if must_hold:
+            held = {path.relative_to(base).as_posix() for path in files}
+            absent = [rel for rel in must_hold if rel not in held]
+            if absent:
+                raise BackupError(f"{len(absent)} file(s) to delete would not be in the WTF backup (under a link?), "
+                                  f"so nothing was deleted: {', '.join(absent[:5])}")
         expected: dict[str, int] = {}
         dest.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(partial, "w", compression=zipfile.ZIP_DEFLATED, strict_timestamps=False) as zf:

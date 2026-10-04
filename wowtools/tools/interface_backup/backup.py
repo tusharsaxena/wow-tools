@@ -29,8 +29,11 @@ MANIFEST_VERSION = 1
 # A zip entry's date is DOS time: 1980 to 2107. A file stamped outside it is stored with the nearest end.
 _ZIP_FIRST = (1980, 1, 1, 0, 0, 0)
 _ZIP_LAST = (2107, 12, 31, 23, 59, 58)
-# POSIX: refuse to open a file that turned into a symlink between the lstat and the open (ELOOP). Windows has none.
+# POSIX: open never follows a symlink (ELOOP) and never waits on a FIFO; the opened file's own fstat says whether it
+# is a regular file, so there is no separate lstat (a path round trip, slow on drvfs). Windows has neither flag.
 _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+_NONBLOCK = getattr(os, "O_NONBLOCK", 0)
+_BINARY = getattr(os, "O_BINARY", 0)
 
 
 @dataclass
@@ -75,8 +78,23 @@ def _zip_info(arcname: str, st: os.stat_result) -> zipfile.ZipInfo:
     return info
 
 
-def _open_no_follow(path: str, flags: int) -> int:
-    return os.open(path, flags | _NOFOLLOW)
+def _open_regular(path: Path) -> tuple[int, os.stat_result]:
+    """An open file descriptor and its stat, for a regular file only (never through a link). FileNotFoundError for
+    anything else (a link, a folder, a FIFO); OSError(ELOOP) for a symlink on POSIX."""
+    if os.name == "nt":
+        st = os.lstat(path)  # no O_NOFOLLOW on Windows: check first
+        if not stat.S_ISREG(st.st_mode):
+            raise FileNotFoundError(str(path))
+        return os.open(path, os.O_RDONLY | _BINARY), st
+    fd = os.open(path, os.O_RDONLY | _NOFOLLOW | _NONBLOCK)
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise FileNotFoundError(str(path))
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd, st
 
 
 def write_zip(scan: FlavorScan, dest: Path, *, kind: str, parts: tuple[str, ...] = PARTS,
@@ -137,18 +155,15 @@ def write_zip(scan: FlavorScan, dest: Path, *, kind: str, parts: tuple[str, ...]
                     try:
                         if not under_real_dirs(part.path, rel_parts):
                             raise FileNotFoundError(arcname)  # a folder on the way is a link now: never followed
-                        st = os.lstat(source)
-                        if not stat.S_ISREG(st.st_mode):
-                            raise FileNotFoundError(arcname)  # a link or folder now: never followed
-                        with open(source, "rb", opener=_open_no_follow) as src, \
-                                zf.open(_zip_info(arcname, st), "w") as out:
+                        fd, st = _open_regular(source)  # a link or folder now: never followed
+                        with open(fd, "rb") as src, zf.open(_zip_info(arcname, st), "w") as out:
                             shutil.copyfileobj(src, out, 1 << 20)
                     except (FileNotFoundError, NotADirectoryError):
                         missing.append(arcname)
                         report("backup", done, total, arcname)
                         continue
                     except OSError as exc:
-                        if exc.errno != errno.ELOOP:  # ELOOP: turned into a link after the lstat
+                        if exc.errno != errno.ELOOP:  # ELOOP: a link now
                             raise
                         missing.append(arcname)
                         report("backup", done, total, arcname)

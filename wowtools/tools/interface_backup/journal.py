@@ -36,11 +36,10 @@ def latest_undoable(folder: Path | None) -> Path | None:
     return core_journal.latest_undoable(folder, reader=_replaced_only)
 
 
-def referenced_safety_zips(folder: Path | None) -> set[str] | None:
-    """File names of the safety zips the journals in folder name; None if any journal cannot be read (then no
-    safety zip is deleted)."""
+def safety_zips_named(paths: list[Path]) -> set[str] | None:
+    """File names of the safety zips these journals name; None if any of them cannot be read."""
     names: set[str] = set()
-    for path in list_journals(folder):
+    for path in paths:
         try:
             journal = read_restore_journal(path)
         except (OSError, ValueError):
@@ -50,3 +49,9 @@ def referenced_safety_zips(folder: Path | None) -> set[str] | None:
             if entry.get("action") == "safety_backup" and isinstance(zip_path, Path):
                 names.add(zip_path.name)
     return names
+
+
+def referenced_safety_zips(folder: Path | None) -> set[str] | None:
+    """File names of the safety zips the journals in folder name; None if any journal cannot be read (then no
+    safety zip is deleted)."""
+    return safety_zips_named(list_journals(folder))

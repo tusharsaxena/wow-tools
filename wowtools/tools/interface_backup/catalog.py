@@ -96,6 +96,8 @@ def prune_backups(root: Path, flavor_short: str, keep: int, *, protect: Path | N
     return _delete(found[keep:])
 
 
-def prune_safety(root: Path, referenced: set[str]) -> list[Path]:
-    """Delete pre-restore zips whose file name no remaining restore journal names."""
-    return _delete([b.path for b in list_backups(root, kinds=(SAFETY,)) if b.path.name not in referenced])
+def prune_safety(root: Path, names: set[str], *, protect: Path | None = None) -> list[Path]:
+    """Delete the pre-restore zips in root whose file name is in `names` (the caller passes those only pruned
+    journals named). Any other file, and `protect` (a safety zip being restored from), is never touched."""
+    return _delete([b.path for b in list_backups(root, kinds=(SAFETY,))
+                    if b.path.name in names and (protect is None or b.path.name != protect.name)])

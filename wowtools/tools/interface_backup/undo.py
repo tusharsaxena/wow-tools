@@ -16,12 +16,10 @@ from wowtools.core.journal import Journal, mark_undone
 from wowtools.core.paths import to_stored
 from wowtools.tools.interface_backup.catalog import SAFETY
 from wowtools.tools.interface_backup.journal import read_restore_journal
-from wowtools.tools.interface_backup.restore import (ZIP_ERRORS, BackupContents, PartOutcome, RestoreError,
-                                                     RestoreResult, RestoreStopped, SwapError, log_part, open_backup,
-                                                     plan_restore, replace_part)
+from wowtools.tools.interface_backup.restore import (ZIP_ERRORS, BackupContents, PartOutcome, Rename, RestoreError,
+                                                     RestoreResult, RestoreStopped, SwapError, case_key, log_part,
+                                                     open_backup, plan_restore, replace_part)
 from wowtools.tools.interface_backup.scanner import PARTS, leftover_folders, scan_flavor
-
-Rename = Callable[[Path, Path], None]
 
 
 def _same(a: Path, b: Path) -> bool:
@@ -87,7 +85,7 @@ def _check(journal_path: Path, wow_root: Path, root: Path) -> tuple[Flavor, Back
         contents = open_backup(zip_path)
     except RestoreError as exc:
         _refuse(journal_path, f"the safety backup cannot be used: {exc}", exc)
-    if contents.kind != SAFETY or contents.flavor_folder.lower() != flavor.folder.lower():
+    if contents.kind != SAFETY or case_key(contents.flavor_folder) != case_key(flavor.folder):
         _refuse(journal_path, f"{zip_path.name} is not this restore's safety backup")
     absent = [part for part, existed in replaced if existed and part not in contents.parts]
     if absent:

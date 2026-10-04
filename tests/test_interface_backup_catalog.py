@@ -81,11 +81,14 @@ class CatalogTest(unittest.TestCase):
                          ["backup-retail-20261001-000000.zip", "backup-retail-20261004-000000.zip"])
         self.assertEqual(prune_backups(self.root, "retail", 1, protect=new), [self.root / "backup-retail-20261004-000000.zip"])
 
-    def test_prune_safety_keeps_referenced(self):
+    def test_prune_safety_deletes_only_the_names_given(self):
         keep = self.touch("pre-restore-retail-20261001-000000.zip")
         drop = self.touch("pre-restore-retail-20261002-000000.zip")
+        protected = self.touch("pre-restore-retail-20261003-000000.zip")
         backup = self.touch("backup-retail-20261002-000000.zip")
-        self.assertEqual(prune_safety(self.root, {keep.name}), [drop])
+        names = {drop.name, protected.name, backup.name}
+        self.assertEqual(prune_safety(self.root, names, protect=self.root / protected.name), [drop])
         self.assertTrue(keep.exists())
+        self.assertTrue(protected.exists())
         self.assertTrue(backup.exists())
         self.assertFalse(drop.exists())

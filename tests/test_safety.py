@@ -35,6 +35,20 @@ class SafetyTest(unittest.TestCase):
                 found.add((Path(dirpath) / name).relative_to(self.retail.path).as_posix())
         return found
 
+    def test_snapshot_refuses_when_a_file_to_delete_is_not_in_it(self):
+        account_dir = self.retail.account_dir
+        try:
+            os.symlink(account_dir / "ACCT2", account_dir / "ACCT3", target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks not permitted here")
+        held = "WTF/Account/ACCT2/SavedVariables/Details.lua"
+        self.assertTrue(take_snapshot(self.retail, self.backup_dir, WHEN, must_hold=[held]).exists())
+        linked = "WTF/Account/ACCT3/SavedVariables/Details.lua"
+        with self.assertRaisesRegex(BackupError, "ACCT3"):
+            take_snapshot(self.retail, self.backup_dir, datetime(2026, 9, 27, 15, 0, 0), must_hold=[held, linked])
+        self.assertEqual(sorted(p.name for p in (self.backup_dir / "backup").iterdir()),
+                         ["backup-retail-20260927-140311.zip"])
+
     def test_snapshot_contains_whole_wtf_and_verifies(self):
         calls = []
         snap = take_snapshot(self.retail, self.backup_dir, WHEN, progress=lambda *a: calls.append(a))
