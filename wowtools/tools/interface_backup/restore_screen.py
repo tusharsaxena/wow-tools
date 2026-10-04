@@ -322,10 +322,10 @@ class RestoreResultScreen(Screen[str]):
 
     @property
     def can_undo(self) -> bool:
-        """Undo is offered for a restore that changed a part (one whose parts were all left as they were has
-        nothing to undo, and Undo would pick an older restore)."""
+        """Undo is offered for a restore whose journal recorded a swapped part (RestoreResult.swapped). Without one
+        it has nothing Undo can put back, and Undo would pick an older restore."""
         r = self.result
-        return not r.undo and r.journal_path is not None and any(p.kind != "rolled_back" for p in r.parts)
+        return not r.undo and r.journal_path is not None and r.swapped
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """z is not a key here (nor in the footer) when there is no Undo."""

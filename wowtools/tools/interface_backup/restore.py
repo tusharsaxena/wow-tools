@@ -18,7 +18,7 @@ from typing import NoReturn
 from wowtools import __version__
 from wowtools.core.backup import MANIFEST_NAME, BackupError, verify_backup
 from wowtools.core.events import log_event
-from wowtools.core.fsutil import is_real_dir, remove_quietly, remove_tree_no_follow, safe_progress
+from wowtools.core.fsutil import is_real_dir, read_link, remove_quietly, remove_tree_no_follow, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.core.journal import JournalWriter, list_journals, new_journal_path, prune_journals
 from wowtools.core.paths import is_wsl, to_stored
@@ -185,6 +185,9 @@ class RestorePlan:
     free_bytes: int | None  # on the flavor's drive; None when unknown
     leftovers: list[Path]  # from an interrupted restore: a new restore of this flavor is blocked
     unreadable: list[str] = field(default_factory=list)  # chosen parts' scan errors: what is there is lost unlisted
+    # What the chosen parts hold now: the most the safety backup (a zip in the backup folder, maybe on another
+    # drive) can take. None when the scan read no sizes.
+    current_bytes: int | None = None
 
     @property
     def low_space(self) -> bool:
@@ -226,6 +229,7 @@ def plan_restore(contents: BackupContents, scan: FlavorScan, parts: tuple[str, .
     dropped: list[tuple[str, str]] = []
     unreadable: list[str] = []
     needed = 0
+    current: int | None = 0
     chosen = tuple(p for p in PARTS if p in parts)
     for part in chosen:
         if part not in contents.parts:
@@ -234,6 +238,8 @@ def plan_restore(contents: BackupContents, scan: FlavorScan, parts: tuple[str, .
         if live.linked:
             raise RestoreError(f"{part} is a link to another folder; restore it by hand")
         unreadable.extend(live.errors)
+        size = live.size if live.exists else 0
+        current = None if current is None or size is None else current + size
         backup_files = {case_key(rel): (size, mtime) for rel, (size, mtime) in contents.files[part].items()}
         folders = {"/".join(rel.split("/")[:i]) for rel in backup_files for i in range(1, rel.count("/") + 1)}
         needed += sum(size for size, _ in backup_files.values())
@@ -250,7 +256,7 @@ def plan_restore(contents: BackupContents, scan: FlavorScan, parts: tuple[str, .
             under_file = any("/".join(pieces[:i]) in backup_files for i in range(1, len(pieces)))
             (dropped if key in backup_files or key in folders or under_file else kept).append((part, link))
     return RestorePlan(contents, scan.flavor, chosen, removed, newer, kept, dropped, needed,
-                       _free_space(scan.flavor.path, disk_usage), list(scan.leftovers), unreadable)
+                       _free_space(scan.flavor.path, disk_usage), list(scan.leftovers), unreadable, current)
 
 
 # --- Running a restore ----------------------------------------------------------------------------------------------
@@ -297,6 +303,12 @@ class RestoreResult:
     @property
     def ok(self) -> bool:
         return all(p.kind in ("restored", "replaced_left") for p in self.parts)
+
+    @property
+    def swapped(self) -> bool:
+        """A part was swapped in and the journal recorded it, so Undo can put it back. A `failed` part never
+        counts: its swap did not happen, or happened unrecorded (SwapNotRecorded), which Undo cannot see."""
+        return any(p.kind in ("restored", "replaced_left") for p in self.parts)
 
 
 class RestoreStopped(Exception):
@@ -562,15 +574,23 @@ class _Stop(Exception):
 def _restore_part(zf: zipfile.ZipFile, plan: RestorePlan, part: str, parts_existing: list[str], writer: JournalWriter,
                   safety: Path, rename: Rename, report: Callable[..., None], result: RestoreResult) -> PartOutcome:
     """One part of a restore. A part that is there now but that the safety backup does not hold (its files all
-    vanished or turned into links while it was written) is left alone: Undo could not put it back. A swap the
+    vanished or turned into links while it was written) is left alone: Undo could not put it back. Once swapped, a
+    `link_removed` entry per link the swap removed, then the `replaced` entry, go in the journal. A swap the
     journal could not record is logged as failed and stops the restore (_Stop)."""
     flavor = plan.flavor
     if part not in parts_existing and os.path.lexists(flavor.path / part):
         return PartOutcome(part, "rolled_back", f"{part} changed while the safety backup was written, so the safety "
                                                 "backup does not hold it; it was left alone")
     keep = [rel for p, rel in plan.links_kept if p == part]
+    # The links this swap removes (the backup has files there), read now: the safety backup never holds a link, so
+    # the journal is where Undo finds them to make them again.
+    removed_links = [(rel, link) for p, rel in plan.links_removed if p == part
+                     for link in [read_link(_native(flavor.path / part, rel))] if link is not None]
 
     def record(existed: bool) -> None:
+        for rel, (target, junction) in removed_links:
+            writer.add_entry({"action": "link_removed", "part": part, "rel": rel, "target": target,
+                              "junction": junction})
         writer.add_entry({"action": "replaced", "part": part, "existed": existed})
 
     try:

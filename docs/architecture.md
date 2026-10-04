@@ -29,7 +29,7 @@ stay thin.
 | `config` | `config/wow-tools.cfg` (`[general]`) plus `config/<tool>.cfg` per tool (`tool_config_path()`); typed accessors; `config.changed` events; `migrate_legacy_config()` splits the old root `wow-tools.cfg`. `save()` is atomic and runs on the UI thread only (the background update check hands its values back through `check_for_update(persist=...)`) |
 | `migrate` | Start-up moves for renamed tools (`wowtools.tools.RENAMED_TOOLS`, one `ToolRename` line each): `migrate_tool_config()` turns `config/<old>.cfg` into `config/<new>.cfg` with the section renamed; `merge_folder()` moves `logs/<old>/` and `<WoW>/wow-tools/<old>/` to the new name. Never overwrites (details below) |
 | `lock` | `InstanceLock` on `wow-tools.lock` (O_EXCL create; holder pid, host, start time, platform (WSL via `paths.is_wsl`, the suite's one check), token). `acquire()` returns the holder on conflict; `take_over()`; `release()` removes the file only if it is still ours. `LockInfo.stale` is known only on POSIX for a lock from this host |
-| `fsutil` | `atomic_write_text()` (write `<name>.partial`, then `os.replace`), used for every config write; `rename_no_replace()` (refuses an existing target with no check-then-act window: a hard link then unlink on POSIX, `os.rename` on Windows; falls back to check + rename where hard links are unsupported); `free_name(folder, stem, suffix)` (`-2`, `-3`, ... for same-second names: journals, WTF backups, cleaned zips, Interface Backup zips); `remove_quietly()` (delete one of our own temporary or partial files, ignoring errors); `safe_progress(cb)` (wraps a run's progress callback so an error in it never disturbs the run; every clean, organize, backup, restore and undo uses it); `is_link(entry_or_path)` (a symlink, or on Windows a junction or directory symlink by its reparse tag; never raises); `is_real_dir(path)` (a folder that is not itself a link, from one lstat); `remove_tree_no_follow(path)` (delete a folder tree, removing links inside it as links and never descending into them; a link given as `path` is just unlinked) |
+| `fsutil` | `atomic_write_text()` (write `<name>.partial`, then `os.replace`), used for every config write; `rename_no_replace()` (refuses an existing target with no check-then-act window: a hard link then unlink on POSIX, `os.rename` on Windows; falls back to check + rename where hard links are unsupported); `free_name(folder, stem, suffix)` (`-2`, `-3`, ... for same-second names: journals, WTF backups, cleaned zips, Interface Backup zips); `remove_quietly()` (delete one of our own temporary or partial files, ignoring errors); `safe_progress(cb)` (wraps a run's progress callback so an error in it never disturbs the run; every clean, organize, backup, restore and undo uses it); `is_link(entry_or_path)` (a symlink, or on Windows a junction or directory symlink by its reparse tag; never raises); `is_real_dir(path)` (a folder that is not itself a link, from one lstat); `read_link(path)` → `(target, junction)` or None, and `make_link(target, path, junction=)` (a junction on Windows when it was one, else a symlink), which Interface Backup's Undo uses to make again a link a restore removed; `remove_tree_no_follow(path)` (delete a folder tree, removing links inside it as links and never descending into them; a link given as `path` is just unlinked) |
 | `activity` | `running()` context manager that file-changing workers (clean, organize, backup, restore, undo) enter; `wait_idle(timeout)`. `suite.run()` waits on it before releasing the lock, so a worker still writing never shares its folders with a second copy |
 | `events` | Registry of event names with fixed levels; JSONL + text sinks (files kept open, flushed per line, closed on a new day and at exit); `log_event()`; `capture_events()` for tests |
 | `install` | `WowInstall` → `Flavor` → `Account` → `Character`; install auto-detection. A flavor is any `_name_` folder in the WoW folder, whatever it holds. `validate_output_dir()` refuses a tool output folder that is relative, the WoW folder, or inside a flavor's `WTF`/`Interface`/`Screenshots` (every tool with an output folder uses it on save and before use) |
@@ -262,7 +262,7 @@ again (the WTF Cleaner's rule).
     scan_flavors(flavors, with_stats=CHEAP_STATS, progress=None) → [FlavorScan(flavor, parts{Interface, WTF: PartScan}, leftovers)]
     back_up_all(scans, root, keep, progress=None, on_flavor=None) → [BackupOutcome(flavor, kind, path, files, bytes_in, bytes_zip, links, missing, reason, pruned)]
     open_backup(zip) → BackupContents(kind, flavor_short, flavor_folder, created, parts, files, links)
-    plan_restore(contents, scan_flavor(flavor, with_stats=True), parts, disk_usage) → RestorePlan(removed, newer, links_kept, links_removed, unreadable, bytes_needed, free_bytes, leftovers)
+    plan_restore(contents, scan_flavor(flavor, with_stats=True), parts, disk_usage) → RestorePlan(removed, newer, links_kept, links_removed, unreadable, bytes_needed, free_bytes, leftovers, current_bytes)
     restore(plan, root, journal_dir, keep_journals, progress=None) → RestoreResult(flavor, backup, parts[PartOutcome], safety_zip, journal_path)
     undo_restore(journal_path, wow_root, root, progress=None) → RestoreResult(undo=True)
 
@@ -290,7 +290,8 @@ entries plus `manifest.json` (`version`, `kind` backup | pre-restore, `flavor`, 
 `BackupError`. Each file is opened without following links (POSIX `O_NOFOLLOW | O_NONBLOCK` plus `fstat`; Windows
 lstat first), and each ancestor folder is lstat-checked once: a file gone, turned into a link or no longer regular
 since the scan is left out and listed in `missing`; a part that vanished or lost every file is not claimed in the
-manifest. Entry dates are clamped to the DOS range. `back_up` skips a flavor with no real part, then prunes the
+manifest. Entry dates are clamped to the DOS range. `back_up` skips a flavor with no real part (`skip_reason`:
+no folder, or links; the summary passes every flavor shown, so it comes back as a Skipped row), then prunes the
 flavor's `backup-*` zips to `keep_backups` after a success only (`protect=` the new zip; 0 keeps all; never safety
 zips, other flavors or foreign files). `back_up_all` runs flavors in turn; one failing never stops the next.
 Stages `backup`, `verify`, `prune`.
@@ -305,7 +306,8 @@ part that is a link; under WSL a target on `/mnt/<letter>/` gets the Windows nam
 (`check_target_names`). It compares case-insensitively: `removed` (on disk, not in the backup), `newer` (on disk
 more than 2 s newer), `links_kept`, `links_removed` (the backup holds a file or folder at the link's path, or a
 file above it), `unreadable` (the chosen parts' scan errors), `bytes_needed` and the flavor drive's free bytes
-(`low_space`).
+(`low_space`), and `current_bytes` (what the chosen parts hold now, the most the safety zip can take; None without
+sizes), which the restore confirm compares with the backup drive's free space.
 
 **Restore.** `restore()` refuses (RestoreError, nothing changed, `ibackup.restore_failed`) on a leftover, a journal
 that cannot be opened, a backup that does not verify, a part that turned into a link, or a safety backup that
@@ -314,7 +316,9 @@ fails or would not open for Undo (`_check_safety`, which then deletes it). In or
 they are (`write_zip(kind="pre-restore")`), journal `{"action": "safety_backup", "zip", "parts_existing"}`, then
 per part `replace_part`: extract to `<part>.restoring` (exclusive create, manifest mtimes; an `os.utime` failure
 keeps the extraction time), move the kept links into it, rename `<part>` → `<part>.replaced` and `<part>.restoring`
-→ `<part>`, `on_swapped(existed)` writes `{"action": "replaced", "part", "existed"}`, then
+→ `<part>`, `on_swapped(existed)` writes a `{"action": "link_removed", "part", "rel", "target", "junction"}`
+per link the swap removed (read with `read_link` just before; a zip never holds links) and then
+`{"action": "replaced", "part", "existed"}`, then
 `remove_tree_no_follow(<part>.replaced)` (a failure is `replaced_left`). An error before or during the swap
 (including Ctrl+C) rolls the part back exactly (`rolled_back`; `failed` when the rollback itself fails) and the
 next part goes on. A part present on disk that the safety zip does not hold is left alone. A journal entry that
@@ -327,6 +331,7 @@ this WoW folder named). Stages `verify`, `safety`, `safety_verify`, `extract`, `
 
     {"version": 1, "started": iso, "flavor": "_retail_", "flavor_path": stored, "backup": stored, "parts": [...], "suite_version": "..."}
     {"action": "safety_backup", "zip": stored, "parts_existing": [...]}
+    {"action": "link_removed", "part": "Interface", "rel": "AddOns/Dev", "target": "D:\\dev\\Dev", "junction": true}
     {"action": "replaced", "part": "Interface", "existed": true}
     {"finished": iso, "entries": n}
     {"undone": iso, "restored": n, "skipped": n}
@@ -334,10 +339,13 @@ this WoW folder named). Stages `verify`, `safety`, `safety_verify`, `extract`, `
 `latest_undoable` offers the newest journal with a `replaced` entry that is not undone (never past an undone
 one). `undo_restore` checks everything before changing anything (RestoreError, `ibackup.undo_failed` with
 `refused`): not undone, the journal's flavor a flavor folder of `wow_root` at the same path, `replaced` entries
-naming Interface/WTF once each, the safety zip in `root`, a regular file, of kind pre-restore and the same flavor,
+naming Interface/WTF once each, `link_removed` entries with a known part, a safe `rel` (`split_entry`) and a
+target, the safety zip in `root`, a regular file, of kind pre-restore and the same flavor,
 holding every part that existed, no leftovers, and it verifies. Then, newest entry first, a part that existed is
-replaced from the safety zip with `replace_part` (its links kept; no further safety backup), and a part the
-restore created is renamed to `<part>.replaced` and deleted without following links. The journal is marked undone
+replaced from the safety zip with `replace_part` (its links kept; no further safety backup), then each link the
+restore removed from it is made again where nothing is now (`make_link`; one that cannot be made turns the part
+`failed`, its reason naming the link and target), and a part the restore created is renamed to `<part>.replaced`
+and deleted without following links. The journal is marked undone
 unless every part was left as it was (then Undo can be tried again).
 
 ### Interface Backup screens
@@ -354,8 +362,11 @@ to the flavor picker. `summary_screen.py` holds:
   notices (leftovers, scan warnings, links) and where backups and journals go, in a `VerticalScroll` (PgUp/PgDn).
   Buttons **Back up (b)**, **Restore (e)**, **Undo (z)** (amber; disabled when nothing is undoable) and **Rescan
   (r)**; `f`/Esc, `t`, `q` leave. Back up, restore and undo each run the running-WoW check (and, for a backup,
-  the backup drive's free space) in a worker, then a `ConfirmScreen` (Back up starts on Yes, Restore and Undo on
-  No); the job runs in a worker with `app.busy` set, inside `activity.running()`. A `RestoreError` is a "Nothing
+  the backup drive's free space, also for a restore's safety backup) in a worker, then a `ConfirmScreen` (Back up starts on Yes, Restore and Undo on
+  No); the job runs in a worker with `app.busy` set, inside `activity.running()`, its per-file progress reaching
+  the progress screen through `ThrottledProgress` (on a stage change, at a stage's end, or every
+  `PROGRESS_INTERVAL` = 0.1 s: each `call_from_thread` blocks the worker, and an `Interface` folder can hold tens of
+  thousands of files). A `RestoreError` is a "Nothing
   was changed" notice, a `RestoreStopped` a notice plus its result screen; then a rescan;
 - `BackupProgressScreen`, a `ProgressScreen` (ids `ibackup-*`) for a backup, restore or undo;
 - `BackupResultScreen`: a row per flavor (`report.BACKUP_RESULT_COLUMNS`); `r`, `e` (rescan, then Restore), `f`,
@@ -372,7 +383,8 @@ to the flavor picker. `summary_screen.py` holds:
   box change (a generation counter drops stale plans); **Restore (o)** is enabled only once the current plan is
   in. The confirm shows `report.restore_confirm_alerts` (one counted line per kind);
 - `RestoreResultScreen(result)`: a row per part (`report.RESTORE_RESULT_COLUMNS`), the zip, safety zip and journal;
-  **Undo (z)** only for a restore that changed a part (it rescans, then undoes if that journal is still the
+  **Undo (z)** only for a restore whose journal recorded a swapped part (`RestoreResult.swapped`: a part
+  `restored` or `replaced_left`; a swap the journal could not record does not count; it rescans, then undoes if that journal is still the
   undoable one); `r`, `f`, `t`, `q`.
 
 ## UI

@@ -22,11 +22,11 @@ def scan(sizes: bool = True) -> FlavorScan:
     return FlavorScan(RETAIL, parts, [RETAIL.path / "WTF.replaced"])
 
 
-def plan(removed=(), newer=(), kept=(), dropped=(), free=None, unreadable=()) -> RestorePlan:
+def plan(removed=(), newer=(), kept=(), dropped=(), free=None, unreadable=(), current=None) -> RestorePlan:
     contents = BackupContents(Path("/bk/backup-retail-20261004-153012.zip"), "backup", "retail", "_retail_", "",
                               ("Interface", "WTF"), {"Interface": {}, "WTF": {}})
     return RestorePlan(contents, RETAIL, ("Interface",), list(removed), list(newer), list(kept), list(dropped),
-                       1000, free, [], list(unreadable))
+                       1000, free, [], list(unreadable), current)
 
 
 def info(stamp: str, kind: str = "backup", size: int = 2048) -> BackupInfo:
@@ -71,7 +71,7 @@ class ReportTest(unittest.TestCase):
         lines = report.notices([s])
         self.assertIn("Retail: err 0", lines)
         self.assertNotIn("Retail: err 3", lines)
-        self.assertTrue(any("2 more" in n for n in lines))
+        self.assertIn("Retail: 2 more Interface warnings (the log lists the first 20)", lines)
 
     def test_picker_note_and_list_rows(self):
         self.assertEqual(report.picker_note([]), "no backups yet")
@@ -156,6 +156,26 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(len(alerts), 2)
         _, _, alerts = report.backup_confirm([scan(False)], Path("/bk"), 5, None, 10)
         self.assertEqual(alerts, ())  # sizes unknown: no space alert
+
+    def test_restore_confirm_warns_when_the_safety_backup_may_not_fit(self):
+        # The safety zip of the current folders goes to the backup drive, which may not be the WoW drive.
+        _, _, alerts = report.restore_confirm(plan(current=5000), "2026-10-04 15:30:12", None, backup_free=100)
+        self.assertEqual(alerts, (("The backup drive may be short of space for the safety backup: 100 B free, up to "
+                                   "4.9 KB needed."),))
+        for current, free in ((5000, None), (None, 100), (50, 100)):
+            _, _, alerts = report.restore_confirm(plan(current=current), "2026-10-04 15:30:12", None,
+                                                  backup_free=free)
+            self.assertEqual(alerts, ())
+
+    def test_backup_confirm_names_skipped_flavors(self):
+        ptr = Flavor("_ptr_", Path("/wow/_ptr_"))
+        empty = FlavorScan(ptr, {"Interface": PartScan("Interface", ptr.path / "Interface"),
+                                 "WTF": PartScan("WTF", ptr.path / "WTF", linked=True)})
+        title, body, _ = report.backup_confirm([scan(), empty], Path("/bk"), 0, None, None)
+        self.assertEqual(title, "Back up 1 flavor?")
+        self.assertIn("Skipped: Retail PTR (WTF is a link (not followed)).", body)
+        _, body, _ = report.backup_confirm([scan()], Path("/bk"), 0, None, None)
+        self.assertNotIn("Skipped", body)
 
     def test_undo_confirm(self):
         journal = Journal(Path("/j.jsonl"), {"flavor": "_retail_", "started": "2026-10-04T15:30:12+02:00"},

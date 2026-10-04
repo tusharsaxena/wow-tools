@@ -125,6 +125,34 @@ def is_real_dir(path: Path) -> bool:
     return stat.S_ISDIR(info.st_mode) and getattr(info, "st_reparse_tag", 0) not in _LINK_TAGS
 
 
+_JUNCTION_TAG = _LINK_TAGS[1]
+_VERBATIM = "\\\\?\\"  # os.readlink's prefix on a Windows junction's target
+
+
+def read_link(path: Path) -> tuple[str, bool] | None:
+    """(target, junction) of a symlink or a Windows junction, as os.readlink gives it (never resolved); None when
+    path is not a link or cannot be read. Never raises."""
+    try:
+        info = os.lstat(path)
+        junction = getattr(info, "st_reparse_tag", 0) == _JUNCTION_TAG
+        if not (stat.S_ISLNK(info.st_mode) or junction):
+            return None
+        return os.fsdecode(os.readlink(path)), junction
+    except (OSError, ValueError):
+        return None
+
+
+def make_link(target: str, path: Path, *, junction: bool) -> None:
+    """Make path a link to target again (read_link's pair): a junction on Windows when it was one, else a symlink
+    (to a folder when the target is one, as Windows needs to know). Raises OSError."""
+    if junction and sys.platform == "win32":
+        import _winapi  # Windows only
+        _winapi.CreateJunction(target.removeprefix(_VERBATIM), str(path))
+        return
+    is_dir = junction or os.path.isdir(os.path.join(os.path.dirname(path), target))
+    os.symlink(target, path, target_is_directory=is_dir)
+
+
 def _unlink_link(path: Path) -> None:
     """Remove a link itself (never its target)."""
     try:

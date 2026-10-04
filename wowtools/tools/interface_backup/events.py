@@ -21,7 +21,7 @@ EVENTS: dict[str, EventSpec] = {
     "ibackup.restore_started": EventSpec("info", "A restore started: backup, flavor, parts and warning counts."),
     "ibackup.safety_created": EventSpec("info", "The pre-restore safety backup was written and verified."),
     "ibackup.part_restored": EventSpec("info", "A part (Interface or WTF) was replaced by the backup's copy."),
-    "ibackup.part_rolled_back": EventSpec("warning", "A part could not be replaced and was left as it was."),
+    "ibackup.part_rolled_back": EventSpec("warning", "A part could not be replaced: left as it was (kind rolled_back), or, at error, not fully put back (kind failed; reason says what is where)."),
     "ibackup.replaced_left": EventSpec("warning", "A part was restored but its old copy could not be fully deleted."),
     "ibackup.restore_completed": EventSpec("info", "A restore finished, with totals (logged at warning if a part failed)."),
     "ibackup.restore_failed": EventSpec("error", "A restore could not go ahead (backup did not verify, safety backup or journal failed); nothing was changed."),

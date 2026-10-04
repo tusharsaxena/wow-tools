@@ -197,16 +197,23 @@ def write_zip(scan: FlavorScan, dest: Path, *, kind: str, parts: tuple[str, ...]
     return ZipStats(dest, len(files), sum(expected.values()), bytes_zip, missing, links, written)
 
 
+def skip_reason(scan: FlavorScan) -> str | None:
+    """Why a flavor has nothing to back up (no real Interface or WTF folder: missing, or links), or None."""
+    if scan.has_data:
+        return None
+    linked = [name for name in PARTS if scan.parts[name].linked]
+    if linked:
+        return f"{' and '.join(linked)} {'is a link' if len(linked) == 1 else 'are links'} (not followed)"
+    return "no Interface or WTF folder"
+
+
 def back_up(scan: FlavorScan, root: Path, *, keep: int, now: datetime | None = None,
             progress: Progress | None = None) -> BackupOutcome:
     """One flavor: zip, verify, then prune its older backups (only after a success). Never raises BackupError."""
     flavor = scan.flavor
-    if not scan.has_data:
+    reason = skip_reason(scan)
+    if reason is not None:
         linked = [name for name in PARTS if scan.parts[name].linked]
-        if linked:
-            reason = f"{' and '.join(linked)} {'is a link' if len(linked) == 1 else 'are links'} (not followed)"
-        else:
-            reason = "no Interface or WTF folder"
         log_event("ibackup.backup_skipped", flavor=flavor.folder, reason=reason, links=linked)
         return BackupOutcome(flavor, "skipped", links=linked, reason=reason)
     dest = new_backup_path(root, flavor.short_name, now or datetime.now(), kind=BACKUP)

@@ -257,7 +257,12 @@ class InterfaceBackupAppTest(TuiTestCase):
                 await settle(app, pilot)
                 self.assertIsInstance(app.screen, BackupResultScreen)
                 self.assertEqual(app.screen.sub_title, "Interface Backup · result")
-                self.assertEqual(app.screen.query_one("#result-table", DataTable).row_count, 3)
+                result_table = app.screen.query_one("#result-table", DataTable)
+                self.assertEqual(result_table.row_count, 4)  # Retail PTR (neither part) is there, Skipped
+                rows = {str(result_table.get_row_at(i)[0]): [str(c) for c in result_table.get_row_at(i)]
+                        for i in range(result_table.row_count)}
+                self.assertEqual(rows["Retail PTR"][1:3], ["Skipped", "no Interface or WTF folder"])
+                self.assertIn("3 of 4 flavors backed up", str(app.screen.query_one("#result-head", Static).render()))
                 self.assertFalse(app.busy)
                 await pilot.press("r")
                 await settle(app, pilot)
@@ -275,6 +280,84 @@ class InterfaceBackupAppTest(TuiTestCase):
         self.assertIn(("confirm", "back_up_confirm", True), selections)
         self.assertIn(("ibackup_result", "next", "review"), selections)
         self.assertTrue(activity.wait_idle(0))
+
+    async def test_link_only_flavor_is_skipped_with_its_reason(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        wtf = self.root / "_anniversary_" / "WTF"
+        elsewhere = self.tmp / "synced-wtf"
+        os.rename(wtf, elsewhere)
+        try:
+            os.symlink(elsewhere, wtf, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks not permitted here")
+        app = self.make_app()
+        with capture_events() as records:
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_summary(app, pilot)
+                await pilot.press("b")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, ConfirmScreen)
+                self.assertIn("Back up 2 flavors?", app.screen.title_text)
+                body = str(app.screen.body_text)
+                self.assertIn("Skipped", body)
+                self.assertIn("WTF is a link", body)
+                await pilot.press("y")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, BackupResultScreen)
+                table = app.screen.query_one("#result-table", DataTable)
+                rows = {str(table.get_row_at(i)[0]): [str(c) for c in table.get_row_at(i)]
+                        for i in range(table.row_count)}
+                self.assertEqual(rows["Anniversary"][1:3], ["Skipped", "WTF is a link (not followed)"])
+                self.assertEqual(rows["Retail"][1], "Backed up")
+        skipped = [r["data"] for r in records if r["event"] == "ibackup.backup_skipped"]
+        self.assertIn({"flavor": "_anniversary_", "reason": "WTF is a link (not followed)", "links": ["WTF"]}, skipped)
+        self.assertFalse(any("anniversary" in n for n in self.zips()))
+
+    def test_throttled_progress_forwards_stage_changes_ends_and_one_per_interval(self):
+        now = [0.0]
+        sent = []
+        progress = summary_module.ThrottledProgress(lambda *a: sent.append(a), 0.1, clock=lambda: now[0])
+        for i in range(1, 6):
+            progress("backup", i, 10, f"f{i}")  # first one forwarded, then nothing until the interval
+        now[0] = 0.15
+        progress("backup", 6, 10, "f6")  # interval passed
+        progress("backup", 7, 10, "f7")
+        progress("backup", 10, 10, "f10")  # end of the stage
+        progress("verify", 1, 10, "v1")  # new stage
+        progress("swap", 0, 0, "Interface")  # no count
+        progress.reset()
+        progress("swap", 0, 0, "WTF")
+        progress("verify", 2, 10, "v2")  # stage changed again
+        self.assertEqual([a[3] for a in sent], ["f1", "f6", "f10", "v1", "Interface", "WTF", "v2"])
+
+    async def test_progress_reaches_the_screen_throttled(self):
+        # Per-file reports go to the UI thread only on a stage change, at a stage's end, or once per interval:
+        # forwarding every file of a big Interface folder made a backup through the UI ~13x slower than the logic.
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        addons = self.root / "_retail_" / "Interface" / "AddOns" / "Big"
+        addons.mkdir(parents=True)
+        for i in range(300):
+            (addons / f"f{i:03}.lua").write_bytes(b"x")
+        shown = []
+        real = BackupProgressScreen.update_progress
+
+        def record(screen, *args):
+            shown.append(args)
+            real(screen, *args)
+
+        app = self.make_app()
+        with patch.object(summary_module, "PROGRESS_INTERVAL", 3600.0, create=True), \
+                patch.object(BackupProgressScreen, "update_progress", record):
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_summary(app, pilot)
+                await self.make_backup(app, pilot)
+        self.assertTrue(any(z.startswith("backup-retail-") for z in self.zips()))
+        self.assertLess(len(shown), 40, shown[:10])  # 300+ files zipped and verified per pass before the fix
+        stages = [args[0] for args in shown]
+        for stage in ("backup", "verify", "prune"):
+            self.assertIn(stage, stages)
+        retail_total = max(args[2] for args in shown if args[0] == "backup")
+        self.assertIn(("backup", retail_total), [(a[0], a[1]) for a in shown])  # each stage's end is shown
 
     async def test_decline_confirm_writes_nothing(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
@@ -643,6 +726,34 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertTrue(any("Wow.exe" in alert for alert in app.screen.alerts))
             self.assertFalse(app.screen.default_yes)
 
+    async def test_restore_confirm_warns_when_the_backup_drive_is_short(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        bk = str(self.bk)
+
+        class Usage:
+            def __init__(self, free):
+                self.free = free
+
+        def disk_usage(path):
+            # The backup drive is nearly full; the WoW drive has room.
+            return Usage(5 if str(path).startswith(bk) else 10 ** 12)
+
+        app = WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list,
+                          tool_options={"interface-backup": {"wow_check": list, "disk_usage": disk_usage}})
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_summary(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            await self.open_restore(app, pilot)
+            await pilot.press("o")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            space = [a for a in app.screen.alerts if "short of space" in a]
+            self.assertEqual(len(space), 1, app.screen.alerts)
+            self.assertIn("safety backup: 5 B free", space[0])
+            self.assertFalse(any("Low disk space" in a for a in app.screen.alerts))  # the WoW drive is fine
+
     async def test_refused_restore_is_notified(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
 
@@ -759,6 +870,96 @@ class InterfaceBackupAppTest(TuiTestCase):
                 self.assertTrue(app.screen.query("#undo"))
                 self.assertIn("z", app.screen.active_bindings)
                 self.assertTrue(self.notified(app, "Undo (z) puts back what was replaced", title="Restore stopped"))
+
+    async def test_stopped_restore_whose_swap_was_not_recorded_offers_no_undo(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+
+        def stop(plan, **kwargs):
+            # SwapNotRecorded: the swap stands, but the journal has no `replaced` entry, so Undo cannot put it back.
+            reason = "Interface was replaced, but the restore journal could not record it (disk full), so Undo cannot"
+            result = RestoreResult(plan.flavor, plan.contents.path, [PartOutcome("Interface", "failed", reason)],
+                                   journal_path=self.tmp / "j.jsonl")
+            raise RestoreStopped(reason, result)
+
+        app = self.make_app()
+        with patch.object(summary_module, "restore", stop):
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_summary(app, pilot)
+                await self.make_backup(app, pilot)
+                await pilot.press("r")
+                await settle(app, pilot)
+                await self.open_restore(app, pilot)
+                await pilot.press("o")
+                await settle(app, pilot)
+                await pilot.press("y")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, RestoreResultScreen)
+                self.assertFalse(app.screen.query("#undo"))
+                self.assertNotIn("z", app.screen.active_bindings)
+                self.assertTrue(self.notified(app, "Undo cannot", title="Restore stopped"))
+                self.assertFalse(self.notified(app, "Undo (z) puts back"))
+
+    async def test_wow_running_is_an_alert_on_undo(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        extra = self.root / "_retail_" / "WTF" / "new.wtf"
+        app = self.make_app(running=["Wow.exe"])
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_summary(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            extra.write_text("x", encoding="utf-8")
+            await self.open_restore(app, pilot)
+            await pilot.press("o")
+            await settle(app, pilot)
+            await pilot.press("y")  # the restore goes ahead despite the alert
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, RestoreResultScreen)
+            self.assertFalse(extra.exists())
+            await pilot.press("r")
+            await settle(app, pilot)
+            await pilot.press("z")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertIn("Undo the restore from", app.screen.title_text)
+            self.assertTrue(any("Wow.exe" in alert for alert in app.screen.alerts))
+            self.assertIs(app.screen.focused, app.screen.query_one("#no", Button))
+            await pilot.press("y")  # warn and allow
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, RestoreResultScreen)
+            self.assertTrue(app.screen.result.undo)
+            self.assertTrue(app.screen.result.ok)
+        self.assertEqual(extra.read_text(encoding="utf-8"), "x")
+
+    async def test_undo_wow_check_uses_the_journals_flavor(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        asked = []
+
+        def check_for(flavors):
+            asked.append([getattr(f, "folder", f) for f in flavors])
+            return lambda: ["WowClassic.exe"]
+
+        app = WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list,
+                          tool_options={"interface-backup": {"wow_check": None}})
+        with patch.object(summary_module, "wow_check_for", check_for):
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_summary(app, pilot)
+                await self.make_backup(app, pilot)
+                await pilot.press("r")
+                await settle(app, pilot)
+                await self.open_restore(app, pilot)
+                await pilot.press("o")
+                await settle(app, pilot)
+                await pilot.press("y")
+                await settle(app, pilot)
+                await pilot.press("r")
+                await settle(app, pilot)
+                asked.clear()
+                await pilot.press("z")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, ConfirmScreen)
+                self.assertTrue(any("WowClassic.exe" in alert for alert in app.screen.alerts))
+        self.assertEqual(asked, [["_retail_"]])  # the journal's flavor, not every flavor shown
 
     # --- the default terminal size (80x24) ---------------------------------------------------------
     async def test_summary_actions_fit_80_columns(self):

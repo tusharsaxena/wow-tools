@@ -89,7 +89,7 @@ files. The backup itself works the same, and the results screen shows the sizes.
 
 Under the table, in amber, are **notices**: a folder left over from an interrupted restore (see
 [If a restore was interrupted](#if-a-restore-was-interrupted)), folders that couldn't be read (the first 3 per
-folder; the rest are in the log), and how many links were left out. Below that, the screen says where backups go,
+folder; the log lists up to 20), and how many links were left out. Below that, the screen says where backups go,
 how many are kept, and where the restore journals are. If the notices don't fit, scroll with `PgUp` / `PgDn`.
 
 ### Keys on the summary screen
@@ -116,8 +116,9 @@ If you change the settings, press `r` to scan again with them.
 ## Backing up
 
 When you press **Back up**, the screen says "Checking for running programs…" for a moment while it looks for
-WoW. Then it asks you to confirm, showing how many files from which game versions, where the zips go and how many
-old backups are kept. Two warnings can appear in red:
+WoW. Then it asks you to confirm, showing how many files from which game versions, which game versions are
+skipped and why (no `Interface` or `WTF` folder, or only links), where the zips go and how many old backups are
+kept. Two warnings can appear in red:
 
 - **WoW appears to be running.** You can still go ahead, but WoW rewrites `WTF` when you log out, so the backup
   may miss your latest settings.
@@ -143,7 +144,7 @@ try again.
 ### The backup results
 
 The top line says how many game versions were backed up. The table shows, for each one, **Backed up**,
-**Skipped** or **Failed**, the zip's name (or the reason), the number of files, their size, the zip's size and
+**Skipped** (nothing to back up: no `Interface` or `WTF` folder, or both are links) or **Failed**, the zip's name (or the reason), the number of files, their size, the zip's size and
 how many old backups were removed.
 
 From here, `r` scans again, `e` goes straight to **Restore**, `f` picks another game version, `t` goes back to
@@ -164,7 +165,7 @@ the backup's copy.
 | **Date** | When the backup was made |
 | **Flavor** | The game version |
 | **Kind** | **backup**, or **safety (pre-restore)** for a safety backup taken before a restore |
-| **Parts** | What the zip holds: "Interface, WTF", "WTF", or "?" when the zip can't be read |
+| **Parts** | What the zip holds: "Interface, WTF", "Interface", "WTF", "none" (a safety backup taken when the restored folder didn't exist yet), or "?" when the zip can't be read |
 | **Size** | The zip's size |
 
 The Parts column fills in a moment after the list appears ("…" until then). Pick a backup with Enter, or press
@@ -210,7 +211,9 @@ The restore screen reads each file's date to find the newer ones, so on WSL it t
 ### Confirming
 
 After the running-WoW check, the app asks "Replace Interface and WTF of Retail with the backup from …?". It
-reminds you that a safety backup is taken first, and repeats the warnings, one line each, in red. If WoW appears to
+reminds you that a safety backup is taken first, and repeats the warnings, one line each, in red. One more can
+appear here: **The backup drive may be short of space for the safety backup**, when the backup folder's drive
+has less free space than the folders you ticked take now (the safety zip is usually a lot smaller). If WoW appears to
 be running, that's in red too: close it first. The answer starts on **No**.
 
 ### What happens during a restore
@@ -244,7 +247,7 @@ journal is. The table has a row per folder:
 | **Left as it was** | The folder couldn't be replaced, so it was put back as it was. The Details column says why |
 | **Failed** | Something went wrong and the folder may not be exactly as it was. The Details column says what's where |
 
-From here, `z` undoes this restore (only shown when the restore changed something), `r` scans again, `f` picks
+From here, `z` undoes this restore (only shown when it replaced a folder that Undo can put back), `r` scans again, `f` picks
 another game version, `t` goes back to the tool menu, and `q` quits.
 
 ## Undo
@@ -253,10 +256,14 @@ Changed your mind? **Undo** (`z`, the amber button) puts the folders that the mo
 they were before it, from that restore's safety backup. It asks first, naming when that restore ran, which folders
 and which game version. The answer starts on **No**.
 
-- Undo works on the most recent restore, whichever game version you picked on the flavor screen.
+- Undo works on the most recent restore that changed a folder, whichever game version you picked on the flavor
+  screen. A restore that left every folder as it was is passed over, so Undo then offers the restore before it
+  (its confirm names when that restore ran), unless that one was already undone.
 - A folder the restore created (the game version had no `WTF` folder before, say) is removed again.
 - Anything you changed since the restore, in those folders, is lost. Undo doesn't take another safety backup.
-- Links are kept, just as in a restore.
+- Links are kept, just as in a restore. A link the restore removed (where the backup held real files) is made
+  again, pointing where it did. If one can't be made again, that folder shows **Failed** and the Details column
+  names the link and where it pointed, so you can make it by hand.
 - Undo only goes back **one restore**. After you undo, the button stays greyed out until your next restore. To go
   back further, restore an older restore's safety backup from the list (its Kind is **safety (pre-restore)**).
 - If no folder could be put back (WoW had files locked, say), the undo doesn't count: close WoW and press **Undo**
@@ -272,13 +279,14 @@ a git checkout. On Windows that's a junction or a symbolic link; on Mac and Linu
 never follows a link:
 
 - **A backup** leaves links out. The summary counts them in the Links column and the notices, and the log lists
-  them. What a link points at is yours to back up.
+  up to 20 of them. What a link points at is yours to back up.
 - **A restore** keeps your links where they are. The one exception: if the backup holds real files at the same
   place, the link is removed (never what it points at) to make room, and the restore screen warns you first.
+  **Undo** makes that link again.
 - **Deleting** an old copy (`<folder>.replaced`) removes links inside it as links, without going into them.
 - **If `Interface` or `WTF` is itself a link** (you moved the whole folder to another drive, say), it's left out
   of backups, shown as "link (skipped)", and the restore screen won't tick it. A game version whose folders are
-  both links is **Skipped** in a backup. To restore such a folder, close WoW, open the zip, and extract its
+  both links is **Skipped** in a backup (the confirm and the results say so). To restore such a folder, close WoW, open the zip, and extract its
   `Interface` (or `WTF`) folder into the place the link points at. Extracting adds and overwrites files but
   doesn't remove extra ones.
 
@@ -349,7 +357,7 @@ find them. Undo needs the safety backup in the folder the settings name.
 | Symptom | Fix |
 |---------|-----|
 | "WoW appears to be running" | Close WoW and try again. For a backup you can go ahead anyway, but your latest settings may be missing from it. |
-| "The backup drive may be short of space" or "Low disk space" | Free up some space, or pick a backup folder on another drive in settings (`s`). It's a warning, not a block. A restore needs room on the WoW drive for the unpacked copy next to your current folders, and room on the backup drive for the safety backup. |
+| "The backup drive may be short of space" or "Low disk space" | Free up some space, or pick a backup folder on another drive in settings (`s`). It's a warning, not a block. A restore needs room on the WoW drive for the unpacked copy next to your current folders, and room on the backup drive for the safety backup; the restore confirm checks both. |
 | "… is left from an interrupted restore. Restore is blocked for this flavor" | See [If a restore was interrupted](#if-a-restore-was-interrupted). |
 | "This backup cannot be restored: not an Interface Backup zip" | The zip wasn't made by Interface Backup, or its `manifest.json` is missing. Pick another backup. |
 | "This backup cannot be restored: the backup's manifest is damaged", "the backup cannot be read", or Parts shows "?" | The zip is damaged (an interrupted copy, a failing drive). Pick another backup. |
@@ -360,7 +368,7 @@ find them. Undo needs the safety backup in the folder the settings name.
 | A folder's outcome is **Left as it was** | It couldn't be replaced, usually because WoW or another program had a file open there. Nothing in it changed. Close the program and restore again. |
 | A folder's outcome is **Restored (old copy left)** | Delete the `.replaced` folder the Details column names. Until you do, restores of that game version are blocked. |
 | "Restore stopped" | Something unexpected happened part-way. The message says what's where. If a folder was replaced, **Undo** (`z`) puts it back; if Undo isn't possible, the safety backup named in the message holds your folders as they were. Then follow [Reporting a bug](../README.md#reporting-a-bug). |
-| **Undo** is greyed out | There's nothing to undo: you haven't restored yet, you already undid the last restore, or the last restore changed nothing. |
+| **Undo** is greyed out | There's nothing to undo: you haven't restored yet, or no restore since the last undo changed anything. |
 | "Nothing was changed": "the restore's safety backup is gone" | The safety zip was deleted or moved. Put it back in the backup folder, or restore from another backup. |
 | "Nothing was changed": "the restore's safety backup is not in the backup folder" | The backup folder setting changed since that restore. Change it back in settings (`s`), or restore the safety backup from its folder by hand. |
 | "Nothing was changed": "the restore journal is not for a flavor of the configured WoW folder" | The WoW folder setting changed since that restore. Change it back in settings (`s`). |

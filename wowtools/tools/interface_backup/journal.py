@@ -2,7 +2,9 @@
 newest one that replaced a part and was not undone. UI-free.
 
 Header: {"flavor": folder, "flavor_path", "backup", "parts", "suite_version"}. Entries:
-{"action": "safety_backup", "zip", "parts_existing"} and {"action": "replaced", "part", "existed"}."""
+{"action": "safety_backup", "zip", "parts_existing"}, then per part swapped {"action": "link_removed", "part", "rel",
+"target", "junction"} for each link the swap removed (a zip never holds links) and {"action": "replaced", "part",
+"existed"}."""
 from __future__ import annotations
 
 from dataclasses import replace

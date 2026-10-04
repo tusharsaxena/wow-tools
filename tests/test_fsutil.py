@@ -219,3 +219,30 @@ class RemoveTreeNoFollowTest(unittest.TestCase):
     def test_missing_tree_raises(self):
         with self.assertRaises(OSError):
             remove_tree_no_follow(self.tmp / "missing")
+
+
+class ReadMakeLinkTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+
+    def test_link_read_and_made_again(self):
+        target = self.tmp / "repo"
+        target.mkdir()
+        link = self.tmp / "link"
+        try:
+            os.symlink(target, link, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks not permitted here")
+        self.assertEqual(fsutil.read_link(link), (os.fspath(target), False))
+        os.unlink(link)
+        fsutil.make_link(os.fspath(target), link, junction=False)
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(os.readlink(link), os.fspath(target))
+
+    def test_not_a_link_is_none(self):
+        (self.tmp / "file").write_text("x", encoding="utf-8")
+        self.assertIsNone(fsutil.read_link(self.tmp / "file"))
+        self.assertIsNone(fsutil.read_link(self.tmp))
+        self.assertIsNone(fsutil.read_link(self.tmp / "missing"))

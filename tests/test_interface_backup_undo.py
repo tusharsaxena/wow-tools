@@ -149,6 +149,59 @@ class UndoTest(unittest.TestCase):
         self.assertTrue(os.path.islink(link))
         self.assertEqual((repo / "dev.lua").read_text(encoding="utf-8"), "dev")
 
+    def replace_details_with_link(self):
+        """AddOns/Details (real files in the backup) becomes a link to a dev checkout: the restore removes it."""
+        repo = self.tmp / "repo"
+        repo.mkdir()
+        (repo / "dev.lua").write_text("dev", encoding="utf-8")
+        link = self.retail / "Interface" / "AddOns" / "Details"
+        shutil.rmtree(link)
+        _symlink(self, os.fspath(repo), link)
+        return repo, link
+
+    def test_link_removed_by_the_restore_comes_back_on_undo(self):
+        repo, link = self.replace_details_with_link()
+        result = self.do_restore(("Interface",))
+        self.assertFalse(os.path.islink(link))  # the backup's real Details folder took its place
+        entries = read_restore_journal(result.journal_path).entries
+        removed = [e for e in entries if e.get("action") == "link_removed"]
+        self.assertEqual(removed, [{"action": "link_removed", "part": "Interface", "rel": "AddOns/Details",
+                                    "target": os.fspath(repo), "junction": False}])
+        undone, _ = self.undo(result.journal_path)
+        self.assertTrue(undone.ok)
+        self.assertEqual([p.kind for p in undone.parts], ["restored"])
+        self.assertTrue(os.path.islink(link))
+        self.assertEqual(os.readlink(link), os.fspath(repo))
+        self.assertEqual((link / "dev.lua").read_text(encoding="utf-8"), "dev")
+
+    def test_link_that_cannot_be_made_again_fails_the_part(self):
+        repo, link = self.replace_details_with_link()
+        result = self.do_restore(("Interface",))
+
+        def refuse(target, path, *, junction):
+            raise PermissionError(1, "not allowed")
+
+        with patch.object(undo_module, "make_link", refuse):
+            undone, events = self.undo(result.journal_path)
+        self.assertFalse(undone.ok)
+        self.assertEqual(undone.parts[0].kind, "failed")
+        self.assertIn("AddOns/Details", undone.parts[0].reason)
+        self.assertIn(os.fspath(repo), undone.parts[0].reason)
+        self.assertFalse(os.path.lexists(link))
+        self.assertIsNone(latest_undoable(self.journal_dir))  # the folder was put back: undone
+        self.assertTrue(any(e["event"] == "ibackup.undo_failed" for e in events))
+
+    def test_damaged_link_entry_refused(self):
+        self.replace_details_with_link()
+        result = self.do_restore(("Interface",))
+
+        def escape(entry):
+            if entry["action"] == "link_removed":
+                entry["rel"] = "../../outside"
+
+        self.rewrite_journal(result.journal_path, edit_entry=escape)
+        self.assert_refused(result.journal_path)
+
     def test_missing_safety_zip_refused(self):
         result = self.do_restore(("WTF",))
         result.safety_zip.unlink()

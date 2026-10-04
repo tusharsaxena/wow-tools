@@ -33,7 +33,9 @@ TOOLS: dict[str, Tool] = {tool.name: tool for tool in (
 )}
 
 # Tools that changed name. At start-up each tool's old config file, logs/<old>/ folder and
-# <WoW folder>/wow-tools/<old>/ folder move to the new name (core/migrate.py). One line per rename.
+# <WoW folder>/wow-tools/<old>/ folder move to the new name (core/migrate.py). One line per rename. Nothing else
+# moves: a <TOOL_NAME> folder inside a folder the user chose (Interface Backup's <backup_dir>/interface-backup) stays
+# under the old name, so renaming such a tool needs that handled too (see docs/adding-a-tool.md, step 6).
 RENAMED_TOOLS: tuple[ToolRename, ...] = (
     ToolRename("screenshots", "screenshot-organizer", "screenshots", "screenshot_organizer"),
 )

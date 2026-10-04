@@ -138,7 +138,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ibackup.leftover_found` | warning | A .restoring or .replaced folder from an interrupted restore was found. |
 | `ibackup.links_skipped` | info | Links (symlinks, junctions) that were not followed: count and up to 20 paths. |
 | `ibackup.part_restored` | info | A part (Interface or WTF) was replaced by the backup's copy. |
-| `ibackup.part_rolled_back` | warning | A part could not be replaced and was left as it was. |
+| `ibackup.part_rolled_back` | warning | A part could not be replaced: left as it was (kind rolled_back), or, at error, not fully put back (kind failed; reason says what is where). |
 | `ibackup.pruned` | info | Older backups of a flavor were deleted to keep the newest N (keep_backups). |
 | `ibackup.replaced_left` | warning | A part was restored but its old copy could not be fully deleted. |
 | `ibackup.restore_completed` | info | A restore finished, with totals (logged at warning if a part failed). |

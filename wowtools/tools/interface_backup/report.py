@@ -8,10 +8,10 @@ from pathlib import Path
 from wowtools.core.install import Flavor
 from wowtools.core.journal import Journal, friendly_stamp
 from wowtools.core.paths import to_stored
-from wowtools.tools.interface_backup.backup import BackupOutcome
+from wowtools.tools.interface_backup.backup import BackupOutcome, skip_reason
 from wowtools.tools.interface_backup.catalog import BackupInfo
 from wowtools.tools.interface_backup.restore import PartOutcome, RestorePlan, RestoreResult
-from wowtools.tools.interface_backup.scanner import PARTS, FlavorScan, PartScan
+from wowtools.tools.interface_backup.scanner import PARTS, SAMPLE, FlavorScan, PartScan
 
 # Titles for the stages the logic modules pass to progress(stage, done, total, detail).
 STAGE_TITLES = {
@@ -74,7 +74,8 @@ def notices(scans: list[FlavorScan]) -> list[str]:
         for part in scan.parts.values():
             lines += [f"{name}: {error}" for error in part.errors[:NOTICE_ERRORS]]
             if len(part.errors) > NOTICE_ERRORS:
-                lines.append(f"{name}: {len(part.errors) - NOTICE_ERRORS} more {part.name} warnings in the log")
+                lines.append(f"{name}: {len(part.errors) - NOTICE_ERRORS} more {part.name} warnings (the log "
+                             f"lists the first {SAMPLE})")
         if scan.link_count:
             lines.append(f"{name}: {plural(scan.link_count, 'link')} (e.g. addon folders linked to a repo) not "
                          "backed up; a restore keeps them.")
@@ -99,12 +100,15 @@ def _known_total(sizes: list[int | None]) -> int | None:
 def backup_confirm(scans: list[FlavorScan], root: Path, keep: int, running: list[str] | None,
                    free: int | None) -> tuple[str, str, tuple[str, ...]]:
     """(title, body, alerts) for the Back up ConfirmScreen. `free` is the backup drive's free bytes (None: unknown);
-    a space alert needs the scan's sizes, which a summary scan under WSL does not read."""
+    a space alert needs the scan's sizes, which a summary scan under WSL does not read. A flavor with nothing to
+    back up is named on a "Skipped" line (its row in the result says Skipped too)."""
     chosen = [s for s in scans if s.has_data]
+    skipped = [f"{s.flavor.display_name} ({skip_reason(s)})" for s in scans if not s.has_data]
     files = sum(s.file_count for s in chosen)
     total = _known_total([s.size for s in chosen])
     lines = [plural(files, "file") + ("" if total is None else f" ({human_size(total)})") + " from "
              + ", ".join(s.flavor.display_name for s in chosen) + ".",
+             *([f"Skipped: {', '.join(skipped)}."] if skipped else []),
              f"Zips go to: {to_stored(root)}",
              "Older backups are never deleted." if keep == 0 else
              f"The newest {keep} backups of each flavor are kept; older ones are deleted."]
@@ -192,7 +196,8 @@ def restore_warnings(plan: RestorePlan, limit: int = 15) -> list[str]:
         lines += [f"  {error}" for error in plan.unreadable[:limit]]
         lines += _more(min(limit, len(plan.unreadable)), len(plan.unreadable))
     if plan.links_removed:
-        lines.append("Links replaced by the backup's files (only the link goes, never what it points at): "
+        lines.append("Links replaced by the backup's files (only the link goes, never what it points at; Undo makes "
+                     "it again): "
                      + ", ".join(f"{p}/{r}" for p, r in plan.links_removed[:limit])
                      + (f" and {len(plan.links_removed) - limit} more" if len(plan.links_removed) > limit else ""))
     if plan.low_space:
@@ -226,9 +231,11 @@ def restore_confirm_alerts(plan: RestorePlan) -> list[str]:
     return lines
 
 
-def restore_confirm(plan: RestorePlan, when: str, running: list[str] | None) -> tuple[str, str, tuple[str, ...]]:
+def restore_confirm(plan: RestorePlan, when: str, running: list[str] | None, *,
+                    backup_free: int | None = None) -> tuple[str, str, tuple[str, ...]]:
     """(title, body, alerts) for the Restore ConfirmScreen (which starts on No). The alerts are counts, one line
-    per kind (restore_confirm_alerts), never the full lists."""
+    per kind (restore_confirm_alerts), never the full lists. `backup_free`: free bytes on the backup drive, where
+    the safety backup goes (None: unknown); the zip is taken to be at most the folders' size, as for a backup."""
     parts = " and ".join(plan.parts)
     title = f"Replace {parts} of {plan.flavor.display_name} with the backup from {when}?"
     body = ("The folders become exactly what the backup holds. A safety backup of the current folders is taken "
@@ -236,6 +243,10 @@ def restore_confirm(plan: RestorePlan, when: str, running: list[str] | None) -> 
     if plan.links_kept:
         body += f"\n{plural(len(plan.links_kept), 'link')} kept as they are."
     alerts = restore_confirm_alerts(plan)
+    current = plan.current_bytes
+    if current is not None and backup_free is not None and current > backup_free:
+        alerts.append(f"The backup drive may be short of space for the safety backup: {human_size(backup_free)} "
+                      f"free, up to {human_size(current)} needed.")
     if running:
         alerts.append(f"WoW appears to be running ({', '.join(running)}). Close it first: it rewrites WTF when you "
                       "log out, and an open game can lock Interface files.")

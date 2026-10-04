@@ -62,3 +62,6 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
    to `RENAMED_TOOLS` in `wowtools/tools/__init__.py`, e.g.
    `ToolRename("screenshots", "screenshot-organizer", "screenshots", "screenshot_organizer")`. On the next start
    the old config file, `logs/<old>/` and `<WoW folder>/wow-tools/<old>/` move to the new name (`core/migrate.py`).
+   Nothing else moves: a tool whose output folder is named after `TOOL_NAME` inside a folder the user chose
+   (Interface Backup's `<backup folder>/interface-backup`, when the backup folder is set) needs that subfolder
+   moved too, which migrate does not do. Without it the tool lists no backups and Undo refuses the moved journals.

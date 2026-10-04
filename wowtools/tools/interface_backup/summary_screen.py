@@ -4,6 +4,7 @@ restore_screen.py)."""
 from __future__ import annotations
 
 import shutil
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, ClassVar
@@ -41,6 +42,38 @@ from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 NAV_HINT = ("↑↓/Tab move · ←→ buttons · Enter/Space press · PgUp/PgDn scroll · b back up · e restore · z undo · "
             "r rescan · f/Esc flavors · t tools · q quit")
 WowCheck = Callable[[], "list[str] | None"]
+# Seconds between two per-file progress reports sent to the UI thread. Each costs a blocking call_from_thread
+# (~0.6 ms); an Interface folder of tens of thousands of files, reported per file in several stages, spent most of
+# a backup or restore in those round trips.
+PROGRESS_INTERVAL = 0.1
+
+
+class ThrottledProgress:
+    """progress(stage, current, total, detail) for a job's worker: forwards a report when the stage changes, when
+    it has no count (total 0) or ends a stage (current >= total), or when `interval` seconds passed since the last
+    one forwarded; the others are dropped. reset() forwards the next report whatever it is (a new flavor)."""
+
+    def __init__(self, forward: Callable[..., None], interval: float, clock: Callable[[], float] = time.monotonic):
+        self.forward = forward
+        self.interval = interval
+        self.clock = clock
+        self._stage: object = None
+        self._last = 0.0
+        self._fresh = True
+
+    def reset(self) -> None:
+        self._fresh = True
+
+    def __call__(self, *args: Any) -> None:
+        stage = args[0] if args else None
+        current, total = (args[1], args[2]) if len(args) >= 3 else (0, 0)
+        now = self.clock()
+        due = (self._fresh or stage != self._stage or not total or current >= total
+               or now - self._last >= self.interval)
+        if not due:
+            return
+        self._fresh, self._stage, self._last = False, stage, now
+        self.forward(*args)
 
 
 def free_bytes(path: Path | None, disk_usage: Callable = shutil.disk_usage) -> int | None:
@@ -386,11 +419,13 @@ class BackupSummaryScreen(Screen[str]):
             self.notify(f"{problem or 'No backup folder.'} Fix the folder in settings (s).",
                         title="Backup folder not allowed", severity="error", timeout=15)
             return
-        scans = [s for s in self.scans if s.has_data]
-        if not scans:
+        # Every flavor shown goes to the backup: one with nothing to back up (no folders, or links) comes back
+        # Skipped with its reason. With none to back up at all, there is no backup.
+        scans = list(self.scans)
+        if not any(s.has_data for s in scans):
             self.notify("Nothing to back up: no Interface or WTF folder.")
             return
-        check = self.wow_check or wow_check_for([s.flavor for s in scans])
+        check = self.wow_check or wow_check_for([s.flavor for s in scans if s.has_data])
         disk_usage = self.disk_usage
         self.run_preflight(check, lambda running, free: self._confirm_backup(scans, root, running, free),
                            extra=lambda: free_bytes(root, disk_usage))
@@ -427,11 +462,13 @@ class BackupSummaryScreen(Screen[str]):
 
     def _job_worker(self, job: Callable[[Callable, Callable], Any], screen: ProgressScreen,
                     done: Callable[[Any], None]) -> None:
-        # Runs in a worker thread: the progress screen is only ever touched on the UI thread.
-        def progress(*args) -> None:
-            self.app.call_from_thread(screen.update_progress, *args)
+        # Runs in a worker thread: the progress screen is only ever touched on the UI thread, and per-file reports
+        # reach it throttled (ThrottledProgress).
+        progress = ThrottledProgress(lambda *args: self.app.call_from_thread(screen.update_progress, *args),
+                                     PROGRESS_INTERVAL)
 
         def on_flavor(label: str) -> None:
+            progress.reset()
             self.app.call_from_thread(screen.set_flavor, label)
 
         try:
@@ -466,9 +503,7 @@ class BackupSummaryScreen(Screen[str]):
             self.notify(str(exc), title="Nothing was changed", severity="error", timeout=20)
         elif isinstance(exc, RestoreStopped):
             what = "Undo" if exc.result.undo else "Restore"
-            changed = any(p.kind != "rolled_back" for p in exc.result.parts)
-            hint = (" Undo (z) puts back what was replaced." if changed and not exc.result.undo
-                    else "")
+            hint = " Undo (z) puts back what was replaced." if exc.result.swapped and not exc.result.undo else ""
             self.notify(f"{exc}{hint}", title=f"{what} stopped", severity="error", timeout=20)
             self.app.push_screen(RestoreResultScreen(exc.result),
                                  lambda choice: self._after_restore_result(choice, exc.result))
@@ -505,10 +540,14 @@ class BackupSummaryScreen(Screen[str]):
         if plan is None or not self.idle or self.wow_folder_changed():
             return
         check = self.wow_check or wow_check_for([plan.flavor])
-        self.run_preflight(check, lambda running, _extra: self._confirm_restore(plan, info, running))
+        root, disk_usage = self._root(), self.disk_usage
+        # The safety backup goes to the backup folder, maybe on another drive than WoW: its free space is checked too.
+        self.run_preflight(check, lambda running, free: self._confirm_restore(plan, info, running, free),
+                           extra=lambda: free_bytes(root, disk_usage))
 
-    def _confirm_restore(self, plan: RestorePlan, info: BackupInfo, running: list[str] | None) -> None:
-        title, body, alerts = restore_confirm(plan, info.when, running)
+    def _confirm_restore(self, plan: RestorePlan, info: BackupInfo, running: list[str] | None,
+                         backup_free: int | None) -> None:
+        title, body, alerts = restore_confirm(plan, info.when, running, backup_free=backup_free)
         self.app.push_screen(ConfirmScreen(title, body, alerts, default_yes=False),
                              lambda ok: self._restore_confirmed(ok, plan))
 
