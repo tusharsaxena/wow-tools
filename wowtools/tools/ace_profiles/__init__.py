@@ -1,2 +1,4 @@
-"""Ace3 Profile Manager: see and change which Ace3 profile each character uses."""
+"""Ace3 Profile Manager: see and change which AceDB-3.0 profile each character uses (spec 2026-10-04)."""
 from __future__ import annotations
+
+from wowtools.tools.ace_profiles import events  # noqa: F401  (registers the tool's events)

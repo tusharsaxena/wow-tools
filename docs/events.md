@@ -152,3 +152,44 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ibackup.undo_completed` | info | Undo of a restore finished, with totals. |
 | `ibackup.undo_failed` | error | Undo was refused or failed on a part. |
 | `ibackup.undo_started` | info | Undo of a restore journal started. |
+
+## `ace-profiles` events
+
+| Event | Level | Description |
+|---|---|---|
+| `ace.apply_completed` | info | Apply finished (logged at warning if any file was skipped or failed). |
+| `ace.apply_started` | info | Apply (or a dry run) of the staged changes started. |
+| `ace.backup_failed` | error | The zip of the original files failed; nothing was changed. |
+| `ace.blacklist_changed` | info | An addon was added to or removed from the blacklist. |
+| `ace.dry_run_completed` | info | A dry run finished. |
+| `ace.file_changed` | warning | A file changed since the scan; its changes were skipped. |
+| `ace.file_edited` | info | A SavedVariables file was rewritten with the staged changes. |
+| `ace.file_locked` | error | Apply or Undo stopped before changing anything: files are locked by another program. |
+| `ace.file_restored` | info | Undo or recovery: a file was put back to its original bytes. |
+| `ace.file_skipped` | warning | Undo or recovery: a file was left alone (it changed since the run, or is outside the WTF folder). |
+| `ace.file_unreadable` | warning | A SavedVariables file or folder could not be read; it is left out. |
+| `ace.files_backed_up` | info | The originals of the files to change were zipped and verified. |
+| `ace.flavors_stopped` | warning | An Apply over several flavors stopped at one flavor; the flavors after it were not started. |
+| `ace.journal_failed` | error | The run journal could not be written; nothing was changed. |
+| `ace.journal_pruned` | info | Older journals (and the zips only they used) were deleted to keep the newest N (keep_journals). |
+| `ace.lookalike` | debug | A table looks like an AceDB database but is not one; it is left alone. |
+| `ace.parse_failed` | warning | A SavedVariables file is not readable Lua; it is shown as a warning and never changed. |
+| `ace.probe_recovered` | warning | A SavedVariables file left as <name>.wowtools-lockcheck by an interrupted lock check was renamed back. |
+| `ace.recovery_done` | info | The user chose what to do about an unfinished Apply (put back or leave). |
+| `ace.recovery_offered` | warning | A marker from an Apply that did not finish was found when the tool opened. |
+| `ace.rollback_failed` | error | A file could not be put back after a failure; restore it from the zip the message names. |
+| `ace.rolled_back` | warning | After a failure, the files this run had already written were put back. |
+| `ace.scan_completed` | info | A scan finished, with counts (files, databases, profiles, characters, leftover characters, seconds). |
+| `ace.scan_started` | info | A scan of one flavor's SavedVariables for AceDB databases started. |
+| `ace.snapshot_failed` | error | The whole-WTF snapshot failed; nothing was changed. |
+| `ace.snapshot_taken` | info | The whole-WTF snapshot was written and verified. |
+| `ace.snapshots_pruned` | info | Older whole-WTF snapshots of the flavor were deleted to keep the newest N (keep_snapshots). |
+| `ace.staged` | debug | A change was staged on the review screen (operation and counts). |
+| `ace.undo_completed` | info | Undo last change finished (logged at warning if any file was skipped or failed). |
+| `ace.undo_failed` | error | Undo or recovery: a file could not be put back (its zip is missing or does not match). |
+| `ace.undo_started` | info | Undo last change started, from the newest journal. |
+| `ace.unlocked` | info | A blacklisted addon was unlocked for this session. |
+| `ace.verify_failed` | error | An edited file did not re-read as expected; it was not written and the run stopped. |
+| `ace.would_edit` | info | Dry run: a file that would be rewritten, with its changes (checked, not written). |
+| `ace.wow_running` | warning | Apply or Undo was refused because WoW of that flavor is running. |
+| `ace.write_failed` | error | A SavedVariables file could not be written; the run stopped. |
