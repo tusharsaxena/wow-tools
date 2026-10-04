@@ -125,3 +125,29 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `shots.undo_skipped` | warning | Undo left an entry alone because it could not be reversed safely. |
 | `shots.undo_started` | info | Undo of a run journal started. |
 | `shots.would_file` | info | Dry run: a screenshot that would have been filed. |
+
+## `interface-backup` events
+
+| Event | Level | Description |
+|---|---|---|
+| `ibackup.backup_created` | info | A backup zip was written and verified: path, files, sizes. |
+| `ibackup.backup_failed` | error | A flavor's backup failed; no zip was left behind. |
+| `ibackup.backup_skipped` | warning | A flavor was skipped: it has neither an Interface nor a WTF folder. |
+| `ibackup.backup_started` | info | A backup run started: flavors and destination. |
+| `ibackup.journal_pruned` | info | Older restore journals and the safety backups only they named were deleted. |
+| `ibackup.leftover_found` | warning | A .restoring or .replaced folder from an interrupted restore was found. |
+| `ibackup.links_skipped` | info | Links (symlinks, junctions) that were not followed: count and up to 20 paths. |
+| `ibackup.part_restored` | info | A part (Interface or WTF) was replaced by the backup's copy. |
+| `ibackup.part_rolled_back` | warning | A part could not be replaced and was left as it was. |
+| `ibackup.pruned` | info | Older backups of a flavor were deleted to keep the newest N (keep_backups). |
+| `ibackup.replaced_left` | warning | A part was restored but its old copy could not be fully deleted. |
+| `ibackup.restore_completed` | info | A restore finished, with totals (logged at warning if a part failed). |
+| `ibackup.restore_started` | info | A restore started: backup, flavor, parts and warning counts. |
+| `ibackup.restore_stopped` | error | A restore stopped unexpectedly; the journal holds what was done so far. |
+| `ibackup.safety_created` | info | The pre-restore safety backup was written and verified. |
+| `ibackup.scan_completed` | info | A flavor was scanned: files, bytes (when known) and links per part. |
+| `ibackup.scan_started` | info | A scan of the chosen flavors' Interface and WTF folders started. |
+| `ibackup.scan_warning` | warning | A folder could not be read during a scan, or a part is itself a link. |
+| `ibackup.undo_completed` | info | Undo of a restore finished, with totals. |
+| `ibackup.undo_failed` | error | Undo was refused or failed on a part. |
+| `ibackup.undo_started` | info | Undo of a restore journal started. |
