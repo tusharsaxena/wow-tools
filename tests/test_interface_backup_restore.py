@@ -22,15 +22,15 @@ Usage = namedtuple("Usage", "total used free")
 
 
 def write_fake_zip(path: Path, names: list[str], flavor_folder: str = "_retail_", *, listed: list[str] | None = None,
-                   parts: list[str] | None = None) -> Path:
+                   parts: object = None, mtime: object = 0.0) -> Path:
     """A zip shaped like ours: each name holds b"x"; the manifest lists `listed` (default: the names)."""
     with zipfile.ZipFile(path, "w") as zf:
         for name in names:
             zf.writestr(name, b"x")
-        files = [{"path": name, "size": 1, "mtime": 0.0} for name in (names if listed is None else listed)]
+        files = [{"path": name, "size": 1, "mtime": mtime} for name in (names if listed is None else listed)]
         zf.writestr("manifest.json", json.dumps({"version": 1, "kind": "backup", "flavor": "retail",
                                                  "flavor_folder": flavor_folder, "created": "",
-                                                 "parts": parts or ["Interface", "WTF"], "parts_existing": [],
+                                                 "parts": ["Interface", "WTF"] if parts is None else parts, "parts_existing": [],
                                                  "files": files, "links": []}))
     return path
 
@@ -67,10 +67,21 @@ class SplitEntryTest(unittest.TestCase):
     def test_unsafe(self):
         for name in ("", "../x", "/abs", "C:/x", "C:x", "Interface\\x", "Interface/../x", "Interface/./x",
                      "Other/x", "interface/x", "Interface/a:stream", "Interface/dot.", "Interface/space ",
-                     "Interface", "Interface//x", "Interface/x/", "Interface/a<b", "Interface/a\x01b",
-                     "Interface/CON", "Interface/AddOns/nul.lua", "WTF/com1.txt", "WTF/LPT9"):
-            with self.subTest(name=name), self.assertRaises(RestoreError):
-                split_entry(name)
+                     "Interface", "Interface//x", "Interface/x/", "Interface/a<b", "Interface/a?b",
+                     "Interface/a\x00b"):
+            for windows in (False, True):
+                with self.subTest(name=name, windows=windows), self.assertRaises(RestoreError):
+                    split_entry(name, windows=windows)
+
+    def test_windows_only_names(self):
+        # Device names and control characters are ordinary names on POSIX (a character called Aux gets a folder).
+        for name in ("Interface/CON", "Interface/AddOns/nul.lua", "WTF/com1.txt", "WTF/LPT9",
+                     "WTF/Account/A/Realm/Aux/SavedVariables/x.lua", "Interface/AddOns/Foo/Aux.Tooltip.lua",
+                     "Interface/AddOns/Con/x.lua", "Interface/a\x01b"):
+            with self.subTest(name=name):
+                self.assertEqual(split_entry(name, windows=False)[0], name.split("/")[0])
+                with self.assertRaises(RestoreError):
+                    split_entry(name, windows=True)
 
 
 class OpenBackupTest(RestoreTestBase):
@@ -113,6 +124,10 @@ class OpenBackupTest(RestoreTestBase):
                                                  listed=["WTF/a.txt", "WTF/b.txt"]),
             "file and folder": write_fake_zip(self.tmp / "clash.zip", ["WTF/a", "WTF/A/b.txt"]),
             "part not claimed": write_fake_zip(self.tmp / "part.zip", ["Interface/a.lua"], parts=["WTF"]),
+            "parts a string": write_fake_zip(self.tmp / "pstr.zip", ["WTF/a.txt"], parts="InterfaceWTF"),
+            "mtime NaN": write_fake_zip(self.tmp / "nan.zip", ["WTF/a.txt"], mtime=float("nan")),
+            "mtime infinite": write_fake_zip(self.tmp / "inf.zip", ["WTF/a.txt"], mtime=float("inf")),
+            "mtime negative": write_fake_zip(self.tmp / "neg.zip", ["WTF/a.txt"], mtime=-1.0),
         }
         junk = self.tmp / "junk.zip"
         junk.write_bytes(b"not a zip")
@@ -137,6 +152,15 @@ class OpenBackupTest(RestoreTestBase):
                                                      "files": [{"path": "WTF/a.txt", "size": 1, "mtime": 0}]}))
         with self.assertRaises(RestoreError):
             open_backup(path)
+
+    @unittest.skipIf(os.name == "nt", "device names are refused on Windows")
+    def test_device_named_folders_open_on_posix(self):
+        names = ["WTF/Account/A/Realm/Aux/x.lua", "Interface/AddOns/Con/x.lua"]
+        contents = open_backup(write_fake_zip(self.tmp / "aux.zip", names))
+        self.assertIn("Account/A/Realm/Aux/x.lua", contents.files["WTF"])
+
+    def test_sizes_of_no_parts_is_empty(self):
+        self.assertEqual(open_backup(self.backup).sizes(()), {})
 
     def test_refuses_unknown_manifest(self):
         path = self.tmp / "v2.zip"
@@ -205,6 +229,10 @@ class PlanRestoreTest(RestoreTestBase):
         with self.assertRaisesRegex(RestoreError, "Interface"):
             plan_restore(contents, self.scan("_anniversary_"), ("Interface",))
         self.assertEqual(plan_restore(contents, self.scan("_anniversary_"), ("WTF",)).parts, ("WTF",))
+
+    def test_other_flavor_refused(self):
+        with self.assertRaisesRegex(RestoreError, "own flavor"):
+            plan_restore(open_backup(self.backup), self.scan("_anniversary_"), ("WTF",))
 
     def test_linked_part_refused(self):
         wtf = self.wow / "_retail_" / "WTF"

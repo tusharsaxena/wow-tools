@@ -3,6 +3,8 @@ folder swap, after a pre-restore safety backup, with a run journal for Undo. UI-
 from __future__ import annotations
 
 import json
+import math
+import os
 import re
 import shutil
 import zipfile
@@ -19,8 +21,10 @@ NEWER_SLACK = 2.0  # zip timestamps have 2-second steps
 KINDS = ("backup", "pre-restore")
 _DRIVE = re.compile(r"^[A-Za-z]:")
 _FLAVOR_FOLDER = re.compile(r"^_[A-Za-z0-9_]+_$")
-_BAD_CHARS = frozenset('<>:"|?*') | frozenset(chr(c) for c in range(32))
-# Windows device names: "CON", "nul.lua" and the like open the device, not a file.
+_BAD_CHARS = frozenset('<>:"|?*\x00')  # refused everywhere: Windows cannot write them, NUL nowhere can
+# Windows only: control characters, and device names ("CON", "nul.lua") that open the device, not a file. On POSIX
+# these are ordinary names (a character called Aux gets an "Aux" folder), so a backup made there must restore there.
+_WINDOWS_BAD_CHARS = frozenset(chr(c) for c in range(1, 32))
 _RESERVED = frozenset({"CON", "PRN", "AUX", "NUL"} | {f"{p}{n}" for p in ("COM", "LPT") for n in range(1, 10)})
 # Reading a zip: a damaged file, an unsupported compression method or an encrypted entry.
 _ZIP_ERRORS = (OSError, zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError, RuntimeError, ValueError)
@@ -35,20 +39,24 @@ def _unsafe(name: str) -> RestoreError:
     return RestoreError(f"unsafe entry name in the backup: {name!r}")
 
 
-def _bad_component(part: str) -> bool:
-    return (part in ("", ".", "..") or part != part.rstrip(". ") or bool(_BAD_CHARS & set(part))
-            or part.split(".")[0].upper() in _RESERVED)
+def _bad_component(part: str, windows: bool) -> bool:
+    if part in ("", ".", "..") or part != part.rstrip(". ") or _BAD_CHARS & set(part):
+        return True
+    return windows and (bool(_WINDOWS_BAD_CHARS & set(part)) or part.split(".")[0].upper() in _RESERVED)
 
 
-def split_entry(name: str) -> tuple[str, str]:
+def split_entry(name: str, *, windows: bool | None = None) -> tuple[str, str]:
     """('Interface', 'AddOns/A/a.lua') for a safe zip entry name; RestoreError for anything that could land
     outside the part folder, or be written as something else, on Windows or POSIX: absolute, a drive, a backslash,
-    `.`/`..`, an empty component (a folder entry), `:` (alternate data stream), a trailing dot or space, a
-    character Windows refuses, a device name, or a first part other than Interface or WTF (case counts)."""
+    `.`/`..`, an empty component (a folder entry), `:` (alternate data stream), a trailing dot or space, `<>"|?*`
+    or NUL, or a first part other than Interface or WTF (case counts). On Windows (`windows`, default: running
+    there) control characters and device names (`CON`, `nul.lua`, `COM1`) are refused too."""
+    if windows is None:
+        windows = os.name == "nt"
     if not name or "\\" in name or name.startswith("/") or _DRIVE.match(name):
         raise _unsafe(name)
     pieces = name.split("/")
-    if len(pieces) < 2 or pieces[0] not in PARTS or any(_bad_component(p) for p in pieces[1:]):
+    if len(pieces) < 2 or pieces[0] not in PARTS or any(_bad_component(p, windows) for p in pieces[1:]):
         raise _unsafe(name)
     return pieces[0], "/".join(pieces[1:])
 
@@ -65,8 +73,8 @@ class BackupContents:
     links: list[str] = field(default_factory=list)  # "<Part>/<rel>" links skipped when the backup was made
 
     def sizes(self, parts: tuple[str, ...] | None = None) -> dict[str, int]:
-        """Entry name -> size, for verify_backup (all parts by default)."""
-        return {f"{part}/{rel}": size for part in (parts or PARTS) for rel, (size, _) in self.files[part].items()}
+        """Entry name -> size, for verify_backup (all parts when `parts` is None; none for an empty tuple)."""
+        return {f"{part}/{rel}": size for part in (PARTS if parts is None else parts) for rel, (size, _) in self.files[part].items()}
 
 
 def _check_names(names: list[str]) -> None:
@@ -113,6 +121,10 @@ def open_backup(path: Path) -> BackupContents:
         listed = {str(f["path"]): float(f["mtime"]) for f in manifest["files"]}
         if len(listed) != len(manifest["files"]) or set(listed) != set(names):
             raise RestoreError("the backup's manifest does not match its contents")
+        if any(not math.isfinite(mtime) or mtime < 0 for mtime in listed.values()):
+            raise RestoreError("the backup's manifest is damaged: a file time is not a valid date")
+        if not isinstance(manifest["parts"], list):
+            raise RestoreError("the backup's manifest is damaged: parts is not a list")
         parts = tuple(p for p in PARTS if p in manifest["parts"])
         files: dict[str, dict[str, tuple[int, float]]] = {part: {} for part in PARTS}
         for name, mtime in listed.items():
@@ -155,8 +167,11 @@ def _free_space(path: Path, disk_usage: Callable) -> int | None:
 def plan_restore(contents: BackupContents, scan: FlavorScan, parts: tuple[str, ...], *,
                  disk_usage: Callable = shutil.disk_usage) -> RestorePlan:
     """Compare the backup's chosen parts with what is on disk now (a scan with stats, for `newer`). Paths compare
-    ignoring case, as Windows does. Raises RestoreError for a part the backup does not hold or a part folder that
-    is itself a link."""
+    ignoring case, as Windows does. Raises RestoreError for a backup of another flavor, a part the backup does not
+    hold or a part folder that is itself a link."""
+    if contents.flavor_folder.casefold() != scan.flavor.folder.casefold():
+        raise RestoreError(f"the backup is of {contents.flavor_folder}, not {scan.flavor.folder}: a backup restores "
+                           "only into its own flavor")
     removed: list[tuple[str, str]] = []
     newer: list[tuple[str, str]] = []
     kept: list[tuple[str, str]] = []
