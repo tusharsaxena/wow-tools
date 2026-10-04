@@ -7,7 +7,7 @@ task; push after the round. Never merge without the user's go-ahead.
 | Task | Title | Status | Commit | Notes |
 |---|---|---|---|---|
 | F1 | global retention settings | done | 05aa3cd | `Config.keep_backups`/`keep_journals` + `remove`/`remove_retired`; setup screen inputs; tool settings/screens lose retention (Screenshot Organizer too); pruners keep all at 0; docs + events regenerated |
-| F2 | one control per row; expand/collapse all on every tree | todo | | |
+| F2 | one control per row; expand/collapse all on every tree | done | 7376239 | `TreeKeys` mixin (base of `TwoPaneFocus`) + `TREE_BINDINGS`/`TREE_HINT` in `ui/dialogs.py`; x/c on every review tree and the restore screen; WTF Clean on `w`; Ace3 discard on Backspace; Ace3 View boxes one per row; look-and-feel tests for one-control-per-row and expand/collapse; guides' key tables |
 | F3 | Ace3 blacklist pairs + tree screen | todo | | |
 | F4 | Ace3 guidance: pending changes, action bar, guidance line | todo | | |
 | F5 | docs + final check | todo | | |
@@ -27,3 +27,11 @@ task; push after the round. Never merge without the user's go-ahead.
   `core/config.DEFAULT_KEEP_BACKUPS`/`DEFAULT_KEEP_JOURNALS` (10/10) replace them. The WTF confirm says "all of
   this flavor are kept" when keep_backups is 0.
 - Task F1: `tests/test_docs.py` now requires `keep_backups` (not `keep_snapshots`) in the Ace3 guide.
+- Task F2: to fit 80x24 with the View boxes on two rows, the Ace3 "View" heading is folded into the box labels
+  ("View by addon" / "View by character").
+- Task F2: expand/collapse all live in a `TreeKeys` mixin that `TwoPaneFocus` now subclasses, so every two-pane
+  screen has the actions; each screen still lists `*TREE_BINDINGS` in its `BINDINGS`. Collapse-all moves the cursor
+  to the top-level node it was under; expand-all keeps it on the same node.
+- Task F2: the restore screen's hint puts `TREE_HINT` before `o restore` (it has no `r rescan`). The Ace3 More…
+  popup names the discard key as "(Backspace)". `tests/test_docs.py` now also requires `Backspace` and `c` in the
+  Ace3 guide.
