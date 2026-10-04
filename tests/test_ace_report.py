@@ -76,6 +76,7 @@ class ReportTest(unittest.TestCase):
         self.assertTrue(any("Default" in a and "deleted" in a for a in alerts))
         self.assertTrue(any("next login" in a for a in alerts))
         self.assertTrue(any("LibDualSpec" in a for a in alerts))
+        self.assertIn("Retail", body)
 
     def test_plural(self):
         self.assertEqual(report.plural(1, "profile"), "1 profile")

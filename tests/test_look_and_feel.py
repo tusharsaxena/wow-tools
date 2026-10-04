@@ -8,8 +8,8 @@ from pathlib import Path
 
 from textual.widgets import Button, Checkbox, DataTable
 
-from tests.fixtures import (TuiTestCase, build_interface_tree, build_screenshot_tree, build_wow_tree, make_config,
-                            settle)
+from tests.fixtures import (TuiTestCase, build_ace_tree, build_interface_tree, build_screenshot_tree, build_wow_tree,
+                            make_config, settle)
 from wowtools.tools import TOOLS as TOOL_INFO
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.dialogs import FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, ConfirmScreen
@@ -18,9 +18,13 @@ from wowtools.ui.suite_app import WowToolsApp
 from wowtools.ui.widgets import NavHint
 
 SMALL = (80, 24)
-TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup")
+TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup", "ace-profiles")
 # The action that leads to a result screen without a running-WoW popup in between (dry runs, a backup).
-RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up"}
+RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
+              "ace-profiles": "dry_run"}
+# What a review needs before its run action has something to do (the Ace3 Profile Manager runs staged changes).
+PREPARE = {"ace-profiles": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
+                                           review.refresh_view())}
 
 
 class LookAndFeelTest(TuiTestCase):
@@ -28,13 +32,13 @@ class LookAndFeelTest(TuiTestCase):
         t = tempfile.TemporaryDirectory()
         self.addCleanup(t.cleanup)
         tmp = Path(t.name)
-        self.root = build_interface_tree(build_screenshot_tree(build_wow_tree(tmp / "World of Warcraft")))
+        self.root = build_ace_tree(build_interface_tree(build_screenshot_tree(build_wow_tree(tmp / "World of Warcraft"))))
         self.config_dir = tmp / "config"
         self.cfg = make_config(self.config_dir, self.root)
 
     def make_app(self):
         options = {"wtf-cleaner": {"wow_check": list, "locker_check": list},
-                   "interface-backup": {"wow_check": list}}
+                   "interface-backup": {"wow_check": list}, "ace-profiles": {"wow_check": list}}
         return WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list,
                            tool_options=options)
 
@@ -91,6 +95,7 @@ class LookAndFeelTest(TuiTestCase):
                 app = self.make_app()
                 async with app.run_test(size=SMALL) as pilot:
                     review = await self.open_review(app, pilot, tool)
+                    PREPARE.get(tool, lambda r: None)(review)
                     getattr(review, f"action_{RUN_ACTION[tool]}")()
                     await settle(app, pilot)
                     self.assertIsInstance(app.screen, ConfirmScreen)

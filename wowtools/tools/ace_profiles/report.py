@@ -123,7 +123,8 @@ def selection_text(profiles: int, chars: int, summary: Summary, warnings: int) -
 
 def apply_confirm(summary: Summary, states: list[DbState], *, dry_run: bool) -> tuple[str, str, list[str]]:
     title = "Dry run" if dry_run else "Apply the staged changes?"
-    lines = [f"{staged_text(summary)} in {plural(summary.files, 'file')}."]
+    flavors = sorted({flavor_name(s.file.flavor.folder) for s in states})
+    lines = [f"{staged_text(summary)} in {plural(summary.files, 'file')} ({', '.join(flavors)})."]
     if dry_run:
         lines.append("Every change is checked in memory; no file is written.")
     else:

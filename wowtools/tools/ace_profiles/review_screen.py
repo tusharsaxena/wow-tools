@@ -12,28 +12,36 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.screen import Screen
+from textual.screen import ModalScreen, Screen
 from textual.widget import Widget
 from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, ProgressBar, Static, Tree
 from textual.widgets.tree import TreeNode
 
+from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor
+from wowtools.core.journal import Journal, friendly_stamp
 from wowtools.core.process import wow_check_for
-from wowtools.tools.ace_profiles.editor import Marker, read_marker
-from wowtools.tools.ace_profiles.journal import latest_undoable
+from wowtools.tools.ace_profiles.editor import ApplyError, Marker, clear_marker, read_marker
+from wowtools.tools.ace_profiles.journal import latest_undoable, read_profile_journal
 from wowtools.tools.ace_profiles.model import DEFAULT
-from wowtools.tools.ace_profiles.ops import DbKey, OpResult, Staging, valid_name
+from wowtools.tools.ace_profiles.multi import MultiApplyResult, apply_flavors
+from wowtools.tools.ace_profiles.ops import DbKey, DbState, OpResult, Staging, valid_name
 from wowtools.tools.ace_profiles.popups import ActionsScreen, NameScreen, TargetScreen
-from wowtools.tools.ace_profiles.report import plural, selection_text, staged_text
+from wowtools.tools.ace_profiles.report import (DETAIL_COLUMNS, STAGE_TITLES, UNDO_COLUMNS, apply_confirm,
+                                                apply_detail_rows, apply_summary_rows, flavor_name, plural,
+                                                selection_text, staged_text, undo_confirm, undo_detail_rows,
+                                                undo_summary_rows)
+from wowtools.tools.ace_profiles.result_screen import ProfileResultScreen
 from wowtools.tools.ace_profiles.scanner import ScanResult, scan_flavors
-from wowtools.tools.ace_profiles.settings import (is_blacklisted, load_settings, parse_blacklist, resolve_journal_dir,
-                                                  resolve_root, save_settings)
+from wowtools.tools.ace_profiles.settings import (ProfileSettings, is_blacklisted, load_settings, parse_blacklist,
+                                                  resolve_journal_dir, resolve_root, save_settings)
 from wowtools.tools.ace_profiles.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
+from wowtools.tools.ace_profiles.undo import UndoError, UndoResult, recover, undo_run
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (BUSY_STYLE, REVIEW_HINT, ConfirmScreen, TwoPaneFocus, relabel_branch, theme_colour,
-                                tick_mark, two_pane_css)
+from wowtools.ui.dialogs import (BUSY_STYLE, REVIEW_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus,
+                                relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
 NAV_HINT = (REVIEW_HINT + "a all · n none · d delete · p assign · m more · w apply · y dry run · r rescan · "
@@ -60,6 +68,59 @@ class NotTicked:
         return 0
 
 
+class ProfileProgressScreen(ProgressScreen):
+    """Shown while an Apply, a dry run, an Undo or a recovery runs."""
+
+    ID_PREFIX = "ace"
+    STAGE_TITLES = STAGE_TITLES
+    SIMULATED_STAGE = "check"
+
+
+class ProfileRecoveryScreen(ModalScreen[str]):
+    """An earlier Apply did not finish: put the originals back from its zip, or leave the files as they are.
+    Dismisses with "put_back" or "leave" (None when closed with Esc: offered again at the next scan)."""
+
+    DEFAULT_CSS = """
+    ProfileRecoveryScreen { align: center middle; }
+    ProfileRecoveryScreen #recovery-box { width: 90; height: auto; border: thick $warning; background: $panel;
+                                          padding: 1 2; }
+    ProfileRecoveryScreen #recovery-title { color: $warning; text-style: bold; margin-bottom: 1; }
+    ProfileRecoveryScreen #recovery-buttons { height: auto; align-horizontal: right; margin-top: 1; }
+    ProfileRecoveryScreen Button { margin-left: 2; }
+    """
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "dismiss", "Close", show=False)]
+
+    def __init__(self, marker: Marker) -> None:
+        super().__init__()
+        self.marker = marker
+
+    def message(self) -> str:
+        marker = self.marker
+        return "\n".join([
+            (f"A change to {flavor_name(marker.flavor)} started {friendly_stamp(marker.started)} did not finish "
+             f"({plural(len(marker.files), 'file')})."),
+            f"The original files are in: {marker.zip}",
+            ("Put the originals back: each file the change wrote is restored from that zip; a file saved since "
+             "(by WoW) is left as it is."),
+            "Leave as is: the files stay as they are now; the zip and the WTF backup are kept.",
+        ])
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="recovery-box"):
+            yield Static(Text("An earlier change did not finish"), id="recovery-title")
+            yield Static(Text(self.message()))
+            with ButtonRow(id="recovery-buttons"):
+                yield action_button("Leave as is", "neutral", id="leave")
+                yield action_button("Put the originals back", "revert", id="put_back")
+
+    def on_mount(self) -> None:
+        self.query_one("#put_back", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        self.dismiss(event.button.id)
+
+
 class ProfileTree(Tree):
     """The profiles tree. ← jumps to the left panel (instead of scrolling sideways)."""
 
@@ -72,7 +133,13 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
     copied)."""
 
     TREE_SELECTOR = "#profiles"
-    DEFAULT_CSS = two_pane_css("ProfileReviewScreen", "#profiles")
+    # The left pane fits 80x24 (tests/test_look_and_feel.py): the two View boxes share a row, the search box and
+    # the staged line carry their own names instead of a section heading each.
+    DEFAULT_CSS = two_pane_css("ProfileReviewScreen", "#profiles") + """
+    ProfileReviewScreen #view { height: auto; }
+    ProfileReviewScreen #view Ka0sCheckbox { width: auto; margin-right: 2; }
+    ProfileReviewScreen #staged { margin-top: 1; }
+    """
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("space", "toggle", "Tick/untick", priority=True),
         Binding("a", "select_all", "All"),
@@ -129,6 +196,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self._checking = False  # a running-WoW check is in its worker
         self._rebuild_pending = False
         self._last_filter: Widget | None = None
+        self._stale = False  # an Apply or Undo changed the files: rescan when the review is shown again
 
     # --- layout ------------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -136,17 +204,16 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         with Horizontal(id="body"):
             with Vertical(id="filters"):
                 yield Label("View", classes="section")
-                yield Ka0sCheckbox("By addon", True, id="view-addon")
-                yield Ka0sCheckbox("By character", False, id="view-character")
+                with Horizontal(id="view"):
+                    yield Ka0sCheckbox("By addon", True, id="view-addon", compact=True)
+                    yield Ka0sCheckbox("By character", False, id="view-character", compact=True)
                 yield Label("Show", classes="section")
-                yield Ka0sCheckbox("Only addons with 2+ profiles", False, id="only-multi")
-                yield Ka0sCheckbox("Only unused profiles", False, id="only-unused")
-                yield Ka0sCheckbox("Leftover characters", True, id="show-leftovers")
-                yield Ka0sCheckbox("Blacklisted addons", True, id="show-blacklisted")
-                yield Label("Search", classes="section")
-                yield Input(placeholder="addon, profile or character", id="search")
-                yield Label("Staged", classes="section")
-                yield Static("Nothing staged", id="staged")
+                yield Ka0sCheckbox("Only addons with 2+ profiles", False, id="only-multi", compact=True)
+                yield Ka0sCheckbox("Only unused profiles", False, id="only-unused", compact=True)
+                yield Ka0sCheckbox("Leftover characters", True, id="show-leftovers", compact=True)
+                yield Ka0sCheckbox("Blacklisted addons", True, id="show-blacklisted", compact=True)
+                yield Input(placeholder="Search addon, profile or character", id="search", compact=True)
+                yield Static(self._staged_line("Nothing staged"), id="staged")
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Apply", "delete", id="btn-apply")
                     yield action_button("Dry run", "simulate", id="btn-dry-run")
@@ -185,7 +252,8 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         return True
 
     def on_screen_resume(self) -> None:
-        self.wow_folder_changed()
+        if not self.wow_folder_changed() and self._stale and self.idle and self.app.screen is self:
+            self._scan()
 
     # --- state ---------------------------------------------------------------------------------
     @property
@@ -224,6 +292,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
     def _scan(self) -> None:
         if not self.idle:
             return
+        self._stale = False
         self.settings = load_settings(self.tool_cfg)
         self._show_scan_progress(True)
         self._refresh_buttons()
@@ -292,11 +361,6 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self.query_one("#profiles", Tree).focus()
         if marker is not None:
             self.offer_recovery(marker)
-
-    def offer_recovery(self, marker: Marker) -> None:
-        """An Apply did not finish. Task 14 shows the recovery popup here."""
-        self.notify(f"An earlier change to {marker.flavor} did not finish. Its WTF backup and original files are "
-                    "kept.", title="Unfinished change", severity="warning", timeout=15)
 
     # --- tree ------------------------------------------------------------------------------------
     def _schedule_rebuild(self) -> None:
@@ -377,8 +441,12 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         profiles, chars = counts(self.ticked)
         self.summary_text = selection_text(profiles, chars, summary, len(self.scan.warnings))
         self.query_one("#summary", Static).update(Text(self.summary_text))
-        self.query_one("#staged", Static).update(Text(staged_text(summary)))
+        self.query_one("#staged", Static).update(self._staged_line(staged_text(summary)))
         self._refresh_buttons()
+
+    @staticmethod
+    def _staged_line(text: str) -> Text:
+        return Text.assemble(("Staged: ", "bold"), text)
 
     # --- selection -----------------------------------------------------------------------------------
     def _selected(self, kind: str) -> dict[DbKey, list[str]]:
@@ -717,18 +785,277 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
                                            f"{staged_text(summary)}. Nothing has been written; the files stay as "
                                            "they are."), done)
 
-    # --- runs (Task 14) -------------------------------------------------------------------------------
-    def _not_yet(self, what: str) -> None:
-        self.notify(f"{what} is not available yet.")
+    # --- runs: apply, dry run, undo ---------------------------------------------------------------------
+    def _progress_cb(self, screen: ProfileProgressScreen) -> Callable[..., None]:
+        def progress(flavor: Flavor, stage: str, current: int, total: int, detail: str) -> None:
+            def show() -> None:
+                if screen.is_attached:
+                    screen.set_flavor(flavor.display_name)
+                    screen.update_progress(stage, current, total, detail)
+            self.app.call_from_thread(show)
+        return progress
+
+    def _run_preflight(self, then: Callable[[list[str] | None], None]) -> None:
+        """Run the running-WoW check in a worker (it can take seconds), then call `then` with its answer on the UI
+        thread: process names, [] when none run, None when it could not run."""
+        self._checking = True
+        self._refresh_buttons()
+        self.query_one("#summary", Static).update(Text("Checking whether WoW is running…", style=BUSY_STYLE))
+        check = self.wow_check
+        self.run_worker(lambda: self._preflight_worker(check, then), thread=True, group="preflight")
+
+    def _preflight_worker(self, check: WowCheck, then: Callable[[list[str] | None], None]) -> None:
+        running = None
+        try:
+            running = check()
+        except Exception as exc:  # noqa: BLE001 - a failed check is "unknown"
+            log_exception("preflight", exc)
+        self.app.call_from_thread(self._preflight_done, running, then)
+
+    def _preflight_done(self, running: list[str] | None, then: Callable[[list[str] | None], None]) -> None:
+        self._checking = False
+        if not self.is_attached:
+            return
+        self._update_summary()
+        if self.app.screen is not self:
+            return  # the user left the screen while the check ran
+        then(running)
+
+    def _refused_while_running(self, running: list[str] | None, alerts: list[str]) -> bool:
+        """True (and say so) when WoW runs; adds an alert when the check could not run."""
+        if running:
+            log_event("ace.wow_running", action="preflight", running=running)
+            self.notify(f"WoW is running ({', '.join(running)}). Close it first: it would overwrite the changes.",
+                        title="WoW is running", severity="error", timeout=15)
+            return True
+        if running is None:
+            alerts.append("Could not check whether WoW is running; close it before you go on.")
+        return False
 
     def action_apply(self) -> None:
-        self._not_yet("Apply")
+        self._start(dry_run=False)
 
     def action_dry_run(self) -> None:
-        self._not_yet("Dry run")
+        self._start(dry_run=True)
+
+    def _start(self, dry_run: bool) -> None:
+        if not self._ready():
+            return
+        assert self.staging is not None
+        log_event("ui.selection", screen="ace_review", control="dry_run" if dry_run else "apply", value=True)
+        if not self.staging.summary().total:
+            self.notify("Nothing staged")
+            return
+        if dry_run:  # writes nothing: WoW running does not matter
+            self._show_apply_confirm(dry_run, [])
+            return
+        self._run_preflight(lambda running: self._after_apply_preflight(running))
+
+    def _after_apply_preflight(self, running: list[str] | None) -> None:
+        alerts: list[str] = []
+        if not self._refused_while_running(running, alerts):
+            self._show_apply_confirm(False, alerts)
+
+    def _show_apply_confirm(self, dry_run: bool, extra: list[str]) -> None:
+        if self.staging is None or not self.staging.summary().total:
+            self.notify("Nothing staged")
+            return
+        states = self.staging.changed()
+        title, body, alerts = apply_confirm(self.staging.summary(), states, dry_run=dry_run)
+        self.app.push_screen(ConfirmScreen(title, body, (*alerts, *extra), default_yes=dry_run),
+                             lambda ok: self._apply_confirmed(ok, dry_run))
+
+    def _apply_confirmed(self, ok: bool | None, dry_run: bool) -> None:
+        log_event("ui.selection", screen="confirm", control="apply_confirm", value=bool(ok), dry_run=dry_run)
+        if not ok or self.staging is None or self.cfg.wow_path is None:
+            return
+        self.settings = load_settings(self.tool_cfg)
+        root = resolve_root(self.settings, self.cfg.wow_path)
+        journal_dir = resolve_journal_dir(self.cfg.wow_path)
+        if root is None or journal_dir is None:
+            return
+        changed = self.staging.changed()
+        plan = [(flavor, [s for s in changed if s.file.flavor == flavor]) for flavor in self.flavors]
+        plan = [(flavor, states) for flavor, states in plan if states]
+        self.app.busy = True
+        self._refresh_buttons()
+        screen = ProfileProgressScreen(dry_run=dry_run)
+        self.app.push_screen(screen)
+        settings = self.settings
+        self.run_worker(lambda: self._apply_worker(plan, root, journal_dir, settings, dry_run, screen),
+                        thread=True, exclusive=True, group="run")
+
+    def _apply_worker(self, plan: list[tuple[Flavor, list[DbState]]], root: Path, journal_dir: Path,
+                      settings: ProfileSettings, dry_run: bool, screen: ProfileProgressScreen) -> None:
+        try:
+            with activity.running():
+                result = apply_flavors(plan, root=root, journal_dir=journal_dir,
+                                       keep_journals=settings.keep_journals, keep_snapshots=settings.keep_snapshots,
+                                       dry_run=dry_run, account=self.account,
+                                       wow_check=None if dry_run else self.wow_check,
+                                       progress=self._progress_cb(screen))
+        except ApplyError as exc:  # WowRunning included: refused before anything was written
+            log_exception("ace.apply", exc)
+            self.app.call_from_thread(self._run_failed, screen, str(exc), False)
+            return
+        except Exception as exc:  # noqa: BLE001 - shown and logged, never a crash
+            log_exception("ace.apply", exc)
+            self.app.call_from_thread(self._run_failed, screen, f"The run stopped unexpectedly: "
+                                      f"{type(exc).__name__}: {exc}", not dry_run)
+            return
+        self.app.call_from_thread(self._applied, screen, result)
+
+    def _close_progress(self, screen: ModalScreen) -> None:
+        self.app.busy = False
+        if self.app.screen is screen:
+            self.app.pop_screen()
+
+    def _run_failed(self, screen: ModalScreen, message: str, stale: bool) -> None:
+        self._close_progress(screen)
+        if stale:  # files may have changed: the scan no longer matches them
+            self._mark_stale()
+        self._refresh_buttons()
+        self.notify(message, severity="error", timeout=15)
+
+    def _mark_stale(self) -> None:
+        """The files changed under this scan: drop the staging and rescan when the review is shown again."""
+        self._stale = True
+        self.ticked.clear()
+        if self.staging is not None:
+            self.staging.discard()
+
+    def _applied(self, screen: ModalScreen, result: MultiApplyResult) -> None:
+        self._close_progress(screen)
+        if not result.dry_run:
+            self._mark_stale()
+        self._refresh_buttons()
+        if result.stopped is not None:
+            self.notify(f"{result.stopped.flavor.display_name}: {result.stopped.error}", title="Apply stopped",
+                        severity="error", timeout=20)
+        self.app.push_screen(ProfileResultScreen("Dry run" if result.dry_run else "Apply",
+                                                 apply_summary_rows(result), DETAIL_COLUMNS,
+                                                 apply_detail_rows(result), self.scope_label), self._after_result)
+
+    def _after_result(self, choice: str | None) -> None:
+        if choice in ("flavors", "tools", "quit"):
+            self.dismiss(choice)
+        elif self._stale:
+            self._scan()
+        else:
+            self.action_rescan()
 
     def action_undo(self) -> None:
-        self._not_yet("Undo")
+        if not self.idle or self.wow_folder_changed():
+            return
+        log_event("ui.selection", screen="ace_review", control="undo", value=True)
+        path = self.undoable
+        if path is None:
+            self.notify("Nothing to undo")
+            return
+        try:
+            journal = read_profile_journal(path)
+        except (OSError, ValueError) as exc:
+            self.notify(f"The journal could not be read: {exc}", severity="error")
+            return
+        self._run_preflight(lambda running: self._after_undo_preflight(path, journal, running))
+
+    def _after_undo_preflight(self, path: Path, journal: Journal, running: list[str] | None) -> None:
+        extra: list[str] = []
+        if self._refused_while_running(running, extra):
+            return
+        title, body, alerts = undo_confirm(journal)
+        self.app.push_screen(ConfirmScreen(title, body, (*alerts, *extra)),
+                             lambda ok: self._undo_confirmed(ok, path))
+
+    def _undo_confirmed(self, ok: bool | None, path: Path) -> None:
+        log_event("ui.selection", screen="confirm", control="undo_confirm", value=bool(ok))
+        wow_root = self.cfg.wow_path
+        if not ok or wow_root is None:
+            return
+        self.settings = load_settings(self.tool_cfg)
+        root = resolve_root(self.settings, wow_root)
+        if root is None:
+            return
+        self.app.busy = True
+        self._refresh_buttons()
+        screen = ProfileProgressScreen(dry_run=False, first_stage="undo")
+        self.app.push_screen(screen)
+        keep = self.settings.keep_snapshots
+        self.run_worker(lambda: self._undo_worker(path, wow_root, root, keep, screen), thread=True, exclusive=True,
+                        group="run")
+
+    def _undo_worker(self, path: Path, wow_root: Path, root: Path, keep_snapshots: int,
+                     screen: ProfileProgressScreen) -> None:
+        def progress(stage: str, current: int, total: int, detail: str) -> None:
+            self.app.call_from_thread(lambda: screen.update_progress(stage, current, total, detail)
+                                      if screen.is_attached else None)
+
+        try:
+            with activity.running():
+                result = undo_run(path, wow_root=wow_root, root=root, keep_snapshots=keep_snapshots,
+                                  wow_check=self.wow_check, progress=progress)
+        except UndoError as exc:  # WoW running, locked files, the backup failed: nothing was changed
+            log_exception("ace.undo", exc)
+            self.app.call_from_thread(self._run_failed, screen, str(exc), False)
+            return
+        except Exception as exc:  # noqa: BLE001 - e.g. an unreadable journal: shown, never a crash
+            log_exception("ace.undo", exc)
+            self.app.call_from_thread(self._run_failed, screen, f"Undo stopped unexpectedly: "
+                                      f"{type(exc).__name__}: {exc}", True)
+            return
+        self.app.call_from_thread(self._undone, screen, result)
+
+    def _undone(self, screen: ModalScreen, result: UndoResult) -> None:
+        self._close_progress(screen)
+        self._mark_stale()
+        self._refresh_buttons()
+        self.app.push_screen(ProfileResultScreen("Undo", undo_summary_rows(result), UNDO_COLUMNS,
+                                                 undo_detail_rows(result), self.scope_label), self._after_result)
+
+    # --- recovery ----------------------------------------------------------------------------------
+    def offer_recovery(self, marker: Marker) -> None:
+        """An Apply did not finish: offer to put the originals back."""
+        log_event("ace.recovery_offered", flavor=marker.flavor, files=len(marker.files), started=marker.started)
+        self.app.push_screen(ProfileRecoveryScreen(marker), lambda choice: self._recovery_chosen(marker, choice))
+
+    def _recovery_chosen(self, marker: Marker, choice: str | None) -> None:
+        root = resolve_root(load_settings(self.tool_cfg), self.cfg.wow_path)
+        if root is None or choice not in ("put_back", "leave"):
+            return  # closed without a choice: offered again at the next scan
+        if choice == "leave":
+            clear_marker(root)
+            log_event("ace.recovery_done", choice="leave")
+            self.marker = None
+            return
+        self.app.busy = True
+        self._refresh_buttons()
+        screen = ProfileProgressScreen(dry_run=False, first_stage="undo")
+        self.app.push_screen(screen)
+        self.run_worker(lambda: self._recover_worker(marker, root, screen), thread=True, exclusive=True,
+                        group="run")
+
+    def _recover_worker(self, marker: Marker, root: Path, screen: ProfileProgressScreen) -> None:
+        try:
+            with activity.running():
+                result = recover(marker, root=root)
+        except Exception as exc:  # noqa: BLE001 - shown and logged, never a crash
+            log_exception("ace.recover", exc)
+            self.app.call_from_thread(self._run_failed, screen, f"Putting the originals back stopped: "
+                                      f"{type(exc).__name__}: {exc}", True)
+            return
+        self.app.call_from_thread(self._recovered, screen, result)
+
+    def _recovered(self, screen: ModalScreen, result: UndoResult) -> None:
+        self._close_progress(screen)
+        self.marker = None
+        message = (f"Put back {plural(len(result.restored), 'file')}; left {plural(len(result.skipped), 'file')} "
+                   f"as they are")
+        if result.failed:
+            message += f"; {plural(len(result.failed), 'file')} could not be put back (see the log)"
+        self.notify(message + ".", title="Unfinished change", severity="error" if result.failed else "information",
+                    timeout=15)
+        self._stale = False
+        self._scan()
 
     # --- leaving -------------------------------------------------------------------------------
     def action_leave(self, choice: str) -> None:

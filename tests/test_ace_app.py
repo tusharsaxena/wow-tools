@@ -4,15 +4,20 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from textual.widgets import Input, Tree
+from textual.widgets import DataTable, Input, Tree
 
 from tests.fixtures import TuiTestCase, build_ace_tree, make_config, settle
+from wowtools.core.backup import BackupEntry, create_backup
 from wowtools.core.config import Config
 from wowtools.core.install import WowInstall
+from wowtools.tools.ace_profiles import editor
 from wowtools.tools.ace_profiles.app import ProfileSettingsScreen
 from wowtools.tools.ace_profiles.popups import ActionsScreen, NameScreen, TargetScreen
+from wowtools.tools.ace_profiles.result_screen import ProfileResultScreen
 from wowtools.tools.ace_profiles.review_screen import ProfileReviewScreen
+from wowtools.tools.ace_profiles.scanner import sha256_of
 from wowtools.tools.ace_profiles.settings import load_settings
+from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
 
@@ -318,3 +323,87 @@ class StagingTest(AceAppBase):
             review = await self.open_review(app, pilot)
             review.staging.keep_only_default([k for k in review.staging.states if k.sv_name == "ElvDB"])
             self.assertEqual(review.staging.summary().total, 0)
+
+
+class RunTest(AceAppBase):
+    async def stage(self, app, pilot):
+        review = await self.open_review(app, pilot)
+        key = next(k for k in review.staging.states if k.sv_name == "ElvDB")
+        review.staging.delete({key: ["Healer"]}, "Default")
+        review.refresh_view()
+        await settle(app, pilot)
+        return review, key.path
+
+    async def test_dry_run_changes_nothing_and_shows_result(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            _review, path = await self.stage(app, pilot)
+            before = path.read_bytes()
+            await pilot.press("y")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            app.screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ProfileResultScreen)
+            self.assertTrue(app.screen.sub_title.endswith("Dry run result"))
+            self.assertEqual(path.read_bytes(), before)
+
+    async def test_apply_then_undo(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review, path = await self.stage(app, pilot)
+            before = path.read_bytes()
+            await pilot.press("w")
+            await settle(app, pilot)
+            app.screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ProfileResultScreen)
+            self.assertNotEqual(path.read_bytes(), before)
+            rows = app.screen.query_one("#result-summary", DataTable).row_count
+            self.assertGreater(rows, 1)
+            await pilot.press("r")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertIsNotNone(review.undoable)
+            await pilot.press("z")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            app.screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ProfileResultScreen)
+            self.assertEqual(path.read_bytes(), before)
+
+    async def test_apply_refused_while_wow_runs(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review, path = await self.stage(app, pilot)
+            before = path.read_bytes()
+            self.running.append("Wow.exe")
+            await pilot.press("w")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(path.read_bytes(), before)
+
+    async def test_recovery_offered_and_put_back(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            path = next(k for k in review.staging.states if k.sv_name == "ElvDB").path
+            original = path.read_bytes()
+            root = self.root / "wow-tools" / "ace-profiles"
+            flavor = next(s for s in review.staging.states.values() if s.file.path == path).file.flavor
+            zip_path = create_backup([BackupEntry(path)], flavor.path,
+                                     root / "edited" / "edited-retail-all-20261004-120000.zip", {})
+            path.write_bytes(b"torn")
+            rel = path.relative_to(flavor.path).as_posix()
+            # recovery puts back only a file still at what the run wrote (the marker's `after`)
+            editor.write_marker(root, editor.Marker("_retail_", flavor.path, zip_path, {rel: sha256_of(original)},
+                                                    "2026-10-04T12:00:00+00:00", 1, "1.0.0",
+                                                    {rel: sha256_of(b"torn")}))
+            await pilot.press("r")
+            await settle(app, pilot)
+            self.assertEqual(type(app.screen).__name__, "ProfileRecoveryScreen")
+            app.screen.dismiss("put_back")
+            await settle(app, pilot)
+            self.assertEqual(path.read_bytes(), original)
+            self.assertIsNone(editor.read_marker(root))
