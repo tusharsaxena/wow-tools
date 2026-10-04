@@ -4,9 +4,9 @@ from __future__ import annotations
 import os
 import re
 import string
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from wowtools.core.paths import is_wsl
 

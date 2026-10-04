@@ -4,9 +4,9 @@ from __future__ import annotations
 import json
 import zipfile
 import zlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from wowtools.core.fsutil import remove_quietly, rename_no_replace
 

@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Iterable
 
 from wowtools.core.events import log_event
 from wowtools.core.install import ACCOUNT_WIDE, Account, Character, Flavor
@@ -204,7 +204,7 @@ def _report(progress: ScanProgress | None, current: int, total: int, label: str)
         return
     try:
         progress(current, total, label)
-    except Exception:  # noqa: BLE001 - progress is cosmetic
+    except Exception:  # noqa: BLE001, S110 - progress is cosmetic
         pass
 
 

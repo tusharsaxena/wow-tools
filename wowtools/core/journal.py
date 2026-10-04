@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import IO, Any, Callable, Iterable
+from typing import IO, Any
 
 from wowtools.core.fsutil import free_name
 from wowtools.core.paths import to_native, to_stored

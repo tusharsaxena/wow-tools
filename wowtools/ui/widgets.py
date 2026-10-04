@@ -1,6 +1,8 @@
 """Small shared widgets: a checkbox with ✔/✘ marks, a button row with ←/→ focus, arrow-key focus bindings."""
 from __future__ import annotations
 
+from typing import ClassVar
+
 from textual.actions import SkipAction
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
@@ -43,7 +45,7 @@ class FormScroll(VerticalScroll):
     """A scrolling form. ↑/↓ move focus (the focused field scrolls into view) instead of scrolling, so the keys
     keep working once the form is taller than the screen."""
 
-    BINDINGS = list(NAV_BINDINGS)
+    BINDINGS: ClassVar[list[Binding]] = list(NAV_BINDINGS)
 
 
 class Ka0sCheckbox(Checkbox):
@@ -69,7 +71,7 @@ class ButtonRow(Horizontal):
     DEFAULT_CSS = """
     ButtonRow { height: auto; }
     """
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding]] = [
         Binding("left", "move(-1)", "Previous button", show=False),
         Binding("right", "move(1)", "Next button", show=False),
         Binding("space", "press_focused", "Press", show=False),

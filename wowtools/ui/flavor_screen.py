@@ -1,7 +1,8 @@
 """Choose which WoW flavor (_retail_, _classic_era_, ...) to work on."""
 from __future__ import annotations
 
-from typing import Callable, Union
+from collections.abc import Callable
+from typing import ClassVar
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -32,7 +33,7 @@ def flavor_rows(rows: list[tuple[str, str, str]]) -> list[Text]:
             for name, folder, remark in rows]
 
 
-class FlavorScreen(Screen[Union[Flavor, str, None]]):
+class FlavorScreen(Screen[Flavor | str | None]):
     """Dismisses with a Flavor, with ALL_FLAVORS (only when include_all), or with None (Esc).
 
     flavors overrides install.flavors(); last is the folder to highlight ("" means "All flavors"), and None falls
@@ -45,7 +46,7 @@ class FlavorScreen(Screen[Union[Flavor, str, None]]):
     FlavorScreen OptionList > .option-list--option-highlighted {{ background: {LIST_CURSOR_BACKGROUND}; }}
     FlavorScreen OptionList:focus > .option-list--option-highlighted {{ background: {LIST_CURSOR_BACKGROUND}; }}
     """
-    BINDINGS = [Binding("escape", "cancel", "Tools"), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Tools"), *NAV_BINDINGS]
 
     def __init__(self, cfg: Config, install: WowInstall, *, include_all: bool = False, last: str | None = None,
                  flavors: list[Flavor] | None = None, note: Callable[[Flavor], str | None] | None = None,

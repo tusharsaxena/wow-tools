@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
 import re
+from collections.abc import Callable, Sequence
 from re import Match
 from typing import TYPE_CHECKING, Any, TypedDict
 

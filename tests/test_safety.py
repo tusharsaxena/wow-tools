@@ -12,8 +12,8 @@ from wowtools.core.backup import BackupError
 from wowtools.core.install import WowInstall
 from wowtools.tools.wtf_cleaner.cleaner import execute
 from wowtools.tools.wtf_cleaner.rules import Criteria, evaluate
-from wowtools.tools.wtf_cleaner.safety import (MARKER_NAME, Marker, clear_marker, read_marker, recovery_message,
-                                               prune_snapshots, restore_deleted, take_snapshot, write_marker)
+from wowtools.tools.wtf_cleaner.safety import (MARKER_NAME, Marker, clear_marker, prune_snapshots, read_marker,
+                                               recovery_message, restore_deleted, take_snapshot, write_marker)
 from wowtools.tools.wtf_cleaner.scanner import scan
 
 WHEN = datetime(2026, 9, 27, 14, 3, 11)

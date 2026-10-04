@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
-from typing import Iterable
 
 from wowtools.core.events import log_event
 from wowtools.core.install import Character

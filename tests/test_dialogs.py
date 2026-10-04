@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 from types import SimpleNamespace
+from typing import ClassVar
 
 from wowtools.ui.dialogs import ProgressScreen, theme_colour, tick_mark
 from wowtools.ui.theme import KA0S_THEME
@@ -28,7 +29,7 @@ class DialogHelpersTest(unittest.TestCase):
     def test_progress_stage_titles(self):
         class Demo(ProgressScreen):
             ID_PREFIX = "demo"
-            STAGE_TITLES = {"work": "Working", "undo": "Undoing"}
+            STAGE_TITLES: ClassVar[dict[str, str]] = {"work": "Working", "undo": "Undoing"}
             SIMULATED_STAGE = "work"
 
         self.assertEqual(Demo(first_stage="work").stage_title("work"), "Working")

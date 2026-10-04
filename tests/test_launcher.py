@@ -37,7 +37,7 @@ class LauncherStructureTest(unittest.TestCase):
         self.assertEqual(len(runs), 1, "Python must be started from exactly one line")
         self.assertEqual(runs[0], len(lines) - 1, "nothing may follow the line that starts Python")
         line = lines[runs[0]]
-        start, _, rest = line.partition("-m wowtools %*")
+        _start, _, rest = line.partition("-m wowtools %*")
         self.assertTrue(rest, "the arguments must be passed on")
         # The exit is on the same (already parsed) line, with the code read when it runs: %ERRORLEVEL% would be
         # expanded when the line is parsed, before Python ran.
@@ -66,7 +66,7 @@ class LauncherOnWindowsTest(unittest.TestCase):
     def run_launcher(self, *args: str) -> subprocess.CompletedProcess:
         env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
         return subprocess.run(["cmd.exe", "/d", "/c", str(self.dir / "wow-tools.cmd"), *args], cwd=self.dir,
-                              capture_output=True, text=True, timeout=120, env=env)
+                              capture_output=True, text=True, timeout=120, env=env, check=False)
 
     def test_exit_code_is_passed_on(self):
         for code in ("0", "1", "10"):

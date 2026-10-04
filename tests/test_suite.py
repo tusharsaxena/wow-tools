@@ -9,6 +9,7 @@ import unittest
 import unittest.mock
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from typing import ClassVar
 
 from tests.fixtures import build_wow_tree, make_config
 from wowtools import __version__
@@ -22,7 +23,7 @@ from wowtools.tools import TOOLS
 class FakeApp:
     """Stands in for WowToolsApp: records how run() built it."""
 
-    made = []
+    made: ClassVar[list[FakeApp]] = []
 
     def __init__(self, cfg, **kwargs):
         self.cfg = cfg
@@ -68,9 +69,8 @@ class ActivityTest(unittest.TestCase):
         self.assertTrue(activity.wait_idle(0))
 
     def test_running_ends_even_when_the_work_raises(self):
-        with self.assertRaises(RuntimeError):
-            with activity.running():
-                raise RuntimeError("boom")
+        with self.assertRaises(RuntimeError), activity.running():
+            raise RuntimeError("boom")
         self.assertTrue(activity.wait_idle(0))
 
 

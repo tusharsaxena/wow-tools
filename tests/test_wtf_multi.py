@@ -70,7 +70,7 @@ class MultiFlavorTest(unittest.TestCase):
         self.assertEqual(len(list(self.backup_dir.glob("backup/backup-retail-*.zip"))), 1)
         self.assertFalse((self.era_sv / "Gone.lua").exists())
         self.assertFalse((self.retail_sv / "Uninstalled.lua").exists())
-        self.assertEqual([(flavor.folder, o.path.name) for flavor, o in result.outcomes][0],
+        self.assertEqual(next((flavor.folder, o.path.name) for flavor, o in result.outcomes),
                          ("_classic_era_", "Gone.lua"))
 
     def test_error_stops_before_the_next_flavor(self):

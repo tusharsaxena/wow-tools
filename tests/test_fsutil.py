@@ -4,7 +4,6 @@ import errno
 import os
 import tempfile
 import unittest
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -46,9 +45,11 @@ class RenameNoReplaceTest(unittest.TestCase):
 
     @unittest.skipIf(os.name == "nt", "EXDEV comes from os.link on POSIX only")
     def test_cross_device_error_is_raised_unchanged(self):
-        with patch.object(fsutil.os, "link", side_effect=OSError(errno.EXDEV, "cross-device")):
-            with self.assertRaises(OSError) as ctx:
-                rename_no_replace(self.src, self.dst)
+        with (
+            patch.object(fsutil.os, "link", side_effect=OSError(errno.EXDEV, "cross-device")),
+            self.assertRaises(OSError) as ctx,
+        ):
+            rename_no_replace(self.src, self.dst)
         self.assertEqual(ctx.exception.errno, errno.EXDEV)
         self.assertTrue(self.src.exists())
 

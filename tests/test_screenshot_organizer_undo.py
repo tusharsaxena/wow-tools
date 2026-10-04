@@ -10,8 +10,7 @@ from pathlib import Path
 from tests.fixtures import build_screenshot_tree, build_wow_tree
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
-from wowtools.tools.screenshot_organizer.journal import latest_undoable, read_journal
-from wowtools.tools.screenshot_organizer.journal import JournalWriter, new_journal_path
+from wowtools.tools.screenshot_organizer.journal import JournalWriter, latest_undoable, new_journal_path, read_journal
 from wowtools.tools.screenshot_organizer.organizer import (COPY_REMOVED, FAILED, RESTORED, UNDO_SKIPPED, OrganizeError,
                                                            execute)
 from wowtools.tools.screenshot_organizer.planner import scan
@@ -150,9 +149,11 @@ class UndoTest(unittest.TestCase):
         def failing_add(writer, *a, **k):
             raise OSError(errno.ENOSPC, "No space left on device")
 
-        with unittest.mock.patch.object(journal_mod.JournalWriter, "add", failing_add):
-            with self.assertRaises(OrganizeError) as ctx:
-                self.organize(other)
+        with (
+            unittest.mock.patch.object(journal_mod.JournalWriter, "add", failing_add),
+            self.assertRaises(OrganizeError) as ctx,
+        ):
+            self.organize(other)
         result = ctx.exception.result
         self.assertIsNone(result.journal_path)
         self.assertEqual(latest_undoable(self.journals), first.journal_path)

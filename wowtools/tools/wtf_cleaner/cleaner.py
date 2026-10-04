@@ -11,10 +11,10 @@ import os
 import re
 import stat
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
 
 from wowtools import __version__
 from wowtools.core.backup import BackupEntry, BackupError, create_backup

@@ -5,8 +5,9 @@ leaving a tool comes back to the menu. Under the hood each tool keeps its own sc
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, ClassVar
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -38,7 +39,7 @@ class LockScreen(ModalScreen[bool]):
     LockScreen #lock-buttons { height: auto; align-horizontal: right; margin-top: 1; }
     LockScreen Button { margin-left: 2; }
     """
-    BINDINGS = [Binding("o", "answer(True)", "Override"), Binding("q,escape", "answer(False)", "Quit"),
+    BINDINGS: ClassVar[list[Binding]] = [Binding("o", "answer(True)", "Override"), Binding("q,escape", "answer(False)", "Quit"),
                 *NAV_BINDINGS]
 
     def __init__(self, holder: LockInfo, lock_path: Path) -> None:
@@ -94,7 +95,7 @@ class ToolMenuScreen(Screen[None]):
     ToolMenuScreen #tools:focus > .option-list--option-highlighted {{ background: {LIST_CURSOR_BACKGROUND}; }}
     ToolMenuScreen NavHint {{ padding: 0 2; }}
     """
-    BINDINGS = [Binding("q,escape", "app.quit", "Quit"), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("q,escape", "app.quit", "Quit"), *NAV_BINDINGS]
 
     def compose(self) -> ComposeResult:
         width = max(len(t.title) for t in TOOLS.values()) + 3  # names in one column, descriptions in the next
@@ -123,7 +124,7 @@ class ToolMenuScreen(Screen[None]):
 
 class WowToolsApp(Ka0sApp):
     SUB_TITLE = "Choose a tool"
-    BINDINGS = [Binding("s", "settings", "Settings")]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("s", "settings", "Settings")]
 
     def __init__(self, cfg: Config, *, config_dir: Path = CONFIG_DIR, check_updates: bool = True,
                  detect: Callable[[], list[Path]] = detect_installs, lock: InstanceLock | None = None,

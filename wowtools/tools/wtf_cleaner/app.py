@@ -2,9 +2,10 @@
 only) → review → confirm → result."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Union
+from typing import TYPE_CHECKING, ClassVar
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -39,7 +40,7 @@ class CleanerSettingsScreen(Screen[bool]):
     CleanerSettingsScreen .buttons { height: auto; margin-top: 1; }
     CleanerSettingsScreen Button { margin-right: 2; }
     """
-    BINDINGS = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
 
     def __init__(self, tool_cfg: Config, wow_path: Path | None, *, source: str) -> None:
         super().__init__()
@@ -172,7 +173,7 @@ class WtfCleanerFlow(ToolFlow):
                                           last=load_settings(self.tool_cfg).last_flavor_choice),
                              self._after_flavor)
 
-    def _after_flavor(self, choice: Union[Flavor, str, None]) -> None:
+    def _after_flavor(self, choice: Flavor | str | None) -> None:
         if choice is None:
             self.close()
             return
@@ -201,7 +202,7 @@ class WtfCleanerFlow(ToolFlow):
             self.tool_cfg.save_if_exists()
         self._review(flavor, account)
 
-    def _review(self, flavors: Union[Flavor, list[Flavor]], account: str | None) -> None:
+    def _review(self, flavors: Flavor | list[Flavor], account: str | None) -> None:
         self.app.push_screen(ReviewScreen(self.cfg, self.tool_cfg, flavors, account=account,
                                           wow_check=self._wow_check, locker_check=self._locker_check),
                              self._after_review)

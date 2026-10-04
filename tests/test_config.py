@@ -108,9 +108,8 @@ class ConfigTest(unittest.TestCase):
         cfg.save()
         before = self.path.read_bytes()
         cfg.set("general", "last_flavor", "_retail_")
-        with patch("wowtools.core.fsutil.os.replace", side_effect=OSError("disk full")):
-            with self.assertRaises(OSError):
-                cfg.save()
+        with patch("wowtools.core.fsutil.os.replace", side_effect=OSError("disk full")), self.assertRaises(OSError):
+            cfg.save()
         self.assertEqual(self.path.read_bytes(), before)
 
     def test_save_leaves_no_partial_on_success(self):

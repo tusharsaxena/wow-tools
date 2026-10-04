@@ -1,6 +1,8 @@
 """Ka0sApp: theme, branding, background update check and the `u` update flow for every tool."""
 from __future__ import annotations
 
+from typing import ClassVar
+
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical, VerticalScroll
@@ -27,7 +29,7 @@ class UpdateScreen(ModalScreen[bool]):
     UpdateScreen #update-buttons { height: auto; align-horizontal: right; }
     UpdateScreen Button { margin-left: 2; }
     """
-    BINDINGS = [Binding("escape", "later", "Later"), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "later", "Later"), *NAV_BINDINGS]
 
     def __init__(self, release: ReleaseInfo) -> None:
         super().__init__()
@@ -76,7 +78,7 @@ class Ka0sApp(App):
     """Base for every tool's TUI. Subclasses override after_mount(), not on_mount()."""
 
     TITLE = "Ka0s · WoW Tools"
-    BINDINGS = [Binding("u", "update", "Update", show=False)]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("u", "update", "Update", show=False)]
     release: reactive[ReleaseInfo | None] = reactive(None)
 
     def __init__(self, cfg: Config, *, check_updates: bool = True) -> None:
@@ -101,7 +103,7 @@ class Ka0sApp(App):
         still called). Worker errors arrive wrapped in WorkerFailed; the original is logged."""
         try:
             log_exception("ui", getattr(error, "error", None) or error)
-        except Exception:  # noqa: BLE001 - logging must never stop Textual's own handling
+        except Exception:  # noqa: BLE001, S110 - logging must never stop Textual's own handling
             pass
         super()._handle_exception(error)
 

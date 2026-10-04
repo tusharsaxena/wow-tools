@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from typing import ClassVar
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -60,7 +61,7 @@ class ShotResultScreen(Screen[str]):
     ShotResultScreen Button { margin-right: 2; }
     ShotResultScreen NavHint { padding: 0 2; margin-top: 0; }
     """
-    BINDINGS = [Binding("r", "choose('review')", "Rescan"), Binding("f", "choose('flavors')", "Flavors"),
+    BINDINGS: ClassVar[list[Binding]] = [Binding("r", "choose('review')", "Rescan"), Binding("f", "choose('flavors')", "Flavors"),
                 Binding("t", "choose('tools')", "Tools"), Binding("q", "choose('quit')", "Quit"),
                 Binding("escape", "choose('review')", "Back", show=False),
                 *NAV_BINDINGS]
@@ -118,7 +119,7 @@ class ShotResultScreen(Screen[str]):
 class ShotTree(Tree):
     """The plan tree. ← jumps to the left panel (instead of scrolling sideways)."""
 
-    BINDINGS = [Binding("left", "screen.focus_filters", "Filters", show=False)]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("left", "screen.focus_filters", "Filters", show=False)]
 
 
 class ShotReviewScreen(TwoPaneFocus, Screen[str]):
@@ -135,7 +136,7 @@ class ShotReviewScreen(TwoPaneFocus, Screen[str]):
     ShotReviewScreen #scan-label { color: $text-muted; margin-top: 1; }
     ShotReviewScreen #summary { height: auto; padding: 0 1; background: $surface; }
     """
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding]] = [
         Binding("space", "toggle", "Tick/untick", priority=True),
         Binding("a", "select_all", "All"),
         Binding("n", "select_none", "None"),

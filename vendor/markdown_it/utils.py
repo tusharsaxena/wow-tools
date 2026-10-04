@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, MutableMapping
 from collections.abc import MutableMapping as MutableMappingABC
+from collections.abc import Callable, Iterable, MutableMapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 

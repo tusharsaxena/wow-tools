@@ -7,9 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from textual.widgets import Button
 
-from tests.fixtures import TuiTestCase, settle, build_wow_tree, make_config
+from tests.fixtures import TuiTestCase, build_wow_tree, make_config, settle
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events, get_event_log
 from wowtools.core.lock import InstanceLock, LockInfo
@@ -36,9 +35,9 @@ class SuiteAppTest(TuiTestCase):
         self.addCleanup(get_event_log().set_context, tool="suite")
 
     def make_app(self, conflict=None):
-        return WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=lambda: [],
+        return WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list,
                            lock=self.lock, conflict=conflict,
-                           tool_options={"wtf-cleaner": {"wow_check": lambda: [], "locker_check": lambda: []}})
+                           tool_options={"wtf-cleaner": {"wow_check": list, "locker_check": list}})
 
     async def open_cleaner(self, app, pilot):
         await pilot.pause()

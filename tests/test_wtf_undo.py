@@ -13,7 +13,7 @@ from wowtools.core.install import WowInstall
 from wowtools.tools.wtf_cleaner.journal import clean_journal_dir, latest_undoable, read_journal
 from wowtools.tools.wtf_cleaner.multi import execute_flavors, scan_flavors
 from wowtools.tools.wtf_cleaner.rules import Criteria, evaluate
-from wowtools.tools.wtf_cleaner.undo import FAILED, RESTORED, SKIPPED, undo_clean
+from wowtools.tools.wtf_cleaner.undo import undo_clean
 
 
 def contents(folder: Path) -> dict:

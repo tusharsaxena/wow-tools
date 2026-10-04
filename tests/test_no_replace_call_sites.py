@@ -4,7 +4,6 @@ own in test_fsutil; these tests pin each call site to it, so a later change back
 from __future__ import annotations
 
 import inspect
-import os
 import tempfile
 import unittest
 from datetime import datetime

@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import os
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Callable
 
 from wowtools.core.events import log_event
 from wowtools.core.fsutil import remove_quietly, safe_progress
@@ -119,7 +119,7 @@ def _extract(zf: zipfile.ZipFile, info: zipfile.ZipInfo, dest: Path, size: int, 
     """Write one entry to dest (exclusive create; its folder exists). Returns None on success, BACK if a file
     appeared at dest, or why it failed (a partial file this call created is removed)."""
     try:
-        out = open(dest, "xb")
+        out = open(dest, "xb")  # noqa: SIM115 - closed by the `with` below
     except FileExistsError:
         return BACK
     written = 0

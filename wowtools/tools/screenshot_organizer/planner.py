@@ -4,10 +4,10 @@ WSL drvfs)."""
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Callable
 
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor

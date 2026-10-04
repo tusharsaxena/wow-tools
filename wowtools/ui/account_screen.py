@@ -1,7 +1,7 @@
 """Choose which WoW account of a flavor to work on, or all of them."""
 from __future__ import annotations
 
-from typing import Optional
+from typing import ClassVar
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -19,7 +19,7 @@ from wowtools.ui.widgets import NAV_BINDINGS, NavHint
 ALL_ID = "__all__"
 
 
-class AccountScreen(Screen[Optional[str]]):
+class AccountScreen(Screen[str | None]):
     """Dismisses with the account name, "" for all accounts, or None to go back."""
 
     DEFAULT_CSS = """
@@ -27,7 +27,7 @@ class AccountScreen(Screen[Optional[str]]):
     AccountScreen NavHint { padding: 0 2; }
     AccountScreen OptionList { margin: 1 2; height: auto; max-height: 20; border: tall $primary; }
     """
-    BINDINGS = [Binding("escape", "back", "Back"), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "back", "Back"), *NAV_BINDINGS]
 
     def __init__(self, cfg: Config, flavor: Flavor, last: str | None = None) -> None:
         super().__init__()

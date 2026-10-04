@@ -5,9 +5,9 @@ import threading
 from pathlib import Path
 from unittest.mock import patch
 
-from textual.widgets import Button, DataTable, Input, OptionList, Static, Tree
+from textual.widgets import Button, DataTable, Input, OptionList, Tree
 
-from tests.fixtures import TuiTestCase, settle, build_screenshot_tree, build_wow_tree, make_config
+from tests.fixtures import TuiTestCase, build_screenshot_tree, build_wow_tree, make_config, settle
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
@@ -43,7 +43,7 @@ class ShotsAppTest(TuiTestCase):
         tool_cfg.save()
 
     def make_app(self):
-        return WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=lambda: [])
+        return WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list)
 
     async def open_tool(self, app, pilot):
         await pilot.pause()

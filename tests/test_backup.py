@@ -52,9 +52,8 @@ class BackupTest(unittest.TestCase):
         self.assertFalse(self.dest.exists())
 
     def test_verification_failure_leaves_nothing(self):
-        with patch.object(backup, "verify_backup", side_effect=BackupError("boom")):
-            with self.assertRaises(BackupError):
-                create_backup(self.entries, self.flavor_dir, self.dest, {})
+        with patch.object(backup, "verify_backup", side_effect=BackupError("boom")), self.assertRaises(BackupError):
+            create_backup(self.entries, self.flavor_dir, self.dest, {})
         self.assertFalse(self.dest.exists())
         self.assertFalse(self.dest.with_name("b.zip.partial").exists())
 
@@ -88,9 +87,11 @@ class BackupTest(unittest.TestCase):
 
     def test_known_size_and_mtime_skip_the_stat(self):
         entry = BackupEntry(self.sv / "Uninstalled.lua", (), size=12345, mtime=1.0)
-        with patch.object(Path, "stat", side_effect=AssertionError("stat called")):
-            with self.assertRaises(BackupError):  # zip size differs from the given size: verify catches it
-                create_backup([entry], self.flavor_dir, self.dest, {})
+        with (
+            patch.object(Path, "stat", side_effect=AssertionError("stat called")),
+            self.assertRaises(BackupError),  # zip size differs from the given size: verify catches it
+        ):
+            create_backup([entry], self.flavor_dir, self.dest, {})
 
     def test_dotdot_path_is_resolved_and_rejected(self):
         sneaky = self.flavor_dir / "WTF" / ".." / ".." / "elsewhere.lua"

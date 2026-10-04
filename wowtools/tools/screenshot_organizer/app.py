@@ -2,7 +2,7 @@
 confirm → result."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, ClassVar
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -36,7 +36,7 @@ class ScreenshotSettingsScreen(Screen[bool]):
     ScreenshotSettingsScreen .buttons { height: auto; margin-top: 1; }
     ScreenshotSettingsScreen Button { margin-right: 2; }
     """
-    BINDINGS = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
 
     def __init__(self, tool_cfg: Config, install: WowInstall | None, *, source: str) -> None:
         super().__init__()
@@ -175,7 +175,7 @@ class ScreenshotsFlow(ToolFlow):
         self.app.notify(f"No Screenshots folders found in {to_stored(install.root)}.", severity="warning")
         self.close()
 
-    def _after_flavor(self, choice: Union[Flavor, str, None]) -> None:
+    def _after_flavor(self, choice: Flavor | str | None) -> None:
         if choice is None:
             self.close()
             return

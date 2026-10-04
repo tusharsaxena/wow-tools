@@ -159,7 +159,7 @@ class CleanJournalTest(unittest.TestCase):
         self.assertEqual(latest_undoable(self.journals), first.journal_path)
 
     def test_a_partly_rolled_back_clean_offers_only_what_stayed_deleted(self):
-        first, second = self._second_clean_rolled_back(self.install.flavors())
+        _first, second = self._second_clean_rolled_back(self.install.flavors())
         self.assertEqual(latest_undoable(self.journals), second.journal_path)
         entries = read_journal(second.journal_path).entries
         self.assertEqual([e["rel"] for e in entries], ["WTF/Account/ACCT1/SavedVariables/Gone.lua"])

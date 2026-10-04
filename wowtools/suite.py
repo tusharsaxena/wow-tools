@@ -8,8 +8,8 @@ from __future__ import annotations
 import platform
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from wowtools import __version__
 from wowtools.core import activity

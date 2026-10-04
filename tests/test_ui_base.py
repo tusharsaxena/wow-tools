@@ -5,14 +5,14 @@ import contextlib
 import tempfile
 import threading
 import time
-import unittest
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import patch
 
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.worker import WorkerCancelled
 from textual.widgets import Input, Label, OptionList, Static
+from textual.worker import WorkerCancelled, WorkerFailed
 
 from tests.fixtures import TuiTestCase, build_wow_tree
 from wowtools import __version__
@@ -53,7 +53,7 @@ class UiTestCase(TuiTestCase):
 
 class SuiteAppBaseTest(UiTestCase):
     def make_app(self):
-        return WowToolsApp(self.cfg, config_dir=self.tmp, check_updates=False, detect=lambda: [])
+        return WowToolsApp(self.cfg, config_dir=self.tmp, check_updates=False, detect=list)
 
     async def test_theme_branding_and_menu_first(self):
         app = self.make_app()
@@ -158,7 +158,7 @@ class BackgroundUpdateCheckTest(UiTestCase):
                             cfg.latest_seen_version))
             real_save(cfg)
 
-        app = WowToolsApp(self.cfg, config_dir=self.tmp, check_updates=True, detect=lambda: [])
+        app = WowToolsApp(self.cfg, config_dir=self.tmp, check_updates=True, detect=list)
         with patch("wowtools.core.updater.fetch_latest", return_value=ReleaseInfo.from_version("9.9.9")), \
                 patch.object(Config, "save", save):
             async with app.run_test(size=(120, 40)) as pilot:
@@ -171,7 +171,7 @@ class BackgroundUpdateCheckTest(UiTestCase):
 
 class QuitWhileBusyTest(UiTestCase):
     async def test_ctrl_q_is_refused_while_busy(self):
-        app = WowToolsApp(self.cfg, config_dir=self.tmp, check_updates=False, detect=lambda: [])
+        app = WowToolsApp(self.cfg, config_dir=self.tmp, check_updates=False, detect=list)
         async with app.run_test(size=(120, 40)) as pilot:
             await pilot.pause()
             app.busy = True
@@ -187,7 +187,8 @@ class QuitWhileBusyTest(UiTestCase):
 
 
 class Boom(Screen):
-    BINDINGS = [Binding("x", "boom", "Boom"), Binding("w", "boom_in_worker", "Boom in a worker")]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("x", "boom", "Boom"),
+                                         Binding("w", "boom_in_worker", "Boom in a worker")]
 
     def compose(self):
         yield Label("boom")
@@ -205,12 +206,11 @@ class Boom(Screen):
 class CrashLoggingTest(UiTestCase):
     async def test_unhandled_ui_exception_is_logged(self):
         app = Host(self.cfg, Boom())
-        with capture_events() as records:
-            with self.assertRaises(RuntimeError):
-                async with app.run_test(size=(80, 24)) as pilot:
-                    await pilot.pause()
-                    await pilot.press("x")
-                    await pilot.pause()
+        with capture_events() as records, self.assertRaises(RuntimeError):
+            async with app.run_test(size=(80, 24)) as pilot:
+                await pilot.pause()
+                await pilot.press("x")
+                await pilot.pause()
         errors = [r["data"] for r in records if r["event"] == "error"]
         self.assertEqual([(e["where"], e["type"], e["message"]) for e in errors], [("ui", "RuntimeError", "boom")])
         self.assertIn("action_boom", errors[0]["traceback"])
@@ -218,13 +218,12 @@ class CrashLoggingTest(UiTestCase):
 
     async def test_worker_exception_is_logged_unwrapped(self):
         app = Host(self.cfg, Boom())
-        with capture_events() as records:
-            with self.assertRaises(Exception):
-                async with app.run_test(size=(80, 24)) as pilot:
-                    await pilot.pause()
-                    await pilot.press("w")
-                    await app.workers.wait_for_complete()
-                    await pilot.pause()
+        with capture_events() as records, self.assertRaises(WorkerFailed):
+            async with app.run_test(size=(80, 24)) as pilot:
+                await pilot.pause()
+                await pilot.press("w")
+                await app.workers.wait_for_complete()
+                await pilot.pause()
         errors = [r["data"] for r in records if r["event"] == "error"]
         self.assertEqual([(e["where"], e["type"], e["message"]) for e in errors],
                          [("ui", "RuntimeError", "worker boom")])
@@ -232,7 +231,7 @@ class CrashLoggingTest(UiTestCase):
 
 class SetupScreenTest(UiTestCase):
     async def test_rejects_invalid_folder_then_saves(self):
-        screen = SetupScreen(self.cfg, first_run=True, detect=lambda: [])
+        screen = SetupScreen(self.cfg, first_run=True, detect=list)
         app = Host(self.cfg, screen)
         with capture_events() as records:
             async with app.run_test(size=(120, 50)) as pilot:

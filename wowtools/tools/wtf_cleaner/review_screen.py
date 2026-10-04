@@ -3,8 +3,9 @@ progress screen and a result screen)."""
 from __future__ import annotations
 
 import time
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Callable, Sequence, Union
+from typing import ClassVar
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -96,7 +97,7 @@ class RecoveryScreen(ModalScreen[str]):
 class ProposalTree(Tree):
     """The proposal tree. ← jumps to the filters panel (instead of scrolling sideways)."""
 
-    BINDINGS = [Binding("left", "screen.focus_filters", "Filters", show=False)]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("left", "screen.focus_filters", "Filters", show=False)]
 
 
 class ReviewScreen(TwoPaneFocus, Screen[str]):
@@ -114,7 +115,7 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
     ReviewScreen #scan-label { color: $text-muted; margin-top: 1; }
     ReviewScreen #summary { height: auto; padding: 0 1; background: $surface; }
     """
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding]] = [
         Binding("space", "toggle", "Tick/untick", priority=True),
         Binding("a", "select_all", "All"),
         Binding("n", "select_none", "None"),
@@ -134,7 +135,7 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         *NAV_BINDINGS,
     ]
 
-    def __init__(self, cfg: Config, tool_cfg: Config, flavors: Union[Flavor, Sequence[Flavor]], *,
+    def __init__(self, cfg: Config, tool_cfg: Config, flavors: Flavor | Sequence[Flavor], *,
                  account: str | None = None, wow_check: Callable[[], list[str] | None] | None = None,
                  locker_check: Callable[[], list[str] | None] | None = None) -> None:
         """flavors is one Flavor or several (All flavors: one tree node per flavor, every account in scope).
@@ -399,8 +400,8 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         if kind == "item":
             item = data[1]
             return Text.assemble(mark, (item.addon, "bold"), "  ", self._reasons(item.reasons),
-                                 (f"  {len(item.files)} files · {format_size(item.total_size)} · "
-                                  f"{age_days(item.newest_mtime, now)}d", "dim"))
+                                 ((f"  {len(item.files)} files · {format_size(item.total_size)} · "
+                                   f"{age_days(item.newest_mtime, now)}d"), "dim"))
         items, name = data[1], data[2]
         if not items and data is not self.query_one("#proposal", Tree).root.data:
             return Text.assemble("  ", (name, ACCENT), ("  nothing to clean", "dim"))  # an account or flavor
@@ -639,10 +640,10 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
                          f"(the newest {self.settings.keep_backups} of {'each' if self.multi else 'this'} "
                          f"flavor are kept)")
         if dry_run:
-            lines.append((f"DRY RUN: a dryrun-... zip of the files is written (the newest "
+            lines.append(f"DRY RUN: a dryrun-... zip of the files is written (the newest "
                           f"{self.settings.keep_backups} of {'each' if self.multi else 'this'} flavor are kept), "
                           "nothing is deleted." if backup
-                          else "DRY RUN: nothing will be written or deleted."))
+                          else "DRY RUN: nothing will be written or deleted.")
         else:
             lines.append("A run journal is written, so Undo last clean (z) can put the files back.")
         if running:
