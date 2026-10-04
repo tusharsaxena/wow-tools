@@ -10,7 +10,7 @@ task; push after the round. Never merge without the user's go-ahead.
 | F2 | one control per row; expand/collapse all on every tree | done | 7376239 | `TreeKeys` mixin (base of `TwoPaneFocus`) + `TREE_BINDINGS`/`TREE_HINT` in `ui/dialogs.py`; x/c on every review tree and the restore screen; WTF Clean on `w`; Ace3 discard on Backspace; Ace3 View boxes one per row; look-and-feel tests for one-control-per-row and expand/collapse; guides' key tables |
 | F3 | Ace3 blacklist pairs + tree screen | done | 35ec7d6 | `parse/format_blacklist`, `is_blacklisted(pairs, flavor, addon)`, `toggle_pair`, `unique_pairs` (`"*"` = legacy bare name); `Staging.locked(flavor, addon)`; `BlacklistScreen` (two panes, scan worker, flavor → addon, "(not found)", a/n/x/c); settings "Edit blacklist…" + summary; review `b` per flavor, `action_edit_blacklist` saves at once; events regenerated |
 | F4 | Ace3 guidance: pending changes, action bar, guidance line | done | 4a1959c | `report.guidance`/`node_hint`/`pending_text` (was `staged_text`), `NO_PENDING`, `STEPS`; `#pending` line; tree pane `#tree-pane` = tree + `#guide` + `#tree-actions` (`WrapButtonRow` in `ui/widgets.py`, 8 compact buttons, `TREE_ACTIONS`); guide updates on cursor/tick/pending; 80x24 tree-pane test in look-and-feel; guide "How it works", action bar, guidance line, blacklist screen; events regenerated |
-| F5 | docs + final check | todo | | |
+| F5 | docs + final check | done | 9c99d5c | README (Unreleased row, `x`/`c` key row), `docs/architecture.md` (blacklist pairs, setup/settings screens, `#pending`, tree pane guide + action bar, `BlacklistScreen`, `WrapButtonRow`), `CLAUDE.md` (global retention, one look and feel); guides already current; `docs/events.md` unchanged; run_tests 1010 OK (2 skipped), serial unittest 1010 OK (2 skipped), `-k ace` 437 OK, ruff clean |
 | R | review, fixes, push | todo | | |
 
 ## Decisions taken during the build
@@ -60,3 +60,4 @@ task; push after the round. Never merge without the user's go-ahead.
 - Task F4: `tests/test_docs.py` now requires "## How it works", "pending change", "guidance line", "action bar",
   "Blacklist…" and "blacklist screen" in the Ace3 guide, and no "staged" in it. The guide and README updates were
   done here (the plan's F4 file list), leaving F5 the final check.
+- Task F5: the four guides needed no change (F1, F2 and F4 had already updated them); the `ace.staged` event keeps its name (F4 decision), its description already says "pending change".
