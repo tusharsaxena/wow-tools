@@ -19,11 +19,8 @@ STAGE_TITLES = {
     "safety": "Safety backup of the current folders", "safety_verify": "Verifying the safety backup",
     "extract": "Unpacking the backup", "swap": "Swapping folders", "cleanup": "Deleting the replaced copy",
 }
-SUMMARY_COLUMNS = ("Flavor", "Interface", "WTF", "Links", "Backups", "Newest backup")
 BACKUP_RESULT_COLUMNS = ("Flavor", "Outcome", "Zip", "Files", "Size", "Zip size", "Old backups removed")
-LIST_COLUMNS = ("Date", "Flavor", "Kind", "Parts", "Size")
 RESTORE_RESULT_COLUMNS = ("Part", "Outcome", "Details")
-NOTICE_ERRORS = 3  # scan warnings shown per part in the summary's notices
 _BACKUP_KINDS = {"created": "Backed up", "skipped": "Skipped", "failed": "Failed"}
 _PART_KINDS = {"restored": "Restored", "replaced_left": "Restored (old copy left)", "rolled_back": "Left as it was",
                "failed": "Failed"}
@@ -46,40 +43,48 @@ def human_size(n: int | None) -> str:
     return f"{value:.1f} {unit}"
 
 
-def _part_cell(part: PartScan) -> str:
+def _files_and_size(files: int, size: int | None) -> str:
+    return plural(files, "file") + ("" if size is None else f" · {human_size(size)}")
+
+
+def part_text(part: PartScan) -> str:
+    """A part's line in the review tree: its files and size, "missing" or "link, skipped"."""
     if not part.exists:
-        return "link (skipped)" if part.linked else "—"
-    size = part.size
-    return plural(len(part.files), "file") + ("" if size is None else f", {human_size(size)}")
+        return "link, skipped" if part.linked else "missing"
+    return _files_and_size(len(part.files), part.size)
 
 
-def summary_rows(scans: list[FlavorScan], backups: dict[str, list[BackupInfo]]) -> list[tuple[str, ...]]:
-    """One row per flavor (SUMMARY_COLUMNS). `backups` maps a flavor's short name to its zips, newest first."""
-    rows = []
-    for scan in scans:
-        mine = [b for b in backups.get(scan.flavor.short_name, []) if not b.is_safety]
-        rows.append((scan.flavor.display_name, _part_cell(scan.parts["Interface"]), _part_cell(scan.parts["WTF"]),
-                     str(scan.link_count) if scan.link_count else "—", str(len(mine)),
-                     mine[0].when if mine else "none yet"))
-    return rows
+def flavor_text(scan: FlavorScan, backups: list[BackupInfo]) -> str:
+    """A flavor's line in the review tree: what a backup would hold (or why there is nothing) and its backups."""
+    held = _files_and_size(scan.file_count, scan.size) if scan.has_data else f"nothing to back up: {skip_reason(scan)}"
+    return f"{held} · {picker_note(backups)}"
 
 
-def notices(scans: list[FlavorScan]) -> list[str]:
-    lines = []
-    for scan in scans:
-        name = scan.flavor.display_name
-        for path in scan.leftovers:
-            lines.append(f"{name}: {to_stored(path)} is left from an interrupted restore. Restore is blocked for "
-                         "this flavor until you move or delete it (see the guide).")
-        for part in scan.parts.values():
-            lines += [f"{name}: {error}" for error in part.errors[:NOTICE_ERRORS]]
-            if len(part.errors) > NOTICE_ERRORS:
-                lines.append(f"{name}: {len(part.errors) - NOTICE_ERRORS} more {part.name} warnings (the log "
-                             f"lists the first {SAMPLE})")
-        if scan.link_count:
-            lines.append(f"{name}: {plural(scan.link_count, 'link')} (e.g. addon folders linked to a repo) not "
-                         "backed up; a restore keeps them.")
-    return lines
+def leftover_text(scan: FlavorScan) -> str:
+    """The notice for folders an interrupted restore left (they block a restore of the flavor)."""
+    return (f"Left from an interrupted restore: {', '.join(p.name for p in scan.leftovers)}. Restore is blocked for "
+            "this flavor until you move or delete it (see the guide).")
+
+
+def warnings_text(scan: FlavorScan) -> str:
+    """The scan-warnings node of a flavor: how many places were skipped."""
+    count = sum(len(p.errors) for p in scan.parts.values())
+    return f"Scan warnings ({count}): skipped, not backed up (the log lists up to {SAMPLE} per folder)"
+
+
+def held_text(scans: list[FlavorScan]) -> str:
+    """Files and size (when known) a backup of these flavors would hold."""
+    chosen = [s for s in scans if s.has_data]
+    return _files_and_size(sum(s.file_count for s in chosen), _known_total([s.size for s in chosen]))
+
+
+def selection_text(scans: list[FlavorScan]) -> str:
+    """The review screen's bottom line for the ticked flavors."""
+    text = f"Selected: {plural(len(scans), 'flavor')} · {held_text(scans)}"
+    links = sum(s.link_count for s in scans if s.has_data)
+    if links:
+        text += f" · {plural(links, 'link')} not backed up"
+    return text
 
 
 def picker_note(backups: list[BackupInfo]) -> str:
@@ -143,18 +148,14 @@ def parts_cell(parts: tuple[str, ...] | None) -> str:
     return ", ".join(parts) or "none"
 
 
-PARTS_PENDING = "…"  # the Parts cell until the list's worker has read that zip's manifest
+PARTS_PENDING = "…"  # a backup's parts until a worker has read its manifest
 
 
-def list_rows(infos: list[BackupInfo], names: dict[str, str] | None = None,
-              parts: dict[Path, tuple[str, ...] | None] | None = None) -> list[tuple[str, ...]]:
-    """LIST_COLUMNS rows. `names` maps a flavor's short name to its display name (the short name is the fallback
-    for a flavor this install does not have); `parts` maps a zip's path to its parts (read_parts), and a zip not
-    in it shows PARTS_PENDING."""
-    names = names or {}
-    parts = parts or {}
-    return [(b.when, names.get(b.flavor_short, b.flavor_short), "safety (pre-restore)" if b.is_safety else "backup",
-             parts_cell(parts[b.path]) if b.path in parts else PARTS_PENDING, human_size(b.size)) for b in infos]
+def backup_text(info: BackupInfo, parts: tuple[str, ...] | None | str = PARTS_PENDING) -> str:
+    """A backup's line in the review tree: date, kind, parts (PARTS_PENDING until read) and size."""
+    kind = "safety (pre-restore)" if info.is_safety else "backup"
+    cell = parts if isinstance(parts, str) else parts_cell(parts)
+    return f"{info.when} · {kind} · {cell} · {human_size(info.size)}"
 
 
 def friendly_created(created: str) -> str:

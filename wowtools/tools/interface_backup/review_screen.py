@@ -1,6 +1,6 @@
-"""The summary of the chosen flavors (what Interface and WTF hold, existing backups) with Back up, Restore and
-Undo, plus the progress and result screens of a backup. Restore and Undo run from here too (their screens are in
-restore_screen.py)."""
+"""Review the chosen flavors as a tree (what Interface and WTF hold, links, warnings, each flavor's backups), tick
+flavors to back up, highlight a backup to restore, or undo the last restore; plus the progress and result screens
+of a backup. The restore screens are in restore_screen.py."""
 from __future__ import annotations
 
 import shutil
@@ -12,9 +12,12 @@ from typing import Any, ClassVar
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, DataTable, Footer, Header, ProgressBar, Static
+from textual.widget import Widget
+from textual.widgets import Button, DataTable, Footer, Header, Label, ProgressBar, Static, Tree
+from textual.widgets.tree import TreeNode
+from textual.worker import get_current_worker
 
 from wowtools.core import activity
 from wowtools.core.config import Config
@@ -24,23 +27,27 @@ from wowtools.core.journal import Journal
 from wowtools.core.paths import to_stored
 from wowtools.core.process import wow_check_for
 from wowtools.tools.interface_backup.backup import BackupOutcome, back_up_all
-from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups
+from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups, read_parts
 from wowtools.tools.interface_backup.journal import latest_undoable, read_restore_journal
-from wowtools.tools.interface_backup.report import (BACKUP_RESULT_COLUMNS, STAGE_TITLES, SUMMARY_COLUMNS,
-                                                    backup_confirm, backup_result_rows, notices, plural,
-                                                    restore_confirm, summary_rows, undo_confirm)
+from wowtools.tools.interface_backup.report import (BACKUP_RESULT_COLUMNS, PARTS_PENDING, STAGE_TITLES,
+                                                    backup_confirm, backup_result_rows, backup_text, flavor_text,
+                                                    held_text, leftover_text, part_text, plural, restore_confirm,
+                                                    selection_text, undo_confirm, warnings_text)
 from wowtools.tools.interface_backup.restore import RestoreError, RestorePlan, RestoreResult, RestoreStopped, restore
-from wowtools.tools.interface_backup.restore_screen import BackupListScreen, RestoreResultScreen, RestoreScreen
-from wowtools.tools.interface_backup.scanner import CHEAP_STATS, FlavorScan, scan_flavors
+from wowtools.tools.interface_backup.restore_screen import RestoreResultScreen, RestoreScreen
+from wowtools.tools.interface_backup.scanner import CHEAP_STATS, PARTS, FlavorScan, scan_flavors
 from wowtools.tools.interface_backup.settings import (load_settings, resolve_backup_root, resolve_journal_dir,
                                                       validate_backup_dir)
 from wowtools.tools.interface_backup.undo import undo_restore
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import ConfirmScreen, ProgressScreen, theme_colour
+from wowtools.ui.dialogs import ConfirmScreen, ProgressScreen, TwoPaneFocus, relabel_branch, theme_colour, tick_mark
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-NAV_HINT = ("↑↓/Tab move · ←→ buttons · Enter/Space press · PgUp/PgDn scroll · b back up · e restore · z undo · "
-            "r rescan · f/Esc flavors · t tools · q quit")
+ACCENT = "bold #5CC8FF"
+NAV_HINT = ("↑↓/Tab move · ←→ panes and buttons · Space tick · Enter/Space press · a all · n none · "
+            "b back up · e restore · r rescan · z undo · f flavors · t tools")
+# Tree nodes that cannot be ticked: a backup always holds a flavor's whole Interface and WTF.
+READ_ONLY = ("part", "links", "link", "leftover", "warnings", "warning", "backups", "backup")
 WowCheck = Callable[[], "list[str] | None"]
 # Seconds between two per-file progress reports sent to the UI thread. Each costs a blocking call_from_thread
 # (~0.6 ms); an Interface folder of tens of thousands of files, reported per file in several stages, spent most of
@@ -156,30 +163,46 @@ class BackupResultScreen(Screen[str]):
         self.dismiss(choice)
 
 
-class BackupSummaryScreen(Screen[str]):
-    """Dismisses with "flavors", "tools" or "quit"."""
+class BackupTree(Tree):
+    """The flavors tree. ← jumps to the left panel (instead of scrolling sideways)."""
 
+    BINDINGS: ClassVar[list[Binding]] = [Binding("left", "screen.focus_filters", "Filters", show=False)]
+
+
+class BackupReviewScreen(TwoPaneFocus, Screen[str]):
+    """The chosen flavors as a tree (what Interface and WTF hold, links, warnings, the flavor's backups) with
+    flavor ticks for Back up, a highlighted backup for Restore, and Undo. Dismisses with "flavors", "tools" or
+    "quit"."""
+
+    TREE_SELECTOR = "#flavors"
     DEFAULT_CSS = """
-    BackupSummaryScreen #body { height: 1fr; padding: 1 2; }
-    BackupSummaryScreen #scan-box { height: auto; }
-    BackupSummaryScreen #scan-progress { width: 1fr; }
-    BackupSummaryScreen #scan-label { color: $text-muted; }
-    BackupSummaryScreen #flavors { height: auto; max-height: 14; margin: 1 0; }
-    BackupSummaryScreen #details { height: auto; }
-    BackupSummaryScreen #notices { height: auto; color: $warning; }
-    BackupSummaryScreen #details { margin-top: 1; }
-    BackupSummaryScreen #actions { height: auto; padding: 0 2; }
-    BackupSummaryScreen #actions Button { min-width: 0; width: auto; margin-right: 1; }
-    BackupSummaryScreen NavHint { padding: 0 2; }
+    BackupReviewScreen #body { height: 1fr; }
+    BackupReviewScreen #filters { width: 50; padding: 1; border-right: solid $primary; }
+    BackupReviewScreen #actions { margin-top: 1; height: auto; }
+    BackupReviewScreen #actions Button { min-width: 0; width: auto; margin-right: 1; margin-bottom: 1; }
+    BackupReviewScreen .section { color: $accent; text-style: bold; margin: 1 0 0 0; }
+    BackupReviewScreen #flavors { width: 1fr; padding: 0 1; }
+    BackupReviewScreen #scan-box { width: 1fr; height: auto; padding: 1 2; }
+    BackupReviewScreen #scan-progress { width: 1fr; }
+    BackupReviewScreen #scan-label { color: $text-muted; margin-top: 1; }
+    BackupReviewScreen #summary { height: auto; padding: 0 1; background: $surface; }
     """
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("b", "back_up", "Back up"), Binding("e", "restore", "Restore"),
-        Binding("z", "undo", "Undo"), Binding("r", "rescan", "Rescan"),
-        Binding("f", "leave('flavors')", "Flavors"), Binding("t", "leave('tools')", "Tools"),
-        Binding("q", "leave('quit')", "Quit"), Binding("escape", "leave('flavors')", "Flavors", show=False),
-        Binding("pageup", "scroll_body(-1)", "Scroll up", show=False),
-        Binding("pagedown", "scroll_body(1)", "Scroll down", show=False),
-        *NAV_BINDINGS]
+        Binding("space", "toggle", "Tick/untick", priority=True),
+        Binding("a", "select_all", "All"),
+        Binding("n", "select_none", "None"),
+        Binding("b", "back_up", "Back up"),
+        Binding("e", "restore", "Restore"),
+        Binding("r", "rescan", "Rescan"),
+        Binding("z", "undo", "Undo"),
+        Binding("f", "leave('flavors')", "Flavors"),
+        Binding("t", "leave('tools')", "Tools"),
+        Binding("q", "leave('quit')", "Quit"),
+        Binding("escape", "leave('flavors')", "Flavors", show=False),
+        Binding("left", "focus_filters", "Filters", show=False),
+        Binding("right", "focus_tree", "Tree", show=False),
+        *NAV_BINDINGS,
+    ]
 
     def __init__(self, cfg: Config, tool_cfg: Config, flavors: list[Flavor], scope_label: str, *,
                  wow_check: WowCheck | None = None, disk_usage: Callable = shutil.disk_usage,
@@ -189,7 +212,7 @@ class BackupSummaryScreen(Screen[str]):
         self.tool_cfg = tool_cfg  # config/interface-backup.cfg
         self.flavors = list(flavors)
         # The WoW folder these flavors were read from. If `s` changes the shared WoW folder, they belong to another
-        # install: the summary goes back to the flavor picker rather than mix the two (see wow_folder_changed).
+        # install: the review goes back to the flavor picker rather than mix the two (see wow_folder_changed).
         self.wow_root = wow_root if wow_root is not None else cfg.wow_path
         self._leaving_for_new_folder = False
         self.scope_label = scope_label
@@ -199,51 +222,61 @@ class BackupSummaryScreen(Screen[str]):
         self.scans: list[FlavorScan] | None = None
         self.backups: list[BackupInfo] = []
         self.undoable: Path | None = None  # the newest undoable restore journal, found by the scan worker
+        self.unchecked: set[str] = set()  # flavor folders not ticked (kept across rescans: the flavors stay)
+        self.parts: dict[Path, tuple[str, ...] | None] = {}  # a backup's parts, read per zip by a worker
+        self.summary_text = ""
+        self._backup_nodes: dict[Path, TreeNode] = {}
         self._scanning = False
         self._checking = False  # the running-WoW check is in its worker
         # What a result screen asked for once its rescan is done: ("restore", None) for Restore (e), or ("undo",
         # journal) for Undo (z), which undoes that journal only if the scan still finds it the undoable one.
         self._after_scan: tuple[str, Path | None] | None = None
         self._progress_screen: ProgressScreen | None = None
+        self._last_filter: Widget | None = None
 
     # --- layout ------------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
         yield Header()
-        # Scrolls (PgUp/PgDn, the wheel) when the notices do not fit a small terminal; never takes focus itself.
-        with VerticalScroll(id="body", can_focus=False):
+        with Horizontal(id="body"):
+            with Vertical(id="filters"):
+                yield Label("Backup folder", classes="section")
+                yield Static("", id="folder-label")
+                yield Label("Keep", classes="section")
+                yield Static("", id="keep-label")
+                with ButtonRow(id="actions", wrap=False):
+                    yield action_button("Back up", "apply", id="btn-backup")
+                    yield action_button("Restore", "neutral", id="btn-restore")
+                    yield action_button("Rescan", "neutral", id="btn-rescan")
+                    yield action_button("Undo last restore", "revert", id="btn-undo")
+                yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)
                 yield Static("", id="scan-label")
-            yield DataTable(id="flavors", cursor_type="row", zebra_stripes=True)
-            yield Static("", id="notices")  # under the table: leftovers block a restore, so they come first
-            yield Static("", id="details")
-        # Four actions, as on the other tools' review screens: f/t/Esc (hint, footer) leave.
-        with ButtonRow(id="actions"):
-            yield action_button("Back up (b)", "confirm", id="btn-backup")
-            yield action_button("Restore (e)", "neutral", id="btn-restore")
-            yield action_button("Undo (z)", "revert", id="btn-undo")
-            yield action_button("Rescan (r)", "neutral", id="btn-rescan")
-        yield NavHint(NAV_HINT)
+            yield BackupTree(Text(self.scope_label), id="flavors")
+        yield Static("", id="summary")
         yield BrandBar()
         yield Footer()
 
     def on_mount(self) -> None:
         self.sub_title = f"Interface Backup · {self.scope_label}"
-        self.query_one("#flavors", DataTable).add_columns(*SUMMARY_COLUMNS)
-        self.query_one("#flavors", DataTable).focus()
+        self.query_one("#flavors", Tree).focus()
         self.action_rescan()
 
-    def action_scroll_body(self, step: int) -> None:
-        body = self.query_one("#body", VerticalScroll)
-        if step < 0:
-            body.scroll_page_up()
-        else:
-            body.scroll_page_down()
+    def _show_settings(self) -> None:
+        root = self._root()
+        keep = self.settings.keep_backups
+        self.query_one("#folder-label", Static).update(Text(to_stored(root) if root else "?"))
+        self.query_one("#keep-label", Static).update(Text("all backups" if keep == 0 else
+                                                          f"newest {keep} per flavor"))
+
+    # --- panes (←/→): TwoPaneFocus ------------------------------------------------------------------
+    def first_filter(self) -> Widget | None:
+        return next((b for b in self.query("#actions Button").results(Button) if b.focusable), None)
 
     # --- the WoW folder ------------------------------------------------------------------------
     def wow_folder_changed(self) -> bool:
         """True when the shared WoW folder is no longer the one these flavors came from (changed with `s`). The
-        summary then goes back to the flavor picker as soon as it is the screen shown: a scan, backup, restore or
+        review then goes back to the flavor picker as soon as it is the screen shown: a scan, backup, restore or
         undo would otherwise read one install while the backup folder, journals and Undo use the other."""
         if self.cfg.wow_path == self.wow_root:
             return False
@@ -285,20 +318,30 @@ class BackupSummaryScreen(Screen[str]):
         self.query_one("#btn-undo", Button).disabled = not idle or self.undoable is None
         self.query_one("#btn-rescan", Button).disabled = not idle
 
+    def _set_summary(self, text: Text | str) -> None:
+        self.query_one("#summary", Static).update(text if isinstance(text, Text) else Text(text))
+
     # --- scan ----------------------------------------------------------------------------------
     def action_rescan(self) -> None:
         if not self.idle or self.wow_folder_changed():
             return
         self.settings = load_settings(self.tool_cfg)
-        self._scanning = True
+        self._show_settings()
         self.scans = None
-        self.query_one("#scan-progress", ProgressBar).update(total=None, progress=0)
-        self.query_one("#scan-label", Static).update(Text("Reading the Interface and WTF folders"))
-        self.query_one("#scan-box").display = True
+        self._show_scan_progress(True)
         self._refresh_buttons()
         flavors, root, journal_dir = list(self.flavors), self._root(), self._journal_dir()
         self.run_worker(lambda: self._scan_worker(flavors, root, journal_dir), thread=True, exclusive=True,
                         group="scan")
+
+    def _show_scan_progress(self, scanning: bool) -> None:
+        """While scanning, the tree is replaced by a progress bar and the folder being read."""
+        self._scanning = scanning
+        if scanning:
+            self.query_one("#scan-progress", ProgressBar).update(total=None, progress=0)
+            self.query_one("#scan-label", Static).update(Text("Reading the Interface and WTF folders"))
+        self.query_one("#scan-box").display = scanning
+        self.query_one("#flavors", Tree).display = not scanning
 
     def _scan_worker(self, flavors: list[Flavor], root: Path | None, journal_dir: Path | None) -> None:
         def progress(stage: str, current: int, total: int, detail: str) -> None:
@@ -306,7 +349,7 @@ class BackupSummaryScreen(Screen[str]):
 
         try:
             scans = scan_flavors(flavors, with_stats=CHEAP_STATS, progress=progress)
-            backups = list_backups(root)  # never raises
+            backups = list_backups(root, {f.short_name for f in flavors})  # never raises
             undoable = latest_undoable(journal_dir)
         except Exception as exc:  # noqa: BLE001 - shown to the user, never a crash
             log_exception("ibackup.scan", exc)
@@ -325,34 +368,22 @@ class BackupSummaryScreen(Screen[str]):
         self._after_scan = None
         if not self.is_attached:
             return
-        self.query_one("#scan-box").display = False
-        self.query_one("#notices", Static).update(Text(message))
+        self._show_scan_progress(False)
+        self.summary_text = message
+        self._set_summary(message)
         self.notify(message, title="Scan failed", severity="error", timeout=15)
         self._refresh_buttons()
 
     def _scanned(self, scans: list[FlavorScan], backups: list[BackupInfo], undoable: Path | None) -> None:
         self._scanning = False
         self.scans, self.backups, self.undoable = scans, backups, undoable
+        self.parts = {}  # read again on expand: a zip may have been replaced since
         if not self.is_attached:
             return
-        self.query_one("#scan-box").display = False
-        by_flavor: dict[str, list[BackupInfo]] = {}
-        for info in backups:
-            by_flavor.setdefault(info.flavor_short, []).append(info)
-        table = self.query_one("#flavors", DataTable)
-        table.clear()
-        for row in summary_rows(scans, by_flavor):
-            table.add_row(*(Text(c) for c in row))
-        root, journal_dir = self._root(), self._journal_dir()
-        keep = self.settings.keep_backups
-        self.query_one("#details", Static).update(Text(
-            f"Backups go to: {to_stored(root) if root else '?'}\n"
-            f"Keeping: {'every backup' if keep == 0 else f'the newest {keep} of each flavor'}\n"
-            f"Restore journals: {to_stored(journal_dir) if journal_dir else '?'}"))
-        self.query_one("#notices", Static).update(Text("\n".join(notices(scans))))
+        self._show_scan_progress(False)
+        self._rebuild()
         self._refresh_buttons()
-        if not self.query_one("#btn-backup", Button).disabled:
-            self.query_one("#btn-backup", Button).focus()
+        self.query_one("#flavors", Tree).focus()
         pending, self._after_scan = self._after_scan, None
         if pending is None:
             return
@@ -360,15 +391,193 @@ class BackupSummaryScreen(Screen[str]):
         if self.app.screen is not self:
             # Another screen (settings, say) opened while the scan ran: never open Restore or Undo on top of it.
             key = "e" if what == "restore" else "z"
-            self.notify(f"{'Restore' if what == 'restore' else 'Undo'} was not opened. Press {key} on the summary.",
-                        severity="warning")
+            self.notify(f"{'Restore' if what == 'restore' else 'Undo'} was not opened. Press {key} on the review "
+                        "screen.", severity="warning")
             return
         if what == "restore":
-            self.action_restore()
+            self._show_newest_backup()
         elif journal is not None and journal == undoable:
             self.action_undo()
         else:
             self.notify("That restore can no longer be undone.", severity="warning")
+
+    # --- tree ------------------------------------------------------------------------------------
+    def _flavor_backups(self, scan: FlavorScan) -> list[BackupInfo]:
+        return [b for b in self.backups if b.flavor_short == scan.flavor.short_name]
+
+    def _rebuild(self) -> None:
+        scans = self.scans
+        if scans is None:
+            return
+        tree = self.query_one("#flavors", Tree)
+        tree.clear()
+        self._backup_nodes = {}
+        tree.root.data = ("root",)
+        tree.root.set_label(self._label(tree.root.data))
+        for scan in scans:
+            data = ("flavor", scan)
+            node = tree.root.add(self._label(data), data=data, expand=True)
+            for name in PARTS:
+                part = scan.parts[name]
+                node.add_leaf(Text.assemble((name, "bold"), (f"  {part_text(part)}", "dim")), data=("part", scan))
+            if scan.link_count:
+                node.add(Text.assemble((f"Links ({scan.link_count})", "bold"),
+                                       ("  not backed up; a restore keeps them", "dim")),
+                         data=("links", scan), allow_expand=True)  # paths load on expand
+            if scan.leftovers:
+                node.add_leaf(Text(f"⚠ {leftover_text(scan)}", style=f"bold {theme_colour(self.app, 'warning')}"),
+                              data=("leftover", scan))
+            if any(p.errors for p in scan.parts.values()):
+                node.add(Text(f"⚠ {warnings_text(scan)}", style=f"bold {theme_colour(self.app, 'warning')}"),
+                         data=("warnings", scan), allow_expand=True)  # lines load on expand
+            backups = self._flavor_backups(scan)
+            if backups:
+                node.add(Text.assemble((f"Backups ({len(backups)})", "bold"),
+                                       ("  highlight one and press e to restore it", "dim")),
+                         data=("backups", scan), allow_expand=True)  # zips load on expand, parts in a worker
+            else:
+                node.add_leaf(Text.assemble(("Backups (0)", "bold"), ("  none yet", "dim")), data=("backups", scan))
+        tree.root.expand()
+        self._update_summary()
+
+    def on_tree_node_expanded(self, event: Tree.NodeExpanded) -> None:
+        node = event.node
+        if node.data is None or node.children:
+            return
+        kind, scan = node.data[0], node.data[-1]
+        if kind == "links":
+            for name in PARTS:
+                for rel in scan.parts[name].links:
+                    node.add_leaf(Text(f"{name}/{rel}", style="dim"), data=("link", scan))
+        elif kind == "warnings":
+            for part in scan.parts.values():
+                for error in part.errors:
+                    node.add_leaf(Text(error, style="dim"), data=("warning", scan))
+        elif kind == "backups":
+            self._add_backups(node, scan)
+
+    def _add_backups(self, node: TreeNode, scan: FlavorScan) -> None:
+        backups = self._flavor_backups(scan)
+        for info in backups:
+            parts = self.parts.get(info.path, PARTS_PENDING)
+            self._backup_nodes[info.path] = node.add_leaf(Text(backup_text(info, parts)), data=("backup", info))
+        unread = [b.path for b in backups if b.path not in self.parts]
+        if unread:
+            self.run_worker(lambda: self._parts_worker(unread), thread=True, group="backup-parts")
+
+    def _parts_worker(self, paths: list[Path]) -> None:
+        worker = get_current_worker()
+        for path in paths:
+            if worker.is_cancelled:
+                return
+            parts = read_parts(path)  # never raises
+            if worker.is_cancelled:
+                return
+            self.app.call_from_thread(self._parts_read, path, parts)
+
+    def _parts_read(self, path: Path, parts: tuple[str, ...] | None) -> None:
+        node = self._backup_nodes.get(path)
+        if node is None or not self.is_attached:
+            return  # rebuilt (a rescan) since the worker started: its parts are read again on expand
+        self.parts[path] = parts
+        node.set_label(Text(backup_text(node.data[1], parts)))
+
+    def _show_newest_backup(self) -> None:
+        """Restore (e) from a result screen: open the Backups of the flavors and put the cursor on the newest."""
+        tree = self.query_one("#flavors", Tree)
+        newest = None
+        for flavor_node in tree.root.children:
+            group = next((c for c in flavor_node.children if c.data and c.data[0] == "backups"
+                          and c.allow_expand), None)
+            if group is None:
+                continue
+            if not group.children:
+                self._add_backups(group, group.data[1])  # now, so the cursor can go there below
+            flavor_node.expand()
+            group.expand()
+            if newest is None:
+                newest = group
+        if newest is None:
+            self.notify("No backups of these flavors yet.")
+            return
+        self.call_after_refresh(self._cursor_to_first_backup, newest)
+
+    def _cursor_to_first_backup(self, group: TreeNode) -> None:
+        if group.children:
+            self.query_one("#flavors", Tree).move_cursor(group.children[0])
+        self.query_one("#flavors", Tree).focus()
+        self.notify("Highlight a backup and press e (or Enter) to restore it.")
+
+    def _mark(self, scans: list[FlavorScan]) -> tuple[str, str]:
+        return tick_mark(scans, self.unchecked, lambda s: s.flavor.folder, success=theme_colour(self.app, "success"))
+
+    def _scans_of(self, data) -> list[FlavorScan]:
+        if data[0] == "root":
+            return list(self.scans or [])
+        return [data[1]] if data[0] == "flavor" else []
+
+    def _label(self, data) -> Text:
+        scans = self._scans_of(data)
+        mark = self._mark(scans)
+        if data[0] == "root":
+            return Text.assemble(mark, (self.scope_label, ACCENT), (f"  {held_text(scans)}", "dim"))
+        scan = data[1]
+        return Text.assemble(mark, (scan.flavor.display_name, ACCENT),
+                             (f"  {flavor_text(scan, self._flavor_backups(scan))}", "dim"))
+
+    def _refresh_labels(self, node=None) -> None:
+        """Relabel node's branch and its ancestors (everything a tick there can change), or the whole tree."""
+        relabel_branch(self.query_one("#flavors", Tree), node, self._label, skip=READ_ONLY)
+        self._update_summary()
+
+    def selection(self) -> list[FlavorScan]:
+        return [s for s in self.scans or [] if s.flavor.folder not in self.unchecked]
+
+    def _update_summary(self) -> None:
+        if self.scans is None:
+            return
+        text = f"{selection_text(self.selection())}    Highlight a backup and press e to restore it."
+        blocked = [s.flavor.display_name for s in self.scans if s.leftovers]
+        if blocked:
+            text += f"    ⚠ Restore blocked for {', '.join(blocked)} (interrupted restore)"
+        warnings = sum(len(p.errors) for s in self.scans for p in s.parts.values())
+        if warnings:
+            text += f"    ⚠ {plural(warnings, 'scan warning')} (see the tree)"
+        self.summary_text = text
+        self._set_summary(text)
+
+    # --- ticks -----------------------------------------------------------------------------------
+    def action_toggle(self) -> None:
+        focused = self.focused
+        if isinstance(focused, Button):  # Space activates the focused button, never the tree
+            focused.press()
+            return
+        if not isinstance(focused, Tree):
+            return
+        node = self.query_one("#flavors", Tree).cursor_node
+        if node is None or node.data is None or node.data[0] in READ_ONLY:
+            return
+        folders = [s.flavor.folder for s in self._scans_of(node.data)]
+        if not folders:
+            return
+        check = any(f in self.unchecked for f in folders)
+        if check:
+            self.unchecked.difference_update(folders)
+        else:
+            self.unchecked.update(folders)
+        log_event("ui.item_toggled", screen="ibackup_review",
+                  key="root" if node.data[0] == "root" else folders[0], checked=check)
+        self._refresh_labels(node)
+
+    def action_select_all(self) -> None:
+        self.unchecked.clear()
+        log_event("ui.selection", screen="ibackup_review", control="select_all", value=True)
+        self._refresh_labels()
+
+    def action_select_none(self) -> None:
+        self.unchecked = {f.folder for f in self.flavors}
+        log_event("ui.selection", screen="ibackup_review", control="select_none", value=True)
+        self._refresh_labels()
 
     # --- running-WoW check (PowerShell/tasklist can take seconds: never on the UI thread) ---------------
     def run_preflight(self, check: WowCheck, then: Callable[[list[str] | None, Any], None],
@@ -377,7 +586,7 @@ class BackupSummaryScreen(Screen[str]):
         thread if this screen is still the one shown. A failing check is "unknown" (None)."""
         self._checking = True
         self._refresh_buttons()
-        self.query_one("#notices", Static).update(Text("Checking for running programs…", style="bold #E8B04B"))
+        self._set_summary(Text("Checking for running programs…", style="bold #E8B04B"))
         self.run_worker(lambda: self._preflight_worker(check, extra, then), thread=True, group="preflight")
 
     def _preflight_worker(self, check: WowCheck, extra: Callable[[], Any] | None,
@@ -399,7 +608,7 @@ class BackupSummaryScreen(Screen[str]):
         self._checking = False
         if not self.is_attached:
             return
-        self.query_one("#notices", Static).update(Text("\n".join(notices(self.scans or []))))
+        self._update_summary()
         self._refresh_buttons()
         if self.app.screen is not self:
             return  # the user left the screen while the check ran
@@ -411,19 +620,22 @@ class BackupSummaryScreen(Screen[str]):
     def action_back_up(self) -> None:
         if self.scans is None or not self.idle or self.wow_folder_changed():
             return
-        log_event("ui.selection", screen="ibackup_summary", control="back_up", value=True)
+        log_event("ui.selection", screen="ibackup_review", control="back_up", value=True)
+        # The ticked flavors go to the backup: one with nothing to back up (no folders, or links) comes back
+        # Skipped with its reason. With none to back up at all, there is no backup.
+        scans = self.selection()
+        if not scans:
+            self.notify("Nothing is selected.")
+            return
+        if not any(s.has_data for s in scans):
+            self.notify("Nothing to back up: no Interface or WTF folder in the ticked flavors.")
+            return
         self.settings = load_settings(self.tool_cfg)
         problem = self._folder_problem()
         root = self._root()
         if problem or root is None:
             self.notify(f"{problem or 'No backup folder.'} Fix the folder in settings (s).",
                         title="Backup folder not allowed", severity="error", timeout=15)
-            return
-        # Every flavor shown goes to the backup: one with nothing to back up (no folders, or links) comes back
-        # Skipped with its reason. With none to back up at all, there is no backup.
-        scans = list(self.scans)
-        if not any(s.has_data for s in scans):
-            self.notify("Nothing to back up: no Interface or WTF folder.")
             return
         check = self.wow_check or wow_check_for([s.flavor for s in scans if s.has_data])
         disk_usage = self.disk_usage
@@ -520,17 +732,36 @@ class BackupSummaryScreen(Screen[str]):
         self.action_rescan()
 
     # --- restore ------------------------------------------------------------------------------
+    def highlighted_backup(self) -> BackupInfo | None:
+        """The backup under the tree's cursor, or None."""
+        node = self.query_one("#flavors", Tree).cursor_node
+        if node is not None and node.data is not None and node.data[0] == "backup":
+            return node.data[1]
+        return None
+
     def action_restore(self) -> None:
         if not self.idle or self.app.screen is not self or self.wow_folder_changed():
             return
-        log_event("ui.selection", screen="ibackup_summary", control="restore", value=True)
-        self.app.push_screen(BackupListScreen(self._root(), self.flavors), self._backup_chosen)
+        info = self.highlighted_backup()
+        log_event("ui.selection", screen="ibackup_review", control="restore",
+                  value=info.path.name if info is not None else None)
+        if info is None:
+            self.notify("Open a flavor's Backups in the tree, highlight a backup and press e (or Enter) to restore "
+                        "it.", title="No backup highlighted")
+            return
+        self._backup_chosen(info)
+
+    def on_tree_node_selected(self, event: Tree.NodeSelected) -> None:
+        data = event.node.data
+        if data is not None and data[0] == "backup":
+            event.stop()
+            self.action_restore()
 
     def _backup_chosen(self, info: BackupInfo | None) -> None:
         if info is None or not self.idle or self.wow_folder_changed():
             return
         flavor = next((f for f in self.flavors if f.short_name == info.flavor_short), None)
-        if flavor is None:  # the list holds only the chosen flavors' backups
+        if flavor is None:  # the tree holds only the chosen flavors' backups
             self.notify(f"No flavor here matches {info.flavor_short}.", severity="error")
             return
         self.app.push_screen(RestoreScreen(info, flavor, disk_usage=self.disk_usage),
@@ -584,7 +815,7 @@ class BackupSummaryScreen(Screen[str]):
     def action_undo(self) -> None:
         if not self.idle or self.app.screen is not self or self.wow_folder_changed():
             return
-        log_event("ui.selection", screen="ibackup_summary", control="undo", value=True)
+        log_event("ui.selection", screen="ibackup_review", control="undo", value=True)
         path = self.undoable
         if path is None:
             self.notify("Nothing to undo.")

@@ -1,4 +1,4 @@
-"""Interface Backup inside the suite app: (first run: settings) → flavor (or All flavors) → summary → back up or
+"""Interface Backup inside the suite app: (first run: settings) → flavor (or All flavors) → review → back up or
 restore."""
 from __future__ import annotations
 
@@ -19,9 +19,9 @@ from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.paths import to_native, to_stored
 from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups
 from wowtools.tools.interface_backup.report import picker_note
+from wowtools.tools.interface_backup.review_screen import BackupReviewScreen
 from wowtools.tools.interface_backup.settings import (SECTION, BackupSettings, load_settings, resolve_backup_root,
                                                       save_settings, validate_backup_dir)
-from wowtools.tools.interface_backup.summary_screen import BackupSummaryScreen
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.tool_flow import ToolFlow
@@ -198,11 +198,11 @@ class InterfaceBackupFlow(ToolFlow):
         if self.tool_cfg.get(SECTION, "last_flavor_choice", "") != stored:
             self.tool_cfg.set(SECTION, "last_flavor_choice", stored)
             self.tool_cfg.save_if_exists()
-        self.app.push_screen(BackupSummaryScreen(self.cfg, self.tool_cfg, chosen, label, wow_check=self._wow_check,
+        self.app.push_screen(BackupReviewScreen(self.cfg, self.tool_cfg, chosen, label, wow_check=self._wow_check,
                                                  disk_usage=self._disk_usage, wow_root=self.wow_root),
-                             self._after_summary)
+                             self._after_review)
 
-    def _after_summary(self, choice: str | None) -> None:
+    def _after_review(self, choice: str | None) -> None:
         if choice == "flavors":
             self._pick_flavor()
         elif choice == "tools":
@@ -220,9 +220,9 @@ class InterfaceBackupFlow(ToolFlow):
 
     def _settings_done(self, saved: bool | None) -> None:
         if self.wow_root is not None and self.cfg.wow_path != self.wow_root:
-            return  # a new WoW folder: the summary (or the picker, on a choice) goes back to the flavor picker
+            return  # a new WoW folder: the review (or the picker, on a choice) goes back to the flavor picker
         if saved:
-            self.app.notify("Settings saved. Press r on the summary to rescan with them.")
+            self.app.notify("Settings saved. Press r on the review screen to rescan with them.")
 
 
 FLOW = InterfaceBackupFlow

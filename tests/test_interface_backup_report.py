@@ -45,52 +45,40 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(report.plural(1, "file"), "1 file")
         self.assertEqual(report.plural(0, "file"), "0 files")
 
-    def test_summary_rows_and_notices(self):
-        rows = report.summary_rows([scan()], {"retail": [info("20261004-153012"), info("20261005-101010", "pre-restore")]})
-        self.assertEqual(len(rows[0]), len(report.SUMMARY_COLUMNS))
-        self.assertEqual(rows[0][0], "Retail")
-        self.assertIn("1 file", rows[0][1])
-        self.assertIn("100 B", rows[0][1])
-        self.assertEqual(rows[0][2], "—")
-        self.assertEqual(rows[0][3], "1")
-        self.assertEqual(rows[0][4], "1")  # safety zips are not counted
-        self.assertEqual(rows[0][5], "2026-10-04 15:30:12")
-        unknown = report.summary_rows([scan(False)], {})[0]
-        self.assertIn("1 file", unknown[1])
-        self.assertNotIn("B", unknown[1].replace("1 file", ""))
-        self.assertEqual(unknown[5], "none yet")
-        lines = report.notices([scan()])
-        self.assertTrue(any("WTF.replaced" in n for n in lines))
-        self.assertTrue(any("1 link" in n for n in lines))
+    def test_tree_texts(self):
+        retail = scan()
+        backups = [info("20261005-101010", "pre-restore"), info("20261004-153012")]
+        self.assertEqual(report.part_text(retail.parts["Interface"]), "1 file · 100 B")
+        self.assertEqual(report.part_text(retail.parts["WTF"]), "missing")
+        self.assertEqual(report.part_text(PartScan("WTF", RETAIL.path / "WTF", linked=True)), "link, skipped")
+        self.assertEqual(report.part_text(scan(False).parts["Interface"]), "1 file")  # sizes unknown
+        self.assertEqual(report.flavor_text(retail, backups), "1 file · 100 B · 1 backup, last 2026-10-04 15:30")
+        empty = FlavorScan(RETAIL, {"Interface": PartScan("Interface", RETAIL.path / "Interface"),
+                                    "WTF": PartScan("WTF", RETAIL.path / "WTF")})
+        self.assertEqual(report.flavor_text(empty, []), "nothing to back up: no Interface or WTF folder · no backups yet")
+        self.assertIn("WTF.replaced", report.leftover_text(retail))
+        self.assertIn("Restore is blocked", report.leftover_text(retail))
+        self.assertEqual(report.held_text([retail, empty]), "1 file · 100 B")
+        self.assertEqual(report.selection_text([retail, empty]), "Selected: 2 flavors · 1 file · 100 B · 1 link not backed up")
+        self.assertEqual(report.selection_text([]), "Selected: 0 flavors · 0 files · 0 B")
+        self.assertEqual(report.selection_text([scan(False)]), "Selected: 1 flavor · 1 file · 1 link not backed up")
 
-    def test_linked_part_and_many_errors(self):
-        linked = PartScan("WTF", RETAIL.path / "WTF", linked=True, errors=["WTF is a link"])
+    def test_warnings_text(self):
         busy = PartScan("Interface", RETAIL.path / "Interface", True, errors=[f"err {i}" for i in range(5)])
-        s = FlavorScan(RETAIL, {"Interface": busy, "WTF": linked})
-        self.assertEqual(report.summary_rows([s], {})[0][2], "link (skipped)")
-        lines = report.notices([s])
-        self.assertIn("Retail: err 0", lines)
-        self.assertNotIn("Retail: err 3", lines)
-        self.assertIn("Retail: 2 more Interface warnings (the log lists the first 20)", lines)
+        s = FlavorScan(RETAIL, {"Interface": busy, "WTF": PartScan("WTF", RETAIL.path / "WTF", errors=["x"])})
+        self.assertEqual(report.warnings_text(s),
+                         "Scan warnings (6): skipped, not backed up (the log lists up to 20 per folder)")
 
-    def test_picker_note_and_list_rows(self):
+    def test_picker_note_and_backup_text(self):
         self.assertEqual(report.picker_note([]), "no backups yet")
         self.assertEqual(report.picker_note([info("20261005-101010", "pre-restore")]), "no backups yet")
         self.assertEqual(report.picker_note([info("20261004-153012")]), "1 backup, last 2026-10-04 15:30")
-        rows = report.list_rows([info("20261004-153012"), info("20261003-010203", "pre-restore", 100)])
-        self.assertEqual(rows[0], ("2026-10-04 15:30:12", "retail", "backup", "…", "2.0 KB"))
-        self.assertEqual(rows[1][2], "safety (pre-restore)")
-        self.assertEqual(len(rows[0]), len(report.LIST_COLUMNS))
-        named = report.list_rows([info("20261004-153012")], {"retail": "Retail"})
-        self.assertEqual(named[0][1], "Retail")  # the display name; the short name only for an unknown flavor
-
-    def test_list_rows_parts(self):
-        a, b, c, d = (info(f"2026100{i}-010203") for i in range(1, 5))
-        parts = {a.path: ("Interface", "WTF"), b.path: ("WTF",), c.path: None}
-        rows = report.list_rows([a, b, c, d], parts=parts)
-        self.assertEqual(report.LIST_COLUMNS[3], "Parts")
-        self.assertEqual([r[3] for r in rows], ["Interface, WTF", "WTF", "?", report.PARTS_PENDING])
-        self.assertEqual(report.parts_cell(()), "none")
+        b = info("20261004-153012")
+        self.assertEqual(report.backup_text(b), "2026-10-04 15:30:12 · backup · … · 2.0 KB")
+        self.assertEqual(report.backup_text(b, ("Interface", "WTF")), "2026-10-04 15:30:12 · backup · Interface, WTF · 2.0 KB")
+        self.assertEqual(report.backup_text(b, None), "2026-10-04 15:30:12 · backup · ? · 2.0 KB")
+        self.assertEqual(report.backup_text(info("20261003-010203", "pre-restore", 100), ()),
+                         "2026-10-03 01:02:03 · safety (pre-restore) · none · 100 B")
 
     def test_friendly_created(self):
         self.assertEqual(report.friendly_created("2026-10-04T12:57:33+05:30"), "2026-10-04 12:57:33")

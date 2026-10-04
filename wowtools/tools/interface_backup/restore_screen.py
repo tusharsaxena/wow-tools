@@ -1,9 +1,8 @@
-"""Pick a backup, choose what to restore and see what would be lost; the result screen of a restore or undo."""
+"""Choose what to restore from a backup and see what would be lost; the result screen of a restore or undo."""
 from __future__ import annotations
 
 import shutil
 from collections.abc import Callable
-from pathlib import Path
 from typing import ClassVar
 
 from rich.text import Text
@@ -12,15 +11,13 @@ from textual.binding import Binding
 from textual.containers import Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Checkbox, DataTable, Footer, Header, Static
-from textual.worker import get_current_worker
 
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor
 from wowtools.core.paths import to_stored
-from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups, read_parts
-from wowtools.tools.interface_backup.report import (LIST_COLUMNS, RESTORE_RESULT_COLUMNS, friendly_created,
-                                                    human_size, list_rows, ordered_parts, parts_cell, plural,
-                                                    restore_result_rows, restore_warnings)
+from wowtools.tools.interface_backup.catalog import BackupInfo
+from wowtools.tools.interface_backup.report import (RESTORE_RESULT_COLUMNS, friendly_created, human_size,
+                                                    ordered_parts, plural, restore_result_rows, restore_warnings)
 from wowtools.tools.interface_backup.restore import (BackupContents, RestoreError, RestorePlan, RestoreResult,
                                                      case_key, open_backup, plan_restore)
 from wowtools.tools.interface_backup.scanner import PARTS, FlavorScan, scan_flavor
@@ -31,93 +28,6 @@ from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, 
 
 def _error_text(exc: Exception) -> str:
     return str(exc) if isinstance(exc, RestoreError) else f"{type(exc).__name__}: {exc}"
-
-
-class BackupListScreen(Screen[BackupInfo | None]):
-    """The backups (and, marked, the safety zips) of the chosen flavors, newest first. Dismisses with the one
-    picked, or None. A second worker reads each zip's manifest for the Parts column ("?" for one it cannot
-    read; that zip is still listed)."""
-
-    DEFAULT_CSS = """
-    BackupListScreen #list { height: 1fr; padding: 1 2; }
-    BackupListScreen #list-title { height: auto; margin-bottom: 1; }
-    BackupListScreen #backups { height: 1fr; }
-    BackupListScreen NavHint { padding: 0 2; }
-    """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Back"), *NAV_BINDINGS]
-
-    def __init__(self, root: Path | None, flavors: list[Flavor]) -> None:
-        super().__init__()
-        self.root = root
-        self.flavors = list(flavors)
-        self.infos: list[BackupInfo] | None = None  # None until the worker has listed the folder
-        self.parts: dict[Path, tuple[str, ...] | None] = {}  # filled per zip by the parts worker
-
-    def compose(self) -> ComposeResult:
-        yield Header()
-        with Vertical(id="list"):
-            yield Static(Text("Listing the backups…"), id="list-title")
-            yield DataTable(id="backups", cursor_type="row", zebra_stripes=True)
-        yield NavHint("↑↓ choose · Enter restore from this backup · Esc back")
-        yield BrandBar()
-        yield Footer()
-
-    def on_mount(self) -> None:
-        self.sub_title = "Interface Backup · choose a backup"
-        table = self.query_one("#backups", DataTable)
-        for label in LIST_COLUMNS:
-            table.add_column(label, key=label)  # keyed by label: the parts worker fills "Parts"
-        table.focus()
-        root, shorts = self.root, {f.short_name for f in self.flavors}
-        self.run_worker(lambda: self._list_worker(root, shorts), thread=True, group="backup-list")
-
-    def _list_worker(self, root: Path | None, shorts: set[str]) -> None:
-        infos = list_backups(root, shorts)  # never raises
-        self.app.call_from_thread(self._listed, infos)
-
-    def _listed(self, infos: list[BackupInfo]) -> None:
-        self.infos = infos
-        if not self.is_attached:
-            return
-        table = self.query_one("#backups", DataTable)
-        rows = list_rows(infos, {f.short_name: f.display_name for f in self.flavors}, self.parts)
-        for info, row in zip(infos, rows):
-            table.add_row(*(Text(c) for c in row), key=str(info.path))
-        where = to_stored(self.root) if self.root else "?"
-        title = (f"{plural(len(infos), 'backup')} in {where}. Safety backups are the folders as they were before "
-                 "a restore." if infos else f"No backups of these flavors in {where} yet. Press Esc.")
-        self.query_one("#list-title", Static).update(Text(title))
-        if infos:
-            paths = [info.path for info in infos]
-            self.run_worker(lambda: self._parts_worker(paths), thread=True, group="backup-parts")
-
-    def _parts_worker(self, paths: list[Path]) -> None:
-        worker = get_current_worker()
-        for path in paths:
-            if worker.is_cancelled:
-                return
-            parts = read_parts(path)  # never raises
-            if worker.is_cancelled:
-                return
-            self.app.call_from_thread(self._parts_read, path, parts)
-
-    def _parts_read(self, path: Path, parts: tuple[str, ...] | None) -> None:
-        self.parts[path] = parts
-        if not self.is_attached:
-            return
-        self.query_one("#backups", DataTable).update_cell(str(path), "Parts", Text(parts_cell(parts)),
-                                                          update_width=True)
-
-    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        event.stop()
-        if self.infos and 0 <= event.cursor_row < len(self.infos):
-            info = self.infos[event.cursor_row]
-            log_event("ui.selection", screen="ibackup_list", control="backup", value=info.path.name)
-            self.dismiss(info)
-
-    def action_cancel(self) -> None:
-        log_event("ui.selection", screen="ibackup_list", control="back", value=True)
-        self.dismiss(None)
 
 
 class RestoreScreen(Screen[RestorePlan | None]):
