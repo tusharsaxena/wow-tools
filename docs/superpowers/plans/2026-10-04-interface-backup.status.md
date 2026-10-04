@@ -11,7 +11,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | 3 | scanner | done | dbd0932 | API as planned; sizes summed without type-ignores; extra tests for chosen parts, unreadable sub-folder, part-as-link warning, broken progress |
 | 4 | backup | done | 9609ac3, 59349ac | API as planned; lstat before open (a file turned link is not followed); DOS date clamped both ends; extra tests for links, interrupt, locked file, progress stages, old mtime. Review fix 59349ac: ancestor folders lstat-checked (no reading through an addon folder turned link), O_NOFOLLOW open, vanished/linked parts not claimed in the manifest, linked parts reported, prune never deletes the new zip |
 | 5 | open backup + plan restore | done | 7127e9d, 7a2a5b5 | API as planned; stricter entry checks (duplicates over infolist, file/folder clash, files in an unclaimed part); plan_restore raises for a part not in the backup. Review fix: device names and control chars refused only on Windows (backups made on POSIX with an `Aux` character folder restore there), manifest mtimes must be finite and >= 0, `parts` must be a list, `sizes(())` is empty, plan_restore refuses a backup of another flavor. Review fix 2: negative (pre-1970) manifest mtimes accepted (only NaN/inf refused), names compare with per-character `lower()` not `casefold()` (NTFS: `ß` is not `ss`), flavor folder `fullmatch`, plan_restore refuses an unknown or empty part list, `RestorePlan.unreadable` carries the chosen parts' scan errors; 29 tests |
-| 6 | run restore + journal | todo | | |
+| 6 | run restore + journal | done | cc1c768 | API as planned plus `on_swapped` (journal `replaced` entry written before the old copy is deleted, as the spec orders); Ctrl+C before the swap rolls the part back; part turned link since the plan refused; new `ibackup.restore_failed` event; `log_part` public; 21 new tests |
 | 7 | undo | todo | | |
 | M1 | push milestone 1 | todo | | |
 | 8 | report helpers | todo | | |
@@ -63,3 +63,21 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   "leave the extraction time", not fail the restore. Case comparisons use `str.lower()` (closer to NTFS's simple
   upcase table than `casefold()`). `RestorePlan.unreadable` (new, not in the plan or spec): the chosen parts'
   `PartScan.errors`, for the restore screen (Tasks 9/10) to warn that unlisted files there are lost too.
+- Task 6: `replace_part` takes `on_swapped=` (called after the swap, before `<part>.replaced` is deleted) so the
+  journal's `replaced` entry is written first, as spec §7 orders (the plan wrote it after the delete). A failure to
+  write it leaves the old copy as a `.replaced` leftover and stops the run (`RestoreStopped`).
+- Task 6: the swap rolls back on any `BaseException` (Ctrl+C included) and re-raises it; zip read errors
+  (`zlib.error`, `EOFError`, ...) during extraction roll the part back like an `OSError`. Rollback puts the old copy
+  back before the links (the plan's version did not handle a failure of `rename(old, live)` itself). A kept link gone
+  since the plan is skipped; one whose destination already exists is never replaced (POSIX `rename` would).
+- Task 6: `restore()` re-checks after the verify that no chosen part became a link (RestoreError) and
+  `replace_part` refuses a part that is not a plain folder. An `os.utime` failure leaves the extraction time.
+- Task 6: a journal that cannot record the safety zip deletes that zip and raises RestoreError (nothing changed).
+  A `RestoreError` after the journal opened logs the new `ibackup.restore_failed` (error); `docs/events.md`
+  regenerated. `restore_completed` is logged at warning when a part failed; a `failed` part (not rolled back
+  exactly) logs `part_rolled_back` at error. `_log_part` is public `log_part` (Task 7 imports it).
+- Task 6: pruning is skipped when this run's journal would not be among the kept ones (a clock set back), so its
+  safety zip is never deleted. Known edge, not addressed: a custom `backup_dir` shared by two WoW folders lets one
+  install's prune delete the other's safety zips (the spec's "no remaining journal names it" rule).
+- Task 6: `scripts/run_tests.py -k X` reports "Ran 0 tests ... OK" when a test module fails to import; the
+  red step was checked with `python3 -m unittest tests.test_interface_backup_restore`.
