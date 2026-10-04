@@ -9,7 +9,7 @@ merge, delete every branch, stash and worktree this run created.
 |---|---|---|---|---|
 | 0 | spec and plan | done | b5d55ca | plan code for Tasks 2–10 pre-validated against its own tests in a scratch copy (102 tests); parser read all 750 real SV files (read-only) with no error, 53 AceDB DBs, 12 MB Questie in 0.9 s |
 | 1 | core helpers: snapshot, svfiles, atomic_write_bytes | done | 15c1cf9 | core/snapshot.py + core/svfiles.py; WTF Cleaner wraps them (messages, names unchanged); 3 test patch targets moved to core, no assertion changed; full suite 811 OK, ruff clean |
-| 2 | luasv parser, splice, codec | todo | | |
+| 2 | luasv parser, splice, codec | done | 5c8b888 | plan code verbatim apart from ruff fixes; 19 luasv tests OK (speed test ~0.1 s); full suite 830 OK, ruff clean |
 | 3 | model: find AceDB databases | todo | | |
 | 4 | events, settings | todo | | |
 | 5 | fixture + scanner | todo | | |
@@ -37,3 +37,5 @@ merge, delete every branch, stash and worktree this run created.
   patches `wowtools.core.snapshot.snapshot_path`.
 - Task 1: `safety.py` gains `SNAPSHOT_PREFIX = "backup"`; `LIST_REPORT_EVERY`/`SnapshotProgress`/`wtf_files` and
   `cleaner.LOCK_PROBE_SUFFIX` stay importable from their old modules as re-exports (`# noqa: F401`).
+- Task 2: ruff fixes only, no behaviour change: `re.S`/`re.I` spelled `re.DOTALL`/`re.IGNORECASE`, `splice` uses
+  `itertools.pairwise`, and the test drops the unused `Scalar` import.
