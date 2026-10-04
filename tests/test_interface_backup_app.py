@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from textual.widgets import Button, Checkbox, DataTable, Input, OptionList, Static, Tree
 
-from tests.fixtures import TuiTestCase, build_interface_tree, build_wow_tree, make_config, settle
+from tests.fixtures import BASE, TuiTestCase, build_interface_tree, build_wow_tree, make_config, settle
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
@@ -32,7 +32,6 @@ from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.widgets import ACTION_VARIANTS, NavHint
 
 SIZE = (140, 50)
-SMALL = (80, 24)  # the default terminal size: everything must fit
 
 
 class InterfaceBackupAppTest(TuiTestCase):
@@ -72,7 +71,7 @@ class InterfaceBackupAppTest(TuiTestCase):
     def zips(self):
         return sorted(p.name for p in (self.bk / "interface-backup").glob("backup-*.zip"))
 
-    def assert_on_screen(self, widget, size=SMALL):
+    def assert_on_screen(self, widget, size=BASE):
         r = widget.region
         self.assertTrue(r.width > 0 and r.height > 0, f"{widget!r} is not shown: {r}")
         self.assertTrue(r.x >= 0 and r.y >= 0 and r.right <= size[0] and r.bottom <= size[1],
@@ -344,7 +343,7 @@ class InterfaceBackupAppTest(TuiTestCase):
         nothing, and it is never in the Selected count, the confirm or the result."""
         self.save_tool_cfg(backup_dir=str(self.bk))
         app = self.make_app()
-        async with app.run_test(size=SMALL) as pilot:
+        async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot)
             ptr = self.flavor_nodes(review)["Retail PTR"]
             await pilot.press("n")
@@ -1200,11 +1199,11 @@ class InterfaceBackupAppTest(TuiTestCase):
                 self.assertTrue(any("WowClassic.exe" in alert for alert in app.screen.alerts))
         self.assertEqual(asked, [["_retail_"]])  # the journal's flavor, not every flavor shown
 
-    # --- the default terminal size (80x24) ---------------------------------------------------------
-    async def test_review_actions_fit_80_columns(self):
+    # --- the default terminal size (BASE, 120x30) ----------------------------------------------------
+    async def test_review_actions_fit_at_base(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
         app = self.make_app()
-        async with app.run_test(size=SMALL) as pilot:
+        async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot)
             buttons = list(review.query_one("#actions").query(Button))
             self.assertEqual(len(buttons), 4)
@@ -1218,7 +1217,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             for button in review.query_one("#actions").query(Button):
                 self.assert_on_screen(button)
 
-    async def test_review_tree_shows_links_and_leftovers_at_80x24(self):
+    async def test_review_tree_shows_links_and_leftovers_at_base(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
         (self.root / "_classic_era_" / "Interface.restoring").mkdir()
         try:
@@ -1226,7 +1225,7 @@ class InterfaceBackupAppTest(TuiTestCase):
         except (OSError, NotImplementedError):
             self.skipTest("symlinks are not available here")
         app = self.make_app()
-        async with app.run_test(size=SMALL) as pilot:
+        async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot)
             nodes = self.flavor_nodes(review)
             leftover = self.child(nodes["Classic Era"], "leftover")
@@ -1268,10 +1267,10 @@ class InterfaceBackupAppTest(TuiTestCase):
                 self.assertEqual([str(c.label) for c in node.children], ["X0: denied", "X1: denied", "X2: denied"])
                 self.assertIn("3 scan warnings", review.summary_text)
 
-    async def test_restore_screens_fit_80_columns(self):
+    async def test_restore_screens_fit_at_base(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
         app = self.make_app()
-        async with app.run_test(size=SMALL) as pilot:
+        async with app.run_test(size=BASE) as pilot:
             await self.open_review(app, pilot)
             await self.make_backup(app, pilot)
             await pilot.press("r")
@@ -1299,20 +1298,20 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertEqual(summary["Restore"], ["finished"])
             self.assertIn("Safety backup", summary)
             self.assertIn("Journal", summary)
-            # The zip names are whole on screen (a whole path was cut at 80 columns, with no way to scroll it).
+            # The zip names are whole on screen (a whole path can be cut, with no way to scroll it).
             result, rows = app.screen.result, self.screen_text(app)
             table = app.screen.query_one("#result-summary", DataTable).region
             shown = "\n".join(row[table.x:table.right] for row in rows[table.y:table.bottom])
             for name in (result.safety_zip.name, result.backup.name, result.journal_path.name):
                 self.assertIn(name, shown)
 
-    async def test_restore_tree_names_groups_within_80_columns(self):
-        """At 80x24 the tree is narrow: each group's row shows the name that tells it apart (not just the shared
-        Interface/AddOns prefix), the root is short and the left pane's hint is not clipped."""
+    async def test_restore_tree_names_groups_at_base(self):
+        """Each group's row starts with the name that tells it apart (not the shared Interface/AddOns prefix), the
+        root is whole and the left pane's hint is not clipped."""
         self.save_tool_cfg(backup_dir=str(self.bk))
         addons = self.root / "_retail_" / "Interface" / "AddOns"
         app = self.make_app()
-        async with app.run_test(size=SMALL) as pilot:
+        async with app.run_test(size=BASE) as pilot:
             await self.open_review(app, pilot)
             await self.make_backup(app, pilot)
             await pilot.press("r")
@@ -1408,11 +1407,11 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertIn("Tick Interface, WTF or both", self.effects_text(screen))
             self.assertIn("Nothing is ticked", screen.summary_text)
 
-    async def test_restore_confirm_fits_80x24_with_long_warnings(self):
+    async def test_restore_confirm_fits_at_base_with_long_warnings(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
         retail = self.root / "_retail_"
         app = self.make_app(running=["Wow.exe"])
-        async with app.run_test(size=SMALL) as pilot:
+        async with app.run_test(size=BASE) as pilot:
             await self.open_review(app, pilot)
             await self.make_backup(app, pilot)
             await pilot.press("r")
@@ -1441,14 +1440,14 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assert_on_screen(confirm.query_one("#no", Button))
             self.assertIs(confirm.focused, confirm.query_one("#no", Button))
 
-    async def test_settings_labels_wrap_at_80_columns(self):
+    async def test_settings_labels_wrap_at_base(self):
         app = self.make_app()
-        async with app.run_test(size=SMALL) as pilot:
+        async with app.run_test(size=BASE) as pilot:
             await self.open_tool(app, pilot)
             screen = app.screen
             self.assertIsInstance(screen, BackupSettingsScreen)
             for label in screen.query("Label"):
-                self.assertLessEqual(label.region.right, SMALL[0])
+                self.assertLessEqual(label.region.right, BASE[0])
                 text = str(label.render())
                 self.assertGreaterEqual(label.region.height * label.region.width, len(text), text)
             destination = str(screen.query_one("#destination", Static).render())
@@ -1503,12 +1502,12 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertEqual(info.flavor_short, "classic_era")
             self.assertEqual(info.path, made)
 
-    async def test_backup_and_its_safety_zip_differ_at_80x24(self):
-        """A backup and the safety zip of a restore from it are seconds apart: at 80x24 the tree shows the start of
-        each line only, so kind and time come first, and the bottom line names the highlighted one in full."""
+    async def test_backup_and_its_safety_zip_differ_at_base(self):
+        """A backup and the safety zip of a restore from it are seconds apart: at BASE each tree line shows the
+        kind and the whole date and time, and the bottom line names the highlighted one in full."""
         self.save_tool_cfg(backup_dir=str(self.bk))
         app = self.make_app()
-        async with app.run_test(size=SMALL) as pilot:
+        async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot)
             await self.make_backup(app, pilot)
             await pilot.press("r")
@@ -1541,6 +1540,8 @@ class InterfaceBackupAppTest(TuiTestCase):
             kinds = [v.split("─ ")[-1].split(" ")[0] for v in visible]
             self.assertEqual(sorted(kinds), ["backup", "safety"], visible)
             self.assertEqual(len(set(visible)), 2, visible)
+            for node, kind, line in zip(group.children, kinds, visible):
+                self.assertIn(f"{kind} {node.data[1].when} · ", line)  # the whole date and time
             info = review.highlighted_backup()
             self.assertIs(info, group.children[-1].data[1])
             kind = "Safety backup (before a restore)" if info.is_safety else "Backup"
@@ -1594,8 +1595,8 @@ class InterfaceBackupAppTest(TuiTestCase):
                 labels[name] = [str(c.label) for c in group.children]
             self.assertEqual(len(labels["Retail"]), 2)
             self.assertIn("Backups (2)", str(self.child(self.flavor_nodes(review)["Retail"], "backups").label))
-            self.assertRegex(labels["Retail"][0], r"^backup \d\d:\d\d:\d\d · .* · Interface, WTF · ")  # newest first
-            self.assertTrue(labels["Retail"][1].startswith("backup 00:00:00 · 2000-01-01 · ? · "), labels)  # unreadable
+            self.assertRegex(labels["Retail"][0], r"^backup \d{4}-\d\d-\d\d \d\d:\d\d:\d\d · Interface, WTF · ")  # newest first
+            self.assertTrue(labels["Retail"][1].startswith("backup 2000-01-01 00:00:00 · ? · "), labels)  # unreadable
             self.assertIn(" · Interface, WTF · ", labels["Classic Era"][0])
             self.assertIn(" · WTF · ", labels["Anniversary"][0])
 

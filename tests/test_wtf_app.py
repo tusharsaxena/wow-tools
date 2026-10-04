@@ -11,12 +11,13 @@ from pathlib import Path
 from textual.app import App
 from textual.widgets import Button, DataTable, Input, OptionList, ProgressBar, Static, Tree
 
-from tests.fixtures import TuiTestCase, build_wow_tree, make_config, settle
+from tests.fixtures import BASE, TuiTestCase, build_wow_tree, make_config, settle
 from wowtools.core import activity
 from wowtools.core.backup import BackupError
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
+from wowtools.core.paths import to_stored
 from wowtools.tools.wtf_cleaner import multi
 from wowtools.tools.wtf_cleaner import review_screen as review_module
 from wowtools.tools.wtf_cleaner.app import CleanerSettingsScreen
@@ -599,16 +600,16 @@ class FirstRunTest(AppTestCase):
         self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).backup_dir, target)
 
 
-    async def test_settings_labels_wrap_at_80_columns(self):
+    async def test_settings_labels_wrap_at_base(self):
         app = self.make_app()
-        async with app.run_test(size=(80, 24)) as pilot:
+        async with app.run_test(size=BASE) as pilot:
             await pilot.pause()
             screen = CleanerSettingsScreen(self.tool_cfg, self.root, source="settings")
             app.push_screen(screen)
             await pilot.pause()
             for label in screen.query("Label"):
                 text = str(label.render())
-                self.assertLessEqual(label.region.right, 80, text)
+                self.assertLessEqual(label.region.right, BASE[0], text)
                 self.assertGreaterEqual(label.region.width * label.region.height, len(text), text)
 
 class BackupFolderValidationTest(AppTestCase):
@@ -732,6 +733,10 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertEqual(rows["WTF backup"], "not taken (dry run)")
             for key in ("Cleaned files zip", "Size", "Skipped", "Failed"):
                 self.assertIn(key, rows)
+            # Names inside the backup folder, which has a row of its own: a whole path does not fit at 120x30.
+            self.assertTrue(rows["Cleaned files zip"].startswith(str(Path("cleaned", "dryrun-retail-"))),
+                            rows["Cleaned files zip"])
+            self.assertEqual(rows["Backup folder"], to_stored(self.backup_dir))
             files = screen.query_one("#result-files", DataTable)
             self.assertEqual(files.row_count, 8)
             self.assertEqual([str(c.label) for c in files.ordered_columns],
@@ -756,8 +761,28 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertEqual(rows["Mode"], "Clean")
             self.assertIn("8", rows["Deleted"])
             self.assertTrue(rows["WTF backup"].endswith(".zip"))
-            self.assertIn("backup-", rows["WTF backup"])
+            self.assertTrue(rows["WTF backup"].startswith(str(Path("backup", "backup-retail-"))), rows["WTF backup"])
+            self.assertTrue(rows["Cleaned files zip"].startswith(str(Path("cleaned", "cleaned-retail-"))),
+                            rows["Cleaned files zip"])
+            self.assertEqual(rows["Backup folder"], to_stored(self.backup_dir))
+            journal = app.screen.result.journal_path
+            self.assertEqual(rows["Run journal"], f"{journal.name} (Undo last clean (z) puts these files back)")
             self.assertEqual(rows["Post-clean check"], "passed")
+
+    async def test_real_clean_result_summary_fits_at_base(self):
+        """At 120x30 a clean's summary shows every row, each value whole (no scrolling either way)."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_review(app, pilot)
+            await pilot.press("w")
+            await settle(app, pilot)
+            await pilot.press("y")
+            await pilot.pause()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ResultScreen)
+            summary = app.screen.query_one("#result-summary", DataTable)
+            self.assertEqual(summary.row_count, 10)
+            self.assertEqual((summary.max_scroll_x, summary.max_scroll_y), (0, 0))
 
     async def test_setup_and_settings_keyboard_only(self):
         cfg = Config(self.tmp / "fresh" / "wow-tools.cfg")

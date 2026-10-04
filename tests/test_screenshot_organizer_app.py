@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from textual.widgets import Button, DataTable, Input, OptionList, Tree
 
-from tests.fixtures import TuiTestCase, build_screenshot_tree, build_wow_tree, make_config, settle
+from tests.fixtures import BASE, TuiTestCase, build_screenshot_tree, build_wow_tree, make_config, settle
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
@@ -394,9 +394,9 @@ class ShotsAppTest(TuiTestCase):
                 labels = [str(options.get_option_at_index(n).prompt) for n in range(options.option_count)]
                 self.assertFalse(any("counting" in label for label in labels), labels)
 
-    async def test_settings_labels_wrap_at_80_columns(self):
+    async def test_settings_labels_wrap_at_base(self):
         app = self.make_app()
-        async with app.run_test(size=(80, 24)) as pilot:
+        async with app.run_test(size=BASE) as pilot:
             await pilot.pause()
             screen = ScreenshotSettingsScreen(Config(self.config_dir / "screenshot-organizer.cfg"), None,
                                               source="settings")
@@ -404,7 +404,7 @@ class ShotsAppTest(TuiTestCase):
             await pilot.pause()
             for label in screen.query("Label"):
                 text = str(label.render())
-                self.assertLessEqual(label.region.right, 80, text)
+                self.assertLessEqual(label.region.right, BASE[0], text)
                 self.assertGreaterEqual(label.region.width * label.region.height, len(text), text)
 
     async def test_copy_mode_filed_copies_are_not_waiting(self):

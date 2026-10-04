@@ -28,6 +28,8 @@ FILTERS_WIDTH = 50  # the left pane: wide enough for four action buttons in one 
 # A popup's width: readable, with room around it at 120x30, centred and never stretched when the window grows, and
 # never more than 90% of a smaller window.
 POPUP_WIDTH = "width: 90; max-width: 90%;"
+# A settings form's width: the whole window up to 100 columns, centred (never stretched edge to edge).
+FORM_WIDTH = "width: 100%; max-width: 100;"
 
 
 def review_hint(space: str = "tick") -> str:
@@ -65,11 +67,12 @@ def two_pane_css(screen: str, tree: str, *, width: int = FILTERS_WIDTH) -> str:
 
 
 def result_css(screen: str) -> str:
-    """DEFAULT_CSS of a result screen called `screen`: #result holds the Item/Value #result-summary (at most half
-    the height) above the detail table (class result-detail), then the .buttons row and the NavHint."""
+    """DEFAULT_CSS of a result screen called `screen`: #result holds the Item/Value #result-summary (at most 60% of
+    the height: a one-flavor clean's 10 rows fit at 120x30) above the detail table (class result-detail), then the
+    .buttons row and the NavHint."""
     return f"""
     {screen} #result {{ height: 1fr; padding: 1 2; }}
-    {screen} #result-summary {{ height: auto; max-height: 50%; margin-bottom: 1; }}
+    {screen} #result-summary {{ height: auto; max-height: 60%; margin-bottom: 1; }}
     {screen} .result-detail {{ height: 1fr; }}
     {screen} .buttons {{ height: auto; padding: 0 2; }}
     {screen} .buttons Button {{ min-width: 0; width: auto; margin-right: 1; }}
@@ -79,12 +82,14 @@ def result_css(screen: str) -> str:
 
 def settings_css(screen: str) -> str:
     """DEFAULT_CSS of a tool's settings screen called `screen` (a FormScroll #settings with a .title, labels,
-    inputs, checkboxes, #settings-error and a .buttons row)."""
+    inputs, compact checkboxes, #settings-error and a .buttons row): a readable width (FORM_WIDTH), centred."""
     return f"""
-    {screen} #settings {{ padding: 0 2; }}
+    {screen} {{ align-horizontal: center; }}
+    {screen} #settings {{ {FORM_WIDTH} padding: 0 2; }}
     {screen} .title {{ color: $accent; text-style: bold; margin: 1 0; }}
     {screen} Label {{ width: 1fr; height: auto; }}
     {screen} Ka0sCheckbox {{ margin-bottom: 1; }}
+    {screen} Ka0sCheckbox.-textual-compact {{ margin-bottom: 0; }}
     {screen} #settings-error {{ color: $error; height: auto; }}
     {screen} .buttons {{ height: auto; margin-top: 1; }}
     {screen} Button {{ margin-right: 2; }}

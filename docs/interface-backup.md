@@ -93,9 +93,8 @@ Each game version's line shows what a backup of it would hold (files and size) a
 | ⚠ **Scan warnings (N)** | Places the app couldn't read, so they're not backed up. Open the line to see them; the log lists up to 20 per folder |
 | **Backups (N)** | The game version's backups. Safety backups are counted apart: "Backups (2 + 1 safety)". Open the line to list them, newest first |
 
-Each backup's line starts with what tells it apart: **backup** or **safety** (a safety backup, taken before a
-restore), the time, then the day, what the zip holds and its size, for example
-`backup 20:15:30 · 2026-10-04 · Interface, WTF · 84.2 MB`. What the zip holds fills in a moment after you open the
+Each backup's line says **backup** or **safety** (a safety backup, taken before a restore), the date and time,
+what the zip holds and its size, for example `backup 2026-10-04 20:15:30 · Interface, WTF · 84.2 MB`. What the zip holds fills in a moment after you open the
 list ("…" until then): "Interface, WTF", "Interface", "WTF", "none" (a safety backup taken when the restored
 folder didn't exist yet), or "?" when the zip can't be read.
 

@@ -57,9 +57,9 @@ class CleanerSettingsScreen(Screen[bool]):
                         placeholder=_default_backup_hint(self.wow_path), id="backup_dir")
             yield Static("Propose SavedVariables when:", classes="title")
             for name in CRITERIA:
-                yield Ka0sCheckbox(CRITERION_LABELS[name], getattr(criteria, name), id=f"sw_{name}")
+                yield Ka0sCheckbox(CRITERION_LABELS[name], getattr(criteria, name), id=f"sw_{name}", compact=True)
             yield Ka0sCheckbox("Zip the files to clean before deleting them (recommended)",
-                               self.settings.backup_before_delete, id="sw_backup")
+                               self.settings.backup_before_delete, id="sw_backup", compact=True)
             yield Static("", id="settings-error")
             with ButtonRow(classes="buttons"):
                 yield action_button("Save", "confirm", id="save")

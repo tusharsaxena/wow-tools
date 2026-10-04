@@ -49,7 +49,7 @@ class ScreenshotSettingsScreen(Screen[bool]):
             yield Input(to_stored(self.settings.dest_dir) if self.settings.dest_dir else "",
                         placeholder="Empty = in place: <flavor>\\Screenshots\\YYYY\\MM\\DD", id="dest_dir")
             yield Ka0sCheckbox("Copy instead of move (the originals stay in Screenshots)",
-                               self.settings.copy_mode, id="sw_copy")
+                               self.settings.copy_mode, id="sw_copy", compact=True)
             yield Static("", id="settings-error")
             with ButtonRow(classes="buttons"):
                 yield action_button("Save", "confirm", id="save")

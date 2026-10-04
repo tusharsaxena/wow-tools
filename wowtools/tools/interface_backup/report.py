@@ -179,12 +179,11 @@ PARTS_PENDING = "…"  # a backup's parts until a worker has read its manifest
 
 
 def backup_text(info: BackupInfo, parts: tuple[str, ...] | None | str = PARTS_PENDING) -> str:
-    """A backup's line in the review tree, what tells zips apart first (the tree shows ~16 columns of it at 80x24):
-    kind and time, then day, parts (PARTS_PENDING until read) and size. "backup 15:33:04 · 2026-10-04 · ..."."""
+    """A backup's line in the review tree: kind, the whole date and time (as on the flavor's line and the bottom
+    line), parts (PARTS_PENDING until read) and size. "backup 2026-10-04 15:33:04 · Interface, WTF · 2.0 KB"."""
     kind = "safety" if info.is_safety else "backup"
     cell = parts if isinstance(parts, str) else parts_cell(parts)
-    day, _, clock = info.when.partition(" ")
-    return f"{kind} {clock} · {day} · {cell} · {human_size(info.size)}"
+    return f"{kind} {info.when} · {cell} · {human_size(info.size)}"
 
 
 def backup_detail(info: BackupInfo, parts: tuple[str, ...] | None | str = PARTS_PENDING) -> str:

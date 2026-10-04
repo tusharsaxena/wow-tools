@@ -78,6 +78,9 @@ class Ka0sApp(App):
     """Base for every tool's TUI. Subclasses override after_mount(), not on_mount()."""
 
     TITLE = "Ka0s · WoW Tools"
+    # The footer leaves out the command palette's key (Ctrl+P still opens it; nothing documents it): at 120x30 the
+    # review screens need that room for their own keys.
+    CSS = "Footer FooterKey.-command-palette { display: none; }"
     BINDINGS: ClassVar[list[Binding]] = [Binding("u", "update", "Update", show=False)]
     release: reactive[ReleaseInfo | None] = reactive(None)
 

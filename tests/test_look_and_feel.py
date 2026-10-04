@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 from textual.widgets import Button, Checkbox, DataTable, Tree
+from textual.widgets._footer import FooterKey
 
 from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, build_ace_tree, build_interface_tree, build_screenshot_tree,
                             build_wow_tree, make_config, settle)
@@ -21,7 +22,10 @@ from wowtools.ui.suite_app import WowToolsApp
 from wowtools.ui.widgets import NavHint
 
 POPUP_MAX_WIDTH = 100  # a popup or confirm at LARGE: a readable width, never stretched edge to edge
+FORM_MAX_WIDTH = 100  # a settings form, at any size
 TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup", "ace-profiles")
+# The tools whose settings form and footer are checked at BASE (the Ace3 Profile Manager's are Task S3's).
+SETTINGS_FIT_TOOLS = FOOTER_TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup")
 # The action that leads to a result screen without a running-WoW popup in between (dry runs, a backup).
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
               "ace-profiles": "dry_run"}
@@ -269,6 +273,50 @@ class LookAndFeelTest(TuiTestCase):
                         self.assertLessEqual(box.region.right, form.content_region.right, box.id)
                         self.assertGreaterEqual(box.content_size.width, box.get_content_width(box.size, box.size),
                                                 box.id)  # the whole label, not cut with an ellipsis
+
+    async def test_settings_forms_fit_at_base_and_keep_a_readable_width(self):
+        """A settings form is at most FORM_MAX_WIDTH columns wide and centred, at BASE and at LARGE (never
+        stretched edge to edge); at BASE the whole form, its Save button included, shows without scrolling."""
+        for tool in TOOLS:
+            for size in (BASE, LARGE):
+                with self.subTest(tool=tool, size=size):
+                    app = self.make_app()
+                    async with app.run_test(size=size) as pilot:
+                        await pilot.pause()
+                        app.open_tool(tool)
+                        await settle(app, pilot)
+                        form = app.screen.query_one("#settings")
+                        box = form.region
+                        self.assertLessEqual(box.width, FORM_MAX_WIDTH, box)
+                        self.assertLessEqual(abs(box.x - (size[0] - box.right)), 1, box)  # centred
+                        if size == BASE and tool in SETTINGS_FIT_TOOLS:
+                            self.assertEqual(form.max_scroll_y, 0)
+                            self.assert_inside(app.screen.query_one("#save", Button), box)
+
+    async def test_footer_shows_every_key_at_base(self):
+        """At BASE the footer of the review and result screens shows each of its keys whole (the command palette
+        key, which nothing documents, is not shown; Ctrl+P still opens it)."""
+        for tool in FOOTER_TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    review = await self.open_review(app, pilot, tool)
+                    self.assert_footer_whole(app)
+                    PREPARE.get(tool, lambda r: None)(review)
+                    getattr(review, f"action_{RUN_ACTION[tool]}")()
+                    await settle(app, pilot)
+                    app.screen.dismiss(True)
+                    await settle(app, pilot)
+                    self.assertIsNot(app.screen, review)
+                    self.assert_footer_whole(app)
+
+    def assert_footer_whole(self, app) -> None:
+        line = app.screen._compositor.render_strips()[-1].text
+        keys = [key for key in app.screen.query(FooterKey) if key.display]
+        self.assertTrue(keys, line)
+        self.assertNotIn("palette", line)
+        for key in keys:
+            self.assertIn(f"{key.key_display} {key.description}", line)
 
     async def test_ace_left_pane_has_view_and_show_headings(self):
         """Addendum B: at 120x30 the Ace3 left pane has room for its View and Show section headings again, and the

@@ -2,6 +2,7 @@
 per-file table."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import ClassVar
 
 from rich.text import Text
@@ -13,6 +14,7 @@ from textual.widgets import Button, DataTable, Footer, Header
 
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor
+from wowtools.core.paths import to_stored
 from wowtools.tools.wtf_cleaner.cleaner import CleanResult
 from wowtools.tools.wtf_cleaner.multi import FlavorRun, MultiCleanResult, nothing_deleted
 from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, MULTI_RESULT_COLUMNS,
@@ -39,15 +41,22 @@ def reasons_text(reasons: list[str]) -> Text:
     return text
 
 
+def _in_backup_folder(path: Path) -> str:
+    """A zip's path inside the backup folder ("cleaned/<name>", "backup/<name>"): the folder has a row of its own,
+    as a whole path does not fit at 120x30."""
+    return str(Path(path.parent.name, path.name))
+
+
 def summary_rows(result: CleanResult) -> list[tuple[str, str]]:
-    """The summary of one flavor's clean or dry run."""
+    """The summary of one flavor's clean or dry run. Zips are named inside the backup folder, which gets a row of
+    its own; the run journal by its name."""
     done = result.would_delete if result.dry_run else result.deleted
     if result.dry_run:
         snapshot, check = "not taken (dry run)", "not run (dry run)"
     elif result.snapshot_path is None:
         snapshot, check = "not taken", "not run"
     else:
-        snapshot = str(result.snapshot_path)
+        snapshot = _in_backup_folder(result.snapshot_path)
         if result.pruned:
             snapshot += f" ({len(result.pruned)} older backups removed)"
         check = "passed"
@@ -56,8 +65,14 @@ def summary_rows(result: CleanResult) -> list[tuple[str, str]]:
                      + (" (more in the log)" if len(result.check_problems) > 1 else ""))
     rows = [
         ("Mode", "Dry run" if result.dry_run else "Clean"),
-        ("Cleaned files zip", str(result.backup_path) if result.backup_path else "none (turned off in settings)"),
+        ("Cleaned files zip",
+         _in_backup_folder(result.backup_path) if result.backup_path else "none (turned off in settings)"),
         ("WTF backup", snapshot),
+    ]
+    zipped = result.backup_path or result.snapshot_path
+    if zipped is not None:
+        rows.append(("Backup folder", to_stored(zipped.parent.parent)))
+    rows += [
         ("Post-clean check", check),
         ("Would delete" if result.dry_run else "Deleted", f"{len(done)} files"),
         ("Size", format_size(result.bytes_freed)),
@@ -65,7 +80,8 @@ def summary_rows(result: CleanResult) -> list[tuple[str, str]]:
         ("Failed", f"{len(result.failed)} files"),
     ]
     if result.journal_path is not None:
-        rows.insert(4, ("Run journal", f"{result.journal_path} (Undo last clean (z) puts these files back)"))
+        rows.insert(rows.index(("Post-clean check", check)),
+                    ("Run journal", f"{result.journal_path.name} (Undo last clean (z) puts these files back)"))
     return rows
 
 
@@ -83,7 +99,7 @@ def multi_summary_rows(result: MultiCleanResult) -> list[tuple[str, str, bool]]:
         if result.not_started:
             rows.append(("Not started", names(result.not_started), False))
     if result.journal_path is not None:
-        rows.append(("Run journal", str(result.journal_path), False))
+        rows.append(("Run journal", result.journal_path.name, False))
     for run in result.done:
         rows.append((run.flavor.display_name, "", True))
         rows += [(item, value, False) for item, value in summary_rows(run.result)]  # type: ignore[arg-type]
@@ -110,7 +126,7 @@ class ResultScreen(Screen[str]):
         yield Header()
         with Vertical(id="result"):
             summary = DataTable(id="result-summary", cursor_type="none", zebra_stripes=True)
-            # Read-only summary: not a focus stop for one flavor. With several flavors it can outgrow its 50%
+            # Read-only summary: not a focus stop for one flavor. With several flavors it can outgrow its 60%
             # cap, so it takes focus there and the arrow keys scroll it (no cursor).
             summary.can_focus = isinstance(self.result, MultiCleanResult)
             yield summary
