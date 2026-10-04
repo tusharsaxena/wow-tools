@@ -325,3 +325,49 @@ settings, undo and journals), `docs/architecture.md`, `docs/events.md` (regenera
 Editing settings inside a profile; moving or copying profiles between files, accounts or flavors; import/export;
 `global`/`char`/other AceDB sections; creating LibDualSpec mappings; profile systems that aren't AceDB (WeakAuras,
 Details' own, Plater's own).
+
+## Addendum A: feedback round 1 (2026-10-04)
+
+The user's feedback after trying the first build. Items 1, 3 and 4 apply to every tool in the suite.
+
+1. **Retention is one global setting.** `[general] keep_backups` (default 10; 0 = keep all) and
+   `[general] keep_journals` (default 10; at least 1) in `config/wow-tools.cfg` replace every per-tool
+   `keep_backups` / `keep_snapshots` / `keep_journals`:
+   - WTF Cleaner snapshots and dry-run zips, Interface Backup backups, and Ace3 snapshots all follow
+     `keep_backups`.
+   - Every tool's journals follow `keep_journals`.
+   - Both are edited on the general settings screen (`s`, the WoW folder screen). Tool settings screens no longer
+     show them.
+   - The old per-tool keys are ignored, and they are removed from a tool's file the next time it is saved.
+2. **Blacklist as a tree, stored as (flavor, addon) pairs.** `[ace_profiles] blacklist` holds
+   `_retail_:ElvUI, _classic_era_:Questie`.
+   - A bare name (from the first build) means every flavor until the blacklist is next saved.
+   - A new `BlacklistScreen` (two panes, like the review) shows a tree of flavor → addon: every addon with Ace3 data
+     found by a scan, plus any blacklisted pair that is no longer found.
+   - Nothing is ticked by default, and a ticked pair is blacklisted. Save and Cancel are in the left pane.
+   - The screen opens from the settings screen ("Edit blacklist…", which replaces the text field) and from the review
+     screen (action bar "Blacklist…").
+   - `b` on the review tree toggles the (flavor, addon) pair of the highlighted addon.
+3. **One control per row.** In every tool's left pane, each focusable control (checkbox, input, select) sits on its own
+   row, so ↑/↓ reaches every one. The only exception is the action button row, where ←/→ moves. The Ace3 View boxes
+   become two rows. A look-and-feel test enforces this for every tool.
+4. **Expand and collapse all.** `x` expands every node and `c` collapses every node, below the root, on every tree screen:
+   - every tool's review screen;
+   - Interface Backup's restore screen;
+   - the blacklist screen.
+
+   The shared hint names them. Two existing keys move as a result:
+   - The WTF Cleaner's Clean moves from `c` to `w`, the same key as Ace3's Apply.
+   - Ace3's discard moves from `x` to Backspace.
+5. **The Ace3 review explains itself.**
+   - **"Pending changes".** "Staged" is renamed to "Pending changes" everywhere (screen, report, docs, events
+     descriptions).
+   - **An action bar under the tree** (`#tree-actions`, a wrapping `ButtonRow`) with labelled buttons: Delete profile
+     (d), Assign profile (p), Rename (e), Copy (k), Remove leftovers (o), Blacklist…, More… (m), Discard (⌫).
+   - **A guidance line** (`#guide`) above the action bar. It changes with the state:
+     - with nothing pending: "1 Tick profiles or characters (Space) → 2 pick an action below → 3 check the pending
+       changes in the tree → 4 Apply (w) writes them; Dry run (y) only checks them";
+     - on a highlighted node, what can be done there (for example `Profile "Healer": Delete, Rename or Copy it`);
+     - with pending changes: "N pending changes, not written yet: Apply (w) writes them, Discard (⌫) drops them".
+   - **The left pane** keeps View, Show, Search and the four run buttons. It still fits at 80x24.
+   - **The guide** gains a short "How it works" section at the top.
