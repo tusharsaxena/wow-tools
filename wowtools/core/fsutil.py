@@ -3,11 +3,16 @@ from __future__ import annotations
 
 import errno
 import os
+import stat
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
 # os.link errors meaning "this file system (or this kind of file) has no hard links", not "the target exists".
 _NO_HARDLINK = {errno.EPERM, errno.EACCES, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EMLINK, errno.ENOSYS}
+
+# Reparse tags (os.lstat(...).st_reparse_tag on Windows) of the two kinds of link: a symlink and a junction.
+_LINK_TAGS = (0xA000000C, 0xA0000003)
 
 
 def atomic_write_text(path: Path, text: str) -> None:
@@ -94,3 +99,57 @@ def safe_progress(progress: Callable[..., None] | None) -> Callable[..., None]:
         except Exception:  # noqa: BLE001, S110 - a broken progress display must never stop a run
             pass
     return report
+
+
+def is_link(entry: os.DirEntry | Path) -> bool:
+    """True for a symlink or, on Windows, a junction (Python 3.10 reports a junction as a plain folder, so its
+    reparse tag is checked; other reparse points such as cloud placeholders are not links). Never raises."""
+    try:
+        if entry.is_symlink():
+            return True
+        if sys.platform != "win32":
+            return False
+        info = entry.stat(follow_symlinks=False) if isinstance(entry, os.DirEntry) else os.lstat(entry)
+        return getattr(info, "st_reparse_tag", 0) in _LINK_TAGS
+    except OSError:
+        return False
+
+
+def _unlink_link(path: Path) -> None:
+    """Remove a link itself (never its target)."""
+    try:
+        os.unlink(path)
+    except OSError:
+        if sys.platform != "win32":
+            raise
+        os.rmdir(path)  # a junction or directory symlink is removed like a folder; its target is untouched
+
+
+def _delete_entry(path: Path, *, folder: bool) -> None:
+    """Remove a plain file or an empty folder, clearing a read-only flag (Windows) when that is what stops it."""
+    remover = os.rmdir if folder else os.remove
+    try:
+        remover(path)
+    except PermissionError:
+        os.chmod(path, stat.S_IWRITE)  # a read-only file or folder on Windows
+        remover(path)
+
+
+def remove_tree_no_follow(path: Path) -> None:
+    """Delete a folder tree. Links inside it (symlinks, junctions) are removed as links and never descended into,
+    so whatever they point at is untouched; a link given as `path` is just unlinked. Raises OSError."""
+    path = Path(path)
+    if is_link(path):
+        _unlink_link(path)
+        return
+    with os.scandir(path) as entries:
+        children = list(entries)
+    for entry in children:
+        child = Path(entry.path)
+        if is_link(entry):
+            _unlink_link(child)
+        elif entry.is_dir(follow_symlinks=False):
+            remove_tree_no_follow(child)
+        else:
+            _delete_entry(child, folder=False)
+    _delete_entry(path, folder=True)

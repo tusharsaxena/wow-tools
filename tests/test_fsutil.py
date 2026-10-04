@@ -2,13 +2,22 @@ from __future__ import annotations
 
 import errno
 import os
+import stat
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from wowtools.core import fsutil
-from wowtools.core.fsutil import atomic_write_text, free_name, remove_quietly, rename_no_replace, safe_progress
+from wowtools.core.fsutil import (
+    atomic_write_text,
+    free_name,
+    is_link,
+    remove_quietly,
+    remove_tree_no_follow,
+    rename_no_replace,
+    safe_progress,
+)
 
 
 class RenameNoReplaceTest(unittest.TestCase):
@@ -102,3 +111,62 @@ class SmallHelpersTest(unittest.TestCase):
         def broken(*_):
             raise RuntimeError("display gone")
         safe_progress(broken)("stage", 1, 2)  # never raises
+
+
+def can_symlink(tmp: Path) -> bool:
+    """True when this platform (and user) may create a directory symlink."""
+    try:
+        (tmp / "probe-target").mkdir()
+        os.symlink(tmp / "probe-target", tmp / "probe-link", target_is_directory=True)
+        return True
+    except (OSError, NotImplementedError):
+        return False
+
+
+class RemoveTreeNoFollowTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+
+    def test_removes_nested_tree_and_read_only_files(self):
+        root = self.tmp / "tree"
+        (root / "a" / "b").mkdir(parents=True)
+        path = root / "a" / "b" / "x.txt"
+        path.write_text("x", encoding="utf-8")
+        os.chmod(path, stat.S_IREAD)
+        remove_tree_no_follow(root)
+        self.assertFalse(root.exists())
+
+    def test_link_inside_is_unlinked_never_followed(self):
+        if not can_symlink(self.tmp):
+            self.skipTest("symlinks not available")
+        repo = self.tmp / "repo"
+        repo.mkdir()
+        (repo / "keep.lua").write_text("k", encoding="utf-8")
+        root = self.tmp / "Interface.replaced"
+        (root / "AddOns").mkdir(parents=True)
+        os.symlink(repo, root / "AddOns" / "MyAddon", target_is_directory=True)
+        self.assertTrue(is_link(root / "AddOns" / "MyAddon"))
+        remove_tree_no_follow(root)
+        self.assertFalse(root.exists())
+        self.assertEqual((repo / "keep.lua").read_text(encoding="utf-8"), "k")
+
+    def test_link_given_as_path_is_just_unlinked(self):
+        if not can_symlink(self.tmp):
+            self.skipTest("symlinks not available")
+        (self.tmp / "probe-target" / "keep.lua").write_text("k", encoding="utf-8")
+        remove_tree_no_follow(self.tmp / "probe-link")
+        self.assertFalse(os.path.lexists(self.tmp / "probe-link"))
+        self.assertEqual((self.tmp / "probe-target" / "keep.lua").read_text(encoding="utf-8"), "k")
+
+    def test_is_link_false_for_plain_folder_and_missing_path(self):
+        (self.tmp / "d").mkdir()
+        self.assertFalse(is_link(self.tmp / "d"))
+        self.assertFalse(is_link(self.tmp / "missing"))
+        with os.scandir(self.tmp) as entries:
+            self.assertEqual([is_link(entry) for entry in entries], [False])
+
+    def test_missing_tree_raises(self):
+        with self.assertRaises(OSError):
+            remove_tree_no_follow(self.tmp / "missing")

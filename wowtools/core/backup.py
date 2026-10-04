@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import json
+import os
 import zipfile
 import zlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from wowtools.core.fsutil import remove_quietly, rename_no_replace
+from wowtools.core.fsutil import is_link, remove_quietly, rename_no_replace
 
 MANIFEST_NAME = "manifest.json"
 
@@ -103,3 +104,39 @@ def verify_backup(zip_path: Path, expected: dict[str, int],
         sizes = {info.filename: info.file_size for info in infos if info.filename != MANIFEST_NAME}
     if sizes != expected:
         raise BackupError("backup contents do not match the selected files")
+
+
+def walk_files(folder: Path, *, on_link: Callable[[Path], None] | None = None,
+               on_error: Callable[[Path, OSError], None] | None = None,
+               on_count: Callable[[int], None] | None = None, every: int = 100) -> list[os.DirEntry]:
+    """Every regular file under folder, depth first with names sorted, as directory entries (entry.stat() is free
+    on Windows; elsewhere it costs one disk round trip, so callers read it only when they need sizes). Links
+    (symlinks, junctions) are never followed: each goes to on_link and is left out. An unreadable sub-folder goes
+    to on_error and is skipped; without on_error, and always for `folder` itself, the OSError is raised.
+    on_count(found) is called every `every` files."""
+    folder = Path(folder)
+    found: list[os.DirEntry] = []
+    pending = [folder]
+    while pending:
+        current = pending.pop()
+        try:
+            with os.scandir(current) as entries:
+                children = sorted(entries, key=lambda e: e.name)
+        except OSError as exc:
+            if on_error is None or current == folder:
+                raise
+            on_error(current, exc)
+            continue
+        subdirs = []
+        for entry in children:
+            if is_link(entry):
+                if on_link is not None:
+                    on_link(Path(entry.path))
+            elif entry.is_dir(follow_symlinks=False):
+                subdirs.append(Path(entry.path))
+            elif entry.is_file(follow_symlinks=False):
+                found.append(entry)
+                if on_count is not None and len(found) % every == 0:
+                    on_count(len(found))
+        pending.extend(reversed(subdirs))
+    return found
