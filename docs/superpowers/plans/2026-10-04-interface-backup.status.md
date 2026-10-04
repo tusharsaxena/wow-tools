@@ -17,7 +17,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | 8 | report helpers | done | 4cbafec | API as planned plus `RestorePlan.unreadable` warnings, missing files in the backup result, notices capped per part; 12 tests |
 | 9 | flow, settings, summary, backup screens, registration | done | e6e3ab6 | API as planned with explicit `wow_check`/`disk_usage` flow kwargs; journal lookup and free space moved off the UI thread; own `_checking` flag for the WoW check; 19 TUI tests |
 | 10 | restore and undo screens | done | ae15647 | API as planned; backup list, backup load/scan and every plan built in workers; Undo on the result screen only for a restore that changed a part; 12 new TUI tests |
-| M2 | push milestone 2 | reviewed, fixes in 763a34b | 763a34b | Milestone 2 review: 20 findings fixed (see decisions, "M2 review") |
+| M2 | push milestone 2 | done (pushed) | 763a34b | Milestone 2 review: 20 findings fixed (see decisions, "M2 review") |
 | 11 | docs, events, final checks | todo | | |
 | M3 | push milestone 3, ask for merge go-ahead | todo | | |
 
