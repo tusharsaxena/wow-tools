@@ -19,7 +19,7 @@ merge, delete every branch, stash and worktree this run created.
 | 8 | journal + editor | done | fe6fc85 | plan code verbatim apart from one ruff `noqa: BLE001` on the deliberate `except BaseException` (roll back, then re-raise); 3 ace_journal + 11 ace_editor tests OK; ace 340 OK; full suite 902 OK (2 skipped), ruff clean |
 | 9 | undo, recovery, multi | done | f62f843 | plan code verbatim apart from a ruff fix in the test and the `ace.apply_completed` warning level; 6 ace_undo + 5 ace_multi tests OK; ace 351 OK; full suite 913 OK (2 skipped), ruff clean |
 | 10 | report helpers | done | a7d0f81 | plan code verbatim (`FLAVOR_NAMES` is public in `core/install.py`); test file drops the plan's `# tests/...` path comment; 7 ace_report tests OK; ace 358 OK; full suite 920 OK (2 skipped), ruff clean; milestone push left to the orchestrator |
-| M2 | push milestone 2 | reviewed (not pushed yet) | 8c6f4fd | review fixes: zips kept when a journal is unreadable, recovery only reverts what the run wrote, a stopped flavor's result reaches the report, marker write failure is an ApplyError, removed characters under the right profile row; full suite 928 OK (2 skipped), ruff clean |
+| M2 | push milestone 2 | done (pushed) | 8c6f4fd | review fixes: zips kept when a journal is unreadable, recovery only reverts what the run wrote, a stopped flavor's result reaches the report, marker write failure is an ApplyError, removed characters under the right profile row; full suite 928 OK (2 skipped), ruff clean |
 | 11 | flow, settings screen, registration | todo | | |
 | 12 | review screen: tree, ticks, filters, blacklist | todo | | |
 | 13 | popups + staging from the tree | todo | | |
