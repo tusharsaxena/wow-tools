@@ -71,7 +71,7 @@ class ReportTest(unittest.TestCase):
     def test_guidance_steps_when_nothing_is_going_on(self):
         text = report.guidance("root", "", 0, 0, 0, 0)
         self.assertEqual(text, "1 Tick profiles or characters (Space) → 2 pick an action below → 3 check the "
-                               "pending changes in the tree → 4 Apply (w) writes them; Dry run (y) only checks them")
+                               "pending changes in the tree → 4 Apply (w) writes them")
         self.assertEqual(report.guidance(None, "", 0, 0, 0, 0), text)
         self.assertEqual(report.guidance("account", "ACCT1", 0, 0, 0, 0), text)
 
@@ -106,8 +106,8 @@ class ReportTest(unittest.TestCase):
                          "3 ticked: pick an action below (Delete, Assign, …)")
 
     def test_guidance_with_pending_changes_comes_first(self):
-        pending = ("3 pending changes in 2 files, not written yet: Apply (w) writes them, Dry run (y) checks "
-                   "them, Discard (⌫) drops them")
+        pending = ("3 pending changes in 2 files, not written yet: Apply (w) writes, Dry run (y) checks, "
+                   "Discard (⌫) drops")
         self.assertEqual(report.guidance("root", "", 0, 0, 3, 2), pending)
         self.assertEqual(report.guidance("profile", "Healer", 0, 0, 3, 2),
                          pending + '\nProfile "Healer": Delete, Rename or Copy it, or tick it with Space')

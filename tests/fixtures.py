@@ -37,6 +37,12 @@ from pathlib import Path
 
 from wowtools.core.config import Config
 
+# Terminal sizes (docs/superpowers/specs/2026-10-04-ace-profiles-design.md, Addendum B): screens are designed for
+# Windows Terminal's default window (BASE) and grow when it is maximized (LARGE); TINY only has to keep working.
+BASE = (120, 30)
+LARGE = (160, 45)
+TINY = (80, 24)
+
 NOW = time.time()
 DAY = 86400.0
 FRESH = NOW - 1 * DAY

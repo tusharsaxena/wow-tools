@@ -22,8 +22,9 @@ UNDO_COLUMNS = ("Flavor", "File", "Result")
 DELETED = "✘ deleted"
 REMOVED = "✘ removed"
 NO_PENDING = "No pending changes"
+# The guide's texts each take at most two rows of the tree pane at 120x30 (tests/test_look_and_feel.py).
 STEPS = ("1 Tick profiles or characters (Space) → 2 pick an action below → 3 check the pending changes in the tree "
-         "→ 4 Apply (w) writes them; Dry run (y) only checks them")
+         "→ 4 Apply (w) writes them")
 CHARACTER_KINDS = ("char", "pair", "character")  # tree nodes that are one character
 RESULT_TEXT = {"edited": "changed", "would_edit": "would change", "skipped": "skipped", "failed": "failed",
                "rolled_back": "put back"}
@@ -149,11 +150,11 @@ def guidance(node_kind: str | None, node_name: str, ticked_profiles: int, ticked
              pending_files: int, *, locked: str = "", hint: bool = True) -> str:
     """The review's guidance line (#guide): the pending changes first (when there are any), then what can be done
     with the ticks or the highlighted node; with neither, the four steps of the workflow. hint=False leaves the
-    per-node hint out (the screen does when it would squeeze the tree)."""
+    per-node hint out (the screen does when the guide would take more than two rows)."""
     lines = []
     if pending_total:
-        lines.append(f"{pending_count(pending_total, pending_files)}, not written yet: Apply (w) writes them, "
-                     "Dry run (y) checks them, Discard (⌫) drops them")
+        lines.append(f"{pending_count(pending_total, pending_files)}, not written yet: Apply (w) writes, "
+                     "Dry run (y) checks, Discard (⌫) drops")
     text = node_hint(node_kind, node_name, ticked_profiles + ticked_chars, locked) if hint else ""
     if text:
         lines.append(text)

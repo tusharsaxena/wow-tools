@@ -34,7 +34,7 @@ from wowtools.tools.wtf_cleaner.safety import SNAPSHOT_SUBDIR, Marker, clear_mar
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir
 from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (ACCENT, BUSY_STYLE, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
+from wowtools.ui.dialogs import (ACCENT, BUSY_STYLE, POPUP_WIDTH, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
                                 ProgressScreen, TwoPaneFocus, relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
@@ -60,13 +60,13 @@ class CleanProgressScreen(ProgressScreen):
 class RecoveryScreen(ModalScreen[str]):
     """An earlier clean did not finish: say where its WTF backup is. Never restores anything itself."""
 
-    DEFAULT_CSS = """
-    RecoveryScreen { align: center middle; }
-    RecoveryScreen #recovery-box { width: 90; height: auto; border: thick $warning; background: $panel;
-                                   padding: 1 2; }
-    RecoveryScreen #recovery-title { color: $warning; text-style: bold; margin-bottom: 1; }
-    RecoveryScreen #recovery-buttons { height: auto; align-horizontal: right; margin-top: 1; }
-    RecoveryScreen Button { margin-left: 2; }
+    DEFAULT_CSS = f"""
+    RecoveryScreen {{ align: center middle; }}
+    RecoveryScreen #recovery-box {{ {POPUP_WIDTH} height: auto; border: thick $warning; background: $panel;
+                                   padding: 1 2; }}
+    RecoveryScreen #recovery-title {{ color: $warning; text-style: bold; margin-bottom: 1; }}
+    RecoveryScreen #recovery-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
+    RecoveryScreen Button {{ margin-left: 2; }}
     """
 
     def __init__(self, marker: Marker, backup_dir: Path) -> None:

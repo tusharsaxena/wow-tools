@@ -520,7 +520,7 @@ their original get a `rolled_back` line in the journal that holds their entries 
 `BlacklistScreen` and keeps its answer until Save; `validate_backup_dir` errors inline). `s` opens the shared WoW-folder settings, then this tool's (not while a `ProfileSettingsScreen` or a `BlacklistScreen` is on the stack: two Saves would overwrite each other).
 
 - `ProfileReviewScreen` (`review_screen.py`): `TwoPaneFocus`, `two_pane_css`. Left pane `#filters`, one control per row: the
-  View pair (View by addon / View by character), the Show boxes (no heading: "Show leftover characters" and so on), the search `Input`, the `#pending` line (`report.pending_text`, "N pending changes" or `NO_PENDING`) and the
+  View pair under a "View" heading (By addon / By character), the Show boxes under a "Show" heading, the search `Input`, the `#pending` line (`report.pending_text`, "N pending changes" or `NO_PENDING`) and the
   action row **Apply** (delete variant), **Dry run**, **Rescan**, **Undo last change** (revert). Right:
   `ProfileTree` (`#profiles`), built by `tree_view.TreeBuilder` from the scan, the staging and `Filters`; each
   rebuild keeps expansion and the cursor by `ident`. Labels and tags come from `report.profile_rows` and
@@ -530,8 +530,8 @@ their original get a `rolled_back` line in the journal that holds their entries 
   `app.busy` and run inside `activity.running()`.
   The tree sits in `#tree-pane` above the guidance line `#guide` (`report.guidance`: the four `STEPS` on the root,
   a flavor or an account or with nothing highlighted, else `report.node_hint` for the highlighted node; with
-  pending changes the pending count and Apply/Discard come first, and the node hint follows only while the tree
-  keeps `GUIDE_MIN_TREE` (5) rows; on a locked addon the hint names it and the `u` unlock) and the action bar `#tree-actions`, a
+  pending changes the pending count and Apply/Discard come first, and the node hint follows only while the guide
+  stays within `GUIDE_MAX_ROWS` (2) rows; on a locked addon the hint names it and the `u` unlock) and the action bar `#tree-actions`, a
   `WrapButtonRow` of `TREE_ACTIONS` (Delete profile, Assign profile, Rename, Copy, Remove leftovers, Blacklist…,
   More…, Discard), each button doing what its key does. With nothing ticked, Delete and Assign act on the
   highlighted node, but never on the root, a flavor or an account (`GROUP_KINDS`). The guide follows the cursor, the ticks and the pending

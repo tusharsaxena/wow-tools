@@ -15,7 +15,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
 from textual.widget import Widget
-from textual.widgets import Button, Checkbox, Footer, Header, Input, ProgressBar, Static, Tree
+from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, ProgressBar, Static, Tree
 from textual.widgets.tree import TreeNode
 
 from wowtools.core import activity
@@ -43,8 +43,8 @@ from wowtools.tools.ace_profiles.settings import (Pair, format_blacklist, is_bla
 from wowtools.tools.ace_profiles.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
 from wowtools.tools.ace_profiles.undo import UndoError, UndoResult, recover, undo_run
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (BUSY_STYLE, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
-                                TwoPaneFocus, relabel_branch, theme_colour, tick_mark, two_pane_css)
+from wowtools.ui.dialogs import (BUSY_STYLE, POPUP_WIDTH, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
+                                ProgressScreen, TwoPaneFocus, relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, WrapButtonRow, action_button
 
 NAV_HINT = (REVIEW_HINT + "a all · n none · d delete · p assign · m more · w apply · y dry run · " + TREE_HINT +
@@ -53,7 +53,7 @@ WowCheck = Callable[[], "list[str] | None"]
 SHOW_FILTERS = {"only-multi": "only_multi", "only-unused": "only_unused", "show-leftovers": "leftovers",
                 "show-blacklisted": "blacklisted"}
 PROGRESS_EVERY = 0.05  # seconds between two scan progress reports sent to the UI thread
-GUIDE_MIN_TREE = 5  # rows the tree keeps: the guidance line leaves its per-node hint out rather than squeeze it
+GUIDE_MAX_ROWS = 2  # the guidance line leaves its per-node hint out rather than take more rows than this
 GROUP_KINDS = ("root", "flavor", "account")  # nodes too broad to stand for a selection when nothing is ticked
 # The action bar under the tree: (id, label, kind of action, action). Each button does what its key does; one with
 # nothing to act on stays enabled and says what to tick or highlight.
@@ -97,14 +97,13 @@ class ProfileRecoveryScreen(ModalScreen[str]):
     """An earlier Apply did not finish: put the originals back from its zip, or leave the files as they are.
     Dismisses with "put_back" or "leave" (None when closed with Esc: offered again at the next scan)."""
 
-    DEFAULT_CSS = """
-    ProfileRecoveryScreen { align: center middle; }
-    ProfileRecoveryScreen #recovery-box { width: 80; max-width: 100%; height: auto; max-height: 100%;
-                                          overflow-y: auto; border: thick $warning; background: $panel;
-                                          padding: 1 2; }
-    ProfileRecoveryScreen #recovery-title { color: $warning; text-style: bold; margin-bottom: 1; }
-    ProfileRecoveryScreen #recovery-buttons { height: auto; align-horizontal: right; margin-top: 1; }
-    ProfileRecoveryScreen Button { margin-left: 2; }
+    DEFAULT_CSS = f"""
+    ProfileRecoveryScreen {{ align: center middle; }}
+    ProfileRecoveryScreen #recovery-box {{ {POPUP_WIDTH} height: auto; max-height: 100%; overflow-y: auto;
+                                          border: thick $warning; background: $panel; padding: 1 2; }}
+    ProfileRecoveryScreen #recovery-title {{ color: $warning; text-style: bold; margin-bottom: 1; }}
+    ProfileRecoveryScreen #recovery-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
+    ProfileRecoveryScreen Button {{ margin-left: 2; }}
     """
     BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "dismiss", "Close", show=False)]
 
@@ -151,11 +150,10 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
     session (shared, not copied)."""
 
     TREE_SELECTOR = "#profiles"
-    # The left pane fits 80x24 (tests/test_look_and_feel.py) with one control per row: the View and Show boxes, the
-    # search box and the pending line carry their own names instead of a section heading each, so the hint still
-    # fits when the pending line takes three rows (every kind of change) and the bottom line two (scan warnings).
-    # The tree pane holds the tree, the guidance line and the action bar, and fits 80x24 too: the guidance line
-    # drops its per-node hint when it would leave the tree fewer than GUIDE_MIN_TREE rows.
+    # Designed for 120x30 (tests/test_look_and_feel.py): the left pane has one control per row under its View and
+    # Show headings, and still fits its hint when the pending line takes three rows (every kind of change) and the
+    # bottom line two (scan warnings). The tree pane holds the tree, the guidance line and the action bar (at most
+    # two rows) and the guidance line (at most GUIDE_MAX_ROWS: it drops its per-node hint rather than take more).
     DEFAULT_CSS = two_pane_css("ProfileReviewScreen", "#profiles") + """
     ProfileReviewScreen #tree-pane { width: 1fr; }
     ProfileReviewScreen #profiles { height: 1fr; }
@@ -228,12 +226,14 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         yield Header()
         with Horizontal(id="body"):
             with Vertical(id="filters"):
-                yield Ka0sCheckbox("View by addon", True, id="view-addon", compact=True)
-                yield Ka0sCheckbox("View by character", False, id="view-character", compact=True)
+                yield Label("View", classes="section")
+                yield Ka0sCheckbox("By addon", True, id="view-addon", compact=True)
+                yield Ka0sCheckbox("By character", False, id="view-character", compact=True)
+                yield Label("Show", classes="section")
                 yield Ka0sCheckbox("Only addons with 2+ profiles", False, id="only-multi", compact=True)
                 yield Ka0sCheckbox("Only unused profiles", False, id="only-unused", compact=True)
-                yield Ka0sCheckbox("Show leftover characters", True, id="show-leftovers", compact=True)
-                yield Ka0sCheckbox("Show blacklisted addons", True, id="show-blacklisted", compact=True)
+                yield Ka0sCheckbox("Leftover characters", True, id="show-leftovers", compact=True)
+                yield Ka0sCheckbox("Blacklisted addons", True, id="show-blacklisted", compact=True)
                 yield Input(placeholder="Search addon, profile or character", id="search", compact=True)
                 yield Static(self._pending_line(NO_PENDING), id="pending")
                 with ButtonRow(id="actions", wrap=False):
@@ -517,17 +517,14 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
             self.query_one("#guide", Static).update(Text(text))
 
     def _guide_fits(self, text: str) -> bool:
-        """The guide, wrapped to its width, leaves the tree at least GUIDE_MIN_TREE rows of the tree pane (the
-        action bar's height depends on the width only). True until the pane is laid out."""
-        pane, guide = self.query_one("#tree-pane"), self.query_one("#guide", Static)
-        if pane.size.height <= 0 or guide.size.width <= 0:
+        """The guide, wrapped to its width, takes at most GUIDE_MAX_ROWS rows. True until it is laid out."""
+        guide = self.query_one("#guide", Static)
+        if guide.size.width <= 0:
             return True
-        lines = len(Text(text).wrap(self.app.console, guide.size.width))
-        bar = self.query_one("#tree-actions").outer_size.height
-        return pane.size.height - bar - lines >= GUIDE_MIN_TREE
+        return len(Text(text).wrap(self.app.console, guide.size.width)) <= GUIDE_MAX_ROWS
 
     def on_resize(self) -> None:
-        self.call_after_refresh(self._update_guide)  # once the action bar has settled at the new width
+        self.call_after_refresh(self._update_guide)  # once the guide has its new width
 
     def on_tree_node_highlighted(self, event: Tree.NodeHighlighted) -> None:
         if event.control.id == "profiles":

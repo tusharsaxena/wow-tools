@@ -24,7 +24,10 @@ BUSY_STYLE = "bold #E8B04B"  # a summary line that says work is going on ("Check
 
 # One look for every tool: the same left pane, action row, bottom line and hints on the two-pane screens, the
 # same layout and hints on the result screens, the same form on the settings screens.
-FILTERS_WIDTH = 50  # the left pane: wide enough for four action buttons in one row
+FILTERS_WIDTH = 50  # the left pane: wide enough for four action buttons in one row; the tree takes the rest (1fr)
+# A popup's width: readable, with room around it at 120x30, centred and never stretched when the window grows, and
+# never more than 90% of a smaller window.
+POPUP_WIDTH = "width: 90; max-width: 90%;"
 
 
 def review_hint(space: str = "tick") -> str:
@@ -208,12 +211,13 @@ class ConfirmScreen(ModalScreen[bool]):
     """A yes/no question. `alerts` are extra lines shown in red; `default_yes` decides which button has focus (risky
     actions start on No)."""
 
-    DEFAULT_CSS = """
-    ConfirmScreen { align: center middle; }
-    ConfirmScreen #confirm-box { width: 80; height: auto; border: thick $accent; background: $panel; padding: 1 2; }
-    ConfirmScreen #confirm-title { color: $accent; text-style: bold; margin-bottom: 1; }
-    ConfirmScreen #confirm-buttons { height: auto; align-horizontal: right; margin-top: 1; }
-    ConfirmScreen Button { margin-left: 2; }
+    DEFAULT_CSS = f"""
+    ConfirmScreen {{ align: center middle; }}
+    ConfirmScreen #confirm-box {{ {POPUP_WIDTH} height: auto; border: thick $accent; background: $panel;
+                                 padding: 1 2; }}
+    ConfirmScreen #confirm-title {{ color: $accent; text-style: bold; margin-bottom: 1; }}
+    ConfirmScreen #confirm-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
+    ConfirmScreen Button {{ margin-left: 2; }}
     """
     BINDINGS: ClassVar[list[Binding]] = [Binding("y", "answer(True)", "Yes"), Binding("n,escape", "answer(False)", "No"), *NAV_BINDINGS]
 
@@ -255,12 +259,13 @@ class ProgressScreen(ModalScreen[None]):
     "not known" and runs the bar as indeterminate. set_flavor(label) puts "<label>: " in front of the stage title
     while several flavors run one after another."""
 
-    DEFAULT_CSS = """
-    ProgressScreen { align: center middle; }
-    ProgressScreen .progress-box { width: 80; height: auto; border: thick $accent; background: $panel; padding: 1 2; }
-    ProgressScreen .progress-stage { color: $accent; text-style: bold; margin-bottom: 1; }
-    ProgressScreen .progress-bar { width: 1fr; }
-    ProgressScreen .progress-file { color: $text-muted; margin-top: 1; height: 2; overflow: hidden hidden; }
+    DEFAULT_CSS = f"""
+    ProgressScreen {{ align: center middle; }}
+    ProgressScreen .progress-box {{ {POPUP_WIDTH} height: auto; border: thick $accent; background: $panel;
+                                   padding: 1 2; }}
+    ProgressScreen .progress-stage {{ color: $accent; text-style: bold; margin-bottom: 1; }}
+    ProgressScreen .progress-bar {{ width: 1fr; }}
+    ProgressScreen .progress-file {{ color: $text-muted; margin-top: 1; height: 2; overflow: hidden hidden; }}
     """
     ID_PREFIX = "progress"
     STAGE_TITLES: ClassVar[dict[str, str]] = {}

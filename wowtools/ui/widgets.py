@@ -107,15 +107,16 @@ class ButtonRow(Horizontal):
 
 
 class WrapButtonRow(ButtonRow):
-    """A ButtonRow whose compact buttons flow onto as many rows as its width needs: a grid whose column count
-    follows the width and the widest label. ← and → move through the buttons in order, wrapping round (the
-    review's action bar under the tree)."""
+    """A ButtonRow whose compact buttons flow onto as many rows as its width needs, in order, each as wide as its
+    label: a grid of one-cell columns where each button spans its label's width plus a gap, and the room left on a
+    full row is shared out among its buttons (the last row keeps the first row's share, so it lines up). ← and →
+    move through the buttons in order, wrapping round (the Ace3 review's action bar under the tree)."""
 
     DEFAULT_CSS = """
-    WrapButtonRow { layout: grid; grid-size: 1; grid-gutter: 0 1; grid-rows: 1; height: auto; }
-    WrapButtonRow > Button { width: 1fr; min-width: 0; height: 1; }
+    WrapButtonRow { layout: grid; grid-size: 1; grid-columns: 1; grid-gutter: 0 0; grid-rows: 1; height: auto; }
+    WrapButtonRow > Button { width: 1fr; min-width: 0; height: 1; margin-right: 1; }
     """
-    GUTTER = 1
+    GUTTER = 1  # the blank cell after each button (its margin-right)
 
     def on_mount(self) -> None:
         self._fit(self.size.width)
@@ -127,10 +128,29 @@ class WrapButtonRow(ButtonRow):
         buttons = list(self.query(Button))
         if not buttons or width <= 0:
             return
-        widest = max(cell_len(b.label.plain) for b in buttons) + 2  # a compact button's padding
-        columns = max(1, min(len(buttons), (width + self.GUTTER) // (widest + self.GUTTER)))
-        if self.styles.grid_size_columns != columns:
-            self.styles.grid_size_columns = columns
+        rows: list[list[tuple[Button, int]]] = [[]]
+        used = 0
+        for button in buttons:
+            need = min(width, cell_len(button.label.plain) + 2 + self.GUTTER)  # a compact button's padding
+            if rows[-1] and used + need > width:
+                rows.append([])
+                used = 0
+            rows[-1].append((button, need))
+            used += need
+        share = None
+        for number, row in enumerate(rows):
+            slack = width - sum(need for _, need in row)
+            if number == len(rows) - 1 and share is not None:
+                extra, left = min(share, slack // len(row)), 0  # the last row lines up with the first
+            else:
+                extra, left = divmod(slack, len(row))
+            share = extra if share is None else share
+            for index, (button, need) in enumerate(row):
+                span = need + extra + (1 if index < left else 0)
+                if button.styles.column_span != span:
+                    button.styles.column_span = span
+        if self.styles.grid_size_columns != width:
+            self.styles.grid_size_columns = width
 
 
 class NavHint(Static):

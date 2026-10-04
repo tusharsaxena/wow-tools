@@ -16,7 +16,7 @@ from textual.widgets.option_list import Option
 from wowtools.core.events import log_event
 from wowtools.tools.ace_profiles.model import DEFAULT
 from wowtools.tools.ace_profiles.ops import valid_name
-from wowtools.ui.dialogs import ALERT_STYLE
+from wowtools.ui.dialogs import ALERT_STYLE, POPUP_WIDTH
 from wowtools.ui.widgets import ButtonRow, NavHint, action_button
 
 # The quick actions, and every review key the footer has no room for (each label names its key).
@@ -37,12 +37,12 @@ ACTIONS = (
 
 
 def popup_css(screen: str) -> str:
-    """ConfirmScreen's look: a centred box with an accent border, a bold title and right-aligned buttons. It fits
-    80x24 (tests/test_ace_app.py): the list and the name field are compact, the error line takes no room until
+    """ConfirmScreen's look: a centred box (POPUP_WIDTH) with an accent border, a bold title and right-aligned
+    buttons. It still fits 80x24 (tests/test_ace_app.py): the list and the name field are compact, the error line takes no room until
     there is an error, and a long body scrolls inside its share of the height."""
     return f"""
     {screen} {{ align: center middle; }}
-    {screen} .popup-box {{ width: 80; max-width: 100%; height: auto; max-height: 100%; overflow-y: auto;
+    {screen} .popup-box {{ {POPUP_WIDTH} height: auto; max-height: 100%; overflow-y: auto;
                           border: thick $accent; background: $panel; padding: 1 2; }}
     {screen} .title {{ color: $accent; text-style: bold; margin-bottom: 1; }}
     {screen} .popup-body {{ height: auto; max-height: 35vh; overflow-y: auto; }}

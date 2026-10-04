@@ -984,7 +984,8 @@ class GuidanceTest(AceAppBase):
             await settle(app, pilot)
             total = review.staging.summary().total
             self.assertTrue(self.guide(review).startswith(f"{total} pending changes in 1 file, not written yet: "
-                                                          "Apply (w) writes them"), self.guide(review))
+                                                          "Apply (w) writes, Dry run (y) checks"),
+                            self.guide(review))
             self.assertNotIn("staged", (self.guide(review) + review.summary_text).casefold())
 
     async def test_action_bar_buttons_have_their_kind_of_colour(self):

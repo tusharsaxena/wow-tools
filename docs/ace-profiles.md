@@ -137,8 +137,8 @@ the screen.
 |---|---|
 | **Only addons with 2+ profiles** | Only the addons (databases) with at least two profiles: the ones worth tidying |
 | **Only unused profiles** | Only profiles no character uses (By addon view) |
-| **Show leftover characters** (on) | Characters tagged "no character folder". Untick to hide them |
-| **Show blacklisted addons** (on) | Addons on your blacklist. Untick to hide them |
+| **Leftover characters** (on) | Characters tagged "no character folder". Untick to hide them |
+| **Blacklisted addons** (on) | Addons on your blacklist. Untick to hide them |
 
 The search box (`/`) keeps only lines whose addon, profile or character name contains what you type (upper or
 lower case doesn't matter). `Esc` takes you from the search box back to the tree.

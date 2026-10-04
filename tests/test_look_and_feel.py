@@ -1,6 +1,8 @@
 """One look and feel across the tools: the review screens share the left pane, its one-row action buttons and the
 hint shape; the result screens share their layout and hint; Esc on a review goes back to the flavor picker. Each
-check runs at the default terminal size (80x24), where the left pane is tightest."""
+check runs at BASE (120x30, Windows Terminal's default window), the size the screens are designed for; the LARGE
+(160x45) checks make sure the trees grow while the left pane and the popups keep their widths, and one TINY (80x24)
+smoke test makes sure every screen still opens and every control can still be focused there."""
 from __future__ import annotations
 
 import tempfile
@@ -8,16 +10,17 @@ from pathlib import Path
 
 from textual.widgets import Button, Checkbox, DataTable, Tree
 
-from tests.fixtures import (TuiTestCase, build_ace_tree, build_interface_tree, build_screenshot_tree, build_wow_tree,
-                            make_config, settle)
+from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, build_ace_tree, build_interface_tree, build_screenshot_tree,
+                            build_wow_tree, make_config, settle)
 from wowtools.tools import TOOLS as TOOL_INFO
+from wowtools.tools.ace_profiles.popups import ActionsScreen, NameScreen, TargetScreen
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_HINT, ConfirmScreen
+from wowtools.ui.dialogs import FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_HINT, ConfirmScreen, ProgressScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
 from wowtools.ui.widgets import NavHint
 
-SMALL = (80, 24)
+POPUP_MAX_WIDTH = 100  # a popup or confirm at LARGE: a readable width, never stretched edge to edge
 TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup", "ace-profiles")
 # The action that leads to a result screen without a running-WoW popup in between (dry runs, a backup).
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
@@ -72,7 +75,7 @@ class LookAndFeelTest(TuiTestCase):
         for tool in TOOLS:
             with self.subTest(tool=tool):
                 app = self.make_app()
-                async with app.run_test(size=SMALL) as pilot:
+                async with app.run_test(size=BASE) as pilot:
                     review = await self.open_review(app, pilot, tool)
                     filters = review.query_one("#filters")
                     self.assertEqual(filters.outer_size.width, FILTERS_WIDTH)
@@ -104,7 +107,7 @@ class LookAndFeelTest(TuiTestCase):
         for tool in TOOLS:
             with self.subTest(tool=tool):
                 app = self.make_app()
-                async with app.run_test(size=SMALL) as pilot:
+                async with app.run_test(size=BASE) as pilot:
                     review = await self.open_review(app, pilot, tool)
                     actions = review.query_one("#actions")
                     controls = [w for w in review.query_one("#filters").query("*")
@@ -116,7 +119,7 @@ class LookAndFeelTest(TuiTestCase):
         for tool in TOOLS:
             with self.subTest(tool=tool):
                 app = self.make_app()
-                async with app.run_test(size=SMALL) as pilot:
+                async with app.run_test(size=BASE) as pilot:
                     review = await self.open_review(app, pilot, tool)
                     self.assertIn(TREE_HINT + "r rescan", str(review.query_one(NavHint).render()))
                     self.assertTrue(TREE_HINT.startswith("x expand all · c collapse all"))
@@ -133,10 +136,11 @@ class LookAndFeelTest(TuiTestCase):
                     self.assertIs(app.screen, review)  # c collapses: it never starts a run
 
     async def test_ace_tree_pane_fits_with_its_guide_and_action_bar(self):
-        """The Ace3 review's tree pane holds the tree, the guidance line and the action bar: at 80x24 each button
-        and the guide are drawn whole, and the tree keeps at least 5 rows, with and without pending changes."""
+        """The Ace3 review's tree pane holds the tree, the guidance line and the action bar: at BASE each button and
+        the guide are drawn whole, the action bar takes at most 2 rows, the guide at most 2 and the tree keeps at
+        least 12, with and without pending changes."""
         app = self.make_app()
-        async with app.run_test(size=SMALL) as pilot:
+        async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot, "ace-profiles")
             for prepared in (False, True):
                 if prepared:
@@ -149,16 +153,24 @@ class LookAndFeelTest(TuiTestCase):
                 for widget in (*buttons, review.query_one("#guide")):
                     self.assert_inside(widget, pane)
                     self.assert_inside(widget, app.screen.region)
-                self.assertGreaterEqual(review.query_one("#profiles", Tree).region.height, 5, prepared)
+                self.assert_ace_tree_pane_rows(review, prepared)
                 left = review.query_one("#filters").region
                 for widget in (review.query_one("#pending"), review.query_one(NavHint)):
                     self.assert_inside(widget, left._replace(width=left.width - 1))
 
-    async def test_ace_tree_keeps_5_rows_with_a_node_highlighted(self):
-        """Feedback round 1 review: with pending changes and a profile highlighted, the per-node hint follows the
-        pending line only when the tree still keeps at least 5 rows at 80x24."""
+    def assert_ace_tree_pane_rows(self, review, note) -> None:
+        """Review Focus 5 of the terminal size plan, at BASE: action bar <= 2 rows, guide <= 2, tree >= 12."""
+        buttons = list(review.query_one("#tree-actions").query(Button))
+        self.assertLessEqual(len({b.region.y for b in buttons}), 2, note)
+        self.assertLessEqual(review.query_one("#tree-actions").region.height, 2, note)
+        self.assertLessEqual(review.query_one("#guide").region.height, 2, note)
+        self.assertGreaterEqual(review.query_one("#profiles", Tree).region.height, 12, note)
+
+    async def test_ace_tree_keeps_12_rows_with_a_node_highlighted(self):
+        """With pending changes and a node highlighted, the guide and the action bar still leave the tree at least
+        12 rows at BASE."""
         app = self.make_app()
-        async with app.run_test(size=SMALL) as pilot:
+        async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot, "ace-profiles")
             tree = review.query_one("#profiles", Tree)
             for prepared in (False, True):
@@ -173,9 +185,9 @@ class LookAndFeelTest(TuiTestCase):
                     await settle(app, pilot)
                     guide = str(review.query_one("#guide").render())
                     self.assertEqual("pending change" in guide, prepared, guide)
-                    self.assertGreaterEqual(tree.region.height, 5, (prepared, kind, guide))
+                    self.assert_ace_tree_pane_rows(review, (prepared, kind, guide))
                     self.assert_inside(review.query_one("#guide"), review.query_one("#tree-pane").region)
-            await pilot.resize_terminal(140, 50)  # room again: the hint comes back after the pending line
+            await pilot.resize_terminal(*LARGE)  # plenty of room: the hint follows the pending line
             await settle(app, pilot)
             guide = str(review.query_one("#guide").render())
             self.assertIn("pending change", guide)
@@ -183,9 +195,9 @@ class LookAndFeelTest(TuiTestCase):
 
     async def test_ace_left_pane_hint_fits_with_several_kinds_of_pending_change(self):
         """Feedback round 1 review: several kinds of pending change and a scan warning (the bottom line takes two
-        rows) still leave the whole hint in the left pane at 80x24."""
+        rows) still leave the whole hint in the left pane at BASE."""
         app = self.make_app()
-        async with app.run_test(size=SMALL) as pilot:
+        async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot, "ace-profiles")
             staging = review.staging
             elv = next(k for k, s in staging.states.items() if s.file.addon == "ElvUI" and "Healer" in s.names())
@@ -209,7 +221,7 @@ class LookAndFeelTest(TuiTestCase):
         for tool in TOOLS:
             with self.subTest(tool=tool):
                 app = self.make_app()
-                async with app.run_test(size=SMALL) as pilot:
+                async with app.run_test(size=BASE) as pilot:
                     review = await self.open_review(app, pilot, tool)
                     PREPARE.get(tool, lambda r: None)(review)
                     getattr(review, f"action_{RUN_ACTION[tool]}")()
@@ -240,11 +252,11 @@ class LookAndFeelTest(TuiTestCase):
 
     async def test_settings_screens_open_at_the_title_and_fit(self):
         """Each settings form opens showing its title (not scrolled down to the focused field) and no checkbox
-        label runs past the right edge at 80 columns."""
+        label runs past the right edge at BASE."""
         for tool in TOOLS:
             with self.subTest(tool=tool):
                 app = self.make_app()
-                async with app.run_test(size=SMALL) as pilot:
+                async with app.run_test(size=BASE) as pilot:
                     await pilot.pause()
                     app.open_tool(tool)
                     await settle(app, pilot)
@@ -257,3 +269,111 @@ class LookAndFeelTest(TuiTestCase):
                         self.assertLessEqual(box.region.right, form.content_region.right, box.id)
                         self.assertGreaterEqual(box.content_size.width, box.get_content_width(box.size, box.size),
                                                 box.id)  # the whole label, not cut with an ellipsis
+
+    async def test_ace_left_pane_has_view_and_show_headings(self):
+        """Addendum B: at 120x30 the Ace3 left pane has room for its View and Show section headings again, and the
+        checkboxes carry short labels under them, one per row."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot, "ace-profiles")
+            filters = review.query_one("#filters")
+            headings = [str(w.render()) for w in filters.query(".section")]
+            self.assertEqual(headings[:2], ["View", "Show"])
+            labels = [b.label.plain for b in filters.query(Checkbox)]
+            self.assertEqual(labels, ["By addon", "By character", "Only addons with 2+ profiles",
+                                      "Only unused profiles", "Leftover characters", "Blacklisted addons"])
+            view, show = list(filters.query(".section"))[:2]
+            boxes = list(filters.query(Checkbox))
+            self.assertTrue(view.region.y < boxes[0].region.y and boxes[1].region.y < show.region.y
+                            < boxes[2].region.y, [view.region, show.region, [b.region for b in boxes]])
+
+    async def test_review_tree_grows_at_large_while_the_left_pane_keeps_its_width(self):
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    review = await self.open_review(app, pilot, tool)
+                    tree = review.query_one(review.TREE_SELECTOR, Tree)
+                    filters = review.query_one("#filters")
+                    base_tree, base_filters = tree.region, filters.outer_size.width
+                    await pilot.resize_terminal(*LARGE)
+                    await settle(app, pilot)
+                    self.assertGreater(tree.region.width, base_tree.width)
+                    self.assertGreater(tree.region.height, base_tree.height)
+                    self.assertEqual(filters.outer_size.width, base_filters)
+
+    async def test_popups_keep_a_readable_width_at_large(self):
+        """At LARGE each tool's run confirm, the progress popup and the Ace3 popups stay at most POPUP_MAX_WIDTH
+        columns wide and centred; at BASE they fit with room around them."""
+        popups = (lambda: ConfirmScreen("Title", "Body"), lambda: ProgressScreen(first_stage="check"),
+                  lambda: TargetScreen("Title", "Body", ["Default", "Healer"]), lambda: NameScreen("Title", "Body"),
+                  ActionsScreen)
+        for size in (BASE, LARGE):
+            app = self.make_app()
+            async with app.run_test(size=size) as pilot:
+                await pilot.pause()
+                for make in popups:
+                    screen = make()
+                    with self.subTest(size=size, popup=type(screen).__name__):
+                        app.push_screen(screen)
+                        await settle(app, pilot)
+                        self.assert_popup_width(screen, size)
+                        screen.dismiss(None)
+                        await settle(app, pilot)
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=LARGE) as pilot:
+                    review = await self.open_review(app, pilot, tool)
+                    PREPARE.get(tool, lambda r: None)(review)
+                    getattr(review, f"action_{RUN_ACTION[tool]}")()
+                    await settle(app, pilot)
+                    self.assertIsInstance(app.screen, ConfirmScreen)
+                    self.assert_popup_width(app.screen, LARGE)
+
+    def assert_popup_width(self, screen, size) -> None:
+        box = screen.children[0].region
+        if size == LARGE:
+            self.assertLessEqual(box.width, POPUP_MAX_WIDTH, box)
+            self.assertLessEqual(abs(box.x - (size[0] - box.right)), 1, box)  # centred
+        else:
+            self.assertTrue(box.x >= 2 and box.right <= size[0] - 2, box)  # room around it
+
+    async def test_tiny_terminal_still_works(self):
+        """80x24 is not a design target but must keep working: every tool's settings, review and result screens
+        open, nothing raises, and Tab reaches every focusable control. Nothing about the layout is asserted."""
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=TINY) as pilot:
+                    await pilot.pause()
+                    app.open_tool(tool)
+                    await settle(app, pilot)
+                    await self.tab_through(app, pilot, "settings")
+                    app.screen._save()
+                    await settle(app, pilot)
+                    app.screen.dismiss(ALL_FLAVORS)
+                    await settle(app, pilot)
+                    review = app.screen
+                    await self.tab_through(app, pilot, "review")
+                    PREPARE.get(tool, lambda r: None)(review)
+                    getattr(review, f"action_{RUN_ACTION[tool]}")()
+                    await settle(app, pilot)
+                    self.assertIsInstance(app.screen, ConfirmScreen)
+                    await self.tab_through(app, pilot, "confirm")
+                    app.screen.dismiss(True)
+                    await settle(app, pilot)
+                    self.assertIsNot(app.screen, review)
+                    await self.tab_through(app, pilot, "result")
+
+    async def tab_through(self, app, pilot, name: str) -> None:
+        screen = app.screen
+        chain = list(screen.focus_chain)
+        self.assertTrue(chain, name)
+        reached = set()
+        for _ in range(len(chain) + 1):
+            await pilot.press("tab")
+            await pilot.pause()
+            self.assertIs(app.screen, screen, name)  # Tab never leaves the screen
+            reached.add(screen.focused)
+        self.assertEqual([w for w in chain if w not in reached], [], name)

@@ -24,6 +24,7 @@ from wowtools.core.lock import InstanceLock, LockInfo
 from wowtools.tools import TOOLS
 from wowtools.ui.base import Ka0sApp
 from wowtools.ui.branding import Banner, BrandBar
+from wowtools.ui.dialogs import POPUP_WIDTH
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.tool_flow import ToolFlow
 from wowtools.ui.widgets import LIST_CURSOR_BACKGROUND, LIST_NAME_STYLE, NAV_BINDINGS, ButtonRow, NavHint, action_button
@@ -32,12 +33,12 @@ from wowtools.ui.widgets import LIST_CURSOR_BACKGROUND, LIST_NAME_STYLE, NAV_BIN
 class LockScreen(ModalScreen[bool]):
     """Another copy may be running: quit, or take the lock over and carry on."""
 
-    DEFAULT_CSS = """
-    LockScreen { align: center middle; }
-    LockScreen #lock-box { width: 90; height: auto; border: thick $warning; background: $panel; padding: 1 2; }
-    LockScreen #lock-title { color: $warning; text-style: bold; margin-bottom: 1; }
-    LockScreen #lock-buttons { height: auto; align-horizontal: right; margin-top: 1; }
-    LockScreen Button { margin-left: 2; }
+    DEFAULT_CSS = f"""
+    LockScreen {{ align: center middle; }}
+    LockScreen #lock-box {{ {POPUP_WIDTH} height: auto; border: thick $warning; background: $panel; padding: 1 2; }}
+    LockScreen #lock-title {{ color: $warning; text-style: bold; margin-bottom: 1; }}
+    LockScreen #lock-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
+    LockScreen Button {{ margin-left: 2; }}
     """
     BINDINGS: ClassVar[list[Binding]] = [Binding("o", "answer(True)", "Override"), Binding("q,escape", "answer(False)", "Quit"),
                 *NAV_BINDINGS]
