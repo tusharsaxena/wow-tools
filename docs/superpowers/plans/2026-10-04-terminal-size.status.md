@@ -7,7 +7,7 @@ task; push after the round. Never merge without the user's go-ahead.
 | Task | Title | Status | Commit | Notes |
 |---|---|---|---|---|
 | S1 | shared sizes, tests, CSS; Ace3 headings back | done | 8c94fac | BASE/LARGE/TINY; look-and-feel at BASE + LARGE grow/popup checks + 80x24 smoke; POPUP_WIDTH; flow WrapButtonRow; View/Show headings. Suite 1024 tests, 0 failures; ruff clean. Renders in /tmp/wow-tools-shots/S1/ |
-| S2 | WTF Cleaner, Screenshot Organizer, Interface Backup at 120x30 | todo | | |
+| S2 | WTF Cleaner, Screenshot Organizer, Interface Backup at 120x30 | done | 7cb47cf | Footer keys whole (palette key hidden); settings forms <= 100 cols, centred, compact checkboxes (WTF form fits at 120x30); WTF result names zips inside a Backup folder row; IB backup lines show the full date and time; 80-column tests moved to BASE. Suite 1027 tests, 0 failures; ruff clean. Renders in /tmp/wow-tools-shots/S2/ (before: S2-before/) |
 | S3 | Ace3 screens at 120x30 | todo | | |
 | S4 | docs | todo | | |
 | R | review, fixes, push | todo | | |
@@ -35,3 +35,29 @@ task; push after the round. Never merge without the user's go-ahead.
   `docs/architecture.md` left pane headings and `GUIDE_MAX_ROWS`). S4 still owns the rest.
 - Task S1: noticed for S2/S3 in the renders. At 120x30 the Footer key list is cut off at the right edge in the
   review screens (WTF Cleaner, Ace3). Interface Backup's result screen leaves an empty band under its detail table.
+- Task S2: the footer of the review screens was cut off at 120 columns (the S1 note). The command palette's
+  footer key is hidden suite-wide (`Ka0sApp.CSS`, `FooterKey.-command-palette { display: none; }`); Ctrl+P still
+  opens the palette, which no doc mentions. `Footer(compact=True)` was tried and rejected: keys and descriptions run
+  together ("a All n None"). The Ace3 review footer is still cut at 120x30 even so (it has more keys): left to S3.
+- Task S2: `settings_css` (shared, so the Ace3 settings get it too) centres the form at `FORM_WIDTH` (`width: 100%;
+  max-width: 100`). The WTF Cleaner's form did not fit at 120x30 (Save below the fold); the three tools' settings
+  checkboxes are now `compact=True` (one row each, no gap), as in the left panes. The Ace3 settings checkboxes are
+  left to S3; `SETTINGS_FIT_TOOLS` / `FOOTER_TOOLS` in `test_look_and_feel.py` list the three tools for S3 to extend.
+- Task S2: the WTF Cleaner result named its zips and run journal by whole path, cut at 120 columns. It now shows
+  `cleaned/<name>` and `backup/<name>` plus a "Backup folder" row, and the journal by name (as Interface Backup's
+  result does). That made a one-flavor clean's summary 10 rows, one more than fits under the 50% cap at 120x30, so
+  `result_css` caps the summary at 60% instead (shared; the other tools' summaries are shorter).
+- Task S2: tests moved to BASE and renamed: WTF / SO / IB `test_settings_labels_wrap_at_base`, IB
+  `test_review_actions_fit_at_base`, `test_review_tree_shows_links_and_leftovers_at_base`,
+  `test_restore_screens_fit_at_base`, `test_restore_tree_names_groups_at_base` (kept: the group name first, the
+  whole root and the unclipped hint still mean something at BASE), `test_restore_confirm_fits_at_base_with_long_warnings`
+  and `test_backup_and_its_safety_zip_differ_at_base` (now also checks each line shows the whole date and time). None
+  was removed. `test_ui_base`'s 80x24 tests are not tool tests and stay (crash logging; ↓ reaching every field of the
+  general setup form at 80x24 is a TINY reachability guard).
+- Task S2: seen in the renders and left as they are: tree lines longer than the tree pane (WTF "not scanned: No
+  addons found in <path>", deep "Older than max age" lines with long addon names, IB "Retail PTR nothing to back up:
+  ... · no backups yet") end at the pane's edge but the tree scrolls sideways; the WTF result's Reasons column and
+  the Screenshot Organizer's Target column (an absolute path) scroll sideways in their tables (putting Reason
+  before Target would leave Target ~25 columns whenever a row has a reason); Interface Backup's result leaves blank
+  rows under a short detail table (the table takes the rest of the height, buttons stay at the bottom as on every
+  result screen). A multi-flavor real clean shows "Run journal" both on top and in the flavor's block (as before).
