@@ -23,7 +23,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | R1 | redesign: two-pane review screen with flavor ticks and Backups nodes (spec Addendum A) | done | d9d2d31 | `BackupReviewScreen` in `review_screen.py` (renamed from `summary_screen.py`); BackupListScreen removed; tests rewritten for the tree |
 | R2 | redesign: two-pane restore screen with warnings tree; result screens in the organizer's shape | done | c5c6976, 552248c | `RestoreScreen` two panes (`RestoreTree` `#effects`, `#summary`); result screens get `#result-summary` (Item/Value) above `#result-table`. Review fixes in 552248c (see decisions, "R2 review") |
 | R3 | look-and-feel parity pass across all three tools | done | 6a0b770, 7a38b4d | Every screen of the three tools rendered at 80x24 and 140x50; shared CSS and hints in `ui/dialogs.py`; drifts fixed or kept with a reason (see decisions, "R3"); `tests/test_look_and_feel.py`. Review fixes in 7a38b4d (see decisions, "R3 review") |
-| R4 | redesign review, docs (guide, architecture), push | reviewed, docs done; push pending | 1313340, b279dad | Review fixes in 1313340 (see decisions, "Redesign review"); docs b279dad: guide (review/restore screens, keys, restore from a Backups node), architecture (IB screens, shared `dialogs` names), WTF Cleaner guide (bottom bar), README (one look) |
+| R4 | redesign review, docs (guide, architecture), push | done (pushed; awaiting merge go-ahead) | 1313340, b279dad | Review fixes in 1313340 (see decisions, "Redesign review"); docs b279dad: guide (review/restore screens, keys, restore from a Backups node), architecture (IB screens, shared `dialogs` names), WTF Cleaner guide (bottom bar), README (one look) |
 
 ## Decisions taken during the build
 
