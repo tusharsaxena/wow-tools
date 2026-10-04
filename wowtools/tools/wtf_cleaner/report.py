@@ -29,6 +29,10 @@ CRITERION_COLORS = {
 }
 
 
+def plural(n: int, word: str) -> str:
+    return f"{n} {word}{'' if n == 1 else 's'}"
+
+
 def format_size(n: int) -> str:
     size = float(n)
     for unit in ("B", "KB", "MB", "GB"):

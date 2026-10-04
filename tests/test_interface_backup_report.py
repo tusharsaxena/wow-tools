@@ -5,6 +5,7 @@ from pathlib import Path
 
 from wowtools.core.install import Flavor
 from wowtools.core.journal import Journal
+from wowtools.core.paths import to_stored
 from wowtools.tools.interface_backup import report
 from wowtools.tools.interface_backup.backup import BackupOutcome
 from wowtools.tools.interface_backup.catalog import BackupInfo
@@ -52,7 +53,7 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(report.part_text(retail.parts["WTF"]), "missing")
         self.assertEqual(report.part_text(PartScan("WTF", RETAIL.path / "WTF", linked=True)), "link, skipped")
         self.assertEqual(report.part_text(scan(False).parts["Interface"]), "1 file")  # sizes unknown
-        self.assertEqual(report.flavor_text(retail, backups), "1 file · 100 B · 1 backup, last 2026-10-04 15:30")
+        self.assertEqual(report.flavor_text(retail, backups), "1 file · 100 B · 1 backup, last 2026-10-04 15:30:12")
         empty = FlavorScan(RETAIL, {"Interface": PartScan("Interface", RETAIL.path / "Interface"),
                                     "WTF": PartScan("WTF", RETAIL.path / "WTF")})
         self.assertEqual(report.flavor_text(empty, []), "nothing to back up: no Interface or WTF folder · no backups yet")
@@ -72,13 +73,27 @@ class ReportTest(unittest.TestCase):
     def test_picker_note_and_backup_text(self):
         self.assertEqual(report.picker_note([]), "no backups yet")
         self.assertEqual(report.picker_note([info("20261005-101010", "pre-restore")]), "no backups yet")
-        self.assertEqual(report.picker_note([info("20261004-153012")]), "1 backup, last 2026-10-04 15:30")
+        # Seconds everywhere: two backups (or a backup and its safety zip) are often a few seconds apart.
+        self.assertEqual(report.picker_note([info("20261004-153012")]), "1 backup, last 2026-10-04 15:30:12")
         b = info("20261004-153012")
-        self.assertEqual(report.backup_text(b), "2026-10-04 15:30:12 · backup · … · 2.0 KB")
-        self.assertEqual(report.backup_text(b, ("Interface", "WTF")), "2026-10-04 15:30:12 · backup · Interface, WTF · 2.0 KB")
-        self.assertEqual(report.backup_text(b, None), "2026-10-04 15:30:12 · backup · ? · 2.0 KB")
+        # Kind and time first: at 80x24 the tree shows about 16 columns of a backup's line.
+        self.assertEqual(report.backup_text(b), "backup 15:30:12 · 2026-10-04 · … · 2.0 KB")
+        self.assertEqual(report.backup_text(b, ("Interface", "WTF")),
+                         "backup 15:30:12 · 2026-10-04 · Interface, WTF · 2.0 KB")
+        self.assertEqual(report.backup_text(b, None), "backup 15:30:12 · 2026-10-04 · ? · 2.0 KB")
         self.assertEqual(report.backup_text(info("20261003-010203", "pre-restore", 100), ()),
-                         "2026-10-03 01:02:03 · safety (pre-restore) · none · 100 B")
+                         "safety 01:02:03 · 2026-10-03 · none · 100 B")
+        self.assertEqual(report.backup_detail(b, ("Interface", "WTF")),
+                         "Backup from 2026-10-04 15:30:12 · Interface, WTF · 2.0 KB")
+        self.assertEqual(report.backup_detail(info("20261003-010203", "pre-restore", 100)),
+                         "Safety backup (before a restore) from 2026-10-03 01:02:03 · … · 100 B")
+
+    def test_backups_title_counts_safety_zips_apart(self):
+        self.assertEqual(report.backups_title([info("20261004-153012")]), "Backups (1)")
+        both = [info("20261004-153020", "pre-restore"), info("20261004-153012")]
+        self.assertEqual(report.backups_title(both), "Backups (1 + 1 safety)")  # as picker_note: "1 backup"
+        self.assertTrue(report.picker_note(both).startswith("1 backup,"))
+        self.assertEqual(report.backups_title([info("20261004-153020", "pre-restore")]), "Backups (0 + 1 safety)")
 
     def test_friendly_created(self):
         self.assertEqual(report.friendly_created("2026-10-04T12:57:33+05:30"), "2026-10-04 12:57:33")
@@ -177,7 +192,7 @@ class ReportTest(unittest.TestCase):
                           [{"action": "safety_backup"}, {"action": "replaced", "part": "Interface", "existed": True},
                            {"action": "replaced", "part": "WTF", "existed": True}])
         title, body = report.undo_confirm(journal)
-        self.assertIn("2026-10-04 15:30", title)
+        self.assertIn("2026-10-04 15:30:12", title)  # with seconds, as every other date of the tool
         self.assertIn("Interface and WTF", body)
         self.assertIn("Retail", body)
 
@@ -216,13 +231,15 @@ class ReportTest(unittest.TestCase):
         rows = dict(report.restore_summary_rows(done))
         self.assertEqual(rows["Flavor"], "Retail")
         self.assertEqual(rows["Restore"], "finished")
-        self.assertIn("x.zip", rows["Restored from"])
-        self.assertIn("pre.zip", rows["Safety backup"])
-        self.assertIn("r.jsonl", rows["Journal"])
+        # File names, the folders on rows of their own: whole paths are cut at 80 columns.
+        self.assertEqual(rows["Restored from"], "x.zip")
+        self.assertEqual(rows["Safety backup"], "pre.zip")
+        self.assertEqual(rows["Zips in"], to_stored(Path("/bk")))
+        self.assertEqual(rows["Journal"], "r.jsonl")
         undone = RestoreResult(RETAIL, Path("/bk/pre.zip"), [PartOutcome("WTF", "failed", "locked")], undo=True)
         rows = dict(report.restore_summary_rows(undone))
         self.assertEqual(rows["Undo"], "did not finish for every part (see below)")
-        self.assertIn("pre.zip", rows["Put back from"])
+        self.assertEqual(rows["Put back from"], "pre.zip")
         self.assertNotIn("Journal", rows)
 
     def test_every_progress_stage_has_a_title(self):

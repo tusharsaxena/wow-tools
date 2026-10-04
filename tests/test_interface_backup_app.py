@@ -94,6 +94,11 @@ class InterfaceBackupAppTest(TuiTestCase):
         return {str(table.get_row_at(i)[0]): [str(c) for c in table.get_row_at(i)[1:]] for i in range(table.row_count)}
 
     @staticmethod
+    def screen_text(app):
+        """What the terminal shows, one line per row."""
+        return [strip.text for strip in app.screen._compositor.render_strips()]
+
+    @staticmethod
     def effect(screen, kind):
         """The restore screen's top tree node of that kind (removed, newer, links_kept, ...)."""
         return next(n for n in screen.query_one("#effects", Tree).root.children if n.data[:2] == ("effect", kind))
@@ -255,10 +260,12 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertEqual(kinds, ["part", "part", "backups"])
             self.assertRegex(str(retail.children[0].label), r"^Interface  \d+ files")
             self.assertIn("WTF  missing", str(nodes["Retail PTR"].children[1].label))
-            self.assertIn("nothing to back up: no Interface or WTF folder", str(nodes["Retail PTR"].label))
+            ptr = str(nodes["Retail PTR"].label)
+            self.assertIn("nothing to back up: no Interface or WTF folder", ptr)
+            self.assertTrue(ptr.startswith("  Retail PTR"), ptr)  # no tick, as in the other tools
             self.assertIn("none yet", str(self.child(retail, "backups").label))
             summary = str(review.query_one("#summary", Static).render())
-            self.assertIn("Selected: 4 flavors", summary)
+            self.assertIn("Selected: 3 flavors", summary)  # Retail PTR is not counted
             self.assertIn("press e to restore", summary)
             self.assertFalse(review.query_one("#btn-backup", Button).disabled)
             self.assertTrue(review.query_one("#btn-undo", Button).disabled)  # nothing restored yet
@@ -287,7 +294,7 @@ class InterfaceBackupAppTest(TuiTestCase):
                 self.assertEqual(review.unchecked, {"_retail_"})
                 self.assertTrue(str(retail.label).startswith("✘"))
                 self.assertTrue(str(tree.root.label).startswith("◩"))
-                self.assertIn("Selected: 3 flavors", review.summary_text)
+                self.assertIn("Selected: 2 flavors", review.summary_text)  # of the 3 with something to back up
                 await self.highlight(pilot, review, retail.children[0])  # a part: read-only
                 await pilot.press("space")
                 await pilot.pause()
@@ -337,14 +344,46 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertEqual(review.unchecked, {f.folder for f in review.flavors} - {"_classic_era_"})  # kept
         self.assertEqual([n.split("-2")[0] for n in self.zips()], ["backup-classic_era"])
 
-    async def test_ticked_flavors_with_nothing_to_back_up(self):
+    async def test_flavor_with_nothing_to_back_up_has_no_tick(self):
+        """As in the organizer and the cleaner: a flavor with nothing to act on has no tick, Space there does
+        nothing, and it is never in the Selected count, the confirm or the result."""
         self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SMALL) as pilot:
+            review = await self.open_review(app, pilot)
+            ptr = self.flavor_nodes(review)["Retail PTR"]
+            await pilot.press("n")
+            await self.highlight(pilot, review, ptr)
+            await pilot.press("space")
+            await pilot.pause()
+            self.assertFalse(str(ptr.label).lstrip().startswith(("✔", "✘", "◩")), str(ptr.label))
+            self.assertIn("Selected: 0 flavors", review.summary_text)
+            await pilot.press("b")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertTrue(self.notified(app, "Nothing is selected."))
+            await pilot.press("a")
+            await pilot.pause()
+            self.assertIn("Selected: 3 flavors", review.summary_text)
+            await pilot.press("b")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertEqual(app.screen.title_text, "Back up 3 flavors?")  # as the Selected line says
+            self.assertNotIn("Retail PTR", app.screen.body_text)
+        self.assertFalse((self.bk / "interface-backup").exists())
+
+    async def test_only_flavors_with_nothing_to_back_up(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        for folder in ("_retail_", "_classic_era_", "_anniversary_"):
+            for part in ("Interface", "WTF"):
+                target = self.root / folder / part
+                if target.exists():
+                    os.rename(target, self.root / folder / f"{part}-moved")
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
-            await pilot.press("n")
-            await self.highlight(pilot, review, self.flavor_nodes(review)["Retail PTR"])
-            await pilot.press("space")
+            self.assertFalse(str(review.query_one("#flavors", Tree).root.label).startswith("✔"))
+            self.assertTrue(review.query_one("#btn-backup", Button).disabled)
             await pilot.press("b")
             await settle(app, pilot)
             self.assertIs(app.screen, review)
@@ -410,13 +449,11 @@ class InterfaceBackupAppTest(TuiTestCase):
                 self.assertIsInstance(app.screen, BackupResultScreen)
                 self.assertEqual(app.screen.sub_title, "Interface Backup · result")
                 result_table = app.screen.query_one("#result-table", DataTable)
-                self.assertEqual(result_table.row_count, 4)  # Retail PTR (neither part) is there, Skipped
-                rows = {str(result_table.get_row_at(i)[0]): [str(c) for c in result_table.get_row_at(i)]
-                        for i in range(result_table.row_count)}
-                self.assertEqual(rows["Retail PTR"][1:3], ["Skipped", "no Interface or WTF folder"])
+                rows = {str(result_table.get_row_at(i)[0]) for i in range(result_table.row_count)}
+                self.assertEqual(rows, {"Retail", "Classic Era", "Anniversary"})  # Retail PTR has no tick
                 summary = self.table_rows(app.screen.query_one("#result-summary", DataTable))
-                self.assertEqual(summary["Backed up"], ["3 of 4 flavors"])
-                self.assertEqual(summary["Skipped"], ["1 flavor"])
+                self.assertEqual(summary["Backed up"], ["3 of 3 flavors"])
+                self.assertNotIn("Skipped", summary)
                 self.assertFalse(app.screen.query_one("#result-summary", DataTable).can_focus)
                 self.assertFalse(app.busy)
                 await pilot.press("r")
@@ -437,7 +474,7 @@ class InterfaceBackupAppTest(TuiTestCase):
         self.assertIn(("ibackup_result", "next", "review"), selections)
         self.assertTrue(activity.wait_idle(0))
 
-    async def test_link_only_flavor_is_skipped_with_its_reason(self):
+    async def test_link_only_flavor_has_no_tick_and_says_why(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
         wtf = self.root / "_anniversary_" / "WTF"
         elsewhere = self.tmp / "synced-wtf"
@@ -449,24 +486,24 @@ class InterfaceBackupAppTest(TuiTestCase):
         app = self.make_app()
         with capture_events() as records:
             async with app.run_test(size=SIZE) as pilot:
-                await self.open_review(app, pilot)
+                review = await self.open_review(app, pilot)
+                anniversary = str(self.flavor_nodes(review)["Anniversary"].label)
+                self.assertIn("nothing to back up: WTF is a link (not followed)", anniversary)  # the reason, no tick
+                self.assertTrue(anniversary.startswith("  Anniversary"), anniversary)
                 await pilot.press("b")
                 await settle(app, pilot)
                 self.assertIsInstance(app.screen, ConfirmScreen)
                 self.assertIn("Back up 2 flavors?", app.screen.title_text)
-                body = str(app.screen.body_text)
-                self.assertIn("Skipped", body)
-                self.assertIn("WTF is a link", body)
+                self.assertNotIn("Anniversary", str(app.screen.body_text))
                 await pilot.press("y")
                 await settle(app, pilot)
                 self.assertIsInstance(app.screen, BackupResultScreen)
                 table = app.screen.query_one("#result-table", DataTable)
                 rows = {str(table.get_row_at(i)[0]): [str(c) for c in table.get_row_at(i)]
                         for i in range(table.row_count)}
-                self.assertEqual(rows["Anniversary"][1:3], ["Skipped", "WTF is a link (not followed)"])
+                self.assertNotIn("Anniversary", rows)
                 self.assertEqual(rows["Retail"][1], "Backed up")
-        skipped = [r["data"] for r in records if r["event"] == "ibackup.backup_skipped"]
-        self.assertIn({"flavor": "_anniversary_", "reason": "WTF is a link (not followed)", "links": ["WTF"]}, skipped)
+        self.assertFalse(any(r["event"] == "ibackup.backup_skipped" for r in records))
         self.assertFalse(any("anniversary" in n for n in self.zips()))
 
     def test_throttled_progress_forwards_stage_changes_ends_and_one_per_interval(self):
@@ -1236,6 +1273,12 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertEqual(summary["Restore"], ["finished"])
             self.assertIn("Safety backup", summary)
             self.assertIn("Journal", summary)
+            # The zip names are whole on screen (a whole path was cut at 80 columns, with no way to scroll it).
+            result, rows = app.screen.result, self.screen_text(app)
+            table = app.screen.query_one("#result-summary", DataTable).region
+            shown = "\n".join(row[table.x:table.right] for row in rows[table.y:table.bottom])
+            for name in (result.safety_zip.name, result.backup.name, result.journal_path.name):
+                self.assertIn(name, shown)
 
     async def test_restore_tree_names_groups_within_80_columns(self):
         """At 80x24 the tree is narrow: each group's row shows the name that tells it apart (not just the shared
@@ -1409,6 +1452,106 @@ class InterfaceBackupAppTest(TuiTestCase):
             await settle(app, pilot)
             self.assertIsInstance(app.screen, RestoreScreen)
 
+    async def test_restore_from_backup_result_goes_to_the_backup_just_made(self):
+        """Every flavor already has a backup; a new one of a later flavor only: Restore (e) on its result puts the
+        cursor on that new zip, not on the first flavor's older one."""
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.make_backup(app, pilot)  # Anniversary, Classic Era and Retail
+            await pilot.press("r")
+            await settle(app, pilot)
+            await pilot.press("n")
+            await self.highlight(pilot, review, self.flavor_nodes(review)["Classic Era"])
+            await pilot.press("space")
+            await self.make_backup(app, pilot)
+            made = next(o.path for o in app.screen.outcomes if o.kind == "created")
+            await pilot.press("e")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            first = review.query_one("#flavors", Tree).root.children[0].data[1].flavor.short_name
+            self.assertNotEqual(first, "classic_era")  # else this test proves nothing
+            info = review.highlighted_backup()
+            self.assertIsNotNone(info)
+            self.assertEqual(info.flavor_short, "classic_era")
+            self.assertEqual(info.path, made)
+
+    async def test_backup_and_its_safety_zip_differ_at_80x24(self):
+        """A backup and the safety zip of a restore from it are seconds apart: at 80x24 the tree shows the start of
+        each line only, so kind and time come first, and the bottom line names the highlighted one in full."""
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SMALL) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            await self.open_restore(app, pilot)
+            await pilot.press("o")
+            await settle(app, pilot)
+            await pilot.press("y")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, RestoreResultScreen)
+            await pilot.press("r")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            retail = self.flavor_nodes(review)["Retail"]
+            self.assertIn("1 backup, last", str(retail.label))
+            group = self.child(retail, "backups")
+            self.assertIn("Backups (1 + 1 safety)", str(group.label))  # counted as on the flavor's line
+            group = await self.open_backups(app, pilot, review, "Retail")
+            self.assertEqual(len(group.children), 2)
+            await self.highlight(pilot, review, group.children[-1])
+            await settle(app, pilot)
+            tree = review.query_one("#flavors", Tree)
+            region = tree.region
+            rows = self.screen_text(app)
+            visible = []
+            for node in group.children:
+                line = node.line - tree.scroll_offset.y
+                self.assertTrue(0 <= line < region.height, f"{node.label} is scrolled out of view")
+                visible.append(rows[region.y + line][region.x:region.right].rstrip())
+            kinds = [v.split("─ ")[-1].split(" ")[0] for v in visible]
+            self.assertEqual(sorted(kinds), ["backup", "safety"], visible)
+            self.assertEqual(len(set(visible)), 2, visible)
+            info = review.highlighted_backup()
+            self.assertIs(info, group.children[-1].data[1])
+            kind = "Safety backup (before a restore)" if info.is_safety else "Backup"
+            self.assertIn(f"{kind} from {info.when} · ", review.summary_text)
+            self.assertIn(": e restores it", review.summary_text)
+            summary = review.query_one("#summary", Static)
+            self.assert_on_screen(summary)
+            text = " ".join(row[summary.region.x:summary.region.right].strip()
+                            for row in rows[summary.region.y:summary.region.bottom])
+            self.assertIn(info.when, text)  # the whole date, seconds and all, on screen
+
+    async def test_restore_screen_shows_low_disk_space_in_the_tree(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        bk = str(self.bk)
+
+        class Usage:
+            def __init__(self, free):
+                self.free = free
+
+        def disk_usage(path):
+            # The WoW drive is nearly full; the backup drive has room.
+            return Usage(10 ** 12 if str(path).startswith(bk) else 5)
+
+        app = WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list,
+                          tool_options={"interface-backup": {"wow_check": list, "disk_usage": disk_usage}})
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            screen = await self.open_restore(app, pilot)
+            self.assertTrue(screen.plan.low_space)
+            notes = [str(n.label) for n in screen.query_one("#effects", Tree).root.children if n.data == ("note",)]
+            self.assertTrue(any(n.startswith("⚠ Low disk space: 5 B free on the WoW drive, about ") for n in notes),
+                            notes)
+            self.assertTrue(screen.summary_text.endswith("⚠ low disk space on the WoW drive"), screen.summary_text)
+
     async def test_backups_node_shows_parts(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
         app = self.make_app()
@@ -1425,10 +1568,10 @@ class InterfaceBackupAppTest(TuiTestCase):
                 labels[name] = [str(c.label) for c in group.children]
             self.assertEqual(len(labels["Retail"]), 2)
             self.assertIn("Backups (2)", str(self.child(self.flavor_nodes(review)["Retail"], "backups").label))
-            self.assertIn(" · backup · Interface, WTF · ", labels["Retail"][0])  # newest first
-            self.assertTrue(labels["Retail"][1].startswith("2000-01-01 00:00:00 · backup · ? · "), labels)  # unreadable
-            self.assertIn(" · backup · Interface, WTF · ", labels["Classic Era"][0])
-            self.assertIn(" · backup · WTF · ", labels["Anniversary"][0])
+            self.assertRegex(labels["Retail"][0], r"^backup \d\d:\d\d:\d\d · .* · Interface, WTF · ")  # newest first
+            self.assertTrue(labels["Retail"][1].startswith("backup 00:00:00 · 2000-01-01 · ? · "), labels)  # unreadable
+            self.assertIn(" · Interface, WTF · ", labels["Classic Era"][0])
+            self.assertIn(" · WTF · ", labels["Anniversary"][0])
 
     async def test_backup_parts_read_in_a_worker(self):
         self.save_tool_cfg(backup_dir=str(self.bk))

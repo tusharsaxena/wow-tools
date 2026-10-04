@@ -30,8 +30,8 @@ from wowtools.tools.interface_backup.backup import BackupOutcome, back_up_all
 from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups, read_parts
 from wowtools.tools.interface_backup.journal import latest_undoable, read_restore_journal
 from wowtools.tools.interface_backup.report import (BACKUP_RESULT_COLUMNS, PARTS_PENDING, STAGE_TITLES,
-                                                    backup_confirm, backup_result_rows, backup_summary_rows,
-                                                    backup_text, flavor_text, held_text, leftover_text, part_text,
+                                                    backup_confirm, backup_detail, backup_result_rows,
+                                                    backup_summary_rows, backup_text, backups_title, flavor_text, held_text, leftover_text, part_text,
                                                     plural, restore_confirm, selection_text, undo_confirm,
                                                     warnings_text)
 from wowtools.tools.interface_backup.restore import RestoreError, RestorePlan, RestoreResult, RestoreStopped, restore
@@ -415,7 +415,7 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
                          data=("warnings", scan), allow_expand=True)  # lines load on expand
             backups = self._flavor_backups(scan)
             if backups:
-                node.add(Text.assemble((f"Backups ({len(backups)})", "bold"),
+                node.add(Text.assemble((backups_title(backups), "bold"),
                                        ("  highlight one and press e to restore it", "dim")),
                          data=("backups", scan), allow_expand=True)  # zips load on expand, parts in a worker
             else:
@@ -464,11 +464,14 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
             return  # rebuilt (a rescan) since the worker started: its parts are read again on expand
         self.parts[path] = parts
         node.set_label(Text(backup_text(node.data[1], parts)))
+        if self.highlighted_backup() is node.data[1]:
+            self._update_summary()  # the bottom line names the highlighted backup's parts too
 
     def _show_newest_backup(self) -> None:
-        """Restore (e) from a result screen: open the Backups of the flavors and put the cursor on the newest."""
+        """Restore (e) from a result screen: open the Backups of the flavors and put the cursor on the newest
+        backup of them all (not a safety zip): the one just made, whichever flavor it is in."""
         tree = self.query_one("#flavors", Tree)
-        newest = None
+        opened = False
         for flavor_node in tree.root.children:
             group = next((c for c in flavor_node.children if c.data and c.data[0] == "backups"
                           and c.allow_expand), None)
@@ -478,26 +481,34 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
                 self._add_backups(group, group.data[1])  # now, so the cursor can go there below
             flavor_node.expand()
             group.expand()
-            if newest is None:
-                newest = group
-        if newest is None:
+            opened = True
+        if not opened:
             self.notify("No backups of these flavors yet.")
             return
-        self.call_after_refresh(self._cursor_to_first_backup, newest)
+        shown = [b for b in self.backups if b.path in self._backup_nodes]
+        newest = max((b for b in shown if not b.is_safety), key=lambda b: (b.stamp, b.n), default=None)
+        if newest is None:
+            newest = max(shown, key=lambda b: (b.stamp, b.n), default=None)
+        self.call_after_refresh(self._cursor_to_backup, newest)
 
-    def _cursor_to_first_backup(self, group: TreeNode) -> None:
-        if group.children:
-            self.query_one("#flavors", Tree).move_cursor(group.children[0])
-        self.query_one("#flavors", Tree).focus()
+    def _cursor_to_backup(self, info: BackupInfo | None) -> None:
+        tree = self.query_one("#flavors", Tree)
+        node = self._backup_nodes.get(info.path) if info is not None else None
+        if node is not None:
+            tree.move_cursor(node)
+        tree.focus()
         self.notify("Highlight a backup and press e (or Enter) to restore it.")
 
     def _mark(self, scans: list[FlavorScan]) -> tuple[str, str]:
+        if not scans:
+            return "  ", ""  # nothing to back up: no tick, as in the other tools
         return tick_mark(scans, self.unchecked, lambda s: s.flavor.folder, success=theme_colour(self.app, "success"))
 
     def _scans_of(self, data) -> list[FlavorScan]:
+        """The flavors a tick on this node covers: those with something to back up (the others have no tick)."""
         if data[0] == "root":
-            return list(self.scans or [])
-        return [data[1]] if data[0] == "flavor" else []
+            return [s for s in self.scans or [] if s.has_data]
+        return [data[1]] if data[0] == "flavor" and data[1].has_data else []
 
     def _label(self, data) -> Text:
         scans = self._scans_of(data)
@@ -514,12 +525,21 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
         self._update_summary()
 
     def selection(self) -> list[FlavorScan]:
-        return [s for s in self.scans or [] if s.flavor.folder not in self.unchecked]
+        """The ticked flavors (only a flavor with something to back up has a tick)."""
+        return [s for s in self.scans or [] if s.has_data and s.flavor.folder not in self.unchecked]
+
+    def on_tree_node_highlighted(self, event: Tree.NodeHighlighted) -> None:
+        if not self._checking:  # the bottom line says "Checking…" until the check is done
+            self._update_summary()
 
     def _update_summary(self) -> None:
-        if self.scans is None:
+        if self.scans is None or not self.is_attached:
             return
-        text = f"{selection_text(self.selection())}    Highlight a backup and press e to restore it."
+        info = self.highlighted_backup()
+        # The tree shows only the start of a backup's line at 80 columns: the bottom line names it in full.
+        hint = (f"{backup_detail(info, self.parts.get(info.path, PARTS_PENDING))}: e restores it" if info is not None
+                else "Highlight a backup and press e to restore it.")
+        text = f"{selection_text(self.selection())}    {hint}"
         blocked = [s.flavor.display_name for s in self.scans if s.leftovers]
         if blocked:
             text += f"    ⚠ Restore blocked for {', '.join(blocked)} (interrupted restore)"
@@ -604,14 +624,13 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
         if self.scans is None or not self.idle or self.wow_folder_changed():
             return
         log_event("ui.selection", screen="ibackup_review", control="back_up", value=True)
-        # The ticked flavors go to the backup: one with nothing to back up (no folders, or links) comes back
-        # Skipped with its reason. With none to back up at all, there is no backup.
+        # The ticked flavors go to the backup. A flavor with nothing to back up (no folders, or links) has no tick:
+        # the tree says why.
         scans = self.selection()
         if not scans:
-            self.notify("Nothing is selected.")
-            return
-        if not any(s.has_data for s in scans):
-            self.notify("Nothing to back up: no Interface or WTF folder in the ticked flavors.")
+            nothing = not any(s.has_data for s in self.scans)
+            self.notify("Nothing to back up: no Interface or WTF folder in these flavors." if nothing
+                        else "Nothing is selected.")
             return
         self.settings = load_settings(self.tool_cfg)
         problem = self._folder_problem()

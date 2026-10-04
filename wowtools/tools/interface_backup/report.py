@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from wowtools.core.install import Flavor
-from wowtools.core.journal import Journal, friendly_stamp
+from wowtools.core.journal import Journal
 from wowtools.core.paths import to_stored
 from wowtools.tools.interface_backup.backup import BackupOutcome, skip_reason
 from wowtools.tools.interface_backup.catalog import BackupInfo
@@ -90,7 +90,14 @@ def selection_text(scans: list[FlavorScan]) -> str:
 def picker_note(backups: list[BackupInfo]) -> str:
     """The flavor picker's note: backups (not safety zips) of one flavor, newest first."""
     mine = [b for b in backups if not b.is_safety]
-    return f"{plural(len(mine), 'backup')}, last {mine[0].when[:16]}" if mine else "no backups yet"
+    return f"{plural(len(mine), 'backup')}, last {mine[0].when}" if mine else "no backups yet"
+
+
+def backups_title(backups: list[BackupInfo]) -> str:
+    """A flavor's Backups node title, counting as picker_note does (safety zips apart): "Backups (2)",
+    "Backups (1 + 1 safety)"."""
+    safety = sum(b.is_safety for b in backups)
+    return f"Backups ({len(backups) - safety}{f' + {safety} safety' if safety else ''})"
 
 
 def _known_total(sizes: list[int | None]) -> int | None:
@@ -172,10 +179,19 @@ PARTS_PENDING = "…"  # a backup's parts until a worker has read its manifest
 
 
 def backup_text(info: BackupInfo, parts: tuple[str, ...] | None | str = PARTS_PENDING) -> str:
-    """A backup's line in the review tree: date, kind, parts (PARTS_PENDING until read) and size."""
-    kind = "safety (pre-restore)" if info.is_safety else "backup"
+    """A backup's line in the review tree, what tells zips apart first (the tree shows ~16 columns of it at 80x24):
+    kind and time, then day, parts (PARTS_PENDING until read) and size. "backup 15:33:04 · 2026-10-04 · ..."."""
+    kind = "safety" if info.is_safety else "backup"
     cell = parts if isinstance(parts, str) else parts_cell(parts)
-    return f"{info.when} · {kind} · {cell} · {human_size(info.size)}"
+    day, _, clock = info.when.partition(" ")
+    return f"{kind} {clock} · {day} · {cell} · {human_size(info.size)}"
+
+
+def backup_detail(info: BackupInfo, parts: tuple[str, ...] | None | str = PARTS_PENDING) -> str:
+    """The highlighted backup in full, for the review's bottom line (which has the whole width)."""
+    kind = "Safety backup (before a restore)" if info.is_safety else "Backup"
+    cell = parts if isinstance(parts, str) else parts_cell(parts)
+    return f"{kind} from {info.when} · {cell} · {human_size(info.size)}"
 
 
 def friendly_created(created: str) -> str:
@@ -285,12 +301,16 @@ def restore_summary_rows(result: RestoreResult) -> list[tuple[str, str]]:
     """The restore (or undo) result's summary table (Item, Value)."""
     what = "Undo" if result.undo else "Restore"
     state = "finished" if result.ok and result.parts else "did not finish for every part (see below)"
+    # File names, the zips' folder on a row of its own: a whole path is cut at 80 columns (the summary cannot
+    # scroll), and the zip's name is what someone recovering by hand needs.
     rows = [("Flavor", result.flavor.display_name), (what, state),
-            ("Put back from" if result.undo else "Restored from", to_stored(result.backup))]
+            ("Put back from" if result.undo else "Restored from", result.backup.name)]
     if result.safety_zip is not None:
-        rows.append(("Safety backup", to_stored(result.safety_zip)))
+        rows.append(("Safety backup", result.safety_zip.name))
+    folders = sorted({to_stored(p.parent) for p in (result.backup, result.safety_zip) if p is not None})
+    rows.append(("Zips in", ", ".join(folders)))
     if result.journal_path is not None:
-        rows.append(("Journal", to_stored(result.journal_path)))
+        rows.append(("Journal", result.journal_path.name))  # always <WoW>/wow-tools/interface-backup (the guide)
     return rows
 
 
@@ -299,7 +319,7 @@ def undo_confirm(journal: Journal) -> tuple[str, str]:
     parts = [str(e.get("part", "?")) for e in journal.entries if e.get("action") == "replaced"]
     folder = journal.header.get("flavor")
     flavor = Flavor(folder, Path(folder)).display_name if isinstance(folder, str) and folder else "?"
-    title = f"Undo the restore from {friendly_stamp(journal.started)}?"
+    title = f"Undo the restore from {friendly_created(journal.started) if journal.started else 'an unknown time'}?"
     body = (f"Put {' and '.join(parts) or 'the restored folders'} of {flavor} back as they were before that restore, "
             "from its safety backup. Anything changed since the restore is lost.")
     return title, body

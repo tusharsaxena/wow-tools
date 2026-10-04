@@ -388,3 +388,38 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   and share the last row (Region y=23 at 80x24), so the Footer hides the BrandBar ("Ka0s WoW Tools vX" and the
   update notice) on every screen. A later fix: stack the bar above the Footer (one bottom container, or offset the
   BrandBar) and test that their regions do not overlap. `test_look_and_feel` only checks the BrandBar is present.
+- Redesign review (1): at 80x24 the review tree shows ~16 columns of a backup's line, so a backup and its safety
+  zip both read "2026-10-04 15:33". `backup_text` now starts with what tells zips apart: "backup 15:33:04 ·
+  2026-10-04 · <parts> · <size>" ("safety ..." for a pre-restore zip), and the bottom line names the highlighted
+  backup in full (`backup_detail`: "Backup from <date and time> · <parts> · <size>: e restores it"), updated on
+  highlight and when its parts are read. `test_backup_and_its_safety_zip_differ_at_80x24` reads the screen.
+- Redesign review (2): the restore/undo result showed whole zip and journal paths, cut at 80 columns, and the
+  summary cannot scroll. `restore_summary_rows` now shows file names (Restored from / Put back from, Safety
+  backup, Journal) and the zips' folder on a "Zips in" row, as the backup result. The 80x24 restore test checks
+  the three names are inside the summary's region.
+- Redesign review (3): a flavor with nothing to back up had a tick and was counted ("Selected: 4 flavors", then
+  "Back up 3 flavors?"). Now as in the organizer and the cleaner: no tick (the label starts with two spaces and
+  says why), Space there does nothing, `selection()` and the root's tick cover flavors with data only, so the
+  Selected line, the confirm and the result agree. Such a flavor no longer reaches `back_up_all` from the UI, so
+  the result has no Skipped row for it (the logic still returns Skipped when called with one). Back up with no
+  flavor that has data: "Nothing to back up: ...". Replaces the R1 entry "Every flavor can be ticked". The guide
+  still describes Skipped flavors on the confirm and result: R4.
+- Redesign review (4): WTF Cleaner: "(1 files)", "1 files", "1 items", "1 addon groups" now singular/plural
+  (`plural()` added to `wtf_cleaner/report.py`, the tool's own copy, as the other tools'); `reasons_text` shows the
+  criteria's short names ("Not installed") in their colours, in the review tree and the result table (the
+  `result_rows` text, used for logs and tests, keeps the keys). Pinned in `test_tree_reason_colours`,
+  `test_criterion_labels_show_counts` and the multi-flavor confirm test.
+- Redesign review (5): one date format in Interface Backup, with seconds: the flavor line ("last 2026-10-04
+  15:30:12", `picker_note`, also the flavor picker's note) and the undo confirm (`friendly_created` of the
+  journal's start instead of the minutes-only `friendly_stamp`). The backup leaf splits it (time, then day) to put
+  the distinguishing part first; the seconds are kept.
+- Redesign review (6, 7): Restore (e) on a backup result put the cursor on the first flavor's (older) backup.
+  `_show_newest_backup` still opens every flavor's Backups, then moves the cursor to the newest non-safety zip
+  across them all by (stamp, n) (`_cursor_to_backup`), the one just made. Pinned by
+  `test_restore_from_backup_result_goes_to_the_backup_just_made` (backs up Classic Era only after a full backup).
+- Redesign review (8): the restore tree's low-disk-space leaf had no test since `restore_warnings` went:
+  `test_restore_screen_shows_low_disk_space_in_the_tree` (a disk_usage stub) checks the leaf and the summary's end.
+- Redesign review (9): the flavor line said "1 backup" (safety zips apart) while its node said "Backups (2)".
+  `backups_title` counts the same way: "Backups (1 + 1 safety)"; the safety zips stay listed as children.
+- Redesign review, kept: the flavor line's backup note is still cut at 80 columns ("Retail  27 files · 1…"); the
+  count is on the Backups node right under it, and the flavor picker shows the note in full.

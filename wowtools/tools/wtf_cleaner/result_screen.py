@@ -15,9 +15,9 @@ from wowtools.core.events import log_event
 from wowtools.core.install import Flavor
 from wowtools.tools.wtf_cleaner.cleaner import CleanResult
 from wowtools.tools.wtf_cleaner.multi import FlavorRun, MultiCleanResult, nothing_deleted
-from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, MULTI_RESULT_COLUMNS, RESULT_COLUMNS, UNDO_COLUMNS,
-                                               format_size, multi_result_rows, result_rows, undo_row,
-                                               undo_summary_rows)
+from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, MULTI_RESULT_COLUMNS,
+                                               RESULT_COLUMNS, UNDO_COLUMNS, format_size, multi_result_rows,
+                                               result_rows, undo_row, undo_summary_rows)
 from wowtools.tools.wtf_cleaner.undo import UndoResult
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.dialogs import RESULT_HINT, result_css, theme_colour
@@ -30,12 +30,12 @@ STATUS_COLOURS = {"deleted": "success", "restored": "success", "would_delete": "
 
 
 def reasons_text(reasons: list[str]) -> Text:
-    """Reasons, comma separated, each in its criterion's colour."""
+    """Reasons by their short names ("Not installed"), comma separated, each in its criterion's colour."""
     text = Text()
     for index, reason in enumerate(reasons):
         if index:
             text.append(", ")
-        text.append(reason, style=CRITERION_COLORS.get(reason, ""))
+        text.append(CRITERION_SHORT.get(reason, reason), style=CRITERION_COLORS.get(reason, ""))
     return text
 
 

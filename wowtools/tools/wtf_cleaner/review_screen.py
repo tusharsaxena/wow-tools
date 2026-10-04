@@ -26,7 +26,7 @@ from wowtools.tools.wtf_cleaner.journal import clean_journal_dir, latest_undoabl
 from wowtools.tools.wtf_cleaner.multi import (FlavorScan, MultiCleanResult, execute_flavors, nothing_deleted,
                                               scan_flavors)
 from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, STAGE_TITLES, age_days,
-                                               flavor_name, format_size, locker_warning)
+                                               flavor_name, format_size, locker_warning, plural)
 from wowtools.tools.wtf_cleaner.result_screen import ResultScreen, reasons_text
 from wowtools.tools.wtf_cleaner.rules import (CRITERIA, Proposal, ProposalItem, criterion_counts, evaluate,
                                              log_proposal_built, log_proposal_items)
@@ -268,7 +268,7 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
     def _criterion_label(index: int, name: str, files: int | None = None) -> Text:
         text = f"{index} {CRITERION_SHORT[name]}"
         if files is not None:
-            text += f" ({files} files)"
+            text += f" ({plural(files, 'file')})"
         return Text(text, style=CRITERION_COLORS[name])
 
     def _scanned_ok(self) -> list[FlavorScan]:
@@ -388,12 +388,12 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         if kind == "item":
             item = data[1]
             return Text.assemble(mark, (item.addon, "bold"), "  ", self._reasons(item.reasons),
-                                 ((f"  {len(item.files)} files · {format_size(item.total_size)} · "
+                                 ((f"  {plural(len(item.files), 'file')} · {format_size(item.total_size)} · "
                                    f"{age_days(item.newest_mtime, now)}d"), "dim"))
         items, name = data[1], data[2]
         if not items and data is not self.query_one("#proposal", Tree).root.data:
             return Text.assemble("  ", (name, ACCENT), ("  nothing to clean", "dim"))  # an account or flavor
-        return Text.assemble(mark, (name, ACCENT), (f"  {len(items)} items", "dim"))
+        return Text.assemble(mark, (name, ACCENT), (f"  {plural(len(items), 'item')}", "dim"))
 
     def _refresh_labels(self, node=None) -> None:
         """Relabel node's branch and its ancestors (everything a tick there can change), or the whole tree."""
@@ -421,7 +421,7 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         files = sum(len(i.files) for i in selection)
         size = sum(i.total_size for i in selection)
         # The criteria are not repeated here: the left pane shows them.
-        text = f"Selected: {len(selection)} items · {files} files · {format_size(size)}"
+        text = f"Selected: {plural(len(selection), 'item')} · {plural(files, 'file')} · {format_size(size)}"
         if self.proposal is not None and not self.proposal.items:
             text = "Nothing to clean with the current criteria.    " + text
         if self.proposal is not None and self.proposal.warnings:
@@ -648,7 +648,8 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
     @staticmethod
     def _counts(items: list[ProposalItem]) -> str:
         files = sum(len(i.files) for i in items)
-        return f"{len(items)} addon groups, {files} files, {format_size(sum(i.total_size for i in items))}"
+        return (f"{plural(len(items), 'addon group')}, {plural(files, 'file')}, "
+                f"{format_size(sum(i.total_size for i in items))}")
 
     def _confirmed(self, ok: bool | None, plan: list[tuple[Flavor, list[ProposalItem]]], backup: bool,
                    backup_dir: Path | None, dry_run: bool) -> None:
