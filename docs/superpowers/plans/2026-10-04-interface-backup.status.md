@@ -15,7 +15,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | 7 | undo | done | c753f94 | API as planned; all guards run before anything changes (also: zip kind pre-restore, leftovers, unknown/duplicate parts, existed part absent from the zip); per-part outcomes rolled_back/failed like restore; journal left undoable when nothing changed; `ZIP_ERRORS` public; 19 tests |
 | M1 | push milestone 1 | done (pushed) | 2b66d80 | Milestone 1 review: 15 findings fixed (see decisions, "M1 review") |
 | 8 | report helpers | done | 4cbafec | API as planned plus `RestorePlan.unreadable` warnings, missing files in the backup result, notices capped per part; 12 tests |
-| 9 | flow, settings, summary, backup screens, registration | todo | | |
+| 9 | flow, settings, summary, backup screens, registration | done | e6e3ab6 | API as planned with explicit `wow_check`/`disk_usage` flow kwargs; journal lookup and free space moved off the UI thread; own `_checking` flag for the WoW check; 19 TUI tests |
 | 10 | restore and undo screens | todo | | |
 | M2 | push milestone 2 | todo | | |
 | 11 | docs, events, final checks | todo | | |
@@ -140,3 +140,24 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   type-ignore (unknown sizes: no space alert). The plan test's `assertIn("newer", text)` could not pass against the
   plan's own "Newer now ..." text; it asserts "Newer now than in the backup" (spec wording). `LIST_COLUMNS` has no
   Parts column (spec §10 lists one): `BackupInfo` does not know a zip's parts without opening it.
+- Task 9: `InterfaceBackupFlow` takes explicit `wow_check=None, disk_usage=shutil.disk_usage` keyword arguments
+  (as `WtfCleanerFlow` does) instead of the plan's `**options`; `WowToolsApp.tool_options` passes them unchanged.
+- Task 9: nothing slow runs on the UI thread. The scan worker also runs `list_backups` and `latest_undoable`
+  (the result is kept in `BackupSummaryScreen.undoable`; the plan called `latest_undoable` in `_refresh_buttons`),
+  and the preflight worker also works out the free space (`free_bytes(root, disk_usage)`, module-level; the plan's
+  `_free` ran on the UI thread). `run_preflight(check, then, extra=None)` calls `then(running, extra_result)`.
+- Task 9: the WoW check uses a screen-local `_checking` flag (as WTF Cleaner does), not `app.busy`: `busy` stays
+  reserved for work that changes files (it blocks quit). Buttons and actions are off while scanning, checking or
+  busy (`BackupSummaryScreen.idle`); leaving (f/t/q/Esc) is refused only while busy.
+- Task 9: Restore (e) on the result screen rescans first and opens Restore when that scan is done
+  (`_then_restore`), instead of the plan's `action_rescan(); action_restore()` back to back (the second would be
+  ignored while the scan runs). `action_restore`/`action_undo` are placeholders until Task 10 (they log the
+  `ui.selection` and notify). A job that raises unexpectedly is notified and the summary rescans.
+- Task 9: `action_back_up` reloads the settings before checking the folder (a hand-edited file), and the picker's
+  "All flavors" note counts only the install's flavors' backups. The summary focuses its table on mount and the
+  Back up button after a scan. The result head says "N of M flavors backed up".
+- Task 9: tests go beyond the plan's five: registration, bad counts, cancelled first settings, `s` (WoW folder then
+  tool settings), picker notes from a worker, single flavor remembered, summary rows/details/button colours, scan
+  and WoW check off the UI thread, WoW-running alert, hand-edited folder refused, busy guard during a backup
+  (inside `activity.running`), result → flavors with the new counts, a failing job clearing busy. No menu-count
+  test needed a change. `docs/events.md` unchanged (no new events).
