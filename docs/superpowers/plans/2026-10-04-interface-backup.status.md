@@ -20,7 +20,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | M2 | push milestone 2 | done (pushed) | 763a34b | Milestone 2 review: 20 findings fixed (see decisions, "M2 review") |
 | 11 | docs, events, final checks | done | 4e3aa0d | Full guide (no images yet: an HTML comment marks where the screenshots go); README, architecture, adding-a-tool, CLAUDE.md; events.md regenerated (22 events, unchanged); 766 tests OK (2 skipped) parallel and serial; ruff clean; reviewed, fixes in 42958c4 |
 | M3 | push milestone 3, ask for merge go-ahead | done (pushed; awaiting merge go-ahead) | 42958c4 | final review: 13 findings fixed |
-| R1 | redesign: two-pane review screen with flavor ticks and Backups nodes (spec Addendum A) | todo | | |
+| R1 | redesign: two-pane review screen with flavor ticks and Backups nodes (spec Addendum A) | done | d9d2d31 | `BackupReviewScreen` in `review_screen.py` (renamed from `summary_screen.py`); BackupListScreen removed; tests rewritten for the tree |
 | R2 | redesign: two-pane restore screen with warnings tree; result screens in the organizer's shape | todo | | |
 | R3 | look-and-feel parity pass across all three tools | todo | | |
 | R4 | redesign review, docs (guide, architecture), push | todo | | |
@@ -275,3 +275,24 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 - Final review: `docs/adding-a-tool.md` step 6, CLAUDE.md and the `RENAMED_TOOLS` comment say a rename does not
   move a `<TOOL_NAME>` folder inside a user-chosen folder (Interface Backup's `<backup_dir>/interface-backup`);
   the code was not changed.
+- R1: `summary_screen.py` is now `review_screen.py` (`BackupReviewScreen`, `BackupTree`), named like the other
+  tools' review screens. Every flavor can be ticked, including one with nothing to back up: ticked, it comes back
+  Skipped with its reason on the confirm and the result (as before); with only such flavors ticked, Back up says
+  "Nothing to back up". Nothing ticked: "Nothing is selected.". Ticks are kept across rescans (flavor folders are
+  stable), unlike the organizer, which clears them because its items change.
+- R1: flavor nodes start expanded (as in the organizer); `Links (n)`, `Scan warnings (n)` and `Backups (n)` load
+  their children on expand. A Backups node lists the flavor's backups and safety zips, newest first; their parts
+  are read by a worker (`read_parts`) started on expand, "…" until read, "?" when unreadable. A flavor without
+  backups shows a leaf "Backups (0) none yet". The scan lists only the chosen flavors' zips.
+- R1: Restore (e, the button, or Enter on a backup node) restores the highlighted backup; with none highlighted
+  it notifies "Open a flavor's Backups in the tree, highlight a backup and press e (or Enter) ...". Restore (e)
+  on the backup result rescans, then expands the Backups nodes and puts the cursor on the newest backup (the old
+  flow opened the list), with a "Highlight a backup ..." notice. `ui.selection` for restore carries the zip name.
+- R1: the old `#notices` lines live in the tree (leftover node, links node, warnings node) and in short form on
+  the `#summary` line ("⚠ Restore blocked for X", "⚠ N scan warnings"); "Checking for running programs…" shows
+  on the `#summary` line while the preflight runs. The old `#details` (backup folder, keep, journals folder) is
+  the left pane's "Backup folder" and "Keep" sections; the journals folder is no longer shown.
+- R1: report.py: `summary_rows`, `SUMMARY_COLUMNS`, `list_rows`, `LIST_COLUMNS`, `notices`, `NOTICE_ERRORS`
+  removed (no caller left); added `part_text`, `flavor_text`, `leftover_text`, `warnings_text`, `held_text`,
+  `selection_text`, `backup_text` (tested). No other logic module changed. Esc on the review still goes to the
+  flavor picker (f), as before. docs/architecture.md and the guide still describe the summary: R4.
