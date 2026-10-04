@@ -9,7 +9,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | 1 | core helpers: walk_files, is_link, remove_tree_no_follow | done | 440fce5 | wtf_files delegates to walk_files; symlink tests run on WSL; extra tests for on_error and link-as-root |
 | 2 | events, settings, catalog | done | e7f75e5 | docs/events.md regenerated now (test_docs needs it); extra tests for event registry, info fields, folder named like a zip |
 | 3 | scanner | done | dbd0932 | API as planned; sizes summed without type-ignores; extra tests for chosen parts, unreadable sub-folder, part-as-link warning, broken progress |
-| 4 | backup | done | 9609ac3 | API as planned; lstat before open (a file turned link is not followed); DOS date clamped both ends; extra tests for links, interrupt, locked file, progress stages, old mtime |
+| 4 | backup | done | 9609ac3, 59349ac | API as planned; lstat before open (a file turned link is not followed); DOS date clamped both ends; extra tests for links, interrupt, locked file, progress stages, old mtime. Review fix 59349ac: ancestor folders lstat-checked (no reading through an addon folder turned link), O_NOFOLLOW open, vanished/linked parts not claimed in the manifest, linked parts reported, prune never deletes the new zip |
 | 5 | open backup + plan restore | todo | | |
 | 6 | run restore + journal | todo | | |
 | 7 | undo | todo | | |
@@ -42,5 +42,9 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 - Task 4: a `RuntimeError` from zipfile (a file that grew past the ZIP64 limit mid-write) becomes a `BackupError`, so
   All flavors still continues. Manifest `links` stay a list of `"<Part>/<rel>"` strings (plan, matches Task 5's
   reader) rather than the spec's `[{"path"}]`.
+- Task 4 review: `prune_backups` gained `protect=` (the new zip, which takes one keep slot whatever its stamp);
+  `core.fsutil.is_real_dir` added (one lstat, junction-aware). A part that vanished, turned link or lost all its
+  files shows in `missing` as a bare `"<Part>"` and is not in the manifest's parts; a part that is a link shows in
+  `links` as `"<Part>"`; `backup_skipped` carries `reason` and `links`. Nothing readable at all is a `BackupError`.
 - Task 4: events carry a little more than the plan: `backup_failed` has the intended `path`, `backup_created` a
   `missing_sample` (up to 20), `pruned` the `keep` value.
