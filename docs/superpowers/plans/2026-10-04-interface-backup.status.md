@@ -9,7 +9,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | 1 | core helpers: walk_files, is_link, remove_tree_no_follow | done | 440fce5 | wtf_files delegates to walk_files; symlink tests run on WSL; extra tests for on_error and link-as-root |
 | 2 | events, settings, catalog | done | e7f75e5 | docs/events.md regenerated now (test_docs needs it); extra tests for event registry, info fields, folder named like a zip |
 | 3 | scanner | done | dbd0932 | API as planned; sizes summed without type-ignores; extra tests for chosen parts, unreadable sub-folder, part-as-link warning, broken progress |
-| 4 | backup | todo | | |
+| 4 | backup | done | 9609ac3 | API as planned; lstat before open (a file turned link is not followed); DOS date clamped both ends; extra tests for links, interrupt, locked file, progress stages, old mtime |
 | 5 | open backup + plan restore | todo | | |
 | 6 | run restore + journal | todo | | |
 | 7 | undo | todo | | |
@@ -35,3 +35,12 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   is `int | None` (unknown when sizes were not read, the WSL default). `scan_flavors` logs at most 20 warnings per
   part plus one "N more not logged" line, and `scan_completed` also records `linked` per part. A file whose
   `stat()` fails during a stats scan is left out of `files` and listed in `errors`.
+- Task 4: `write_zip` lstats each file and treats one that is no longer a regular file (now a link or folder) like a
+  vanished one: left out and listed in `missing`, never followed. `NotADirectoryError` counts as vanished too.
+- Task 4: zip entry dates are clamped to the DOS range at both ends (1980 and 2107), not only the low end, instead
+  of the spec's `strict_timestamps=False` (entries are written through `ZipInfo`, which that flag does not cover).
+- Task 4: a `RuntimeError` from zipfile (a file that grew past the ZIP64 limit mid-write) becomes a `BackupError`, so
+  All flavors still continues. Manifest `links` stay a list of `"<Part>/<rel>"` strings (plan, matches Task 5's
+  reader) rather than the spec's `[{"path"}]`.
+- Task 4: events carry a little more than the plan: `backup_failed` has the intended `path`, `backup_created` a
+  `missing_sample` (up to 20), `pruned` the `keep` value.
