@@ -15,7 +15,7 @@ merge, delete every branch, stash and worktree this run created.
 | 5 | fixture + scanner | done | 98474e8 | plan code verbatim (install `ErrorHandler` is `(Path, OSError)`, capture records use `event`); fixtures.py docstring gains a `build_ace_tree`/`ace_lua` paragraph; 9 ace_scanner tests OK; full suite 854 OK (2 skipped), ruff clean |
 | 6 | ops: staging | done | b0a42fe | plan code verbatim; test drops the unused `DbKey` import (ruff F401); 16 ace_ops tests OK; full suite 870 OK (2 skipped), ruff clean |
 | 7 | compile + verify | done | 98f572d | plan code verbatim (`FileEdit.file` typed `SvFile \| None` as the plan notes); test file drops the plan's `# tests/...` path comment; 11 ace_compile tests OK; full suite 881 OK (2 skipped), ruff clean; not pushed by the task agent (milestone push left to the orchestrator) |
-| M1 | push milestone 1 | todo | | |
+| M1 | push milestone 1 | reviewed (not pushed yet) | 0e27823 | review fixes: module-only profiles kept, verify covers namespaces, partial write never follows a link; full suite 888 OK (2 skipped), ruff clean |
 | 8 | journal + editor | todo | | |
 | 9 | undo, recovery, multi | todo | | |
 | 10 | report helpers | todo | | |
@@ -42,3 +42,15 @@ merge, delete every branch, stash and worktree this run created.
 - Task 6: ruff fix only: `tests/test_ace_ops.py` drops the unused `DbKey` import; no assertion changed.
 - Task 7: `tests/test_ace_compile.py` drops the plan's leading `# tests/test_ace_compile.py` comment so the docstring
   comes first, as in the other test modules; the plan's `git push` in Step 5 is left to the milestone step.
+- M1 review: fixed (two findings, one bug): compile deleted every `namespaces[*].profiles` entry with no main
+  `profiles` entry on any edit to that database, unreported and passed by verify. `DbState.module_only` now tracks
+  these module-only profiles (original -> staged name, None = deleted); they change only when a delete or rename
+  names them (a referenced missing profile carries its module data along), the change shows in `changes()`, and
+  rename/copy onto one is refused (`DbState.taken`). Keep only Default leaves unreferenced module-only profiles
+  alone, as they are not shown as profiles. Spec §7/§8.1 intent kept; the collision refusal is new behaviour.
+- M1 review: fixed: verify skipped the whole `namespaces` section. It now compares it byte for byte with only the
+  inside of each module's `profiles` table and the LibDualSpec spec values cut out (spec §2 "only ... may
+  change"); `model._namespaces`/`_lds` became public `namespace_profiles`/`lds_chars` for this.
+- M1 review: fixed: `atomic_write_bytes` followed a symlink sitting at `<name>.partial`. It now removes whatever is
+  there (a link is unlinked, never followed) and creates the partial with `O_CREAT|O_EXCL` (+`O_NOFOLLOW`).
+- M1 review: no finding rejected.
