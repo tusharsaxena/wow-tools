@@ -21,7 +21,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | 11 | docs, events, final checks | done | 4e3aa0d | Full guide (no images yet: an HTML comment marks where the screenshots go); README, architecture, adding-a-tool, CLAUDE.md; events.md regenerated (22 events, unchanged); 766 tests OK (2 skipped) parallel and serial; ruff clean; reviewed, fixes in 42958c4 |
 | M3 | push milestone 3, ask for merge go-ahead | done (pushed; awaiting merge go-ahead) | 42958c4 | final review: 13 findings fixed |
 | R1 | redesign: two-pane review screen with flavor ticks and Backups nodes (spec Addendum A) | done | d9d2d31 | `BackupReviewScreen` in `review_screen.py` (renamed from `summary_screen.py`); BackupListScreen removed; tests rewritten for the tree |
-| R2 | redesign: two-pane restore screen with warnings tree; result screens in the organizer's shape | done | c5c6976 | `RestoreScreen` two panes (`RestoreTree` `#effects`, `#summary`); result screens get `#result-summary` (Item/Value) above `#result-table` |
+| R2 | redesign: two-pane restore screen with warnings tree; result screens in the organizer's shape | done | c5c6976, 552248c | `RestoreScreen` two panes (`RestoreTree` `#effects`, `#summary`); result screens get `#result-summary` (Item/Value) above `#result-table`. Review fixes in 552248c (see decisions, "R2 review") |
 | R3 | look-and-feel parity pass across all three tools | todo | | |
 | R4 | redesign review, docs (guide, architecture), push | todo | | |
 
@@ -315,3 +315,18 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   keep their compact CSS (five buttons must fit 80 columns; the organizer has four): R3 decides.
 - R2: `report.restore_warnings` (and `_grouped`, `_more`) removed, no caller left; `group_paths` now wraps
   `group_items`. Logic modules unchanged. docs/architecture.md still describes the old restore screen: R4.
+- R2 review (552248c): 4 findings, all fixed. (1) At 80x24 the tree's group rows all read "Interface/AddOns": a
+  group is now labelled by its last segment, the parent dimmed after it ("WeakAuras  Interface/AddOns · 2 files";
+  a one-file group "keep.txt  Interface"), and the root is "<flavor> · <date>" (the kind is in the left pane).
+  The restore screen's `#filters` is now 46 wide (as the WTF Cleaner's, not the review's 50) so the tree's effect
+  titles and root fit at 80 columns. (2) The left pane's NavHint was clipped at 80x24: the "Backup" section is
+  now "<flavor> · <kind> from <date>" and the size line (the zip path is gone: the review shows the folder, the
+  result the zip), NAV_HINT is shorter (two lines), and `#actions` has no top margin and its buttons no bottom
+  margin. The linked-part box label is "(link: restore by hand)" to fit the narrower box. A safety backup's
+  longer kind line (or a "made" line) can still push the hint one line down at 80x24: R3 checks the left panes
+  of all three tools at that size. (3) RestoreResultScreen's hint starts "↑↓/Tab move · " like the organizer's
+  (BackupResultScreen's already did). (4) `report.group_items` sorts ties with `natural_key` (case ignored,
+  numbers in order). Tests: an 80x24 test renders the tree and checks each group's name and the root are inside
+  its width, the hint is not clipped and the longest box label fits; the 80x24 restore test also checks NavHint
+  and the result hint; a report test pins the natural order. docs/interface-backup.md still quotes the old
+  linked-part label: R4.
