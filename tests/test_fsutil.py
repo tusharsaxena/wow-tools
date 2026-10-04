@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from wowtools.core import fsutil
 from wowtools.core.fsutil import (
+    atomic_write_bytes,
     atomic_write_text,
     free_name,
     is_link,
@@ -246,3 +247,22 @@ class ReadMakeLinkTest(unittest.TestCase):
         self.assertIsNone(fsutil.read_link(self.tmp / "file"))
         self.assertIsNone(fsutil.read_link(self.tmp))
         self.assertIsNone(fsutil.read_link(self.tmp / "missing"))
+
+
+class AtomicWriteBytesTest(unittest.TestCase):
+    def test_writes_exact_bytes_and_leaves_no_partial(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "a.lua"
+            path.write_bytes(b"old")
+            atomic_write_bytes(path, b"\r\nX = {\r\n}\r\n\xc3\xa2")
+            self.assertEqual(path.read_bytes(), b"\r\nX = {\r\n}\r\n\xc3\xa2")
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["a.lua"])
+
+    def test_failed_replace_keeps_the_original(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "a.lua"
+            path.write_bytes(b"old")
+            with patch("os.replace", side_effect=OSError("locked")), self.assertRaises(OSError):
+                atomic_write_bytes(path, b"new")
+            self.assertEqual(path.read_bytes(), b"old")
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["a.lua"])

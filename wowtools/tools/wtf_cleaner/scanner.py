@@ -10,13 +10,13 @@ from pathlib import Path
 from wowtools.core.events import log_event
 from wowtools.core.fsutil import is_link
 from wowtools.core.install import ACCOUNT_WIDE, Account, Character, Flavor
+from wowtools.core.svfiles import LOCK_PROBE_SUFFIX
 
 PROTECTED_PREFIXES = ("blizzard_",)
 _LUA = re.compile(r"\.lua", re.IGNORECASE)
-# The cleaner's lock check renames each selected file to <name><LOCK_PROBE_SUFFIX> and straight back. A file still
-# carrying it was left by a crash between the two renames: never an addon file to propose, and the next real clean
-# renames it back (cleaner.recover_probe_leftovers).
-LOCK_PROBE_SUFFIX = ".wowtools-lockcheck"
+# LOCK_PROBE_SUFFIX (core.svfiles): the cleaner's lock check renames each selected file to <name><suffix> and
+# straight back. A file still carrying it was left by a crash between the two renames: never an addon file to
+# propose, and the next real clean renames it back (cleaner.recover_probe_leftovers).
 
 
 ScanProgress = Callable[[int, int, str], None]

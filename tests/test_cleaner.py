@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.fixtures import NOW, build_wow_tree
+from wowtools.core import svfiles as svfiles_module
 from wowtools.core.backup import BackupError
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
@@ -416,13 +417,13 @@ class LockAndCheckTest(unittest.TestCase):
 
     def _lock(self, locked_name):
         """Windows refuses to rename a file another program holds open; simulate that for one file."""
-        original = cleaner_module.rename_no_replace
+        original = svfiles_module.rename_no_replace
 
         def rename(src, dst):
             if Path(src).name == locked_name:
                 raise PermissionError(13, "The process cannot access the file because it is being used")
             return original(src, dst)
-        return patch.object(cleaner_module, "rename_no_replace", rename)
+        return patch.object(svfiles_module, "rename_no_replace", rename)
 
     def test_locked_file_stops_a_real_clean_before_anything(self):
         before = snapshot(self.root)

@@ -13,22 +13,21 @@ import os
 import re
 import time
 import zipfile
-from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
-from wowtools.core.backup import BackupError, verify_backup, walk_files
-from wowtools.core.fsutil import free_name, remove_quietly, rename_no_replace
+from wowtools.core import snapshot as core_snapshot
+from wowtools.core.backup import BackupError
+from wowtools.core.fsutil import remove_quietly
 from wowtools.core.install import Flavor
+from wowtools.core.snapshot import LIST_REPORT_EVERY, SnapshotProgress, wtf_files  # noqa: F401 - re-exported
 
 MARKER_NAME = "clean-in-progress.json"
 SNAPSHOT_SUBDIR = "backup"
+SNAPSHOT_PREFIX = "backup"
 SNAPSHOT_NAME = re.compile(r"^backup-(?P<flavor>.+?)-(?P<stamp>\d{8}-\d{6})(?:-(?P<n>\d+))?\.zip$")
 DEFAULT_KEEP_SNAPSHOTS = 5
-
-SnapshotProgress = Callable[[str, int, int, str], None]
-LIST_REPORT_EVERY = 100
 
 
 @dataclass(frozen=True)
@@ -42,86 +41,25 @@ class Marker:
     files: list[str]
 
 
-def wtf_files(flavor: Flavor, progress: SnapshotProgress | None = None, stage: str = "snapshot_list") -> list[Path]:
-    """Every regular file under <flavor>/WTF, sorted. Uses directory entries only (no per-file stat), so it stays
-    fast on slow drives. progress(stage, found, 0, label) is called every LIST_REPORT_EVERY files and once at the
-    end with found == total. Links are skipped."""
-    def counted(found: int) -> None:
-        progress(stage, found, 0, f"{found} files found")
-
-    found = [Path(entry.path) for entry in walk_files(flavor.wtf_dir, on_count=None if progress is None else counted,
-                                                      every=LIST_REPORT_EVERY)]
-    if progress is not None:
-        progress(stage, len(found), len(found), f"{len(found)} files found")
-    return found
-
-
 def take_snapshot(flavor: Flavor, backup_dir: Path, now: datetime,
                   progress: SnapshotProgress | None = None, must_hold: list[str] | None = None) -> Path:
-    """Zip every regular file under <flavor>/WTF (stored as WTF/...), verify it, then move it into place.
-    must_hold: the flavor-relative paths ("WTF/...") the clean will delete; a BackupError if any of them is not
-    among the files backed up (e.g. under a link, which the backup never follows): nothing could put it back."""
-    dest = snapshot_path(backup_dir, flavor.short_name, now)
-    partial = dest.with_name(dest.name + ".partial")
-    try:
-        if not flavor.wtf_dir.is_dir():
-            raise BackupError(f"{flavor.wtf_dir} is not a folder")
-        files = wtf_files(flavor, progress)
-        base = flavor.path
-        if must_hold:
-            held = {path.relative_to(base).as_posix() for path in files}
-            absent = [rel for rel in must_hold if rel not in held]
-            if absent:
-                raise BackupError(f"{len(absent)} file(s) to delete would not be in the WTF backup (under a link?), "
-                                  f"so nothing was deleted: {', '.join(absent[:5])}")
-        expected: dict[str, int] = {}
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(partial, "w", compression=zipfile.ZIP_DEFLATED, strict_timestamps=False) as zf:
-            for index, path in enumerate(files, 1):
-                arcname = path.relative_to(base).as_posix()
-                zf.write(path, arcname)
-                expected[arcname] = zf.getinfo(arcname).file_size  # the bytes actually stored
-                if progress is not None:
-                    progress("snapshot", index, len(files), arcname)
-        verify_backup(partial, expected,
-                      progress=None if progress is None else lambda i, n, name: progress("snapshot_verify", i, n, name))
-        rename_no_replace(partial, dest)  # never replaces an existing backup
-    except BackupError:
-        remove_quietly(partial)
-        raise
-    except (OSError, zipfile.BadZipFile, ValueError) as exc:
-        remove_quietly(partial)
-        raise BackupError(f"the WTF backup failed: {exc}") from exc
-    except BaseException:  # e.g. Ctrl+C while zipping: never leave a stray .partial behind
-        remove_quietly(partial)
-        raise
-    return dest
+    """Zip every regular file under <flavor>/WTF (stored as WTF/...) into <backup folder>/backup, verify it, then
+    move it into place. must_hold: the flavor-relative paths ("WTF/...") the clean will delete; a BackupError if
+    any of them is not among the files backed up (core.snapshot.take_snapshot)."""
+    return core_snapshot.take_snapshot(flavor, backup_dir / SNAPSHOT_SUBDIR, SNAPSHOT_PREFIX, now, progress,
+                                       must_hold)
 
 
 def snapshot_path(backup_dir: Path, flavor_short: str, now: datetime) -> Path:
     """<backup folder>/backup/backup-<flavor>-<YYYYMMDD-HHMMSS>.zip, e.g. backup-retail-20261003-140311.zip, with
     -2, -3, ... before .zip when that name is taken (two cleans in the same second)."""
-    return free_name(backup_dir / SNAPSHOT_SUBDIR, f"backup-{flavor_short}-{now:%Y%m%d-%H%M%S}", ".zip")
+    return core_snapshot.snapshot_path(backup_dir / SNAPSHOT_SUBDIR, SNAPSHOT_PREFIX, flavor_short, now)
 
 
 def prune_snapshots(backup_dir: Path, flavor_short: str, keep: int) -> list[Path]:
     """Delete all but the newest `keep` (at least 1) WTF backups of this flavor (backup-<flavor>-<stamp>.zip) in
     <backup_dir>/backup. Other flavors' backups and other files are never touched. Returns what was removed."""
-    folder = backup_dir / SNAPSHOT_SUBDIR
-    try:
-        matches = [(m, p) for p in folder.iterdir() if (m := SNAPSHOT_NAME.match(p.name)) and p.is_file()]
-    except OSError:
-        return []
-    found = [p for m, p in sorted(matches, key=lambda mp: (mp[0]["stamp"], int(mp[0]["n"] or 1)), reverse=True)
-             if m["flavor"] == flavor_short]
-    removed: list[Path] = []
-    for path in found[max(1, keep):]:
-        try:
-            path.unlink()
-            removed.append(path)
-        except OSError:
-            pass
-    return removed
+    return core_snapshot.prune_snapshots(backup_dir / SNAPSHOT_SUBDIR, SNAPSHOT_PREFIX, flavor_short, keep)
 
 
 def write_marker(backup_dir: Path, marker: Marker) -> None:
