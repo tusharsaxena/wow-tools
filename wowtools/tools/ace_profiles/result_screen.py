@@ -23,7 +23,7 @@ STATUS_COLOURS = (("would change", "accent"), ("changed", "success"), ("restored
 
 class ProfileResultScreen(Screen[str]):
     """`title` is "Apply", "Dry run" or "Undo". Dismisses with "rescan", "flavors", "tools" or "quit"; with `back`
-    (a dry run: nothing was written, the staged changes are still there) it opens on "Back to review", and Esc
+    (a dry run: nothing was written, the pending changes are still there) it opens on "Back to review", and Esc
     dismisses with "back"."""
 
     DEFAULT_CSS = result_css("ProfileResultScreen")

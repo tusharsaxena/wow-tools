@@ -58,20 +58,52 @@ class ReportTest(unittest.TestCase):
         self.assertTrue(gone.removed)
         self.assertIn("✘ removed", gone.tags)
 
-    def test_selection_and_staged_text(self):
+    def test_selection_and_pending_text(self):
         self.assertEqual(report.selection_text(0, 0, ops.Summary(), 0),
-                         "Selected: 0 profiles · 0 characters · Nothing staged")
+                         "Selected: 0 profiles · 0 characters · No pending changes")
         summary = ops.Summary(deleted=2, reassigned=5, renamed=1, files=2)
-        self.assertEqual(report.staged_text(summary), "2 deletes · 1 rename · 5 reassigns")
+        self.assertEqual(report.pending_text(summary), "2 deletes · 1 rename · 5 reassigns")
+        self.assertEqual(report.pending_text(ops.Summary()), "No pending changes")
         self.assertEqual(report.selection_text(1, 3, summary, 2),
-                         "Selected: 1 profile · 3 characters · Staged: 8 changes in 2 files · ⚠ 2 scan warnings")
+                         "Selected: 1 profile · 3 characters · 8 pending changes in 2 files · ⚠ 2 scan warnings")
+        self.assertNotIn("staged", report.selection_text(1, 3, summary, 2).casefold())
+
+    def test_guidance_steps_when_nothing_is_going_on(self):
+        text = report.guidance("root", "", 0, 0, 0, 0)
+        self.assertEqual(text, "1 Tick profiles or characters (Space) → 2 pick an action below → 3 check the "
+                               "pending changes in the tree → 4 Apply (w) writes them; Dry run (y) only checks them")
+        self.assertEqual(report.guidance(None, "", 0, 0, 0, 0), text)
+        self.assertEqual(report.guidance("account", "ACCT1", 0, 0, 0, 0), text)
+
+    def test_guidance_on_a_highlighted_node(self):
+        self.assertEqual(report.guidance("profile", "Healer", 0, 0, 0, 0),
+                         'Profile "Healer": Delete, Rename or Copy it, or tick it with Space')
+        for kind in ("char", "pair", "character"):
+            self.assertEqual(report.guidance(kind, "Kaelys - Realm1", 0, 0, 0, 0),
+                             '"Kaelys - Realm1": Assign it a profile, or remove it if it is a leftover')
+        self.assertEqual(report.guidance("addon", "ElvUI", 0, 0, 0, 0),
+                         "ElvUI: Keep only Default or Everyone → Default (More…), or Blacklist…")
+
+    def test_guidance_with_ticks(self):
+        self.assertEqual(report.guidance("profile", "Healer", 2, 1, 0, 0),
+                         "3 ticked: pick an action below (Delete, Assign, …)")
+
+    def test_guidance_with_pending_changes_comes_first(self):
+        pending = ("3 pending changes in 2 files, not written yet: Apply (w) writes them, Dry run (y) checks "
+                   "them, Discard (⌫) drops them")
+        self.assertEqual(report.guidance("root", "", 0, 0, 3, 2), pending)
+        self.assertEqual(report.guidance("profile", "Healer", 0, 0, 3, 2),
+                         pending + '\nProfile "Healer": Delete, Rename or Copy it, or tick it with Space')
+        self.assertTrue(report.guidance("addon", "ElvUI", 1, 0, 1, 1).startswith(
+            "1 pending change in 1 file, not written yet"))
+        self.assertIn("\n1 ticked: pick an action below", report.guidance("addon", "ElvUI", 1, 0, 1, 1))
 
     def test_apply_confirm_alerts(self):
         key = self.st("ElvDB").key
         self.staging.delete({key: ["Default"]}, "Healer")
         self.staging.assign({self.st("HandyNotesDB").key: ["Kaelys - Realm1"]}, "Default")
         title, body, alerts = report.apply_confirm(self.staging.summary(), self.staging.changed(), dry_run=False)
-        self.assertIn("Apply", title)
+        self.assertEqual(title, "Apply the pending changes?")
         self.assertIn("2 files", body)
         self.assertTrue(any("Default" in a and "deleted" in a for a in alerts))
         self.assertTrue(any("next login" in a for a in alerts))

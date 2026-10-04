@@ -132,6 +132,28 @@ class LookAndFeelTest(TuiTestCase):
                     self.assertEqual([n for n in walk(tree.root) if n.is_expanded], [tree.root])
                     self.assertIs(app.screen, review)  # c collapses: it never starts a run
 
+    async def test_ace_tree_pane_fits_with_its_guide_and_action_bar(self):
+        """The Ace3 review's tree pane holds the tree, the guidance line and the action bar: at 80x24 each button
+        and the guide are drawn whole, and the tree keeps at least 5 rows, with and without pending changes."""
+        app = self.make_app()
+        async with app.run_test(size=SMALL) as pilot:
+            review = await self.open_review(app, pilot, "ace-profiles")
+            for prepared in (False, True):
+                if prepared:
+                    PREPARE["ace-profiles"](review)
+                    await settle(app, pilot)
+                    self.assertIn("pending change", str(review.query_one("#guide").render()))
+                pane = review.query_one("#tree-pane").region
+                buttons = list(review.query_one("#tree-actions").query(Button))
+                self.assertEqual(len(buttons), 8)
+                for widget in (*buttons, review.query_one("#guide")):
+                    self.assert_inside(widget, pane)
+                    self.assert_inside(widget, app.screen.region)
+                self.assertGreaterEqual(review.query_one("#profiles", Tree).region.height, 5, prepared)
+                left = review.query_one("#filters").region
+                for widget in (review.query_one("#pending"), review.query_one(NavHint)):
+                    self.assert_inside(widget, left._replace(width=left.width - 1))
+
     async def test_result_screens_share_one_layout(self):
         for tool in TOOLS:
             with self.subTest(tool=tool):

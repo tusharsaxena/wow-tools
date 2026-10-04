@@ -1,12 +1,15 @@
-"""Small shared widgets: a checkbox with ✔/✘ marks, a button row with ←/→ focus, arrow-key focus bindings."""
+"""Small shared widgets: a checkbox with ✔/✘ marks, a button row with ←/→ focus (and one that wraps onto more rows),
+arrow-key focus bindings."""
 from __future__ import annotations
 
 from typing import ClassVar
 
+from rich.cells import cell_len
 from textual.actions import SkipAction
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
 from textual.content import Content
+from textual.events import Resize
 from textual.widgets import Button, Checkbox, Static
 
 # Pick lists (tool menu, flavor picker): names in gold, in their own column, readable on the cursor row too, whose
@@ -101,6 +104,33 @@ class ButtonRow(Horizontal):
         if not self.wrap and not 0 <= index < len(buttons):
             raise SkipAction()
         buttons[index % len(buttons)].focus()
+
+
+class WrapButtonRow(ButtonRow):
+    """A ButtonRow whose compact buttons flow onto as many rows as its width needs: a grid whose column count
+    follows the width and the widest label. ← and → move through the buttons in order, wrapping round (the
+    review's action bar under the tree)."""
+
+    DEFAULT_CSS = """
+    WrapButtonRow { layout: grid; grid-size: 1; grid-gutter: 0 1; grid-rows: 1; height: auto; }
+    WrapButtonRow > Button { width: 1fr; min-width: 0; height: 1; }
+    """
+    GUTTER = 1
+
+    def on_mount(self) -> None:
+        self._fit(self.size.width)
+
+    def on_resize(self, event: Resize) -> None:
+        self._fit(event.size.width)
+
+    def _fit(self, width: int) -> None:
+        buttons = list(self.query(Button))
+        if not buttons or width <= 0:
+            return
+        widest = max(cell_len(b.label.plain) for b in buttons) + 2  # a compact button's padding
+        columns = max(1, min(len(buttons), (width + self.GUTTER) // (widest + self.GUTTER)))
+        if self.styles.grid_size_columns != columns:
+            self.styles.grid_size_columns = columns
 
 
 class NavHint(Static):

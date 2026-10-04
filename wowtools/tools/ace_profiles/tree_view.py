@@ -1,4 +1,4 @@
-"""Build the review screen's tree (By addon or By character) from a scan and the staged changes, with the filters
+"""Build the review screen's tree (By addon or By character) from a scan and the pending changes, with the filters
 and search applied. Every node is built up front (a whole install has well under a thousand), and the builder
 records, per node, the tick keys it covers and the text of its label (the screen adds the tick mark)."""
 from __future__ import annotations

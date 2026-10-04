@@ -158,13 +158,13 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | Event | Level | Description |
 |---|---|---|
 | `ace.apply_completed` | info | Apply finished (logged at warning if any file was skipped or failed). |
-| `ace.apply_started` | info | Apply (or a dry run) of the staged changes started. |
+| `ace.apply_started` | info | Apply (or a dry run) of the pending changes started. |
 | `ace.backup_failed` | error | The zip of the original files failed; nothing was changed. |
 | `ace.blacklist_changed` | info | A (flavor, addon) pair was added to or removed from the blacklist (flavor, addon, blacklisted), or the whole list was saved from the blacklist screen (pairs). |
 | `ace.dry_run_completed` | info | A dry run finished. |
 | `ace.earlier_unfinished` | error | Apply was refused: an earlier Apply did not finish (its crash marker is there); nothing was changed. |
 | `ace.file_changed` | warning | A file changed since the scan; its changes were skipped. |
-| `ace.file_edited` | info | A SavedVariables file was rewritten with the staged changes. |
+| `ace.file_edited` | info | A SavedVariables file was rewritten with the pending changes. |
 | `ace.file_locked` | error | Apply or Undo stopped before changing anything: files are locked by another program. |
 | `ace.file_restored` | info | Undo or recovery: a file was put back to its original bytes. |
 | `ace.file_skipped` | warning | Undo or recovery: a file was left alone (it changed since the run, or is outside the WTF folder). |
@@ -186,7 +186,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ace.snapshot_failed` | error | The whole-WTF snapshot failed; nothing was changed. |
 | `ace.snapshot_taken` | info | The whole-WTF snapshot was written and verified. |
 | `ace.snapshots_pruned` | info | Older whole-WTF snapshots of the flavor were deleted to keep the newest N (keep_backups). |
-| `ace.staged` | debug | A change was staged on the review screen (operation and counts). |
+| `ace.staged` | debug | A pending change was made on the review screen (operation and counts; not written until Apply). |
 | `ace.undo_completed` | info | Undo last change finished (logged at warning if any file was skipped or failed). |
 | `ace.undo_failed` | error | Undo or recovery: a file could not be put back (its zip is missing or does not match). |
 | `ace.undo_started` | info | Undo last change started, from the newest journal. |

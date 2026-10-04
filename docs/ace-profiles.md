@@ -21,6 +21,22 @@ edits, and **Undo last change** puts them back.
 
 <!-- screenshots: review screen, popup, result -->
 
+## How it works
+
+Nothing you do on the review screen touches a file until you press **Apply**. In four steps:
+
+1. **Tick** the profiles or characters you want to change (`Space`), or just highlight one.
+2. **Pick an action** in the bar under the tree: **Delete profile**, **Assign profile**, **Rename**, **Copy**,
+   **Remove leftovers**, **Blacklist…** or **More…** (each button also has a key).
+3. **Check the pending changes in the tree.** Each action shows its result in the tree straight away, marked so you
+   can tell (`✘ deleted`, `was Healer` and so on), but it's only *pending*: nothing has been written yet. Make as
+   many as you like; **Discard** (`Backspace`) drops them all.
+4. **Apply** (`w`) writes the pending changes, after backing everything up. **Dry run** (`y`) only checks them.
+
+The line just above the action bar (the **guidance line**) always tells you where you are: the four steps when
+nothing is going on, what you can do with the highlighted profile, character or addon, how many lines are ticked,
+and how many pending changes are waiting to be applied.
+
 ## Step by step
 
 1. Close WoW. Start Ka0s WoW Tools and choose **Ace3 Profile Manager**.
@@ -29,10 +45,10 @@ edits, and **Undo last change** puts them back.
 3. **Pick a game version**, or **All flavors** to see every version at once.
 4. If you picked one version that has more than one WoW account, **pick an account**, or **All accounts**.
 5. The tool reads every addon's settings file and shows the review screen. Nothing is ticked yet.
-6. Tick the profiles or characters you want to change, and press the key for the change: `d` deletes profiles, `p`
-   moves characters to another profile, `e` renames a profile, `k` copies one, `o` removes leftover characters,
-   and `m` opens the quick actions. Each change is **staged**: the tree shows the result straight away, but no file
-   is touched yet. Stage as many changes as you like.
+6. Tick the profiles or characters you want to change, and press a button in the action bar under the tree, or its
+   key: `d` deletes profiles, `p` moves characters to another profile, `e` renames a profile, `k` copies one, `o`
+   removes leftover characters, and `m` opens the quick actions. Each change becomes a **pending change**: the tree
+   shows the result straight away, but no file is touched yet. Make as many changes as you like.
 7. Press **Dry run** (`y`) if you'd like every change checked without writing anything.
 8. Press **Apply** (`w`), read the summary, and press **Yes**.
 9. The results screen lists every change and what happened to it.
@@ -59,10 +75,27 @@ game version → account → character → one line per addon, `Addon: Profile`
 This is the view for "what does this character use everywhere?". Ticking a line here picks that character in
 that addon.
 
-**On the left** are the view boxes, the filters, a search box, a line that sums up what's staged, and the buttons.
+**Under the tree** are the guidance line (see [How it works](#how-it-works)) and the **action bar**:
 
-**At the bottom** a bar counts what's ticked and what's staged, for example
-`Selected: 3 profiles · 8 characters · Staged: 6 changes in 2 files`, plus scan warnings when there are any.
+| Button | Key | Does |
+|---|---|---|
+| **Delete profile** | `d` | Deletes the ticked (or highlighted) profiles |
+| **Assign profile** | `p` | Moves the ticked (or highlighted) characters to another profile |
+| **Rename** | `e` | Renames the highlighted profile |
+| **Copy** | `k` | Copies the highlighted profile under a new name |
+| **Remove leftovers** | `o` | Removes the ticked leftover characters |
+| **Blacklist…** | | Opens the [blacklist](#the-blacklist) screen |
+| **More…** | `m` | The quick actions, and every other key |
+| **Discard** | `Backspace` | Drops every pending change |
+
+A button is never greyed out: if there's nothing for it to work on, it tells you what to tick or highlight first.
+`Tab` from the tree reaches the bar, and `←` `→` move along it.
+
+**On the left** are the view boxes, the filters, a search box, a **Pending changes** line that sums them up, and
+the buttons.
+
+**At the bottom** a bar counts what's ticked and what's pending, for example
+`Selected: 3 profiles · 8 characters · 6 pending changes in 2 files`, plus scan warnings when there are any.
 
 ### Tags
 
@@ -79,9 +112,9 @@ Lines in the tree carry small tags that tell you what's going on:
 | **blacklisted** | addon | It's on your [blacklist](#the-blacklist): shown greyed out, can't be ticked or changed |
 | **unlocked** | addon | A blacklisted addon you unlocked for this session (`u`) |
 
-### Staged changes
+### Pending changes
 
-A staged change shows in the tree as if it were already done, marked so you can tell:
+A pending change shows in the tree as if it were already done, marked so you can tell:
 
 | You see | Means |
 |---|---|
@@ -91,8 +124,9 @@ A staged change shows in the tree as if it were already done, marked so you can 
 | `was Old` | The character moves to this profile; it used Old before |
 | `✘ removed` | The leftover character will be removed |
 
-The **Staged** line on the left counts each kind ("2 deletes · 5 reassigns · 1 rename"). Press `Backspace` to throw
-all staged changes away. **Rescan** with changes staged asks first, and so does leaving the screen.
+The **Pending changes** line on the left counts each kind ("2 deletes · 5 reassigns · 1 rename"). Press `Backspace`
+(or **Discard**) to throw all pending changes away. **Rescan** with pending changes asks first, and so does leaving
+the screen.
 
 ### The filters
 
@@ -135,7 +169,7 @@ ticked:
 - **Everyone → Default**: moves every character to "Default" and keeps the other profiles.
 - **Tick all leftover characters**: ticks every character tagged "no character folder" that's shown, ready for
   `o`.
-- **Discard staged changes**, and every key the bottom bar has no room for (`e`, `k`, `o`, `b`, `u`, `v`, `/`,
+- **Discard the pending changes**, and every key the bottom bar has no room for (`e`, `k`, `o`, `b`, `u`, `v`, `/`,
   `Backspace`), so you can find them without this guide.
 
 ### The blacklist
@@ -143,14 +177,22 @@ ticked:
 Some addons you never want touched. Put them on the blacklist: they stay in the tree, greyed out, so you can still
 see their profiles, but they can't be ticked or changed.
 
-- `b` adds the highlighted addon to the blacklist, or takes it off. The blacklist is saved in the settings, where
-  you can also edit it as a list of names.
+An addon is blacklisted in one game version: blacklisting ElvUI in Retail leaves ElvUI in Classic Era free to
+change.
+
+- `b` adds the highlighted addon, in its game version, to the blacklist, or takes it off. It's saved at once.
+- **Blacklist…** (in the action bar, and **Edit blacklist…** in the settings) opens the **blacklist screen**: a tree
+  of game version → addon listing every addon with Ace3 profiles. Nothing is ticked except what's already
+  blacklisted; tick the ones you want blacklisted (`Space`, `a` all, `n` none, `x` / `c` expand and collapse) and
+  press **Save**, or **Cancel** (`Esc`) to leave it as it was. A blacklisted addon that's no longer installed is
+  listed with "(not found)" so you can take it off.
 - `u` **unlocks** a blacklisted addon for this session only: it can be changed until you close the tool, and it's
   tagged "unlocked". Press `u` again to lock it again.
-- Blacklisting or locking an addon throws away any changes already staged for it, and says so.
+- Blacklisting or locking an addon throws away any pending changes for it, and says so.
 
 An addon's name is its settings file's name without `.lua` (`ElvUI`, `Bartender4`), upper or lower case doesn't
-matter.
+matter. A name saved by the first version of the tool, without a game version, blacklists that addon in every game
+version until you next save the blacklist.
 
 ## Keys on the review screen
 
@@ -164,12 +206,12 @@ matter.
 | `k` | Copy the highlighted profile |
 | `o` | Remove the ticked leftover characters |
 | `m` | Quick actions, and every key the bottom bar doesn't show |
-| `Backspace` | Discard all staged changes |
+| `Backspace` | Discard all pending changes |
 | `b` | Put the highlighted addon on the blacklist, or take it off |
 | `u` | Unlock the highlighted blacklisted addon for this session, or lock it again |
 | `v` | Switch view: By addon / By character |
 | `/` | Search |
-| `w` | **Apply** the staged changes (asks first; the answer starts on **No**) |
+| `w` | **Apply** the pending changes (asks first; the answer starts on **No**) |
 | `y` | **Dry run** (asks first; the answer starts on **Yes**) |
 | `x` / `c` | Expand every line of the tree / collapse them all |
 | `r` | Scan again |
@@ -180,7 +222,7 @@ matter.
 | `q` | Quit |
 | `←` `→` | Jump between the tree and the left panel |
 
-Leaving with `f`, `Esc`, `t` or `q` while changes are staged asks first: they haven't been written, and leaving
+Leaving with `f`, `Esc`, `t` or `q` while changes are pending asks first: they haven't been written, and leaving
 throws them away.
 
 ## What the tool never touches
@@ -202,7 +244,7 @@ profiles.
 ## Apply
 
 When you press **Apply**, the bottom bar says "Checking whether WoW is running…" for a moment. If WoW is running
-for a game version you're changing, it stops there and asks you to close it. Then a summary lists what's staged,
+for a game version you're changing, it stops there and asks you to close it. Then a summary lists the pending changes,
 in which game versions, with alerts in red for anything worth a second look:
 
 - a "Default" profile is being deleted;
@@ -215,7 +257,7 @@ tool:
 
 1. **Checks every file again.** If a file changed since the scan (you logged a character out with the tool open,
    say), that file is **skipped** with "changed since the scan; rescan", and the others go ahead. Press `r`
-   afterwards and stage that addon's changes again.
+   afterwards and make that addon's changes again.
 2. **Checks that no other program has the files open.** The Raider.IO client and the WeakAuras Companion are
    known to lock these files. If any is locked, nothing is changed; close that program and apply again.
 3. **Backs up your whole `WTF` folder** into a zip and checks the zip.
@@ -230,7 +272,7 @@ the versions after it aren't touched, and the versions before it keep their chan
 
 A **Dry run** (`y`) does everything Apply does except writing: it rechecks every file and builds and checks each
 new version in memory. It writes nothing at all: no zip, no journal. It works while WoW is running. Its results
-screen has a **Back to review** button (`Esc`) that takes you back with your staged changes still there.
+screen has a **Back to review** button (`Esc`) that takes you back with your pending changes still there.
 
 ## The results screen
 
@@ -254,7 +296,7 @@ Close WoW first: Undo refuses while it's running, just like Apply.
   hand.
 - Undo works on the most recent change, whichever game version you picked. It only goes back **one** change;
   after you undo, the button stays greyed out until your next Apply.
-- Any changes you've staged and not applied yet are dropped (the confirm says so).
+- Any pending changes you haven't applied yet are dropped (the confirm says so).
 
 ## Where your backups go
 
@@ -306,10 +348,11 @@ tool's settings). The tool's settings are saved in
 | Setting | Starts as | What it means |
 |---|---|---|
 | Backup folder | empty | Where the `WTF` backups and the zips of edited files go: they're put in its `ace-profiles` folder. Empty means `<WoW folder>\wow-tools`. It must be a full path (such as `D:\WoW backups`), and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
-| Blacklist | empty | Addon names, separated by commas, that are shown but never changed |
+| Blacklist | none | Addons, each in one game version, that are shown but never changed. **Edit blacklist…** opens the [blacklist screen](#the-blacklist); the line above it counts them |
 
-The file itself uses these names, if you edit it by hand: `backup_dir`, `blacklist`, `last_flavor_choice` (the
-game version you picked last time; empty means **All flavors**) and `last_account` (empty means all accounts).
+The file itself uses these names, if you edit it by hand: `backup_dir`, `blacklist` (pairs such as
+`_retail_:ElvUI, _classic_era_:Questie`), `last_flavor_choice` (the game version you picked last time; empty means
+**All flavors**) and `last_account` (empty means all accounts).
 
 Backups and journals to keep are shared by every tool: they're on the first screen `s` opens (the one with
 your WoW folder), and saved as `keep_backups` (10; `0` keeps all) and `keep_journals` (10) under `[general]`
@@ -326,7 +369,7 @@ in `config\wow-tools.cfg`. The WTF backups (`snapshots`) follow `keep_backups`.
 | Can I delete "Default"? | Yes, but most addons put every new character on "Default", and recreate it with its defaults when one logs in. The confirm warns you. "Keep only Default" is usually what you want instead. |
 | Are my settings inside a profile safe? | Yes. The tool never changes what's in a profile: a renamed profile keeps its settings exactly, and a copy is an exact copy. |
 | Can I copy a profile to another addon, account or game version? | No. Profiles belong to one addon on one account; copying works within the same addon only. |
-| What's the difference between Dry run and Apply? | A **Dry run** checks every staged change and shows the results without writing anything. **Apply** writes them, after backing everything up. |
+| What's the difference between Dry run and Apply? | A **Dry run** checks every pending change and shows the results without writing anything. **Apply** writes them, after backing everything up. |
 | Can I undo a change from last week? | **Undo last change** only goes back to the most recent change. For an older one, unzip its `edited` zip by hand; see [Where your backups go](#where-your-backups-go). |
 | Does it work on a Mac? | Yes, but the "WoW is running" check can't tell on a Mac, so close WoW yourself first. |
 
@@ -335,11 +378,11 @@ in `config\wow-tools.cfg`. The WTF backups (`snapshots`) follow `keep_backups`.
 | Symptom | Fix |
 |---------|-----|
 | "WoW is running … Close it first" | Close that game version's WoW and try again. WoW would overwrite the changes when you log out. |
-| A file was "skipped: changed since the scan; rescan" | WoW (or another program) saved that file after the scan. Press `r` to scan again, stage that addon's changes again and apply. The other files were changed as planned. |
+| A file was "skipped: changed since the scan; rescan" | WoW (or another program) saved that file after the scan. Press `r` to scan again, make that addon's changes again and apply. The other files were changed as planned. |
 | My changes were undone after I played | WoW was running while you applied, or an addon synced its profiles back. Close WoW completely, apply again, then start the game. |
 | "files are locked by another program" | Close the Raider.IO client or the WeakAuras Companion, then apply again. Nothing was changed. |
 | An addon is missing from the tree | It doesn't use Ace3 profiles, its file is blacklisted and hidden (tick **Blacklisted addons**), or a filter or search hides it. If its file couldn't be read, it's listed under **Scan warnings** at the bottom of the tree. |
-| "Not staged" with a list of addons | The change couldn't be made in those addons (blacklisted, a name already taken, …); the message says why for each. It was made in the others. |
+| "Not done" with a list of addons | The change couldn't be made in those addons (blacklisted, a name already taken, …); the message says why for each. It was made in the others. |
 | A character keeps a profile I changed | It has **spec profiles**: LibDualSpec switches its profile by spec at login. See the [FAQ](#faq). |
 | "An earlier change did not finish" | See [If a change was interrupted](#if-a-change-was-interrupted). |
 | "Backup folder not allowed" | The backup folder in settings is a relative path, your WoW folder, or inside a game version's `WTF`, `Interface` or `Screenshots` folder. Press `s` and pick another folder, or leave it empty for the default. |

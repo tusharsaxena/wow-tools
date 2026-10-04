@@ -181,7 +181,7 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 | `config\wtf-cleaner.cfg` | The WTF Cleaner's settings |
 | `config\screenshot-organizer.cfg` | The Screenshot Organizer's settings |
 | `config\interface-backup.cfg` | Interface Backup's settings |
-| `config\ace-profiles.cfg` | The Ace3 Profile Manager's settings (`[ace_profiles]`): backup folder and the blacklist of addons it never changes |
+| `config\ace-profiles.cfg` | The Ace3 Profile Manager's settings (`[ace_profiles]`): backup folder and the blacklist of addons (each in one game version) it never changes |
 
 The easiest way to change them is to press `s` in the app: the first screen is the shared one (WoW folder,
 backups and journals to keep), then the tool's own. You can also open the files in Notepad while the app

@@ -32,7 +32,7 @@ ACTIONS = (
     ("unlock", "Unlock a blacklisted addon for this session, or lock it again (u)"),
     ("switch_view", "Switch view: by addon / by character (v)"),
     ("search", "Search (/)"),
-    ("discard", "Discard staged changes (Backspace)"),
+    ("discard", "Discard the pending changes (Backspace)"),
 )
 
 

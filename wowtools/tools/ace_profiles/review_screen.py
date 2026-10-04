@@ -1,6 +1,7 @@
 """Review the AceDB profiles of the chosen flavors as a tree (by addon or by character), tick profiles and
-characters, stage deletes, renames, copies and reassignments, then apply them, try them in a dry run, or undo the
-last change."""
+characters, pick deletes, renames, copies and reassignments (pending changes, shown in the tree until written), then
+apply them, try them in a dry run, or undo the last change. A guidance line and an action bar under the tree say
+what can be done next."""
 from __future__ import annotations
 
 import time
@@ -30,10 +31,10 @@ from wowtools.tools.ace_profiles.model import DEFAULT
 from wowtools.tools.ace_profiles.multi import MultiApplyResult, apply_flavors
 from wowtools.tools.ace_profiles.ops import DbKey, DbState, OpResult, Staging, valid_name
 from wowtools.tools.ace_profiles.popups import ActionsScreen, NameScreen, TargetScreen
-from wowtools.tools.ace_profiles.report import (DETAIL_COLUMNS, STAGE_TITLES, UNDO_COLUMNS, apply_confirm,
-                                                apply_detail_rows, apply_summary_rows, flavor_name, plural,
-                                                selection_text, staged_text, undo_confirm, undo_detail_rows,
-                                                undo_summary_rows)
+from wowtools.tools.ace_profiles.report import (CHARACTER_KINDS, DETAIL_COLUMNS, NO_PENDING, STAGE_TITLES,
+                                                UNDO_COLUMNS, apply_confirm, apply_detail_rows, apply_summary_rows,
+                                                flavor_name, guidance, pending_text, plural, selection_text,
+                                                undo_confirm, undo_detail_rows, undo_summary_rows)
 from wowtools.tools.ace_profiles.result_screen import ProfileResultScreen
 from wowtools.tools.ace_profiles.scanner import ScanResult, SvFile, scan_flavors
 from wowtools.tools.ace_profiles.settings import (Pair, format_blacklist, is_blacklisted, load_settings,
@@ -42,9 +43,9 @@ from wowtools.tools.ace_profiles.settings import (Pair, format_blacklist, is_bla
 from wowtools.tools.ace_profiles.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
 from wowtools.tools.ace_profiles.undo import UndoError, UndoResult, recover, undo_run
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (BUSY_STYLE, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus,
-                                relabel_branch, theme_colour, tick_mark, two_pane_css)
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
+from wowtools.ui.dialogs import (BUSY_STYLE, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
+                                TwoPaneFocus, relabel_branch, theme_colour, tick_mark, two_pane_css)
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, WrapButtonRow, action_button
 
 NAV_HINT = (REVIEW_HINT + "a all · n none · d delete · p assign · m more · w apply · y dry run · " + TREE_HINT +
             "r rescan · z undo · f flavors · t tools")
@@ -52,6 +53,18 @@ WowCheck = Callable[[], "list[str] | None"]
 SHOW_FILTERS = {"only-multi": "only_multi", "only-unused": "only_unused", "show-leftovers": "leftovers",
                 "show-blacklisted": "blacklisted"}
 PROGRESS_EVERY = 0.05  # seconds between two scan progress reports sent to the UI thread
+# The action bar under the tree: (id, label, kind of action, action). Each button does what its key does; one with
+# nothing to act on stays enabled and says what to tick or highlight.
+TREE_ACTIONS = (
+    ("act-delete", "Delete profile (d)", "delete", "delete"),
+    ("act-assign", "Assign profile (p)", "apply", "assign"),
+    ("act-rename", "Rename (e)", "apply", "rename"),
+    ("act-copy", "Copy (k)", "apply", "copy"),
+    ("act-leftovers", "Remove leftovers (o)", "delete", "remove_leftovers"),
+    ("act-blacklist", "Blacklist…", "neutral", "edit_blacklist"),
+    ("act-more", "More… (m)", "neutral", "more"),
+    ("act-discard", "Discard (⌫)", "neutral", "discard"),
+)
 
 
 class NotTicked:
@@ -137,9 +150,14 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
 
     TREE_SELECTOR = "#profiles"
     # The left pane fits 80x24 (tests/test_look_and_feel.py) with one control per row: the two View boxes, the
-    # search box and the staged line carry their own names instead of a section heading each.
+    # search box and the pending line carry their own names instead of a section heading each (and the pending line
+    # sits right under the search box, so the hint still fits when the bottom line takes two rows). The tree pane
+    # holds the tree, the guidance line and the action bar, and fits 80x24 too.
     DEFAULT_CSS = two_pane_css("ProfileReviewScreen", "#profiles") + """
-    ProfileReviewScreen #staged { margin-top: 1; }
+    ProfileReviewScreen #tree-pane { width: 1fr; }
+    ProfileReviewScreen #profiles { height: 1fr; }
+    ProfileReviewScreen #guide { height: auto; color: $text-muted; padding: 0 1; }
+    ProfileReviewScreen #tree-actions { padding: 0 1; }
     """
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("space", "toggle", "Tick/untick", priority=True),
@@ -192,7 +210,8 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self.filters = Filters()
         self.undoable: Path | None = None  # the newest undoable journal, found by the scan worker
         self.marker: Marker | None = None  # an Apply that did not finish, found by the scan worker
-        self.summary_text = "Selected: 0 profiles · 0 characters · Nothing staged"
+        self.summary_text = f"Selected: 0 profiles · 0 characters · {NO_PENDING}"
+        self.guide_text = guidance(None, "", 0, 0, 0, 0)
         self._builder: TreeBuilder | None = None
         self._expanded: dict[Hashable, bool] = {}
         self._scanning = False
@@ -214,17 +233,22 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
                 yield Ka0sCheckbox("Leftover characters", True, id="show-leftovers", compact=True)
                 yield Ka0sCheckbox("Blacklisted addons", True, id="show-blacklisted", compact=True)
                 yield Input(placeholder="Search addon, profile or character", id="search", compact=True)
-                yield Static(self._staged_line("Nothing staged"), id="staged")
+                yield Static(self._pending_line(NO_PENDING), id="pending")
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Apply", "delete", id="btn-apply")
                     yield action_button("Dry run", "simulate", id="btn-dry-run")
                     yield action_button("Rescan", "neutral", id="btn-rescan")
                     yield action_button("Undo last change", "revert", id="btn-undo")
                 yield NavHint(NAV_HINT)
-            with Vertical(id="scan-box"):
-                yield ProgressBar(id="scan-progress", show_eta=False)
-                yield Static("", id="scan-label")
-            yield ProfileTree(Text(self.scope_label), id="profiles")
+            with Vertical(id="tree-pane"):
+                with Vertical(id="scan-box"):
+                    yield ProgressBar(id="scan-progress", show_eta=False)
+                    yield Static("", id="scan-label")
+                yield ProfileTree(Text(self.scope_label), id="profiles")
+                yield Static(Text(self.guide_text), id="guide")
+                with WrapButtonRow(id="tree-actions"):
+                    for button_id, label, kind, _ in TREE_ACTIONS:
+                        yield action_button(label, kind, id=button_id, compact=True)
         yield Static(Text(self.summary_text), id="summary")
         yield BrandBar()
         yield Footer()
@@ -270,9 +294,9 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         if not self.is_attached:
             return
         idle = self.idle
-        staged = self.staging is not None and self.staging.summary().total > 0
-        self.query_one("#btn-apply", Button).disabled = not idle or not staged
-        self.query_one("#btn-dry-run", Button).disabled = not idle or not staged
+        pending = self.staging is not None and self.staging.summary().total > 0
+        self.query_one("#btn-apply", Button).disabled = not idle or not pending
+        self.query_one("#btn-dry-run", Button).disabled = not idle or not pending
         self.query_one("#btn-rescan", Button).disabled = not idle
         self.query_one("#btn-undo", Button).disabled = not idle or self.undoable is None
 
@@ -294,8 +318,8 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         if not self.idle or self.wow_folder_changed():
             return
         if self.staging is not None and self.staging.summary().total:
-            self.app.push_screen(ConfirmScreen("Discard staged changes?",
-                                               "A rescan reads the files again and drops every staged change."),
+            self.app.push_screen(ConfirmScreen("Discard the pending changes?",
+                                               "A rescan reads the files again and drops every pending change."),
                                  lambda ok: self._scan() if ok else None)
             return
         self._scan()
@@ -400,7 +424,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
             stack.extend(node.children)
 
     def refresh_view(self) -> None:
-        """Rebuild the tree and the bottom line from the scan, the staged changes and the filters, keeping ticks,
+        """Rebuild the tree and the bottom line from the scan, the pending changes and the filters, keeping ticks,
         expansion and the highlighted node."""
         if self.scan is None or self.staging is None or not self.is_attached:
             return
@@ -452,12 +476,42 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         profiles, chars = counts(self.ticked)
         self.summary_text = selection_text(profiles, chars, summary, len(self.scan.warnings))
         self.query_one("#summary", Static).update(Text(self.summary_text))
-        self.query_one("#staged", Static).update(self._staged_line(staged_text(summary)))
+        self.query_one("#pending", Static).update(self._pending_line(pending_text(summary)))
         self._refresh_buttons()
+        self._update_guide()
 
     @staticmethod
-    def _staged_line(text: str) -> Text:
-        return Text.assemble(("Staged: ", "bold"), text)
+    def _pending_line(text: str) -> Text:
+        return Text.assemble(("Pending changes: ", "bold"), text)
+
+    def _node_name(self, data) -> str:
+        """The name the guidance line gives the highlighted node."""
+        kind = data[0]
+        if kind == "addon":
+            return data[1].file.addon
+        if kind == "db" and self.staging is not None:
+            return self.staging.state(data[1]).file.addon
+        if kind == "profile" or kind in CHARACTER_KINDS:
+            return data[2]
+        return ""
+
+    def _update_guide(self) -> None:
+        """The guidance line: the pending changes, then what can be done with the ticks or the highlighted node."""
+        if self.staging is None or not self.is_attached:
+            return
+        node = self.query_one("#profiles", Tree).cursor_node
+        data = node.data if node is not None else None
+        kind, name = (data[0], self._node_name(data)) if data else (None, "")
+        summary = self.staging.summary()
+        profiles, chars = counts(self.ticked)
+        text = guidance(kind, name, profiles, chars, summary.total, summary.files)
+        if text != self.guide_text:
+            self.guide_text = text
+            self.query_one("#guide", Static).update(Text(text))
+
+    def on_tree_node_highlighted(self, event: Tree.NodeHighlighted) -> None:
+        if event.control.id == "profiles":
+            self._update_guide()
 
     # --- selection -----------------------------------------------------------------------------------
     def _selected(self, kind: str) -> dict[DbKey, list[str]]:
@@ -630,7 +684,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self._schedule_rebuild()
 
     def _drop_locked(self) -> bool:
-        """A blacklisted (locked) addon is never changed: drop what is staged on one, and its ticks, and say so.
+        """A blacklisted (locked) addon is never changed: drop its pending changes and its ticks, and say so.
         True when something was dropped."""
         if self.staging is None:
             return False
@@ -639,12 +693,12 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self.ticked -= locked
         dropped = self.staging.drop_locked()
         if dropped:
-            self.notify(f"Dropped the staged changes of {', '.join(dropped)}: blacklisted addons are never "
+            self.notify(f"Dropped the pending changes of {', '.join(dropped)}: blacklisted addons are never "
                         "changed.", title="Blacklisted", severity="warning", timeout=10)
         return bool(dropped or locked)
 
     def _reload_settings(self) -> None:
-        """Read the settings again (changed with `s`): a newly blacklisted addon loses its staged changes."""
+        """Read the settings again (changed with `s`): a newly blacklisted addon loses its pending changes."""
         self.settings = load_settings(self.tool_cfg)
         if self._drop_locked() and self.is_attached:
             self.refresh_view()
@@ -682,11 +736,11 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
 
     def _staged(self, result: OpResult) -> None:
         """After an operation: say what was refused and noted (one notification each, however many databases),
-        clear the ticks of the databases it changed and show the new staged state."""
+        clear the ticks of the databases it changed and show the new pending changes."""
         assert self.staging is not None
         if result.refused:
             lines = [f"{self._addon_name(key)}: {reason}" for key, reason in result.refused]
-            self.notify(self._lines(lines), title=f"Not staged ({len(lines)})", severity="warning", timeout=15)
+            self.notify(self._lines(lines), title=f"Not done ({len(lines)})", severity="warning", timeout=15)
         notes = list(dict.fromkeys(result.notes))
         if notes:
             self.notify(self._lines(notes), timeout=15)
@@ -856,7 +910,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         assert self.staging is not None
         summary = self.staging.summary()
         if not summary.total:
-            self.notify("Nothing staged")
+            self.notify(NO_PENDING)
             return
 
         def done(ok: bool | None) -> None:
@@ -864,8 +918,8 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
                 self.staging.discard()
                 log_event("ui.selection", screen="ace_review", control="discard", value=True)
                 self.refresh_view()
-        self.app.push_screen(ConfirmScreen("Discard staged changes?",
-                                           f"{staged_text(summary)}. Nothing has been written; the files stay as "
+        self.app.push_screen(ConfirmScreen("Discard the pending changes?",
+                                           f"{pending_text(summary)}. Nothing has been written; the files stay as "
                                            "they are."), done)
 
     # --- runs: apply, dry run, undo ---------------------------------------------------------------------
@@ -935,7 +989,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         return bool(problem)
 
     def apply_check(self) -> WowCheck:
-        """The running-WoW check of the flavors with staged changes (only their files are written)."""
+        """The running-WoW check of the flavors with pending changes (only their files are written)."""
         changed = self.staging.changed() if self.staging is not None else []
         return self.check_for({s.file.flavor.folder for s in changed})
 
@@ -946,7 +1000,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         log_event("ui.selection", screen="ace_review", control="dry_run" if dry_run else "apply", value=True)
         self._reload_settings()
         if not self.staging.summary().total:
-            self.notify("Nothing staged")
+            self.notify(NO_PENDING)
             return
         if dry_run:  # writes nothing: WoW running and the backup folder do not matter
             self._show_apply_confirm(dry_run, [])
@@ -966,7 +1020,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
 
     def _show_apply_confirm(self, dry_run: bool, extra: list[str]) -> None:
         if self.staging is None or not self.staging.summary().total:
-            self.notify("Nothing staged")
+            self.notify(NO_PENDING)
             return
         states = self.staging.changed()
         title, body, alerts = apply_confirm(self.staging.summary(), states, dry_run=dry_run)
@@ -1051,7 +1105,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
     def _after_result(self, choice: str | None) -> None:
         if choice in ("flavors", "tools", "quit"):
             self.action_leave(choice)
-        elif choice == "back":  # after a dry run: back to the review, the staged changes kept
+        elif choice == "back":  # after a dry run: back to the review, the pending changes kept
             return
         elif self._stale:
             self._scan()
@@ -1083,9 +1137,9 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         extra: list[str] = []
         if self._refused_while_running(running, extra):
             return
-        staged = self.staging.summary().total if self.staging is not None else 0
-        if staged:
-            extra.append(f"The {plural(staged, 'staged change')} not applied yet will be dropped.")
+        pending = self.staging.summary().total if self.staging is not None else 0
+        if pending:
+            extra.append(f"The {plural(pending, 'pending change')} not applied yet will be dropped.")
         title, body, alerts = undo_confirm(journal)
         self.app.push_screen(ConfirmScreen(title, body, (*alerts, *extra)),
                              lambda ok: self._undo_confirmed(ok, path, check))
@@ -1211,18 +1265,19 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
     def action_leave(self, choice: str) -> None:
         if self.app.busy:
             return
-        staged = self.staging.summary().total if self.staging is not None else 0
-        if not staged:
+        pending = self.staging.summary().total if self.staging is not None else 0
+        if not pending:
             self.dismiss(choice)
             return
-        self.app.push_screen(ConfirmScreen("Leave and discard the staged changes?",
-                                           f"{plural(staged, 'staged change')} not applied yet will be dropped; "
+        self.app.push_screen(ConfirmScreen("Leave and discard the pending changes?",
+                                           f"{plural(pending, 'pending change')} not applied yet will be dropped; "
                                            "nothing has been written."),
                              lambda ok: self.dismiss(choice) if ok else None)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         actions = {"btn-apply": self.action_apply, "btn-dry-run": self.action_dry_run,
                    "btn-rescan": self.action_rescan, "btn-undo": self.action_undo}
+        actions.update({button_id: getattr(self, f"action_{name}") for button_id, _, _, name in TREE_ACTIONS})
         action = actions.get(event.button.id or "")
         if action is not None:
             event.stop()

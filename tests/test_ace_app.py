@@ -337,7 +337,8 @@ class StagingTest(AceAppBase):
             summary = review.staging.summary()
             self.assertEqual((summary.deleted, summary.reassigned), (1, 1))
             self.assertIn("✘ deleted", "\n".join(labels(review.query_one("#profiles", Tree))))
-            self.assertIn("Staged: ", review.summary_text)
+            self.assertIn(f"{summary.total} pending changes in 1 file", review.summary_text)
+            self.assertIn("Pending changes: 1 delete · ", str(review.query_one("#pending").render()))
 
     async def test_rename_refuses_existing_name_then_accepts(self):
         app = self.make_app()
@@ -733,7 +734,7 @@ class ReviewFixesTest(AceAppBase):
             await pilot.press("z")
             await settle(app, pilot)
             self.assertIsInstance(app.screen, ConfirmScreen)
-            self.assertIn("staged change", app.screen.body_text)
+            self.assertIn("pending change", app.screen.body_text)
 
     async def stage_elv_kick(self, app, pilot, review):
         key = next(k for k in review.staging.states if k.sv_name == "KickCDDB" and "ACCT1" in k.path.parts)
@@ -939,6 +940,102 @@ class FinalReviewFixesTest(AceAppBase):
                 self.assertIsInstance(app.screen, ProfileResultScreen)
                 self.assertIn(["_retail_"], asked)
                 self.assertNotEqual(path.read_bytes(), before)
+
+
+class GuidanceTest(AceAppBase):
+    """Feedback round 1, item 5: the review explains itself (guidance line, action bar, "pending changes")."""
+
+    def guide(self, review):
+        return str(review.query_one("#guide").render())
+
+    async def test_guide_follows_the_state(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            self.assertTrue(self.guide(review).startswith("1 Tick profiles or characters (Space) → 2 pick an action"),
+                            self.guide(review))
+            self.assertEqual(review.guide_text, self.guide(review))
+            await self.highlight(app, pilot, review, "profile", "Healer")
+            self.assertEqual(self.guide(review), 'Profile "Healer": Delete, Rename or Copy it, or tick it with Space')
+            tree = review.query_one("#profiles", Tree)
+            tree.focus()
+            await pilot.press("space")
+            await settle(app, pilot)
+            self.assertEqual(self.guide(review), "1 ticked: pick an action below (Delete, Assign, …)")
+            await pilot.press("n")
+            await settle(app, pilot)
+            await self.highlight_addon(app, pilot, review, "ElvUI")
+            self.assertTrue(self.guide(review).startswith("ElvUI: Keep only Default"), self.guide(review))
+            await self.highlight(app, pilot, review, "profile", "Healer")
+            await pilot.press("d")
+            await settle(app, pilot)
+            app.screen.dismiss("Default")
+            await settle(app, pilot)
+            total = review.staging.summary().total
+            self.assertTrue(self.guide(review).startswith(f"{total} pending changes in 1 file, not written yet: "
+                                                          "Apply (w) writes them"), self.guide(review))
+            self.assertNotIn("staged", (self.guide(review) + review.summary_text).casefold())
+
+    async def test_action_bar_buttons_have_their_kind_of_colour(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            buttons = list(review.query_one("#tree-actions").query(Button))
+            self.assertEqual([b.label.plain for b in buttons],
+                             ["Delete profile (d)", "Assign profile (p)", "Rename (e)", "Copy (k)",
+                              "Remove leftovers (o)", "Blacklist…", "More… (m)", "Discard (⌫)"])
+            self.assertEqual([b.variant for b in buttons],
+                             ["error", "success", "success", "success", "error", "default", "default", "default"])
+            self.assertFalse(any(b.disabled for b in buttons))
+
+    async def press(self, app, pilot, review, button_id):
+        review.query_one(f"#{button_id}", Button).press()
+        await settle(app, pilot)
+        return app.screen
+
+    async def test_every_action_button_triggers_its_action(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.highlight(app, pilot, review, "profile", "Healer")
+            for button_id, kind in (("act-delete", TargetScreen), ("act-rename", NameScreen),
+                                    ("act-copy", NameScreen), ("act-more", ActionsScreen),
+                                    ("act-blacklist", BlacklistScreen)):
+                screen = await self.press(app, pilot, review, button_id)
+                self.assertIsInstance(screen, kind, button_id)
+                screen.dismiss(None)
+                await settle(app, pilot)
+                self.assertIs(app.screen, review)
+            await self.highlight(app, pilot, review, "char", "Kaelys - Realm1")
+            screen = await self.press(app, pilot, review, "act-assign")
+            self.assertIsInstance(screen, TargetScreen)
+            screen.dismiss(None)
+            await settle(app, pilot)
+            await self.highlight(app, pilot, review, "char", "Gone - Realm1")
+            screen = await self.press(app, pilot, review, "act-leftovers")
+            self.assertIsInstance(screen, ConfirmScreen)
+            self.assertIn("leftover", screen.title_text)
+            screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertGreater(review.staging.summary().removed, 0)
+            screen = await self.press(app, pilot, review, "act-discard")
+            self.assertIsInstance(screen, ConfirmScreen)
+            self.assertIn("Discard the pending changes?", screen.title_text)
+            screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertEqual(review.staging.summary().total, 0)
+
+    async def test_a_button_with_nothing_to_act_on_says_what_to_do(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.highlight_addon(app, pilot, review, "ElvUI")
+            with patch.object(review, "notify") as notify:
+                for button_id in ("act-rename", "act-discard"):
+                    screen = await self.press(app, pilot, review, button_id)
+                    self.assertIs(screen, review, button_id)
+            messages = [c.args[0] for c in notify.call_args_list]
+            self.assertEqual(messages, ["Highlight a profile", "No pending changes"])
 
 
 class BlacklistScreenTest(AceAppBase):

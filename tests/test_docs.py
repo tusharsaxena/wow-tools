@@ -53,8 +53,11 @@ class DocsTest(unittest.TestCase):
                        "## Dry run", "## Undo last change", "changed since", "snapshots\\snapshot-<flavor>-",
                        "edited\\edited-<flavor>-<account>-", "journal\\journal-", "edit-in-progress.json",
                        "Put the originals back", "## Settings", "keep_backups", "## FAQ", "LibDualSpec",
-                       "missing", "no character folder", "## Troubleshooting", "<!-- screenshots:"):
+                       "missing", "no character folder", "## Troubleshooting", "<!-- screenshots:",
+                       "## How it works", "pending change", "guidance line", "action bar", "Blacklist…",
+                       "blacklist screen"):
             self.assertIn(needle, guide)
+        self.assertNotIn("staged", guide.casefold())  # feedback round 1: "pending changes" everywhere
         for key in ("Space", "`a`", "`n`", "`d`", "`p`", "`e`", "`k`", "`o`", "`m`", "`Backspace`", "`x`", "`c`", "`b`", "`u`", "`v`",
                     "`/`", "`w`", "`y`", "`r`", "`z`", "`f`", "`t`", "`s`", "`q`"):
             self.assertIn(key, guide)

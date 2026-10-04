@@ -1,5 +1,5 @@
-"""Text for the Ace3 Profile Manager's screens: tree labels and tags, the bottom line, confirm texts and result
-rows (UI-free)."""
+"""Text for the Ace3 Profile Manager's screens: tree labels and tags, the bottom line, the guidance line, confirm
+texts and result rows (UI-free)."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -21,6 +21,10 @@ DETAIL_COLUMNS = ("Flavor", "Account", "Addon", "Change", "Result")
 UNDO_COLUMNS = ("Flavor", "File", "Result")
 DELETED = "✘ deleted"
 REMOVED = "✘ removed"
+NO_PENDING = "No pending changes"
+STEPS = ("1 Tick profiles or characters (Space) → 2 pick an action below → 3 check the pending changes in the tree "
+         "→ 4 Apply (w) writes them; Dry run (y) only checks them")
+CHARACTER_KINDS = ("char", "pair", "character")  # tree nodes that are one character
 RESULT_TEXT = {"edited": "changed", "would_edit": "would change", "skipped": "skipped", "failed": "failed",
                "rolled_back": "put back"}
 
@@ -104,27 +108,58 @@ def profile_rows(state: DbState) -> list[ProfileRow]:
     return list(rows.values())
 
 
-def staged_text(summary: Summary) -> str:
+def pending_text(summary: Summary) -> str:
     parts = [(summary.deleted, "delete"), (summary.renamed, "rename"), (summary.copied, "copy", "copies"),
              (summary.reassigned, "reassign"), (summary.removed, "removed character"),
              (summary.lds, "spec profile")]
     text = " · ".join(plural(*p) for p in parts if p[0])
-    return text or "Nothing staged"
+    return text or NO_PENDING
+
+
+def pending_count(total: int, files: int) -> str:
+    """The count of pending changes, for example "3 pending changes in 2 files"."""
+    return f"{plural(total, 'pending change')} in {plural(files, 'file')}"
 
 
 def selection_text(profiles: int, chars: int, summary: Summary, warnings: int) -> str:
-    staged = (f"Staged: {plural(summary.total, 'change')} in {plural(summary.files, 'file')}" if summary.total
-              else "Nothing staged")
-    text = f"Selected: {plural(profiles, 'profile')} · {plural(chars, 'character')} · {staged}"
+    pending = pending_count(summary.total, summary.files) if summary.total else NO_PENDING
+    text = f"Selected: {plural(profiles, 'profile')} · {plural(chars, 'character')} · {pending}"
     if warnings:
         text += f" · ⚠ {plural(warnings, 'scan warning')}"
     return text
 
 
+def node_hint(node_kind: str | None, node_name: str, ticked: int) -> str:
+    """What can be done with the ticks, else with the highlighted node ("" when nothing in particular)."""
+    if ticked:
+        return f"{ticked} ticked: pick an action below (Delete, Assign, …)"
+    if node_kind == "profile":
+        return f'Profile "{node_name}": Delete, Rename or Copy it, or tick it with Space'
+    if node_kind in CHARACTER_KINDS:
+        return f'"{node_name}": Assign it a profile, or remove it if it is a leftover'
+    if node_kind in ("addon", "db"):
+        return f"{node_name}: Keep only Default or Everyone → Default (More…), or Blacklist…"
+    return ""
+
+
+def guidance(node_kind: str | None, node_name: str, ticked_profiles: int, ticked_chars: int, pending_total: int,
+             pending_files: int) -> str:
+    """The review's guidance line (#guide): the pending changes first (when there are any), then what can be done
+    with the ticks or the highlighted node; with neither, the four steps of the workflow."""
+    lines = []
+    if pending_total:
+        lines.append(f"{pending_count(pending_total, pending_files)}, not written yet: Apply (w) writes them, "
+                     "Dry run (y) checks them, Discard (⌫) drops them")
+    hint = node_hint(node_kind, node_name, ticked_profiles + ticked_chars)
+    if hint:
+        lines.append(hint)
+    return "\n".join(lines) or STEPS
+
+
 def apply_confirm(summary: Summary, states: list[DbState], *, dry_run: bool) -> tuple[str, str, list[str]]:
-    title = "Dry run" if dry_run else "Apply the staged changes?"
+    title = "Dry run" if dry_run else "Apply the pending changes?"
     flavors = sorted({flavor_name(s.file.flavor.folder) for s in states})
-    lines = [f"{staged_text(summary)} in {plural(summary.files, 'file')} ({', '.join(flavors)})."]
+    lines = [f"{pending_text(summary)} in {plural(summary.files, 'file')} ({', '.join(flavors)})."]
     if dry_run:
         lines.append("Every change is checked in memory; no file is written.")
     else:

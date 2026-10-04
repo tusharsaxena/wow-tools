@@ -61,7 +61,7 @@ def verify_edit(edit: FileEdit, old: bytes) -> list[str]:
                         problems.append(f"{before.name}: section {key} changed")
             continue
         if old[before.start:before.end] != edit.data[after.start:after.end]:
-            problems.append(f"{before.name} changed but nothing was staged for it")
+            problems.append(f"{before.name} changed but nothing was planned for it")
     dbs = {db.sv_name: db for db in find_dbs(new_chunk, edit.data)[0]}
     for name, expected in edit.expected.items():
         db = dbs.get(name)
@@ -69,16 +69,16 @@ def verify_edit(edit: FileEdit, old: bytes) -> list[str]:
             problems.append(f"{name} no longer reads as an AceDB database")
             continue
         if db.profile_keys != expected.profile_keys:
-            problems.append(f"{name}: the character to profile mapping is not what was staged")
+            problems.append(f"{name}: the character to profile mapping is not what was planned")
         got = {n: edit.data[e.field.value.start:e.field.value.end] for n, e in db.profiles.items()}
         if got != expected.profiles:
-            problems.append(f"{name}: the profiles are not what was staged")
+            problems.append(f"{name}: the profiles are not what was planned")
         for ns_name, ns_expected in expected.namespaces.items():
             ns = db.namespaces.get(ns_name)
             ns_got = {} if ns is None else {n: edit.data[f.value.start:f.value.end] for n, f in ns.entries.items()}
             if ns_got != ns_expected:
-                problems.append(f"{name}: module {ns_name}'s profiles are not what was staged")
+                problems.append(f"{name}: module {ns_name}'s profiles are not what was planned")
         lds = {c: {i: f.value.value for i, f in entry.specs.items()} for c, entry in db.lds.items()}
         if {c: lds.get(c) for c in expected.lds} != expected.lds:
-            problems.append(f"{name}: LibDualSpec spec profiles are not what was staged")
+            problems.append(f"{name}: LibDualSpec spec profiles are not what was planned")
     return problems
