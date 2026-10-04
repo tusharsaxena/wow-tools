@@ -57,8 +57,8 @@ folder; absent until first chosen, and then the picker pre-selects `[general] la
 zips go to its `interface-backup` folder, `settings.resolve_backup_root()`) and
 `last_flavor_choice` (empty = all flavors, else a flavor folder). `config/ace-profiles.cfg` `[ace_profiles]`:
 `backup_dir` (empty = `<wow_path>/wow-tools`; files go to its `ace-profiles` folder, `settings.resolve_root()`),
-`blacklist` (comma-separated addon names, matched
-ignoring case), `last_flavor_choice` and `last_account` (empty = all accounts). The retired `[general] backup_dir` is dropped by the migration. Paths are stored in Windows form when they point at a
+`blacklist` (comma-separated `flavor:addon` pairs such as `_retail_:ElvUI`, matched ignoring case;
+a bare name, from the first build, means every flavor (`"*"`) until the blacklist is next saved), `last_flavor_choice` and `last_account` (empty = all accounts). The retired `[general] backup_dir` is dropped by the migration. Paths are stored in Windows form when they point at a
 Windows drive. Unknown keys are preserved, and bad values fall back to defaults.
 
 **Renamed tools.** `suite.run()` applies every `RENAMED_TOOLS` line on each start, after the instance lock is
@@ -360,8 +360,8 @@ unless every part was left as it was (then Undo can be tried again).
 `app.py` holds `InterfaceBackupFlow` (`FLOW`: `require_install` → `BackupSettingsScreen` on the tool's first open
 → `FlavorScreen(include_all=True, last=last_flavor_choice)`, whose notes (`report.picker_note`: "N backups, last
 …" / "no backups yet") a worker fills from `list_backups` → `BackupReviewScreen`) and `BackupSettingsScreen`
-(backup folder with a live "Zips go to:" line, backups to keep, journals to keep; `validate_backup_dir` errors
-inline). `s` opens the shared WoW-folder settings, then this tool's. If the WoW folder changes, the review (or the
+(backup folder with a live "Zips go to:" line; `validate_backup_dir` errors inline; retention is the shared
+`[general]` setting). `s` opens the shared WoW-folder settings, then this tool's. If the WoW folder changes, the review (or the
 picker's choice) goes back to the flavor picker. The screens follow the Screenshot Organizer's shape (left pane,
 tree, bottom `#summary` line, popups for confirm and progress) and its shared CSS. `review_screen.py` holds:
 
@@ -424,8 +424,8 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
     undo_run(journal_path, wow_root, root, keep_snapshots, wow_check, progress) → UndoResult(outcomes, snapshots)
     recover(marker, root, journal_dir, keep_snapshots, wow_check, progress) → UndoResult
 
-Modules in `tools/ace_profiles/` (all UI-free except `app.py`, `review_screen.py`, `tree_view.py`, `popups.py` and
-`result_screen.py`): `events`, `settings`, `luasv`, `model`, `scanner`, `ops`, `verify`, `editor`, `multi`,
+Modules in `tools/ace_profiles/` (all UI-free except `app.py`, `review_screen.py`, `tree_view.py`, `popups.py`,
+`blacklist_screen.py` and `result_screen.py`): `events`, `settings`, `luasv`, `model`, `scanner`, `ops`, `verify`, `editor`, `multi`,
 `journal`, `undo` and `report` (labels, tags, stage titles, confirm texts, result rows).
 
 **Never re-serialize.** Every change is a byte-span splice; every byte outside the edited spans stays identical.
@@ -463,7 +463,7 @@ database, `notes`). A locked (blacklisted, not unlocked) addon is refused; `drop
 locked, and `changed()`/`summary()` never include one. `DbState.changes()` lists deleted, renamed, copied,
 reassigned and removed entries; `Summary` counts them for the left pane and the confirm.
 
-**Compile and verify** (`ops.compile_file`, `verify.py`). Per file, the staged states become edits against the
+**Compile and verify** (`ops.compile_file`, `verify.py`). Per file, the pending states become edits against the
 parsed original: a changed `profileKeys` value is a value-span replace, a removed one an entry removal; in
 `profiles` and every namespace holding the profile a delete removes the entry, a rename replaces the key span and a
 copy inserts `[new] = <source value bytes verbatim>,` before the closing brace; LibDualSpec spec values follow
@@ -474,7 +474,7 @@ them byte-identical, and the namespaces section with only the profile tables and
 mismatch fails the file (`ace.verify_failed`) and stops the run before anything is written.
 
 **Apply** (`editor.apply_flavor`, `multi.apply_flavors`). `apply_flavors` refuses while WoW runs (`WowRunning`,
-skipped for a dry run; the review screen checks only the flavors with staged changes), opens one `ProfileJournal`
+skipped for a dry run; the review screen checks only the flavors with pending changes), opens one `ProfileJournal`
 for the run, then per flavor: a real run is refused while an earlier run's crash marker is there
 (`ace.earlier_unfinished`: it would overwrite, then clear, the only pointer to that run's originals; the review
 screen offers that recovery again instead); `SvGuard`; recheck each file's
@@ -516,11 +516,11 @@ their original get a `rolled_back` line in the journal that holds their entries 
 `app.py` holds `AceProfilesFlow` (`FLOW`: `require_install` → `ProfileSettingsScreen` on the tool's first open →
 `FlavorScreen(include_all=True, last=last_flavor_choice)` → `AccountScreen` for one flavor with several accounts
 (`last_account`) → `ProfileReviewScreen`; `unlocked`, the addons unlocked this session, lives on the flow) and
-`ProfileSettingsScreen` (backup folder, WTF backups and journals to keep, blacklist; `validate_backup_dir` errors
-inline). `s` opens the shared WoW-folder settings, then this tool's.
+`ProfileSettingsScreen` (backup folder, a `#blacklist-summary` line and **Edit blacklist…**, which opens the
+`BlacklistScreen` and keeps its answer until Save; `validate_backup_dir` errors inline). `s` opens the shared WoW-folder settings, then this tool's.
 
 - `ProfileReviewScreen` (`review_screen.py`): `TwoPaneFocus`, `two_pane_css`. Left pane `#filters`, one control per row: the
-  View pair (View by addon / View by character), the Show boxes, the search `Input`, the `#staged` line (`report.staged_text`) and the
+  View pair (View by addon / View by character), the Show boxes, the search `Input`, the `#pending` line (`report.pending_text`, "N pending changes" or `NO_PENDING`) and the
   action row **Apply** (delete variant), **Dry run**, **Rescan**, **Undo last change** (revert). Right:
   `ProfileTree` (`#profiles`), built by `tree_view.TreeBuilder` from the scan, the staging and `Filters`; each
   rebuild keeps expansion and the cursor by `ident`. Labels and tags come from `report.profile_rows` and
@@ -528,6 +528,20 @@ inline). `s` opens the shared WoW-folder settings, then this tool's.
   addons, deleted profiles, removed characters and notes are read-only. `#summary` is `report.selection_text`.
   The scan, the running-WoW preflight, Apply/dry run, Undo and recovery each run in a worker; the jobs set
   `app.busy` and run inside `activity.running()`.
+  The tree sits in `#tree-pane` above the guidance line `#guide` (`report.guidance`: the four `STEPS` on the root,
+  a flavor or an account or with nothing highlighted, else `report.node_hint` for the highlighted node; with
+  pending changes the pending count and Apply/Discard come first) and the action bar `#tree-actions`, a
+  `WrapButtonRow` of `TREE_ACTIONS` (Delete profile, Assign profile, Rename, Copy, Remove leftovers, Blacklist…,
+  More…, Discard), each button doing what its key does. The guide follows the cursor, the ticks and the pending
+  changes. Discard is Backspace (`x`/`c` are expand and collapse all); `b` toggles the highlighted addon's
+  (flavor, addon) pair (`settings.toggle_pair`) and saves at once; **Blacklist…** (`action_edit_blacklist`) opens
+  the `BlacklistScreen` for the review's flavors and saves its answer at once.
+- `BlacklistScreen(cfg, flavors, pairs)` (`blacklist_screen.py`): `TwoPaneFocus`, `two_pane_css`. Left pane: an
+  explanation and **Save** / **Select none** / **Cancel** (Esc); right: a flavor → addon tree, from its own
+  scan worker (`scan_flavors`), of every addon with Ace3 data plus each blacklisted pair no longer found
+  ("(not found)"). A ticked pair is blacklisted; nothing else is ticked. `a`/`n`/`x`/`c` as on every tree. It
+  dismisses with the new pair list (or `None`); pairs of flavors it does not show are kept, and a legacy `"*"`
+  pair is saved as explicit pairs (for the hidden flavors too).
 - `popups.py`: `TargetScreen` (delete and assign: a target `Select` plus a new-name `Input`), `NameScreen` (rename
   and copy, with live validation) and `ActionsScreen` (the `m` menu: quick actions plus every key the footer
   hides), sharing `popup_css`. Apply and Undo use `ConfirmScreen` (`report.apply_confirm`/`undo_confirm`; alerts
@@ -559,14 +573,14 @@ Shared screens and widgets in `wowtools/ui/`:
 |---|---|
 | `suite_app` | `WowToolsApp`, `ToolMenuScreen` (the first screen), `LockScreen` (another copy may be running: Quit, or Override and continue) |
 | `tool_flow` | `ToolFlow` base: `start()`, `open_settings()`, `close()`, `require_install()` (shared WoW-folder setup) |
-| `setup_screen` | General setup: the WoW folder only |
+| `setup_screen` | General setup: the WoW folder, and the retention every tool shares (`#keep-backups`, `#keep-journals`: `[general] keep_backups` / `keep_journals`) |
 | `flavor_screen` | `FlavorScreen(cfg, install, *, include_all=False, last=None, flavors=None)`: the flavor picker. `include_all` adds "All flavors" first (dismisses with `ALL_FLAVORS`); `last` is the folder to pre-select (`""` = All flavors, `None` = `[general] last_flavor`); `flavors` replaces `install.flavors()`; `note`/`all_note` fill the remarks column and `set_notes()` replaces them later. Picking one flavor saves `[general] last_flavor`. |
 | `account_screen` | `AccountScreen(cfg, flavor, last)`: "All accounts" plus each account. Dismisses with the name, `""` for all, or `None` for back. The WTF Cleaner and the Ace3 Profile Manager show it only when a flavor has more than one account and save the choice as their own `last_account`. |
 | `dialogs` | What every tool's screens share, so no tool imports another tool's screens: `ConfirmScreen(title, body, alerts=(), *, default_yes=False)` (yes/no; `alerts` in red; risky actions start on No), `ProgressScreen` (stage, bar and current file of a run; a tool subclasses it with `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, and calls `update_progress(stage, current, total, detail)`, plus `set_flavor(label)` across several flavors), `tick_mark(items, unchecked, key, success=)` (✔ / ◩ / ✘ for a review-tree line), `relabel_branch(tree, node, label, skip=)` (after a tick), the `TwoPaneFocus` mixin (←/→ between the left `#filters` panel and the tree; it is a `TreeKeys`, whose `x`/`c` expand and collapse every node below the root, bound with `TREE_BINDINGS` and named in the hint by `TREE_HINT`), `theme_colour(app, name)` (the theme's colour, or the Ka0s one before a theme is set), and the one look every tool's screens are built from: `two_pane_css(screen, tree, width=FILTERS_WIDTH)` (review: left pane `#filters`, `FILTERS_WIDTH` = 50, one-row actions, scan box, summary), `ACCENT` (names in a tree) and `BUSY_STYLE` (a summary line while work runs), `result_css(screen)`, `settings_css(screen)`, and the hint starts `REVIEW_HINT` / `review_hint(space)` and `RESULT_HINT` |
-| `widgets` | `action_button(label, action)` and `ACTION_VARIANTS` (one colour per kind of action in every tool: delete red, apply green, simulate blue, revert amber, confirm blue, neutral grey), `LIST_NAME_STYLE` / `LIST_CURSOR_BACKGROUND` (pick lists), `Ka0sCheckbox` (✔/✘ marks), `ButtonRow` (←/→ move focus between its buttons, Space presses the focused one), `NAV_BINDINGS` (↑/↓ move focus; not priority bindings, so a focused tree, list, table or input keeps its arrow keys), and `NavHint` (the one-line key hint every screen shows), `FormScroll` (a scrolling form where ↑/↓ still move focus; `open_at_top()` after the first focus) |
+| `widgets` | `action_button(label, action)` and `ACTION_VARIANTS` (one colour per kind of action in every tool: delete red, apply green, simulate blue, revert amber, confirm blue, neutral grey), `LIST_NAME_STYLE` / `LIST_CURSOR_BACKGROUND` (pick lists), `Ka0sCheckbox` (✔/✘ marks), `ButtonRow` (←/→ move focus between its buttons, Space presses the focused one), `WrapButtonRow` (a `ButtonRow` of compact one-row buttons in a grid whose column count follows its width; the Ace3 review's action bar), `NAV_BINDINGS` (↑/↓ move focus; not priority bindings, so a focused tree, list, table or input keeps its arrow keys), and `NavHint` (the one-line key hint every screen shows), `FormScroll` (a scrolling form where ↑/↓ still move focus; `open_at_top()` after the first focus) |
 
 The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfCleanerFlow` (`FLOW`) and
-`CleanerSettingsScreen` (criteria, max age, backup on/off, backup folder, WTF backups and journals to keep). The flow shows `FlavorScreen` with
+`CleanerSettingsScreen` (criteria, max age, backup on/off, backup folder). The flow shows `FlavorScreen` with
 `include_all=True` and `last=last_flavor_choice`; All flavors skips the account screen. `review_screen.py` holds:
 
 - `ReviewScreen(cfg, tool_cfg, flavors, *, account, wow_check, locker_check)`: tree, criteria, the Clean /
@@ -588,8 +602,8 @@ flavor, and a Flavor column (`report.MULTI_RESULT_COLUMNS`). A real clean adds a
 
 The Screenshot Organizer's screens live in `tools/screenshot_organizer/`. `app.py` holds `ScreenshotsFlow` (`FLOW`:
 `require_install` → `ScreenshotSettingsScreen` on the tool's first open → `FlavorScreen(include_all=True,
-note=<"no Screenshots folder" where missing>)` → review; every flavor is listed) and `ScreenshotSettingsScreen` (destination, journals to
-keep, copy mode; `validate_dest` errors show inline). `review_screen.py` holds:
+note=<"no Screenshots folder" where missing>)` → review; every flavor is listed) and `ScreenshotSettingsScreen` (destination,
+copy mode; `validate_dest` errors show inline). `review_screen.py` holds:
 
 - `ShotReviewScreen`: the flavor → year → month → day → file tree (day files load on expand; read-only
   Conflicts and Skipped nodes; in copy mode an Already filed node, unticked, that `a` leaves alone) and the Organize / Dry run / Rescan / Undo last run buttons. It uses the

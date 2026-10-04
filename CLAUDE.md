@@ -19,10 +19,16 @@ Conventions:
 - `wowtools/core/*` and tool logic modules never import `textual`. Front ends are thin.
 - Config paths go through `core/paths.py` (stored in Windows form). Config lives in `config/`: `wow-tools.cfg`
   (`[general]`, shared) plus `<tool>.cfg` per tool. One instance at a time (`wow-tools.lock`, `core/lock.py`).
+- Retention is global: `[general] keep_backups` / `keep_journals` (`Config.keep_backups`, `Config.keep_journals`,
+  edited on the setup screen). A tool has no retention setting; its `save_settings` calls
+  `Config.remove_retired(section)`.
 - Every log event is registered with a fixed level (`core/events.py` or `<tool>/events.py`); regenerate
   `docs/events.md` after changing any registry.
 - One Textual app, `WowToolsApp` (`ui/suite_app.py`): tool menu first; each tool is a `ToolFlow` (`FLOW` in its
   `app.py`) that pushes its own screens and `close()`s back to the menu.
+- One look and feel (`tests/test_look_and_feel.py`): one focusable control per row in a left pane (only a
+  `ButtonRow` uses ←/→); every tree screen binds `TREE_BINDINGS` (`x` expand all, `c` collapse all) and puts
+  `TREE_HINT` in its hint.
 - Shared dialogs (`ConfirmScreen`, `ProgressScreen`, tree tick helpers) live in `wowtools/ui/dialogs.py`; a tool
   never imports another tool. `tests/test_structure.py` enforces this, the future import and import order.
 - Tests use `tests/fixtures.py` temp trees; never a real WoW install, never the network.
