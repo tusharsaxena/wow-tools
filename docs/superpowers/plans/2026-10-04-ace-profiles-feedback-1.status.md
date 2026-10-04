@@ -8,7 +8,7 @@ task; push after the round. Never merge without the user's go-ahead.
 |---|---|---|---|---|
 | F1 | global retention settings | done | 05aa3cd | `Config.keep_backups`/`keep_journals` + `remove`/`remove_retired`; setup screen inputs; tool settings/screens lose retention (Screenshot Organizer too); pruners keep all at 0; docs + events regenerated |
 | F2 | one control per row; expand/collapse all on every tree | done | 7376239 | `TreeKeys` mixin (base of `TwoPaneFocus`) + `TREE_BINDINGS`/`TREE_HINT` in `ui/dialogs.py`; x/c on every review tree and the restore screen; WTF Clean on `w`; Ace3 discard on Backspace; Ace3 View boxes one per row; look-and-feel tests for one-control-per-row and expand/collapse; guides' key tables |
-| F3 | Ace3 blacklist pairs + tree screen | todo | | |
+| F3 | Ace3 blacklist pairs + tree screen | done | 35ec7d6 | `parse/format_blacklist`, `is_blacklisted(pairs, flavor, addon)`, `toggle_pair`, `unique_pairs` (`"*"` = legacy bare name); `Staging.locked(flavor, addon)`; `BlacklistScreen` (two panes, scan worker, flavor → addon, "(not found)", a/n/x/c); settings "Edit blacklist…" + summary; review `b` per flavor, `action_edit_blacklist` saves at once; events regenerated |
 | F4 | Ace3 guidance: pending changes, action bar, guidance line | todo | | |
 | F5 | docs + final check | todo | | |
 | R | review, fixes, push | todo | | |
@@ -35,3 +35,13 @@ task; push after the round. Never merge without the user's go-ahead.
 - Task F2: the restore screen's hint puts `TREE_HINT` before `o restore` (it has no `r rescan`). The Ace3 More…
   popup names the discard key as "(Backspace)". `tests/test_docs.py` now also requires `Backspace` and `c` in the
   Ace3 guide.
+- Task F3: `BlacklistScreen.__init__(cfg, flavors, pairs)`, without `tool_cfg`: the screen never reads or writes
+  the tool's file (the caller saves). `cfg` (suite config) gives every flavor of the install.
+- Task F3: pairs of flavors the screen does not show are kept on Save, and a legacy `"*"` pair becomes explicit
+  pairs for those hidden flavors (so opening it from a one-flavor review never unblacklists another flavor).
+  Likewise `b` on an addon blacklisted by `"*"` takes it off in that flavor only (`toggle_pair` expands the wildcard
+  into the install's other flavor folders).
+- Task F3: lists are sorted by addon, then flavor (ignoring case), so `"_retail_:ElvUI, Questie"` parses to
+  `[("_retail_", "ElvUI"), ("*", "Questie")]`; `format_blacklist` writes a `"*"` pair as the bare name.
+- Task F3: until F4 adds the action-bar "Blacklist…" button, the review reaches `action_edit_blacklist` through the
+  More… menu (new entry `edit_blacklist`). Guide updates are left to F5.
