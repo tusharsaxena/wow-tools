@@ -89,6 +89,25 @@ class InterfaceBackupAppTest(TuiTestCase):
     def child(node, kind):
         return next(c for c in node.children if c.data[0] == kind)
 
+    @staticmethod
+    def table_rows(table):
+        return {str(table.get_row_at(i)[0]): [str(c) for c in table.get_row_at(i)[1:]] for i in range(table.row_count)}
+
+    @staticmethod
+    def effect(screen, kind):
+        """The restore screen's top tree node of that kind (removed, newer, links_kept, ...)."""
+        return next(n for n in screen.query_one("#effects", Tree).root.children if n.data[:2] == ("effect", kind))
+
+    @staticmethod
+    def effects_text(screen):
+        """Every label in the restore screen's tree, one per line."""
+        lines, stack = [], [screen.query_one("#effects", Tree).root]
+        while stack:
+            node = stack.pop()
+            lines.append(str(node.label))
+            stack.extend(reversed(node.children))
+        return "\n".join(lines)
+
     async def open_backups(self, app, pilot, review, name):
         """Expand the flavor called `name` and its Backups node; returns that node once its zips are listed."""
         node = self.flavor_nodes(review)[name]
@@ -395,7 +414,10 @@ class InterfaceBackupAppTest(TuiTestCase):
                 rows = {str(result_table.get_row_at(i)[0]): [str(c) for c in result_table.get_row_at(i)]
                         for i in range(result_table.row_count)}
                 self.assertEqual(rows["Retail PTR"][1:3], ["Skipped", "no Interface or WTF folder"])
-                self.assertIn("3 of 4 flavors backed up", str(app.screen.query_one("#result-head", Static).render()))
+                summary = self.table_rows(app.screen.query_one("#result-summary", DataTable))
+                self.assertEqual(summary["Backed up"], ["3 of 4 flavors"])
+                self.assertEqual(summary["Skipped"], ["1 flavor"])
+                self.assertFalse(app.screen.query_one("#result-summary", DataTable).can_focus)
                 self.assertFalse(app.busy)
                 await pilot.press("r")
                 await settle(app, pilot)
@@ -650,7 +672,17 @@ class InterfaceBackupAppTest(TuiTestCase):
                 self.assertEqual(screen.sub_title, "Interface Backup · restore")
                 info = str(screen.query_one("#backup-info", Static).render())
                 self.assertIsNone(re.search(r"\d{4}-\d\d-\d\dT\d\d", info), info)  # never the raw ISO stamp
-                self.assertIn("Interface/AddOns/WeakAuras", str(screen.query_one("#warnings", Static).render()))
+                removed = self.effect(screen, "removed")
+                self.assertIn("Will be removed (1 file)", str(removed.label))
+                self.assertTrue(removed.is_expanded)
+                group = removed.children[0]
+                self.assertIn("Interface/AddOns/WeakAuras", str(group.label))
+                self.assertFalse(group.children)  # files load on expand
+                group.expand()
+                await settle(app, pilot)
+                self.assertEqual([str(c.label) for c in group.children], ["wa.lua"])
+                self.assertIn("1 removed · 0 newer · needs", screen.summary_text)
+                self.assertTrue(screen.summary_text.startswith("Restore Interface and WTF of Retail from "))
                 self.assertFalse(screen.query_one("#btn-restore", Button).disabled)
                 await pilot.press("o")
                 await settle(app, pilot)
@@ -712,10 +744,11 @@ class InterfaceBackupAppTest(TuiTestCase):
             (retail / "Interface" / "keep.txt").write_text("k", encoding="utf-8")
             (retail / "WTF" / "Config.wtf").write_bytes(b"mine")
             screen = await self.open_restore(app, pilot)
-            self.assertIn("keep.txt", str(screen.query_one("#warnings", Static).render()))
+            self.assertIn("Interface/keep.txt", self.effects_text(screen))
             screen.query_one("#part-Interface", Checkbox).value = False
             await settle(app, pilot)
-            self.assertNotIn("keep.txt", str(screen.query_one("#warnings", Static).render()))
+            self.assertNotIn("keep.txt", self.effects_text(screen))
+            self.assertIn("Restore WTF of Retail", screen.summary_text)
             self.assertEqual(screen.plan.parts, ("WTF",))
             await pilot.press("o")
             await settle(app, pilot)
@@ -776,7 +809,8 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertEqual([screen.query_one(f"#part-{p}", Checkbox).value for p in ("Interface", "WTF")],
                              [False, False])
             self.assertIs(screen.focused, screen.query_one("#btn-back", Button))
-            self.assertIn("interrupted restore", str(screen.query_one("#warnings", Static).render()))
+            self.assertIn("interrupted restore", self.effects_text(screen))
+            self.assertIn("interrupted restore", screen.summary_text)
             await pilot.press("o")
             await settle(app, pilot)
             self.assertIs(app.screen, screen)
@@ -1179,7 +1213,9 @@ class InterfaceBackupAppTest(TuiTestCase):
             await self.make_backup(app, pilot)
             await pilot.press("r")
             await settle(app, pilot)
-            await self.open_restore(app, pilot)
+            screen = await self.open_restore(app, pilot)
+            for selector in ("#part-Interface", "#part-WTF", "#btn-restore", "#btn-back", "#effects", "#summary"):
+                self.assert_on_screen(screen.query_one(selector))
             await pilot.press("o")
             await settle(app, pilot)
             await pilot.press("y")
@@ -1190,6 +1226,77 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertEqual(len(buttons), 5)
             for button in buttons:
                 self.assert_on_screen(button)
+            self.assert_on_screen(app.screen.query_one("#result-table", DataTable))
+            summary = self.table_rows(app.screen.query_one("#result-summary", DataTable))
+            self.assertEqual(summary["Restore"], ["finished"])
+            self.assertIn("Safety backup", summary)
+            self.assertIn("Journal", summary)
+
+    async def test_restore_tree_lists_links_and_unreadable_on_expand(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        real = restore_module.plan_restore
+
+        def plan(*args, **kwargs):
+            p = real(*args, **kwargs)
+            p.links_kept.append(("Interface", "AddOns/Dev"))
+            p.links_removed.append(("WTF", "Account"))
+            p.unreadable.append("/wow/Interface/X: denied")
+            return p
+
+        app = self.make_app()
+        with patch.object(restore_module, "plan_restore", plan):
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_review(app, pilot)
+                await self.make_backup(app, pilot)
+                await pilot.press("r")
+                await settle(app, pilot)
+                screen = await self.open_restore(app, pilot)
+                expected = {"links_kept": ("Links kept (1)", "Interface/AddOns/Dev"),
+                            "links_removed": ("Links replaced (1)", "WTF/Account"),
+                            "unreadable": ("Could not be read (1)", "/wow/Interface/X: denied")}
+                for kind, (title, child) in expected.items():
+                    node = self.effect(screen, kind)
+                    self.assertIn(title, str(node.label))
+                    self.assertFalse(node.children)
+                    node.expand()
+                    await settle(app, pilot)
+                    self.assertEqual([str(c.label) for c in node.children], [child])
+                self.assertNotIn("Nothing on disk would be lost", self.effects_text(screen))
+
+    async def test_restore_screen_two_panes_and_nothing_lost(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            screen = await self.open_restore(app, pilot)
+            self.assertEqual(screen.query_one("#btn-restore", Button).variant, ACTION_VARIANTS["apply"])
+            self.assertEqual(screen.query_one("#btn-back", Button).variant, ACTION_VARIANTS["neutral"])
+            info = str(screen.query_one("#backup-info", Static).render())
+            self.assertIn("Retail", info)
+            self.assertIn("Interface, WTF", info)
+            nodes = screen.query_one("#effects", Tree).root.children
+            self.assertEqual(len(nodes), 1)
+            self.assertIn("Nothing on disk would be lost", str(nodes[0].label))
+            self.assertIn("0 removed · 0 newer", screen.summary_text)
+            first = screen.query_one("#part-Interface", Checkbox)
+            self.assertIs(screen.focused, first)
+            await pilot.press("right")
+            self.assertIs(screen.focused, screen.query_one("#effects", Tree))
+            await pilot.press("left")
+            self.assertIs(screen.focused, first)
+            screen.query_one("#btn-back", Button).focus()
+            await pilot.press("right")  # past the last button: to the tree
+            self.assertIs(screen.focused, screen.query_one("#effects", Tree))
+            await pilot.press("left")
+            self.assertIs(screen.focused, screen.query_one("#btn-back", Button))  # back where it was
+            for part in ("Interface", "WTF"):
+                screen.query_one(f"#part-{part}", Checkbox).value = False
+            await settle(app, pilot)
+            self.assertIn("Tick Interface, WTF or both", self.effects_text(screen))
+            self.assertIn("Nothing is ticked", screen.summary_text)
 
     async def test_restore_confirm_fits_80x24_with_long_warnings(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
@@ -1210,7 +1317,8 @@ class InterfaceBackupAppTest(TuiTestCase):
                     path.write_bytes(path.read_bytes() + b"\n-- changed\n")
                     os.utime(path, (later, later))
             screen = await self.open_restore(app, pilot)
-            self.assertIn("and 5 more", str(screen.query_one("#warnings", Static).render()))  # the full list
+            self.assertEqual(len(self.effect(screen, "removed").children), 20)  # the full list, a group per folder
+            self.assertIn("Newer now than in the backup", str(self.effect(screen, "newer").label))
             await pilot.press("o")
             await settle(app, pilot)
             confirm = app.screen

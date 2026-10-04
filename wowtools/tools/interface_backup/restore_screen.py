@@ -1,4 +1,5 @@
-"""Choose what to restore from a backup and see what would be lost; the result screen of a restore or undo."""
+"""Choose what to restore from a backup and see, as a tree, what the restore changes; the result screen of a restore
+or undo."""
 from __future__ import annotations
 
 import shutil
@@ -8,43 +9,72 @@ from typing import ClassVar
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, Checkbox, DataTable, Footer, Header, Static
+from textual.widget import Widget
+from textual.widgets import Button, Checkbox, DataTable, Footer, Header, Label, Static, Tree
 
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor
 from wowtools.core.paths import to_stored
 from wowtools.tools.interface_backup.catalog import BackupInfo
-from wowtools.tools.interface_backup.report import (RESTORE_RESULT_COLUMNS, friendly_created, human_size,
-                                                    ordered_parts, plural, restore_result_rows, restore_warnings)
+from wowtools.tools.interface_backup.report import (RESTORE_RESULT_COLUMNS, friendly_created, group_items,
+                                                    human_size, ordered_parts, plural, restore_lost_nothing,
+                                                    restore_result_rows, restore_summary, restore_summary_rows)
 from wowtools.tools.interface_backup.restore import (BackupContents, RestoreError, RestorePlan, RestoreResult,
                                                      case_key, open_backup, plan_restore)
 from wowtools.tools.interface_backup.scanner import PARTS, FlavorScan, scan_flavor
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import theme_colour
+from wowtools.ui.dialogs import TwoPaneFocus, theme_colour
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
+
+ACCENT = "bold #5CC8FF"
+NAV_HINT = ("↑↓/Tab move · ←→ panes and buttons · Space tick or open · Enter/Space press · o restore · b/Esc back")
+# The tree's top nodes: (kind, title, note). Their children are loaded on expand (groups of files, links, lines).
+EFFECTS = (
+    ("removed", "Will be removed", "on disk now, not in the backup"),
+    ("newer", "Newer now than in the backup", "these changes are lost"),
+    ("links_kept", "Links kept", "left as they are"),
+    ("links_removed", "Links replaced", "the backup has files there: only the link goes, Undo makes it again"),
+    ("unreadable", "Could not be read", "whatever is there is replaced without being listed"),
+)
+GROUPED = ("removed", "newer")  # listed as folder groups, then files
+WARN = ("removed", "newer", "links_removed", "unreadable")  # shown in the warning colour
 
 
 def _error_text(exc: Exception) -> str:
     return str(exc) if isinstance(exc, RestoreError) else f"{type(exc).__name__}: {exc}"
 
 
-class RestoreScreen(Screen[RestorePlan | None]):
-    """The backup's details, a box per part and what the restore would lose (worked out in a worker each time a
-    box changes). Dismisses with the plan to restore, or None."""
+class RestoreTree(Tree):
+    """What the restore changes. ← jumps to the left panel (instead of scrolling sideways)."""
 
+    BINDINGS: ClassVar[list[Binding]] = [Binding("left", "screen.focus_filters", "Filters", show=False)]
+
+
+class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
+    """Two panes, like the review: on the left the backup's details, a box per part and Restore / Back; on the
+    right a tree of what the restore changes (worked out in a worker each time a box changes); a summary line
+    below. Dismisses with the plan to restore, or None."""
+
+    TREE_SELECTOR = "#effects"
     DEFAULT_CSS = """
-    RestoreScreen #restore { padding: 1 2; height: 1fr; }
-    RestoreScreen .title { color: $accent; text-style: bold; }
-    RestoreScreen #backup-info { height: auto; margin-bottom: 1; }
-    RestoreScreen #warnings { height: auto; margin-top: 1; }
-    RestoreScreen .buttons { height: auto; padding: 0 2; }
-    RestoreScreen Button { margin-right: 2; }
-    RestoreScreen NavHint { padding: 0 2; }
+    RestoreScreen #body { height: 1fr; }
+    RestoreScreen #filters { width: 50; padding: 1; border-right: solid $primary; }
+    RestoreScreen #actions { margin-top: 1; height: auto; }
+    RestoreScreen #actions Button { min-width: 0; width: auto; margin-right: 1; margin-bottom: 1; }
+    RestoreScreen .section { color: $accent; text-style: bold; margin: 1 0 0 0; }
+    RestoreScreen #effects { width: 1fr; padding: 0 1; }
+    RestoreScreen #summary { height: auto; padding: 0 1; background: $surface; }
     """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("o", "restore", "Restore"), Binding("b", "cancel", "Back"),
-                                         Binding("escape", "cancel", "Back", show=False), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("o", "restore", "Restore"),
+        Binding("b", "cancel", "Back"),
+        Binding("escape", "cancel", "Back", show=False),
+        Binding("left", "focus_filters", "Filters", show=False),
+        Binding("right", "focus_tree", "Tree", show=False),
+        *NAV_BINDINGS,
+    ]
 
     def __init__(self, info: BackupInfo, flavor: Flavor, *, disk_usage: Callable = shutil.disk_usage) -> None:
         super().__init__()
@@ -55,29 +85,59 @@ class RestoreScreen(Screen[RestorePlan | None]):
         self.scan: FlavorScan | None = None
         self.plan: RestorePlan | None = None
         self.problem = ""
+        self.summary_text = ""
         self._generation = 0  # bumped per replan: a plan worked out for older boxes is dropped
+        self._last_filter: Widget | None = None
 
+    @property
+    def kind_text(self) -> str:
+        return "Safety backup (before a restore)" if self.info.is_safety else "Backup"
+
+    # --- layout ------------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
         yield Header()
-        with VerticalScroll(id="restore"):
-            kind = "Safety backup (before a restore)" if self.info.is_safety else "Backup"
-            yield Static(Text(f"{self.flavor.display_name}: {kind} from {self.info.when} "
-                              f"({human_size(self.info.size)})"), classes="title")
-            yield Static(Text(to_stored(self.info.path)), id="backup-info")
-            for part in PARTS:
-                yield Ka0sCheckbox(part, True, id=f"part-{part}", disabled=True)
-            yield Static(Text("Comparing the backup with your folders…"), id="warnings")
-        with ButtonRow(classes="buttons"):
-            yield action_button("Restore (o)", "confirm", id="btn-restore", disabled=True)
-            yield action_button("Back (b)", "neutral", id="btn-back")
-        yield NavHint("↑↓/Tab move · Space tick · ←→ buttons · Enter/Space press · o restore · b/Esc back")
+        with Horizontal(id="body"):
+            with Vertical(id="filters"):
+                yield Label("Backup", classes="section")
+                yield Static(self._info_text(), id="backup-info")
+                yield Label("Restore", classes="section")
+                for part in PARTS:
+                    yield Ka0sCheckbox(part, True, id=f"part-{part}", disabled=True)
+                with ButtonRow(id="actions", wrap=False):
+                    yield action_button("Restore", "apply", id="btn-restore", disabled=True)
+                    yield action_button("Back", "neutral", id="btn-back")
+                yield NavHint(NAV_HINT)
+            yield RestoreTree(Text(f"{self.flavor.display_name} · {self.kind_text.lower()} from {self.info.when}",
+                                   style=ACCENT), id="effects")
+        yield Static("", id="summary")
         yield BrandBar()
         yield Footer()
 
     def on_mount(self) -> None:
         self.sub_title = "Interface Backup · restore"
+        self._tree_message("Comparing the backup with your folders…", "dim")
+        self._set_summary("Comparing the backup with your folders…")
         info, flavor = self.info, self.flavor
         self.run_worker(lambda: self._load_worker(info, flavor), thread=True, group="restore-load")
+
+    def _info_text(self) -> Text:
+        """The left pane's "Backup" section: flavor, kind and date, size, then (once read) parts and files."""
+        lines = [self.flavor.display_name, f"{self.kind_text} from {self.info.when}", human_size(self.info.size)]
+        contents = self.contents
+        if contents is not None:
+            files = sum(len(f) for f in contents.files.values())
+            lines[-1] += f" · {', '.join(contents.parts) or 'nothing'} · {plural(files, 'file')}"
+            made = friendly_created(contents.created) if contents.created else ""
+            if made and made != self.info.when:
+                lines.append(f"made {made}")
+        lines.append(to_stored(self.info.path))
+        return Text("\n".join(lines))
+
+    # --- panes (←/→): TwoPaneFocus ------------------------------------------------------------------
+    def first_filter(self) -> Widget | None:
+        boxes = [b for b in self.query(Ka0sCheckbox).results(Ka0sCheckbox) if b.focusable]
+        buttons = [b for b in self.query("#actions Button").results(Button) if b.focusable]
+        return next(iter(boxes + buttons), None)
 
     # --- loading the backup and the folders (worker) ---------------------------------------------
     def _load_worker(self, info: BackupInfo, flavor: Flavor) -> None:
@@ -101,13 +161,7 @@ class RestoreScreen(Screen[RestorePlan | None]):
             self.problem = ("Restore is blocked: a folder from an interrupted restore is still there: "
                             + ", ".join(to_stored(p) for p in scan.leftovers)
                             + ". Move or delete it first (see the guide).")
-        if contents is not None:
-            parts = ", ".join(contents.parts) or "nothing"
-            made = friendly_created(contents.created) if contents.created else ""
-            self.query_one("#backup-info", Static).update(Text(
-                f"{to_stored(self.info.path)}\nHolds: {parts} · "
-                f"{plural(sum(len(f) for f in contents.files.values()), 'file')}"
-                + (f" · made {made}" if made and made != self.info.when else "")))
+        self.query_one("#backup-info", Static).update(self._info_text())
         first = None
         for part in PARTS:
             box = self.query_one(f"#part-{part}", Ka0sCheckbox)
@@ -122,7 +176,7 @@ class RestoreScreen(Screen[RestorePlan | None]):
                 box.label = f"{part} (not in this backup)"
             elif linked:
                 box.value = False
-                box.label = f"{part} (a link to another folder: restore it by hand)"
+                box.label = f"{part} (a link: restore it by hand)"
             if available and first is None:
                 first = box
         # Focus starts on something that acts: the first box that can be ticked, else Back.
@@ -142,23 +196,35 @@ class RestoreScreen(Screen[RestorePlan | None]):
         boxes = [self.query_one(f"#part-{p}", Ka0sCheckbox) for p in PARTS]
         return tuple(p for p, box in zip(PARTS, boxes) if box.value and not box.disabled)
 
-    def _show(self, text: str, style: str = "") -> None:
-        self.query_one("#warnings", Static).update(Text(text, style=style))
+    def _set_summary(self, text: str, style: str = "") -> None:
+        self.summary_text = text
+        self.query_one("#summary", Static).update(Text(text, style=style))
+
+    def _tree_message(self, text: str, style: str) -> None:
+        """The tree holds one line: waiting, a problem or what to do."""
+        tree = self.query_one("#effects", Tree)
+        tree.clear()
+        tree.root.add_leaf(Text(text, style=style), data=("note",))
+        tree.root.expand()
 
     def _replan(self) -> None:
         self._generation += 1
         self.plan = None
         self.query_one("#btn-restore", Button).disabled = True
         if self.problem:
-            self._show(self.problem, f"bold {theme_colour(self.app, 'error')}")
+            style = f"bold {theme_colour(self.app, 'error')}"
+            self._tree_message(self.problem, style)
+            self._set_summary(self.problem, style)
             return
         if self.contents is None or self.scan is None:
             return
         parts = self._chosen()
         if not parts:
-            self._show("Tick Interface, WTF or both.")
+            self._tree_message("Tick Interface, WTF or both.", "dim")
+            self._set_summary("Nothing is ticked: tick Interface, WTF or both.")
             return
-        self._show("Comparing the backup with your folders…")
+        self._tree_message("Comparing the backup with your folders…", "dim")
+        self._set_summary("Comparing the backup with your folders…")
         generation, contents, scan, disk_usage = self._generation, self.contents, self.scan, self.disk_usage
         self.run_worker(lambda: self._plan_worker(generation, contents, scan, parts, disk_usage), thread=True,
                         group="restore-plan")
@@ -178,16 +244,64 @@ class RestoreScreen(Screen[RestorePlan | None]):
         if generation != self._generation or not self.is_attached:
             return  # the boxes changed since: a newer plan is on its way
         if plan is None:
-            self._show(error, f"bold {theme_colour(self.app, 'error')}")
+            style = f"bold {theme_colour(self.app, 'error')}"
+            self._tree_message(error, style)
+            self._set_summary(error, style)
             return
         self.plan = plan
-        lines = restore_warnings(plan)
-        text = "\n".join(lines) if lines else ("Nothing on disk would be lost: your folders hold nothing the backup "
-                                               "lacks.")
-        if plan.links_kept:
-            text += f"\nLinks kept as they are: {len(plan.links_kept)}"
-        self._show(text, theme_colour(self.app, "warning") if lines else "")
+        self._show_plan(plan)
+        self._set_summary(restore_summary(plan, self.info.when),
+                          f"bold {theme_colour(self.app, 'warning')}" if plan.low_space else "")
         self.query_one("#btn-restore", Button).disabled = False
+
+    # --- the tree ----------------------------------------------------------------------------------
+    def _effect_items(self, kind: str) -> list:
+        plan = self.plan
+        return list(getattr(plan, kind)) if plan is not None else []
+
+    def _show_plan(self, plan: RestorePlan) -> None:
+        tree = self.query_one("#effects", Tree)
+        tree.clear()
+        warning = f"bold {theme_colour(self.app, 'warning')}"
+        for kind, title, note in EFFECTS:
+            items = self._effect_items(kind)
+            if not items:
+                continue
+            count = plural(len(items), "file") if kind in GROUPED else str(len(items))
+            label = Text.assemble((f"{title} ({count})", warning if kind in WARN else "bold"), (f"  {note}", "dim"))
+            if kind in GROUPED:
+                node = tree.root.add(label, data=("effect", kind), expand=True)
+                for name, members in group_items(items):
+                    single = len(members) == 1 and "/".join(members[0]) == name
+                    text = Text.assemble((name, "bold"), ("" if single else f"  {plural(len(members), 'file')}",
+                                                          "dim"))
+                    if single:
+                        node.add_leaf(text, data=("file",))
+                    else:
+                        node.add(text, data=("group", kind, name), allow_expand=True)  # files load on expand
+            else:
+                tree.root.add(label, data=("effect", kind), allow_expand=True)  # lines load on expand
+        if plan.low_space:
+            tree.root.add_leaf(Text(f"⚠ Low disk space: {human_size(plan.free_bytes)} free on the WoW drive, about "
+                                    f"{human_size(plan.bytes_needed)} needed.", style=warning), data=("note",))
+        if restore_lost_nothing(plan):
+            success = f"bold {theme_colour(self.app, 'success')}"
+            tree.root.add_leaf(Text.assemble(("Nothing on disk would be lost", success),
+                                             ("  your folders hold nothing the backup lacks", "dim")), data=("note",))
+        tree.root.expand()
+
+    def on_tree_node_expanded(self, event: Tree.NodeExpanded) -> None:
+        node = event.node
+        if node.data is None or node.children:
+            return
+        if node.data[0] == "group":
+            _, kind, name = node.data
+            members = next((m for n, m in group_items(self._effect_items(kind)) if n == name), [])
+            for part, rel in members:
+                node.add_leaf(Text(f"{part}/{rel}"[len(name) + 1:], style="dim"), data=("file",))
+        elif node.data[0] == "effect" and node.data[1] not in GROUPED:
+            for item in self._effect_items(node.data[1]):
+                node.add_leaf(Text(item if isinstance(item, str) else "/".join(item), style="dim"), data=("file",))
 
     # --- actions ---------------------------------------------------------------------------------
     def action_restore(self) -> None:
@@ -214,11 +328,11 @@ class RestoreResultScreen(Screen[str]):
 
     DEFAULT_CSS = """
     RestoreResultScreen #result { height: 1fr; padding: 1 2; }
-    RestoreResultScreen #result-head { height: auto; margin-bottom: 1; }
-    RestoreResultScreen #result-table { height: auto; }
+    RestoreResultScreen #result-summary { height: auto; margin-bottom: 1; }
+    RestoreResultScreen #result-table { height: 1fr; }
     RestoreResultScreen .buttons { height: auto; padding: 0 2; }
     RestoreResultScreen .buttons Button { min-width: 0; width: auto; margin-right: 1; }
-    RestoreResultScreen NavHint { padding: 0 2; }
+    RestoreResultScreen NavHint { padding: 0 2; margin-top: 0; }
     """
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("z", "choose('undo')", "Undo"), Binding("r", "choose('review')", "Rescan"),
@@ -244,7 +358,9 @@ class RestoreResultScreen(Screen[str]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="result"):
-            yield Static(id="result-head")
+            summary = DataTable(id="result-summary", cursor_type="none", zebra_stripes=True)
+            summary.can_focus = False  # read-only summary: not a focus stop
+            yield summary
             yield DataTable(id="result-table", cursor_type="row", zebra_stripes=True)
         with ButtonRow(classes="buttons"):
             if self.can_undo:
@@ -261,15 +377,9 @@ class RestoreResultScreen(Screen[str]):
     def on_mount(self) -> None:
         r = self.result
         self.sub_title = "Interface Backup · undo result" if r.undo else "Interface Backup · restore result"
-        what = "undo" if r.undo else "restore"
-        state = "finished." if r.ok and r.parts else "did not finish for every part; see below."
-        head = [f"{r.flavor.display_name}: {what} {state}",
-                f"{'Put back from the safety backup' if r.undo else 'Restored from'}: {to_stored(r.backup)}"]
-        if r.safety_zip is not None:
-            head.append(f"Safety backup of the folders as they were: {to_stored(r.safety_zip)}")
-        if r.journal_path is not None:
-            head.append(f"Journal: {to_stored(r.journal_path)}")
-        self.query_one("#result-head", Static).update(Text("\n".join(head)))
+        summary = self.query_one("#result-summary", DataTable)
+        summary.add_columns("Item", "Value")
+        summary.add_rows((Text(item), Text(value)) for item, value in restore_summary_rows(r))
         table = self.query_one("#result-table", DataTable)
         table.add_columns(*RESTORE_RESULT_COLUMNS)
         styles = {"restored": "success", "replaced_left": "warning", "rolled_back": "warning", "failed": "error"}

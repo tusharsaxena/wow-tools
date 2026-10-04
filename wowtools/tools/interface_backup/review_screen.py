@@ -30,9 +30,10 @@ from wowtools.tools.interface_backup.backup import BackupOutcome, back_up_all
 from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups, read_parts
 from wowtools.tools.interface_backup.journal import latest_undoable, read_restore_journal
 from wowtools.tools.interface_backup.report import (BACKUP_RESULT_COLUMNS, PARTS_PENDING, STAGE_TITLES,
-                                                    backup_confirm, backup_result_rows, backup_text, flavor_text,
-                                                    held_text, leftover_text, part_text, plural, restore_confirm,
-                                                    selection_text, undo_confirm, warnings_text)
+                                                    backup_confirm, backup_result_rows, backup_summary_rows,
+                                                    backup_text, flavor_text, held_text, leftover_text, part_text,
+                                                    plural, restore_confirm, selection_text, undo_confirm,
+                                                    warnings_text)
 from wowtools.tools.interface_backup.restore import RestoreError, RestorePlan, RestoreResult, RestoreStopped, restore
 from wowtools.tools.interface_backup.restore_screen import RestoreResultScreen, RestoreScreen
 from wowtools.tools.interface_backup.scanner import CHEAP_STATS, PARTS, FlavorScan, scan_flavors
@@ -106,11 +107,11 @@ class BackupProgressScreen(ProgressScreen):
 
 
 class BackupResultScreen(Screen[str]):
-    """The outcome of a backup: one row per flavor and what to do next."""
+    """The outcome of a backup: a summary table, one row per flavor and what to do next."""
 
     DEFAULT_CSS = """
     BackupResultScreen #result { height: 1fr; padding: 1 2; }
-    BackupResultScreen #result-head { height: auto; margin-bottom: 1; }
+    BackupResultScreen #result-summary { height: auto; margin-bottom: 1; }
     BackupResultScreen #result-table { height: 1fr; }
     BackupResultScreen .buttons { height: auto; padding: 0 2; }
     BackupResultScreen .buttons Button { min-width: 0; width: auto; margin-right: 1; }
@@ -129,7 +130,9 @@ class BackupResultScreen(Screen[str]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="result"):
-            yield Static(id="result-head")
+            summary = DataTable(id="result-summary", cursor_type="none", zebra_stripes=True)
+            summary.can_focus = False  # read-only summary: not a focus stop
+            yield summary
             yield DataTable(id="result-table", cursor_type="row", zebra_stripes=True)
         with ButtonRow(classes="buttons"):
             yield action_button("Rescan (r)", "neutral", id="review")
@@ -144,9 +147,9 @@ class BackupResultScreen(Screen[str]):
 
     def on_mount(self) -> None:
         self.sub_title = "Interface Backup · result"
-        made = sum(o.kind == "created" for o in self.outcomes)
-        self.query_one("#result-head", Static).update(
-            Text(f"{made} of {plural(len(self.outcomes), 'flavor')} backed up."))
+        summary = self.query_one("#result-summary", DataTable)
+        summary.add_columns("Item", "Value")
+        summary.add_rows((Text(item), Text(value)) for item, value in backup_summary_rows(self.outcomes))
         table = self.query_one("#result-table", DataTable)
         table.add_columns(*BACKUP_RESULT_COLUMNS)
         styles = {"created": "success", "failed": "error", "skipped": "warning"}

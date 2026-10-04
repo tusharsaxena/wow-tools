@@ -90,27 +90,28 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(report.group_paths(items), [("Interface/AddOns/WeakAuras", 2), ("WTF/Account/ME", 1),
                                                      ("WTF/Config.wtf", 1)])
 
-    def test_restore_warnings(self):
-        many = [("Interface", f"AddOns/A{i}/x.lua") for i in range(20)]
-        lines = report.restore_warnings(plan(removed=many, newer=[("Interface", "AddOns/B/y.lua")],
-                                             dropped=[("Interface", "AddOns/Dev")], free=10), limit=15)
-        text = "\n".join(lines)
-        self.assertIn("Will be removed: 20 files", text)
-        self.assertIn("and 5 more", text)
-        self.assertIn("Newer now than in the backup", text)
-        self.assertIn("AddOns/Dev", text)
-        self.assertIn("space", text.lower())
-        self.assertEqual(report.restore_warnings(plan()), [])
-        self.assertEqual(report.restore_warnings(plan(free=5000)), [])
+    def test_group_items(self):
+        items = [("WTF", "Config.wtf"), ("Interface", "AddOns/WeakAuras/a.lua"), ("Interface", "AddOns/WeakAuras/b/c.lua")]
+        self.assertEqual(report.group_items(items),
+                         [("Interface/AddOns/WeakAuras", [("Interface", "AddOns/WeakAuras/a.lua"),
+                                                          ("Interface", "AddOns/WeakAuras/b/c.lua")]),
+                          ("WTF/Config.wtf", [("WTF", "Config.wtf")])])
+        self.assertEqual(report.group_items([]), [])
 
-    def test_restore_warnings_unreadable(self):
-        lines = report.restore_warnings(plan(unreadable=[f"/wow/_retail_/Interface/X{i}: denied" for i in range(4)]),
-                                        limit=2)
-        text = "\n".join(lines)
-        self.assertIn("could not be read", text)
-        self.assertIn("X0", text)
-        self.assertNotIn("X2", text)
-        self.assertIn("and 2 more", text)
+    def test_restore_summary(self):
+        p = plan(removed=[("Interface", "AddOns/A/x.lua")], newer=[("Interface", "AddOns/B/y.lua")] * 2, free=5000)
+        self.assertEqual(report.restore_summary(p, "2026-10-04 15:30:12"),
+                         "Restore Interface of Retail from 2026-10-04 15:30:12 · 1 removed · 2 newer · needs 1000 B, "
+                         "4.9 KB free")
+        low = report.restore_summary(plan(free=10), "x")
+        self.assertTrue(low.endswith("needs 1000 B, 10 B free    ⚠ low disk space on the WoW drive"), low)
+        self.assertTrue(report.restore_summary(plan(), "x").endswith("needs 1000 B"))  # free space unknown
+
+    def test_restore_lost_nothing(self):
+        self.assertTrue(report.restore_lost_nothing(plan(kept=[("Interface", "AddOns/Dev")], free=10)))
+        for p in (plan(removed=[("WTF", "a")]), plan(newer=[("WTF", "a")]), plan(dropped=[("WTF", "a")]),
+                  plan(unreadable=["x: denied"])):
+            self.assertFalse(report.restore_lost_nothing(p))
 
     def test_confirms(self):
         title, body, alerts = report.restore_confirm(plan(removed=[("Interface", "AddOns/A/x.lua")],
@@ -190,6 +191,33 @@ class ReportTest(unittest.TestCase):
         undone = RestoreResult(RETAIL, Path("/bk/x.zip"), [PartOutcome("WTF", "restored"),
                                                            PartOutcome("Interface", "restored")], undo=True)
         self.assertEqual([r[0] for r in report.restore_result_rows(undone)], ["Interface", "WTF"])  # PARTS order
+
+    def test_summary_rows(self):
+        made = BackupOutcome(RETAIL, "created", Path("/bk/backup-retail-x.zip"), 3, 3072, 1024,
+                             pruned=[Path("/bk/old.zip")])
+        rows = dict(report.backup_summary_rows([made, BackupOutcome(RETAIL, "skipped", reason="none")]))
+        self.assertEqual(rows["Backed up"], "1 of 2 flavors")
+        self.assertEqual(rows["Skipped"], "1 flavor")
+        self.assertNotIn("Failed", rows)
+        self.assertEqual(rows["Files"], "3 (3.0 KB)")
+        self.assertEqual(rows["Zip size"], "1.0 KB")
+        self.assertIn("bk", rows["Zips in"])
+        self.assertEqual(rows["Old backups removed"], "1")
+        rows = dict(report.backup_summary_rows([BackupOutcome(RETAIL, "failed", reason="disk")]))
+        self.assertEqual(rows, {"Backed up": "0 of 1 flavor", "Failed": "1 flavor"})
+        done = RestoreResult(RETAIL, Path("/bk/x.zip"), [PartOutcome("WTF", "restored")],
+                             safety_zip=Path("/bk/pre.zip"), journal_path=Path("/j/r.jsonl"))
+        rows = dict(report.restore_summary_rows(done))
+        self.assertEqual(rows["Flavor"], "Retail")
+        self.assertEqual(rows["Restore"], "finished")
+        self.assertIn("x.zip", rows["Restored from"])
+        self.assertIn("pre.zip", rows["Safety backup"])
+        self.assertIn("r.jsonl", rows["Journal"])
+        undone = RestoreResult(RETAIL, Path("/bk/pre.zip"), [PartOutcome("WTF", "failed", "locked")], undo=True)
+        rows = dict(report.restore_summary_rows(undone))
+        self.assertEqual(rows["Undo"], "did not finish for every part (see below)")
+        self.assertIn("pre.zip", rows["Put back from"])
+        self.assertNotIn("Journal", rows)
 
     def test_every_progress_stage_has_a_title(self):
         for stage in ("scan", "backup", "verify", "prune", "safety", "safety_verify", "extract", "swap", "cleanup"):

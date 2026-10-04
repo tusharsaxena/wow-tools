@@ -1,7 +1,6 @@
 """Labels, sizes, table rows and dialog texts for Interface Backup's screens (UI-free text helpers)."""
 from __future__ import annotations
 
-from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -141,6 +140,26 @@ def backup_result_rows(outcomes: list[BackupOutcome]) -> list[tuple[str, ...]]:
     return rows
 
 
+def backup_summary_rows(outcomes: list[BackupOutcome]) -> list[tuple[str, str]]:
+    """The backup result's summary table (Item, Value)."""
+    made = [o for o in outcomes if o.kind == "created"]
+    rows = [("Backed up", f"{len(made)} of {plural(len(outcomes), 'flavor')}")]
+    for kind, label in (("skipped", "Skipped"), ("failed", "Failed")):
+        count = sum(o.kind == kind for o in outcomes)
+        if count:
+            rows.append((label, plural(count, "flavor")))
+    if made:
+        rows.append(("Files", f"{sum(o.files for o in made)} ({human_size(sum(o.bytes_in for o in made))})"))
+        rows.append(("Zip size", human_size(sum(o.bytes_zip for o in made))))
+        folders = sorted({to_stored(o.path.parent) for o in made if o.path is not None})
+        if folders:
+            rows.append(("Zips in", ", ".join(folders)))
+    pruned = sum(len(o.pruned) for o in outcomes)
+    if pruned:
+        rows.append(("Old backups removed", str(pruned)))
+    return rows
+
+
 def parts_cell(parts: tuple[str, ...] | None) -> str:
     """A backup's parts for the list ("Interface, WTF"); "?" when its manifest could not be read."""
     if parts is None:
@@ -167,44 +186,34 @@ def friendly_created(created: str) -> str:
         return created
 
 
+def group_items(items: list[tuple[str, str]], depth: int = 3) -> list[tuple[str, list[tuple[str, str]]]]:
+    """Group (part, rel) paths by their first `depth` path parts (e.g. Interface/AddOns/WeakAuras): (name, members)
+    per group, largest group first, then by name."""
+    groups: dict[str, list[tuple[str, str]]] = {}
+    for part, rel in items:
+        groups.setdefault("/".join([part, *rel.split("/")][:depth]), []).append((part, rel))
+    return sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+
+
 def group_paths(items: list[tuple[str, str]], depth: int = 3) -> list[tuple[str, int]]:
-    """Group (part, rel) paths by their first `depth` path parts (e.g. Interface/AddOns/WeakAuras), largest group
-    first, then by name."""
-    counts = Counter("/".join([part, *rel.split("/")][:depth]) for part, rel in items)
-    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    """group_items with a count per group instead of its members."""
+    return [(name, len(members)) for name, members in group_items(items, depth)]
 
 
-def _more(shown: int, total: int) -> list[str]:
-    return [f"  … and {total - shown} more"] if total > shown else []
-
-
-def _grouped(title: str, items: list[tuple[str, str]], limit: int) -> list[str]:
-    groups = group_paths(items)
-    lines = [f"{title}: {plural(len(items), 'file')}"]
-    lines += [f"  {name} ({plural(count, 'file')})" for name, count in groups[:limit]]
-    return lines + _more(min(limit, len(groups)), len(groups))
-
-
-def restore_warnings(plan: RestorePlan, limit: int = 15) -> list[str]:
-    """What the restore loses or changes beyond the backup's own files; empty when nothing needs saying."""
-    lines: list[str] = []
-    if plan.removed:
-        lines += _grouped("Will be removed", plan.removed, limit)
-    if plan.newer:
-        lines += _grouped("Newer now than in the backup (these changes are lost)", plan.newer, limit)
-    if plan.unreadable:
-        lines.append("Some folders could not be read; whatever they hold is replaced without being listed here:")
-        lines += [f"  {error}" for error in plan.unreadable[:limit]]
-        lines += _more(min(limit, len(plan.unreadable)), len(plan.unreadable))
-    if plan.links_removed:
-        lines.append("Links replaced by the backup's files (only the link goes, never what it points at; Undo makes "
-                     "it again): "
-                     + ", ".join(f"{p}/{r}" for p, r in plan.links_removed[:limit])
-                     + (f" and {len(plan.links_removed) - limit} more" if len(plan.links_removed) > limit else ""))
+def restore_summary(plan: RestorePlan, when: str) -> str:
+    """The restore screen's bottom line: what is restored, how much is lost and the space it needs."""
+    text = (f"Restore {' and '.join(plan.parts)} of {plan.flavor.display_name} from {when} · "
+            f"{len(plan.removed)} removed · {len(plan.newer)} newer · needs {human_size(plan.bytes_needed)}")
+    if plan.free_bytes is not None:
+        text += f", {human_size(plan.free_bytes)} free"
     if plan.low_space:
-        lines.append(f"Low disk space: {human_size(plan.free_bytes)} free on the WoW drive, about "
-                     f"{human_size(plan.bytes_needed)} needed.")
-    return lines
+        text += "    ⚠ low disk space on the WoW drive"
+    return text
+
+
+def restore_lost_nothing(plan: RestorePlan) -> bool:
+    """Nothing on disk is lost or replaced beyond the backup's own files (the tree then says so)."""
+    return not (plan.removed or plan.newer or plan.unreadable or plan.links_removed)
 
 
 def _counted(title: str, items: list[tuple[str, str]]) -> str:
@@ -214,8 +223,8 @@ def _counted(title: str, items: list[tuple[str, str]]) -> str:
 
 
 def restore_confirm_alerts(plan: RestorePlan) -> list[str]:
-    """restore_warnings in one line per kind, so the confirm fits a small terminal: the restore screen just before
-    it lists them by folder."""
+    """What the restore loses or changes, one line per kind, so the confirm fits a small terminal: the restore
+    screen's tree just before it lists them by folder."""
     lines: list[str] = []
     if plan.removed:
         lines.append(_counted("Will be removed", plan.removed))
@@ -263,6 +272,19 @@ def ordered_parts(result: RestoreResult) -> list[PartOutcome]:
 def restore_result_rows(result: RestoreResult) -> list[tuple[str, ...]]:
     """RESTORE_RESULT_COLUMNS rows, in PARTS order (ordered_parts)."""
     return [(p.part, _PART_KINDS.get(p.kind, p.kind), p.reason) for p in ordered_parts(result)]
+
+
+def restore_summary_rows(result: RestoreResult) -> list[tuple[str, str]]:
+    """The restore (or undo) result's summary table (Item, Value)."""
+    what = "Undo" if result.undo else "Restore"
+    state = "finished" if result.ok and result.parts else "did not finish for every part (see below)"
+    rows = [("Flavor", result.flavor.display_name), (what, state),
+            ("Put back from" if result.undo else "Restored from", to_stored(result.backup))]
+    if result.safety_zip is not None:
+        rows.append(("Safety backup", to_stored(result.safety_zip)))
+    if result.journal_path is not None:
+        rows.append(("Journal", to_stored(result.journal_path)))
+    return rows
 
 
 def undo_confirm(journal: Journal) -> tuple[str, str]:
