@@ -14,7 +14,7 @@ merge, delete every branch, stash and worktree this run created.
 | 4 | events, settings | done | 7ca6a9a | plan code verbatim (core `get_int` already falls back on bad values); 6 ace_settings tests OK; docs/events.md gains the `ace-profiles` section; full suite 845 OK (2 skipped), ruff clean |
 | 5 | fixture + scanner | done | 98474e8 | plan code verbatim (install `ErrorHandler` is `(Path, OSError)`, capture records use `event`); fixtures.py docstring gains a `build_ace_tree`/`ace_lua` paragraph; 9 ace_scanner tests OK; full suite 854 OK (2 skipped), ruff clean |
 | 6 | ops: staging | done | b0a42fe | plan code verbatim; test drops the unused `DbKey` import (ruff F401); 16 ace_ops tests OK; full suite 870 OK (2 skipped), ruff clean |
-| 7 | compile + verify | todo | | |
+| 7 | compile + verify | done | 98f572d | plan code verbatim (`FileEdit.file` typed `SvFile \| None` as the plan notes); test file drops the plan's `# tests/...` path comment; 11 ace_compile tests OK; full suite 881 OK (2 skipped), ruff clean; not pushed by the task agent (milestone push left to the orchestrator) |
 | M1 | push milestone 1 | todo | | |
 | 8 | journal + editor | todo | | |
 | 9 | undo, recovery, multi | todo | | |
@@ -40,3 +40,5 @@ merge, delete every branch, stash and worktree this run created.
 - Task 2: ruff fixes only, no behaviour change: `re.S`/`re.I` spelled `re.DOTALL`/`re.IGNORECASE`, `splice` uses
   `itertools.pairwise`, and the test drops the unused `Scalar` import.
 - Task 6: ruff fix only: `tests/test_ace_ops.py` drops the unused `DbKey` import; no assertion changed.
+- Task 7: `tests/test_ace_compile.py` drops the plan's leading `# tests/test_ace_compile.py` comment so the docstring
+  comes first, as in the other test modules; the plan's `git push` in Step 5 is left to the milestone step.
