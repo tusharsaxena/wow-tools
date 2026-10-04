@@ -60,6 +60,13 @@ class AppTestCase(TuiTestCase):
                            tool_options={"wtf-cleaner": {"wow_check": lambda: list(running),
                                                          "locker_check": lambda: list(lockers)}})
 
+    def assert_reasons_shown_whole(self, files: DataTable) -> None:
+        """Every column up to Reasons ends inside the table: why each file goes reads without scrolling."""
+        columns = files.ordered_columns
+        labels = [str(c.label) for c in columns]
+        end = sum(c.get_render_width(files) for c in columns[:labels.index("Reasons") + 1])
+        self.assertLessEqual(end, files.scrollable_content_region.width, labels)
+
     async def enter_tool(self, app, pilot):
         """The menu is the first screen; Enter opens the only tool, the WTF Cleaner."""
         await pilot.pause()
@@ -113,7 +120,7 @@ class ReviewFlowTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
-            self.assertIn("w clean", str(review.query_one(NavHint).render()))
+            self.assertIn("w clean", review.query_one(NavHint).hint)
             await pilot.press("c")
             await settle(app, pilot)
             self.assertIs(app.screen, review)  # c collapses the tree, it never cleans
@@ -740,7 +747,7 @@ class KeyboardNavigationTest(AppTestCase):
             files = screen.query_one("#result-files", DataTable)
             self.assertEqual(files.row_count, 8)
             self.assertEqual([str(c.label) for c in files.ordered_columns],
-                             ["Status", "Account", "Character", "Addon", "File", "Size", "Reasons"])
+                             ["Status", "Account", "Character", "Addon", "Reasons", "Size", "File"])
             self.assertTrue(screen.query(ButtonRow))
             self.assertTrue(screen.query(NavHint))
             self.assertEqual(screen.focused.id, "review")
@@ -766,8 +773,65 @@ class KeyboardNavigationTest(AppTestCase):
                             rows["Cleaned files zip"])
             self.assertEqual(rows["Backup folder"], to_stored(self.backup_dir))
             journal = app.screen.result.journal_path
-            self.assertEqual(rows["Run journal"], f"{journal.name} (Undo last clean (z) puts these files back)")
+            # The journal is in <WoW>/wow-tools/wtf-cleaner/journal, not in this backup folder: its whole path,
+            # with the Undo note on a row of its own.
+            self.assertFalse(journal.is_relative_to(self.backup_dir))
+            self.assertEqual(rows["Run journal"], to_stored(journal))
+            self.assertEqual(rows[""], "(Undo last clean (z) puts these files back)")
             self.assertEqual(rows["Post-clean check"], "passed")
+
+    def test_multi_summary_names_the_journal_by_where_it_is(self):
+        """Several flavors: the run journal's row names it inside the backup folder when it is there, else whole."""
+        from wowtools.core.install import Flavor
+        from wowtools.tools.wtf_cleaner.multi import FlavorRun, MultiCleanResult
+        from wowtools.tools.wtf_cleaner.result_screen import multi_summary_rows
+        flavor = Flavor("_retail_", self.root / "_retail_")
+        journal = self.root / "wow-tools" / "wtf-cleaner" / "journal" / "journal-20261004-153304.jsonl"
+        for folder, expected in ((self.backup_dir, to_stored(journal)),
+                                 (self.root / "wow-tools" / "wtf-cleaner", str(Path("journal", journal.name)))):
+            clean = CleanResult(dry_run=False, backup_path=folder / "cleaned" / "cleaned-retail-x.zip",
+                                journal_path=journal)
+            result = MultiCleanResult(dry_run=False, runs=[FlavorRun(flavor, [], result=clean)], journal_path=journal)
+            rows = multi_summary_rows(result)
+            self.assertEqual(rows[0], ("Run journal", expected, False))  # on top, before the flavor's block
+
+    async def test_real_clean_result_names_the_journal_inside_the_default_backup_folder(self):
+        """With no backup folder set, the default one (<WoW>/wow-tools/wtf-cleaner) holds journal/: the journal
+        is named inside it, and the summary still fits at 120x30."""
+        self.tool_cfg.remove("wtf_cleaner", "backup_dir", log=False)
+        self.tool_cfg.save()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_review(app, pilot)
+            await pilot.press("w")
+            await settle(app, pilot)
+            await pilot.press("y")
+            await pilot.pause()
+            await settle(app, pilot)
+            summary = app.screen.query_one("#result-summary", DataTable)
+            rows = {str(summary.get_row_at(i)[0]): str(summary.get_row_at(i)[1]) for i in range(summary.row_count)}
+            folder = self.root / "wow-tools" / "wtf-cleaner"
+            self.assertEqual(rows["Backup folder"], to_stored(folder))
+            journal = app.screen.result.journal_path
+            self.assertEqual(rows["Run journal"],
+                             f"{journal.relative_to(folder)} (Undo last clean (z) puts these files back)")
+            self.assertTrue(rows["Run journal"].startswith(str(Path("journal", ""))))
+            self.assertEqual(summary.row_count, 10)
+            self.assertEqual((summary.max_scroll_x, summary.max_scroll_y), (0, 0))
+
+    async def test_result_reasons_show_at_base_for_one_flavor(self):
+        acct = self.root / "_retail_" / "WTF" / "Account" / "ACCT1" / "SavedVariables"
+        (acct / "Auctionator.lua.pre-schema8-20260926-103400").write_text("x = 1\n", encoding="utf-8")
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_review(app, pilot)
+            await pilot.press("y")
+            await settle(app, pilot)
+            await pilot.press("y")
+            await pilot.pause()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ResultScreen)
+            self.assert_reasons_shown_whole(app.screen.query_one("#result-files", DataTable))
 
     async def test_real_clean_result_summary_fits_at_base(self):
         """At 120x30 a clean's summary shows every row, each value whole (no scrolling either way)."""
@@ -781,7 +845,7 @@ class KeyboardNavigationTest(AppTestCase):
             await settle(app, pilot)
             self.assertIsInstance(app.screen, ResultScreen)
             summary = app.screen.query_one("#result-summary", DataTable)
-            self.assertEqual(summary.row_count, 10)
+            self.assertEqual(summary.row_count, 11)  # the journal's whole path, then the Undo note
             self.assertEqual((summary.max_scroll_x, summary.max_scroll_y), (0, 0))
 
     async def test_setup_and_settings_keyboard_only(self):
@@ -1202,7 +1266,9 @@ class AllFlavorsTest(AppTestCase):
             self.assertIn("All flavors", str(tree.root.label))
             flavors = {str(n.label).strip().lstrip("✔◩✘ ").split("  ")[0]: n for n in tree.root.children}
             self.assertEqual(sorted(flavors), ["Anniversary", "Classic Era", "Retail"])
-            self.assertIn("No addons found", str(flavors["Anniversary"].label))
+            # In a few words (the whole message, with its path, is in the log): the line fits the tree at 120x30.
+            self.assertEqual(str(flavors["Anniversary"].label).split("  ", 2)[-1],
+                             "not scanned: no addons installed")
             self.assertFalse(flavors["Anniversary"].children)
             self.assertEqual([n.data[2] for n in flavors["Classic Era"].children], ["ACCT1"])
             self.assertEqual([n.data[2] for n in flavors["Retail"].children], ["ACCT1", "ACCT2"])
@@ -1254,6 +1320,33 @@ class AllFlavorsTest(AppTestCase):
             self.assertIn("WowClassic.exe", confirm.body_text)
             self.assertNotIn("Anniversary", confirm.body_text)
             await pilot.press("n")
+
+    async def test_not_scanned_flavor_lines_fit_the_tree_at_base(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_all(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            lines = [n for n in tree.root.children if "not scanned" in str(n.label)]
+            self.assertTrue(lines)
+            for node in lines:  # the label after the tree's "├── " guide
+                self.assertLessEqual(4 + node.label.cell_len, tree.scrollable_content_region.width, node.label)
+
+    async def test_result_reasons_show_at_base(self):
+        """At 120x30 the per-file table's Reasons column shows whole, for one flavor and for All flavors (the
+        Flavor column): a long stray-copy file name ends at the window's edge instead."""
+        acct = self.root / "_retail_" / "WTF" / "Account" / "ACCT1" / "SavedVariables"
+        (acct / "Auctionator.lua.pre-schema8-20260926-103400").write_text("x = 1\n", encoding="utf-8")
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_all(app, pilot)
+            await self.run_mode(app, pilot, "y")
+            self.assertIsInstance(app.screen, ResultScreen)
+            files = app.screen.query_one("#result-files", DataTable)
+            labels = [str(c.label) for c in files.ordered_columns]
+            self.assertIn("Flavor", labels)
+            names = [str(files.get_row_at(i)[labels.index("File")]) for i in range(files.row_count)]
+            self.assertTrue(any("pre-schema8" in name for name in names), names)
+            self.assert_reasons_shown_whole(files)
 
     async def test_dry_run_across_flavors_deletes_nothing(self):
         app = self.make_app()
@@ -1457,12 +1550,12 @@ class ResultRowsTest(unittest.TestCase):
                         ("stray_copies",)),
         ])
         rows = result_rows(result, retail)
-        self.assertEqual(RESULT_COLUMNS, ("Status", "Account", "Character", "Addon", "File", "Size", "Reasons"))
+        self.assertEqual(RESULT_COLUMNS, ("Status", "Account", "Character", "Addon", "Reasons", "Size", "File"))
         self.assertEqual(len(rows), 3)
-        self.assertEqual(rows[0], ("Deleted", "ACCT1", "account-wide", "Uninstalled", "Uninstalled.lua.bak",
-                                   "2.0 KB", "not_installed"))
+        self.assertEqual(rows[0], ("Deleted", "ACCT1", "account-wide", "Uninstalled", "not_installed", "2.0 KB",
+                                   "Uninstalled.lua.bak"))
         self.assertEqual(rows[1], ("Skipped: changed since the scan", "ACCT1", "Realm1/CharA", "Uninstalled",
-                                   "Uninstalled.lua", "10 B", "not_installed, older_than"))
+                                   "not_installed, older_than", "10 B", "Uninstalled.lua"))
         self.assertEqual(rows[2][0], "Failed: denied")
         self.assertEqual(rows[2][3], "Details")
         self.assertTrue(all(len(row) == len(RESULT_COLUMNS) for row in rows))
@@ -1520,8 +1613,10 @@ class UndoLastCleanTest(AppTestCase):
                 self.assertIs(app.screen, review)
                 await self.run_key(app, pilot, "w")
                 self.assertIsInstance(app.screen, ResultScreen)
-                rows = dict(app.screen.summary_rows())
-                self.assertIn("Undo last clean (z)", rows["Run journal"])
+                rows = app.screen.summary_rows()
+                at = [item for item, _ in rows].index("Run journal")
+                # the journal is outside this backup folder: its whole path, the Undo note on the next row
+                self.assertIn("Undo last clean (z)", rows[at + 1][1])
                 review = await self.back_to_review(app, pilot)
                 self.assertFalse(review.query_one("#btn-undo", Button).disabled)
                 await pilot.press("z")

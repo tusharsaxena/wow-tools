@@ -1,6 +1,7 @@
 """Labels, stage titles and table rows for the Screenshot Organizer screens. UI-free (plain strings only)."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from wowtools.core.install import Flavor
@@ -72,9 +73,35 @@ def flavor_name(folder: str) -> str:
     return Flavor(folder, Path(folder)).display_name
 
 
+DATE_PARTS = 3  # YYYY/MM/DD: what the Target column always keeps of a filed shot's folder
+
+
+def target_folder(result: OrganizeResult) -> Path | None:
+    """The folder every target is shown inside (a "Target folder" summary row), so the Target column keeps the part
+    that differs, the date folders, at 120x30: the targets' common folder, moved up until each organize target keeps
+    its YYYY/MM/DD (an undo target, its last folder). None when there is no common folder (another drive)."""
+    parents = [o.dst.parent for o in result.outcomes]
+    if not parents:
+        return None
+    try:
+        root = Path(os.path.commonpath(parents))
+    except ValueError:
+        return None
+    keep = 1 if result.undo else DATE_PARTS
+    while root.parent != root and any(len(p.relative_to(root).parts) < keep for p in parents):
+        root = root.parent
+    return root
+
+
+def _target(folder: Path, root: Path | None) -> str:
+    return str(folder.relative_to(root)) if root is not None else str(folder)
+
+
 def result_rows(result: OrganizeResult) -> list[tuple[str, str, str, str, str]]:
-    return [(KIND_LABELS.get(o.kind, o.kind), flavor_name(o.flavor), o.src.name, str(o.dst.parent), o.reason)
-            for o in result.outcomes]
+    """One row per outcome; Target inside target_folder (whole when there is none)."""
+    root = target_folder(result)
+    return [(KIND_LABELS.get(o.kind, o.kind), flavor_name(o.flavor), o.src.name, _target(o.dst.parent, root),
+             o.reason) for o in result.outcomes]
 
 
 def stopped_text(message: str, result: OrganizeResult, undoable: Path | None) -> str:
@@ -106,6 +133,9 @@ def summary_rows(result: OrganizeResult) -> list[tuple[str, str]]:
     else:
         journal = str(result.journal_path)
     rows.append(("Journal", journal))
+    root = target_folder(result)
+    if root is not None:
+        rows.append(("Target folder", to_stored(root)))
     if result.pruned:
         rows.append(("Older journals removed", str(len(result.pruned))))
     if result.undo and not result.marked_undone:

@@ -230,6 +230,18 @@ class InterfaceBackupAppTest(TuiTestCase):
         self.assertTrue(stored.startswith("_") and stored.endswith("_"), stored)
 
     # --- review ----------------------------------------------------------------------------------
+    async def test_nothing_to_back_up_line_fits_the_tree_at_base(self):
+        """At 120x30 a flavor with nothing to back up says why on one line the tree shows whole."""
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#flavors", Tree)
+            ptr = self.flavor_nodes(review)["Retail PTR"]
+            self.assertIn("nothing to back up: no Interface or WTF folder", str(ptr.label))
+            # "├── ▼ " in front of the label
+            self.assertLessEqual(6 + ptr.label.cell_len, tree.scrollable_content_region.width, ptr.label)
+
     async def test_review_lists_every_flavor_and_where_zips_go(self):
         self.save_tool_cfg(backup_dir=str(self.bk), keep_backups="5")  # stale per-tool key: ignored
         self.cfg.set("general", "keep_backups", "3", log=False)
@@ -264,7 +276,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertFalse(review.query_one("#btn-backup", Button).disabled)
             self.assertTrue(review.query_one("#btn-undo", Button).disabled)  # nothing restored yet
             for screen_hint in review.query(NavHint):
-                self.assertIn("b back up", str(screen_hint.render()))
+                self.assertIn("b back up", screen_hint.hint)
             labels = [str(b.label) for b in review.query_one("#actions").query(Button)]
             self.assertEqual(labels, ["Back up", "Restore", "Rescan", "Undo last restore"])
             variants = {i: review.query_one(f"#{i}", Button).variant
@@ -698,7 +710,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             extra.parent.mkdir(parents=True)
             extra.write_text("wa", encoding="utf-8")
             screen = await self.open_restore(app, pilot)
-            self.assertIn("x expand all · c collapse all", str(screen.query_one(NavHint).render()))
+            self.assertIn("x expand all · c collapse all", screen.query_one(NavHint).hint)
             tree = screen.query_one("#effects", Tree)
             tree.focus()
             await pilot.press("x")
@@ -1279,7 +1291,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             for selector in ("#part-Interface", "#part-WTF", "#btn-restore", "#btn-back", "#effects", "#summary",
                              "NavHint"):
                 self.assert_on_screen(screen.query_one(selector))
-            hint = str(screen.query_one(NavHint).render())  # Space opens the effects tree's nodes here too
+            hint = screen.query_one(NavHint).hint  # Space opens the effects tree's nodes here too
             self.assertTrue(hint.startswith("↑↓/Tab move · ←→ panes and buttons · Space tick or open · "), hint)
             await pilot.press("o")
             await settle(app, pilot)
@@ -1292,7 +1304,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             for button in buttons:
                 self.assert_on_screen(button)
             self.assert_on_screen(app.screen.query_one("#result-table", DataTable))
-            hint = str(app.screen.query_one(NavHint).render())
+            hint = app.screen.query_one(NavHint).hint
             self.assertTrue(hint.startswith("↑↓/Tab move · ←→ buttons"), hint)  # as on the organizer's result
             summary = self.table_rows(app.screen.query_one("#result-summary", DataTable))
             self.assertEqual(summary["Restore"], ["finished"])
@@ -1371,6 +1383,37 @@ class InterfaceBackupAppTest(TuiTestCase):
                     await settle(app, pilot)
                     self.assertEqual([str(c.label) for c in node.children], [child])
                 self.assertNotIn("Nothing on disk would be lost", self.effects_text(screen))
+
+    async def test_restore_notes_fit_the_tree_at_base(self):
+        """At 120x30 the restore tree's note rows (nothing lost, low disk space) show whole: no sideways scroll."""
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        bk = str(self.bk)
+
+        class Usage:
+            def __init__(self, free):
+                self.free = free
+
+        def disk_usage(path):  # the WoW drive is nearly full, with sizes as wide as they get
+            return Usage(10 ** 12 if str(path).startswith(bk) else 123_400_000)
+
+        app = WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list,
+                          tool_options={"interface-backup": {"wow_check": list, "disk_usage": disk_usage}})
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_review(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            screen = await self.open_restore(app, pilot)
+            tree = screen.query_one("#effects", Tree)
+            notes = [str(n.label) for n in tree.root.children if n.data == ("note",)]
+            self.assertIn("Nothing on disk would be lost  everything is in the backup", notes)
+            self.assertEqual(tree.max_scroll_x, 0, notes)
+            screen.plan.free_bytes, screen.plan.bytes_needed = 123_400_000, 999_900_000_000  # low on space
+            screen._show_plan(screen.plan)
+            await settle(app, pilot)
+            notes = [str(n.label) for n in tree.root.children if n.data == ("note",)]
+            self.assertTrue(any("Low disk space" in n for n in notes), notes)
+            self.assertEqual(tree.max_scroll_x, 0, notes)
 
     async def test_restore_screen_two_panes_and_nothing_lost(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
@@ -1575,7 +1618,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             screen = await self.open_restore(app, pilot)
             self.assertTrue(screen.plan.low_space)
             notes = [str(n.label) for n in screen.query_one("#effects", Tree).root.children if n.data == ("note",)]
-            self.assertTrue(any(n.startswith("⚠ Low disk space: 5 B free on the WoW drive, about ") for n in notes),
+            self.assertTrue(any(n.startswith("⚠ Low disk space on the WoW drive: 5 B free, ~") for n in notes),
                             notes)
             self.assertTrue(screen.summary_text.endswith("⚠ low disk space on the WoW drive"), screen.summary_text)
 

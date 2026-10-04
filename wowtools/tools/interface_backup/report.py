@@ -55,9 +55,12 @@ def part_text(part: PartScan) -> str:
 
 
 def flavor_text(scan: FlavorScan, backups: list[BackupInfo]) -> str:
-    """A flavor's line in the review tree: what a backup would hold (or why there is nothing) and its backups."""
-    held = _files_and_size(scan.file_count, scan.size) if scan.has_data else f"nothing to back up: {skip_reason(scan)}"
-    return f"{held} · {picker_note(backups)}"
+    """A flavor's line in the review tree: what a backup would hold (or why there is nothing) and its backups. With
+    nothing to back up and no backups, "no backups yet" is left out, so the line fits the tree at 120x30."""
+    if not scan.has_data:
+        held = f"nothing to back up: {skip_reason(scan)}"
+        return f"{held} · {picker_note(backups)}" if any(not b.is_safety for b in backups) else held
+    return f"{_files_and_size(scan.file_count, scan.size)} · {picker_note(backups)}"
 
 
 def leftover_text(scan: FlavorScan) -> str:

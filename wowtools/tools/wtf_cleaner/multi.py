@@ -26,6 +26,7 @@ class FlavorScan:
     flavor: Flavor
     result: ScanResult | None = None
     error: str | None = None
+    note: str | None = None  # the error in a few words, for the review tree (ScanError.short)
 
 
 def scan_flavors(flavors: list[Flavor], *, account: str | None = None,
@@ -43,7 +44,7 @@ def scan_flavors(flavors: list[Flavor], *, account: str | None = None,
             scans.append(FlavorScan(flavor, scan(flavor, account=account, progress=report)))
         except ScanError as exc:
             log_exception("scan", exc)
-            scans.append(FlavorScan(flavor, error=str(exc)))
+            scans.append(FlavorScan(flavor, error=str(exc), note=exc.short))
     return scans
 
 

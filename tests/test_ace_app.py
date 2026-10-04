@@ -968,7 +968,8 @@ class GuidanceTest(AceAppBase):
             review = await self.open_review(app, pilot)
             self.assertTrue(self.guide(review).startswith("1 Tick profiles or characters (Space) → 2 pick an action"),
                             self.guide(review))
-            self.assertEqual(review.guide_text, self.guide(review))
+            # the steps wrap between steps only: the rows put back together are the text
+            self.assertEqual(review.guide_text, self.guide(review).replace("→\n", "→ "))
             await self.highlight(app, pilot, review, "profile", "Healer")
             self.assertEqual(self.guide(review), 'Profile "Healer": Delete, Rename or Copy it')
             tree = review.query_one("#profiles", Tree)
@@ -986,7 +987,7 @@ class GuidanceTest(AceAppBase):
             app.screen.dismiss("Default")
             await settle(app, pilot)
             total = review.staging.summary().total
-            self.assertTrue(self.guide(review).startswith(f"{total} pending changes, not written yet: w apply · "
+            self.assertTrue(self.guide(review).startswith(f"{total} pending changes, not written: w apply · "
                                                           "y dry run · ⌫ discard"), self.guide(review))
             self.assertNotIn("staged", (self.guide(review) + review.summary_text).casefold())
 

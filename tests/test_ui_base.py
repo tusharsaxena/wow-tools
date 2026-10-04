@@ -5,6 +5,7 @@ import contextlib
 import tempfile
 import threading
 import time
+import unittest
 from pathlib import Path
 from typing import ClassVar
 from unittest.mock import patch
@@ -422,3 +423,15 @@ class AccountScreenTest(UiTestCase):
             await pilot.press("escape")
             await pilot.pause()
         self.assertEqual(app.results, [None])
+
+
+class WrapItemsTest(unittest.TestCase):
+    def test_breaks_only_between_items_and_counts_the_mark(self):
+        from wowtools.ui.widgets import wrap_items
+        text = "a all · n none · r rescan · c collapse all"
+        self.assertEqual(wrap_items(text, 0), text)  # width not known yet
+        self.assertEqual(wrap_items(text, 80), text)
+        self.assertEqual(wrap_items(text, 18), "a all · n none ·\nr rescan ·\nc collapse all")
+        for line in wrap_items(text, 18).splitlines():
+            self.assertLessEqual(len(line), 18)
+        self.assertEqual(wrap_items("1 a → 2 b → 3 c", 8, " → "), "1 a →\n2 b →\n3 c")

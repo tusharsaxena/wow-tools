@@ -329,7 +329,8 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         for flavor_scan in self.scans:
             if flavor_scan.result is None:  # several flavors only: say why this one is not offered
                 tree.root.add_leaf(Text.assemble("  ", (flavor_scan.flavor.display_name, ACCENT),
-                                                 (f"  not scanned: {flavor_scan.error}", WARNING_STYLE)))
+                                                 (f"  not scanned: {flavor_scan.note or flavor_scan.error}",
+                                                  WARNING_STYLE)))
                 continue
             items = by_folder[flavor_scan.flavor.folder].items
             parent = tree.root

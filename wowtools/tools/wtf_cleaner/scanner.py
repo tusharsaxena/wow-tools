@@ -24,7 +24,12 @@ ScanProgress = Callable[[int, int, str], None]
 
 
 class ScanError(Exception):
-    """The flavor cannot be scanned safely."""
+    """The flavor cannot be scanned safely. `short` is the reason in a few words, for a review tree's flavor line
+    (the whole message, with its path, goes to the log)."""
+
+    def __init__(self, message: str, short: str = "") -> None:
+        super().__init__(message)
+        self.short = short or message
 
 
 @dataclass(frozen=True)
@@ -238,7 +243,8 @@ def scan(flavor: Flavor, *, account: str | None = None, progress: ScanProgress |
     installed = installed_addons(flavor.addons_dir)
     if not installed:
         raise ScanError(f"No addons found in {flavor.addons_dir}. Refusing to scan: every "
-                        "SavedVariables file would look uninstalled.")
+                        "SavedVariables file would look uninstalled.",
+                        short="no addons installed")
     warnings: list[ScanWarning] = []
 
     def on_error(path: Path, exc: OSError) -> None:

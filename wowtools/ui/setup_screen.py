@@ -15,18 +15,23 @@ from wowtools.core.config import GENERAL, Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import WowInstall, detect_installs
 from wowtools.core.paths import to_native, to_stored
-from wowtools.ui.branding import Banner, BrandBar
+from wowtools.ui.branding import BrandBar
+from wowtools.ui.dialogs import FORM_WIDTH
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, FormScroll, NavHint, action_button
 
 
 class SetupScreen(Screen[bool]):
-    DEFAULT_CSS = """
-    SetupScreen #setup { padding: 0 2; }
-    SetupScreen .title { color: $accent; text-style: bold; margin: 1 0; }
-    SetupScreen .hint { color: $text-muted; margin-bottom: 1; }
-    SetupScreen #setup-error { color: $error; height: auto; }
-    SetupScreen .buttons { height: auto; margin-top: 1; }
-    SetupScreen Button { margin-right: 2; }
+    """The [general] settings form, laid out as every tool's settings form (ui/dialogs.settings_css): a readable
+    width (FORM_WIDTH), centred, and no banner, so the whole form, Save included, shows at 120x30."""
+    DEFAULT_CSS = f"""
+    SetupScreen {{ align-horizontal: center; }}
+    SetupScreen #setup {{ {FORM_WIDTH} padding: 0 2; }}
+    SetupScreen .title {{ color: $accent; text-style: bold; margin: 1 0; }}
+    SetupScreen Label {{ width: 1fr; height: auto; }}
+    SetupScreen .hint {{ color: $text-muted; margin-bottom: 1; }}
+    SetupScreen #setup-error {{ color: $error; height: auto; }}
+    SetupScreen .buttons {{ height: auto; margin-top: 1; }}
+    SetupScreen Button {{ margin-right: 2; }}
     """
     BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
 
@@ -44,7 +49,6 @@ class SetupScreen(Screen[bool]):
     def compose(self) -> ComposeResult:
         yield Header()
         with FormScroll(id="setup", can_focus=False):
-            yield Banner()
             yield Static("First-time setup" if self.first_run else "General settings", classes="title")
             yield Label("World of Warcraft folder (the one that contains _retail_, _classic_ and so on)")
             yield Input(value=self._initial_wow_path(), placeholder=r"C:\Program Files (x86)\World of Warcraft",

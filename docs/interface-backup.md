@@ -82,7 +82,8 @@ game version → `Interface`, `WTF`, links, warnings and **Backups** → one lin
 
 The top line is **All flavors** (or the game version you picked), with the files and size of everything ticked.
 Each game version's line shows what a backup of it would hold (files and size) and its backups ("2 backups, last
-2026-10-04 20:15:30", or "no backups yet"). Under it:
+2026-10-04 20:15:30", or "no backups yet"). A version with nothing to back up says why instead ("nothing to back
+up: no Interface or WTF folder"), and its backups only when it has some. Under it:
 
 | Line | Shows |
 |---|---|

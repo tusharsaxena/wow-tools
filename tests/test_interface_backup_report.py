@@ -56,7 +56,10 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(report.flavor_text(retail, backups), "1 file · 100 B · 1 backup, last 2026-10-04 15:30:12")
         empty = FlavorScan(RETAIL, {"Interface": PartScan("Interface", RETAIL.path / "Interface"),
                                     "WTF": PartScan("WTF", RETAIL.path / "WTF")})
-        self.assertEqual(report.flavor_text(empty, []), "nothing to back up: no Interface or WTF folder · no backups yet")
+        # nothing to back up and no backups: "no backups yet" adds nothing, and the line fits the tree at 120x30
+        self.assertEqual(report.flavor_text(empty, []), "nothing to back up: no Interface or WTF folder")
+        self.assertEqual(report.flavor_text(empty, backups),
+                         "nothing to back up: no Interface or WTF folder · 1 backup, last 2026-10-04 15:30:12")
         self.assertIn("WTF.replaced", report.leftover_text(retail))
         self.assertIn("Restore is blocked", report.leftover_text(retail))
         self.assertEqual(report.held_text([retail, empty]), "1 file · 100 B")

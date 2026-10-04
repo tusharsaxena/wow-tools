@@ -92,7 +92,7 @@ class LookAndFeelTest(TuiTestCase):
                     inside = pane._replace(width=pane.width - 1)  # anything but the border: not cut off
                     for widget in (*buttons, hint):
                         self.assert_inside(widget, inside)
-                    text = str(hint.render())
+                    text = hint.hint
                     self.assertTrue(text.startswith(REVIEW_HINT), text)
                     self.assertIn("r rescan · z undo · f flavors · t tools", text)
                     self.assertTrue(review.summary_text.startswith(("Selected: ", "Nothing to")),
@@ -102,6 +102,25 @@ class LookAndFeelTest(TuiTestCase):
                     await pilot.press("escape")  # Esc: back to the flavor picker, as f
                     await settle(app, pilot)
                     self.assertIsInstance(app.screen, FlavorScreen)
+
+    async def test_review_hint_wraps_between_items_at_base(self):
+        """At 120x30 the left pane's hint takes several rows; it breaks only between its " · " items, so a key
+        never ends one row with its action on the next ("· r" / "rescan")."""
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    review = await self.open_review(app, pilot, tool)
+                    hint = review.query_one(NavHint)
+                    rendered = str(hint.render())
+                    lines = rendered.splitlines()
+                    self.assertGreater(len(lines), 1, rendered)
+                    self.assertEqual(hint.region.height, len(lines), rendered)
+                    for line in lines[:-1]:
+                        self.assertTrue(line.endswith(" ·"), lines)
+                    self.assertEqual(rendered.replace("\n", " "), hint.hint)
+                    items = set(hint.hint.split(" · "))
+                    self.assertEqual({item for line in lines for item in line.removesuffix(" ·").split(" · ")}, items)
 
     async def test_review_left_pane_has_one_control_per_row(self):
         """Every focusable control of the left pane sits on its own row, so up/down reaches each one; only the
@@ -123,7 +142,7 @@ class LookAndFeelTest(TuiTestCase):
                 app = self.make_app()
                 async with app.run_test(size=BASE) as pilot:
                     review = await self.open_review(app, pilot, tool)
-                    self.assertIn(TREE_HINT + "r rescan", str(review.query_one(NavHint).render()))
+                    self.assertIn(TREE_HINT + "r rescan", review.query_one(NavHint).hint)
                     self.assertTrue(TREE_HINT.startswith("x expand all · c collapse all"))
                     tree = review.query_one(review.TREE_SELECTOR, Tree)
                     tree.focus()
@@ -199,6 +218,58 @@ class LookAndFeelTest(TuiTestCase):
             self.assertIn("pending change", guide)
             self.assertEqual(len(guide.splitlines()), 2, guide)
 
+    async def test_ace_guide_keeps_the_hint_with_many_changes_and_a_long_name(self):
+        """At BASE, 100+ pending changes (a whole account's Everyone -> Default) and a long name ("Name - Realm")
+        still show the pending line and the hint, one row each: the name is shortened with "…", not the hint
+        dropped."""
+        from wowtools.tools.ace_profiles.ops import Summary
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot, "ace-profiles")
+            review.staging.summary = lambda: Summary(reassigned=150, files=12)
+            long_name = "Shadowpriestess - Argent Dawn (EU)"  # 35 characters
+            review._node_name = lambda data: long_name
+            tree = review.query_one("#profiles", Tree)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            for kind in ("profile", "char", "addon"):
+                node = next(n for n in walk(tree.root) if n.data and n.data[0] == kind)
+                tree.move_cursor(node)
+                await settle(app, pilot)
+                guide = str(review.query_one("#guide").render())
+                lines = guide.splitlines()
+                self.assertEqual(len(lines), 2, guide)
+                self.assertTrue(lines[0].startswith("150 pending changes, not written: "), guide)
+                self.assertIn(long_name[:10], lines[1])
+                self.assertIn("…", lines[1])
+                self.assertEqual(review.query_one("#guide").region.height, 2, guide)
+            tree.focus()
+            await pilot.press("space")
+            await settle(app, pilot)
+            guide = str(review.query_one("#guide").render())
+            self.assertEqual(len(guide.splitlines()), 2, guide)
+            self.assertIn(" ticked: pick an action below", guide.splitlines()[1])
+
+    async def test_ace_steps_wrap_between_steps(self):
+        """The guide's four steps take two rows at BASE and LARGE and break only between steps, so "→ 4" never
+        ends a row with "Apply (w)" on the next."""
+        from wowtools.tools.ace_profiles.report import STEPS
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot, "ace-profiles")
+            for size in (BASE, LARGE):
+                with self.subTest(size=size):
+                    await pilot.resize_terminal(*size)
+                    await settle(app, pilot)
+                    guide = review.query_one("#guide")
+                    lines = str(guide.render()).splitlines()
+                    self.assertEqual(review.guide_text, STEPS)
+                    self.assertEqual(len(lines), 2, lines)
+                    self.assertEqual(guide.region.height, 2, lines)
+                    self.assertTrue(lines[0].endswith(" →"), lines)
+                    self.assertRegex(lines[1], r"^\d ")
+                    self.assertEqual(" ".join(lines), STEPS)
+
     async def test_ace_action_bar_is_one_row_at_large(self):
         """Review Focus 5: at LARGE the whole action bar under the tree takes one row, each button drawn whole."""
         app = self.make_app()
@@ -234,7 +305,7 @@ class LookAndFeelTest(TuiTestCase):
             hint = review.query_one(NavHint)
             for widget in (review.query_one("#pending"), hint):
                 self.assert_inside(widget, left._replace(width=left.width - 1))
-            self.assertTrue(str(hint.render()).endswith("f flavors · t tools"))
+            self.assertTrue(hint.hint.endswith("f flavors · t tools"))
 
     async def test_result_screens_share_one_layout(self):
         for tool in TOOLS:
@@ -258,7 +329,7 @@ class LookAndFeelTest(TuiTestCase):
                     self.assertEqual([c.label.plain for c in summary.columns.values()], ["Item", "Value"])
                     self.assertEqual(len(result.query(".result-detail")), 1)
                     result.query_one(BrandBar)
-                    hint = str(result.query_one(NavHint).render())
+                    hint = result.query_one(NavHint).hint
                     self.assertTrue(hint.startswith(RESULT_HINT), hint)
                     self.assertTrue(hint.endswith("f other flavor · t tools · q quit"), hint)
                     buttons = list(result.query(Button))
@@ -301,6 +372,26 @@ class LookAndFeelTest(TuiTestCase):
                         app.open_tool(tool)
                         await settle(app, pilot)
                         form = app.screen.query_one("#settings")
+                        box = form.region
+                        self.assertLessEqual(box.width, FORM_MAX_WIDTH, box)
+                        self.assertLessEqual(abs(box.x - (size[0] - box.right)), 1, box)  # centred
+                        if size == BASE:
+                            self.assertEqual(form.max_scroll_y, 0)
+                            self.assert_inside(app.screen.query_one("#save", Button), box)
+
+    async def test_general_settings_form_fits_at_base_and_keeps_a_readable_width(self):
+        """The general settings (s on the tool menu) and the first-time setup are laid out as a tool's settings
+        form: at most FORM_MAX_WIDTH columns, centred, and at BASE the whole form, Save included, shows."""
+        from wowtools.ui.setup_screen import SetupScreen
+        for first_run in (False, True):
+            for size in (BASE, LARGE):
+                with self.subTest(first_run=first_run, size=size):
+                    app = self.make_app()
+                    async with app.run_test(size=size) as pilot:
+                        await pilot.pause()
+                        app.push_screen(SetupScreen(self.cfg, first_run=first_run, detect=list))
+                        await settle(app, pilot)
+                        form = app.screen.query_one("#setup")
                         box = form.region
                         self.assertLessEqual(box.width, FORM_MAX_WIDTH, box)
                         self.assertLessEqual(abs(box.x - (size[0] - box.right)), 1, box)  # centred

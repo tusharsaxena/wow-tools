@@ -25,7 +25,8 @@ DELETED = "✘ deleted"
 REMOVED = "✘ removed"
 NO_PENDING = "No pending changes"
 # The guide's texts at 120x30 (68 columns, tests/test_ace_report.py and tests/test_look_and_feel.py): the steps take
-# two rows; the pending line and each hint (with a name of up to 16 characters) one row each, so both show together.
+# two rows; the pending line (up to 99999 changes) and each hint (with a name of up to 16 characters) one row each,
+# so both show together. A longer name is shortened with "…" by the screen to keep the hint on its row.
 STEPS = ("1 Tick profiles or characters (Space) → 2 pick an action below → 3 check the pending changes in the tree "
          "→ 4 Apply (w) writes them")
 CHARACTER_KINDS = ("char", "pair", "character")  # tree nodes that are one character
@@ -149,15 +150,20 @@ def node_hint(node_kind: str | None, node_name: str, ticked: int, locked: str = 
     return ""
 
 
+def shorten(name: str, keep: int) -> str:
+    """name cut to its first `keep` characters plus "…" when it is longer."""
+    return name if len(name) <= keep else name[:keep] + "…"
+
+
 def guidance(node_kind: str | None, node_name: str, ticked_profiles: int, ticked_chars: int, pending_total: int, *,
              locked: str = "", hint: bool = True) -> str:
     """The review's guidance line (#guide): the pending changes first (when there are any; the bottom line says in
     how many files), then what can be done with the ticks or the highlighted node; with neither, the four steps of
     the workflow. hint=False leaves the per-node hint out (the screen does when the guide would take more than two
-    rows: a long name)."""
+    rows even with the name shortened)."""
     lines = []
     if pending_total:
-        lines.append(f"{plural(pending_total, 'pending change')}, not written yet: w apply · y dry run · ⌫ discard")
+        lines.append(f"{plural(pending_total, 'pending change')}, not written: w apply · y dry run · ⌫ discard")
     text = node_hint(node_kind, node_name, ticked_profiles + ticked_chars, locked) if hint else ""
     if text:
         lines.append(text)

@@ -153,9 +153,40 @@ class WrapButtonRow(ButtonRow):
             self.styles.grid_size_columns = width
 
 
+def wrap_items(text: str, width: int, sep: str = " · ") -> str:
+    """text broken into lines of at most `width` cells between its `sep`-separated items only (each line but the
+    last ends with the separator's mark), so a "key action" pair is never split; an item wider than `width` is
+    left for the widget to wrap. Unchanged when it fits or the width is not known yet."""
+    if width <= 0 or cell_len(text) <= width:
+        return text
+    items, mark = text.split(sep), sep.rstrip()
+    lines, current = [], items[0]
+    for index, item in enumerate(items[1:], 2):
+        # a row that does not end the text ends with the mark: count it
+        if cell_len(current + sep + item) + (cell_len(mark) if index < len(items) else 0) <= width:
+            current += sep + item
+        else:
+            lines.append(current + mark)
+            current = item
+    lines.append(current)
+    return "\n".join(lines)
+
+
 class NavHint(Static):
-    """The one-line keyboard hint under a screen's controls."""
+    """The keyboard hint under a screen's controls. When it needs more than one row it wraps between its " · "
+    items, never inside one ("r rescan" stays together)."""
 
     DEFAULT_CSS = """
     NavHint { color: $text-muted; height: auto; margin-top: 1; }
     """
+
+    def __init__(self, hint: str = "", **kwargs) -> None:
+        super().__init__(hint, **kwargs)
+        self.hint = hint
+        self._shown = hint
+
+    def on_resize(self, event: Resize) -> None:
+        shown = wrap_items(self.hint, self.content_size.width)
+        if shown != self._shown:
+            self._shown = shown
+            self.update(shown)

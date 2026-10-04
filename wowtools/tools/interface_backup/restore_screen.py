@@ -284,12 +284,12 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
             else:
                 tree.root.add(label, data=("effect", kind), allow_expand=True)  # lines load on expand
         if plan.low_space:
-            tree.root.add_leaf(Text(f"⚠ Low disk space: {human_size(plan.free_bytes)} free on the WoW drive, about "
-                                    f"{human_size(plan.bytes_needed)} needed.", style=warning), data=("note",))
+            tree.root.add_leaf(Text(f"⚠ Low disk space on the WoW drive: {human_size(plan.free_bytes)} free, "
+                                    f"~{human_size(plan.bytes_needed)} needed", style=warning), data=("note",))
         if restore_lost_nothing(plan):
             success = f"bold {theme_colour(self.app, 'success')}"
             tree.root.add_leaf(Text.assemble(("Nothing on disk would be lost", success),
-                                             ("  your folders hold nothing the backup lacks", "dim")), data=("note",))
+                                             ("  everything is in the backup", "dim")), data=("note",))
         tree.root.expand()
 
     def on_tree_node_expanded(self, event: Tree.NodeExpanded) -> None:

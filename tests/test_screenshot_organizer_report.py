@@ -5,12 +5,13 @@ from datetime import date
 from pathlib import Path
 
 from wowtools.core.install import Flavor
+from wowtools.core.paths import to_stored
 from wowtools.tools.screenshot_organizer import organizer
 from wowtools.tools.screenshot_organizer.organizer import (CONFLICT_KEPT, MOVED, RESTORED, WOULD_MOVE, OrganizeResult,
                                                            Outcome)
 from wowtools.tools.screenshot_organizer.planner import FILED, NEW, FlavorPlan, Plan, ShotItem
 from wowtools.tools.screenshot_organizer.report import (KIND_LABELS, STAGE_TITLES, confirm_text, destination_label,
-                                                        result_rows, stopped_text, summary_rows)
+                                                        result_rows, stopped_text, summary_rows, target_folder)
 from wowtools.tools.screenshot_organizer.settings import ShotSettings
 
 # Outcome kinds: the upper-case string constants of organizer, minus the partial-file suffix and the journal
@@ -51,8 +52,10 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(rows[KIND_LABELS[MOVED]], "1")
         self.assertNotIn(KIND_LABELS[WOULD_MOVE], rows)  # zero counts are left out
         self.assertEqual(rows["Journal"], str(Path("/j/journal-x.jsonl")))
+        # Target inside the "Target folder" row: the date folders always show at 120x30.
+        self.assertEqual(rows["Target folder"], to_stored(Path("/a/_retail_")))
         self.assertEqual(result_rows(result)[1], (KIND_LABELS[CONFLICT_KEPT], "Retail", src.name,
-                                                  str(dst.parent), "different"))
+                                                  str(Path("2019", "07", "31")), "different"))
         dry = OrganizeResult(True, False, [Outcome("_retail_", src, dst, WOULD_MOVE)])
         self.assertEqual(dict(summary_rows(dry))["Journal"], "not written (dry run)")
         self.assertEqual(dict(summary_rows(dry))["Mode"], "Dry run (move)")
@@ -65,6 +68,30 @@ class ReportTest(unittest.TestCase):
         pruned = OrganizeResult(False, False, [Outcome("_retail_", src, dst, MOVED)],
                                 journal_path=Path("/j/journal-x.jsonl"), pruned=[Path("/j/a"), Path("/j/b")])
         self.assertEqual(dict(summary_rows(pruned))["Older journals removed"], "2")
+
+    def test_targets_keep_their_date_folders_inside_the_target_folder(self):
+        """Terminal size round review: a whole target folder (C:\\Program Files (x86)\\World of Warcraft\\...) cut
+        the date folders off at 120x30. Targets are named inside the "Target folder" row, each keeping YYYY/MM/DD."""
+        wow = Path("/w/World of Warcraft")
+
+        def shot(folder, day):
+            src = wow / folder / "Screenshots" / "WoWScrnShot_073119_232713.jpg"
+            return Outcome(folder, src, wow / folder / "Screenshots" / day / src.name, WOULD_MOVE)
+        both = OrganizeResult(True, False, [shot("_retail_", "2019/07/31"), shot("_classic_era_", "2012/05/20")])
+        self.assertEqual(target_folder(both), wow)
+        self.assertEqual([row[3] for row in result_rows(both)],
+                         [str(Path("_retail_", "Screenshots", "2019", "07", "31")),
+                          str(Path("_classic_era_", "Screenshots", "2012", "05", "20"))])
+        one_day = OrganizeResult(True, False, [shot("_retail_", "2019/07/31")])
+        self.assertEqual(target_folder(one_day), wow / "_retail_" / "Screenshots")
+        self.assertEqual(result_rows(one_day)[0][3], str(Path("2019", "07", "31")))
+        self.assertEqual(dict(summary_rows(one_day))["Target folder"], to_stored(wow / "_retail_" / "Screenshots"))
+        src = wow / "_retail_" / "Screenshots" / "2019" / "07" / "31" / "a.jpg"
+        undone = OrganizeResult(False, False, [Outcome("_retail_", src, wow / "_retail_" / "Screenshots" / "a.jpg",
+                                                       RESTORED)], undo=True)
+        self.assertEqual(result_rows(undone)[0][3], "Screenshots")
+        self.assertIsNone(target_folder(OrganizeResult(True, False)))
+        self.assertNotIn("Target folder", dict(summary_rows(OrganizeResult(True, False))))
 
     def test_destination_label(self):
         self.assertIn("in place", destination_label(None))

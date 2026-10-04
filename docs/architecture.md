@@ -530,8 +530,10 @@ their original get a `rolled_back` line in the journal that holds their entries 
   `app.busy` and run inside `activity.running()`.
   The tree sits in `#tree-pane` above the guidance line `#guide` (`report.guidance`: the four `STEPS` on the root,
   a flavor or an account or with nothing highlighted, else `report.node_hint` for the highlighted node; with
-  pending changes the pending count and the w/y/⌫ keys come first, and the node hint follows only while the guide
-  stays within `GUIDE_MAX_ROWS` (2) rows, which at 120x30 it does unless the name is long; on a locked addon the hint names it and the `u` unlock) and the action bar `#tree-actions`, a
+  pending changes the pending count and the w/y/⌫ keys come first, and the node hint follows within
+  `GUIDE_MAX_ROWS` (2) rows: a name too long for the hint's row at 120x30 is shortened with "…", and the hint is
+  left out only if even that does not fit; on a locked addon the hint names it and the `u` unlock) and the action
+  bar `#tree-actions`, a
   `WrapButtonRow` of `TREE_ACTIONS` (Delete, Assign, Rename, Copy, Leftovers, Blacklist…, More…, Discard: two
   rows at 120x30, one at 160x45), each button doing what its key does. With nothing ticked, Delete and Assign act on the
   highlighted node, but never on the root, a flavor or an account (`GROUP_KINDS`). The guide follows the cursor, the ticks and the pending
@@ -581,7 +583,8 @@ Shared screens and widgets in `wowtools/ui/`:
 | `flavor_screen` | `FlavorScreen(cfg, install, *, include_all=False, last=None, flavors=None)`: the flavor picker. `include_all` adds "All flavors" first (dismisses with `ALL_FLAVORS`); `last` is the folder to pre-select (`""` = All flavors, `None` = `[general] last_flavor`); `flavors` replaces `install.flavors()`; `note`/`all_note` fill the remarks column and `set_notes()` replaces them later. Picking one flavor saves `[general] last_flavor`. |
 | `account_screen` | `AccountScreen(cfg, flavor, last)`: "All accounts" plus each account. Dismisses with the name, `""` for all, or `None` for back. The WTF Cleaner and the Ace3 Profile Manager show it only when a flavor has more than one account and save the choice as their own `last_account`. |
 | `dialogs` | What every tool's screens share, so no tool imports another tool's screens: `ConfirmScreen(title, body, alerts=(), *, default_yes=False)` (yes/no; `alerts` in red; risky actions start on No), `ProgressScreen` (stage, bar and current file of a run; a tool subclasses it with `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, and calls `update_progress(stage, current, total, detail)`, plus `set_flavor(label)` across several flavors), `tick_mark(items, unchecked, key, success=)` (✔ / ◩ / ✘ for a review-tree line), `relabel_branch(tree, node, label, skip=)` (after a tick), the `TwoPaneFocus` mixin (←/→ between the left `#filters` panel and the tree; it is a `TreeKeys`, whose `x`/`c` expand and collapse every node below the root, bound with `TREE_BINDINGS` and named in the hint by `TREE_HINT`), `theme_colour(app, name)` (the theme's colour, or the Ka0s one before a theme is set), and the one look every tool's screens are built from: `two_pane_css(screen, tree, width=FILTERS_WIDTH)` (review: left pane `#filters`, `FILTERS_WIDTH` = 50, one-row actions, scan box, summary), `ACCENT` (names in a tree) and `BUSY_STYLE` (a summary line while work runs), `result_css(screen)` (the summary takes at most 60% of the height), `settings_css(screen)` (the form at `FORM_WIDTH`: up to 100 columns, centred; compact checkboxes), and the hint starts `REVIEW_HINT` / `review_hint(space)` and `RESULT_HINT` |
-| `widgets` | `action_button(label, action)` and `ACTION_VARIANTS` (one colour per kind of action in every tool: delete red, apply green, simulate blue, revert amber, confirm blue, neutral grey), `LIST_NAME_STYLE` / `LIST_CURSOR_BACKGROUND` (pick lists), `Ka0sCheckbox` (✔/✘ marks), `ButtonRow` (←/→ move focus between its buttons, Space presses the focused one), `WrapButtonRow` (a `ButtonRow` of compact one-row buttons in a grid whose column count follows its width; the Ace3 review's action bar), `NAV_BINDINGS` (↑/↓ move focus; not priority bindings, so a focused tree, list, table or input keeps its arrow keys), and `NavHint` (the one-line key hint every screen shows), `FormScroll` (a scrolling form where ↑/↓ still move focus; `open_at_top()` after the first focus) |
+| `widgets` | `action_button(label, action)` and `ACTION_VARIANTS` (one colour per kind of action in every tool: delete red, apply green, simulate blue, revert amber, confirm blue, neutral grey), `LIST_NAME_STYLE` / `LIST_CURSOR_BACKGROUND` (pick lists), `Ka0sCheckbox` (✔/✘ marks), `ButtonRow` (←/→ move focus between its buttons, Space presses the focused one), `WrapButtonRow` (a `ButtonRow` of compact one-row buttons in a grid whose column count follows its width; the Ace3 review's action bar), `NAV_BINDINGS` (↑/↓ move focus; not priority bindings, so a focused tree, list, table or input keeps its arrow keys), and `NavHint` (the key hint every screen shows; when it takes more than one row it breaks only between its
+" · " items, `wrap_items`, so a key stays with its action), `FormScroll` (a scrolling form where ↑/↓ still move focus; `open_at_top()` after the first focus) |
 
 ### Look and feel and terminal size
 
@@ -599,7 +602,9 @@ grows when the window is larger; 80x24 only has to keep working (Addendum B of
 - footers show every key whole at 120 columns: the command palette's key is hidden suite-wide (Ctrl+P still opens
   it), and keys that are on a button (the Ace3 review's `d`, `p`, `m`) are left off the footer;
 - paths on result screens are named inside a "Backup folder" row (`cleaned/<name>`, `snapshots/<name>`, …) rather
-  than whole, so they fit; a tree line longer than its pane scrolls sideways.
+  than whole, so they fit (a file outside that folder keeps its whole path); the Screenshot Organizer names its
+  targets inside a "Target folder" row (`report.target_folder`), each keeping its YYYY/MM/DD; a tree line longer
+  than its pane scrolls sideways.
 
 `tests/fixtures.py` names the sizes: `BASE = (120, 30)`, `LARGE = (160, 45)`, `TINY = (80, 24)`.
 `tests/test_look_and_feel.py` runs each check for every tool: at BASE the left pane, its one-row buttons, the hint
@@ -629,7 +634,9 @@ The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfC
 
 `result_screen.py` holds `ResultScreen(result, flavor=None)`: a summary table plus a per-file `DataTable`. With a
 `MultiCleanResult` it shows Done / Stopped / Not started rows after a stop, one block of summary rows per finished
-flavor, and a Flavor column (`report.MULTI_RESULT_COLUMNS`). Zips are named inside the backup folder (`cleaned/<name>`, `backup/<name>`), which has a "Backup folder" row of its own. A real clean adds a "Run journal" row (the journal's name). With an
+flavor, and a Flavor column (`report.MULTI_RESULT_COLUMNS`). Zips are named inside the backup folder (`cleaned/<name>`, `backup/<name>`), which has a "Backup folder" row of its own. A real clean adds a "Run journal" row: inside the backup folder when it is there (the default one holds
+`journal/`), else its whole path with the Undo note on a row of its own. The per-file table puts Reasons before
+Size and File, so why each file goes shows at 120x30. With an
 `UndoResult` it is titled "undo result" and shows `report.undo_summary_rows` and `report.UNDO_COLUMNS`.
 
 The Screenshot Organizer's screens live in `tools/screenshot_organizer/`. `app.py` holds `ScreenshotsFlow` (`FLOW`:
@@ -641,7 +648,8 @@ copy mode; `validate_dest` errors show inline). `review_screen.py` holds:
   Conflicts and Skipped nodes; in copy mode an Already filed node, unticked, that `a` leaves alone) and the Organize / Dry run / Rescan / Undo last run buttons. It uses the
   shared `ConfirmScreen`;
 - `ShotProgressScreen`, a `ProgressScreen` (ids `shots-*`): stage, bar and current file for a run, dry run or undo;
-- `ShotResultScreen`: a summary table plus a per-file `DataTable`.
+- `ShotResultScreen`: a summary table (with a "Target folder" row) plus a per-file `DataTable` whose Target column
+  names each folder inside it.
 
 ## Testing
 

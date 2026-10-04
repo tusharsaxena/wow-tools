@@ -107,24 +107,29 @@ class ReportTest(unittest.TestCase):
                          "3 ticked: pick an action below (Delete, Assign, …)")
 
     def test_guidance_with_pending_changes_comes_first(self):
-        pending = "3 pending changes, not written yet: w apply · y dry run · ⌫ discard"
+        pending = "3 pending changes, not written: w apply · y dry run · ⌫ discard"
         self.assertEqual(report.guidance("root", "", 0, 0, 3), pending)
         self.assertEqual(report.guidance("profile", "Healer", 0, 0, 3),
                          pending + '\nProfile "Healer": Delete, Rename or Copy it')
-        self.assertTrue(report.guidance("addon", "ElvUI", 1, 0, 1).startswith("1 pending change, not written yet"))
+        self.assertTrue(report.guidance("addon", "ElvUI", 1, 0, 1).startswith("1 pending change, not written"))
         self.assertIn("\n1 ticked: pick an action below", report.guidance("addon", "ElvUI", 1, 0, 1))
 
     def test_guide_lines_fit_one_row_of_the_tree_pane_at_base(self):
         """Terminal size plan, Task S3: at 120x30 the guide is 68 columns wide (the tree pane, less its padding).
-        The pending line (up to 99 changes) and each hint, with a name of up to 16 characters, take one row each,
-        so both show together; a longer name may wrap, and the screen then leaves the hint out (GUIDE_MAX_ROWS)."""
+        The pending line (up to 99999 changes: a whole account's Everyone -> Default is easily 100+) and each hint,
+        with a name of up to 16 characters, take one row each, so both show together; a longer name is shortened by
+        the screen (GUIDE_MAX_ROWS)."""
         width = 68
         name = "N" * 16
-        lines = [report.guidance("root", "", 0, 0, 99)]
+        lines = [report.guidance("root", "", 0, 0, 99), report.guidance("root", "", 0, 0, 99999)]
         lines += [report.guidance(kind, name, 0, 0, 0) for kind in ("profile", "char", "addon")]
         lines += [report.guidance("profile", name, 0, 0, 0, locked=name), report.guidance("profile", name, 99, 0, 0)]
         for line in lines:
             self.assertLessEqual(cell_len(line), width, line)
+
+    def test_shorten(self):
+        self.assertEqual(report.shorten("Healer", 6), "Healer")
+        self.assertEqual(report.shorten("Healer", 3), "Hea…")
 
     def test_result_summaries_name_files_inside_the_backup_folder(self):
         """Terminal size plan, Task S3: a whole zip path is cut off at 120 columns. The backup folder has a row of

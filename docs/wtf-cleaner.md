@@ -67,7 +67,8 @@ Enter.
 - Anything outside the `WTF` folder of the game version you picked.
 
 If a game version has no addons installed at all, the cleaner refuses to scan it, so it can't suggest deleting
-everything by mistake. With All flavors, that version shows "not scanned" and the others carry on.
+everything by mistake. With All flavors, that version shows "not scanned: no addons installed" (the log has the
+folder it looked in) and the others carry on.
 
 ### Accounts
 

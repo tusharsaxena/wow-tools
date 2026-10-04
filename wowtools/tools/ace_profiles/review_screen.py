@@ -31,9 +31,9 @@ from wowtools.tools.ace_profiles.model import DEFAULT
 from wowtools.tools.ace_profiles.multi import MultiApplyResult, apply_flavors
 from wowtools.tools.ace_profiles.ops import DbKey, DbState, OpResult, Staging, valid_name
 from wowtools.tools.ace_profiles.popups import ActionsScreen, NameScreen, TargetScreen
-from wowtools.tools.ace_profiles.report import (CHARACTER_KINDS, DETAIL_COLUMNS, NO_PENDING, STAGE_TITLES,
+from wowtools.tools.ace_profiles.report import (CHARACTER_KINDS, DETAIL_COLUMNS, NO_PENDING, STAGE_TITLES, STEPS,
                                                 UNDO_COLUMNS, apply_confirm, apply_detail_rows, apply_summary_rows,
-                                                flavor_name, guidance, pending_text, plural, selection_text,
+                                                flavor_name, guidance, pending_text, plural, selection_text, shorten,
                                                 undo_confirm, undo_detail_rows, undo_summary_rows)
 from wowtools.tools.ace_profiles.result_screen import ProfileResultScreen
 from wowtools.tools.ace_profiles.scanner import ScanResult, SvFile, scan_flavors
@@ -45,7 +45,8 @@ from wowtools.tools.ace_profiles.undo import UndoError, UndoResult, recover, und
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.dialogs import (BUSY_STYLE, POPUP_WIDTH, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
                                 ProgressScreen, TwoPaneFocus, relabel_branch, theme_colour, tick_mark, two_pane_css)
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, WrapButtonRow, action_button
+from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, WrapButtonRow, action_button,
+                                 wrap_items)
 
 NAV_HINT = (REVIEW_HINT + "a all · n none · d delete · p assign · m more · w apply · y dry run · " + TREE_HINT +
             "r rescan · z undo · f flavors · t tools")
@@ -217,6 +218,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self.marker: Marker | None = None  # an Apply that did not finish, found by the scan worker
         self.summary_text = f"Selected: 0 profiles · 0 characters · {NO_PENDING}"
         self.guide_text = guidance(None, "", 0, 0, 0)
+        self._guide_shown = self.guide_text  # guide_text as the guide shows it (the steps wrapped between steps)
         self._builder: TreeBuilder | None = None
         self._expanded: dict[Hashable, bool] = {}
         self._scanning = False
@@ -515,10 +517,22 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         profiles, chars = counts(self.ticked)
         text = guidance(kind, name, profiles, chars, summary.total, locked=locked)
         if summary.total and not self._guide_fits(text):  # a long name: the hint would wrap
-            text = guidance(kind, name, profiles, chars, summary.total, hint=False)
-        if text != self.guide_text:
-            self.guide_text = text
-            self.query_one("#guide", Static).update(Text(text))
+            text = self._shortened_guidance(kind, name, profiles, chars, summary.total, locked)
+        guide = self.query_one("#guide", Static)
+        # The steps wrap between steps only ("→ 4" never ends a row with "Apply (w)" on the next).
+        shown = wrap_items(text, guide.content_size.width, " → ") if text == STEPS else text
+        if text != self.guide_text or shown != self._guide_shown:
+            self.guide_text, self._guide_shown = text, shown
+            guide.update(Text(shown))
+
+    def _shortened_guidance(self, kind, name: str, profiles: int, chars: int, total: int, locked: str) -> str:
+        """The guidance with the node's (or locked addon's) name shortened with "…" until the guide fits in
+        GUIDE_MAX_ROWS rows, so the hint stays next to the pending line; without the hint only if even that fails."""
+        for keep in range(max(len(name), len(locked)) - 1, 0, -1):
+            text = guidance(kind, shorten(name, keep), profiles, chars, total, locked=shorten(locked, keep))
+            if self._guide_fits(text):
+                return text
+        return guidance(kind, name, profiles, chars, total, hint=False)
 
     def _guide_fits(self, text: str) -> bool:
         """The guide, wrapped to its width, takes at most GUIDE_MAX_ROWS rows. True until it is laid out."""
