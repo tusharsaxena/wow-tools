@@ -6,7 +6,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 
 | Task | Title | Status | Commit | Notes |
 |---|---|---|---|---|
-| 1 | core helpers: walk_files, is_link, remove_tree_no_follow | todo | | |
+| 1 | core helpers: walk_files, is_link, remove_tree_no_follow | done | 440fce5 | wtf_files delegates to walk_files; symlink tests run on WSL; extra tests for on_error and link-as-root |
 | 2 | events, settings, catalog | todo | | |
 | 3 | scanner | todo | | |
 | 4 | backup | todo | | |
@@ -23,4 +23,6 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 
 ## Decisions taken during the build
 
-- (none yet)
+- Task 1: `scripts/run_tests.py` takes a single `-k`; the plan's multi-`-k` commands were run one filter at a time.
+- Task 1: tests written in the repo style (one import per line, no semicolons, explicit `encoding=`) rather than the
+  plan's compressed snippets; `walk_files` and `remove_tree_no_follow` coerce their argument with `Path(...)`.
