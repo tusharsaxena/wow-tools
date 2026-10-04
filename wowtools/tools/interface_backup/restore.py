@@ -20,7 +20,7 @@ from wowtools.tools.interface_backup.scanner import PARTS, FlavorScan
 NEWER_SLACK = 2.0  # zip timestamps have 2-second steps
 KINDS = ("backup", "pre-restore")
 _DRIVE = re.compile(r"^[A-Za-z]:")
-_FLAVOR_FOLDER = re.compile(r"^_[A-Za-z0-9_]+_$")
+_FLAVOR_FOLDER = re.compile(r"_[A-Za-z0-9_]+_")  # fullmatch: no trailing newline
 _BAD_CHARS = frozenset('<>:"|?*\x00')  # refused everywhere: Windows cannot write them, NUL nowhere can
 # Windows only: control characters, and device names ("CON", "nul.lua") that open the device, not a file. On POSIX
 # these are ordinary names (a character called Aux gets an "Aux" folder), so a backup made there must restore there.
@@ -28,6 +28,12 @@ _WINDOWS_BAD_CHARS = frozenset(chr(c) for c in range(1, 32))
 _RESERVED = frozenset({"CON", "PRN", "AUX", "NUL"} | {f"{p}{n}" for p in ("COM", "LPT") for n in range(1, 10)})
 # Reading a zip: a damaged file, an unsupported compression method or an encrypted entry.
 _ZIP_ERRORS = (OSError, zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError, RuntimeError, ValueError)
+
+
+def _case_key(name: str) -> str:
+    """A name as Windows compares it: per-character lower case, not casefold()'s full folding ("ß" is not "ss" on
+    NTFS, so "Straße.lua" and "STRASSE.lua" are two files)."""
+    return name.lower()
 
 
 class RestoreError(Exception):
@@ -74,7 +80,8 @@ class BackupContents:
 
     def sizes(self, parts: tuple[str, ...] | None = None) -> dict[str, int]:
         """Entry name -> size, for verify_backup (all parts when `parts` is None; none for an empty tuple)."""
-        return {f"{part}/{rel}": size for part in (PARTS if parts is None else parts) for rel, (size, _) in self.files[part].items()}
+        chosen = PARTS if parts is None else parts
+        return {f"{part}/{rel}": size for part in chosen for rel, (size, _) in self.files[part].items()}
 
 
 def _check_names(names: list[str]) -> None:
@@ -82,7 +89,7 @@ def _check_names(names: list[str]) -> None:
     seen: set[str] = set()
     for name in names:
         split_entry(name)
-        key = name.casefold()
+        key = _case_key(name)
         if key in seen:
             raise RestoreError(f"the backup has two entries for the same file (case ignored): {name}")
         seen.add(key)
@@ -113,7 +120,7 @@ def open_backup(path: Path) -> BackupContents:
         if manifest["version"] != 1 or manifest["kind"] not in KINDS:
             raise RestoreError("not an Interface Backup zip (unknown manifest)")
         folder = str(manifest["flavor_folder"])
-        if not _FLAVOR_FOLDER.match(folder):
+        if not _FLAVOR_FOLDER.fullmatch(folder):
             raise RestoreError(f"the backup names an invalid flavor folder: {folder!r}")
         names = [info.filename for info in infos if info.filename != MANIFEST_NAME]
         _check_names(names)
@@ -121,7 +128,9 @@ def open_backup(path: Path) -> BackupContents:
         listed = {str(f["path"]): float(f["mtime"]) for f in manifest["files"]}
         if len(listed) != len(manifest["files"]) or set(listed) != set(names):
             raise RestoreError("the backup's manifest does not match its contents")
-        if any(not math.isfinite(mtime) or mtime < 0 for mtime in listed.values()):
+        # Only non-finite times are refused: a pre-1970 file (negative st_mtime) is ordinary input to write_zip.
+        # Task 6 leaves the extraction time on a file whose time os.utime cannot set.
+        if not all(math.isfinite(mtime) for mtime in listed.values()):
             raise RestoreError("the backup's manifest is damaged: a file time is not a valid date")
         if not isinstance(manifest["parts"], list):
             raise RestoreError("the backup's manifest is damaged: parts is not a list")
@@ -151,6 +160,7 @@ class RestorePlan:
     bytes_needed: int  # bytes the chosen parts take once extracted
     free_bytes: int | None  # on the flavor's drive; None when unknown
     leftovers: list[Path]  # from an interrupted restore: a new restore of this flavor is blocked
+    unreadable: list[str] = field(default_factory=list)  # chosen parts' scan errors: what is there is lost unlisted
 
     @property
     def low_space(self) -> bool:
@@ -167,15 +177,19 @@ def _free_space(path: Path, disk_usage: Callable) -> int | None:
 def plan_restore(contents: BackupContents, scan: FlavorScan, parts: tuple[str, ...], *,
                  disk_usage: Callable = shutil.disk_usage) -> RestorePlan:
     """Compare the backup's chosen parts with what is on disk now (a scan with stats, for `newer`). Paths compare
-    ignoring case, as Windows does. Raises RestoreError for a backup of another flavor, a part the backup does not
-    hold or a part folder that is itself a link."""
-    if contents.flavor_folder.casefold() != scan.flavor.folder.casefold():
+    ignoring case, as Windows does. Raises RestoreError for no parts or an unknown part name, a backup of another
+    flavor, a part the backup does not hold or a part folder that is itself a link."""
+    unknown = [p for p in parts if p not in PARTS]
+    if unknown or not parts:
+        raise RestoreError(f"no such part to restore: {unknown!r}" if unknown else "no part chosen to restore")
+    if _case_key(contents.flavor_folder) != _case_key(scan.flavor.folder):
         raise RestoreError(f"the backup is of {contents.flavor_folder}, not {scan.flavor.folder}: a backup restores "
                            "only into its own flavor")
     removed: list[tuple[str, str]] = []
     newer: list[tuple[str, str]] = []
     kept: list[tuple[str, str]] = []
     dropped: list[tuple[str, str]] = []
+    unreadable: list[str] = []
     needed = 0
     chosen = tuple(p for p in PARTS if p in parts)
     for part in chosen:
@@ -184,17 +198,18 @@ def plan_restore(contents: BackupContents, scan: FlavorScan, parts: tuple[str, .
         live = scan.parts[part]
         if live.linked:
             raise RestoreError(f"{part} is a link to another folder; restore it by hand")
-        backup_files = {rel.casefold(): (size, mtime) for rel, (size, mtime) in contents.files[part].items()}
+        unreadable.extend(live.errors)
+        backup_files = {_case_key(rel): (size, mtime) for rel, (size, mtime) in contents.files[part].items()}
         folders = {"/".join(rel.split("/")[:i]) for rel in backup_files for i in range(1, rel.count("/") + 1)}
         needed += sum(size for size, _ in backup_files.values())
         for info in live.files:
-            match = backup_files.get(info.rel.casefold())
+            match = backup_files.get(_case_key(info.rel))
             if match is None:
                 removed.append((part, info.rel))
             elif info.mtime is not None and info.mtime > match[1] + NEWER_SLACK:
                 newer.append((part, info.rel))
         for link in live.links:
-            key = link.casefold()
+            key = _case_key(link)
             (dropped if key in backup_files or key in folders else kept).append((part, link))
     return RestorePlan(contents, scan.flavor, chosen, removed, newer, kept, dropped, needed,
-                       _free_space(scan.flavor.path, disk_usage), list(scan.leftovers))
+                       _free_space(scan.flavor.path, disk_usage), list(scan.leftovers), unreadable)

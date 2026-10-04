@@ -30,7 +30,8 @@ def write_fake_zip(path: Path, names: list[str], flavor_folder: str = "_retail_"
         files = [{"path": name, "size": 1, "mtime": mtime} for name in (names if listed is None else listed)]
         zf.writestr("manifest.json", json.dumps({"version": 1, "kind": "backup", "flavor": "retail",
                                                  "flavor_folder": flavor_folder, "created": "",
-                                                 "parts": ["Interface", "WTF"] if parts is None else parts, "parts_existing": [],
+                                                 "parts": ["Interface", "WTF"] if parts is None else parts,
+                                                 "parts_existing": [],
                                                  "files": files, "links": []}))
     return path
 
@@ -127,7 +128,7 @@ class OpenBackupTest(RestoreTestBase):
             "parts a string": write_fake_zip(self.tmp / "pstr.zip", ["WTF/a.txt"], parts="InterfaceWTF"),
             "mtime NaN": write_fake_zip(self.tmp / "nan.zip", ["WTF/a.txt"], mtime=float("nan")),
             "mtime infinite": write_fake_zip(self.tmp / "inf.zip", ["WTF/a.txt"], mtime=float("inf")),
-            "mtime negative": write_fake_zip(self.tmp / "neg.zip", ["WTF/a.txt"], mtime=-1.0),
+            "flavor with newline": write_fake_zip(self.tmp / "nl.zip", ["WTF/a.txt"], flavor_folder="_retail_\n"),
         }
         junk = self.tmp / "junk.zip"
         junk.write_bytes(b"not a zip")
@@ -158,6 +159,26 @@ class OpenBackupTest(RestoreTestBase):
         names = ["WTF/Account/A/Realm/Aux/x.lua", "Interface/AddOns/Con/x.lua"]
         contents = open_backup(write_fake_zip(self.tmp / "aux.zip", names))
         self.assertIn("Account/A/Realm/Aux/x.lua", contents.files["WTF"])
+
+    def test_pre_1970_file_round_trips(self):
+        # A zeroed Windows FILETIME (1601) or a wrong clock gives a negative st_mtime; our own backup must open.
+        cfg = self.wow / "_retail_" / "WTF" / "Config.wtf"
+        try:
+            os.utime(cfg, (-11644473600, -11644473600))
+        except (OSError, OverflowError, ValueError):
+            self.skipTest("this filesystem cannot hold a pre-1970 time")
+        with capture_events():
+            path = back_up(scan_flavor(self.flavor, with_stats=False), self.root, keep=10,
+                           now=datetime(2026, 10, 4, 16, 0, 0)).path
+        contents = open_backup(path)
+        self.assertLess(contents.files["WTF"]["Config.wtf"][1], 0)
+        self.assertEqual(open_backup(write_fake_zip(self.tmp / "neg.zip", ["WTF/a.txt"], mtime=-1.0))
+                         .files["WTF"]["a.txt"][1], -1.0)
+
+    def test_sharp_s_is_not_ss(self):
+        # NTFS compares with a simple upcase table: "Straße.lua" and "STRASSE.lua" are two files.
+        contents = open_backup(write_fake_zip(self.tmp / "ss.zip", ["WTF/Straße.lua", "WTF/STRASSE.lua"]))
+        self.assertEqual(set(contents.files["WTF"]), {"Straße.lua", "STRASSE.lua"})
 
     def test_sizes_of_no_parts_is_empty(self):
         self.assertEqual(open_backup(self.backup).sizes(()), {})
@@ -229,6 +250,30 @@ class PlanRestoreTest(RestoreTestBase):
         with self.assertRaisesRegex(RestoreError, "Interface"):
             plan_restore(contents, self.scan("_anniversary_"), ("Interface",))
         self.assertEqual(plan_restore(contents, self.scan("_anniversary_"), ("WTF",)).parts, ("WTF",))
+
+    def test_unknown_or_no_part_refused(self):
+        for parts in (("interface",), ("Interface", "Wtf"), ()):
+            with self.subTest(parts=parts), self.assertRaises(RestoreError):
+                plan_restore(open_backup(self.backup), self.scan(), parts)
+
+    def test_sharp_s_live_file_is_removed(self):
+        # The backup has no "Strasse.lua"; a live one is lost by the restore even though casefold() would match a
+        # backed-up "Straße.lua".
+        (self.wow / "_retail_" / "WTF" / "Straße.lua").write_text("a", encoding="utf-8")
+        with capture_events():
+            path = back_up(scan_flavor(self.flavor, with_stats=False), self.root, keep=10,
+                           now=datetime(2026, 10, 4, 16, 0, 0)).path
+        (self.wow / "_retail_" / "WTF" / "Straße.lua").rename(self.wow / "_retail_" / "WTF" / "Strasse.lua")
+        plan = plan_restore(open_backup(path), self.scan(), ("WTF",))
+        self.assertEqual(plan.removed, [("WTF", "Strasse.lua")])
+
+    def test_unreadable_folders_reported(self):
+        scan = self.scan()
+        scan.parts["WTF"].errors.append("WTF/Account: access denied")
+        scan.parts["Interface"].errors.append("Interface/AddOns/X: access denied")
+        plan = plan_restore(open_backup(self.backup), scan, ("WTF",))
+        self.assertEqual(plan.unreadable, ["WTF/Account: access denied"])
+        self.assertEqual(plan_restore(open_backup(self.backup), self.scan(), ("WTF",)).unreadable, [])
 
     def test_other_flavor_refused(self):
         with self.assertRaisesRegex(RestoreError, "own flavor"):

@@ -10,7 +10,7 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | 2 | events, settings, catalog | done | e7f75e5 | docs/events.md regenerated now (test_docs needs it); extra tests for event registry, info fields, folder named like a zip |
 | 3 | scanner | done | dbd0932 | API as planned; sizes summed without type-ignores; extra tests for chosen parts, unreadable sub-folder, part-as-link warning, broken progress |
 | 4 | backup | done | 9609ac3, 59349ac | API as planned; lstat before open (a file turned link is not followed); DOS date clamped both ends; extra tests for links, interrupt, locked file, progress stages, old mtime. Review fix 59349ac: ancestor folders lstat-checked (no reading through an addon folder turned link), O_NOFOLLOW open, vanished/linked parts not claimed in the manifest, linked parts reported, prune never deletes the new zip |
-| 5 | open backup + plan restore | done | 7127e9d, 7a2a5b5 | API as planned; stricter entry checks (duplicates over infolist, file/folder clash, files in an unclaimed part); plan_restore raises for a part not in the backup. Review fix: device names and control chars refused only on Windows (backups made on POSIX with an `Aux` character folder restore there), manifest mtimes must be finite and >= 0, `parts` must be a list, `sizes(())` is empty, plan_restore refuses a backup of another flavor; 24 tests |
+| 5 | open backup + plan restore | done | 7127e9d, 7a2a5b5 | API as planned; stricter entry checks (duplicates over infolist, file/folder clash, files in an unclaimed part); plan_restore raises for a part not in the backup. Review fix: device names and control chars refused only on Windows (backups made on POSIX with an `Aux` character folder restore there), manifest mtimes must be finite and >= 0, `parts` must be a list, `sizes(())` is empty, plan_restore refuses a backup of another flavor. Review fix 2: negative (pre-1970) manifest mtimes accepted (only NaN/inf refused), names compare with per-character `lower()` not `casefold()` (NTFS: `ß` is not `ss`), flavor folder `fullmatch`, plan_restore refuses an unknown or empty part list, `RestorePlan.unreadable` carries the chosen parts' scan errors; 29 tests |
 | 6 | run restore + journal | todo | | |
 | 7 | undo | todo | | |
 | M1 | push milestone 1 | todo | | |
@@ -56,6 +56,10 @@ every task; push after each milestone. Never merge without the user's go-ahead.
   `RuntimeError`) is a `RestoreError`. `plan_restore` keeps the chosen parts in `PARTS` order. The plan's
   `test_part_missing_from_backup_refused` only checked `parts`; it now asserts `plan_restore` raises. The spec's
   `missing_parts` field is not added: a part the backup lacks is refused instead (plan behaviour).
-- Task 5 review: `open_backup` refuses a manifest mtime that is NaN, infinite or negative (Task 6's `os.utime`
-  would fail mid-extraction) and a `parts` that is not a list; `BackupContents.sizes(())` is empty (None means all);
+- Task 5 review: `open_backup` refuses a manifest mtime that is NaN or infinite and a `parts` that is not a list; `BackupContents.sizes(())` is empty (None means all);
   `plan_restore` itself refuses a backup whose flavor folder differs (case ignored) from the scan's.
+- Task 5 review 2: negative mtimes are accepted (write_zip stores raw `st_mtime`; a pre-1970 file must not make
+  our own backup unopenable). Task 6 must treat an `os.utime` failure (`OSError`, `OverflowError`, `ValueError`) as
+  "leave the extraction time", not fail the restore. Case comparisons use `str.lower()` (closer to NTFS's simple
+  upcase table than `casefold()`). `RestorePlan.unreadable` (new, not in the plan or spec): the chosen parts'
+  `PartScan.errors`, for the restore screen (Tasks 9/10) to warn that unlisted files there are lost too.
