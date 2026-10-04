@@ -6,7 +6,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-from textual.widgets import Button, DataTable, Input, OptionList, Static
+from textual.widgets import Button, Checkbox, DataTable, Input, OptionList, Static
 
 from tests.fixtures import TuiTestCase, build_interface_tree, build_wow_tree, make_config, settle
 from wowtools.core import activity
@@ -15,7 +15,10 @@ from wowtools.core.events import capture_events
 from wowtools.tools import TOOLS
 from wowtools.tools.interface_backup import app as app_module
 from wowtools.tools.interface_backup import summary_screen as summary_module
+from wowtools.tools.interface_backup import restore_screen as restore_module
 from wowtools.tools.interface_backup.app import BackupSettingsScreen
+from wowtools.tools.interface_backup.restore import PartOutcome, RestoreError, RestoreResult, RestoreStopped
+from wowtools.tools.interface_backup.restore_screen import BackupListScreen, RestoreResultScreen, RestoreScreen
 from wowtools.tools.interface_backup.settings import load_settings
 from wowtools.tools.interface_backup.summary_screen import (BackupProgressScreen, BackupResultScreen,
                                                             BackupSummaryScreen)
@@ -377,3 +380,322 @@ class InterfaceBackupAppTest(TuiTestCase):
                 self.assertIs(app.screen, summary)
                 self.assertFalse(app.busy)
                 self.assertFalse(summary.query_one("#btn-backup", Button).disabled)
+
+    # --- restore and undo -------------------------------------------------------------------------
+    async def make_backup(self, app, pilot):
+        await pilot.press("b")
+        await settle(app, pilot)
+        await pilot.press("y")
+        await settle(app, pilot)
+        self.assertIsInstance(app.screen, BackupResultScreen)
+
+    async def open_restore(self, app, pilot, short="retail"):
+        """From the summary: e, then the newest backup of `short` in the list."""
+        await pilot.press("e")
+        await settle(app, pilot)
+        self.assertIsInstance(app.screen, BackupListScreen)
+        table = app.screen.query_one("#backups", DataTable)
+        table.move_cursor(row=next(i for i in range(table.row_count) if str(table.get_row_at(i)[1]) == short))
+        await pilot.press("enter")
+        await settle(app, pilot)
+        self.assertIsInstance(app.screen, RestoreScreen)
+        return app.screen
+
+    async def test_restore_with_warnings_then_undo(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        retail = self.root / "_retail_"
+        extra = retail / "Interface" / "AddOns" / "WeakAuras" / "wa.lua"
+        app = self.make_app()
+        with capture_events() as records:
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_summary(app, pilot)
+                await self.make_backup(app, pilot)
+                await pilot.press("r")
+                await settle(app, pilot)
+                extra.parent.mkdir(parents=True)
+                extra.write_text("wa", encoding="utf-8")
+                screen = await self.open_restore(app, pilot)
+                self.assertEqual(screen.sub_title, "Interface Backup · restore")
+                self.assertIn("Interface/AddOns/WeakAuras", str(screen.query_one("#warnings", Static).render()))
+                self.assertFalse(screen.query_one("#btn-restore", Button).disabled)
+                await pilot.press("o")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, ConfirmScreen)
+                self.assertFalse(app.screen.default_yes)
+                self.assertIs(app.screen.focused, app.screen.query_one("#no", Button))
+                self.assertTrue(any("WeakAuras" in alert for alert in app.screen.alerts))
+                await pilot.press("y")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, RestoreResultScreen)
+                self.assertEqual(app.screen.sub_title, "Interface Backup · restore result")
+                self.assertTrue(app.screen.result.ok)
+                self.assertIsNotNone(app.screen.result.safety_zip)
+                self.assertEqual(app.screen.query_one("#undo", Button).variant, ACTION_VARIANTS["revert"])
+                self.assertFalse(app.busy)
+                self.assertFalse(extra.exists())
+                await pilot.press("z")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, ConfirmScreen)
+                self.assertFalse(app.screen.default_yes)
+                await pilot.press("y")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, RestoreResultScreen)
+                self.assertTrue(app.screen.result.undo)
+                self.assertEqual(app.screen.sub_title, "Interface Backup · undo result")
+                self.assertFalse(app.screen.query("#undo"))
+                await pilot.press("r")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, BackupSummaryScreen)
+                self.assertTrue(app.screen.query_one("#btn-undo", Button).disabled)  # undone: nothing left
+        self.assertEqual(extra.read_text(encoding="utf-8"), "wa")
+        selections = [(r["data"].get("screen"), r["data"].get("control"), r["data"].get("value"))
+                      for r in records if r["event"] == "ui.selection"]
+        self.assertIn(("ibackup_summary", "restore", True), selections)
+        self.assertIn(("ibackup_restore", "restore", ["Interface", "WTF"]), selections)
+        self.assertIn(("confirm", "restore_confirm", True), selections)
+        self.assertIn(("ibackup_restore_result", "next", "undo"), selections)
+        self.assertIn(("confirm", "undo_confirm", True), selections)
+        events = [r["event"] for r in records]
+        self.assertIn("ibackup.restore_completed", events)
+        self.assertIn("ibackup.undo_completed", events)
+        self.assertTrue(activity.wait_idle(0))
+
+    async def test_restore_wtf_only(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        retail = self.root / "_retail_"
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_summary(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            (retail / "Interface" / "keep.txt").write_text("k", encoding="utf-8")
+            (retail / "WTF" / "Config.wtf").write_bytes(b"mine")
+            screen = await self.open_restore(app, pilot)
+            self.assertIn("keep.txt", str(screen.query_one("#warnings", Static).render()))
+            screen.query_one("#part-Interface", Checkbox).value = False
+            await settle(app, pilot)
+            self.assertNotIn("keep.txt", str(screen.query_one("#warnings", Static).render()))
+            self.assertEqual(screen.plan.parts, ("WTF",))
+            await pilot.press("o")
+            await settle(app, pilot)
+            self.assertIn("Replace WTF of", app.screen.title_text)
+            await pilot.press("y")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, RestoreResultScreen)
+            self.assertEqual([p.part for p in app.screen.result.parts], ["WTF"])
+        self.assertTrue((retail / "Interface" / "keep.txt").exists())
+        self.assertEqual((retail / "WTF" / "Config.wtf").read_bytes(), b"SET a 1\n")
+
+    async def test_no_part_ticked_disables_restore(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_summary(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            screen = await self.open_restore(app, pilot)
+            for part in ("Interface", "WTF"):
+                screen.query_one(f"#part-{part}", Checkbox).value = False
+            await settle(app, pilot)
+            self.assertTrue(screen.query_one("#btn-restore", Button).disabled)
+            self.assertIsNone(screen.plan)
+            await pilot.press("o")
+            await settle(app, pilot)
+            self.assertIs(app.screen, screen)
+
+    async def test_part_missing_from_backup_cannot_be_ticked(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_summary(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            screen = await self.open_restore(app, pilot, short="anniversary")  # WTF only
+            box = screen.query_one("#part-Interface", Checkbox)
+            self.assertTrue(box.disabled)
+            self.assertFalse(box.value)
+            self.assertFalse(screen.query_one("#part-WTF", Checkbox).disabled)
+            self.assertEqual(screen.plan.parts, ("WTF",))
+
+    async def test_leftover_blocks_the_restore(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_summary(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            (self.root / "_retail_" / "Interface.restoring").mkdir()
+            screen = await self.open_restore(app, pilot)
+            self.assertTrue(screen.query_one("#btn-restore", Button).disabled)
+            self.assertTrue(screen.query_one("#part-WTF", Checkbox).disabled)
+            self.assertIn("interrupted restore", str(screen.query_one("#warnings", Static).render()))
+            await pilot.press("o")
+            await settle(app, pilot)
+            self.assertIs(app.screen, screen)
+
+    async def test_restore_list_escape_returns_to_summary(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_summary(app, pilot)
+            await pilot.press("e")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, BackupListScreen)
+            self.assertEqual(app.screen.sub_title, "Interface Backup · choose a backup")
+            self.assertIn("No backups", str(app.screen.query_one("#list-title", Static).render()))
+            await pilot.press("escape")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, BackupSummaryScreen)
+
+    async def test_restore_screen_back_and_decline_change_nothing(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        extra = self.root / "_retail_" / "Interface" / "new.lua"
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_summary(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            extra.write_text("x", encoding="utf-8")
+            await self.open_restore(app, pilot)
+            await pilot.press("b")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, BackupSummaryScreen)
+            await self.open_restore(app, pilot)
+            await pilot.press("o")
+            await settle(app, pilot)
+            await pilot.press("n")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, BackupSummaryScreen)
+        self.assertTrue(extra.exists())
+        self.assertFalse(list((self.bk / "interface-backup").glob("pre-restore-*.zip")))
+
+    async def test_list_and_plan_built_in_workers(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        threads = []
+
+        def spy(real):
+            def call(*args, **kwargs):
+                threads.append((real.__name__, threading.current_thread() is threading.main_thread()))
+                return real(*args, **kwargs)
+            return call
+
+        app = self.make_app()
+        with patch.object(restore_module, "list_backups", spy(restore_module.list_backups)), \
+                patch.object(restore_module, "open_backup", spy(restore_module.open_backup)), \
+                patch.object(restore_module, "scan_flavor", spy(restore_module.scan_flavor)), \
+                patch.object(restore_module, "plan_restore", spy(restore_module.plan_restore)):
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_summary(app, pilot)
+                await self.make_backup(app, pilot)
+                await pilot.press("r")
+                await settle(app, pilot)
+                await self.open_restore(app, pilot)
+        self.assertEqual({name for name, _ in threads}, {"list_backups", "open_backup", "scan_flavor", "plan_restore"})
+        self.assertFalse(any(on_main for _, on_main in threads), threads)
+
+    async def test_wow_running_is_an_alert_on_restore(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app(running=["Wow.exe"])
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_summary(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            await self.open_restore(app, pilot)
+            await pilot.press("o")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertTrue(any("Wow.exe" in alert for alert in app.screen.alerts))
+            self.assertFalse(app.screen.default_yes)
+
+    async def test_refused_restore_is_notified(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+
+        def refuse(*args, **kwargs):
+            raise RestoreError("the backup did not verify, nothing was changed")
+
+        app = self.make_app()
+        with patch.object(summary_module, "restore", refuse):
+            async with app.run_test(size=SIZE) as pilot:
+                summary = await self.open_summary(app, pilot)
+                await self.make_backup(app, pilot)
+                await pilot.press("r")
+                await settle(app, pilot)
+                await self.open_restore(app, pilot)
+                await pilot.press("o")
+                await settle(app, pilot)
+                await pilot.press("y")
+                await settle(app, pilot)
+                self.assertIs(app.screen, summary)
+                self.assertFalse(app.busy)
+
+    async def test_stopped_restore_shows_what_was_done(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+
+        def stop(plan, **kwargs):
+            result = RestoreResult(plan.flavor, plan.contents.path, [PartOutcome("Interface", "rolled_back", "locked")])
+            raise RestoreStopped("KeyboardInterrupt", result)
+
+        app = self.make_app()
+        with patch.object(summary_module, "restore", stop):
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_summary(app, pilot)
+                await self.make_backup(app, pilot)
+                await pilot.press("r")
+                await settle(app, pilot)
+                await self.open_restore(app, pilot)
+                await pilot.press("o")
+                await settle(app, pilot)
+                await pilot.press("y")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, RestoreResultScreen)
+                self.assertFalse(app.busy)
+                self.assertFalse(app.screen.query("#undo"))  # nothing changed: nothing to undo
+                await pilot.press("z")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, RestoreResultScreen)
+                await pilot.press("t")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, ToolMenuScreen)
+
+    async def test_undo_from_summary_starts_on_no(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        extra = self.root / "_retail_" / "WTF" / "new.wtf"
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_summary(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            extra.write_text("x", encoding="utf-8")
+            await self.open_restore(app, pilot)
+            await pilot.press("o")
+            await settle(app, pilot)
+            await pilot.press("y")
+            await settle(app, pilot)
+            self.assertFalse(extra.exists())
+            await pilot.press("r")
+            await settle(app, pilot)
+            summary = app.screen
+            self.assertIsInstance(summary, BackupSummaryScreen)
+            self.assertFalse(summary.query_one("#btn-undo", Button).disabled)
+            await pilot.press("z")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertIs(app.screen.focused, app.screen.query_one("#no", Button))
+            self.assertIn("Undo the restore from", app.screen.title_text)
+            await pilot.press("enter")  # No
+            await settle(app, pilot)
+            self.assertIs(app.screen, summary)
+            self.assertFalse(extra.exists())
+            await pilot.press("z")
+            await settle(app, pilot)
+            await pilot.press("y")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, RestoreResultScreen)
+        self.assertEqual(extra.read_text(encoding="utf-8"), "x")

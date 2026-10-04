@@ -1,5 +1,6 @@
 """The summary of the chosen flavors (what Interface and WTF hold, existing backups) with Back up, Restore and
-Undo, plus the progress and result screens of a backup."""
+Undo, plus the progress and result screens of a backup. Restore and Undo run from here too (their screens are in
+restore_screen.py)."""
 from __future__ import annotations
 
 import shutil
@@ -18,17 +19,21 @@ from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor, WowInstall
+from wowtools.core.journal import Journal
 from wowtools.core.paths import to_stored
 from wowtools.core.process import wow_check_for
 from wowtools.tools.interface_backup.backup import BackupOutcome, back_up_all
 from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups
-from wowtools.tools.interface_backup.journal import latest_undoable
+from wowtools.tools.interface_backup.journal import latest_undoable, read_restore_journal
 from wowtools.tools.interface_backup.report import (BACKUP_RESULT_COLUMNS, STAGE_TITLES, SUMMARY_COLUMNS,
                                                     backup_confirm, backup_result_rows, notices, plural,
-                                                    summary_rows)
+                                                    restore_confirm, summary_rows, undo_confirm)
+from wowtools.tools.interface_backup.restore import RestoreError, RestorePlan, RestoreResult, RestoreStopped, restore
+from wowtools.tools.interface_backup.restore_screen import BackupListScreen, RestoreResultScreen, RestoreScreen
 from wowtools.tools.interface_backup.scanner import CHEAP_STATS, FlavorScan, scan_flavors
 from wowtools.tools.interface_backup.settings import (load_settings, resolve_backup_root, resolve_journal_dir,
                                                       validate_backup_dir)
+from wowtools.tools.interface_backup.undo import undo_restore
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.dialogs import ConfirmScreen, ProgressScreen, theme_colour
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
@@ -51,7 +56,7 @@ def free_bytes(path: Path | None, disk_usage: Callable = shutil.disk_usage) -> i
 
 
 class BackupProgressScreen(ProgressScreen):
-    """Shown while a backup (and, from Task 10, a restore or undo) runs."""
+    """Shown while a backup, a restore or an undo runs."""
 
     ID_PREFIX = "ibackup"
     STAGE_TITLES = STAGE_TITLES
@@ -155,7 +160,9 @@ class BackupSummaryScreen(Screen[str]):
         self.undoable: Path | None = None  # the newest undoable restore journal, found by the scan worker
         self._scanning = False
         self._checking = False  # the running-WoW check is in its worker
-        self._then_restore = False  # Restore (e) on the result screen: open it once the rescan is done
+        # What a result screen asked for once its rescan is done: ("restore", None) for Restore (e), or ("undo",
+        # journal) for Undo (z), which undoes that journal only if the scan still finds it the undoable one.
+        self._after_scan: tuple[str, Path | None] | None = None
         self._progress_screen: ProgressScreen | None = None
 
     # --- layout ------------------------------------------------------------------------------------
@@ -251,7 +258,7 @@ class BackupSummaryScreen(Screen[str]):
 
     def _scan_failed(self, message: str) -> None:
         self._scanning = False
-        self._then_restore = False
+        self._after_scan = None
         if not self.is_attached:
             return
         self.query_one("#scan-box").display = False
@@ -282,9 +289,16 @@ class BackupSummaryScreen(Screen[str]):
         self._refresh_buttons()
         if not self.query_one("#btn-backup", Button).disabled:
             self.query_one("#btn-backup", Button).focus()
-        if self._then_restore:
-            self._then_restore = False
+        pending, self._after_scan = self._after_scan, None
+        if pending is None:
+            return
+        what, journal = pending
+        if what == "restore":
             self.action_restore()
+        elif journal is not None and journal == undoable:
+            self.action_undo()
+        else:
+            self.notify("That restore can no longer be undone.", severity="warning")
 
     # --- running-WoW check (PowerShell/tasklist can take seconds: never on the UI thread) ---------------
     def run_preflight(self, check: WowCheck, then: Callable[[list[str] | None, Any], None],
@@ -409,34 +423,132 @@ class BackupSummaryScreen(Screen[str]):
         self.job_failed(exc)
 
     def job_failed(self, exc: Exception) -> None:
-        """An unexpected error out of a job (back_up_all never raises BackupError). Task 10 extends it for
-        restores (RestoreStopped shows its partial result)."""
-        log_exception("ibackup.ui", exc)
-        self.notify(f"{type(exc).__name__}: {exc}", title="Stopped", severity="error", timeout=20)
+        """An error out of a job: a refused restore or undo (RestoreError, nothing changed), one that stopped
+        part-way (RestoreStopped: its result screen shows what was done) or anything unexpected. Then a rescan."""
+        if isinstance(exc, RestoreError):
+            self.notify(str(exc), title="Nothing was changed", severity="error", timeout=20)
+        elif isinstance(exc, RestoreStopped):
+            what = "Undo" if exc.result.undo else "Restore"
+            changed = any(p.kind != "rolled_back" for p in exc.result.parts)
+            hint = (" Undo last restore (z) puts back what was replaced." if changed and not exc.result.undo
+                    else "")
+            self.notify(f"{exc}{hint}", title=f"{what} stopped", severity="error", timeout=20)
+            self.app.push_screen(RestoreResultScreen(exc.result),
+                                 lambda choice: self._after_restore_result(choice, exc.result))
+        else:
+            log_exception("ibackup.ui", exc)
+            self.notify(f"{type(exc).__name__}: {exc}", title="Stopped", severity="error", timeout=20)
         self.action_rescan()
 
     def _after_result(self, choice: str | None) -> None:
         if choice in ("flavors", "tools", "quit"):
             self.dismiss(choice)
             return
-        self._then_restore = choice == "restore"
+        self._after_scan = ("restore", None) if choice == "restore" else None
         self.action_rescan()
 
-    # --- restore and undo (Task 10) ------------------------------------------------------------
+    # --- restore ------------------------------------------------------------------------------
     def action_restore(self) -> None:
         if not self.idle:
             return
         log_event("ui.selection", screen="ibackup_summary", control="restore", value=True)
-        self.notify("Restore is not available yet.")
+        self.app.push_screen(BackupListScreen(self._root(), self.flavors), self._backup_chosen)
 
+    def _backup_chosen(self, info: BackupInfo | None) -> None:
+        if info is None or not self.idle:
+            return
+        flavor = next((f for f in self.flavors if f.short_name == info.flavor_short), None)
+        if flavor is None:  # the list holds only the chosen flavors' backups
+            self.notify(f"No flavor here matches {info.flavor_short}.", severity="error")
+            return
+        self.app.push_screen(RestoreScreen(info, flavor, disk_usage=self.disk_usage),
+                             lambda plan: self._restore_chosen(plan, info))
+
+    def _restore_chosen(self, plan: RestorePlan | None, info: BackupInfo) -> None:
+        if plan is None or not self.idle:
+            return
+        check = self.wow_check or wow_check_for([plan.flavor])
+        self.run_preflight(check, lambda running, _extra: self._confirm_restore(plan, info, running))
+
+    def _confirm_restore(self, plan: RestorePlan, info: BackupInfo, running: list[str] | None) -> None:
+        title, body, alerts = restore_confirm(plan, info.when, running)
+        self.app.push_screen(ConfirmScreen(title, body, alerts, default_yes=False),
+                             lambda ok: self._restore_confirmed(ok, plan))
+
+    def _restore_confirmed(self, ok: bool | None, plan: RestorePlan) -> None:
+        log_event("ui.selection", screen="confirm", control="restore_confirm", value=bool(ok))
+        self.settings = load_settings(self.tool_cfg)
+        root, journal_dir, keep = self._root(), self._journal_dir(), self.settings.keep_journals
+        if not ok or not self.idle:
+            return
+        problem = self._folder_problem()
+        if problem or root is None or journal_dir is None:
+            self.notify(f"{problem or 'No backup folder.'} Fix the folder in settings (s).",
+                        title="Backup folder not allowed", severity="error", timeout=15)
+            return
+
+        def job(progress: Callable, on_flavor: Callable) -> RestoreResult:
+            on_flavor(plan.flavor.display_name)
+            return restore(plan, root=root, journal_dir=journal_dir, keep_journals=keep, progress=progress)
+
+        self.run_job(BackupProgressScreen("verify"), job, self._restore_done)
+
+    def _restore_done(self, result: RestoreResult) -> None:
+        self.app.push_screen(RestoreResultScreen(result), lambda choice: self._after_restore_result(choice, result))
+
+    def _after_restore_result(self, choice: str | None, result: RestoreResult) -> None:
+        if choice == "undo":
+            # Undo this restore: once the rescan has found the newest undoable journal, and only if it is this one.
+            self._after_scan = ("undo", result.journal_path)
+            self.action_rescan()
+            return
+        self._after_result(choice)
+
+    # --- undo ----------------------------------------------------------------------------------
     def action_undo(self) -> None:
         if not self.idle:
             return
         log_event("ui.selection", screen="ibackup_summary", control="undo", value=True)
-        if self.undoable is None:
+        path = self.undoable
+        if path is None:
             self.notify("Nothing to undo.")
             return
-        self.notify("Undo is not available yet.")
+        read: dict[str, Journal | Exception] = {}
+
+        def check() -> list[str] | None:
+            # The journal is read in the worker too: it names the flavor whose WoW process matters.
+            try:
+                read["journal"] = journal = read_restore_journal(path)
+            except (OSError, ValueError) as exc:
+                read["journal"] = exc
+                return None
+            if self.wow_check is not None:
+                return self.wow_check()
+            folder = journal.header.get("flavor")
+            return wow_check_for([folder] if isinstance(folder, str) and folder else self.flavors)()
+
+        self.run_preflight(check, lambda running, _extra: self._confirm_undo(path, read.get("journal"), running))
+
+    def _confirm_undo(self, path: Path, journal: Journal | Exception | None, running: list[str] | None) -> None:
+        if not isinstance(journal, Journal):
+            self.notify(f"The restore journal could not be read: {journal}", title="Undo not possible",
+                        severity="error", timeout=15)
+            return
+        title, body = undo_confirm(journal)
+        alerts = ((f"WoW appears to be running ({', '.join(running)}). Close it first: an open game can lock "
+                   "Interface files and rewrites WTF when you log out."),) if running else ()
+        self.app.push_screen(ConfirmScreen(title, body, alerts, default_yes=False),
+                             lambda ok: self._undo_confirmed(ok, path))
+
+    def _undo_confirmed(self, ok: bool | None, path: Path) -> None:
+        log_event("ui.selection", screen="confirm", control="undo_confirm", value=bool(ok))
+        self.settings = load_settings(self.tool_cfg)
+        wow, root = self.cfg.wow_path, self._root()
+        if not ok or not self.idle or wow is None or root is None:
+            return
+        self.run_job(BackupProgressScreen("verify"),
+                     lambda progress, _on_flavor: undo_restore(path, wow_root=wow, root=root, progress=progress),
+                     self._restore_done)
 
     # --- leaving -------------------------------------------------------------------------------
     def action_leave(self, choice: str) -> None:
