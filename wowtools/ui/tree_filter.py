@@ -1,30 +1,34 @@
 """The tree filter every tree screen shares (spec D7, D8): a "Filter" input in the left pane, `/` to reach it from
-anywhere on the screen, a case-insensitive substring match on the labels of the screen's model (never on the tree's
-nodes: children that load on expand must match too), and what select all / none and the summaries need from it.
+anywhere on the screen but a text box, a case-insensitive substring match on the labels of the screen's model (never
+on the tree's nodes: children that load on expand must match too), and what select all / none and the summaries need
+from it.
 
-The filter is a view. Typing re-filters through the screen's debounced rebuild; `a` / `n` act on the keys it shows
-(the `filter_keys()` hook of `ui.review.TickActions`); ticks it hides stay as they are and still count, and
-`hidden_ticked_note()` says how many. Esc in the input clears it and goes back to the tree, Enter goes back to the
-tree keeping it, → at the end of the text goes to the tree as well; Space types a space (TickActions)."""
+The filter is a view. Typing re-filters through the screen's debounced rebuild; `a` / `n` and Space on a group act
+on the keys it shows (the `filter_keys()` hook of `ui.review.TickActions`); ticks it hides stay as they are and still
+count, and `hidden_ticked_note()` says how many. Esc in the input clears it and goes back to the tree, Enter goes
+back to the tree keeping it, → at the end of the text goes to the tree as well; Space types a space (TickActions).
+`FilterBox` is the box alone (a read-only tree), `TreeFilter` adds the ticks."""
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Hashable, Iterable, Sequence
 from typing import ClassVar, Generic, TypeVar
 
+from textual.actions import SkipAction
 from textual.binding import Binding
 from textual.widgets import Input
 
 from wowtools.core.events import log_event
 from wowtools.core.text import plural
 
-__all__ = ["FILTER_BINDINGS", "FILTER_HINT", "FILTER_ID", "FILTER_PLACEHOLDER", "FilterInput", "ModelFilter",
-           "TextFilter", "TreeFilter", "hidden_by_filter"]
+__all__ = ["FILTER_BINDINGS", "FILTER_HINT", "FILTER_ID", "FILTER_PLACEHOLDER", "FilterBox", "FilterInput",
+           "ModelFilter", "TextFilter", "TreeFilter", "hidden_by_filter"]
 
 FILTER_ID = "tree-filter"
 FILTER_PLACEHOLDER = "Filter (/)"
 FILTER_HINT = "/ filter · "  # a screen's hint names it right before TREE_HINT
-# Every tree screen with a filter binds this (TreeFilter's action).
-FILTER_BINDINGS = [Binding("slash", "focus_filter", "Filter", show=False)]
+# Every tree screen with a filter binds this (FilterBox's action). Priority, so `/` leaves another control that
+# would take the key first (an integer box would ring the bell); the action skips it to a text box.
+FILTER_BINDINGS = [Binding("slash", "focus_filter", "Filter", show=False, priority=True)]
 
 Node = TypeVar("Node")
 
@@ -123,17 +127,14 @@ class FilterInput(Input):
         super().action_cursor_right(select)
 
 
-class TreeFilter:
-    """Mixin for a tree screen with a `FilterInput` in its left pane (`FILTER_SELECTOR`), placed before the
-    review mixins (`class X(TreeFilter, ReviewBase, Screen)`) so its `filter_keys()` is the one `a` / `n` use. Bind
-    FILTER_BINDINGS, name FILTER_HINT in the hint.
+class FilterBox:
+    """Mixin for a tree screen with a `FilterInput` in its left pane (`FILTER_SELECTOR`): the box, `/`, Esc and
+    Enter, the text and `model_filter(...)`. Enough for a read-only tree (IB's Restore); a screen with ticks takes
+    `TreeFilter`, which adds what select all / none, Space and the summaries need. Bind FILTER_BINDINGS, name
+    FILTER_HINT in the hint, build the tree with `model_filter(...)`.
 
-    The screen supplies `filter_texts(key)`: the labels a tick key's item is matched on, its group's first (the
-    flavor, the account, the addon, the file; a key shows when any of them holds the text), and builds its tree
-    with `model_filter(...)` in `_rebuild()`. It may override `filter_changed()` (the default reschedules the
-    rebuild) and, where the keys a node shows are not simply the matching items, `filter_keys()`. It relies on
-    ReviewBase for the rest: TREE_SELECTOR, LOG_SCREEN, all_tick_keys(), tick_model(), _schedule_rebuild() and
-    action_focus_tree()."""
+    The screen supplies LOG_SCREEN (the `screen` of the filter's ui events), action_focus_tree() (`TwoPaneFocus`)
+    and filter_changed() (rebuild the tree; `TreeFilter` reschedules ReviewBase's debounced rebuild)."""
 
     FILTER_SELECTOR: ClassVar[str] = f"#{FILTER_ID}"
     _text_filter: TextFilter | None = None
@@ -148,8 +149,76 @@ class TreeFilter:
     def filtering(self) -> bool:
         return self.text_filter.active
 
+    def model_filter(self, roots: Iterable[Node], children: Callable[[Node], Iterable[Node]],
+                     texts: Callable[[Node], Iterable[str]],
+                     key: Callable[[Node], Hashable] = lambda node: node) -> ModelFilter[Node]:
+        """What the current filter keeps and opens of the screen's model (see ModelFilter)."""
+        return ModelFilter(self.text_filter, roots, children, texts, key)
+
+    # --- the input -----------------------------------------------------------------------------
+    def filter_input(self) -> Input:
+        return self.query_one(self.FILTER_SELECTOR, Input)
+
+    def filter_changed(self) -> None:
+        """The filter text changed: rebuild the tree (fold it into one rebuild while the user types)."""
+        raise NotImplementedError
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input is not self.filter_input():
+            return
+        event.stop()
+        if event.value == self.text_filter.text:
+            return
+        self.text_filter.text = event.value
+        self.filter_changed()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input is not self.filter_input():
+            return
+        event.stop()
+        log_event("ui.selection", screen=self.LOG_SCREEN, control="filter", value=self.text_filter.text.strip())
+        self.action_focus_tree()
+
+    def action_focus_filter(self) -> None:
+        """`/` (a priority binding): to the filter box from anywhere on the screen, except from a text box, the
+        filter's own included, where `/` is typed (an integer or number box cannot hold it, so `/` leaves it)."""
+        focused = self.focused
+        if isinstance(focused, Input) and focused.type == "text":
+            raise SkipAction
+        field = self.filter_input()
+        if not field.display or field.disabled:
+            raise SkipAction
+        field.focus()
+
+    def clear_filter(self) -> None:
+        """Esc in the filter box: empty it (the tree shows everything again) and go back to the tree."""
+        field = self.filter_input()
+        if field.value:
+            log_event("ui.selection", screen=self.LOG_SCREEN, control="filter", value="")
+            field.value = ""
+        self.action_focus_tree()
+
+
+class TreeFilter(FilterBox):
+    """`FilterBox` for a review screen with ticks, placed before the review mixins
+    (`class X(TreeFilter, ReviewBase, Screen)`) so its `filter_keys()` is the one `a` / `n` and Space use: Space on
+    a group or the root ticks only the keys the filter shows (`TickActions.action_toggle`), so `node_tick_keys()`
+    need not narrow them itself.
+
+    The screen supplies `filter_texts(key)`: the labels a tick key's item is matched on, its group's first (the
+    flavor, the account, the addon, the file; a key shows when any of them holds the text), and `all_tick_keys()`:
+    every key of the model, never the filtered tree's (TickActions' default reads the root node, which a filtered
+    rebuild narrows, so the hidden ticks would never be counted: TreeFilter makes it abstract). It may override
+    `filter_changed()` (the default reschedules the rebuild) and, where the keys a node shows are not simply the
+    matching items, `filter_keys()`. It relies on ReviewBase for the rest: TREE_SELECTOR, LOG_SCREEN, tick_model(),
+    _schedule_rebuild() and action_focus_tree()."""
+
     def filter_texts(self, key: Hashable) -> Sequence[str]:
         """The labels this tick key's item is matched on: its groups' and its own."""
+        raise NotImplementedError
+
+    def all_tick_keys(self) -> Collection[Hashable]:
+        """Every key of the screen's model, filtered or not (never worked out from the tree the filter built)."""
         raise NotImplementedError
 
     def filter_keys(self, keys: Collection[Hashable]) -> Collection[Hashable]:
@@ -157,12 +226,6 @@ class TreeFilter:
         if not self.filtering:
             return keys
         return [key for key in keys if self.text_filter.path_matches(self.filter_texts(key))]
-
-    def model_filter(self, roots: Iterable[Node], children: Callable[[Node], Iterable[Node]],
-                     texts: Callable[[Node], Iterable[str]],
-                     key: Callable[[Node], Hashable] = lambda node: node) -> ModelFilter[Node]:
-        """What the current filter keeps and opens of the screen's model (see ModelFilter)."""
-        return ModelFilter(self.text_filter, roots, children, texts, key)
 
     def hidden_ticked_count(self) -> int:
         """How many ticked items the filter hides: they stay ticked and the run takes them."""
@@ -176,37 +239,6 @@ class TreeFilter:
         """"N selected items are hidden by the filter", or "" when it hides none: for the summary and confirms."""
         return hidden_by_filter(self.hidden_ticked_count())
 
-    # --- the input -----------------------------------------------------------------------------
     def filter_changed(self) -> None:
         """The filter text changed: rebuild the tree (folded into one rebuild while the user types)."""
         self._schedule_rebuild()
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id != FILTER_ID:
-            return
-        event.stop()
-        if event.value == self.text_filter.text:
-            return
-        self.text_filter.text = event.value
-        self.filter_changed()
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id != FILTER_ID:
-            return
-        event.stop()
-        log_event("ui.selection", screen=self.LOG_SCREEN, control="filter", value=self.text_filter.text.strip())
-        self.action_focus_tree()
-
-    def action_focus_filter(self) -> None:
-        """`/`: to the filter box, from anywhere on the screen."""
-        field = self.query_one(self.FILTER_SELECTOR, Input)
-        if field.display and not field.disabled:
-            field.focus()
-
-    def clear_filter(self) -> None:
-        """Esc in the filter box: empty it (the tree shows everything again) and go back to the tree."""
-        field = self.query_one(self.FILTER_SELECTOR, Input)
-        if field.value:
-            log_event("ui.selection", screen=self.LOG_SCREEN, control="filter", value="")
-            field.value = ""
-        self.action_focus_tree()

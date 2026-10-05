@@ -115,7 +115,7 @@ class StructureTest(unittest.TestCase):
     def test_tree_filter_lives_in_ui(self):
         """The tree filter (spec D7) is wowtools/ui/tree_filter.py's: no tool defines its own match, model filter,
         filter box or `/` action."""
-        names = ("TextFilter", "ModelFilter", "FilterInput", "TreeFilter")
+        names = ("TextFilter", "ModelFilter", "FilterInput", "FilterBox", "TreeFilter")
         classes = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
                    if isinstance(node, ast.ClassDef) and node.name in names}
         self.assertEqual(classes, {("wowtools/ui/tree_filter.py", n) for n in names})
@@ -123,6 +123,12 @@ class StructureTest(unittest.TestCase):
                   "hidden_ticked_note"}
         where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & shared}
         self.assertEqual(where, {("wowtools/ui/tree_filter.py", n) for n in shared})
+        # A tick screen with the filter lists every key of its model: the default reads the filtered tree's root.
+        forgot = [(rel(p), node.name) for p in modules("wowtools/tools") for node in ast.walk(tree(p))
+                  if isinstance(node, ast.ClassDef)
+                  and any(isinstance(b, ast.Name) and b.id == "TreeFilter" for b in node.bases)
+                  and "all_tick_keys" not in {f.name for f in node.body if isinstance(f, ast.FunctionDef)}]
+        self.assertEqual(forgot, [])
 
     def test_shared_dialogs_live_in_ui(self):
         from wowtools.tools.screenshot_organizer.review_screen import ShotProgressScreen

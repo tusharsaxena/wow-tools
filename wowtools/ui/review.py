@@ -109,8 +109,8 @@ class TickActions:
     """Space and a / n on a review tree (bind them with `space` priority, `a` and `n`). Space ticks or unticks the
     highlighted node, presses a focused button, toggles a focused checkbox, or types a space into a focused input
     (Space is priority-bound, so an input would never get it). Select all / none act on `shown_tick_keys()` only:
-    the screen's keys (`all_tick_keys()`) narrowed by `filter_keys()`, the one place a filter hooks in; ticks hidden
-    by it stay as they are.
+    the screen's keys (`all_tick_keys()`) narrowed by `filter_keys()`, the one place a filter hooks in; Space narrows
+    a node's keys by it too (a group ticks only what the filter shows). Ticks hidden by it stay as they are.
 
     A screen supplies TREE_SELECTOR, LOG_SCREEN (the `screen` of its ui events), tick_model(), node_tick_keys(node),
     tick_log_key(node, keys) and _refresh_labels(node=None); and, if it needs them, all_tick_keys(),
@@ -174,7 +174,7 @@ class TickActions:
         node = self.query_one(self.TREE_SELECTOR, Tree).cursor_node
         if node is None or node.data is None:
             return
-        keys = list(self.node_tick_keys(node))
+        keys = list(self.filter_keys(self.node_tick_keys(node)))  # a group: only what the filter shows
         if not keys:
             return
         checked = self.tick_model().toggle(keys)

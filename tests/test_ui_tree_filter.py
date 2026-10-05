@@ -15,10 +15,10 @@ from textual.widgets import Button, Input, ProgressBar, Static, Tree
 
 from tests.fixtures import TuiTestCase, settle
 from wowtools.core.events import capture_events
-from wowtools.ui.dialogs import TREE_BINDINGS, relabel_branch, two_pane_css
+from wowtools.ui.dialogs import TREE_BINDINGS, TwoPaneFocus, relabel_branch, two_pane_css
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
-from wowtools.ui.tree_filter import (FILTER_BINDINGS, FILTER_ID, FilterInput, ModelFilter, TextFilter, TreeFilter,
-                                     hidden_by_filter)
+from wowtools.ui.tree_filter import (FILTER_BINDINGS, FILTER_ID, FilterBox, FilterInput, ModelFilter, TextFilter,
+                                     TreeFilter, hidden_by_filter)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, action_button
 
 MODEL = {"Alpha": ["apple", "apricot"], "Beta": ["Banana", "cherry"]}
@@ -194,9 +194,9 @@ class ToyFilterReview(TreeFilter, ReviewBase, Screen[str]):
     def node_tick_keys(self, node):
         kind = node.data[0]
         if kind == "root":
-            return self.filter_keys(KEYS)
-        if kind == "group":
-            return self.filter_keys([k for k in KEYS if k[0] == node.data[1]])
+            return list(KEYS)
+        if kind == "group":  # every item: Space narrows a group's keys to what the filter shows (TickActions)
+            return [k for k in KEYS if k[0] == node.data[1]]
         return [node.data[1]]
 
     def filter_texts(self, key):
@@ -218,6 +218,78 @@ class ToyFilterReview(TreeFilter, ReviewBase, Screen[str]):
         return self.tick_model().ticked_among(KEYS)
 
 
+class SearchIdReview(ToyFilterReview):
+    """The toy with its filter box under another id (the Ace3 review keeps `#search`)."""
+
+    FILTER_SELECTOR = "#search"
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(id="body"):
+            with Vertical(id="filters"):
+                yield Ka0sCheckbox("Box", False, id="box", compact=True)
+                yield Input(id="max-age", type="integer", compact=True)
+                yield Input(id="note", compact=True)
+                yield FilterInput(id="search")
+                with ButtonRow(id="actions", wrap=False):
+                    yield action_button("Go", "overwrite", id="btn-go")
+            with Vertical(id="scan-box"):
+                yield ProgressBar(id="scan-progress", show_eta=False)
+                yield Static("", id="scan-label")
+            yield ReviewTree(Text("root"), id="toy")
+        yield Static("", id="summary")
+
+
+class RootKeysReview(TreeFilter, ReviewBase):
+    """A tick screen that forgot `all_tick_keys()` (TickActions' default would read the filtered tree's root)."""
+
+    def node_tick_keys(self, node):
+        return []
+
+
+class ToyFilterView(FilterBox, TwoPaneFocus, Screen[str]):
+    """A read-only tree (IB's Restore): the filter box without ticks, LOG_SCREEN, or ReviewBase."""
+
+    TREE_SELECTOR = "#view"
+    LOG_SCREEN = "toy_view"
+    DEFAULT_CSS = two_pane_css("ToyFilterView", "#view")
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("left", "focus_filters", "Filters", show=False),
+        Binding("right", "focus_tree", "Tree", show=False),
+        *FILTER_BINDINGS,
+        *TREE_BINDINGS,
+    ]
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(id="body"):
+            with Vertical(id="filters"):
+                yield FilterInput()
+            yield Tree(Text("root"), id="view")
+        yield Static("", id="summary")
+
+    def on_mount(self) -> None:
+        self.filter_changed()
+        self.query_one("#view", Tree).focus()
+
+    def first_filter(self):
+        return self.filter_input()
+
+    def filter_changed(self) -> None:
+        kept = self.model_filter(list(MODEL), children, texts)
+        tree = self.query_one("#view", Tree)
+        tree.clear()
+        for group in MODEL:
+            if kept.shows(group):
+                node = tree.root.add(group, expand=True)
+                for key in children(group):
+                    if kept.shows(key):
+                        node.add_leaf(key[1])
+        tree.root.expand()
+
+    def shown_labels(self) -> list[str]:
+        tree = self.query_one("#view", Tree)
+        return [str(n.label) for group in tree.root.children for n in (group, *group.children)]
+
+
 class Host(App):
     def __init__(self, screen: Screen) -> None:
         super().__init__()
@@ -237,8 +309,8 @@ def summary(screen: Screen) -> str:
 
 
 class TreeFilterTest(TuiTestCase):
-    async def run_toy(self, test, stores_ticked: bool = False) -> None:
-        app = Host(ToyFilterReview(stores_ticked=stores_ticked))
+    async def run_toy(self, test, stores_ticked: bool = False, screen: type[Screen] = ToyFilterReview) -> None:
+        app = Host(screen(stores_ticked=stores_ticked) if issubclass(screen, ToyFilterReview) else screen())
         async with app.run_test(size=(120, 30)) as pilot:
             await pilot.pause()
             await test(app, app.review, pilot)
@@ -399,3 +471,66 @@ class TreeFilterTest(TuiTestCase):
             await pilot.press("slash")
             self.assertIs(review.focused, review.query_one("#toy", Tree))
         await self.run_toy(test)
+
+    async def test_a_filter_box_under_another_id(self):
+        async def test(app, review, pilot):
+            await self.type_filter(app, review, pilot, "ban")
+            field = review.query_one("#search", Input)
+            self.assertIs(review.focused, field)
+            self.assertEqual(review.text_filter.text, "ban")
+            self.assertEqual(review.shown_labels(), ["Beta", "Banana"])
+            with capture_events() as records:
+                await pilot.press("enter")
+            self.assertIs(review.focused, review.query_one("#toy", Tree))
+            self.assertEqual([r["data"]["value"] for r in records if r["event"] == "ui.selection"], ["ban"])
+            await pilot.press("slash", "escape")
+            await settle(app, pilot)
+            self.assertEqual((field.value, review.shown_labels()), ("", ["Alpha", "Beta"]))
+        await self.run_toy(test, screen=SearchIdReview)
+
+    async def test_slash_leaves_a_number_box_and_types_into_a_text_box(self):
+        async def test(app, review, pilot):
+            field = review.query_one("#search", Input)
+            review.query_one("#max-age", Input).focus()
+            await pilot.press("1", "slash")  # an integer box cannot hold `/`: to the filter
+            self.assertIs(review.focused, field)
+            self.assertEqual(review.query_one("#max-age", Input).value, "1")
+            note = review.query_one("#note", Input)
+            note.focus()
+            await pilot.press("a", "slash")  # a text box keeps it
+            self.assertIs(review.focused, note)
+            self.assertEqual(note.value, "a/")
+            self.assertEqual(field.value, "")
+        await self.run_toy(test, screen=SearchIdReview)
+
+    async def test_space_on_the_root_ticks_only_what_the_filter_shows(self):
+        async def test(app, review, pilot):
+            await self.type_filter(app, review, pilot, "ap")
+            await pilot.press("enter")
+            tree = review.query_one("#toy", Tree)
+            tree.move_cursor(tree.root)
+            await pilot.press("space")
+            self.assertEqual(review.ticked(), [("Alpha", "apple"), ("Alpha", "apricot")])
+        await self.run_toy(test, stores_ticked=False)
+
+    async def test_a_read_only_tree_takes_the_filter_box_alone(self):
+        async def test(app, view, pilot):
+            await self.type_filter(app, view, pilot, "cher")
+            self.assertEqual(view.shown_labels(), ["Beta", "cherry"])
+            with capture_events() as records:
+                await pilot.press("enter")
+                await pilot.press("slash", "escape")
+                await settle(app, pilot)
+            self.assertIs(view.focused, view.query_one("#view", Tree))
+            self.assertEqual(view.shown_labels(), ["Alpha", "apple", "apricot", "Beta", "Banana", "cherry"])
+            self.assertEqual([(r["data"]["screen"], r["data"]["value"]) for r in records
+                              if r["event"] == "ui.selection"], [("toy_view", "cher"), ("toy_view", "")])
+        await self.run_toy(test, screen=ToyFilterView)
+
+
+class AllTickKeysTest(unittest.TestCase):
+    def test_a_tick_screen_must_list_its_model_keys(self):
+        """TickActions' default all_tick_keys() reads the root of a tree the filter narrowed, so hidden ticks would
+        never be counted: TreeFilter makes the screen list every key of its model."""
+        with self.assertRaises(NotImplementedError):
+            RootKeysReview().all_tick_keys()
