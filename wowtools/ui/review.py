@@ -109,11 +109,12 @@ class TickActions:
     """Space and a / n on a review tree (bind them with `space` priority, `a` and `n`). Space ticks or unticks the
     highlighted node, presses a focused button, toggles a focused checkbox, or types a space into a focused input
     (Space is priority-bound, so an input would never get it). Select all / none act on `shown_tick_keys()` only:
-    what the tree shows, which a filter narrows; ticks hidden by it stay as they are.
+    the screen's keys (`all_tick_keys()`) narrowed by `filter_keys()`, the one place a filter hooks in; ticks hidden
+    by it stay as they are.
 
     A screen supplies TREE_SELECTOR, LOG_SCREEN (the `screen` of its ui events), tick_model(), node_tick_keys(node),
-    tick_log_key(node, keys) and _refresh_labels(node=None); and, if it needs them, shown_tick_keys(),
-    select_all_keys() and ticks_frozen()."""
+    tick_log_key(node, keys) and _refresh_labels(node=None); and, if it needs them, all_tick_keys(),
+    select_all_keys(), select_none_keys() and ticks_frozen()."""
 
     TREE_SELECTOR: ClassVar[str] = "Tree"
     LOG_SCREEN: ClassVar[str] = "review"
@@ -132,13 +133,25 @@ class TickActions:
     def _refresh_labels(self, node=None) -> None:
         raise NotImplementedError
 
-    def shown_tick_keys(self) -> Collection[Hashable]:
-        """The keys select all / none act on: every key the tree shows (the root's, by default). A screen whose
-        tree loads children on expand works them out from its model; a filter narrows them to its matches."""
+    def all_tick_keys(self) -> Collection[Hashable]:
+        """Every key the screen can tick (the root's, by default). A screen whose tree loads children on expand
+        works them out from its model."""
         return self.node_tick_keys(self.query_one(self.TREE_SELECTOR, Tree).root)
+
+    def filter_keys(self, keys: Collection[Hashable]) -> Collection[Hashable]:
+        """The keys a filter lets through (all of them until a filter is set)."""
+        return keys
+
+    def shown_tick_keys(self) -> Collection[Hashable]:
+        """The keys select all / none act on: every key, narrowed by the filter."""
+        return self.filter_keys(self.all_tick_keys())
 
     def select_all_keys(self) -> Collection[Hashable]:
         """The keys select all ticks: the shown ones, unless some keep their own state."""
+        return self.shown_tick_keys()
+
+    def select_none_keys(self) -> Collection[Hashable]:
+        """The keys select none unticks: the shown ones."""
         return self.shown_tick_keys()
 
     def ticks_frozen(self) -> bool:
@@ -181,7 +194,7 @@ class TickActions:
         if tick:
             model.tick(list(self.select_all_keys()))
         else:
-            model.untick(list(self.shown_tick_keys()))
+            model.untick(list(self.select_none_keys()))
         log_event("ui.selection", screen=self.LOG_SCREEN, control="select_all" if tick else "select_none",
                   value=True)
         self._refresh_labels()
@@ -278,6 +291,10 @@ class ReviewBase(TickActions, Preflight, ScheduledRebuild, ButtonActions, TwoPan
     for the tree while a scan runs (#scan-box with #scan-progress and #scan-label: show_scan_box, _scan_progress)."""
 
     _scanning = False
+
+    def ticks_frozen(self) -> bool:
+        """The selection is frozen while the running-programs check runs (a screen may freeze it longer)."""
+        return self._checking
 
     def action_leave(self, choice: str) -> None:
         """Dismiss with `choice` ("flavors", "tools", "quit"), never while a run is going on."""

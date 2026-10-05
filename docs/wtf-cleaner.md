@@ -88,7 +88,7 @@ suggests nothing there. The scan notes this in its warnings.
 | Key | Does |
 |---|---|
 | `Space` | Tick or untick the highlighted line |
-| `a` / `n` | Tick everything / untick everything |
+| `a` / `n` | Tick / untick every file shown (a file a rule hides keeps its tick) |
 | `1` `2` `3` `4` | Switch a rule on or off |
 | `w` | **Clean** the ticked files (asks first; the answer starts on **No**) |
 | `y` | **Dry run** (asks first; the answer starts on **Yes**) |

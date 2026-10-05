@@ -671,7 +671,7 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
         """The ticked characters, or the highlighted node's when nothing is ticked."""
         return self._selected("c")
 
-    # --- ticks (Space, a, n: ReviewBase; a and n act on the keys shown, hidden ticks stay) -------------------
+    # --- ticks (Space, a, n: ReviewBase; a ticks the keys shown, n unticks every key) ----------------------
     def tick_model(self) -> TickModel:
         return TickModel.of_ticked(self.ticked)  # nothing starts ticked
 
@@ -680,6 +680,12 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
 
     def tick_log_key(self, node, keys) -> str:
         return str(ident(node.data))
+
+    def select_none_keys(self) -> set[tuple]:
+        """Every tick, hidden ones too: the actions take every ticked key and fall back to the highlighted node
+        only when nothing is ticked, so `n` must leave no hidden tick behind until the summary and the confirms
+        say how many ticks the search and the Show boxes hide (spec D8)."""
+        return set(self.ticked)
 
     def ticks_frozen(self) -> bool:
         return not self.idle

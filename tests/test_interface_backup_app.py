@@ -590,6 +590,20 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertIs(app.screen, review)
         self.assertFalse((self.root / "_retail_" / "WTF" / "bk").exists())
 
+    async def test_ticks_are_frozen_while_the_check_runs(self):
+        """As in every review screen: a / n / Space change nothing while the running-programs check runs."""
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            review.query_one(Tree).focus()
+            review._checking = True
+            await pilot.press("n")
+            self.assertEqual(review.unchecked, set())
+            review._checking = False
+            await pilot.press("n")
+            self.assertTrue(review.unchecked)
+
     async def test_busy_while_backing_up_guards_leaving(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
         release = threading.Event()

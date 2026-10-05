@@ -512,7 +512,7 @@ class BackupReviewScreen(ReviewBase, Screen[str]):
             return []
         return [s.flavor.folder for s in self._scans_of(node.data)]
 
-    def shown_tick_keys(self) -> list[str]:
+    def all_tick_keys(self) -> list[str]:
         return [f.folder for f in self.flavors]
 
     def tick_log_key(self, node, keys) -> str:

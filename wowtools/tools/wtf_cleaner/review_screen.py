@@ -418,15 +418,12 @@ class ReviewScreen(ReviewBase, Screen[str]):
     def node_tick_keys(self, node) -> list[Path]:
         return self._paths(node.data) if node is not None and node.data is not None else []
 
-    def shown_tick_keys(self) -> list[Path]:
+    def all_tick_keys(self) -> list[Path]:
         return [f.path for item in self.proposal.items for f in item.files] if self.proposal is not None else []
 
     def tick_log_key(self, node, keys) -> str:
         kind = node.data[0]
         return str(keys[0]) if kind == "file" else (node.data[1].key if kind == "item" else node.data[2])
-
-    def ticks_frozen(self) -> bool:
-        return self._checking  # the selection is frozen while the check runs
 
     # --- actions ---------------------------------------------------------------------------------
     def action_criterion(self, index: int) -> None:

@@ -128,8 +128,8 @@ class ToyReview(ReviewBase, Screen[str]):
             return list(KEYS)
         return [k for k in KEYS if k.startswith(node.data[1])] if kind == "group" else [node.data[1]]
 
-    def shown_tick_keys(self):
-        return list(KEYS) if self.shown is None else self.shown
+    def filter_keys(self, keys):
+        return keys if self.shown is None else [k for k in keys if k in self.shown]
 
     def tick_log_key(self, node, keys) -> str:
         return ",".join(keys)

@@ -331,8 +331,9 @@ class ReviewTest(AceAppBase):
             await settle(app, pilot)
             self.assertTrue(review.ticked)  # hidden items keep their ticks
 
-    async def test_none_unticks_only_what_the_search_shows(self):
-        """Spec D8: select none acts on the shown keys, as select all does; hidden ticks stay."""
+    async def test_none_unticks_what_the_search_hides_too(self):
+        """Select none leaves no hidden tick behind: the actions take every ticked key, and nothing says yet how
+        many ticks the search hides (spec D8)."""
         app = self.make_app()
         async with app.run_test(size=(140, 50)) as pilot:
             review = await self.open_review(app, pilot)
@@ -341,11 +342,10 @@ class ReviewTest(AceAppBase):
             everything = set(review.ticked)
             review.query_one("#search", Input).value = "mierin"
             await settle(app, pilot)
+            self.assertTrue(everything)
             await pilot.press("n")
             await settle(app, pilot)
-            self.assertTrue(review.ticked)
-            self.assertLess(review.ticked, everything)
-            self.assertFalse(any(k[2].startswith("Mierin") for k in review.ticked if k[0] == "c"))
+            self.assertEqual(review.ticked, set())
 
 
 class StagingTest(AceAppBase):

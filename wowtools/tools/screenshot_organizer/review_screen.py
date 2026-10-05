@@ -430,7 +430,7 @@ class ShotReviewScreen(ReviewBase, Screen[str]):
             return []
         return [i.src for i in self._items(node.data)]  # none for a read-only node
 
-    def shown_tick_keys(self) -> list[Path]:
+    def all_tick_keys(self) -> list[Path]:
         """Day and already-filed files load on expand: the keys come from the plan."""
         return [i.src for i in self.plan.selectable] if self.plan is not None else []
 

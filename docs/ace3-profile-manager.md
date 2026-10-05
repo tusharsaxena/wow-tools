@@ -183,8 +183,8 @@ highlighted one when nothing is ticked.
 `m` opens the quick actions menu, in two groups, so you can find every key without this guide:
 
 - **Selection** changes what's ticked or shown: **Tick all leftover characters** (every character tagged "no
-  character folder" that's shown, ready for **Leftovers**), tick everything shown (`a`), untick everything
-  shown (`n`), search (`/`) and switch view (`v`).
+  character folder" that's shown, ready for **Leftovers**), tick everything shown (`a`), untick everything,
+  hidden or not (`n`), search (`/`) and switch view (`v`).
 - **Modification** changes the ticked or highlighted items: rename (`e`), copy (`k`), blacklist (`b`), edit the
   blacklist, unlock (`u`) and discard the pending changes (`Backspace`).
 
@@ -216,7 +216,7 @@ version until you next save the blacklist.
 | Key | Does |
 |---|---|
 | `Space` | Tick or untick the highlighted line |
-| `a` / `n` | Tick / untick everything shown (ticks hidden by the Show boxes or the search stay) |
+| `a` / `n` | Tick everything shown (ticks hidden by the Show boxes or the search stay) / untick everything, hidden or not |
 | `d` | Delete the ticked profiles |
 | `p` | Assign a profile to the ticked characters |
 | `e` | Rename the highlighted profile |

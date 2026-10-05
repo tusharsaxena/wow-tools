@@ -275,6 +275,26 @@ class ReviewFlowTest(AppTestCase):
             self.assertNotIn("Uninstalled", {i.addon for i in review.proposal.items})
             self.assertFalse(review.criteria.not_installed)
 
+    async def test_select_all_and_none_leave_files_a_rule_hides_alone(self):
+        """a / n act on the files shown: a file a switched-off rule hides keeps its tick, as under a filter."""
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            hidden = {f.path for i in review.proposal.items if i.addon == "Uninstalled" for f in i.files}
+            self.assertTrue(hidden)
+            review.unchecked.update(hidden)
+            await pilot.press("1")  # the "not installed" rule off: its files are hidden
+            await settle(app, pilot)
+            self.assertNotIn("Uninstalled", {i.addon for i in review.proposal.items})
+            review.query_one("#proposal", Tree).focus()
+            await pilot.press("a")
+            self.assertEqual(review.unchecked, hidden)
+            await pilot.press("n")
+            await pilot.press("1")  # back on: still unticked
+            await settle(app, pilot)
+            self.assertTrue(hidden <= review.unchecked)
+            self.assertNotIn("Uninstalled", {i.addon for i in review._selection()})
+
     async def test_wow_running_warning_is_shown_and_logged(self):
         app = self.make_app(running=["Wow.exe"])
         with capture_events() as records:
