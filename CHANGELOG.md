@@ -29,7 +29,7 @@ The first version: four tools in one app.
   - Duplicate checks, copy mode, **Dry run** and **Undo last run**.
 - **Interface Backup**
   - Zips each game version's `Interface` and `WTF` folders (your addons and their settings) into one dated,
-    checked zip, and keeps the newest 10 per game version.
+    checked zip, and keeps the newest backups per game version (see the retention setting under "The app").
   - Restores a backup exactly: the `Interface` folder, the `WTF` folder or both, after listing what would be
     removed or changed. It takes a safety backup first, and **Undo** puts the folders back.
   - Never follows linked addon folders (symlinks, junctions): they're left out of backups and kept by a restore.
