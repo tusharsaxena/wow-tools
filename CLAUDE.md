@@ -34,7 +34,7 @@ Conventions:
   or more tools need lives there, never copied and never imported across tools (a tool never imports another tool).
   Core: `install`, `config`, `journal` (`ToolJournals`), `snapshot`, `svfiles`, `undo`, `marker`, `progress`,
   `text`, `fsutil`, `backup`. UI: `dialogs` (confirm/info/choice/progress popups, CSS, tick helpers), `review`
-  (`ReviewBase`, `ReviewTree`, `TickModel`), `result_screen` (`ResultBase`), `settings_form` (`ToolSettingsScreen`),
+  (`ReviewBase`, `ReviewTree`, `TickModel`), `tree_filter` (`TreeFilter`, `/` filter box), `result_screen` (`ResultBase`), `settings_form` (`ToolSettingsScreen`),
   `tool_flow` (`ToolFlow`), `widgets`. `tests/test_structure.py` pins single definitions, the cross-tool rule, the
   future import and import order.
 - Tests use `tests/fixtures.py` temp trees; never a real WoW install, never the network.

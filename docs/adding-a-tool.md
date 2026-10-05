@@ -34,7 +34,7 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      there: use what is already there, and when your tool needs code another tool already has, move it into
      `core/` or `ui/` first and make both tools use it. Never copy it and never import it from the other tool
      (`tests/test_structure.py` pins the single definitions and the no-cross-tool-import rule). The main pieces:
-     `ui/review.py` (the review screen base: `ReviewBase`, `ReviewTree`, `TickModel`), `ui/result_screen.py`
+     `ui/review.py` (the review screen base: `ReviewBase`, `ReviewTree`, `TickModel`), `ui/tree_filter.py` (the tree filter: `TreeFilter`, `FilterInput`, `/`), `ui/result_screen.py`
      (`ResultBase` / `ResultScreen`), `ui/settings_form.py` (`ToolSettingsScreen`), `ui/tool_flow.py` (the
      `ToolFlow` helpers: `start`, `open_settings`, `remember_flavor`, `pick_account`, `fill_notes`),
      `ui/dialogs.py` (popups and CSS), and in `core/` `journal.ToolJournals`, `marker`, `undo`, `progress`

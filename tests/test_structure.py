@@ -112,6 +112,18 @@ class StructureTest(unittest.TestCase):
                    if isinstance(node, ast.ClassDef) and node.name in ("NotTicked", "ReviewTree", "TickModel")}
         self.assertEqual(classes, {("wowtools/ui/review.py", n) for n in ("NotTicked", "ReviewTree", "TickModel")})
 
+    def test_tree_filter_lives_in_ui(self):
+        """The tree filter (spec D7) is wowtools/ui/tree_filter.py's: no tool defines its own match, model filter,
+        filter box or `/` action."""
+        names = ("TextFilter", "ModelFilter", "FilterInput", "TreeFilter")
+        classes = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
+                   if isinstance(node, ast.ClassDef) and node.name in names}
+        self.assertEqual(classes, {("wowtools/ui/tree_filter.py", n) for n in names})
+        shared = {"action_focus_filter", "clear_filter", "hidden_by_filter", "hidden_ticked_count",
+                  "hidden_ticked_note"}
+        where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & shared}
+        self.assertEqual(where, {("wowtools/ui/tree_filter.py", n) for n in shared})
+
     def test_shared_dialogs_live_in_ui(self):
         from wowtools.tools.screenshot_organizer.review_screen import ShotProgressScreen
         from wowtools.tools.wtf_cleaner import review_screen
