@@ -634,7 +634,7 @@ The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfC
   count). `flavors` is one `Flavor` (root = the flavor, accounts below) or a list (root = All
   flavors, a node per flavor, a "not scanned" leaf for a flavor whose scan failed). `wow_check` covers every
   flavor (`core.process.wow_check_for(list)` lists the processes once);
-- the shared `ConfirmScreen` (`wowtools.ui.dialogs`; still importable from here for one release): starts on No
+- the shared `ConfirmScreen` (`wowtools.ui.dialogs`): starts on No
   for a real clean and on Yes for a dry run; lists each flavor's counts;
 - `CleanProgressScreen`, a `ProgressScreen` (ids `clean-*`): with several flavors the stage title names the
   flavor; also shown for an undo;

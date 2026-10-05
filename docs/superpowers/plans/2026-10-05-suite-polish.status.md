@@ -29,3 +29,4 @@ task; push after every milestone. Never merge without the user's go-ahead.
 ## Decisions taken during the build
 
 - **T0.2** The ConfirmScreen re-export is pinned as `"ConfirmScreen" not in review_screen.__all__`, not `not hasattr`: review_screen still imports ConfirmScreen from `ui.dialogs` for its own confirms, so the name stays a module attribute. Nothing outside frozen historical plans imported it from there. `ruff check` panics on a stale `.ruff_cache` in this checkout; `ruff check --no-cache .` is clean.
+- **T0.2** review: 2 findings, 2 fixed, 0 rejected: core-no-textual test now also flags `wowtools.ui`/`wowtools.tools` and relative imports, plus a fresh-interpreter check that importing every core module loads no textual or wowtools.ui (1057 tests OK); stale "still importable from here for one release" ConfirmScreen line dropped from docs/architecture.md.

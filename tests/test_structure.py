@@ -4,6 +4,8 @@ stays gone, one definition of the data folder name, and every module has the fut
 from __future__ import annotations
 
 import ast
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -97,9 +99,23 @@ class StructureTest(unittest.TestCase):
         self.assertNotIn("ConfirmScreen", review_screen.__all__)  # import it from wowtools.ui.dialogs
 
     def test_core_never_imports_textual(self):
-        offenders = sorted(f"{rel(p)} imports {m}" for p in modules("wowtools/core") for m in imported_modules(tree(p))
-                           if m == "textual" or m.startswith("textual."))
-        self.assertEqual(offenders, [])
+        """Directly (textual), through a front end (wowtools.ui, wowtools.tools) or through a relative import."""
+        banned = ("textual", "wowtools.ui", "wowtools.tools")
+        offenders = []
+        for path in modules("wowtools/core"):
+            module = tree(path)
+            offenders += [f"{rel(path)} imports {m}" for m in imported_modules(module)
+                          if any(m == b or m.startswith(f"{b}.") for b in banned)]
+            offenders += [f"{rel(path)}:{n.lineno} has a relative import" for n in ast.walk(module)
+                          if isinstance(n, ast.ImportFrom) and n.level > 0]
+        self.assertEqual(sorted(offenders), [])
+
+    def test_importing_core_loads_no_textual(self):
+        names = sorted(f"wowtools.core.{p.stem}" for p in modules("wowtools/core") if p.stem != "__init__")
+        code = (f"import importlib, sys\nfor n in {names!r}: importlib.import_module(n)\n"
+                "print(sorted(m for m in sys.modules if m.split('.')[0] == 'textual' or m.startswith('wowtools.ui')))")
+        out = subprocess.run([sys.executable, "-c", code], cwd=REPO, capture_output=True, text=True, check=True)
+        self.assertEqual(out.stdout.strip(), "[]")
 
     def test_every_module_has_the_future_import(self):
         missing = []
