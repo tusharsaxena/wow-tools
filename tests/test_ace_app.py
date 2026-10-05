@@ -557,6 +557,7 @@ class RunTest(AceAppBase):
             await pilot.press("r")
             await settle(app, pilot)
             self.assertEqual(type(app.screen).__name__, "ProfileRecoveryScreen")
+            self.assertEqual(app.screen.focused.id, "put_back")  # the expected choice is focused (spec D13)
             app.screen.dismiss("put_back")
             await settle(app, pilot)
             self.assertEqual(path.read_bytes(), original)
@@ -1294,8 +1295,9 @@ class PopupFeedbackTest(AceAppBase):
             self.assertIn("KickCD", str(branch.label))
             self.assertTrue(branch.is_expanded)  # few lines: open
             self.assertEqual([str(c.label) for c in branch.children], ["Gone - Realm1"])
-            self.assertIs(screen.focused, screen.query_one("#no", Button))
-            await pilot.press("up", "up")  # No, Yes, then the tree
+            self.assertIs(screen.focused, screen.query_one("#yes", Button))
+            self.assertEqual(action_kind(screen.focused), "destructive")
+            await pilot.press("up")  # from Yes to the tree
             self.assertIs(screen.focused, tree)
             await pilot.press("c")
             self.assertFalse(branch.is_expanded)

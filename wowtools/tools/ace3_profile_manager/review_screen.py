@@ -331,7 +331,8 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
             return
         if self.staging is not None and self.staging.summary().total:
             self.app.push_screen(ConfirmScreen("Discard the pending changes?",
-                                               "A rescan reads the files again and drops every pending change."),
+                                               "A rescan reads the files again and drops every pending change.",
+                                               kind="destructive"),
                                  lambda ok: self._scan() if ok else None)
             return
         self._scan()
@@ -973,7 +974,7 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
         def done(ok: bool | None) -> None:
             if ok and self.staging is not None:
                 self._staged(self.staging.remove_leftovers(selection))
-        self.app.push_screen(ConfirmScreen("Remove leftover characters?", body, groups=groups), done)
+        self.app.push_screen(ConfirmScreen("Remove leftover characters?", body, kind="destructive", groups=groups), done)
 
     def _databases(self) -> list[DbKey]:
         """The databases of the ticked keys, else of the highlighted node's addon or database."""
@@ -1049,7 +1050,7 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
                 self.refresh_view()
         self.app.push_screen(ConfirmScreen("Discard the pending changes?",
                                            f"{pending_text(summary)}. Nothing has been written; the files stay as "
-                                           "they are."), done)
+                                           "they are.", kind="destructive"), done)
 
     # --- runs: apply, dry run, undo ---------------------------------------------------------------------
     def _progress_cb(self, screen: ProfileProgressScreen) -> Callable[..., None]:
@@ -1134,7 +1135,8 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
             return
         states = self.staging.changed()
         title, body, alerts = apply_confirm(self.staging.summary(), states, dry_run=dry_run)
-        self.app.push_screen(ConfirmScreen(title, body, (*alerts, *extra), default_yes=dry_run),
+        self.app.push_screen(ConfirmScreen(title, body, (*alerts, *extra),
+                                           kind="simulate" if dry_run else "destructive"),
                              lambda ok: self._apply_confirmed(ok, dry_run))
 
     def _apply_confirmed(self, ok: bool | None, dry_run: bool) -> None:
@@ -1251,7 +1253,7 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
         if pending:
             extra.append(f"The {plural(pending, 'pending change')} not applied yet will be dropped.")
         title, body, alerts = undo_confirm(journal)
-        self.app.push_screen(ConfirmScreen(title, body, (*alerts, *extra)),
+        self.app.push_screen(ConfirmScreen(title, body, (*alerts, *extra), kind="destructive"),
                              lambda ok: self._undo_confirmed(ok, path, check))
 
     def _undo_confirmed(self, ok: bool | None, path: Path, check: WowCheck) -> None:
@@ -1381,5 +1383,5 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
             return
         self.app.push_screen(ConfirmScreen("Leave and discard the pending changes?",
                                            f"{plural(pending, 'pending change')} not applied yet will be dropped; "
-                                           "nothing has been written."),
+                                           "nothing has been written.", kind="destructive"),
                              lambda ok: self.dismiss(choice) if ok else None)

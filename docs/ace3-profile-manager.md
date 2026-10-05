@@ -230,11 +230,11 @@ version until you next save the blacklist.
 | `u` | Unlock the highlighted blacklisted addon for this session, or lock it again |
 | `v` | Switch view: By addon / By character |
 | `/` | Search |
-| `w` | **Apply** the pending changes (asks first; the answer starts on **No**) |
-| `y` | **Dry run** (asks first; the answer starts on **Yes**) |
+| `w` | **Apply** the pending changes (asks first; **Yes** is selected, in red) |
+| `y` | **Dry run** (asks first; **Yes** is selected) |
 | `x` / `c` | Expand every line of the tree / collapse them all |
 | `r` | Scan again |
-| `z` | **Undo last change** (asks first; the answer starts on **No**) |
+| `z` | **Undo last change** (asks first; **Yes** is selected, in red) |
 | `f` or `Esc` | Pick another game version (from the search box, `Esc` goes back to the tree) |
 | `t` | Back to the tool menu |
 | `s` | Settings |
@@ -271,7 +271,7 @@ in which game versions, with alerts in red for anything worth a second look:
   login);
 - some of the characters switch profile by spec, which overrides the change at login.
 
-The answer starts on **No**. Once you press **Yes**, a progress window shows each step. For each game version the
+**Yes** is selected, in red. Once you press it, a progress window shows each step. For each game version the
 tool:
 
 1. **Checks every file again.** If a file changed since the scan (you logged a character out with the tool open,

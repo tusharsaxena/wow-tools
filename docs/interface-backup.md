@@ -34,7 +34,7 @@ as they are, so you can undo the restore too.
 1. On the review screen, open a game version's **Backups** line in the tree (`Enter`) and highlight a backup.
 2. Press **Restore** (`e`), or `Enter` on the backup.
 3. Tick **Interface**, **WTF** or both, and read what the restore would remove or change.
-4. Press **Restore** (`o`), read the summary, and press **Yes** (the answer starts on **No**).
+4. Press **Restore** (`o`), read the summary, and press **Yes** (selected, in red).
 5. The results screen shows what happened to each folder. If you don't like the result, press **Undo** (`z`).
 
 ## Where your backups go
@@ -121,11 +121,11 @@ files. The backup itself works the same, and the results screen shows the sizes.
 | `Space` | Tick or untick the highlighted game version (or the top line, for all of them) |
 | `a` / `n` | Tick every game version / untick every game version |
 | `Enter` | Open or close the highlighted line; on a backup, **Restore** it |
-| `b` | **Back up** the ticked game versions (asks first; the answer starts on **Yes**) |
+| `b` | **Back up** the ticked game versions (asks first; **Yes** is selected, in green) |
 | `e` | **Restore** the highlighted backup |
 | `x` / `c` | Expand every line of the tree / collapse them all |
 | `r` | Scan again |
-| `z` | **Undo last restore** (asks first; the answer starts on **No**) |
+| `z` | **Undo last restore** (asks first; **Yes** is selected, in red) |
 | `f` or `Esc` | Pick another game version |
 | `t` | Back to the tool menu |
 | `s` | Settings |
@@ -246,7 +246,7 @@ After the running-WoW check, the app asks "Replace Interface and WTF of Retail w
 reminds you that a safety backup is taken first, and repeats the warnings, one line each, in red. One more can
 appear here: **The backup drive may be short of space for the safety backup**, when the backup folder's drive
 has less free space than the folders you ticked take now (the safety zip is usually a lot smaller). If WoW appears to
-be running, that's in red too: close it first. The answer starts on **No**.
+be running, that's in red too: close it first. **Yes** is selected, in red.
 
 ### What happens during a restore
 
@@ -288,7 +288,7 @@ screen, without `z`.
 Changed your mind? **Undo last restore** (`z`, the violet button on the review screen, or **Undo** on the
 restore results) puts the folders that the most recent restore replaced back as
 they were before it, from that restore's safety backup. It asks first, naming when that restore ran, which folders
-and which game version. The answer starts on **No**.
+and which game version. **Yes** is selected, in red.
 
 - Undo works on the most recent restore that changed a folder, whichever game version you picked on the flavor
   screen. A restore that left every folder as it was is passed over, so Undo then offers the restore before it

@@ -217,13 +217,26 @@ class StructureTest(unittest.TestCase):
             "Override and continue (o)": "overwrite", "Back up": "create",
             "Undo last clean": "revert", "Undo last run": "revert", "Undo last restore": "revert",
             "Undo last change": "revert", "Undo (z)": "revert", "Put the originals back": "revert",
-            "Dry run": "simulate", "Save": "confirm", "OK": "confirm", "Yes (y)": "confirm",
+            "Dry run": "simulate", "Save": "confirm", "OK": "confirm",
             "Rescan": "navigate", "Rescan (r)": "navigate", "Restore (e)": "navigate", "Other flavor (f)": "navigate",
             "Tools (t)": "navigate", "More… (m)": "navigate", "Edit blacklist…": "navigate",
             "Cancel": "cancel", "No (n)": "cancel", "Later": "cancel", "Quit (q)": "cancel", "Back": "cancel",
             "Discard (⌫)": "cancel",
         }
         self.assertEqual({label: next(iter(kinds.get(label, {"missing"}))) for label in expected}, expected)
+
+    def test_every_confirm_names_its_kind(self):
+        """Every ConfirmScreen says what its Yes does (spec D13): Yes is focused at the start, so its colour is the
+        warning (destructive red for a delete, overwrite, undo or discard; simulate for a dry run)."""
+        offenders = []
+        for path in modules("wowtools"):
+            for node in ast.walk(tree(path)):
+                if (isinstance(node, ast.Call) and getattr(node.func, "id", "") == "ConfirmScreen"
+                        and not any(k.arg == "kind" for k in node.keywords)):
+                    offenders.append(f"{rel(path)}:{node.lineno}")
+                if isinstance(node, ast.keyword) and node.arg == "default_yes":
+                    offenders.append(f"{rel(path)}: default_yes")
+        self.assertEqual(offenders, [])
 
     def test_dead_code_is_gone(self):
         from wowtools.core import install

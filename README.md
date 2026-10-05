@@ -125,6 +125,11 @@ Buttons are coloured by what they do, the same in every tool: **red** deletes, *
 files, **green** only adds files (a backup), **violet** undoes, **cyan** is a dry run that changes nothing, **blue**
 confirms (Save, OK), **grey** moves between screens or rescans, and **dim grey** backs out (Cancel, Back, Quit).
 
+Every "are you sure?" window opens with **Yes** selected, coloured the same way: red when it deletes, overwrites,
+undoes or throws away pending changes, cyan for a dry run, green for a backup. So read it before you press Enter.
+For a quarter of a second after it opens, Enter and Space do nothing there, so a key you were still holding can't
+answer it for you. `y` answers Yes, `n` or `Esc` No.
+
 ### Terminal size
 
 The app is laid out for the window Windows Terminal (the default on Windows 11) opens: 120 columns by 30 lines.

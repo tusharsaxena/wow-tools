@@ -539,7 +539,7 @@ class BackupReviewScreen(ReviewBase, Screen[str]):
                         free: int | None) -> None:
         keep = self.cfg.keep_backups
         title, body, alerts = backup_confirm(scans, root, keep, running, free)
-        self.app.push_screen(ConfirmScreen(title, body, alerts, default_yes=True),
+        self.app.push_screen(ConfirmScreen(title, body, alerts, kind="create"),
                              lambda ok: self._backup_confirmed(ok, scans, root, keep))
 
     def _backup_confirmed(self, ok: bool | None, scans: list[FlavorScan], root: Path, keep: int) -> None:
@@ -672,7 +672,7 @@ class BackupReviewScreen(ReviewBase, Screen[str]):
     def _confirm_restore(self, plan: RestorePlan, info: BackupInfo, running: list[str] | None,
                          backup_free: int | None) -> None:
         title, body, alerts = restore_confirm(plan, info.when, running, backup_free=backup_free)
-        self.app.push_screen(ConfirmScreen(title, body, alerts, default_yes=False),
+        self.app.push_screen(ConfirmScreen(title, body, alerts, kind="destructive"),
                              lambda ok: self._restore_confirmed(ok, plan))
 
     def _restore_confirmed(self, ok: bool | None, plan: RestorePlan) -> None:
@@ -737,7 +737,7 @@ class BackupReviewScreen(ReviewBase, Screen[str]):
         title, body = undo_confirm(journal)
         alerts = ((f"WoW appears to be running ({', '.join(running)}). Close it first: an open game can lock "
                    "Interface files and rewrites WTF when you log out."),) if running else ()
-        self.app.push_screen(ConfirmScreen(title, body, alerts, default_yes=False),
+        self.app.push_screen(ConfirmScreen(title, body, alerts, kind="destructive"),
                              lambda ok: self._undo_confirmed(ok, path))
 
     def _undo_confirmed(self, ok: bool | None, path: Path) -> None:

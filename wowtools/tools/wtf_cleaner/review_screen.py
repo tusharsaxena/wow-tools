@@ -521,7 +521,8 @@ class ReviewScreen(ReviewBase, Screen[str]):
             log_event("locker.running_warning", executables=lockers)
             alerts.append(locker_warning(lockers))
         title = "Simulate this clean?" if dry_run else "Back up and delete these files?"
-        self.app.push_screen(ConfirmScreen(title, "\n".join(lines), tuple(alerts), default_yes=dry_run),
+        self.app.push_screen(ConfirmScreen(title, "\n".join(lines), tuple(alerts),
+                                           kind="simulate" if dry_run else "destructive"),
                              lambda ok: self._confirmed(ok, plan, backup, backup_dir, dry_run))
 
     @staticmethod
@@ -659,7 +660,7 @@ class ReviewScreen(ReviewBase, Screen[str]):
             log_event("wow.running_warning", executables=running)
             alerts.append(f"WoW appears to be running ({', '.join(running)}). Close it first: WoW rewrites "
                           "SavedVariables when you log out.")
-        self.app.push_screen(ConfirmScreen(title, body, tuple(alerts), default_yes=False),
+        self.app.push_screen(ConfirmScreen(title, body, tuple(alerts), kind="destructive"),
                              lambda ok: self._undo_confirmed(ok, path))
 
     def _undo_confirmed(self, ok: bool | None, path: Path) -> None:

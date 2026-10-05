@@ -35,7 +35,7 @@ from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
-from wowtools.ui.widgets import ButtonRow, Ka0sCheckbox, NavHint
+from wowtools.ui.widgets import ButtonRow, Ka0sCheckbox, NavHint, action_kind
 
 SIZE = (140, 50)
 
@@ -694,6 +694,9 @@ class KeyboardNavigationTest(AppTestCase):
             await settle(app, pilot)  # the running-programs check runs in a worker
             confirm = app.screen
             self.assertIsInstance(confirm, ConfirmScreen)
+            self.assertEqual(confirm.focused.id, "yes")  # every confirm starts on Yes, red for a clean
+            self.assertEqual(action_kind(confirm.query_one("#yes", Button)), "destructive")
+            await pilot.press("right")
             self.assertEqual(confirm.focused.id, "no")
             await pilot.press("left")
             self.assertEqual(confirm.focused.id, "yes")
@@ -709,8 +712,8 @@ class KeyboardNavigationTest(AppTestCase):
             review = await self.open_review(app, pilot)
             await pilot.press("w")
             await settle(app, pilot)
-            self.assertEqual(app.screen.focused.id, "no")
-            await pilot.press("space")  # Space on the focused No button: cancel
+            self.assertEqual(app.screen.focused.id, "yes")
+            await pilot.press("right", "space")  # Space on the focused No button: cancel
             await pilot.pause()
             self.assertIs(app.screen, review)
             await pilot.press("y")
@@ -731,7 +734,7 @@ class KeyboardNavigationTest(AppTestCase):
 
         class Probe(App):
             def on_mount(self):
-                self.push_screen(ConfirmScreen("t", "b", default_yes=True), results.append)
+                self.push_screen(ConfirmScreen("t", "b"), results.append)
 
         app = Probe()
         async with app.run_test() as pilot:
@@ -1645,7 +1648,8 @@ class UndoLastCleanTest(AppTestCase):
                 self.assertIsInstance(confirm, ConfirmScreen)
                 self.assertRegex(confirm.title_text, r"^Undo the clean from \d{4}-\d\d-\d\d \d\d:\d\d\?$")
                 self.assertIn("Put back 8 files deleted from Retail?", confirm.body_text)
-                self.assertEqual(confirm.focused.id, "no")  # starts on No
+                self.assertEqual(confirm.focused.id, "yes")  # starts on Yes, in the destructive colour
+                self.assertEqual(action_kind(confirm.query_one("#yes", Button)), "destructive")
                 await pilot.press("y")
                 await pilot.pause()
                 await settle(app, pilot)

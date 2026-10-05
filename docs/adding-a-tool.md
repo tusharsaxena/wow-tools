@@ -27,8 +27,8 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
 of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep the
      tool's own entry fields, `read_journal` wrapper and undo rules in its own `journal.py` / `undo.py` (see
      `screenshot_organizer/`, `wtf_cleaner/` and `interface_backup/`, whose journal records restores only), offer only `latest_undoable(dir)`, `mark_undone()` after an
-     undo, and give the review screen a violet Undo button (`action_button(..., "revert")`, key `z`, confirm
-     starting on No). A dry run writes no journal.
+     undo, and give the review screen a violet Undo button (`action_button(..., "revert")`, key `z`, its confirm
+     `kind="destructive"`). A dry run writes no journal.
    - **The shared library.** `wowtools/core/` (UI-free, never imports `textual`) and `wowtools/ui/` (Textual) are the
      suite's shared library: in-repo reusable code, not a separate package. Anything two or more tools need lives
      there: use what is already there, and when your tool needs code another tool already has, move it into
@@ -59,10 +59,12 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      (`ShotReviewScreen`, `ShotProgressScreen`, `ShotResultScreen`).
    - **Shared dialogs.** Take the confirm and progress dialogs from `wowtools/ui/dialogs.py`, never from another
      tool (a tool imports nothing from another tool; `tests/test_structure.py` checks it):
-     `ConfirmScreen(title, body, alerts, default_yes=..., groups=...)` (start on No for anything that changes files;
-     `groups` lists long details in a tree), `InfoScreen(title, groups)` for notes too long for a notification,
+     `ConfirmScreen(title, body, alerts, kind=..., groups=...)` (it opens on Yes, so `kind` colours Yes by what it
+     does: `"destructive"` for anything that deletes, overwrites, undoes or drops pending work, `"simulate"` for a
+     dry run, `"create"` when it only adds files; every call names its kind, `tests/test_structure.py` checks it;
+     Enter/Space wait `CONFIRM_GUARD` after it opens; `groups` lists long details in a tree), `InfoScreen(title, groups)` for notes too long for a notification,
      `ChoiceScreen(title, message, choices, default=...)` for a warning with a choice of buttons (an unfinished
-     run), and a
+     run; `default` is the safe choice the user most likely wants), and a
      subclass of `ProgressScreen` with your own `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, fed by the
      run's `progress(stage, current, total, detail)` through `app.call_from_thread`. Wrap that callback with
      `core.fsutil.safe_progress` inside the run. A review tree can use `tick_mark`, `relabel_branch` and, from

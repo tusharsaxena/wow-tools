@@ -434,7 +434,7 @@ class ShotReviewScreen(ReviewBase, Screen[str]):
             self.notify("Nothing is selected.")
             return
         title, body = confirm_text(selection, self.plan, self.settings, dry_run)
-        self.app.push_screen(ConfirmScreen(title, body, default_yes=dry_run),
+        self.app.push_screen(ConfirmScreen(title, body, kind="simulate" if dry_run else "destructive"),
                              lambda ok: self._confirmed(ok, selection, dry_run))
 
     def _confirmed(self, ok: bool | None, selection: list[ShotItem], dry_run: bool) -> None:
@@ -526,7 +526,7 @@ class ShotReviewScreen(ReviewBase, Screen[str]):
                 "Screenshots folders, copies are removed, removed duplicates are restored. Anything that changed "
                 "since is left alone.")
         title = f"Undo the run from {friendly_stamp(journal.started)}?"
-        self.app.push_screen(ConfirmScreen(title, body, default_yes=False),
+        self.app.push_screen(ConfirmScreen(title, body, kind="destructive"),
                              lambda ok: self._undo_confirmed(ok, path))
 
     def _undo_confirmed(self, ok: bool | None, path: Path) -> None:

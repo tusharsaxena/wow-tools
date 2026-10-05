@@ -33,6 +33,7 @@ import asyncio
 import os
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from wowtools.core.config import Config
@@ -126,11 +127,21 @@ def build_solo_tree(root: Path) -> Path:
 
 class TuiTestCase(unittest.IsolatedAsyncioTestCase):
     """Base for Textual tests. IsolatedAsyncioTestCase runs its loop in asyncio debug mode, which makes Textual
-    about 15x slower (every callback is timed and logged); the tests do not need it, so it is switched off."""
+    about 15x slower (every callback is timed and logged); the tests do not need it, so it is switched off.
+    ConfirmScreen's Enter/Space guard (CONFIRM_GUARD) is off too, so a test can press Enter on a confirm at once;
+    tests of the guard turn it back on with `confirm_guard(seconds)`."""
 
     async def asyncSetUp(self):
         await super().asyncSetUp()
         asyncio.get_running_loop().set_debug(False)
+        from wowtools.ui import dialogs
+        patcher = mock.patch.object(dialogs, "CONFIRM_GUARD", 0.0)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def confirm_guard(self, seconds: float) -> None:
+        from wowtools.ui import dialogs
+        dialogs.CONFIRM_GUARD = seconds  # the asyncSetUp patcher puts the real value back
 
 
 async def settle(app, pilot, timeout: float = 10.0) -> None:

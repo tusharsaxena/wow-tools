@@ -90,11 +90,11 @@ suggests nothing there. The scan notes this in its warnings.
 | `Space` | Tick or untick the highlighted line |
 | `a` / `n` | Tick / untick every file shown (a file a rule hides keeps its tick) |
 | `1` `2` `3` `4` | Switch a rule on or off |
-| `w` | **Clean** the ticked files (asks first; the answer starts on **No**) |
-| `y` | **Dry run** (asks first; the answer starts on **Yes**) |
+| `w` | **Clean** the ticked files (asks first; **Yes** is selected, in red) |
+| `y` | **Dry run** (asks first; **Yes** is selected) |
 | `x` / `c` | Expand every line of the tree / collapse them all |
 | `r` | Scan again |
-| `z` | **Undo last clean** (asks first; the answer starts on **No**) |
+| `z` | **Undo last clean** (asks first; **Yes** is selected, in red) |
 | `f` or `Esc` | Pick another game version |
 | `t` | Back to the tool menu |
 | `s` | Settings |

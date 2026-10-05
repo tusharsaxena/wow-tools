@@ -8,6 +8,7 @@ import unittest
 from collections.abc import Iterable
 from pathlib import Path
 from typing import ClassVar
+from unittest import mock
 
 from rich.text import Text
 from textual.app import App
@@ -20,14 +21,15 @@ from tests.fixtures import BASE, TINY, TuiTestCase, build_wow_tree, make_config,
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.install import Flavor, WowInstall
+from wowtools.ui import dialogs
 from wowtools.ui.account_screen import AccountScreen
-from wowtools.ui.dialogs import RESULT_HINT, ChoiceScreen
+from wowtools.ui.dialogs import CONFIRM_GUARD, RESULT_HINT, ChoiceScreen, ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.result_screen import (ResultBase, ResultScreen, result_bindings, status_colour,
                                        status_style)
 from wowtools.ui.settings_form import ToolSettingsScreen, folder_hint, settings_hint
 from wowtools.ui.tool_flow import SETTINGS_SAVED, ToolFlow
-from wowtools.ui.widgets import Ka0sCheckbox, NavHint
+from wowtools.ui.widgets import Ka0sCheckbox, NavHint, action_kind
 
 
 class Host(App):
@@ -140,6 +142,103 @@ class ResultScreenTest(TuiTestCase):
         self.assertEqual(app.results, ["undo"])
 
 
+class FakeClock:
+    """dialogs.monotonic for the Enter guard tests: time stands still until a test moves it."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+class ConfirmScreenTest(TuiTestCase):
+    """Spec D13: every confirm opens on Yes (Yes, No in that order), Yes coloured by its kind; Enter and Space are
+    ignored for CONFIRM_GUARD seconds after it opens, `y`, `n` and Esc never are."""
+
+    def guarded(self) -> FakeClock:
+        self.assertGreaterEqual(CONFIRM_GUARD, 0.2)  # the real guard: long enough for a held Enter, not a wait
+        self.confirm_guard(CONFIRM_GUARD)
+        clock = FakeClock()
+        patcher = mock.patch.object(dialogs, "monotonic", clock)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return clock
+
+    async def test_opens_on_yes_coloured_by_kind(self):
+        for kind in ("confirm", "destructive", "simulate", "create"):
+            screen = ConfirmScreen("Title", "Body", kind=kind)
+            app = Host(screen)
+            async with app.run_test(size=TINY) as pilot:
+                await pilot.pause()
+                yes, no = screen.query(Button)
+                self.assertEqual((yes.id, no.id), ("yes", "no"))  # Yes first
+                self.assertIs(screen.focused, yes)
+                self.assertEqual((action_kind(yes), action_kind(no)), (kind, "cancel"))
+                await pilot.press("enter")
+                await pilot.pause()
+            self.assertEqual(app.results, [True])
+        with self.assertRaises(ValueError):
+            ConfirmScreen("Title", "Body", kind="delete")
+
+    async def test_enter_and_space_wait_for_the_guard(self):
+        clock = self.guarded()
+        for key in ("enter", "space"):
+            screen = ConfirmScreen("Title", "Body", kind="destructive")
+            app = Host(screen)
+            async with app.run_test(size=TINY) as pilot:
+                await pilot.pause()
+                clock.now += CONFIRM_GUARD - 0.01
+                await pilot.press(key)  # a key held from the screen below: ignored
+                await pilot.pause()
+                self.assertIs(app.screen, screen)
+                self.assertEqual(app.results, [])
+                clock.now += 0.02
+                await pilot.press(key)
+                await pilot.pause()
+            self.assertEqual(app.results, [True], key)
+
+    async def test_enter_pressed_at_once_is_ignored(self):
+        self.confirm_guard(CONFIRM_GUARD)  # the real clock: a test presses well within 250 ms of the mount
+        screen = ConfirmScreen("Title", "Body", kind="destructive")
+        app = Host(screen)
+        async with app.run_test(size=TINY) as pilot:
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertIs(app.screen, screen)
+        self.assertEqual(app.results, [])
+
+    async def test_y_n_and_escape_are_never_delayed(self):
+        self.guarded()
+        for key, answer in (("y", True), ("n", False), ("escape", False)):
+            screen = ConfirmScreen("Title", "Body", kind="destructive")
+            app = Host(screen)
+            async with app.run_test(size=TINY) as pilot:
+                await pilot.pause()
+                await pilot.press(key)
+                await pilot.pause()
+            self.assertEqual(app.results, [answer], key)
+
+    async def test_the_guard_leaves_the_detail_tree_alone(self):
+        clock = self.guarded()
+        screen = ConfirmScreen("Title", "Body", groups={"Group": ["one", "two"]})
+        app = Host(screen)
+        async with app.run_test(size=TINY) as pilot:
+            await pilot.pause()
+            tree = screen.query_one("#details")
+            tree.focus()
+            await pilot.pause()
+            branch = tree.root.children[0]
+            self.assertTrue(branch.is_expanded)
+            tree.move_cursor(branch)
+            await pilot.press("space")  # within the guard: the tree still folds the branch
+            await pilot.pause()
+            self.assertFalse(branch.is_expanded)
+            clock.now += 1
+        self.assertEqual(app.results, [])
+
+
 class ChoiceScreenTest(TuiTestCase):
     def make(self, **kwargs) -> ChoiceScreen:
         return ChoiceScreen("Something did not finish", "Line one\nLine two",
@@ -160,6 +259,22 @@ class ChoiceScreenTest(TuiTestCase):
             await pilot.click("#leave")
             await pilot.pause()
         self.assertEqual(app.results, ["leave"])
+
+    async def test_enter_waits_for_the_guard(self):
+        self.confirm_guard(CONFIRM_GUARD)
+        clock = FakeClock()
+        with mock.patch.object(dialogs, "monotonic", clock):
+            screen = self.make()
+            app = Host(screen)
+            async with app.run_test(size=TINY) as pilot:
+                await pilot.pause()
+                await pilot.press("enter")
+                await pilot.pause()
+                self.assertIs(app.screen, screen)
+                clock.now += CONFIRM_GUARD
+                await pilot.press("enter")
+                await pilot.pause()
+        self.assertEqual(app.results, ["fix"])
 
     async def test_escape_closes_when_allowed(self):
         screen = self.make(escape=True)

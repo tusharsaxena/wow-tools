@@ -5,9 +5,11 @@ colours as a fallback. A tool's screens import these; no tool imports another to
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Hashable, Iterable
+from time import monotonic
 from typing import ClassVar
 
 from rich.text import Text
+from textual.actions import SkipAction
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
@@ -16,7 +18,7 @@ from textual.widget import Widget
 from textual.widgets import Button, ProgressBar, Static, Tree
 
 from wowtools.ui.theme import KA0S_THEME
-from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, NavHint, action_button
+from wowtools.ui.widgets import ACTION_VARIANTS, CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 PARTLY_TICKED = "◩"
 ALERT_STYLE = "bold #E5534B"
@@ -29,6 +31,9 @@ FILTERS_WIDTH = 50  # the left pane: wide enough for four action buttons in one 
 # A popup's width: readable, with room around it at 120x30, centred and never stretched when the window grows, and
 # never more than 90% of a smaller window.
 POPUP_WIDTH = "width: 90; max-width: 90%;"
+# Enter or Space on a ConfirmScreen's focused button does nothing for this long (seconds) after the popup opens, so
+# an Enter held or repeated from the screen below cannot answer Yes by itself (`y` and the mouse are not delayed).
+CONFIRM_GUARD = 0.25
 # A settings form's width: the whole window up to 100 columns, centred (never stretched edge to edge).
 FORM_WIDTH = "width: 100%; max-width: 100;"
 
@@ -244,9 +249,34 @@ class TwoPaneFocus(TreeKeys):
             tree.focus()
 
 
-class ConfirmScreen(TreeKeys, ModalScreen[bool]):
-    """A yes/no question. `alerts` are extra lines shown in red; `default_yes` decides which button has focus (risky
-    actions start on No). `groups` ({label: items}) lists the details in a tree below the body (detail_tree)."""
+class EnterGuard:
+    """For a popup whose focused button is the one Enter would press: Enter and Space on a button do nothing for
+    CONFIRM_GUARD seconds after the popup opens (ConfirmScreen and ChoiceScreen). Bind GUARD_BINDING and call
+    start_guard() in on_mount."""
+
+    opened_at = 0.0
+
+    def start_guard(self) -> None:
+        self.opened_at = monotonic()
+
+    def action_guard_press(self) -> None:
+        """Swallow Enter/Space on a button while the popup is new; otherwise let the key through (the button, the
+        button row or the detail tree acts on it as usual)."""
+        if isinstance(getattr(self, "focused", None), Button) and monotonic() - self.opened_at < CONFIRM_GUARD:
+            return
+        raise SkipAction()
+
+
+GUARD_BINDING = Binding("enter,space", "guard_press", show=False, priority=True)
+
+
+class ConfirmScreen(EnterGuard, TreeKeys, ModalScreen[bool]):
+    """A yes/no question. Yes is focused at the start (Yes, No in that order), so Enter answers Yes; the safeguards
+    are Yes's colour, `kind` (an action kind of `action_button`: "destructive" for anything that deletes,
+    overwrites, puts files back or drops pending work, "simulate" for a dry run, "create" for a backup) and
+    CONFIRM_GUARD: Enter and Space are ignored for that long after the popup opens. `y` answers Yes, `n` and Esc
+    No, at once. `alerts` are extra lines shown in red; `groups` ({label: items}) lists the details in a tree below
+    the body (detail_tree)."""
 
     DEFAULT_CSS = f"""
     ConfirmScreen {{ align: center middle; }}
@@ -258,12 +288,15 @@ class ConfirmScreen(TreeKeys, ModalScreen[bool]):
     ConfirmScreen Button {{ margin-left: 2; }}
     """
     BINDINGS: ClassVar[list[Binding]] = [Binding("y", "answer(True)", "Yes"), Binding("n,escape", "answer(False)", "No"),
+                                         GUARD_BINDING,
                                          *NAV_BINDINGS, *TREE_BINDINGS]
 
-    def __init__(self, title: str, body: str, alerts: tuple[str, ...] = (), *, default_yes: bool = False,
+    def __init__(self, title: str, body: str, alerts: tuple[str, ...] = (), *, kind: str = "confirm",
                  groups: dict[str, list[str]] | None = None) -> None:
         super().__init__()
-        self.default_yes = default_yes
+        if kind not in ACTION_VARIANTS:
+            raise ValueError(f"unknown action kind {kind!r}")
+        self.kind = kind
         self.title_text = title
         self.alerts = alerts
         self.body_text = "\n".join([body, *alerts]) if alerts else body
@@ -279,12 +312,13 @@ class ConfirmScreen(TreeKeys, ModalScreen[bool]):
             if self.groups:
                 yield detail_tree(self.groups)
             with ButtonRow(id="confirm-buttons"):
-                yield action_button("Yes (y)", "confirm", id="yes")
+                yield action_button("Yes (y)", self.kind, id="yes")
                 yield action_button("No (n)", "cancel", id="no")
             yield NavHint(f"{detail_hint(self.groups)}←→ choose · Enter/Space press · y yes · n/Esc no")
 
     def on_mount(self) -> None:
-        self.query_one("#yes" if self.default_yes else "#no", Button).focus()
+        self.start_guard()
+        self.query_one("#yes", Button).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.dismiss(event.button.id == "yes")
@@ -293,12 +327,14 @@ class ConfirmScreen(TreeKeys, ModalScreen[bool]):
         self.dismiss(value)
 
 
-class ChoiceScreen(ModalScreen[str | None]):
+class ChoiceScreen(EnterGuard, ModalScreen[str | None]):
     """A warning to act on (an earlier run did not finish, ...): a title in the warning colour, a message and one
     button per choice, given as (id, label, action kind). Pressing one calls choose(id), which dismisses with the
-    id; a subclass may act first. `default` is the id focused at the start. With `escape` Esc dismisses with None
-    (the question comes back later); without it Esc does nothing and a button must be pressed. `hint` (optional)
-    is a NavHint line under the buttons."""
+    id; a subclass may act first. `default` is the id focused at the start: the safe choice the user most likely
+    wants (the WTF Cleaner's Remind me next time, the Ace3 Put the originals back, the lock's Quit unless the lock
+    is stale). Like ConfirmScreen, Enter/Space do nothing for CONFIRM_GUARD seconds after it opens. With `escape`
+    Esc dismisses with None (the question comes back later); without it Esc does nothing and a button must be
+    pressed. `hint` (optional) is a NavHint line under the buttons."""
 
     DEFAULT_CSS = f"""
     ChoiceScreen {{ align: center middle; }}
@@ -308,7 +344,7 @@ class ChoiceScreen(ModalScreen[str | None]):
     ChoiceScreen #choice-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
     ChoiceScreen Button {{ margin-left: 2; }}
     """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "close", "Close", show=False)]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "close", "Close", show=False), GUARD_BINDING]
 
     def __init__(self, title: str, message: str, choices: Iterable[tuple[str, str, str]], *, default: str,
                  escape: bool = False, hint: str = "") -> None:
@@ -331,6 +367,7 @@ class ChoiceScreen(ModalScreen[str | None]):
                 yield NavHint(self.hint)
 
     def on_mount(self) -> None:
+        self.start_guard()
         self.query_one(f"#{self.default}", Button).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:

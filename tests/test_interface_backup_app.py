@@ -71,6 +71,12 @@ class InterfaceBackupAppTest(TuiTestCase):
     def zips(self):
         return sorted(p.name for p in (self.bk / "interface-backup").glob("backup-*.zip"))
 
+    def assert_starts_on_yes(self, confirm, kind):
+        """A confirm opens on Yes, coloured by what it does (spec D13)."""
+        yes = confirm.query_one("#yes", Button)
+        self.assertIs(confirm.focused, yes)
+        self.assertEqual(action_kind(yes), kind)
+
     def assert_on_screen(self, widget, size=BASE):
         r = widget.region
         self.assertTrue(r.width > 0 and r.height > 0, f"{widget!r} is not shown: {r}")
@@ -446,7 +452,7 @@ class InterfaceBackupAppTest(TuiTestCase):
                 await pilot.press("b")
                 await settle(app, pilot)
                 self.assertIsInstance(app.screen, ConfirmScreen)
-                self.assertIs(app.screen.focused, app.screen.query_one("#yes", Button))  # nothing is changed
+                self.assert_starts_on_yes(app.screen, "create")  # a backup only adds a zip
                 self.assertIn("Back up 3 flavors?", app.screen.title_text)
                 await pilot.press("y")
                 await settle(app, pilot)
@@ -756,8 +762,7 @@ class InterfaceBackupAppTest(TuiTestCase):
                 await pilot.press("o")
                 await settle(app, pilot)
                 self.assertIsInstance(app.screen, ConfirmScreen)
-                self.assertFalse(app.screen.default_yes)
-                self.assertIs(app.screen.focused, app.screen.query_one("#no", Button))
+                self.assert_starts_on_yes(app.screen, "destructive")
                 self.assertTrue(any("WeakAuras" in alert for alert in app.screen.alerts))
                 await pilot.press("y")
                 await settle(app, pilot)
@@ -772,7 +777,7 @@ class InterfaceBackupAppTest(TuiTestCase):
                 await pilot.press("z")
                 await settle(app, pilot)
                 self.assertIsInstance(app.screen, ConfirmScreen)
-                self.assertFalse(app.screen.default_yes)
+                self.assert_starts_on_yes(app.screen, "destructive")
                 await pilot.press("y")
                 await settle(app, pilot)
                 self.assertIsInstance(app.screen, RestoreResultScreen)
@@ -969,7 +974,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             await settle(app, pilot)
             self.assertIsInstance(app.screen, ConfirmScreen)
             self.assertTrue(any("Wow.exe" in alert for alert in app.screen.alerts))
-            self.assertFalse(app.screen.default_yes)
+            self.assert_starts_on_yes(app.screen, "destructive")
 
     async def test_restore_confirm_warns_when_the_backup_drive_is_short(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
@@ -1053,7 +1058,7 @@ class InterfaceBackupAppTest(TuiTestCase):
                 await settle(app, pilot)
                 self.assertIsInstance(app.screen, ToolMenuScreen)
 
-    async def test_undo_from_review_starts_on_no(self):
+    async def test_undo_from_review_starts_on_yes(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
         extra = self.root / "_retail_" / "WTF" / "new.wtf"
         app = self.make_app()
@@ -1077,9 +1082,9 @@ class InterfaceBackupAppTest(TuiTestCase):
             await pilot.press("z")
             await settle(app, pilot)
             self.assertIsInstance(app.screen, ConfirmScreen)
-            self.assertIs(app.screen.focused, app.screen.query_one("#no", Button))
+            self.assert_starts_on_yes(app.screen, "destructive")
             self.assertIn("Undo the restore from", app.screen.title_text)
-            await pilot.press("enter")  # No
+            await pilot.press("right", "enter")  # No
             await settle(app, pilot)
             self.assertIs(app.screen, review)
             self.assertFalse(extra.exists())
@@ -1168,7 +1173,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertIsInstance(app.screen, ConfirmScreen)
             self.assertIn("Undo the restore from", app.screen.title_text)
             self.assertTrue(any("Wow.exe" in alert for alert in app.screen.alerts))
-            self.assertIs(app.screen.focused, app.screen.query_one("#no", Button))
+            self.assert_starts_on_yes(app.screen, "destructive")
             await pilot.press("y")  # warn and allow
             await settle(app, pilot)
             self.assertIsInstance(app.screen, RestoreResultScreen)
@@ -1476,7 +1481,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assert_on_screen(confirm.query_one("#confirm-title"))
             self.assert_on_screen(confirm.query_one("#yes", Button))
             self.assert_on_screen(confirm.query_one("#no", Button))
-            self.assertIs(confirm.focused, confirm.query_one("#no", Button))
+            self.assert_starts_on_yes(confirm, "destructive")
 
     async def test_settings_labels_wrap_at_base(self):
         app = self.make_app()
