@@ -9,6 +9,7 @@ from typing import Any, ClassVar
 
 from rich.text import Text
 from textual.binding import Binding
+from textual.screen import Screen
 from textual.widgets import Button, Checkbox, Input, ProgressBar, Static, Tree
 
 from wowtools.core.events import log_event, log_exception
@@ -291,6 +292,13 @@ class ReviewBase(TickActions, Preflight, ScheduledRebuild, ButtonActions, TwoPan
     for the tree while a scan runs (#scan-box with #scan-progress and #scan-label: show_scan_box, _scan_progress)."""
 
     _scanning = False
+    _progress_screen: Screen | None = None  # the run's progress popup, while it is open (_close_progress)
+
+    def _close_progress(self) -> None:
+        """Close the run's progress popup (_progress_screen) if it is still the screen shown."""
+        screen, self._progress_screen = self._progress_screen, None
+        if screen is not None and self.app.screen is screen:
+            self.app.pop_screen()
 
     def ticks_frozen(self) -> bool:
         """The selection is frozen while the running-programs check runs (a screen may freeze it longer)."""

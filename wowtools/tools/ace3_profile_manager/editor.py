@@ -23,7 +23,8 @@ from wowtools.core.fsutil import atomic_write_bytes, free_name, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.core.journal import now_iso
 from wowtools.core.snapshot import prune_snapshots, take_snapshot
-from wowtools.core.svfiles import SvFileError, SvGuard, lstat_or_none, probe_lock, recover_probe_leftovers
+from wowtools.core.svfiles import (SvFileError, SvGuard, find_locked, locked_message, lstat_or_none,
+                                   recover_probe_leftovers)
 from wowtools.tools.ace3_profile_manager.events import TOOL_NAME
 from wowtools.tools.ace3_profile_manager.journal import ProfileJournal
 from wowtools.tools.ace3_profile_manager.ops import DbState, FileEdit, compile_file
@@ -174,20 +175,11 @@ def _prepare(flavor: Flavor, states: list[DbState], result: ApplyResult,
 
 
 def _refuse_locked(ready: list[tuple[SvFile, FileEdit, bytes]], flavor: Flavor, report: ApplyProgress) -> None:
-    locked = []
-    for index, (file, _, _) in enumerate(ready, 1):
-        try:
-            error = probe_lock(file.path)
-        except SvFileError as exc:
-            raise ApplyError(f"{exc} Nothing was changed.") from exc
-        if error is not None:
-            locked.append((file.rel, error))
-        report("lock_check", index, len(ready), file.rel)
+    locked = find_locked([(file.rel, file.path) for file, _, _ in ready],
+                         lambda exc: ApplyError(f"{exc} Nothing was changed."), report)
     if locked:
         log_event("ace.file_locked", flavor=flavor.folder, files=len(locked), details=[r for r, _ in locked[:20]])
-        names = "\n".join(f"  {rel} ({error})" for rel, error in locked[:10])
-        raise ApplyError(f"{len(locked)} files are locked by another program (the Raider.IO client and WeakAuras "
-                         f"Companion are known to do this). Close it and apply again.\n{names}")
+        raise ApplyError(locked_message(locked, "apply"))
 
 
 def _refuse_unfinished(root: Path, flavor: Flavor) -> None:

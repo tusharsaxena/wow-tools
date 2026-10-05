@@ -59,17 +59,30 @@ class InterfaceBackupParallelTest(TempTree):
         self.assertEqual(done, sorted(f.folder for f in self.flavors))
 
     def test_scan_raises_an_unexpected_error_after_the_others(self):
-        real = ib_scanner.scan_flavor
+        """At 4 every flavor runs at once: Retail fails once another finished, and the error comes after the
+        running ones ended (each logged ibackup.scan_completed). At 1 the flavors after Retail never start."""
+        real, other_done = ib_scanner.scan_flavor, threading.Event()
+        folders = [f.folder for f in self.flavors]
+        self.assertLessEqual(len(folders), 4)
+        retail = folders.index("_retail_")
 
         def broken(flavor, **kwargs):
             if flavor.folder == "_retail_":
+                other_done.wait(WAIT if parallel else 0)
                 raise RuntimeError("boom")
-            return real(flavor, **kwargs)
+            scan = real(flavor, **kwargs)
+            other_done.set()
+            return scan
 
-        for parallelism in (1, 4):
-            with self.subTest(parallelism=parallelism), capture_events(), \
-                    patch.object(ib_scanner, "scan_flavor", broken), self.assertRaises(RuntimeError):
-                ib_scanner.scan_flavors(self.flavors, parallelism=parallelism)
+        for parallel, parallelism in ((False, 1), (True, 4)):
+            other_done.clear()
+            with self.subTest(parallelism=parallelism), capture_events() as records, \
+                    patch.object(ib_scanner, "scan_flavor", broken):
+                with self.assertRaises(RuntimeError):
+                    ib_scanner.scan_flavors(self.flavors, parallelism=parallelism)
+                done = sorted(r["data"]["flavor"] for r in records if r["event"] == "ibackup.scan_completed")
+                expected = [f for f in folders if f != "_retail_"] if parallel else folders[:retail]
+                self.assertEqual(done, sorted(expected))
 
     def back_up(self, root: Path, parallelism: int, **kwargs):
         scans = [s for s in self.scans() if s.has_data]
@@ -285,18 +298,27 @@ class AceUndoParallelTest(TempTree):
 
     def test_a_failed_snapshot_changes_nothing(self):
         real = undo.take_snapshot
+        retail_done, wait = threading.Event(), {"for": 0}
 
         def broken(flavor, *args, **kwargs):
             if flavor.folder == "_classic_era_":
+                retail_done.wait(wait["for"])  # in parallel: fail once Retail's snapshot is made
                 raise undo.BackupError("disk full")
-            return real(flavor, *args, **kwargs)
+            made = real(flavor, *args, **kwargs)
+            retail_done.set()
+            return made
 
         edited = {p: p.read_bytes() for p in self.files}
+        snapshots = self.root / undo.SNAPSHOT_SUBDIR
+        before = sorted(snapshots.iterdir())
         for parallelism in (1, 4):
+            wait["for"] = WAIT if parallelism > 1 else 0
             with self.subTest(parallelism=parallelism), patch.object(undo, "take_snapshot", broken):
                 with self.assertRaises(undo.UndoError) as caught:
                     self.undo(parallelism)
                 self.assertIn("Nothing was changed", str(caught.exception))
+                # Retail's snapshot, made at parallelism 4 while Classic Era's failed, protects nothing: deleted
+                self.assertEqual(sorted(snapshots.iterdir()), before)
                 self.assertEqual({p: p.read_bytes() for p in self.files}, edited)
                 self.assertEqual(latest_undoable(self.journals), self.journal)
 

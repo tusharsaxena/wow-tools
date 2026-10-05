@@ -21,7 +21,7 @@ from wowtools.core.install import Flavor
 from wowtools.core.journal import mark_undone
 from wowtools.core.parallel import run_units
 from wowtools.core.snapshot import prune_snapshots, take_snapshot
-from wowtools.core.svfiles import SvFileError, probe_lock
+from wowtools.core.svfiles import find_locked, locked_message
 from wowtools.core.undo import FAILED, RESTORED, SKIPPED, UndoResultBase, safe_destination
 from wowtools.tools.ace3_profile_manager.editor import (EDITED_SUBDIR, SNAPSHOT_PREFIX, SNAPSHOT_SUBDIR, Marker,
                                                         clear_marker)
@@ -109,19 +109,11 @@ def _refuse_running(wow_check: Callable[[], list[str] | None] | None, action: st
 
 def _refuse_locked(targets: list[tuple[str, Path | None]], action: str) -> None:
     """UndoError when a file to put back is held by another program (RaiderIO, WeakAuras Companion)."""
-    locked = []
-    for rel, dest in targets:
-        if dest is not None and dest.exists():
-            try:
-                error = probe_lock(dest)
-            except SvFileError as exc:
-                raise UndoError(f"{exc} Nothing was changed.") from exc
-            if error is not None:
-                locked.append(f"{rel} ({error})")
+    locked = find_locked([(rel, dest) for rel, dest in targets if dest is not None and dest.exists()],
+                         lambda exc: UndoError(f"{exc} Nothing was changed."))
     if locked:
         log_event("ace.file_locked", action=action, files=len(locked))
-        raise UndoError(f"{len(locked)} files are locked by another program. Close it and try again.\n  "
-                        + "\n  ".join(locked[:10]))
+        raise UndoError(locked_message(locked, "try"))
 
 
 def _snapshot(flavor: Flavor, root: Path, now: datetime | None, report, action: str) -> Path:
@@ -147,16 +139,25 @@ def _snapshots(flavors: list[Flavor], root: Path, now: datetime | None, report, 
                on_flavor_done: Callable[[Flavor], None] | None) -> list[Path]:
     """Each flavor's whole-WTF snapshot before Undo, up to `parallelism` at once: every snapshot is its own zip of
     its own flavor's WTF folder. The first that fails (in flavor order) is raised once the running ones ended; the
-    flavors not started by then never start, so with parallelism 1 it stops where the serial loop did."""
+    flavors not started by then never start, so with parallelism 1 it stops where the serial loop did. The
+    snapshots that were made are deleted then: nothing was changed, so they protect nothing, and no prune follows
+    a failed Undo to keep them within keep_backups."""
     started, ended = safe_progress(on_flavor), safe_progress(on_flavor_done)
     results = run_units(flavors, lambda flavor, _report: _snapshot(flavor, root, now, report, "undo"),
                         parallelism=parallelism, what="ace.undo_snapshot", label=lambda flavor: flavor.folder,
                         on_start=lambda flavor, _index, _total: started(flavor),
                         on_done=lambda result: ended(result.unit), stop_on_error=True)
-    for result in results:
-        if result.error is not None:
-            raise result.error
-    return [result.value for result in results if result.value is not None]
+    made = [result.value for result in results if result.value is not None]
+    failed = next((result.error for result in results if result.error is not None), None)
+    if failed is not None:
+        for path in made:
+            try:
+                path.unlink()
+            except OSError:
+                continue  # left for the next prune
+            log_event("ace.snapshot_discarded", path=path.name)
+        raise failed
+    return made
 
 
 def undo_run(journal_path: Path, *, wow_root: Path, root: Path, keep_snapshots: int,

@@ -22,9 +22,7 @@ activity.running() itself: a read-only scan does not hold up quit.
 What several units may share, and is safe to share: log_event (EventLog holds a lock), a JournalWriter (locked),
 ThrottledProgress (locked, throttled per thread) and the `progress` callback here (called from the unit's own
 thread as progress(unit, stage, current, total, detail); it must be thread-safe: a ProgressScreen's report_unit
-(ui/dialogs.py, which writes a locked ProgressBoard the UI thread draws on a timer, with on_start=start_unit), or a
-ThrottledProgress(forward, tagged=True) whose forward goes through call_from_thread: tagged, it reads the unit
-first and keeps each unit's stages apart).
+(ui/dialogs.py, which writes a locked ProgressBoard the UI thread draws on a timer, with on_start=start_unit)).
 """
 from __future__ import annotations
 

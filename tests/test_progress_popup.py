@@ -342,19 +342,26 @@ class ProgressScreenTest(TuiTestCase):
                   lambda: BackupProgressScreen("Backing up", "backup", [f.display_name for f in flavors]),
                   lambda: BackupProgressScreen("Undoing", "verify"),
                   lambda: ProfileProgressScreen("Applying", flavors=flavors),
-                  lambda: ProfileProgressScreen("Undoing", first_stage="undo"))
+                  lambda: ProfileProgressScreen("Undoing", first_stage="undo"),
+                  # the parallel runs (T5.3), opened as the tools open them: a row per flavor at once
+                  lambda: BackupProgressScreen("Backing up", "backup", [f.display_name for f in flavors],
+                                               parallelism=2),
+                  lambda: ProfileProgressScreen("Undoing the last change", first_stage="undo", flavors=flavors,
+                                                parallelism=2))
+        rows = [1] * (len(makers) - 2) + [2, 2]  # WTF Clean, Shots and Ace3 Apply are serial
         for size in (BASE, TINY):
             app = Host()
             async with app.run_test(size=size) as pilot:
-                for make in makers:
+                for make, expected in zip(makers, rows):
                     screen = make()
                     with self.subTest(size=size, screen=type(screen).__name__, title=screen.title_text):
                         await app.push_screen(screen)
                         await pilot.pause()
                         box = screen.query_one(f"#{screen.ID_PREFIX}-box").region
-                        self.assertEqual(screen.rows, 1)  # every tool's runs are serial for now
+                        self.assertEqual(screen.rows, expected)
                         self.assertTrue(screen.title_text)
-                        screen.report_unit(flavors[0], LONG, 1, 2, LONG)
+                        for flavor in flavors[:expected]:
+                            screen.report_unit(flavor, LONG, 1, 2, LONG)
                         screen.refresh_progress()
                         await pilot.pause()
                         self.assertEqual(screen.query_one(f"#{screen.ID_PREFIX}-box").region, box)

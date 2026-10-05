@@ -22,7 +22,7 @@ from wowtools.core.events import log_event
 from wowtools.core.fsutil import free_name, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.core.svfiles import (LOCK_PROBE_SUFFIX, SvFileError, SvGuard, lstat_or_none,  # noqa: F401 - re-exported
-                                   probe_lock, saved_variables_folders)
+                                   find_locked, locked_message, probe_lock, saved_variables_folders)
 from wowtools.core.svfiles import recover_probe_leftovers as core_recover_probe_leftovers
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
 from wowtools.tools.wtf_cleaner.journal import CleanJournal
@@ -137,19 +137,11 @@ def _probe_lock(path: Path) -> str | None:
 
 def _refuse_locked(ready: list[tuple[ProposalItem, SVFile]], flavor: Flavor, report: CleanProgress) -> None:
     """A real clean stops before the snapshot if any selected file is locked by another process."""
-    locked: list[tuple[str, str]] = []
-    for index, (_, sv) in enumerate(ready, 1):
-        rel = _relative(sv.path, flavor)
-        error = _probe_lock(sv.path)
-        if error is not None:
-            locked.append((rel, error))
-        report("lock_check", index, len(ready), rel)
+    locked = find_locked([(_relative(sv.path, flavor), sv.path) for _, sv in ready],
+                         lambda exc: CleanError(f"{exc} Nothing was deleted."), report)
     if locked:
         log_event("clean.locked", flavor=flavor.folder, files=len(locked), details=[r for r, _ in locked[:20]])
-        names = "\n".join(f"  {rel} ({error})" for rel, error in locked[:10])
-        more = f"\n  …and {len(locked) - 10} more" if len(locked) > 10 else ""
-        raise CleanError(f"{len(locked)} files are locked by another program (the Raider.IO client and WeakAuras "
-                         f"Companion are known to do this). Close it and clean again.\n{names}{more}")
+        raise CleanError(locked_message(locked, "clean"))
 
 
 def _relative(path: Path, flavor: Flavor) -> str:

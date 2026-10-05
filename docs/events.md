@@ -187,6 +187,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ace.rolled_back` | warning | After a failure, the files this run had already written were put back. |
 | `ace.scan_completed` | info | A scan finished, with counts (files, databases, profiles, characters, leftover characters, seconds). |
 | `ace.scan_started` | info | A scan of one flavor's SavedVariables for AceDB databases started. |
+| `ace.snapshot_discarded` | info | A whole-WTF snapshot taken before an Undo whose other snapshot failed was deleted: nothing was changed, so it protected nothing. |
 | `ace.snapshot_failed` | error | The whole-WTF snapshot failed; nothing was changed. |
 | `ace.snapshot_taken` | info | The whole-WTF snapshot was written and verified. |
 | `ace.snapshots_pruned` | info | Older whole-WTF snapshots of the flavor were deleted to keep the newest N (keep_backups). |

@@ -695,11 +695,6 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         screen.finish_all()  # the run ended: the board ends at m of m
         self.app.call_from_thread(self._job_done, done, result)
 
-    def _close_progress(self) -> None:
-        screen, self._progress_screen = self._progress_screen, None
-        if screen is not None and self.app.screen is screen:
-            self.app.pop_screen()
-
     def _job_done(self, done: Callable[[Any], None], result: Any) -> None:
         self.app.busy = False
         self._close_progress()

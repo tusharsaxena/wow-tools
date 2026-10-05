@@ -190,7 +190,7 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
 
     # --- scanning ------------------------------------------------------------------------------
     def action_rescan(self) -> None:
-        if self._checking:
+        if self._checking or self._scanning:  # one scan at a time: a second would race the first to the tree
             return
         self.settings = load_settings(self.tool_cfg)
         self.scans = []
@@ -623,11 +623,6 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             self.app.call_from_thread(self._clean_failed, stopped.error, result)
             return
         self.app.call_from_thread(self._cleaned, result)
-
-    def _close_progress(self) -> None:
-        progress_screen, self._progress_screen = self._progress_screen, None
-        if progress_screen is not None and self.app.screen is progress_screen:
-            self.app.pop_screen()
 
     def _clean_failed(self, exc: Exception, result: MultiCleanResult | None = None) -> None:
         self.app.busy = False

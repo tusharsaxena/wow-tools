@@ -70,8 +70,7 @@ class ThrottledProgressTest(unittest.TestCase):
         progress("backup", 10, 10, "f10")  # end of the stage
         progress("verify", 1, 10, "v1")  # new stage
         progress("swap", 0, 0, "Interface")  # no count
-        progress.reset()
-        progress("swap", 0, 0, "WTF")
+        progress("swap", 0, 0, "WTF")  # no count again
         progress("verify", 2, 10, "v2")  # stage changed again
         self.assertEqual([a[3] for a in sent], ["f1", "f6", "f10", "v1", "Interface", "WTF", "v2"])
 

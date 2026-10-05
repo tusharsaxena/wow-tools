@@ -7,6 +7,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from textual.app import App
 from textual.widgets import Button, DataTable, Input, OptionList, ProgressBar, Static, Tree
@@ -92,6 +93,30 @@ class AppTestCase(TuiTestCase):
 
 
 class ReviewFlowTest(AppTestCase):
+    async def test_rescan_waits_for_the_running_scan(self):
+        """r (or Rescan) during a scan starts no second one: two would race each other to the tree."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            real, release, calls = review_module.scan_flavors, threading.Event(), []
+
+            def slow(*args, **kwargs):
+                calls.append(1)
+                release.wait(10)
+                return real(*args, **kwargs)
+
+            with patch.object(review_module, "scan_flavors", slow):
+                review.action_rescan()
+                await pilot.pause()
+                review.action_rescan()
+                await pilot.press("r")
+                await pilot.pause()
+                release.set()
+                await settle(app, pilot)
+            self.assertEqual(len(calls), 1)
+            self.assertFalse(review._scanning)
+            self.assertIsNotNone(review.proposal)
+
     async def test_dry_run_flow_changes_nothing(self):
         app = self.make_app()
         with capture_events() as records:

@@ -49,6 +49,37 @@ class SvFilesTest(unittest.TestCase):
         with patch("wowtools.core.svfiles.rename_no_replace", refuse):
             self.assertEqual(svfiles.probe_lock(self.sv), "in use")
 
+    def test_find_locked_lists_the_locked_files_and_reports_each(self):
+        free = self.sv.with_name("Auctionator.lua")
+        reports = []
+
+        def probe(path):
+            return "in use" if path == self.sv else None
+
+        with patch.object(svfiles, "probe_lock", probe):
+            locked = svfiles.find_locked([("a/Details.lua", self.sv), ("a/Auctionator.lua", free)], RuntimeError,
+                                         lambda *a: reports.append(a))
+        self.assertEqual(locked, [("a/Details.lua", "in use")])
+        self.assertEqual(reports, [("lock_check", 1, 2, "a/Details.lua"), ("lock_check", 2, 2, "a/Auctionator.lua")])
+
+    def test_find_locked_raises_the_tools_error_when_a_file_cannot_be_put_back(self):
+        def stuck(path):
+            raise svfiles.SvFileError("Could not put it back.")
+
+        with patch.object(svfiles, "probe_lock", stuck), self.assertRaises(ValueError) as caught:
+            svfiles.find_locked([("a/Details.lua", self.sv)], lambda exc: ValueError(f"{exc} Nothing was changed."))
+        self.assertEqual(str(caught.exception), "Could not put it back. Nothing was changed.")
+
+    def test_locked_message_names_the_lockers_and_counts_the_rest(self):
+        locked = [(f"f{i}.lua", "in use") for i in range(12)]
+        message = svfiles.locked_message(locked, "clean")
+        self.assertTrue(message.startswith("12 files are locked by another program (the Raider.IO client"))
+        self.assertIn("Close it and clean again.", message)
+        self.assertIn("  f9.lua (in use)", message)
+        self.assertNotIn("f10.lua", message)
+        self.assertTrue(message.endswith("…and 2 more"))
+        self.assertNotIn("more", svfiles.locked_message(locked[:2], "apply"))
+
     def test_recover_probe_leftovers_renames_back(self):
         aside = self.sv.with_name(self.sv.name + svfiles.LOCK_PROBE_SUFFIX)
         os.rename(self.sv, aside)

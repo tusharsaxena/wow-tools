@@ -35,6 +35,29 @@ def imported_modules(module: ast.Module) -> set[str]:
     return names
 
 
+def resolved_imports(module: ast.Module, package: str) -> set[str]:
+    """Every module an import may load, as absolute names: relative imports resolved against `package` (the
+    importing file's package), and `from X import a` also as `X.a` (a may be a submodule)."""
+    names = set()
+    for node in ast.walk(module):
+        if isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            if node.level:
+                parts = package.split(".")
+                parent = ".".join(parts[:len(parts) - node.level + 1])
+                base = f"{parent}.{base}" if base else parent
+            names.add(base)
+            names.update(f"{base}.{alias.name}" for alias in node.names)
+        elif isinstance(node, ast.Import):
+            names.update(alias.name for alias in node.names)
+    return names
+
+
+def package_of(path: Path) -> str:
+    """The dotted package a module file is in (an __init__.py is its own package)."""
+    return ".".join(path.relative_to(REPO).with_suffix("").parts[:-1])
+
+
 def defined_functions(module: ast.Module) -> set[str]:
     return {node.name for node in ast.walk(module) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
 
@@ -47,11 +70,27 @@ class StructureTest(unittest.TestCase):
         offenders = []
         for name in tools:
             for path in modules(f"wowtools/tools/{name}"):
+                imported = resolved_imports(tree(path), package_of(path))
                 for other in tools:
-                    if other != name and any(m.startswith(f"wowtools.tools.{other}")
-                                             for m in imported_modules(tree(path))):
+                    if other != name and any(m == f"wowtools.tools.{other}" or m.startswith(f"wowtools.tools.{other}.")
+                                             for m in imported):
                         offenders.append(f"{rel(path)} imports wowtools.tools.{other}")
         self.assertEqual(offenders, [])
+
+    def test_the_import_check_sees_every_form(self):
+        """The check above resolves `from wowtools.tools import x` and relative imports too."""
+        package = "wowtools.tools.wtf_cleaner"
+        for source in ("import wowtools.tools.interface_backup.scanner",
+                       "from wowtools.tools.interface_backup.scanner import scan_flavors",
+                       "from wowtools.tools import interface_backup",
+                       "from ..interface_backup.scanner import scan_flavors",
+                       "from .. import interface_backup"):
+            with self.subTest(source=source):
+                self.assertIn("wowtools.tools.interface_backup", {
+                    m if m.count(".") < 3 else ".".join(m.split(".")[:3])
+                    for m in resolved_imports(ast.parse(source), package)})
+        self.assertEqual(package_of(REPO / "wowtools" / "tools" / "wtf_cleaner" / "cleaner.py"), package)
+        self.assertEqual(package_of(REPO / "wowtools" / "tools" / "wtf_cleaner" / "__init__.py"), package)
 
     def test_shared_helpers_are_defined_once(self):
         names = {"_safe_progress", "safe_progress", "_remove", "_discard", "remove_quietly"}
@@ -111,6 +150,17 @@ class StructureTest(unittest.TestCase):
         classes = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
                    if isinstance(node, ast.ClassDef) and node.name in ("NotTicked", "ReviewTree", "TickModel")}
         self.assertEqual(classes, {("wowtools/ui/review.py", n) for n in ("NotTicked", "ReviewTree", "TickModel")})
+
+    def test_lock_refusal_and_progress_close_are_shared(self):
+        """Functionality two tools need lives in the shared library: the lock refusal (core/svfiles.py: the probe
+        loop and its message) and closing a review's progress popup (ui/review.py; Ace3's takes the popup)."""
+        where = {(rel(p), n) for p in modules("wowtools")
+                 for n in defined_functions(tree(p)) & {"find_locked", "locked_message"}}
+        self.assertEqual(where, {("wowtools/core/svfiles.py", n) for n in ("find_locked", "locked_message")})
+        texts = [rel(p) for p in modules("wowtools") if "Close it and" in p.read_text(encoding="utf-8")]
+        self.assertEqual(texts, ["wowtools/core/svfiles.py"])
+        closes = {rel(p) for p in modules("wowtools") if "_close_progress" in defined_functions(tree(p))}
+        self.assertEqual(closes, {"wowtools/ui/review.py", "wowtools/tools/ace3_profile_manager/review_screen.py"})
 
     def test_tree_filter_lives_in_ui(self):
         """The tree filter (spec D7) is wowtools/ui/tree_filter.py's: no tool defines its own match, model filter,

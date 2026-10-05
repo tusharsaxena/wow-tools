@@ -562,11 +562,6 @@ class ShotReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         progress_screen.finish_all()  # the run ended: the board ends at m of m
         self.app.call_from_thread(self._job_done, result)
 
-    def _close_progress(self) -> None:
-        progress_screen, self._progress_screen = self._progress_screen, None
-        if progress_screen is not None and self.app.screen is progress_screen:
-            self.app.pop_screen()
-
     def _job_stopped(self, exc: OrganizeError) -> None:
         self.app.busy = False
         self._close_progress()

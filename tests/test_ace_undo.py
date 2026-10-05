@@ -210,7 +210,7 @@ class RecoverTest(unittest.TestCase):
 
     def test_recover_refused_when_a_file_is_locked(self):
         root, marker, sv, _original = self._torn()
-        with patch("wowtools.tools.ace3_profile_manager.undo.probe_lock", return_value="in use"), \
+        with patch("wowtools.core.svfiles.probe_lock", return_value="in use"), \
                 self.assertRaises(undo.UndoError):
             undo.recover(marker, root=root, wow_check=list)
         self.assertEqual(sv.read_bytes(), b"what the run wrote")
