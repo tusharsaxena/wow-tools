@@ -10,6 +10,13 @@
     wowtools/ui/           shared Textual pieces: theme, branding, Ka0sApp, WowToolsApp, ToolFlow, shared screens
     wowtools/tools/<tool>/ one package per tool: logic modules (UI-free) + a ToolFlow (FLOW) and its screens
 
+`wowtools/core/` and `wowtools/ui/` together are the suite's **shared library**: in-repo reusable code, not a
+separate package. Functionality two or more tools need lives there (UI-free code in `core/`, Textual code in `ui/`),
+never copied into a tool and never imported from one tool into another. `tests/test_structure.py` pins the single
+definitions (journal, marker, undo, progress and text helpers; the review, result, choice and settings screen bases)
+and the no-cross-tool-import rule, and checks that `core/` never imports `textual` or `wowtools.ui`. The shared
+modules are listed under [Core modules](#core-modules) and [UI](#ui).
+
 There is one Textual app, `WowToolsApp` (`ui/suite_app.py`). Its first screen is the tool menu
 (`ToolMenuScreen`), which stays at the bottom of the screen stack. Picking a tool builds that tool's `ToolFlow`
 (`TOOLS[name].flow()`), which pushes the tool's own screens; `flow.close()` (`app.close_tool()`) pops back to the
@@ -21,6 +28,8 @@ Tool logic is pure Python over plain dataclasses, so the TUI and the tests drive
 stay thin.
 
 ## Core modules
+
+The UI-free half of the shared library (`wowtools/core/`):
 
 | Module | Job |
 |---|---|
@@ -585,10 +594,13 @@ An unhandled exception in a handler or worker is logged as `error` with `where=u
 (a private Textual hook, pinned by a test) before Textual exits; `suite.run()` returns the app's `return_code`, so
 `session.end` and the process exit status show the crash.
 
-Shared screens and widgets in `wowtools/ui/`:
+Shared screens and widgets in `wowtools/ui/` (the Textual half of the shared library):
 
 | Module | Job |
 |---|---|
+| `base` | `Ka0sApp`: registers the theme, the background update check, `u` (`UpdateScreen`, `UpdateProgressScreen`), `after_mount()` |
+| `theme` | `KA0S_THEME`, the Ka0s colours |
+| `branding` | `Banner` (the shield art on the tool menu and the flavor and account pickers) and `BrandBar` (on every screen) |
 | `suite_app` | `WowToolsApp`, `ToolMenuScreen` (the first screen), `LockScreen` (a `ChoiceScreen`: another copy may be running: Quit, or Override and continue) |
 | `tool_flow` | `ToolFlow` base (spec D9): `start()` (`require_install()`, the shared WoW-folder setup, then `SETTINGS_SCREEN` with source `wizard` the first time the tool opens, then the tool's `_pick_flavor()`), `open_settings()` (`s`: the WoW-folder settings, then `SETTINGS_SCREEN`; never while it or a `SETTINGS_BLOCKERS` screen is on the stack), `_settings_done()` ("Settings saved…"), `_after_review(choice)` (`flavors` / `tools` / quit), `remember_flavor(choice)` and `pick_account(flavor, then)` (the last choices in `[SECTION]` `last_flavor_choice` / `last_account`, logged with source `picker`; the account picker only for several accounts, Esc back to the flavor picker), `fill_notes(picker, work, ready)` (a flavor picker's notes worked out in a thread, set only while that picker is still on the stack), `close()` |
 | `settings_form` | `ToolSettingsScreen(tool_cfg, wow_path, *, source)`: every tool's settings form (title `FORM_TITLE`, the tool's `fields()`, `#settings-error`, Save and Cancel, the hint from `settings_hint(TICKS)`, focus on `FIRST_FIELD`, Esc cancels). A tool supplies `load()`, `fields()` and `save()` (False after `_error(text)` keeps the form open); `folder_input()` / `folder_value()` handle a folder field (empty = the default, whose stored form `folder_hint(path)` shows), `wow_install` is the WoW folder when valid. Dismisses with True once saved |

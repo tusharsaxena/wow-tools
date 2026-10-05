@@ -29,10 +29,20 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      `screenshot_organizer/`, `wtf_cleaner/` and `interface_backup/`, whose journal records restores only), offer only `latest_undoable(dir)`, `mark_undone()` after an
      undo, and give the review screen an amber Undo button (`action_button(..., "revert")`, key `z`, confirm
      starting on No). A dry run writes no journal.
-   - **Code another tool already has** moves to `wowtools/core/` first, never imported across tools. A tool that
-     changes SavedVariables files takes the whole-`WTF` snapshot from `core/snapshot.py` (folder and name prefix are
-     parameters), the path guard and lock probe from `core/svfiles.py`, and `core.fsutil.atomic_write_bytes` for its
-     writes, as the WTF Cleaner and the Ace3 Profile Manager do.
+   - **The shared library.** `wowtools/core/` (UI-free, never imports `textual`) and `wowtools/ui/` (Textual) are the
+     suite's shared library: in-repo reusable code, not a separate package. Anything two or more tools need lives
+     there: use what is already there, and when your tool needs code another tool already has, move it into
+     `core/` or `ui/` first and make both tools use it. Never copy it and never import it from the other tool
+     (`tests/test_structure.py` pins the single definitions and the no-cross-tool-import rule). The main pieces:
+     `ui/review.py` (the review screen base: `ReviewBase`, `ReviewTree`, `TickModel`), `ui/result_screen.py`
+     (`ResultBase` / `ResultScreen`), `ui/settings_form.py` (`ToolSettingsScreen`), `ui/tool_flow.py` (the
+     `ToolFlow` helpers: `start`, `open_settings`, `remember_flavor`, `pick_account`, `fill_notes`),
+     `ui/dialogs.py` (popups and CSS), and in `core/` `journal.ToolJournals`, `marker`, `undo`, `progress`
+     (`ThrottledProgress`), `text` (`plural`, `human_size`) and `install` (`flavor_name`, `validate_backup_dir`).
+     See [architecture.md](architecture.md) for each module. A tool that changes SavedVariables files takes the
+     whole-`WTF` snapshot from `core/snapshot.py` (folder and name prefix are parameters), the path guard and lock
+     probe from `core/svfiles.py`, and `core.fsutil.atomic_write_bytes` for its writes, as the WTF Cleaner and the
+     Ace3 Profile Manager do.
    - `settings.py` for the tool's own settings: the `[screenshot_organizer]` section of `config/screenshot-organizer.cfg`.
      Follow `wtf_cleaner/settings.py`; it takes the tool's `Config`, never the suite one.
    - `app.py` with `class ScreenshotsFlow(ToolFlow)` and `FLOW = ScreenshotsFlow`. Set `SECTION` (the tool's
