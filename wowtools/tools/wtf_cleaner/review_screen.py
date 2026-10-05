@@ -34,8 +34,9 @@ from wowtools.tools.wtf_cleaner.safety import SNAPSHOT_SUBDIR, Marker, clear_mar
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir
 from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (ACCENT, BUSY_STYLE, POPUP_WIDTH, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
-                                ProgressScreen, TwoPaneFocus, relabel_branch, theme_colour, tick_mark, two_pane_css)
+from wowtools.ui.dialogs import (ACCENT, POPUP_WIDTH, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
+                                ProgressScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
+from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
 WARNING_STYLE = "#E8B04B"
@@ -93,14 +94,11 @@ class RecoveryScreen(ModalScreen[str]):
             self.dismiss("remind")
 
 
-class ProposalTree(Tree):
-    """The proposal tree. ← jumps to the filters panel (instead of scrolling sideways)."""
-
-    BINDINGS: ClassVar[list[Binding]] = [Binding("left", "screen.focus_filters", "Filters", show=False)]
-
-
-class ReviewScreen(TwoPaneFocus, Screen[str]):
+class ReviewScreen(ReviewBase, Screen[str]):
     TREE_SELECTOR = "#proposal"
+    LOG_SCREEN = "review"
+    BUTTON_ACTIONS: ClassVar[dict[str, str]] = {"btn-clean": "clean", "btn-dry": "dry_run", "btn-rescan": "rescan",
+                                                "btn-undo": "undo"}
     DEFAULT_CSS = two_pane_css("ReviewScreen", "#proposal")
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("space", "toggle", "Tick/untick", priority=True),
@@ -110,10 +108,10 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         Binding("y", "dry_run", "Dry run"),
         Binding("r", "rescan", "Rescan"),
         Binding("z", "undo", "Undo"),
-        Binding("f", "flavors", "Flavors"),
-        Binding("t", "tools", "Tools"),
-        Binding("q", "quit_tool", "Quit"),
-        Binding("escape", "flavors", "Flavors", show=False),
+        Binding("f", "leave('flavors')", "Flavors"),
+        Binding("t", "leave('tools')", "Tools"),
+        Binding("q", "leave('quit')", "Quit"),
+        Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("1", "criterion(0)", CRITERION_SHORT["not_installed"], show=False),
         Binding("2", "criterion(1)", CRITERION_SHORT["not_enabled"], show=False),
         Binding("3", "criterion(2)", CRITERION_SHORT["older_than"], show=False),
@@ -146,7 +144,6 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         self.unchecked: set[Path] = set()
         self.summary_text = ""
         self._progress_screen: CleanProgressScreen | None = None
-        self._rebuild_pending = False
         self._last_filter: Widget | None = None
         self._scanning = False
         self._log_next_build = False  # the first rebuild after a scan logs proposal.built
@@ -172,7 +169,7 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)
                 yield Static("", id="scan-label")
-            yield ProposalTree(Text(self._root_name()), id="proposal")
+            yield ReviewTree(Text(self._root_name()), id="proposal")
         yield Static("", id="summary")
         yield BrandBar()
         yield Footer()
@@ -212,14 +209,7 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
 
     def _show_scan_progress(self, scanning: bool) -> None:
         """While scanning, the tree is replaced by a progress bar and the folder being read."""
-        self._scanning = scanning
-        bar = self.query_one("#scan-progress", ProgressBar)
-        if scanning:
-            bar.update(total=None, progress=0)
-            self.query_one("#scan-label", Static).update(Text("Reading AddOns"))
-        for selector in ("#scan-box", "#scan-progress", "#scan-label"):
-            self.query_one(selector).display = scanning
-        self.query_one("#proposal", Tree).display = not scanning
+        self.show_scan_box(scanning, "Reading AddOns")
         if scanning:
             self.query_one("#btn-undo", Button).disabled = True
         else:
@@ -232,10 +222,6 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         """Undo last clean is offered only when there is a clean to undo, and never while scanning or busy."""
         busy = self._scanning or getattr(self.app, "busy", False)
         self.query_one("#btn-undo", Button).disabled = busy or latest_undoable(self._journal_dir()) is None
-
-    def _scan_progress(self, current: int, total: int, label: str) -> None:
-        self.query_one("#scan-progress", ProgressBar).update(total=total, progress=current)
-        self.query_one("#scan-label", Static).update(Text(label))
 
     def _scan_worker(self) -> None:
         def progress(current: int, total: int, label: str) -> None:
@@ -285,24 +271,9 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         for index, name in enumerate(CRITERIA, start=1):
             self.query_one(f"#crit_{name}", Ka0sCheckbox).label = self._criterion_label(index, name, counts[name])
 
-    # --- tree ------------------------------------------------------------------------------------
-    def _schedule_rebuild(self) -> None:
-        """Show that the list is being rebuilt, then rebuild once that has been drawn. Toggles made before the
-        rebuild runs are folded into it."""
-        if not self._scanned_ok():
-            return
-        self.query_one("#proposal", Tree).loading = True
-        self.query_one("#summary", Static).update(Text("Updating the list…", style=BUSY_STYLE))
-        if not self._rebuild_pending:
-            self._rebuild_pending = True
-            self.call_after_refresh(self._run_scheduled_rebuild)
-
-    def _run_scheduled_rebuild(self) -> None:
-        self._rebuild_pending = False
-        try:
-            self._rebuild()
-        finally:
-            self.query_one("#proposal", Tree).loading = False
+    # --- tree (criterion and max-age changes rebuild it through ReviewBase._schedule_rebuild) ----------------
+    def _can_rebuild(self) -> bool:
+        return bool(self._scanned_ok())
 
     def _rebuild(self) -> None:
         if not self._scanned_ok():
@@ -440,46 +411,24 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
     def _scope(self) -> str:
         return f"{self._root_name()} · {self.account or 'all accounts'}"
 
+    # --- ticks (Space, a, n: ReviewBase) ------------------------------------------------------------
+    def tick_model(self) -> TickModel:
+        return TickModel.of_unchecked(self.unchecked)  # every file starts ticked
+
+    def node_tick_keys(self, node) -> list[Path]:
+        return self._paths(node.data) if node is not None and node.data is not None else []
+
+    def shown_tick_keys(self) -> list[Path]:
+        return [f.path for item in self.proposal.items for f in item.files] if self.proposal is not None else []
+
+    def tick_log_key(self, node, keys) -> str:
+        kind = node.data[0]
+        return str(keys[0]) if kind == "file" else (node.data[1].key if kind == "item" else node.data[2])
+
+    def ticks_frozen(self) -> bool:
+        return self._checking  # the selection is frozen while the check runs
+
     # --- actions ---------------------------------------------------------------------------------
-    def action_toggle(self) -> None:
-        focused = self.focused
-        if isinstance(focused, Checkbox):
-            focused.toggle()
-            return
-        if isinstance(focused, Button):  # Space activates the focused button (§A.8), never the tree
-            focused.press()
-            return
-        if not isinstance(focused, Tree) or self._checking:  # the selection is frozen while the check runs
-            return
-        node = self.query_one("#proposal", Tree).cursor_node
-        if node is None or node.data is None:
-            return
-        paths = self._paths(node.data)
-        check = any(p in self.unchecked for p in paths)
-        if check:
-            self.unchecked.difference_update(paths)
-        else:
-            self.unchecked.update(paths)
-        key = str(paths[0]) if node.data[0] == "file" else (
-            node.data[1].key if node.data[0] == "item" else node.data[2])
-        log_event("ui.item_toggled", screen="review", key=key, checked=check)
-        self._refresh_labels(node)
-
-    def action_select_all(self) -> None:
-        if self._checking:
-            return
-        self.unchecked.clear()
-        log_event("ui.selection", screen="review", control="select_all", value=True)
-        self._refresh_labels()
-
-    def action_select_none(self) -> None:
-        if self._checking:
-            return
-        if self.proposal is not None:
-            self.unchecked = {f.path for item in self.proposal.items for f in item.files}
-        log_event("ui.selection", screen="review", control="select_none", value=True)
-        self._refresh_labels()
-
     def action_criterion(self, index: int) -> None:
         if self._checking:
             return
@@ -508,26 +457,6 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         self._update_criterion_labels()
         self._schedule_rebuild()
         self.query_one("#proposal", Tree).focus()
-
-    def action_flavors(self) -> None:
-        if not self.app.busy:
-            self.dismiss("flavors")
-
-    def action_tools(self) -> None:
-        if not self.app.busy:
-            self.dismiss("tools")
-
-    def action_quit_tool(self) -> None:
-        if not self.app.busy:
-            self.dismiss("quit")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        actions = {"btn-clean": self.action_clean, "btn-dry": self.action_dry_run, "btn-rescan": self.action_rescan,
-                   "btn-undo": self.action_undo}
-        action = actions.get(event.button.id or "")
-        if action is not None:
-            event.stop()
-            action()
 
     # --- cleaning --------------------------------------------------------------------------------
     def action_clean(self) -> None:
@@ -559,8 +488,8 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
             return
         check = self.wow_check or wow_check_for([flavor for flavor, _ in plan])
         locker_check = None if dry_run else self.locker_check
-        self._run_preflight(check, locker_check, lambda running, lockers: self._after_preflight(dry_run, running,
-                                                                                               lockers))
+        self.run_preflight(check, lambda running, lockers: self._after_preflight(dry_run, running, lockers),
+                           extra=locker_check)
 
     def _after_preflight(self, dry_run: bool, running: list[str] | None, lockers: list[str] | None) -> None:
         # The selection is frozen while the check runs; it is read again here so the confirm and the clean always
@@ -571,41 +500,12 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
             return
         self._show_confirm(plan, dry_run, running, lockers)
 
-    # --- running-programs check (PowerShell/tasklist can take seconds: never on the UI thread) ----------------
-    def _run_preflight(self, check: Callable[[], list[str] | None],
-                       locker_check: Callable[[], list[str] | None] | None,
-                       then: Callable[[list[str] | None, list[str] | None], None]) -> None:
-        self._set_checking(True)
-        self.query_one("#summary", Static).update(Text("Checking for running programs…", style=BUSY_STYLE))
-        self.run_worker(lambda: self._preflight_worker(check, locker_check, then), thread=True, group="preflight")
-
-    def _set_checking(self, checking: bool) -> None:
+    # --- running-programs check (ReviewBase.run_preflight: in a worker; the lockers are its `extra`) ----------
+    def _checking_changed(self) -> None:
         """While the check runs the selection cannot change: the criteria and max age are disabled, and the
-        tick/untick keys are ignored."""
-        self._checking = checking
-        if not self.is_attached:
-            return
+        tick/untick keys are ignored (ticks_frozen)."""
         for widget in [*self.query(Ka0sCheckbox), *self.query("#max_age")]:
-            widget.disabled = checking
-
-    def _preflight_worker(self, check: Callable[[], list[str] | None],
-                          locker_check: Callable[[], list[str] | None] | None,
-                          then: Callable[[list[str] | None, list[str] | None], None]) -> None:
-        running = lockers = None
-        try:
-            running = check()  # every flavor in the selection, one process listing
-            lockers = locker_check() if locker_check is not None else None
-        except Exception as exc:  # noqa: BLE001 - a failed check is "unknown", as when PowerShell is missing
-            log_exception("preflight", exc)
-        self.app.call_from_thread(self._preflight_done, running, lockers, then)
-
-    def _preflight_done(self, running: list[str] | None, lockers: list[str] | None,
-                        then: Callable[[list[str] | None, list[str] | None], None]) -> None:
-        self._set_checking(False)
-        if not self.is_attached or self.app.screen is not self:
-            return  # the user left the screen while the check ran
-        self._update_summary()
-        then(running, lockers)
+            widget.disabled = self._checking
 
     def _show_confirm(self, plan: list[tuple[Flavor, list[ProposalItem]]], dry_run: bool,
                       running: list[str] | None, lockers: list[str] | None) -> None:
@@ -772,7 +672,7 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
                 "is left alone; nothing is overwritten.")
         title = f"Undo the clean from {friendly_stamp(journal.started)}?"
         check = self.wow_check or wow_check_for(folders)
-        self._run_preflight(check, None, lambda running, _: self._show_undo_confirm(path, title, body, running))
+        self.run_preflight(check, lambda running, _: self._show_undo_confirm(path, title, body, running))
 
     def _show_undo_confirm(self, path: Path, title: str, body: str, running: list[str] | None) -> None:
         alerts: list[str] = []

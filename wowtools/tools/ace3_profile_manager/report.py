@@ -106,6 +106,11 @@ def profile_rows(state: DbState) -> list[ProfileRow]:
     return list(rows.values())
 
 
+def scan_label(name: str) -> str:
+    """The scan box's line while SavedVariables are read: the file being read, once there is one."""
+    return f"Reading SavedVariables: {name}" if name else "Reading SavedVariables"
+
+
 def pending_text(summary: Summary) -> str:
     parts = [(summary.deleted, "delete"), (summary.renamed, "rename"), (summary.copied, "copy", "copies"),
              (summary.reassigned, "reassign"), (summary.removed, "removed character"),

@@ -15,15 +15,17 @@ from textual.widgets import Button, Footer, Header, ProgressBar, Static, Tree
 from textual.widgets.tree import TreeNode
 
 from wowtools.core.config import Config
-from wowtools.core.events import log_event, log_exception
+from wowtools.core.events import log_exception
 from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.progress import ThrottledProgress
 from wowtools.core.text import plural
+from wowtools.tools.ace3_profile_manager.report import scan_label
 from wowtools.tools.ace3_profile_manager.scanner import ScanResult, scan_flavors
 from wowtools.tools.ace3_profile_manager.settings import WILDCARD, Pair, is_blacklisted, unique_pairs
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (ACCENT, TREE_BINDINGS, TREE_HINT, TwoPaneFocus, relabel_branch, review_hint,
-                                 theme_colour, tick_mark, two_pane_css)
+from wowtools.ui.dialogs import (ACCENT, TREE_BINDINGS, TREE_HINT, relabel_branch, review_hint, theme_colour, tick_mark,
+                                two_pane_css)
+from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 EXPLANATION = "Ticked addons are blacklisted: their profiles are shown but never changed."
@@ -35,13 +37,7 @@ def _key(flavor: str, addon: str) -> Key:
     return flavor.casefold(), addon.casefold()
 
 
-class BlacklistTree(Tree):
-    """The flavor → addon tree. ← jumps to the left pane (instead of scrolling sideways)."""
-
-    BINDINGS: ClassVar[list[Binding]] = [Binding("left", "screen.focus_filters", "Buttons", show=False)]
-
-
-class BlacklistScreen(TwoPaneFocus, Screen["list[Pair] | None"]):
+class BlacklistScreen(ReviewBase, Screen["list[Pair] | None"]):
     """Tick the (flavor, addon) pairs to blacklist. Dismisses with the new pair list (Save), or None (Cancel, Esc).
 
     `cfg` is the suite config (its WoW folder names every flavor of the install); `flavors` are the flavors shown;
@@ -50,6 +46,8 @@ class BlacklistScreen(TwoPaneFocus, Screen["list[Pair] | None"]):
     are kept as they are."""
 
     TREE_SELECTOR = "#blacklist-tree"
+    LOG_SCREEN = "ace_blacklist"
+    BUTTON_ACTIONS: ClassVar[dict[str, str]] = {"save": "save", "select-none": "select_none", "cancel": "cancel"}
     DEFAULT_CSS = two_pane_css("BlacklistScreen", "#blacklist-tree") + """
     BlacklistScreen #explain { height: auto; margin-top: 1; }
     """
@@ -89,7 +87,7 @@ class BlacklistScreen(TwoPaneFocus, Screen["list[Pair] | None"]):
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)
                 yield Static("", id="scan-label")
-            yield BlacklistTree(Text("Blacklist", style=ACCENT), id="blacklist-tree")
+            yield ReviewTree(Text("Blacklist", style=ACCENT), id="blacklist-tree")
         yield Static(Text(""), id="summary")
         yield BrandBar()
         yield Footer()
@@ -103,18 +101,15 @@ class BlacklistScreen(TwoPaneFocus, Screen["list[Pair] | None"]):
 
     # --- scan ----------------------------------------------------------------------------------
     def _scan(self) -> None:
-        self._scanning = True
-        self.query_one("#scan-progress", ProgressBar).update(total=None, progress=0)
-        self.query_one("#scan-label", Static).update(Text("Reading SavedVariables"))
-        self.query_one("#scan-box").display = True
-        self.query_one("#blacklist-tree", Tree).display = False
+        self.show_scan_box(True, "Reading SavedVariables")
         flavors = list(self.flavors)
         self.run_worker(lambda: self._scan_worker(flavors), thread=True, exclusive=True, group="scan")
 
     def _scan_worker(self, flavors: list[Flavor]) -> None:
         # The UI gets a report per PROGRESS_INTERVAL, plus each flavor's first and last (ThrottledProgress).
         progress = ThrottledProgress(
-            lambda flavor, current, total, name: self.app.call_from_thread(self._scan_progress, current, total, name))
+            lambda flavor, current, total, name: self.app.call_from_thread(self._scan_progress, current, total,
+                                                                           scan_label(name)))
 
         try:
             scan = scan_flavors(flavors, progress=progress)
@@ -125,21 +120,13 @@ class BlacklistScreen(TwoPaneFocus, Screen["list[Pair] | None"]):
                                       severity="error", timeout=15)
         self.app.call_from_thread(self._scanned, scan)
 
-    def _scan_progress(self, current: int, total: int, name: str) -> None:
-        if not self.is_attached:
-            return
-        self.query_one("#scan-progress", ProgressBar).update(total=total or None, progress=current)
-        self.query_one("#scan-label", Static).update(Text(f"Reading SavedVariables: {name}" if name else
-                                                          "Reading SavedVariables"))
-
     def _scanned(self, scan: ScanResult | None) -> None:
         self._scanning = False
         self.scan = scan
         if not self.is_attached:
             return
-        self.query_one("#scan-box").display = False
+        self.show_scan_box(False)
         tree = self.query_one("#blacklist-tree", Tree)
-        tree.display = True
         self._build(tree)
         tree.focus()
 
@@ -180,7 +167,7 @@ class BlacklistScreen(TwoPaneFocus, Screen["list[Pair] | None"]):
                     self.ticked.add(key)
                 node.add_leaf(Text(""), data=("addon", folder, addon, name in missing))
         root.expand()
-        self._relabel()
+        self._refresh_labels()
 
     def _keys(self, data) -> list[Key]:
         if data is None:
@@ -198,7 +185,7 @@ class BlacklistScreen(TwoPaneFocus, Screen["list[Pair] | None"]):
         if data is None:
             return Text("")
         keys = self._keys(data)
-        mark = tick_mark(keys, set(keys) - self.ticked, success=theme_colour(self.app, "success")) if keys \
+        mark = tick_mark(keys, self.tick_model().unticked, success=theme_colour(self.app, "success")) if keys \
             else ("  ", "")
         if data[0] == "flavor":
             return Text.assemble(mark, (data[2], ACCENT))
@@ -211,56 +198,26 @@ class BlacklistScreen(TwoPaneFocus, Screen["list[Pair] | None"]):
             return Text.assemble(mark, ("Blacklist", ACCENT))
         return Text("no Ace3 data", style="dim")
 
-    def _relabel(self, node: TreeNode | None = None) -> None:
+    def _refresh_labels(self, node: TreeNode | None = None) -> None:
         relabel_branch(self.query_one("#blacklist-tree", Tree), node, self._label, skip=("note",))
         count = len(self.ticked)
         self.query_one("#summary", Static).update(
             Text(f"{plural(count, 'addon')} blacklisted" if count else "Nothing blacklisted"))
 
-    # --- ticks -----------------------------------------------------------------------------------
-    def action_toggle(self) -> None:
-        focused = self.focused
-        if isinstance(focused, Button):  # Space activates the focused button, never the tree
-            focused.press()
-            return
-        if not isinstance(focused, Tree) or self._scanning:
-            return
-        node = focused.cursor_node
-        keys = self._keys(node.data if node is not None else None)
-        if node is None or not keys:
-            return
-        check = any(k not in self.ticked for k in keys)
-        if check:
-            self.ticked.update(keys)
-        else:
-            self.ticked.difference_update(keys)
-        log_event("ui.item_toggled", screen="ace_blacklist", key=str(node.data[1:3]), checked=check)
-        self._relabel(node)
+    # --- ticks (Space, a, n: ReviewBase) ------------------------------------------------------------
+    def tick_model(self) -> TickModel:
+        return TickModel.of_ticked(self.ticked)  # ticked: blacklisted
 
-    def action_select_all(self) -> None:
-        if self._scanning:
-            return
-        self.ticked.update(self.names)
-        log_event("ui.selection", screen="ace_blacklist", control="select_all", value=True)
-        self._relabel()
+    def node_tick_keys(self, node) -> list[Key]:
+        return self._keys(node.data if node is not None else None)
 
-    def action_select_none(self) -> None:
-        if self._scanning:
-            return
-        self.ticked.clear()
-        log_event("ui.selection", screen="ace_blacklist", control="select_none", value=True)
-        self._relabel()
+    def tick_log_key(self, node, keys) -> str:
+        return str(node.data[1:3])
 
-    # --- leaving ---------------------------------------------------------------------------------
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        event.stop()
-        if event.button.id == "save":
-            self.action_save()
-        elif event.button.id == "select-none":
-            self.action_select_none()
-        else:
-            self.action_cancel()
+    def ticks_frozen(self) -> bool:
+        return self._scanning
 
+    # --- leaving (Save, Select none and Cancel are BUTTON_ACTIONS) -------------------------------------------
     def action_cancel(self) -> None:
         self.dismiss(None)
 

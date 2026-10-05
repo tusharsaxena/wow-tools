@@ -47,8 +47,10 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      `groups` lists long details in a tree), `InfoScreen(title, groups)` for notes too long for a notification, and a
      subclass of `ProgressScreen` with your own `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, fed by the
      run's `progress(stage, current, total, detail)` through `app.call_from_thread`. Wrap that callback with
-     `core.fsutil.safe_progress` inside the run. A review tree can use `tick_mark`, `relabel_branch` and the
-     `TwoPaneFocus` mixin; `theme_colour(app, "success")` gives theme colours with the Ka0s fallback.
+     `core.fsutil.safe_progress` inside the run. A review tree can use `tick_mark`, `relabel_branch` and, from
+     `wowtools/ui/review.py`, `ReviewTree` and the `ReviewBase` mixin (Space, `a` / `n` over a `TickModel`, leaving,
+     the running-programs check in a worker, the debounced rebuild, the scan box, `BUTTON_ACTIONS`);
+     `theme_colour(app, "success")` gives theme colours with the Ka0s fallback.
    - **One look.** Build the screens' CSS and hints from the same module, so a new tool looks like the others:
      `two_pane_css(screen, tree)` for the review (left pane `FILTERS_WIDTH` wide, four action buttons in one row),
      `result_css(screen)` for the result, `settings_css(screen)` for the settings form, and hints that start with

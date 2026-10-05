@@ -373,10 +373,10 @@ unless every part was left as it was (then Undo can be tried again).
 picker's choice) goes back to the flavor picker. The screens follow the Screenshot Organizer's shape (left pane,
 tree, bottom `#summary` line, popups for confirm and progress) and its shared CSS. `review_screen.py` holds:
 
-- `BackupReviewScreen(cfg, tool_cfg, flavors, scope_label, *, wow_check, disk_usage, wow_root)`: `TwoPaneFocus`,
-  `two_pane_css`. Left pane `#filters`: "Backup folder", "Keep" ("newest N per flavor" / "all backups"), the
+- `BackupReviewScreen(cfg, tool_cfg, flavors, scope_label, *, wow_check, disk_usage, wow_root)`: `ReviewBase`
+  (`ui/review.py`), `two_pane_css`. Left pane `#filters`: "Backup folder", "Keep" ("newest N per flavor" / "all backups"), the
   action row **Back up** (apply), **Restore** (neutral: it opens the restore screen), **Rescan**, **Undo last
-  restore** (revert; disabled when nothing is undoable), and the NavHint. Right: `BackupTree` (`#flavors`), filled
+  restore** (revert; disabled when nothing is undoable), and the NavHint. Right: a `ReviewTree` (`#flavors`), filled
   after a worker scans (`scan_flavors`, `list_backups`, `latest_undoable`): the root (scope label, files and size
   ticked) → a node per flavor (tick, `report.flavor_text`) → read-only children: `Interface` and `WTF`
   (`part_text`), `Links (n)`, a leftover notice, `Scan warnings (n)` and `Backups (n)` (`backups_title`; safety
@@ -402,12 +402,12 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
 
 `restore_screen.py` holds:
 
-- `RestoreScreen(info, flavor, *, disk_usage)`: `TwoPaneFocus`, `two_pane_css(width=46)` (two buttons only, and
+- `RestoreScreen(info, flavor, *, disk_usage)`: `TwoPaneFocus` and `ButtonActions`, `two_pane_css(width=46)` (two buttons only, and
   the tree's root and effect titles fit at 120 columns). Left: "Backup" (flavor, kind and date; size, parts
   and files once read; "made …" when the manifest's date differs), "Restore" with an `Interface` and a `WTF`
   `Ka0sCheckbox` (`#part-Interface`, `#part-WTF`; disabled for a part the backup lacks or that is a link; both off
   when a leftover, another flavor's backup or an unreadable zip blocks it), **Restore** (apply, `o`) and **Back**
-  (`b`/Esc). Right: `RestoreTree` (`#effects`) rooted at "<flavor> · <date>": "Will be removed (N files)" and
+  (`b`/Esc). Right: a `ReviewTree` (`#effects`) rooted at "<flavor> · <date>": "Will be removed (N files)" and
   "Newer now than in the backup (N files)" (open, one node per folder group from `report.group_items`, files on
   expand), "Links kept", "Links replaced", "Could not be read" (lines on expand), a low-space leaf, or "Nothing on
   disk would be lost"; while loading, with no box ticked or when blocked, one line saying so. `open_backup` +
@@ -527,10 +527,10 @@ their original get a `rolled_back` line in the journal that holds their entries 
 `ProfileSettingsScreen` (backup folder, a `#blacklist-summary` line and **Edit blacklist…**, which opens the
 `BlacklistScreen` and keeps its answer until Save; `validate_backup_dir` errors inline). `s` opens the shared WoW-folder settings, then this tool's (not while a `ProfileSettingsScreen` or a `BlacklistScreen` is on the stack: two Saves would overwrite each other).
 
-- `ProfileReviewScreen` (`review_screen.py`): `TwoPaneFocus`, `two_pane_css`. Left pane `#filters`, one control per row: the
+- `ProfileReviewScreen` (`review_screen.py`): `ReviewBase`, `two_pane_css`. Left pane `#filters`, one control per row: the
   View pair under a "View" heading (By addon / By character), the Show boxes under a "Show" heading, the search `Input`, the `#pending` line (`report.pending_text`, "N pending changes" or `NO_PENDING`) and the
   action row **Apply** (delete variant), **Dry run**, **Rescan**, **Undo last change** (revert). Right:
-  `ProfileTree` (`#profiles`), built by `tree_view.TreeBuilder` from the scan, the staging and `Filters`; each
+  `ProfileTree` (`#profiles`, a `ReviewTree` whose ↓ on the last line goes on to the action bar), built by `tree_view.TreeBuilder` from the scan, the staging and `Filters`; each
   rebuild keeps expansion and the cursor by `ident`. Labels and tags come from `report.profile_rows` and
   `char_tags`. Ticks are `("p", DbKey, profile)` and `("c", DbKey, char)`; groups tick their descendants; locked
   addons, deleted profiles, removed characters and notes are read-only. `#summary` is `report.selection_text`.
@@ -552,7 +552,7 @@ their original get a `rolled_back` line in the journal that holds their entries 
   changes. Discard is Backspace (`x`/`c` are expand and collapse all); `b` toggles the highlighted addon's
   (flavor, addon) pair (`settings.toggle_pair`) and saves at once; **Blacklist…** (`action_edit_blacklist`) opens
   the `BlacklistScreen` for the review's flavors and saves its answer at once.
-- `BlacklistScreen(cfg, flavors, pairs)` (`blacklist_screen.py`): `TwoPaneFocus`, `two_pane_css`. Left pane: an
+- `BlacklistScreen(cfg, flavors, pairs)` (`blacklist_screen.py`): `ReviewBase`, `two_pane_css`. Left pane: an
   explanation and **Save** / **Select none** / **Cancel** (Esc); right: a flavor → addon tree, from its own
   scan worker (`scan_flavors`), of every addon with Ace3 data plus each blacklisted pair no longer found
   ("(not found)"; a legacy `"*"` pair is listed under every shown flavor, so a Save, or a failed scan, never drops
@@ -595,6 +595,7 @@ Shared screens and widgets in `wowtools/ui/`:
 | `flavor_screen` | `FlavorScreen(cfg, install, *, include_all=False, last=None, flavors=None)`: the flavor picker. `include_all` adds "All flavors" first (dismisses with `ALL_FLAVORS`); `last` is the folder to pre-select (`""` = All flavors, `None` = `[general] last_flavor`); `flavors` replaces `install.flavors()`; `note`/`all_note` fill the remarks column and `set_notes()` replaces them later. Picking one flavor saves `[general] last_flavor`. |
 | `account_screen` | `AccountScreen(cfg, flavor, last)`: "All accounts" plus each account. Dismisses with the name, `""` for all, or `None` for back. The WTF Cleaner and the Ace3 Profile Manager show it only when a flavor has more than one account and save the choice as their own `last_account`. |
 | `dialogs` | What every tool's screens share, so no tool imports another tool's screens: `ConfirmScreen(title, body, alerts=(), *, default_yes=False, groups=None)` (yes/no; `alerts` in red; risky actions start on No; `groups` ({label: items}) listed in a `detail_tree`), `InfoScreen(title, groups, body="")` (something to read and acknowledge with OK, its details in a `detail_tree`), `detail_tree(groups)` / `detail_hint(groups)` (a popup's read-only tree, every branch open when it all fits in `DETAIL_ROWS` = 12 lines; `POPUP_TREE_CSS`), `ProgressScreen` (stage, bar and current file of a run; a tool subclasses it with `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, and calls `update_progress(stage, current, total, detail)`, plus `set_flavor(label)` across several flavors), `tick_mark(items, unchecked, key, success=)` (✔ / ◩ / ✘ for a review-tree line), `relabel_branch(tree, node, label, skip=)` (after a tick), the `TwoPaneFocus` mixin (←/→ between the left `#filters` panel and the tree; it is a `TreeKeys`, whose `x`/`c` expand and collapse every node below the root, bound with `TREE_BINDINGS` and named in the hint by `TREE_HINT`), `theme_colour(app, name)` (the theme's colour, or the Ka0s one before a theme is set), and the one look every tool's screens are built from: `two_pane_css(screen, tree, width=FILTERS_WIDTH)` (review: left pane `#filters`, `FILTERS_WIDTH` = 50, one-row actions, scan box, summary), `ACCENT` (names in a tree) and `BUSY_STYLE` (a summary line while work runs), `result_css(screen)` (the summary takes at most 60% of the height), `settings_css(screen)` (the form at `FORM_WIDTH`: up to 100 columns, centred; compact checkboxes), and the hint starts `REVIEW_HINT` / `review_hint(space)` and `RESULT_HINT` |
+| `review` | The review screens' shared machinery (spec D9), so no tool copies it: `ReviewTree` (← to the left pane; the Ace3 `ProfileTree` adds ↓ to its action bar), `TickModel` (ticks kept as the ticked keys or as the unticked ones, changed in place; `unticked` feeds `tick_mark`) and `NotTicked`, and the mixins `ReviewBase` puts together over `TwoPaneFocus`: `TickActions` (Space ticks the highlighted node, presses a button, toggles a checkbox or types into an input; `a` / `n` act on `shown_tick_keys()` only, which a filter narrows, so hidden ticks stay; a screen supplies `tick_model()`, `node_tick_keys(node)`, `tick_log_key()`, `LOG_SCREEN` and, if it needs them, `select_all_keys()` and `ticks_frozen()`), `Preflight` (`run_preflight(check, then, extra)`: the running-programs check and `extra()` in a worker, `then(running, extra_result)` on the UI thread while the screen is shown; `_checking` and `_checking_changed()`, `PREFLIGHT_TEXT` on the summary), `ScheduledRebuild` (`_schedule_rebuild()`: the tree's loading indicator and "Updating the list…", then one `_rebuild()`), `ButtonActions` (`BUTTON_ACTIONS`: button id → action name), plus `action_leave(choice)` (never while `app.busy`), `show_scan_box(scanning, label)` and `_scan_progress(current, total, label)` |
 | `widgets` | `action_button(label, action)` and `ACTION_VARIANTS` (one colour per kind of action in every tool: delete red, apply green, simulate blue, revert amber, confirm blue, neutral grey), `LIST_NAME_STYLE` / `LIST_CURSOR_BACKGROUND` (pick lists), `Ka0sCheckbox` (✔/✘ marks), `ButtonRow` (←/→ move focus between its buttons, Space presses the focused one), `WrapButtonRow` (a `ButtonRow` of compact one-row buttons in a grid whose column count follows its width; the Ace3 review's action bar), `NAV_BINDINGS` (↑/↓ move focus; not priority bindings, so a focused tree, list, table or input keeps its arrow keys), `NavSelect` (a `Select` that leaves ↑/↓ to `NAV_BINDINGS`; Enter or Space opens its list), and `NavHint` (the key hint every screen shows; when it takes more than one row it breaks only between its
 " · " items, `wrap_items`, so a key stays with its action), `FormScroll` (a scrolling form where ↑/↓ still move focus; `open_at_top()` after the first focus) |
 
@@ -632,7 +633,7 @@ The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfC
 `CleanerSettingsScreen` (criteria, max age, backup on/off, backup folder). The flow shows `FlavorScreen` with
 `include_all=True` and `last=last_flavor_choice`; All flavors skips the account screen. `review_screen.py` holds:
 
-- `ReviewScreen(cfg, tool_cfg, flavors, *, account, wow_check, locker_check)`: tree, criteria, the Clean /
+- `ReviewScreen(cfg, tool_cfg, flavors, *, account, wow_check, locker_check)`: a `ReviewBase`; tree, criteria, the Clean /
   Dry run / Rescan buttons and **Undo last clean** (amber, key `z`, last in the same row; disabled when nothing is
   undoable, while scanning and while busy; its confirm starts on No and names the clean's time, flavors and file
   count). `flavors` is one `Flavor` (root = the flavor, accounts below) or a list (root = All
@@ -656,7 +657,7 @@ The Screenshot Organizer's screens live in `tools/screenshot_organizer/`. `app.p
 note=<"no Screenshots folder" where missing>)` → review; every flavor is listed) and `ScreenshotSettingsScreen` (destination,
 copy mode; `validate_dest` errors show inline). `review_screen.py` holds:
 
-- `ShotReviewScreen`: the flavor → year → month → day → file tree (day files load on expand; read-only
+- `ShotReviewScreen`: a `ReviewBase`; the flavor → year → month → day → file tree (day files load on expand; read-only
   Conflicts and Skipped nodes; in copy mode an Already filed node, unticked, that `a` leaves alone) and the Organize / Dry run / Rescan / Undo last run buttons. It uses the
   shared `ConfirmScreen`;
 - `ShotProgressScreen`, a `ProgressScreen` (ids `shots-*`): stage, bar and current file for a run, dry run or undo;

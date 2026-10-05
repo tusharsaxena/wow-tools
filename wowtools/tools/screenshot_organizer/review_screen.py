@@ -29,8 +29,9 @@ from wowtools.tools.screenshot_organizer.report import (RESULT_COLUMNS, STAGE_TI
 from wowtools.tools.screenshot_organizer.settings import load_settings, validate_dest
 from wowtools.tools.screenshot_organizer.undo import undo
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (ACCENT, RESULT_HINT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus, relabel_branch,
-                                result_css, theme_colour, tick_mark, two_pane_css)
+from wowtools.ui.dialogs import (ACCENT, RESULT_HINT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
+                                ProgressScreen, relabel_branch, result_css, theme_colour, tick_mark, two_pane_css)
+from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 NAV_HINT = REVIEW_HINT + "a all · n none · o organize · y dry run · " + TREE_HINT + "r rescan · z undo · f flavors · t tools"
@@ -107,14 +108,11 @@ class ShotResultScreen(Screen[str]):
         self.dismiss(choice)
 
 
-class ShotTree(Tree):
-    """The plan tree. ← jumps to the left panel (instead of scrolling sideways)."""
-
-    BINDINGS: ClassVar[list[Binding]] = [Binding("left", "screen.focus_filters", "Filters", show=False)]
-
-
-class ShotReviewScreen(TwoPaneFocus, Screen[str]):
+class ShotReviewScreen(ReviewBase, Screen[str]):
     TREE_SELECTOR = "#shots"
+    LOG_SCREEN = "shots_review"
+    BUTTON_ACTIONS: ClassVar[dict[str, str]] = {"btn-organize": "organize", "btn-dry": "dry_run",
+                                                "btn-rescan": "rescan", "btn-undo": "undo"}
     DEFAULT_CSS = two_pane_css("ShotReviewScreen", "#shots")
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("space", "toggle", "Tick/untick", priority=True),
@@ -124,10 +122,10 @@ class ShotReviewScreen(TwoPaneFocus, Screen[str]):
         Binding("y", "dry_run", "Dry run"),
         Binding("r", "rescan", "Rescan"),
         Binding("z", "undo", "Undo"),
-        Binding("f", "flavors", "Flavors"),
-        Binding("t", "tools", "Tools"),
-        Binding("q", "quit_tool", "Quit"),
-        Binding("escape", "flavors", "Flavors", show=False),
+        Binding("f", "leave('flavors')", "Flavors"),
+        Binding("t", "leave('tools')", "Tools"),
+        Binding("q", "leave('quit')", "Quit"),
+        Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
         *TREE_BINDINGS,
@@ -167,7 +165,7 @@ class ShotReviewScreen(TwoPaneFocus, Screen[str]):
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)
                 yield Static("", id="scan-label")
-            yield ShotTree(Text(self.scope_label), id="shots")
+            yield ReviewTree(Text(self.scope_label), id="shots")
         yield Static("", id="summary")
         yield BrandBar()
         yield Footer()
@@ -228,22 +226,11 @@ class ShotReviewScreen(TwoPaneFocus, Screen[str]):
 
     def _show_scan_progress(self, scanning: bool) -> None:
         """While scanning, the tree is replaced by a progress bar and the folder being read."""
-        self._scanning = scanning
-        bar = self.query_one("#scan-progress", ProgressBar)
-        if scanning:
-            bar.update(total=None, progress=0)
-            self.query_one("#scan-label", Static).update(Text("Reading Screenshots folders"))
-        for selector in ("#scan-box", "#scan-progress", "#scan-label"):
-            self.query_one(selector).display = scanning
-        self.query_one("#shots", Tree).display = not scanning
+        self.show_scan_box(scanning, "Reading Screenshots folders")
         for button_id in ("#btn-organize", "#btn-dry"):
             self.query_one(button_id, Button).disabled = scanning
         if scanning:
             self.query_one("#btn-undo", Button).disabled = True
-
-    def _scan_progress(self, current: int, total: int, label: str) -> None:
-        self.query_one("#scan-progress", ProgressBar).update(total=total or None, progress=current)
-        self.query_one("#scan-label", Static).update(Text(label))
 
     def _scan_worker(self) -> None:
         dest_dir, copy = self.settings.dest_dir, self.settings.copy_mode
@@ -434,64 +421,29 @@ class ShotReviewScreen(TwoPaneFocus, Screen[str]):
         self.summary_text = text
         self.query_one("#summary", Static).update(Text(text))
 
-    # --- actions ---------------------------------------------------------------------------------
-    def action_toggle(self) -> None:
-        focused = self.focused
-        if isinstance(focused, Button):  # Space activates the focused button, never the tree
-            focused.press()
-            return
-        if not isinstance(focused, Tree):
-            return
-        node = self.query_one("#shots", Tree).cursor_node
-        if node is None or node.data is None or node.data[0] in READ_ONLY:
-            return
-        paths = [i.src for i in self._items(node.data)]
-        if not paths:
-            return
-        check = any(p in self.unchecked for p in paths)
-        if check:
-            self.unchecked.difference_update(paths)
-        else:
-            self.unchecked.update(paths)
-        log_event("ui.item_toggled", screen="shots_review", key=":".join(str(p) for p in self._node_key(node.data)),
-                  checked=check)
-        self._refresh_labels(node)
+    # --- ticks (Space, a, n: ReviewBase) ------------------------------------------------------------
+    def tick_model(self) -> TickModel:
+        return TickModel.of_unchecked(self.unchecked)  # everything to file starts ticked
+
+    def node_tick_keys(self, node) -> list[Path]:
+        if node is None or node.data is None:
+            return []
+        return [i.src for i in self._items(node.data)]  # none for a read-only node
+
+    def shown_tick_keys(self) -> list[Path]:
+        """Day and already-filed files load on expand: the keys come from the plan."""
+        return [i.src for i in self.plan.selectable] if self.plan is not None else []
+
+    def select_all_keys(self) -> list[Path]:
+        # Everything to file; already-filed copies (copy mode) keep whatever the user chose for them.
+        filed = {i.src for i in self.plan.filed} if self.plan is not None else set()
+        return [k for k in self.shown_tick_keys() if k not in filed]
+
+    def tick_log_key(self, node, keys) -> str:
+        return ":".join(str(p) for p in self._node_key(node.data))
 
     def _node_key(self, data) -> tuple:
         return (str(data[1].src),) if data[0] == "file" else self._key(data)
-
-    def action_select_all(self) -> None:
-        # Everything to file; already-filed copies (copy mode) keep whatever the user chose for them.
-        filed = {i.src for i in self.plan.filed} if self.plan is not None else set()
-        self.unchecked &= filed
-        log_event("ui.selection", screen="shots_review", control="select_all", value=True)
-        self._refresh_labels()
-
-    def action_select_none(self) -> None:
-        if self.plan is not None:
-            self.unchecked = {i.src for i in self.plan.selectable}
-        log_event("ui.selection", screen="shots_review", control="select_none", value=True)
-        self._refresh_labels()
-
-    def action_flavors(self) -> None:
-        if not self.app.busy:
-            self.dismiss("flavors")
-
-    def action_tools(self) -> None:
-        if not self.app.busy:
-            self.dismiss("tools")
-
-    def action_quit_tool(self) -> None:
-        if not self.app.busy:
-            self.dismiss("quit")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        actions = {"btn-organize": self.action_organize, "btn-dry": self.action_dry_run,
-                   "btn-rescan": self.action_rescan, "btn-undo": self.action_undo}
-        action = actions.get(event.button.id or "")
-        if action is not None:
-            event.stop()
-            action()
 
     # --- organize --------------------------------------------------------------------------------
     def action_organize(self) -> None:

@@ -26,7 +26,9 @@ from wowtools.tools.interface_backup.restore import (BackupContents, RestoreErro
                                                      case_key, open_backup, plan_restore)
 from wowtools.tools.interface_backup.scanner import PARTS, FlavorScan, scan_flavor
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import ACCENT, RESULT_HINT, TREE_BINDINGS, TREE_HINT, TwoPaneFocus, result_css, review_hint, theme_colour, two_pane_css
+from wowtools.ui.dialogs import (ACCENT, RESULT_HINT, TREE_BINDINGS, TREE_HINT, TwoPaneFocus, result_css, review_hint,
+                                theme_colour, two_pane_css)
+from wowtools.ui.review import ButtonActions, ReviewTree
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
 # The review's hint shape, then the keys of this screen. Space here ticks a part or opens a node of the effects tree.
@@ -55,18 +57,13 @@ def group_label(name: str, files: int | None) -> Text:
                          (f" · {plural(files, 'file')}" if files is not None else "", "dim"))
 
 
-class RestoreTree(Tree):
-    """What the restore changes. ← jumps to the left panel (instead of scrolling sideways)."""
-
-    BINDINGS: ClassVar[list[Binding]] = [Binding("left", "screen.focus_filters", "Filters", show=False)]
-
-
-class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
+class RestoreScreen(ButtonActions, TwoPaneFocus, Screen[RestorePlan | None]):
     """Two panes, like the review: on the left the backup's details, a box per part and Restore / Back; on the
     right a tree of what the restore changes (worked out in a worker each time a box changes); a summary line
     below. Dismisses with the plan to restore, or None."""
 
     TREE_SELECTOR = "#effects"
+    BUTTON_ACTIONS: ClassVar[dict[str, str]] = {"btn-restore": "restore", "btn-back": "cancel"}
     # Narrower than the review (FILTERS_WIDTH): two buttons only, and at 80 columns the tree must show its root
     # and the effect titles ("Newer now than in the backup (N files)") without clipping.
     DEFAULT_CSS = two_pane_css("RestoreScreen", "#effects", width=46)
@@ -112,7 +109,7 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
                     yield action_button("Back", "neutral", id="btn-back")
                 yield NavHint(NAV_HINT)
             # Short: the tree is narrow at 80 columns; the left pane has the kind and the zip.
-            yield RestoreTree(Text(f"{self.flavor.display_name} · {self.info.when}", style=ACCENT), id="effects")
+            yield ReviewTree(Text(f"{self.flavor.display_name} · {self.info.when}", style=ACCENT), id="effects")
         yield Static("", id="summary")
         yield BrandBar()
         yield Footer()
@@ -316,13 +313,6 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
     def action_cancel(self) -> None:
         log_event("ui.selection", screen="ibackup_restore", control="back", value=True)
         self.dismiss(None)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        event.stop()
-        if event.button.id == "btn-restore":
-            self.action_restore()
-        else:
-            self.action_cancel()
 
 
 class RestoreResultScreen(Screen[str]):

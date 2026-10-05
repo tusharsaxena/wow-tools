@@ -92,6 +92,26 @@ class StructureTest(unittest.TestCase):
                 f"{n.module}.{a.name}" for n in ast.walk(tree(REPO / path))
                 if isinstance(n, ast.ImportFrom) and n.module for a in n.names})
 
+    def test_review_machinery_lives_in_ui(self):
+        """Ticks, Space, select all / none, leaving, the running-programs check, the debounced rebuild and the scan
+        progress are wowtools/ui/review.py's (spec D9): no tool defines its own, and every review tree is a
+        ReviewTree."""
+        shared = {"action_toggle", "action_select_all", "action_select_none", "action_flavors", "action_tools",
+                  "action_quit_tool", "run_preflight", "_run_preflight", "_preflight_worker", "_preflight_done",
+                  "_schedule_rebuild", "_run_scheduled_rebuild", "_scan_progress"}
+        where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & shared}
+        # Interface Backup's run_preflight only wraps the shared one (it logs a running WoW first).
+        self.assertEqual(where, {("wowtools/ui/review.py", n) for n in shared - {"action_flavors", "action_tools",
+                                                                               "action_quit_tool", "_run_preflight"}}
+                         | {("wowtools/tools/interface_backup/review_screen.py", "run_preflight")})
+        trees = sorted(f"{rel(p)}:{node.name}" for p in modules("wowtools/tools") for node in ast.walk(tree(p))
+                       if isinstance(node, ast.ClassDef)
+                       and any(isinstance(b, ast.Name) and b.id == "Tree" for b in node.bases))
+        self.assertEqual(trees, [])
+        classes = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
+                   if isinstance(node, ast.ClassDef) and node.name in ("NotTicked", "ReviewTree", "TickModel")}
+        self.assertEqual(classes, {("wowtools/ui/review.py", n) for n in ("NotTicked", "ReviewTree", "TickModel")})
+
     def test_shared_dialogs_live_in_ui(self):
         from wowtools.tools.screenshot_organizer.review_screen import ShotProgressScreen
         from wowtools.tools.wtf_cleaner import review_screen

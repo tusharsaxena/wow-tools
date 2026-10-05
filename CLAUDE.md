@@ -30,7 +30,8 @@ Conventions:
   `ButtonRow` uses ←/→); every tree screen binds `TREE_BINDINGS` (`x` expand all, `c` collapse all) and puts
   `TREE_HINT` in its hint.
 - Shared dialogs (`ConfirmScreen`, `InfoScreen`, `ProgressScreen`, `detail_tree`, tree tick helpers) live in
-  `wowtools/ui/dialogs.py`; a tool never imports another tool. `tests/test_structure.py` enforces this, the future
+  `wowtools/ui/dialogs.py`, the review screens' machinery (`ReviewTree`, `ReviewBase`, `TickModel`) in
+  `wowtools/ui/review.py`; a tool never imports another tool. `tests/test_structure.py` enforces this, the future
   import and import order.
 - Tests use `tests/fixtures.py` temp trees; never a real WoW install, never the network.
 - Screens are designed for 120x30 (Windows Terminal default) and grow; 80x24 must only keep working

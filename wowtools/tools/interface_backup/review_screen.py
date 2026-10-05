@@ -40,14 +40,14 @@ from wowtools.tools.interface_backup.scanner import CHEAP_STATS, PARTS, FlavorSc
 from wowtools.tools.interface_backup.settings import load_settings, resolve_backup_root
 from wowtools.tools.interface_backup.undo import undo_restore
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (ACCENT, BUSY_STYLE, RESULT_HINT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus,
-                                relabel_branch, result_css, theme_colour, tick_mark, two_pane_css)
+from wowtools.ui.dialogs import (ACCENT, RESULT_HINT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
+                                ProgressScreen, relabel_branch, result_css, theme_colour, tick_mark, two_pane_css)
+from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 NAV_HINT = REVIEW_HINT + "a all · n none · b back up · e restore · " + TREE_HINT + "r rescan · z undo · f flavors · t tools"
 # Tree nodes that cannot be ticked: a backup always holds a flavor's whole Interface and WTF.
 READ_ONLY = ("part", "links", "link", "leftover", "warnings", "warning", "backups", "backup")
-WowCheck = Callable[[], "list[str] | None"]
 
 
 def free_bytes(path: Path | None, disk_usage: Callable = shutil.disk_usage) -> int | None:
@@ -124,18 +124,15 @@ class BackupResultScreen(Screen[str]):
         self.dismiss(choice)
 
 
-class BackupTree(Tree):
-    """The flavors tree. ← jumps to the left panel (instead of scrolling sideways)."""
-
-    BINDINGS: ClassVar[list[Binding]] = [Binding("left", "screen.focus_filters", "Filters", show=False)]
-
-
-class BackupReviewScreen(TwoPaneFocus, Screen[str]):
+class BackupReviewScreen(ReviewBase, Screen[str]):
     """The chosen flavors as a tree (what Interface and WTF hold, links, warnings, the flavor's backups) with
     flavor ticks for Back up, a highlighted backup for Restore, and Undo. Dismisses with "flavors", "tools" or
     "quit"."""
 
     TREE_SELECTOR = "#flavors"
+    LOG_SCREEN = "ibackup_review"
+    BUTTON_ACTIONS: ClassVar[dict[str, str]] = {"btn-backup": "back_up", "btn-restore": "restore", "btn-undo": "undo",
+                                                "btn-rescan": "rescan"}
     DEFAULT_CSS = two_pane_css("BackupReviewScreen", "#flavors")
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("space", "toggle", "Tick/untick", priority=True),
@@ -203,7 +200,7 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)
                 yield Static("", id="scan-label")
-            yield BackupTree(Text(self.scope_label), id="flavors")
+            yield ReviewTree(Text(self.scope_label), id="flavors")
         yield Static("", id="summary")
         yield BrandBar()
         yield Footer()
@@ -287,12 +284,7 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
 
     def _show_scan_progress(self, scanning: bool) -> None:
         """While scanning, the tree is replaced by a progress bar and the folder being read."""
-        self._scanning = scanning
-        if scanning:
-            self.query_one("#scan-progress", ProgressBar).update(total=None, progress=0)
-            self.query_one("#scan-label", Static).update(Text("Reading the Interface and WTF folders"))
-        self.query_one("#scan-box").display = scanning
-        self.query_one("#flavors", Tree).display = not scanning
+        self.show_scan_box(scanning, "Reading the Interface and WTF folders")
 
     def _scan_worker(self, flavors: list[Flavor], root: Path | None, journal_dir: Path | None) -> None:
         def progress(stage: str, current: int, total: int, detail: str) -> None:
@@ -307,12 +299,6 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
             self.app.call_from_thread(self._scan_failed, f"The scan failed: {exc}")
             return
         self.app.call_from_thread(self._scanned, scans, backups, undoable)
-
-    def _scan_progress(self, current: int, total: int, detail: str) -> None:
-        if not self.is_attached:
-            return
-        self.query_one("#scan-progress", ProgressBar).update(total=total or None, progress=current)
-        self.query_one("#scan-label", Static).update(Text(detail))
 
     def _scan_failed(self, message: str) -> None:
         self._scanning = False
@@ -517,75 +503,34 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
         self.summary_text = text
         self._set_summary(text)
 
-    # --- ticks -----------------------------------------------------------------------------------
-    def action_toggle(self) -> None:
-        focused = self.focused
-        if isinstance(focused, Button):  # Space activates the focused button, never the tree
-            focused.press()
-            return
-        if not isinstance(focused, Tree):
-            return
-        node = self.query_one("#flavors", Tree).cursor_node
+    # --- ticks (Space, a, n: ReviewBase) ------------------------------------------------------------
+    def tick_model(self) -> TickModel:
+        return TickModel.of_unchecked(self.unchecked)  # every flavor starts ticked
+
+    def node_tick_keys(self, node) -> list[str]:
         if node is None or node.data is None or node.data[0] in READ_ONLY:
-            return
-        folders = [s.flavor.folder for s in self._scans_of(node.data)]
-        if not folders:
-            return
-        check = any(f in self.unchecked for f in folders)
-        if check:
-            self.unchecked.difference_update(folders)
-        else:
-            self.unchecked.update(folders)
-        log_event("ui.item_toggled", screen="ibackup_review",
-                  key="root" if node.data[0] == "root" else folders[0], checked=check)
-        self._refresh_labels(node)
+            return []
+        return [s.flavor.folder for s in self._scans_of(node.data)]
 
-    def action_select_all(self) -> None:
-        self.unchecked.clear()
-        log_event("ui.selection", screen="ibackup_review", control="select_all", value=True)
-        self._refresh_labels()
+    def shown_tick_keys(self) -> list[str]:
+        return [f.folder for f in self.flavors]
 
-    def action_select_none(self) -> None:
-        self.unchecked = {f.folder for f in self.flavors}
-        log_event("ui.selection", screen="ibackup_review", control="select_none", value=True)
-        self._refresh_labels()
+    def tick_log_key(self, node, keys) -> str:
+        return "root" if node.data[0] == "root" else keys[0]
 
-    # --- running-WoW check (PowerShell/tasklist can take seconds: never on the UI thread) ---------------
+    # --- running-WoW check (ReviewBase.run_preflight, in a worker) --------------------------------------
     def run_preflight(self, check: WowCheck, then: Callable[[list[str] | None, Any], None],
                       extra: Callable[[], Any] | None = None) -> None:
-        """Run check() (and extra(), e.g. free space) in a worker, then call then(running, extra_result) on the UI
-        thread if this screen is still the one shown. A failing check is "unknown" (None)."""
-        self._checking = True
-        self._refresh_buttons()
-        self._set_summary(Text("Checking for running programs…", style=BUSY_STYLE))
-        self.run_worker(lambda: self._preflight_worker(check, extra, then), thread=True, group="preflight")
+        """Run check() (and extra(), e.g. free space) in a worker, then then(running, extra_result) on the UI
+        thread if this screen is still the one shown; a running WoW is logged first."""
+        def logged(running: list[str] | None, result: Any) -> None:
+            if running:
+                log_event("wow.running_warning", executables=running)
+            then(running, result)
+        super().run_preflight(check, logged, extra)
 
-    def _preflight_worker(self, check: WowCheck, extra: Callable[[], Any] | None,
-                          then: Callable[[list[str] | None, Any], None]) -> None:
-        running = result = None
-        try:
-            running = check()
-        except Exception as exc:  # noqa: BLE001 - a failed check is "unknown", as when PowerShell is missing
-            log_exception("preflight", exc)
-        if extra is not None:
-            try:
-                result = extra()
-            except Exception as exc:  # noqa: BLE001 - unknown as well
-                log_exception("preflight", exc)
-        self.app.call_from_thread(self._preflight_done, running, result, then)
-
-    def _preflight_done(self, running: list[str] | None, result: Any,
-                        then: Callable[[list[str] | None, Any], None]) -> None:
-        self._checking = False
-        if not self.is_attached:
-            return
-        self._update_summary()
+    def _checking_changed(self) -> None:
         self._refresh_buttons()
-        if self.app.screen is not self:
-            return  # the user left the screen while the check ran
-        if running:
-            log_event("wow.running_warning", executables=running)
-        then(running, result)
 
     # --- back up -------------------------------------------------------------------------------
     def action_back_up(self) -> None:
@@ -826,16 +771,3 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
         self.run_job(BackupProgressScreen("verify"),
                      lambda progress, _on_flavor: undo_restore(path, wow_root=wow, root=root, progress=progress),
                      self._restore_done)
-
-    # --- leaving -------------------------------------------------------------------------------
-    def action_leave(self, choice: str) -> None:
-        if not self.app.busy:
-            self.dismiss(choice)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        actions = {"btn-backup": self.action_back_up, "btn-restore": self.action_restore,
-                   "btn-undo": self.action_undo, "btn-rescan": self.action_rescan}
-        action = actions.get(event.button.id or "")
-        if action is not None:
-            event.stop()
-            action()

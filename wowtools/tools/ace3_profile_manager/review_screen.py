@@ -34,8 +34,9 @@ from wowtools.tools.ace3_profile_manager.ops import DbKey, DbState, OpResult, St
 from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
 from wowtools.tools.ace3_profile_manager.report import (CHARACTER_KINDS, DETAIL_COLUMNS, NO_PENDING, STAGE_TITLES,
                                                         STEPS, UNDO_COLUMNS, apply_confirm, apply_detail_rows,
-                                                        apply_summary_rows, guidance, pending_text, selection_text,
-                                                        shorten, undo_confirm, undo_detail_rows, undo_summary_rows)
+                                                        apply_summary_rows, guidance, pending_text, scan_label,
+                                                        selection_text, shorten, undo_confirm, undo_detail_rows,
+                                                        undo_summary_rows)
 from wowtools.tools.ace3_profile_manager.result_screen import ProfileResultScreen
 from wowtools.tools.ace3_profile_manager.scanner import ScanResult, SvFile, scan_flavors
 from wowtools.tools.ace3_profile_manager.settings import (Pair, format_blacklist, is_blacklisted, load_settings,
@@ -43,15 +44,14 @@ from wowtools.tools.ace3_profile_manager.settings import (Pair, format_blacklist
 from wowtools.tools.ace3_profile_manager.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
 from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult, recover, undo_run
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (BUSY_STYLE, POPUP_WIDTH, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
-                                InfoScreen, ProgressScreen, TwoPaneFocus, relabel_branch, theme_colour, tick_mark,
-                                two_pane_css)
+from wowtools.ui.dialogs import (POPUP_WIDTH, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, InfoScreen,
+                                ProgressScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
+from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
 from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, WrapButtonRow, action_button,
                                  wrap_items)
 
 NAV_HINT = (REVIEW_HINT + "a all · n none · d delete · p assign · m more · w apply · y dry run · " + TREE_HINT +
             "r rescan · z undo · f flavors · t tools")
-WowCheck = Callable[[], "list[str] | None"]
 SHOW_FILTERS = {"only-multi": "only_multi", "only-unused": "only_unused", "show-leftovers": "leftovers",
                 "show-blacklisted": "blacklisted"}
 GUIDE_MAX_ROWS = 2  # the guidance line leaves its per-node hint out rather than take more rows than this
@@ -72,22 +72,6 @@ TREE_ACTIONS = (
     ("act-more", "More… (m)", "neutral", "more"),
     ("act-discard", "Discard (⌫)", "neutral", "discard"),
 )
-
-
-class NotTicked:
-    """The keys not ticked, as tick_mark's `unchecked` collection (without listing every key)."""
-
-    def __init__(self, ticked: set[tuple]) -> None:
-        self.ticked = ticked
-
-    def __contains__(self, key: object) -> bool:
-        return key not in self.ticked
-
-    def __iter__(self) -> Iterator:
-        return iter(())
-
-    def __len__(self) -> int:
-        return 0
 
 
 class ProfileProgressScreen(ProgressScreen):
@@ -144,14 +128,11 @@ class ProfileRecoveryScreen(ModalScreen[str]):
         self.dismiss(event.button.id)
 
 
-class ProfileTree(Tree):
-    """The profiles tree. ← jumps to the left panel (instead of scrolling sideways); ↓ on the last line goes on to
-    the action bar under it."""
+class ProfileTree(ReviewTree):
+    """The profiles tree. ← jumps to the left panel (ReviewTree); ↓ on the last line goes on to the action bar
+    under it."""
 
-    BINDINGS: ClassVar[list[Binding]] = [
-        Binding("left", "screen.focus_filters", "Filters", show=False),
-        Binding("down", "down_or_bar", "Down", show=False),
-    ]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("down", "down_or_bar", "Down", show=False)]
 
     def action_down_or_bar(self) -> None:
         if self.cursor_line >= self.last_line:
@@ -177,12 +158,17 @@ class ActionTip(Static):
             place()  # its height is known now: the toasts go above it
 
 
-class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
+class ProfileReviewScreen(ReviewBase, Screen[str]):
     """The AceDB databases of the chosen flavors (and account) as a tree. Dismisses with "flavors", "tools" or
     "quit". `unlocked` is the flow's set of casefolded blacklisted (flavor folder, addon) pairs unlocked this
     session (shared, not copied)."""
 
     TREE_SELECTOR = "#profiles"
+    LOG_SCREEN = "ace_review"
+    PREFLIGHT_TEXT = "Checking whether WoW is running…"
+    BUTTON_ACTIONS: ClassVar[dict[str, str]] = {
+        "btn-apply": "apply", "btn-dry-run": "dry_run", "btn-rescan": "rescan", "btn-undo": "undo",
+        **{button_id: name for button_id, _, _, name in TREE_ACTIONS}}
     # Designed for 120x30 (tests/test_look_and_feel.py): the left pane has one control per row under its View and
     # Show headings, and still fits its hint when the pending line takes three rows (every kind of change) and the
     # bottom line two (scan warnings). The tree pane holds the tree, the guidance line and the action bar (at most
@@ -260,7 +246,6 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self._expanded: dict[Hashable, bool] = {}
         self._scanning = False
         self._checking = False  # a running-WoW check is in its worker
-        self._rebuild_pending = False
         self._last_filter: Widget | None = None
         self._stale = False  # an Apply or Undo changed the files: rescan when the review is shown again
 
@@ -386,18 +371,14 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
 
     def _show_scan_progress(self, scanning: bool) -> None:
         """While scanning, the tree is replaced by a progress bar and the file being read."""
-        self._scanning = scanning
-        if scanning:
-            self.query_one("#scan-progress", ProgressBar).update(total=None, progress=0)
-            self.query_one("#scan-label", Static).update(Text("Reading SavedVariables"))
-        self.query_one("#scan-box").display = scanning
-        self.query_one("#profiles", Tree).display = not scanning
+        self.show_scan_box(scanning, "Reading SavedVariables")
 
     def _scan_worker(self, flavors: list[Flavor], account: str | None, root: Path | None,
                      journal_dir: Path | None) -> None:
         # The UI gets a report per PROGRESS_INTERVAL, plus each flavor's first and last (ThrottledProgress).
         progress = ThrottledProgress(
-            lambda flavor, current, total, name: self.app.call_from_thread(self._scan_progress, current, total, name))
+            lambda flavor, current, total, name: self.app.call_from_thread(self._scan_progress, current, total,
+                                                                           scan_label(name)))
 
         try:
             scan = scan_flavors(flavors, account=account, progress=progress)
@@ -408,13 +389,6 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
             self.app.call_from_thread(self._scan_failed, f"The scan failed: {exc}")
             return
         self.app.call_from_thread(self._scanned, scan, undoable, marker)
-
-    def _scan_progress(self, current: int, total: int, name: str) -> None:
-        if not self.is_attached:
-            return
-        self.query_one("#scan-progress", ProgressBar).update(total=total or None, progress=current)
-        self.query_one("#scan-label", Static).update(Text(f"Reading SavedVariables: {name}" if name else
-                                                          "Reading SavedVariables"))
 
     def _scan_failed(self, message: str) -> None:
         self._scanning = False
@@ -440,24 +414,12 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         if marker is not None:
             self.offer_recovery(marker)
 
-    # --- tree ------------------------------------------------------------------------------------
-    def _schedule_rebuild(self) -> None:
-        """Show that the list is being rebuilt, then rebuild once that has been drawn. Changes made before the
-        rebuild runs are folded into it."""
-        if self.scan is None:
-            return
-        self.query_one("#profiles", Tree).loading = True
-        self.query_one("#summary", Static).update(Text("Updating the list…", style=BUSY_STYLE))
-        if not self._rebuild_pending:
-            self._rebuild_pending = True
-            self.call_after_refresh(self._run_scheduled_rebuild)
+    # --- tree (filter and view changes rebuild it through ReviewBase._schedule_rebuild) -------------------
+    def _can_rebuild(self) -> bool:
+        return self.scan is not None
 
-    def _run_scheduled_rebuild(self) -> None:
-        self._rebuild_pending = False
-        try:
-            self.refresh_view()
-        finally:
-            self.query_one("#profiles", Tree).loading = False
+    def _rebuild(self) -> None:
+        self.refresh_view()
 
     def _walk_tree(self) -> Iterator[TreeNode]:
         stack = [self.query_one("#profiles", Tree).root]
@@ -505,7 +467,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         keys = builder.keys.get(id(data), ())
         if not keys:
             return Text.assemble("  ", body)
-        mark = tick_mark(keys, NotTicked(self.ticked), success=theme_colour(self.app, "success"))
+        mark = tick_mark(keys, self.tick_model().unticked, success=theme_colour(self.app, "success"))
         return Text.assemble(mark, body)
 
     def _refresh_labels(self, node: TreeNode | None = None) -> None:
@@ -709,42 +671,18 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         """The ticked characters, or the highlighted node's when nothing is ticked."""
         return self._selected("c")
 
-    # --- ticks -----------------------------------------------------------------------------------
-    def action_toggle(self) -> None:
-        focused = self.focused
-        if isinstance(focused, Checkbox):
-            focused.toggle()
-            return
-        if isinstance(focused, Button):  # Space activates the focused button, never the tree
-            focused.press()
-            return
-        if isinstance(focused, Input):  # Space is priority-bound: type it into the search box
-            focused.insert_text_at_cursor(" ")
-            return
-        if not isinstance(focused, Tree) or not self.idle:
-            return
-        node = self.query_one("#profiles", Tree).cursor_node
-        keys = self._tick_keys(node)
-        if node is None or not keys:
-            return
-        check = any(k not in self.ticked for k in keys)
-        if check:
-            self.ticked.update(keys)
-        else:
-            self.ticked.difference_update(keys)
-        log_event("ui.item_toggled", screen="ace_review", key=str(ident(node.data)), checked=check)
-        self._refresh_labels(node)
+    # --- ticks (Space, a, n: ReviewBase; a and n act on the keys shown, hidden ticks stay) -------------------
+    def tick_model(self) -> TickModel:
+        return TickModel.of_ticked(self.ticked)  # nothing starts ticked
 
-    def action_select_all(self) -> None:
-        tree = self.query_one("#profiles", Tree)
-        self.ticked.update(self._tick_keys(tree.root))  # visible keys only: hidden ones stay as they are
-        log_event("ui.selection", screen="ace_review", control="select_all", value=True)
-        self._refresh_labels()
+    def node_tick_keys(self, node) -> tuple:
+        return self._tick_keys(node)
 
-    def action_select_none(self) -> None:
-        self.ticked.clear()
-        log_event("ui.selection", screen="ace_review", control="select_none", value=True)
-        self._refresh_labels()
+    def tick_log_key(self, node, keys) -> str:
+        return str(ident(node.data))
+
+    def ticks_frozen(self) -> bool:
+        return not self.idle
 
     # --- filters ---------------------------------------------------------------------------------
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
@@ -1138,32 +1076,13 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
             self.app.call_from_thread(show)
         return progress
 
-    def _run_preflight(self, then: Callable[[list[str] | None], None], check: WowCheck | None = None) -> None:
-        """Run the running-WoW check (`check`, else the reviewed flavors') in a worker (it can take seconds), then
-        call `then` with its answer on the UI thread: process names, [] when none run, None when it could not
-        run."""
-        self._checking = True
+    def _check_wow(self, check: WowCheck, then: Callable[[list[str] | None], None]) -> None:
+        """The running-WoW check (ReviewBase.run_preflight, in a worker: it can take seconds), then `then` with its
+        answer on the UI thread: process names, [] when none run, None when it could not run."""
+        self.run_preflight(check, lambda running, _extra: then(running))
+
+    def _checking_changed(self) -> None:
         self._refresh_buttons()
-        self.query_one("#summary", Static).update(Text("Checking whether WoW is running…", style=BUSY_STYLE))
-        check = check or self.wow_check
-        self.run_worker(lambda: self._preflight_worker(check, then), thread=True, group="preflight")
-
-    def _preflight_worker(self, check: WowCheck, then: Callable[[list[str] | None], None]) -> None:
-        running = None
-        try:
-            running = check()
-        except Exception as exc:  # noqa: BLE001 - a failed check is "unknown"
-            log_exception("preflight", exc)
-        self.app.call_from_thread(self._preflight_done, running, then)
-
-    def _preflight_done(self, running: list[str] | None, then: Callable[[list[str] | None], None]) -> None:
-        self._checking = False
-        if not self.is_attached:
-            return
-        self._update_summary()
-        if self.app.screen is not self:
-            return  # the user left the screen while the check ran
-        then(running)
 
     def _refused_while_running(self, running: list[str] | None, alerts: list[str]) -> bool:
         """True (and say so) when WoW runs; adds an alert when the check could not run."""
@@ -1217,7 +1136,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         if self._backup_dir_refused():
             return
         check = self.apply_check()
-        self._run_preflight(lambda running: self._after_apply_preflight(running), check)
+        self._check_wow(check, self._after_apply_preflight)
 
     def _after_apply_preflight(self, running: list[str] | None) -> None:
         alerts: list[str] = []
@@ -1336,7 +1255,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         # the journal may be another flavor's (the newest of the whole tool): check the flavors it changed
         folders = {e["flavor"] for e in journal.entries}
         check = self.check_for(folders)
-        self._run_preflight(lambda running: self._after_undo_preflight(path, journal, check, running), check)
+        self._check_wow(check, lambda running: self._after_undo_preflight(path, journal, check, running))
 
     def _after_undo_preflight(self, path: Path, journal: Journal, check: WowCheck,
                               running: list[str] | None) -> None:
@@ -1413,7 +1332,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         if self._backup_dir_refused():
             return  # the marker stays: offered again at the next scan
         check = self.check_for([marker.flavor])  # the marker's flavor, which may not be the one reviewed
-        self._run_preflight(lambda running: self._after_recover_preflight(marker, root, check, running), check)
+        self._check_wow(check, lambda running: self._after_recover_preflight(marker, root, check, running))
 
     def _after_recover_preflight(self, marker: Marker, root: Path, check: WowCheck,
                                  running: list[str] | None) -> None:
@@ -1479,12 +1398,3 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
                                            f"{plural(pending, 'pending change')} not applied yet will be dropped; "
                                            "nothing has been written."),
                              lambda ok: self.dismiss(choice) if ok else None)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        actions = {"btn-apply": self.action_apply, "btn-dry-run": self.action_dry_run,
-                   "btn-rescan": self.action_rescan, "btn-undo": self.action_undo}
-        actions.update({button_id: getattr(self, f"action_{name}") for button_id, _, _, name in TREE_ACTIONS})
-        action = actions.get(event.button.id or "")
-        if action is not None:
-            event.stop()
-            action()
