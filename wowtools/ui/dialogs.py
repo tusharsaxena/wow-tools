@@ -4,19 +4,22 @@ and relabelling for review trees, the two-pane (filters + tree) focus moves, and
 colours as a fallback. A tool's screens import these; no tool imports another tool's screens."""
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Hashable, Iterable
+from collections.abc import Callable, Collection, Hashable, Iterable, Sequence
 from time import monotonic
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from rich.text import Text
 from textual.actions import SkipAction
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widget import Widget
 from textual.widgets import Button, ProgressBar, Static, Tree
 
+from wowtools.core.parallel import workers_for
+from wowtools.core.progress import PROGRESS_INTERVAL, BoardView, ProgressBoard, RowView
+from wowtools.core.text import plural
 from wowtools.ui.theme import KA0S_THEME
 from wowtools.ui.widgets import ACTION_VARIANTS, CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, NavHint, action_button
 
@@ -37,6 +40,10 @@ POPUP_WIDTH = "width: 90; max-width: 90%;"
 CONFIRM_GUARD = 0.25
 # A settings form's width: the whole window up to 100 columns, centred (never stretched edge to edge).
 FORM_WIDTH = "width: 100%; max-width: 100;"
+# The progress popup's bars (each unit's and the overall one) share one column this wide; the stage text takes
+# the rest of the row. A unit's label column is as wide as its longest label, up to PROGRESS_LABEL_WIDTH.
+PROGRESS_BAR_WIDTH = "45%"
+PROGRESS_LABEL_WIDTH = 16
 
 
 def review_hint(space: str = "tick") -> str:
@@ -433,57 +440,136 @@ class InfoScreen(TreeKeys, ModalScreen[None]):
 
 
 class ProgressScreen(ModalScreen[None]):
-    """Shown while a run, dry run or undo works in a worker: the stage, a progress bar and the current file.
+    """Shown while a run, dry run or undo works in a worker. One box for every tool, the same size from open to
+    close: a title, an overall bar ("1 of 3 game versions"), one row per running unit (its label, stage and bar)
+    and the newest detail (a file), every line one line high and ellipsised. There are min(parallelism, units)
+    unit rows, chosen at open: a serial run has one, reused by each unit in turn; a parallel run gives a finished
+    unit's row to the next one.
 
-    A tool subclasses it with its own ID_PREFIX (widget ids <prefix>-box, -stage, -progress, -file), STAGE_TITLES
-    and SIMULATED_STAGE (the stage a dry run calls "Simulating"). update_progress(stage, current, total, detail)
-    is the run's progress callback (on the UI thread: workers go through call_from_thread); a total of 0 means
-    "not known" and runs the bar as indeterminate. set_flavor(label) puts "<label>: " in front of the stage title
-    while several flavors run one after another."""
+    A tool subclasses it with its own ID_PREFIX (widget ids <prefix>-box, -title, -overall, -overall-label,
+    -row-<i>-label, -row-<i>-stage, -row-<i>-bar, -detail), STAGE_TITLES and SIMULATED_STAGE (the stage a dry run
+    calls "Simulating").
+
+    The workers write to it directly, from any thread, and never wait for the UI: report(stage, current, total,
+    detail) is a serial run's progress callback, report_unit(unit, stage, ...) a unit-tagged one's (run_units),
+    start_unit(unit, index, total) says a unit starts (run_units' on_start, a tool's on_flavor) and
+    finish_unit(unit) that it ended. They land in a ProgressBoard (core/progress.py, locked), which the screen
+    draws on a timer (PROGRESS_INTERVAL), so N threads never queue on the UI loop. A total of 0 means "not known"
+    and runs that row's bar as indeterminate."""
 
     DEFAULT_CSS = f"""
     ProgressScreen {{ align: center middle; }}
-    ProgressScreen .progress-box {{ {POPUP_WIDTH} height: auto; border: thick $accent; background: $panel;
-                                   padding: 1 2; }}
-    ProgressScreen .progress-stage {{ color: $accent; text-style: bold; margin-bottom: 1; }}
-    ProgressScreen .progress-bar {{ width: 1fr; }}
-    ProgressScreen .progress-file {{ color: $text-muted; margin-top: 1; height: 2; overflow: hidden hidden; }}
+    ProgressScreen .progress-box {{ {POPUP_WIDTH} border: thick $accent; background: $panel; padding: 1 2; }}
+    ProgressScreen .progress-title {{ color: $accent; text-style: bold; height: 1; margin-bottom: 1; }}
+    ProgressScreen .progress-row {{ height: 1; width: 1fr; }}
+    ProgressScreen .progress-overall {{ margin-bottom: 1; }}
+    ProgressScreen .progress-units {{ height: auto; margin-bottom: 1; }}
+    ProgressScreen .progress-title, ProgressScreen .progress-label, ProgressScreen .progress-stage,
+    ProgressScreen .progress-detail {{ text-wrap: nowrap; text-overflow: ellipsis; overflow: hidden hidden; }}
+    ProgressScreen .progress-overall-label {{ width: 1fr; height: 1; }}
+    ProgressScreen .progress-label {{ height: 1; margin-right: 1; text-style: bold; }}
+    ProgressScreen .progress-stage {{ width: 1fr; height: 1; margin-right: 1; }}
+    ProgressScreen .progress-stage.-idle {{ color: $text-muted; }}
+    ProgressScreen .progress-bar {{ width: {PROGRESS_BAR_WIDTH}; height: 1; }}
+    ProgressScreen .progress-bar Bar {{ width: 1fr; }}
+    ProgressScreen .progress-detail {{ color: $text-muted; height: 1; }}
     """
     ID_PREFIX = "progress"
     STAGE_TITLES: ClassVar[dict[str, str]] = {}
     SIMULATED_STAGE = ""
 
-    def __init__(self, *, dry_run: bool = False, first_stage: str = "",
-                 stage_titles: dict[str, str] | None = None) -> None:
+    def __init__(self, title: str = "", *, dry_run: bool = False, first_stage: str = "",
+                 stage_titles: dict[str, str] | None = None, units: Sequence[Any] = (), parallelism: int = 1,
+                 what: str = "game version", label: Callable[[Any], str] = str) -> None:
         super().__init__()
+        self.title_text = title
         self.dry_run = dry_run
-        self.first_stage = first_stage
-        self.stage = first_stage
         self.stage_titles = self.STAGE_TITLES if stage_titles is None else stage_titles
-        self.flavor_label = ""
+        self.what = what
+        units = list(units)
+        self.rows = workers_for(parallelism, len(units)) if units else 1
+        # The label column is as wide as the longest unit's label (up to PROGRESS_LABEL_WIDTH), fixed at open; a
+        # run without named units has none and a unit's label (from start_unit) goes in front of its stage.
+        self.label_width = min(max((len(label(u)) for u in units), default=0), PROGRESS_LABEL_WIDTH)
+        self.board = ProgressBoard(self.rows, max(1, len(units)), label=label, first_stage=first_stage)
+        self._shown = -1  # the board version drawn last
 
+    # --- what workers call (any thread) ------------------------------------------------------------
+    def report(self, stage: str, current: int = 0, total: int = 0, detail: str | None = None) -> None:
+        self.board.report(stage, current, total, detail)
+
+    def report_unit(self, unit: Any, stage: str, current: int = 0, total: int = 0,
+                    detail: str | None = None) -> None:
+        self.board.report_unit(unit, stage, current, total, detail)
+
+    def start_unit(self, unit: Any, index: int | None = None, total: int | None = None) -> None:
+        self.board.start(unit, index, total)
+
+    def finish_unit(self, unit: Any = None) -> None:
+        self.board.finish(unit)
+
+    # --- drawing (UI thread) -----------------------------------------------------------------------
     def _part_id(self, part: str) -> str:
         return f"{self.ID_PREFIX}-{part}"
 
+    def box_height(self) -> int:
+        """Border 2, padding 2, title 1 + gap, overall 1 + gap, the unit rows + gap, detail 1."""
+        return self.rows + 10
+
     def compose(self) -> ComposeResult:
-        with Vertical(id=self._part_id("box"), classes="progress-box"):
-            yield Static(Text(self.stage_title(self.first_stage)), id=self._part_id("stage"), classes="progress-stage")
-            yield ProgressBar(id=self._part_id("progress"), classes="progress-bar", show_eta=False)
-            yield Static("", id=self._part_id("file"), classes="progress-file")
+        box = Vertical(id=self._part_id("box"), classes="progress-box")
+        box.styles.height = self.box_height()
+        with box:
+            yield Static(Text(self.title_text), id=self._part_id("title"), classes="progress-title")
+            with Horizontal(classes="progress-row progress-overall"):
+                yield Static("", id=self._part_id("overall-label"), classes="progress-overall-label")
+                yield ProgressBar(id=self._part_id("overall"), classes="progress-bar", show_eta=False)
+            with Vertical(classes="progress-units"):
+                for i in range(self.rows):
+                    with Horizontal(id=self._part_id(f"row-{i}"), classes="progress-row progress-unit"):
+                        unit_label = Static("", id=self._part_id(f"row-{i}-label"), classes="progress-label")
+                        unit_label.styles.width = self.label_width
+                        unit_label.display = self.label_width > 0
+                        yield unit_label
+                        yield Static("", id=self._part_id(f"row-{i}-stage"), classes="progress-stage")
+                        yield ProgressBar(id=self._part_id(f"row-{i}-bar"), classes="progress-bar", show_eta=False)
+            yield Static("", id=self._part_id("detail"), classes="progress-detail")
+
+    def on_mount(self) -> None:
+        self.refresh_progress()
+        self.set_interval(PROGRESS_INTERVAL, self.refresh_progress)
 
     def stage_title(self, stage: str) -> str:
         if self.dry_run and stage == self.SIMULATED_STAGE:
-            title = "Simulating"
-        else:
-            title = self.stage_titles.get(stage, stage)
-        return f"{self.flavor_label}: {title}" if self.flavor_label else title
+            return "Simulating"
+        return self.stage_titles.get(stage, stage)
 
-    def set_flavor(self, label: str) -> None:
-        self.flavor_label = label
+    def overall_text(self, view: BoardView) -> str:
+        return "Overall" if view.units <= 1 else f"{view.done} of {plural(view.units, self.what)}"
 
-    def update_progress(self, stage: str, current: int, total: int, detail: str = "") -> None:
-        self.stage = stage
-        self.query_one(f"#{self._part_id('stage')}", Static).update(Text(self.stage_title(stage)))
-        bar = self.query_one(f"#{self._part_id('progress')}", ProgressBar)
-        bar.update(total=total if total > 0 else None, progress=current)
-        self.query_one(f"#{self._part_id('file')}", Static).update(Text(detail))
+    def refresh_progress(self) -> None:
+        """Draw the board if it changed since the last time (the timer calls this; a test may call it at once)."""
+        version, view = self.board.snapshot()
+        if version == self._shown or not self.is_attached:
+            return
+        self._shown = version
+        self.query_one(f"#{self._part_id('overall-label')}", Static).update(Text(self.overall_text(view)))
+        self.query_one(f"#{self._part_id('overall')}", ProgressBar).update(total=view.units, progress=view.done)
+        for i, row in enumerate(view.rows):
+            self._draw_row(i, row)
+        detail = view.detail
+        if detail and view.detail_label and self.rows > 1:
+            detail = f"{view.detail_label}: {detail}"
+        self.query_one(f"#{self._part_id('detail')}", Static).update(Text(detail))
+
+    def _draw_row(self, i: int, row: RowView) -> None:
+        stage = "Done" if row.finished else self.stage_title(row.stage) if row.used else "Waiting"
+        if row.label and not self.label_width:
+            stage = f"{row.label}: {stage}"
+        self.query_one(f"#{self._part_id(f'row-{i}-label')}", Static).update(Text(row.label))
+        stage_widget = self.query_one(f"#{self._part_id(f'row-{i}-stage')}", Static)
+        stage_widget.update(Text(stage))
+        stage_widget.set_class(not row.used or row.finished, "-idle")
+        bar = self.query_one(f"#{self._part_id(f'row-{i}-bar')}", ProgressBar)
+        bar.visible = row.used
+        bar.update(total=row.total if row.total > 0 else None, progress=row.current)

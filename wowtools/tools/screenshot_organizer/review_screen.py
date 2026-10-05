@@ -49,9 +49,10 @@ class ShotProgressScreen(ProgressScreen):
     STAGE_TITLES = STAGE_TITLES
     SIMULATED_STAGE = "organize"
 
-    def __init__(self, stage_titles: dict[str, str] = STAGE_TITLES, dry_run: bool = False,
-                 first_stage: str = "organize") -> None:
-        super().__init__(dry_run=dry_run, first_stage=first_stage, stage_titles=stage_titles)
+    def __init__(self, dry_run: bool = False, first_stage: str = "organize") -> None:
+        title = ("Undoing the last run" if first_stage == "undo" else
+                 "Simulating a run" if dry_run else "Organizing screenshots")
+        super().__init__(title, dry_run=dry_run, first_stage=first_stage)
 
 
 class ShotResultScreen(ResultBase):
@@ -543,13 +544,10 @@ class ShotReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                         group="organize")
 
     def _job_worker(self, job, progress_screen: ShotProgressScreen) -> None:
-        # Runs in a worker thread: the progress screen is only ever touched on the UI thread.
-        def progress(*args) -> None:
-            self.app.call_from_thread(progress_screen.update_progress, *args)
-
+        # Runs in a worker thread: progress lands on the screen's board (locked), which the UI thread draws.
         try:
             with activity.running():
-                result = job(progress)
+                result = job(progress_screen.report)
         except OrganizeError as exc:
             self.app.call_from_thread(self._job_stopped, exc)
             return

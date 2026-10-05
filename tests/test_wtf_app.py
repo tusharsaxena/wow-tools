@@ -155,7 +155,9 @@ class ReviewFlowTest(AppTestCase):
         progress = [s for s in pushed if isinstance(s, CleanProgressScreen)]
         self.assertEqual(len(progress), 1)
         self.assertFalse(progress[0].dry_run)
-        self.assertEqual(progress[0].stage, "validate")  # the post-clean check is the last stage
+        rows = progress[0].board.snapshot()[1].rows
+        self.assertEqual([r.stage for r in rows], ["validate"])  # the post-clean check is the last stage
+        self.assertEqual(rows[0].label, "Retail")
         self.assertFalse((self.backup_dir / MARKER_NAME).exists())
         self.assertFalse((self.sv / "Uninstalled.lua").exists())
         self.assertTrue((self.sv / "Auctionator.lua").exists())
@@ -1169,19 +1171,19 @@ class ProgressPopupTest(AppTestCase):
             screen = CleanProgressScreen(dry_run=False)
             await app.push_screen(screen)
             await pilot.pause()
-            self.assertEqual(str(screen.query_one("#clean-stage", Static).render()), "Checking selected files")
+            self.assertEqual(str(screen.query_one("#clean-row-0-stage", Static).render()), "Checking selected files")
+            self.assertEqual(str(screen.query_one("#clean-title", Static).render()), "Cleaning")
             for stage in ("check", "lock_check", "snapshot_list", "snapshot", "snapshot_verify", "backup",
                           "verify", "delete", "validate"):
-                screen.update_progress(stage, 1, 2, "x")
+                screen.report(stage, 1, 2, "x")
                 self.assertNotEqual(screen.stage_title(stage), stage)
-            screen.update_progress("snapshot_list", 300, 0, "300 files found")
-            self.assertIsNone(screen.query_one("#clean-progress", ProgressBar).total)
-            screen.update_progress("delete", 1, 1, "WTF/" + "a" * 300)
+            screen.report("snapshot_list", 300, 0, "300 files found")
+            screen.refresh_progress()
+            self.assertIsNone(screen.query_one("#clean-row-0-bar", ProgressBar).total)
+            screen.report("delete", 1, 1, "WTF/" + "a" * 300)
+            screen.refresh_progress()
             await pilot.pause()
-            self.assertEqual(screen.query_one("#clean-file", Static).size.height, 2)
-            screen.update_progress("delete", 1, 1, "short")
-            await pilot.pause()
-            self.assertEqual(screen.query_one("#clean-file", Static).size.height, 2)
+            self.assertEqual(screen.query_one("#clean-detail", Static).size.height, 1)  # ellipsised, never wraps
 
 
 class LockerWarningTest(AppTestCase):

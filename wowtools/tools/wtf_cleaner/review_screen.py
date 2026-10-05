@@ -48,14 +48,18 @@ NAV_HINT = REVIEW_HINT + ("a all · n none · w clean · y dry run · " + FILTER
 
 
 class CleanProgressScreen(ProgressScreen):
-    """Shown while a clean, dry run or undo runs (the widget ids keep their clean- prefix)."""
+    """Shown while a clean, dry run or undo runs (the widget ids keep their clean- prefix). A clean has one row per
+    flavor in turn (cleans run one flavor at a time)."""
 
     ID_PREFIX = "clean"
     STAGE_TITLES = STAGE_TITLES
     SIMULATED_STAGE = "delete"
 
-    def __init__(self, dry_run: bool, first_stage: str = "check") -> None:
-        super().__init__(dry_run=dry_run, first_stage=first_stage)
+    def __init__(self, dry_run: bool, first_stage: str = "check", flavors: Sequence[Flavor] = ()) -> None:
+        title = "Undoing the last clean" if first_stage == "undo" else (
+            "Simulating a clean" if dry_run else "Cleaning")
+        super().__init__(title, dry_run=dry_run, first_stage=first_stage, units=flavors,
+                         label=lambda flavor: flavor.display_name)
 
 
 class RecoveryScreen(ChoiceScreen):
@@ -584,7 +588,7 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         log_proposal_items([item for _, items in plan for item in items], dry_run=dry_run)
         self.app.busy = True
         self._refresh_undo()
-        progress_screen = CleanProgressScreen(dry_run)
+        progress_screen = CleanProgressScreen(dry_run, flavors=[flavor for flavor, _ in plan])
         self._progress_screen = progress_screen
         self.app.push_screen(progress_screen)
         self.run_worker(lambda: self._clean_worker(plan, backup, backup_dir, dry_run, progress_screen),
@@ -592,20 +596,13 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
 
     def _clean_worker(self, plan: list[tuple[Flavor, list[ProposalItem]]], backup: bool, backup_dir: Path | None,
                       dry_run: bool, progress_screen: CleanProgressScreen) -> None:
-        # Runs in a worker thread: the progress screen is only ever touched on the UI thread.
-        def progress(*args) -> None:
-            self.app.call_from_thread(progress_screen.update_progress, *args)
-
-        def on_flavor(flavor: Flavor, index: int, count: int) -> None:
-            if self.multi:
-                self.app.call_from_thread(progress_screen.set_flavor,
-                                          f"{flavor.display_name} ({index + 1}/{count})")
-
+        # Runs in a worker thread: progress lands on the screen's board (locked), which the UI thread draws.
         try:
             with activity.running():
                 result = execute_flavors(plan, dry_run=dry_run, backup=backup, backup_dir=backup_dir,
                                          account=self.account, keep_backups=self.cfg.keep_backups,
-                                         progress=progress, on_flavor=on_flavor, journal_dir=self._journal_dir(),
+                                         progress=progress_screen.report, on_flavor=progress_screen.start_unit,
+                                         journal_dir=self._journal_dir(),
                                          keep_journals=self.cfg.keep_journals)
         except Exception as exc:  # noqa: BLE001 - anything unexpected is shown and logged, never a crash
             log_exception("clean", exc)
@@ -722,12 +719,9 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                         group="clean")
 
     def _undo_worker(self, path: Path, wow_root: Path, progress_screen: CleanProgressScreen) -> None:
-        def progress(*args) -> None:
-            self.app.call_from_thread(progress_screen.update_progress, *args)
-
         try:
             with activity.running():
-                result = undo_clean(path, wow_root=wow_root, progress=progress)
+                result = undo_clean(path, wow_root=wow_root, progress=progress_screen.report)
         except Exception as exc:  # noqa: BLE001 - e.g. an unreadable journal: shown, never a crash
             log_exception("clean.undo", exc)
             self.app.call_from_thread(self._undo_failed, exc)

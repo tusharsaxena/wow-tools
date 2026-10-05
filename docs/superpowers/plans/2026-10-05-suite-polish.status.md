@@ -21,7 +21,7 @@ task; push after every milestone. Never merge without the user's go-ahead.
 | T4.1 | shared tree filter | done | afdbf6b | New `ui/tree_filter.py`: `TextFilter` (casefold substring), `ModelFilter` (keeps/opens on model data, lazy children included), `FilterInput` (one row, Esc clears + tree, → at end to tree), `TreeFilter` mixin (`/` via `FILTER_BINDINGS`, `FILTER_HINT`, debounced rebuild, `filter_keys()` from `filter_texts(key)`, `hidden_ticked_count/_note`, `hidden_by_filter(n)`). No tool wired yet (T4.2). `tests/test_ui_tree_filter.py` (21: unit + toy TUI screen), pinned in test_structure. 1184 tests OK (2 skipped) |
 | T4.2 | filter in every tree screen | done | aaf858d | `FilterInput` on WTF, Shots, IB review (`TreeFilter`), IB Restore (`FilterBox`, read-only), Ace3 review (shared box in `#search`; `Filters.search`/`matches`, `action_focus_search`, its own `on_input_changed` and `action_back` gone) and Blacklist. Built from `ModelNode`s (new in `ui/tree_filter.py`) through `ModelFilter`; lazy groups the filter opens load at once. Hidden-ticks line on every summary and run confirm (Ace3: the tick-taking popups; Blacklist Save asks only then). Tests: look-and-feel at BASE+TINY for 5 screens, per-tool filter tests, structure pin extended. 1202 tests OK (2 skipped) |
 | T5.1 | parallelism setting + runner + thread safety | done | e6d11cb | `[general] parallelism` (`Config.parallelism`, default 2, clamped 1-8; `#parallelism` on the setup screen, Save refuses outside 1-8, help in the label). New `core/parallel.py` `run_units` (serial in the caller at 1, `ThreadPoolExecutor` otherwise; input order; per-unit `Exception` kept in `UnitResult`; unit-tagged progress; `on_start`/`on_done`); events `parallel.started`/`finished`/`unit_failed`. `JournalWriter` locked (RLock, also in Clean/Profile journal subclasses); `EventLog.emit` holds its (now re-entrant) lock around the time stamp and both sinks. `tests/test_parallel.py` (14: barrier concurrency, order, isolation, serial path, BaseException, journal + event log under 8/6 threads). 1222 tests OK (2 skipped) |
-| T5.2 | fixed-size progress popup | todo | | |
+| T5.2 | fixed-size progress popup | done | (this commit) | Shared `ProgressScreen(title, *, units, parallelism, what, label, dry_run, first_stage)`: fixed box (`POPUP_WIDTH`, height rows+10), title / overall bar "n of m game versions" / `min(parallelism, units)` unit rows (label, ellipsised stage, bar) / one-line ellipsised detail; bars fill a 45% column (`Bar { width: 1fr }`). Workers write a locked `core.progress.ProgressBoard` (`report`, `report_unit`, `start_unit`, `finish_unit`), drawn on a `PROGRESS_INTERVAL` timer: no `call_from_thread` per report. All four tools migrated (`update_progress`/`set_flavor` gone; IB drops `ThrottledProgress`). `tests/test_progress_popup.py` (15: board rows/reuse/threads, box size before/after long-text floods at BASE+TINY for 1/4/8 rows, 4 rows at TINY, bars fill, every tool's subclass). 1238 tests OK (2 skipped) |
 | T5.3 | apply parallel runs | todo | | |
 | T6.1 | docs sync | todo | | |
 | T6.2 | review, fixes, push | todo | | |
@@ -139,3 +139,23 @@ task; push after every milestone. Never merge without the user's go-ahead.
   `run_units` through it and checks every unit's stage end is forwarded); a unit's `BaseException` sets a flag so
   units not yet started never start, even while an earlier unit still runs (test); `parallelism` added to README
   "The first time", the `s` sentence and the four guides' shared-settings paragraph.
+- **T5.2** Progress state lives in a UI-free `core.progress.ProgressBoard` (locked); the screen polls it every
+  `PROGRESS_INTERVAL` (0.1 s) and redraws only when its version changed. Workers call the screen's `report*` /
+  `start_unit` / `finish_unit` directly, so neither serial runs nor T5.3's pool threads ever block on the UI loop;
+  IB's backup/restore/undo no longer need `ThrottledProgress` (it stays for the scans' `call_from_thread` path).
+- **T5.2** A thread runs one unit at a time, so a thread starting (or reporting for) another unit finishes the one it
+  ran before. That keeps the serial flows (WTF `on_flavor`, IB `on_flavor`, Ace3's flavor-tagged reports) correct
+  without a finish callback; a pool's threads live for the whole run, so thread identity is safe there. Reports
+  before any unit starts go to an unnamed placeholder row (it also shows `first_stage` at open), replaced by the
+  first named unit. A late report of a finished unit is dropped, so `done` never double counts.
+- **T5.2** The overall bar counts finished units only (monotonic), not stage fractions: every unit's stages reset
+  their own counts (snapshot 0→N, verify 0→N…), which would make a blended bar go backwards. With a single unit it
+  reads "Overall". Finished rows show "Done" with a full bar until a new unit takes them; unused rows say "Waiting"
+  with the bar hidden (visibility, so the box never reflows).
+- **T5.2** Each tool's progress subclass now takes a run title ("Cleaning", "Simulating a clean", "Undoing the last
+  clean", "Backing up", "Restoring", "Applying the changes"…) and its flavors where the run has several; every run is
+  still one row (parallelism 1) until T5.3 wires `run_units`. A unit label column is as wide as the longest declared
+  label up to 16 (`PROGRESS_LABEL_WIDTH`); with no declared units it is hidden and a started unit's label prefixes
+  its stage. The detail line names the unit when there is more than one row.
+- **T5.2** IB's "throttled" test became `test_progress_never_waits_for_the_ui_thread`: every per-file report reaches
+  the board (>600 for 300 files) while `call_from_thread` is called fewer than 20 times for the whole job.

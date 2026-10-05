@@ -4,7 +4,7 @@ apply them, try them in a dry run, or undo the last change. A guidance line and 
 what can be done next."""
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Hashable, Iterable, Iterator
+from collections.abc import Callable, Collection, Hashable, Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import ClassVar
 
@@ -79,11 +79,17 @@ TREE_ACTIONS = (
 
 
 class ProfileProgressScreen(ProgressScreen):
-    """Shown while an Apply, a dry run, an Undo or a recovery runs."""
+    """Shown while an Apply, a dry run, an Undo or a recovery runs. An Apply has one row per flavor in turn (its
+    reports name the flavor: report_unit)."""
 
     ID_PREFIX = "ace"
     STAGE_TITLES = STAGE_TITLES
     SIMULATED_STAGE = "check"
+
+    def __init__(self, title: str, *, dry_run: bool = False, first_stage: str = "",
+                 flavors: Sequence[Flavor] = ()) -> None:
+        super().__init__(title, dry_run=dry_run, first_stage=first_stage, units=flavors,
+                         label=lambda flavor: flavor.display_name)
 
 
 class ProfileRecoveryScreen(ChoiceScreen):
@@ -1101,15 +1107,6 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                                            "they are.", kind="destructive"), done)
 
     # --- runs: apply, dry run, undo ---------------------------------------------------------------------
-    def _progress_cb(self, screen: ProfileProgressScreen) -> Callable[..., None]:
-        def progress(flavor: Flavor, stage: str, current: int, total: int, detail: str) -> None:
-            def show() -> None:
-                if screen.is_attached:
-                    screen.set_flavor(flavor.display_name)
-                    screen.update_progress(stage, current, total, detail)
-            self.app.call_from_thread(show)
-        return progress
-
     def _check_wow(self, check: WowCheck, then: Callable[[list[str] | None], None]) -> None:
         """The running-WoW check (ReviewBase.run_preflight, in a worker: it can take seconds), then `then` with its
         answer on the UI thread: process names, [] when none run, None when it could not run."""
@@ -1201,7 +1198,8 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         plan = [(flavor, states) for flavor, states in plan if states]
         self.app.busy = True
         self._refresh_buttons()
-        screen = ProfileProgressScreen(dry_run=dry_run)
+        screen = ProfileProgressScreen("Simulating the changes" if dry_run else "Applying the changes",
+                                       dry_run=dry_run, flavors=[flavor for flavor, _ in plan])
         self.app.push_screen(screen)
         keep = (self.cfg.keep_backups, self.cfg.keep_journals)
         check = None if dry_run else self.apply_check()
@@ -1218,7 +1216,7 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                                        keep_journals=keep[1], keep_snapshots=keep[0],
                                        dry_run=dry_run, account=self.account,
                                        wow_check=check,
-                                       progress=self._progress_cb(screen))
+                                       progress=screen.report_unit)
         except ApplyError as exc:  # WowRunning included: refused before anything was written
             log_exception("ace.apply", exc)
             self.app.call_from_thread(self._run_failed, screen, str(exc), False)
@@ -1315,7 +1313,7 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             return
         self.app.busy = True
         self._refresh_buttons()
-        screen = ProfileProgressScreen(dry_run=False, first_stage="undo")
+        screen = ProfileProgressScreen("Undoing the last change", first_stage="undo")
         self.app.push_screen(screen)
         keep = self.cfg.keep_backups
         self.run_worker(lambda: self._undo_worker(path, wow_root, root, keep, check, screen), thread=True,
@@ -1323,14 +1321,10 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
 
     def _undo_worker(self, path: Path, wow_root: Path, root: Path, keep_snapshots: int, check: WowCheck,
                      screen: ProfileProgressScreen) -> None:
-        def progress(stage: str, current: int, total: int, detail: str) -> None:
-            self.app.call_from_thread(lambda: screen.update_progress(stage, current, total, detail)
-                                      if screen.is_attached else None)
-
         try:
             with activity.running():
                 result = undo_run(path, wow_root=wow_root, root=root, keep_snapshots=keep_snapshots,
-                                  wow_check=check, progress=progress)
+                                  wow_check=check, progress=screen.report)
         except UndoError as exc:  # WoW running, locked files, the backup failed: nothing was changed
             log_exception("ace.undo", exc)
             self.app.call_from_thread(self._run_failed, screen, str(exc), False)
@@ -1375,7 +1369,7 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             return  # the marker stays: offered again at the next scan
         self.app.busy = True
         self._refresh_buttons()
-        screen = ProfileProgressScreen(dry_run=False, first_stage="undo")
+        screen = ProfileProgressScreen("Putting the originals back", first_stage="undo")
         self.app.push_screen(screen)
         keep = self.cfg.keep_backups
         self.run_worker(lambda: self._recover_worker(marker, root, check, screen, keep), thread=True,
@@ -1383,14 +1377,10 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
 
     def _recover_worker(self, marker: Marker, root: Path, check: WowCheck, screen: ProfileProgressScreen,
                         keep_snapshots: int | None = None) -> None:
-        def progress(stage: str, current: int, total: int, detail: str) -> None:
-            self.app.call_from_thread(lambda: screen.update_progress(stage, current, total, detail)
-                                      if screen.is_attached else None)
-
         try:
             with activity.running():
                 result = recover(marker, root=root, journal_dir=resolve_journal_dir(self.cfg.wow_path),
-                                 keep_snapshots=keep_snapshots, wow_check=check, progress=progress)
+                                 keep_snapshots=keep_snapshots, wow_check=check, progress=screen.report)
         except UndoError as exc:  # WoW running, locked files, the backup failed: nothing was changed
             log_exception("ace.recover", exc)
             self.app.call_from_thread(self._run_failed, screen, str(exc), False)

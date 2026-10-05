@@ -4,7 +4,7 @@ of a backup. The restore screens are in restore_screen.py."""
 from __future__ import annotations
 
 import shutil
-from collections.abc import Callable, Collection, Hashable
+from collections.abc import Callable, Collection, Hashable, Sequence
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -25,7 +25,6 @@ from wowtools.core.install import Flavor, WowInstall, validate_backup_dir
 from wowtools.core.journal import Journal
 from wowtools.core.paths import to_stored
 from wowtools.core.process import wow_check_for
-from wowtools.core.progress import PROGRESS_INTERVAL, ThrottledProgress
 from wowtools.core.text import plural
 from wowtools.tools.interface_backup.backup import BackupOutcome, back_up_all
 from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups, read_parts
@@ -66,13 +65,14 @@ def free_bytes(path: Path | None, disk_usage: Callable = shutil.disk_usage) -> i
 
 
 class BackupProgressScreen(ProgressScreen):
-    """Shown while a backup, a restore or an undo runs."""
+    """Shown while a backup, a restore or an undo runs. `flavors` are the display names of the flavors the job
+    runs (one row each in turn: the job's on_flavor starts each)."""
 
     ID_PREFIX = "ibackup"
     STAGE_TITLES = STAGE_TITLES
 
-    def __init__(self, first_stage: str = "backup") -> None:
-        super().__init__(first_stage=first_stage)
+    def __init__(self, title: str, first_stage: str = "backup", flavors: Sequence[str] = ()) -> None:
+        super().__init__(title, first_stage=first_stage, units=flavors)
 
 
 class BackupResultScreen(ResultBase):
@@ -648,7 +648,7 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         log_event("ui.selection", screen="confirm", control="back_up_confirm", value=bool(ok))
         if not ok or not self.idle or self.wow_folder_changed():
             return
-        self.run_job(BackupProgressScreen("backup"),
+        self.run_job(BackupProgressScreen("Backing up", "backup", [s.flavor.display_name for s in scans]),
                      lambda progress, on_flavor: back_up_all(scans, root, keep=keep, progress=progress,
                                                              on_flavor=on_flavor),
                      self._backup_done)
@@ -669,18 +669,11 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
 
     def _job_worker(self, job: Callable[[Callable, Callable], Any], screen: ProgressScreen,
                     done: Callable[[Any], None]) -> None:
-        # Runs in a worker thread: the progress screen is only ever touched on the UI thread, and per-file reports
-        # reach it throttled (ThrottledProgress).
-        progress = ThrottledProgress(lambda *args: self.app.call_from_thread(screen.update_progress, *args),
-                                     PROGRESS_INTERVAL)
-
-        def on_flavor(label: str) -> None:
-            progress.reset()
-            self.app.call_from_thread(screen.set_flavor, label)
-
+        # Runs in a worker thread: per-file reports land on the screen's board (locked), which the UI thread draws
+        # on its own timer, so a big Interface folder never waits on the UI loop.
         try:
             with activity.running():
-                result = job(progress, on_flavor)
+                result = job(screen.report, screen.start_unit)
         except Exception as exc:  # noqa: BLE001 - shown by the UI
             self.app.call_from_thread(self._job_failed, exc)
             return
@@ -793,7 +786,7 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             on_flavor(plan.flavor.display_name)
             return restore(plan, root=root, journal_dir=journal_dir, keep_journals=keep, progress=progress)
 
-        self.run_job(BackupProgressScreen("verify"), job, self._restore_done)
+        self.run_job(BackupProgressScreen("Restoring", "verify", [plan.flavor.display_name]), job, self._restore_done)
 
     def _restore_done(self, result: RestoreResult) -> None:
         self.app.push_screen(RestoreResultScreen(result), lambda choice: self._after_restore_result(choice, result))
@@ -848,6 +841,6 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         wow, root = self.cfg.wow_path, self._root()
         if not ok or not self.idle or wow is None or root is None or self.wow_folder_changed():
             return
-        self.run_job(BackupProgressScreen("verify"),
+        self.run_job(BackupProgressScreen("Undoing the last restore", "verify"),
                      lambda progress, _on_flavor: undo_restore(path, wow_root=wow, root=root, progress=progress),
                      self._restore_done)

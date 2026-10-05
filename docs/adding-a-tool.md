@@ -65,9 +65,11 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      Enter/Space wait `CONFIRM_GUARD` after it opens; `groups` lists long details in a tree), `InfoScreen(title, groups)` for notes too long for a notification,
      `ChoiceScreen(title, message, choices, default=...)` for a warning with a choice of buttons (an unfinished
      run; `default` is the safe choice the user most likely wants), and a
-     subclass of `ProgressScreen` with your own `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, fed by the
-     run's `progress(stage, current, total, detail)` through `app.call_from_thread`. Wrap that callback with
-     `core.fsutil.safe_progress` inside the run. A review tree can use `tick_mark`, `relabel_branch` and, from
+     subclass of `ProgressScreen` with your own `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, opened with a
+     title and the run's units (`units=`, `parallelism=`, `label=`), and fed straight from the worker (no
+     `call_from_thread`): pass `screen.report` as the run's `progress(stage, current, total, detail)`,
+     `screen.start_unit` as its per-flavor callback, or `screen.report_unit` as `run_units`' tagged progress. Wrap
+     that callback with `core.fsutil.safe_progress` inside the run. A review tree can use `tick_mark`, `relabel_branch` and, from
      `wowtools/ui/review.py`, `ReviewTree` and the `ReviewBase` mixin (Space, `a` / `n` over a `TickModel`, leaving,
      the running-programs check in a worker, the debounced rebuild, the scan box, `BUTTON_ACTIONS`);
      `theme_colour(app, "success")` gives theme colours with the Ka0s fallback.

@@ -519,34 +519,40 @@ class InterfaceBackupAppTest(TuiTestCase):
         self.assertFalse(any(r["event"] == "ibackup.backup_skipped" for r in records))
         self.assertFalse(any("anniversary" in n for n in self.zips()))
 
-    async def test_progress_reaches_the_screen_throttled(self):
-        # Per-file reports go to the UI thread only on a stage change, at a stage's end, or once per interval:
-        # forwarding every file of a big Interface folder made a backup through the UI ~13x slower than the logic.
+    async def test_progress_never_waits_for_the_ui_thread(self):
+        # Per-file reports land on the progress screen's board (a lock, no call_from_thread), which the UI thread
+        # draws on a timer: forwarding every file of a big Interface folder made a backup through the UI ~13x slower
+        # than the logic, and N parallel workers would queue on the UI loop.
         self.save_tool_cfg(backup_dir=str(self.bk))
         addons = self.root / "_retail_" / "Interface" / "AddOns" / "Big"
         addons.mkdir(parents=True)
         for i in range(300):
             (addons / f"f{i:03}.lua").write_bytes(b"x")
-        shown = []
-        real = BackupProgressScreen.update_progress
+        shown, screens = [], []
+        real = BackupProgressScreen.report
 
         def record(screen, *args):
             shown.append(args)
+            screens.append(screen)
             real(screen, *args)
 
         app = self.make_app()
-        with patch.object(review_module, "PROGRESS_INTERVAL", 3600.0, create=True), \
-                patch.object(BackupProgressScreen, "update_progress", record):
+        calls = []
+        real_call = app.call_from_thread
+        app.call_from_thread = lambda *a, **k: (calls.append(a), real_call(*a, **k))[1]
+        with patch.object(BackupProgressScreen, "report", record):
             async with app.run_test(size=SIZE) as pilot:
                 await self.open_review(app, pilot)
                 await self.make_backup(app, pilot)
         self.assertTrue(any(z.startswith("backup-retail-") for z in self.zips()))
-        self.assertLess(len(shown), 40, shown[:10])  # 300+ files zipped and verified per pass before the fix
+        self.assertGreater(len(shown), 600)  # every file zipped and verified reached the board
+        self.assertLess(len(calls), 20, calls[:10])  # but the UI thread was only called for the job's end
         stages = [args[0] for args in shown]
         for stage in ("backup", "verify", "prune"):
             self.assertIn(stage, stages)
-        retail_total = max(args[2] for args in shown if args[0] == "backup")
-        self.assertIn(("backup", retail_total), [(a[0], a[1]) for a in shown])  # each stage's end is shown
+        view = screens[0].board.snapshot()[1]
+        self.assertEqual(view.units, 3)
+        self.assertGreaterEqual(view.done, 2)  # each flavor started ends the one before
 
     async def test_decline_confirm_writes_nothing(self):
         self.save_tool_cfg(backup_dir=str(self.bk))

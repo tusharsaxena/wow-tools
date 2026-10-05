@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import unittest
 from types import SimpleNamespace
-from typing import ClassVar
 
-from wowtools.ui.dialogs import ProgressScreen, theme_colour, tick_mark
+from wowtools.ui.dialogs import theme_colour, tick_mark
 from wowtools.ui.theme import KA0S_THEME
 from wowtools.ui.widgets import CHECK_OFF, CHECK_ON
 
@@ -26,15 +25,3 @@ class DialogHelpersTest(unittest.TestCase):
         self.assertEqual(theme_colour(app, "success"), "#123456")
         self.assertEqual(theme_colour(app, "warning"), KA0S_THEME.warning)
 
-    def test_progress_stage_titles(self):
-        class Demo(ProgressScreen):
-            ID_PREFIX = "demo"
-            STAGE_TITLES: ClassVar[dict[str, str]] = {"work": "Working", "undo": "Undoing"}
-            SIMULATED_STAGE = "work"
-
-        self.assertEqual(Demo(first_stage="work").stage_title("work"), "Working")
-        dry = Demo(dry_run=True, first_stage="work")
-        self.assertEqual((dry.stage_title("work"), dry.stage_title("undo"), dry.stage_title("x")),
-                         ("Simulating", "Undoing", "x"))
-        dry.set_flavor("Retail")
-        self.assertEqual(dry.stage_title("undo"), "Retail: Undoing")
