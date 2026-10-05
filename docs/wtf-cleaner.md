@@ -239,7 +239,9 @@ The file itself uses these names, if you edit it by hand: `max_age_days`, `crite
 Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
 first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),
 `keep_journals` (10) and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]`
-in `config\wow-tools.cfg`. The WTF backups and the dry-run zips both follow
+in `config\wow-tools.cfg`. With **All flavors**, the scan reads up to `parallelism` game versions at once. A clean (and a dry run)
+still does one game version after another: they share one safety marker, and the clean stops at the first game
+version that fails. The WTF backups and the dry-run zips both follow
 `keep_backups`.
 
 ## FAQ

@@ -18,6 +18,7 @@ from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.tools import TOOLS
 from wowtools.tools.interface_backup import app as app_module
+from wowtools.tools.interface_backup import backup as backup_module
 from wowtools.tools.interface_backup import restore_screen as restore_module
 from wowtools.tools.interface_backup import review_screen as review_module
 from wowtools.tools.interface_backup.app import BackupSettingsScreen
@@ -650,6 +651,45 @@ class InterfaceBackupAppTest(TuiTestCase):
                 self.assertIsInstance(app.screen, BackupResultScreen)
                 self.assertFalse(app.busy)
         self.assertEqual(seen, [False])
+        self.assertEqual(len(self.zips()), 3)
+
+    async def test_backup_popup_has_a_row_per_flavor_backed_up_at_once(self):
+        """[general] parallelism 4, three flavors ticked: three rows, each showing its own flavor at once."""
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        self.cfg.set("general", "parallelism", "4", log=False)
+        release = threading.Event()
+        self.addCleanup(release.set)
+        barrier = threading.Barrier(3, timeout=5)
+        real = backup_module.write_zip
+
+        def held(scan, dest, **kwargs):
+            barrier.wait()  # all three flavors are running at once
+            release.wait(5)
+            return real(scan, dest, **kwargs)
+
+        app = self.make_app()
+        with patch.object(backup_module, "write_zip", held):
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_review(app, pilot)
+                await pilot.press("b")
+                await settle(app, pilot)
+                await pilot.press("y")
+                for _ in range(50):
+                    await pilot.pause(0.05)
+                    if isinstance(app.screen, BackupProgressScreen) \
+                            and all(r.label for r in app.screen.board.snapshot()[1].rows):
+                        break
+                screen = app.screen
+                self.assertIsInstance(screen, BackupProgressScreen)
+                self.assertEqual(screen.rows, 3)
+                screen.refresh_progress()
+                await pilot.pause()
+                labels = sorted(str(screen.query_one(f"#ibackup-row-{i}-label", Static).render())
+                                for i in range(3))
+                self.assertEqual([label.strip() for label in labels], ["Anniversary", "Classic Era", "Retail"])
+                release.set()
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, BackupResultScreen)
         self.assertEqual(len(self.zips()), 3)
 
     async def test_result_screen_leads_back_to_flavors(self):

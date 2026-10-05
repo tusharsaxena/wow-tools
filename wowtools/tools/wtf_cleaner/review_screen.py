@@ -195,7 +195,8 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         self.settings = load_settings(self.tool_cfg)
         self.scans = []
         self._show_scan_progress(True)
-        self.run_worker(self._scan_worker, thread=True, exclusive=True, group="scan")
+        parallelism = self.cfg.parallelism  # read here: the config is the UI thread's
+        self.run_worker(lambda: self._scan_worker(parallelism), thread=True, exclusive=True, group="scan")
 
     def _show_scan_progress(self, scanning: bool) -> None:
         """While scanning, the tree is replaced by a progress bar and the folder being read."""
@@ -213,11 +214,12 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         busy = self._scanning or getattr(self.app, "busy", False)
         self.query_one("#btn-undo", Button).disabled = busy or latest_undoable(self._journal_dir()) is None
 
-    def _scan_worker(self) -> None:
+    def _scan_worker(self, parallelism: int = 1) -> None:
         def progress(current: int, total: int, label: str) -> None:
             self.app.call_from_thread(self._scan_progress, current, total, label)
 
-        scans = scan_flavors(self.flavors, account=self.account, progress=progress)
+        # All flavors: up to `parallelism` scanned at once, their counts added up in the one bar
+        scans = scan_flavors(self.flavors, account=self.account, progress=progress, parallelism=parallelism)
         if not any(s.result for s in scans):
             message = scans[0].error or "" if not self.multi else "No flavor could be scanned. " + " ".join(
                 f"{s.flavor.display_name}: {s.error}" for s in scans)

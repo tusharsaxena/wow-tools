@@ -385,7 +385,9 @@ restore, in case the file was edited by hand.
 Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
 first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),
 `keep_journals` (10) and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]`
-in `config\wow-tools.cfg`. Restore journals follow `keep_journals`, and each keeps its
+in `config\wow-tools.cfg`. Backing up several game versions works on up to `parallelism` of them at once (each gets its own
+zip, and one failing never stops the others), and so does reading their folders; the progress window shows a row
+for each one being backed up. A restore is always one game version. Restore journals follow `keep_journals`, and each keeps its
 safety backup.
 
 If you move the backup folder, move the zips in its `interface-backup` folder along with it, or the app won't

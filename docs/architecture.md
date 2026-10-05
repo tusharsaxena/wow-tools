@@ -41,7 +41,7 @@ The UI-free half of the shared library (`wowtools/core/`):
 | `fsutil` | `atomic_write_bytes()` (remove whatever sits at `<name>.partial` without following it, create it with `O_CREAT\|O_EXCL` (+`O_NOFOLLOW`), write, then `os.replace`; the Ace3 Profile Manager's SavedVariables writes) and its wrapper `atomic_write_text()` (`\n` written as `os.linesep`), used for every config write; `rename_no_replace()` (refuses an existing target with no check-then-act window: a hard link then unlink on POSIX, `os.rename` on Windows; falls back to check + rename where hard links are unsupported); `free_name(folder, stem, suffix)` (`-2`, `-3`, ... for same-second names: journals, WTF backups, cleaned zips, Interface Backup zips); `remove_quietly()` (delete one of our own temporary or partial files, ignoring errors); `safe_progress(cb)` (wraps a run's progress callback so an error in it never disturbs the run; every clean, organize, backup, restore and undo uses it); `is_link(entry_or_path)` (a symlink, or on Windows a junction or directory symlink by its reparse tag; never raises); `is_real_dir(path)` (a folder that is not itself a link, from one lstat); `read_link(path)` → `(target, junction)` or None, and `make_link(target, path, junction=)` (a junction on Windows when it was one, else a symlink), which Interface Backup's Undo uses to make again a link a restore removed; `remove_tree_no_follow(path)` (delete a folder tree, removing links inside it as links and never descending into them; a link given as `path` is just unlinked) |
 | `activity` | `running()` context manager that file-changing workers (clean, organize, backup, restore, undo) enter; `wait_idle(timeout)`. `suite.run()` waits on it before releasing the lock, so a worker still writing never shares its folders with a second copy |
 | `events` | Registry of event names with fixed levels; JSONL + text sinks (files kept open, flushed per line, closed on a new day and at exit); `log_event()`; `capture_events()` for tests. Thread-safe: one re-entrant lock covers a record's time stamp and both sinks, so lines from parallel workers stay whole and each file is in time order |
-| `parallel` | `run_units(units, fn, parallelism=, what=, label=, progress=, on_start=, on_done=)`: `fn(unit, report)` over independent units (game versions), at most `parallelism` at once in a `ThreadPoolExecutor` (1, or one unit: a plain loop in the calling thread, in order). Returns one `UnitResult(unit, value, error)` per unit in input order; a unit's `Exception` is kept in its result (logged `parallel.unit_failed`) and the others carry on; a `BaseException` propagates once the running units finish, and a unit not started by then never starts. `report(*args)` calls `progress(unit, *args)` (pass a `ProgressScreen`'s `report_unit`, or `ThrottledProgress(forward, tagged=True)`); errors in progress / `on_start` / `on_done` are swallowed. It runs inside the tool's one Textual thread worker and returns only when every thread is done, so that worker's one `activity.running()` covers them all. Logs `parallel.started` / `parallel.finished` (debug). `workers_for(parallelism, units)`, `clamp_parallelism` |
+| `parallel` | `run_units(units, fn, parallelism=, what=, label=, progress=, on_start=, on_done=, stop_on_error=False)`: `fn(unit, report)` over independent units (game versions), at most `parallelism` at once in a `ThreadPoolExecutor` (1, or one unit: a plain loop in the calling thread, in order). Returns one `UnitResult(unit, value, error)` per unit in input order; a unit's `Exception` is kept in its result (logged `parallel.unit_failed`) and the others carry on (with `stop_on_error` the units not started yet never start: `UnitResult.started` False); a `BaseException` propagates once the running units finish, and a unit not started by then never starts. `report(*args)` calls `progress(unit, *args)` (pass a `ProgressScreen`'s `report_unit`, or `ThrottledProgress(forward, tagged=True)`); errors in progress / `on_start` / `on_done` are swallowed. It runs inside the tool's one Textual thread worker and returns only when every thread is done, so that worker's one `activity.running()` covers them all. Logs `parallel.started` / `parallel.finished` (debug). `workers_for(parallelism, units)`, `clamp_parallelism`. Runs through it: Interface Backup's scan and back up all, the WTF Cleaner's scan of several flavors, the Screenshot Organizer's picker counts and Ace3 Undo's WTF snapshots; WTF Clean and Ace3 Apply stay serial (one crash marker per run, stop at the first failure) |
 | `install` | `WowInstall` → `Flavor` → `Account` → `Character`; install auto-detection. A flavor is any `_name_` folder in the WoW folder, whatever it holds. `flavor_name(folder)` is `Flavor.display_name` for a flavor known only by its folder (journals, markers). `validate_output_dir()` refuses a tool output folder that is relative, the WoW folder, or inside a flavor's `WTF`/`Interface`/`Screenshots` (every tool with an output folder uses it on save and before use); `validate_backup_dir()` is that check for a tool's backup folder setting (WTF Cleaner, Interface Backup, Ace3 Profile Manager) |
 | `journal` | Run journals, the suite standard for any tool that changes files: JSON Lines (header, one line per completed change flushed at once, `{"finished"}`, `{"undone"}`). `journal_dir(wow_path, tool)` = `<WoW>/wow-tools/<tool>/journal/`; `new_journal_path`, `JournalWriter` (`open()` exclusive-creates and writes the header, `add_entry()`, `finish()`, `discard_if_empty()`; thread-safe: every method holds its re-entrant `lock`, which a subclass also takes around a write plus its own state), `read_journal(path, path_fields=)`, `list_journals` (newest first), `latest_undoable` (newest journal with entries, never past an undone one), `mark_undone`, `prune_journals(dir, keep, event=)` (logs `event` with the removed names and `keep` when it removed any), `friendly_stamp`. Path values go through `to_stored()` / `to_native()`. Tools add their own entry fields and undo rules. `ToolJournals(tool, reader, pruned_event)` binds one tool's journals: each tool's `journal.py` makes one (`JOURNALS`) and exports its `dir` / `latest_undoable` / `prune` as `resolve_journal_dir` / `latest_undoable` / `prune_journals` (Interface Backup logs its own prune event, with the safety zips it drops) |
 | `text` | `plural(n, word, words=None)` ("1 file", "2 copies") and `human_size(n)` (B, KB, MB, GB, TB; `MISSING` "—" for None): every tool's counts and sizes |
@@ -110,16 +110,21 @@ start, so nothing is moved under a running copy:
 `scan(account=NAME)` is fully scoped: only that account's SavedVariables are read, and only its characters
 decide the enabled set. `account=None` is the whole flavor.
 
-All flavors (`tools/wtf_cleaner/multi.py`, UI-free) runs the same per-flavor functions in turn and changes none
-of them:
+All flavors (`tools/wtf_cleaner/multi.py`, UI-free) runs the same per-flavor functions and changes none of them:
 
-    scan_flavors(flavors, account=None, progress=None) → [FlavorScan(flavor, result | None, error | None)]
+    scan_flavors(flavors, account=None, progress=None, parallelism=1) → [FlavorScan(flavor, result | None, error | None)]
     execute_flavors([(flavor, items), ...], dry_run, backup, backup_dir, account, keep_backups,
                     progress=None, on_flavor=None, journal_dir=None, keep_journals=10)
                       → MultiCleanResult(dry_run, runs[FlavorRun], journal_path, journals_pruned)
 
-`scan_flavors` records a `ScanError` on that flavor and carries on (with several flavors the progress label
-starts with the flavor's name). `execute_flavors` calls `execute()` per flavor, so each flavor gets its own WTF
+`scan_flavors` reads up to `parallelism` flavors at once (`core/parallel.py`, `[general] parallelism` read by the
+review on the UI thread; results in flavor order). It records a `ScanError` on that flavor and carries on; any
+other error keeps the flavors not started yet from starting and is raised once the running ones ended. With
+several flavors the progress label starts with the flavor's name, and with several at once the counts passed on
+are every running flavor's added up (under a lock), so the one scan bar never jumps between flavors.
+`execute_flavors` stays serial whatever the setting: every flavor shares the one crash marker in the backup folder
+(`clean-in-progress.json`, one pointer for the recovery screen) and a failure stops the run before the next
+flavor ("not started"). It calls `execute()` per flavor, so each flavor gets its own WTF
 backup, marker, cleaned-files zip, post-clean check and pruning; a `BackupError` or `CleanError` stops the run
 before the next flavor (`clean.flavors_stopped`), and each `FlavorRun.status` is `done`, `stopped` or
 `not_started`. The review screen uses both for one flavor too, so the single-flavor path is the same code.
@@ -194,8 +199,9 @@ In `cleaner.execute`:
   account and character folder in scope.
 - `execute(progress=cb)` calls `cb(stage, current, total, detail)` with the stages listed in
   `report.STAGE_TITLES` (total 0 = unknown). The callback is wrapped so an exception inside it is swallowed and never disturbs a clean.
-- Both run in the caller's thread. The TUI runs scans and cleans in thread workers: the scan's callback forwards
-  to the UI with `app.call_from_thread` (the scan progress bar); a clean's goes straight to
+- Both run in the caller's thread (a scan of several flavors: each flavor's in its own pool thread). The TUI runs
+  scans and cleans in thread workers: the scan's callback forwards to the UI with `app.call_from_thread` (the scan
+  progress bar); a clean's goes straight to
   `CleanProgressScreen.report` (its board, drawn by the UI thread), with `start_unit` as `on_flavor`.
 
 ## Screenshot Organizer data flow
@@ -221,7 +227,10 @@ again in `action_rescan`, which refuses to scan a hand-edited bad `dest_dir`.
 target is `filed` instead (the modified time is not compared: not every copy keeps it): the original stays in `Screenshots` after a copy, so it is not "to file" (`FlavorPlan.to_file` leaves it out), the review
 screen lists it in an unticked Already filed group, and `execute` still compares hashes if it is ticked.
 `waiting_count(flavor, dest_dir, copy=)` (the flavor picker's counts) lists names only; in copy mode it also lists
-each target day folder and leaves out names already there. Unparsable names become `Skipped`. Progress is
+each target day folder and leaves out names already there. `count_waiting(flavors, dest_dir, copy=, parallelism=)`
+runs it for every flavor, up to `parallelism` at once (`core/parallel.py`), into `{folder: count | None}` for the
+picker's worker. `scan` itself stays one loop (cheap listings sharing one target-folder cache), and so does
+`execute` (one journal, one shared cache, and a journal write error must stop the whole run). Unparsable names become `Skipped`. Progress is
 `cb(current, total, label)` once per flavor, plus a tick every 500 files.
 
 **No per-file resolve or stat.** `resolve()` and per-entry `stat` are slow over WSL drvfs, so neither the scan
@@ -288,8 +297,8 @@ again (the WTF Cleaner's rule).
 
 ## Interface Backup data flow
 
-    scan_flavors(flavors, with_stats=CHEAP_STATS, progress=None) → [FlavorScan(flavor, parts{Interface, WTF: PartScan}, leftovers)]
-    back_up_all(scans, root, keep, progress=None, on_flavor=None) → [BackupOutcome(flavor, kind, path, files, bytes_in, bytes_zip, links, missing, reason, pruned)]
+    scan_flavors(flavors, with_stats=CHEAP_STATS, progress=None, parallelism=1) → [FlavorScan(flavor, parts{Interface, WTF: PartScan}, leftovers)]
+    back_up_all(scans, root, keep, progress=None, on_flavor=None, on_flavor_done=None, parallelism=1) → [BackupOutcome(flavor, kind, path, files, bytes_in, bytes_zip, links, missing, reason, pruned)]
     open_backup(zip) → BackupContents(kind, flavor_short, flavor_folder, created, parts, files, links)
     plan_restore(contents, scan_flavor(flavor, with_stats=True), parts, disk_usage) → RestorePlan(removed, newer, links_kept, links_removed, unreadable, bytes_needed, free_bytes, leftovers, current_bytes)
     restore(plan, root, journal_dir, keep_journals, progress=None) → RestoreResult(flavor, backup, parts[PartOutcome], safety_zip, journal_path)
@@ -310,7 +319,9 @@ sub-folder is a `PartScan.errors` line (at most 20 logged per part as `ibackup.s
 `<part>.restoring` / `<part>.replaced` beside the parts. `CHEAP_STATS` is `os.name == "nt"`: `DirEntry.stat()` is
 free on Windows but a round trip per file over WSL drvfs, so elsewhere the review's scan leaves sizes `None` (counts
 only, no space alert on the backup confirm). The restore screen always scans with stats (it needs mtimes for
-`newer`).
+`newer`). `scan_flavors` reads up to `parallelism` flavors at once (read-only, independent; scans in flavor order,
+each flavor's events logged by its own thread); an unexpected error keeps the flavors not started yet from
+starting and is raised once the running ones ended. The scan bar has no total, and each report names its flavor.
 
 **Backup** (`backup.py`). No journal: nothing in the game folders changes. `write_zip` writes `<Part>/<rel>`
 entries plus `manifest.json` (`version`, `kind` backup | pre-restore, `flavor`, `flavor_folder`, `created`,
@@ -322,8 +333,12 @@ since the scan is left out and listed in `missing`; a part that vanished or lost
 manifest. Entry dates are clamped to the DOS range. `back_up` skips a flavor with no real part (`skip_reason`:
 no folder, or links; the review has no tick for such a flavor and passes only ticked flavors with data, so from the UI no Skipped row comes back), then prunes the
 flavor's `backup-*` zips to `keep_backups` after a success only (`protect=` the new zip; 0 keeps all; never safety
-zips, other flavors or foreign files). `back_up_all` runs flavors in turn; one failing never stops the next.
-Stages `backup`, `verify`, `prune`.
+zips, other flavors or foreign files). `back_up_all` runs up to `parallelism` flavors at once
+(`core/parallel.py`; each flavor writes its own zip and prunes only its own, so they are independent; outcomes in
+flavor order); one failing never stops the others, and an unexpected error is that flavor's `failed` outcome
+(`parallel.unit_failed` with the traceback, then `ibackup.backup_failed`). `on_flavor(name)` runs in the flavor's
+pool thread before it starts and `on_flavor_done(name)` after: the review passes the popup's `start_unit` /
+`finish_unit`, so each flavor's untagged reports land in its own row. Stages `backup`, `verify`, `prune`.
 
 **Open and plan** (`restore.py`). `open_backup` reads only the manifest and the entry list: every entry name must
 be safe (`split_entry`: relative, first part `Interface`/`WTF`, no `..`, backslash, drive, `<>:"|?*`, NUL or
@@ -448,7 +463,8 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
     apply_flavors([(flavor, [DbState]), ...], root, journal_dir, keep_journals, keep_snapshots, dry_run, account, wow_check, progress)
       (the review passes [general] keep_backups as keep_snapshots and keep_journals; 0 snapshots = keep all)
                       → MultiApplyResult(dry_run, runs[FlavorRun(flavor, result: ApplyResult, error)], journal_path)
-    undo_run(journal_path, wow_root, root, keep_snapshots, wow_check, progress) → UndoResult(outcomes, snapshots)
+    undo_run(journal_path, wow_root, root, keep_snapshots, wow_check, progress, parallelism=1, on_flavor=None,
+             on_flavor_done=None) → UndoResult(outcomes, snapshots)
     recover(marker, root, journal_dir, keep_snapshots, wow_check, progress) → UndoResult
 
 Modules in `tools/ace3_profile_manager/` (all UI-free except `app.py`, `review_screen.py`, `tree_view.py`, `popups.py`,
@@ -516,6 +532,8 @@ puts back every file this run wrote, newest first, records `rolled_back` in the 
 (its `result` keeps what was done; a file that could not be put back is `failed`, its detail naming the zip, and
 the marker then stays). Then the marker is cleared and snapshots pruned to `keep_snapshots`. Any refusal before the
 writes is an `ApplyError` ending "Nothing was changed."; a flavor that stops ends the run (`ace.flavors_stopped`).
+`apply_flavors` is serial whatever `[general] parallelism` says: the flavors share the one crash marker (one pointer
+for the recovery screen) and the run stops at the first flavor that fails.
 Afterwards journals are pruned to `keep_journals` and `prune_edited_zips` deletes only `edited-*.zip` files no kept
 journal names (nothing when a journal cannot be read). The review screen checks the backup folder with
 `validate_backup_dir` before an Apply, an Undo or a recovery (it may have been edited by hand in the cfg).
@@ -530,7 +548,12 @@ journal names (nothing when a journal cannot be read). The review screen checks 
 
 `read_profile_journal` drops `edited` entries a `rolled_back` line names. `latest_undoable` is the newest journal of
 the whole tool. `undo_run` refuses while WoW of a flavor the journal changed runs and when a file is locked
-(`UndoError`), snapshots each of those flavors (pruned to `keep_snapshots` afterwards), then newest entry first: a file whose SHA-256 is `sha_after` gets
+(`UndoError`), snapshots each of those flavors, up to `parallelism` at once (`core/parallel.py` with
+`stop_on_error`: every snapshot is its own zip of its own WTF folder; the first failure, in flavor order, is raised
+as "Nothing was changed" once the running ones ended, and a flavor not started by then never starts, so with 1 it
+stops where the serial loop did; `on_flavor` / `on_flavor_done` run in the snapshot's thread, the popup's
+`start_unit` / `finish_unit`, one row per flavor), prunes them to `keep_snapshots` afterwards, then in the
+worker's own thread, newest entry first: a file whose SHA-256 is `sha_after` gets
 its original bytes from the zip (checked against `sha_before`, written atomically: "restored"); any other file is
 "skipped: changed since"; the journal is marked undone unless nothing was restored and something failed.
 `recover(marker)` (the recovery popup's "Put the originals back") is guarded the same way and puts back only files

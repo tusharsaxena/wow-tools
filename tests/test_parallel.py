@@ -227,6 +227,53 @@ class RunUnitsTest(unittest.TestCase):
         started = next(r for r in records if r["event"] == "parallel.started")
         self.assertEqual(started["data"]["units"], ["unit-1"])
 
+    def test_stop_on_error_serial_stops_at_the_first_failure(self):
+        calls, done = [], []
+
+        def fn(unit, report):
+            calls.append(unit)
+            if unit == "bad":
+                raise ValueError("no")
+            return unit
+
+        with capture_events() as records:
+            results = run_units(["a", "bad", "c", "d"], fn, parallelism=1, stop_on_error=True,
+                                on_done=lambda r: done.append(r.unit))
+        self.assertEqual(calls, ["a", "bad"])
+        self.assertEqual(done, ["a", "bad"])  # on_done never runs for a unit that never started
+        self.assertEqual([(r.started, r.ok) for r in results], [(True, True), (True, False), (False, True),
+                                                                (False, True)])
+        finished = next(r for r in records if r["event"] == "parallel.finished")
+        self.assertEqual((finished["data"]["failed"], finished["data"]["not_started"]), (1, 2))
+
+    def test_stop_on_error_lets_running_units_finish_and_never_starts_queued_ones(self):
+        """Two threads: "bad" fails while "slow" runs; "slow" still finishes, "late" (queued) never starts."""
+        failed = threading.Event()
+        calls = []
+
+        def fn(unit, report):
+            calls.append(unit)
+            if unit == "bad":
+                raise ValueError("no")
+            if unit == "slow":
+                self.assertTrue(failed.wait(WAIT))
+            return unit
+
+        def on_done(result):
+            if result.unit == "bad":
+                failed.set()
+
+        with capture_events():
+            results = run_units(["slow", "bad", "late"], fn, parallelism=2, stop_on_error=True, on_done=on_done)
+        self.assertEqual(sorted(calls), ["bad", "slow"])
+        self.assertEqual([(r.unit, r.started, r.value) for r in results],
+                         [("slow", True, "slow"), ("bad", True, None), ("late", False, None)])
+
+    def test_without_stop_on_error_every_unit_starts(self):
+        with capture_events():
+            results = run_units(["bad", "b"], lambda u, r: 1 / 0 if u == "bad" else u, parallelism=1)
+        self.assertEqual([r.started for r in results], [True, True])
+
 
 class JournalThreadSafetyTest(unittest.TestCase):
     THREADS = 8

@@ -6,6 +6,10 @@ with parallelism 1 behaves as before this module existed. Results always come ba
 
 A unit that raises does not stop the others: its exception is kept in its UnitResult (and logged as
 parallel.unit_failed), like Interface Backup's back_up_all always kept one flavor's failure from stopping the next.
+With stop_on_error=True a unit's exception instead keeps the units not started yet from starting (their UnitResult
+has started=False); the units already running finish. With parallelism 1 that is a serial loop that stops at the
+first failure, as the per-flavor loops did before they ran here (Ace3 undo's snapshots, the scans' unexpected
+errors).
 A BaseException that is not an Exception (KeyboardInterrupt, SystemExit) still propagates, after every unit already
 started has finished; a unit that had not started by the time it was raised never starts (parallel.finished is then
 not logged).
@@ -50,6 +54,7 @@ class UnitResult(Generic[U, R]):
     unit: U
     value: R | None = None
     error: Exception | None = None
+    started: bool = False  # False only for a unit stop_on_error (or a BaseException) kept from starting
 
     @property
     def ok(self) -> bool:
@@ -69,14 +74,16 @@ def workers_for(parallelism: int, units: int) -> int:
 def run_units(units: Sequence[U], fn: Callable[[U, Report], R], *, parallelism: int, what: str = "units",
               label: Callable[[U], str] = str, progress: Callable[..., None] | None = None,
               on_start: Callable[[U, int, int], None] | None = None,
-              on_done: Callable[[UnitResult[U, R]], None] | None = None) -> list[UnitResult[U, R]]:
+              on_done: Callable[[UnitResult[U, R]], None] | None = None,
+              stop_on_error: bool = False) -> list[UnitResult[U, R]]:
     """Call fn(unit, report) for every unit, at most `parallelism` at once; return one UnitResult per unit, in
     input order.
 
     `report(*args)` is the unit's progress callback: it calls progress(unit, *args), so a progress display can tell
     the units apart. on_start(unit, index, total) runs when a unit starts and on_done(result) when it ends, both in
     the unit's thread. Errors in progress, on_start and on_done are swallowed (safe_progress): a broken display never
-    stops a run. `what` and `label` name the run and its units in the log."""
+    stops a run. `what` and `label` name the run and its units in the log. stop_on_error: a unit's exception keeps
+    the units not started yet from starting (on_start and on_done are not called for them)."""
     items = list(units)
     workers = workers_for(parallelism, len(items))
     total = len(items)
@@ -84,16 +91,21 @@ def run_units(units: Sequence[U], fn: Callable[[U, Report], R], *, parallelism: 
     log_event("parallel.started", what=what, units=[label(u) for u in items], workers=workers)
     started = time.monotonic()
     stopping = threading.Event()  # set by a unit's BaseException: a unit not yet started never starts
+    failed = threading.Event()  # set by a unit's Exception: with stop_on_error, a unit not yet started never starts
 
     def one(index: int, unit: U) -> UnitResult[U, R]:
         result: UnitResult[U, R] = UnitResult(unit)
         if stopping.is_set():
             return result  # never read: run_units raises the earlier unit's BaseException
+        if stop_on_error and failed.is_set():
+            return result  # not started: an earlier unit failed
+        result.started = True
         tell_start(unit, index, total)
         try:
             result.value = fn(unit, lambda *args: tell(unit, *args))
         except Exception as exc:  # noqa: BLE001 - one unit's failure is its own; the others carry on
             result.error = exc
+            failed.set()
             log_event("parallel.unit_failed", what=what, unit=label(unit), type=type(exc).__name__,
                       message=str(exc),
                       traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
@@ -115,7 +127,8 @@ def run_units(units: Sequence[U], fn: Callable[[U, Report], R], *, parallelism: 
                 for future in futures:
                     future.cancel()  # queued units never start (`stopping` covers the ones a thread already took)
                 raise
-    log_event("parallel.finished", what=what, units=total, failed=sum(not r.ok for r in results), workers=workers,
+    log_event("parallel.finished", what=what, units=total, failed=sum(not r.ok for r in results),
+              not_started=sum(not r.started for r in results), workers=workers,
               seconds=round(time.monotonic() - started, 3))
     return results
 

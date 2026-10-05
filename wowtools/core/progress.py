@@ -96,6 +96,8 @@ class ProgressBoard:
     row of the unit that finished first. A thread runs one unit at a time, so a thread starting a unit finishes the
     one it ran before (a serial run that only says which unit starts next). Untagged report()s go to the unit the
     calling thread runs; with none, to an unnamed placeholder unit (row 0), which the first named start replaces.
+    Once named units ran, a placeholder (the run's own stage after them, as Ace3 Undo putting files back after the
+    snapshots) takes a free row but is never counted as a finished unit.
     `first_stage` puts that placeholder up at once, so the display has a stage before the first report."""
 
     def __init__(self, rows: int = 1, units: int = 1, *, label: Callable[[Any], str] = str,
@@ -107,6 +109,7 @@ class ProgressBoard:
         self._by_thread: dict[int, Any] = {}  # thread id -> the unit it runs
         self._finished: set[Any] = set()
         self._freed: list[int] = []  # rows of finished units, oldest first
+        self._named = False  # a named unit started: a later placeholder is the run's own last stage, not a unit
         self._units = max(1, units)
         self._detail = ("", "")
         self._version = 0
@@ -185,6 +188,7 @@ class ProgressBoard:
         if unit not in self._running:
             self._take(unit, self.label(unit))
         self._by_thread[thread] = unit
+        self._named = True
 
     def _take(self, unit: Any, label: str) -> None:
         unused = [i for i, row in enumerate(self._rows) if not row.used]
@@ -200,7 +204,8 @@ class ProgressBoard:
 
     def _finish(self, unit: Any) -> None:
         row = self._running.pop(unit)
-        self._finished.add(unit)
+        if unit is not _PLACEHOLDER or not self._named:
+            self._finished.add(unit)  # after named units, the placeholder (a stage of the run's own) is not one
         view = self._rows[row]
         self._rows[row] = RowView(view.label, view.stage, view.total or 1, view.total or 1, used=True, finished=True)
         self._freed.append(row)

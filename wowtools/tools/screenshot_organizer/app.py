@@ -11,7 +11,7 @@ from textual.widgets import Label
 from wowtools.core.config import Config
 from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.paths import to_stored
-from wowtools.tools.screenshot_organizer.planner import waiting_count
+from wowtools.tools.screenshot_organizer.planner import count_waiting
 from wowtools.tools.screenshot_organizer.review_screen import ShotReviewScreen
 from wowtools.tools.screenshot_organizer.settings import (SECTION, ShotSettings, load_settings, save_settings,
                                                           source_dir, validate_dest)
@@ -93,10 +93,9 @@ class ScreenshotsFlow(ToolFlow):
         picker = FlavorScreen(self.cfg, install, include_all=True, last=settings.last_flavor_choice,
                               flavors=self.flavors, note=lambda f: COUNTING, all_note=COUNTING)
         self.app.push_screen(picker, self._after_flavor)
-        flavors = list(self.flavors)
-        # Never raises: an unreadable folder is None. Copy mode leaves out what an earlier copy already filed.
-        self.fill_notes(picker, lambda: {f.folder: waiting_count(f, settings.dest_dir, copy=settings.copy_mode)
-                                         for f in flavors},
+        flavors, parallelism = list(self.flavors), self.cfg.parallelism
+        self.fill_notes(picker, lambda: count_waiting(flavors, settings.dest_dir, copy=settings.copy_mode,
+                                                      parallelism=parallelism),
                         lambda counts: self._counts_ready(picker, install, counts), group="counts")
 
     def _counts_ready(self, picker: FlavorScreen, install: WowInstall, counts: dict[str, int | None]) -> None:

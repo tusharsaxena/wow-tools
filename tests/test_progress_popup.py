@@ -148,6 +148,21 @@ class ProgressBoardTest(unittest.TestCase):
         board.report("undo", 2, 0)
         self.assertGreater(board.snapshot()[0], version)
 
+    def test_a_stage_after_the_named_units_is_not_counted_as_one(self):
+        """Ace3 Undo: the flavors' snapshots are the units; putting the files back afterwards takes a free row
+        but the run still ends at 2 of 2 game versions."""
+        board = ProgressBoard(2, 2, first_stage="undo")
+        for unit in "ab":
+            board.start(unit)
+            board.report("snapshot", 1, 1)
+            board.finish(unit)
+        board.report("undo", 1, 4, "file")
+        _, view = board.snapshot()
+        self.assertIn(("", "undo"), [(r.label, r.stage) for r in view.rows])
+        board.finish_all()
+        _, view = board.snapshot()
+        self.assertEqual((view.done, view.units), (2, 2))
+
 
 class Host(App):
     pass

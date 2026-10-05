@@ -22,7 +22,7 @@ task; push after every milestone. Never merge without the user's go-ahead.
 | T4.2 | filter in every tree screen | done | aaf858d | `FilterInput` on WTF, Shots, IB review (`TreeFilter`), IB Restore (`FilterBox`, read-only), Ace3 review (shared box in `#search`; `Filters.search`/`matches`, `action_focus_search`, its own `on_input_changed` and `action_back` gone) and Blacklist. Built from `ModelNode`s (new in `ui/tree_filter.py`) through `ModelFilter`; lazy groups the filter opens load at once. Hidden-ticks line on every summary and run confirm (Ace3: the tick-taking popups; Blacklist Save asks only then). Tests: look-and-feel at BASE+TINY for 5 screens, per-tool filter tests, structure pin extended. 1202 tests OK (2 skipped) |
 | T5.1 | parallelism setting + runner + thread safety | done | e6d11cb | `[general] parallelism` (`Config.parallelism`, default 2, clamped 1-8; `#parallelism` on the setup screen, Save refuses outside 1-8, help in the label). New `core/parallel.py` `run_units` (serial in the caller at 1, `ThreadPoolExecutor` otherwise; input order; per-unit `Exception` kept in `UnitResult`; unit-tagged progress; `on_start`/`on_done`); events `parallel.started`/`finished`/`unit_failed`. `JournalWriter` locked (RLock, also in Clean/Profile journal subclasses); `EventLog.emit` holds its (now re-entrant) lock around the time stamp and both sinks. `tests/test_parallel.py` (14: barrier concurrency, order, isolation, serial path, BaseException, journal + event log under 8/6 threads). 1222 tests OK (2 skipped) |
 | T5.2 | fixed-size progress popup | done | f19d754 | Shared `ProgressScreen(title, *, units, parallelism, what, label, dry_run, first_stage)`: fixed box (`POPUP_WIDTH`, height rows+10), title / overall bar "n of m game versions" / `min(parallelism, units)` unit rows (label, ellipsised stage, bar) / one-line ellipsised detail; bars fill a 45% column (`Bar { width: 1fr }`). Workers write a locked `core.progress.ProgressBoard` (`report`, `report_unit`, `start_unit`, `finish_unit`), drawn on a `PROGRESS_INTERVAL` timer: no `call_from_thread` per report. All four tools migrated (`update_progress`/`set_flavor` gone; IB drops `ThrottledProgress`). `tests/test_progress_popup.py` (15: board rows/reuse/threads, box size before/after long-text floods at BASE+TINY for 1/4/8 rows, 4 rows at TINY, bars fill, every tool's subclass). 1238 tests OK (2 skipped) |
-| T5.3 | apply parallel runs | todo | | |
+| T5.3 | apply parallel runs | done | (this commit) | `run_units(stop_on_error=)` + `UnitResult.started`. Parallel: IB `back_up_all` (`parallelism`, `on_flavor_done`; popup rows via thread-bound untagged reports) and `scan_flavors`, WTF `multi.scan_flavors` (counts added up under a lock when >1 at once), Shots picker `planner.count_waiting`, Ace3 `undo_run` snapshots (popup units = journal flavors). WTF Clean / Ace3 Apply serial (module docstrings say why). Board: a placeholder after named units is not counted. `tests/test_parallel_runs.py` (14), +3 run_units, +1 board, IB popup rows TUI test, Ace3 undo wiring. 1263 tests OK (2 skipped) |
 | T6.1 | docs sync | todo | | |
 | T6.2 | review, fixes, push | todo | | |
 
@@ -169,3 +169,27 @@ task; push after every milestone. Never merge without the user's go-ahead.
   3 game versions" with the last row Done. Deferred (low): docs/assets/screenshot-03-wtfcleaner-in-progress.png
   (docs/wtf-cleaner.md) and screenshot-06-screenshot-organizer-in-progress.png (docs/screenshot-organizer.md) show the
   old single-bar popup; **T6.1 and the pre-release screenshot request must retake both**. 1241 tests OK (2 skipped).
+- **T5.3** `run_units(stop_on_error=True)` keeps the units not started yet from starting after an `Exception`
+  (`UnitResult.started` False; `parallel.finished` logs `not_started`). Used where the old loop stopped at the first
+  error, so parallelism 1 is the same loop as before: Ace3 Undo's snapshots (the first failure, in flavor order, is
+  raised as "Nothing was changed" after the running ones end), and the unexpected (non-ScanError) errors of the WTF
+  and IB scans and the Shots counts (raised after the run, as before).
+- **T5.3** IB `back_up_all`: an unexpected (non-`BackupError`) error in one flavor is now that flavor's `failed`
+  outcome ("stopped unexpectedly: Type: message", `parallel.unit_failed` with the traceback, then
+  `ibackup.backup_failed`) instead of ending the whole job: with several flavors at once the others' zips would
+  otherwise be made but never shown. Only behaviour change at parallelism 1, and only on that bug path.
+- **T5.3** Progress routing without new APIs: `back_up_all` / `undo_run` take `on_flavor` / `on_flavor_done` run in
+  the unit's own pool thread; the review passes the popup's `start_unit` / `finish_unit`, so the untagged
+  `report` from that thread lands in that flavor's row (ProgressBoard binds threads to units). The Ace3 Undo popup
+  is opened with the journal's flavors as units (`_undo_confirmed` now gets the journal read for the confirm); the
+  put-back stage after the snapshots goes to the placeholder row, which `ProgressBoard` no longer counts as a
+  finished unit once named units ran (the run ends at "2 of 2", not "3 of 3").
+- **T5.3** The scans keep the scan box (one bar): the WTF scan of several flavors at once reports every running
+  flavor's counts added up under a lock (with 1 the per-flavor reports are unchanged); the IB scan has no total and
+  each report names its flavor, so it passes reports through (no ThrottledProgress: total 0 is always forwarded).
+- **T5.3** Not parallelised, on purpose: the IB flavor picker's notes are one listing of the shared backup folder
+  (nothing per flavor to split); the Shots review scan (`planner.scan`: cheap listings sharing one target cache) and
+  run (one journal, shared caches, a journal error must stop everything); the Ace3 scan (pure-Python Lua parsing,
+  GIL-bound: threads would not help) and recovery (one flavor). No extra `stat()` / `resolve()` was added anywhere.
+- **T5.3** `count_waiting` lives in `screenshot_organizer/planner.py` (UI-free, testable) and the picker test patches
+  `planner.waiting_count` now.

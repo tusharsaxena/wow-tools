@@ -2,7 +2,8 @@
 
 A file is put back from the edited-*.zip only when it is still byte-for-byte what the run wrote (sha_after); a file
 WoW (or anything else) saved since is skipped and never overwritten. Undo and recovery are refused while that
-flavor's WoW runs, refuse locked files, and take a whole-WTF snapshot of each flavor first.
+flavor's WoW runs, refuse locked files, and take a whole-WTF snapshot of each flavor first (Undo: several flavors
+up to [general] parallelism at once, core/parallel.py).
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from wowtools.core.events import log_event
 from wowtools.core.fsutil import atomic_write_bytes, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.core.journal import mark_undone
+from wowtools.core.parallel import run_units
 from wowtools.core.snapshot import prune_snapshots, take_snapshot
 from wowtools.core.svfiles import SvFileError, probe_lock
 from wowtools.core.undo import FAILED, RESTORED, SKIPPED, UndoResultBase, safe_destination
@@ -140,9 +142,32 @@ def _prune(flavors: list[Flavor], root: Path, keep_snapshots: int | None) -> Non
             log_event("ace.snapshots_pruned", flavor=flavor.folder, removed=[p.name for p in pruned])
 
 
+def _snapshots(flavors: list[Flavor], root: Path, now: datetime | None, report, parallelism: int,
+               on_flavor: Callable[[Flavor], None] | None,
+               on_flavor_done: Callable[[Flavor], None] | None) -> list[Path]:
+    """Each flavor's whole-WTF snapshot before Undo, up to `parallelism` at once: every snapshot is its own zip of
+    its own flavor's WTF folder. The first that fails (in flavor order) is raised once the running ones ended; the
+    flavors not started by then never start, so with parallelism 1 it stops where the serial loop did."""
+    started, ended = safe_progress(on_flavor), safe_progress(on_flavor_done)
+    results = run_units(flavors, lambda flavor, _report: _snapshot(flavor, root, now, report, "undo"),
+                        parallelism=parallelism, what="ace.undo_snapshot", label=lambda flavor: flavor.folder,
+                        on_start=lambda flavor, _index, _total: started(flavor),
+                        on_done=lambda result: ended(result.unit), stop_on_error=True)
+    for result in results:
+        if result.error is not None:
+            raise result.error
+    return [result.value for result in results if result.value is not None]
+
+
 def undo_run(journal_path: Path, *, wow_root: Path, root: Path, keep_snapshots: int,
              wow_check: Callable[[], list[str] | None] | None = None, now: datetime | None = None,
-             progress: Callable[[str, int, int, str], None] | None = None) -> UndoResult:
+             progress: Callable[[str, int, int, str], None] | None = None, parallelism: int = 1,
+             on_flavor: Callable[[Flavor], None] | None = None,
+             on_flavor_done: Callable[[Flavor], None] | None = None) -> UndoResult:
+    """Put back the files of the journal's run that are still what it wrote. The WTF snapshots come first, up to
+    `parallelism` flavors at once; on_flavor(flavor) runs in the snapshot's thread before it starts (its progress
+    reports then come from that thread) and on_flavor_done(flavor) once it ended. The files are put back after
+    every snapshot succeeded, in this thread; a snapshot that failed means nothing was changed (UndoError)."""
     report = safe_progress(progress)
     journal = read_profile_journal(journal_path)
     entries = list(reversed(journal.entries))
@@ -152,8 +177,7 @@ def undo_run(journal_path: Path, *, wow_root: Path, root: Path, keep_snapshots: 
     _refuse_locked([(entry["rel"], dest) for entry, dest in targets], "undo")
     result = UndoResult(journal_path=journal_path)
     flavors = [Flavor(folder, wow_root / folder) for folder in sorted({e["flavor"] for e in entries})]
-    for flavor in flavors:
-        result.snapshots.append(_snapshot(flavor, root, now, report, "undo"))
+    result.snapshots.extend(_snapshots(flavors, root, now, report, parallelism, on_flavor, on_flavor_done))
     for index, (entry, dest) in enumerate(targets, 1):
         rel, flavor = entry["rel"], entry["flavor"]
         report("undo", index, len(targets), rel)

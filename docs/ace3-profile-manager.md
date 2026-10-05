@@ -389,7 +389,9 @@ The file itself uses these names, if you edit it by hand: `backup_dir`, `blackli
 Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
 first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),
 `keep_journals` (10) and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]`
-in `config\wow-tools.cfg`. The WTF backups (`snapshots`) follow `keep_backups`.
+in `config\wow-tools.cfg`. Undo backs up the WTF folder of up to `parallelism` game versions at once (a row each in the progress
+window) before it puts anything back. Apply still does one game version after another: they share one crash
+marker, and Apply stops at the first game version that fails. The WTF backups (`snapshots`) follow `keep_backups`.
 
 ## FAQ
 

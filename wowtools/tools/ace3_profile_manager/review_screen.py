@@ -80,15 +80,16 @@ TREE_ACTIONS = (
 
 class ProfileProgressScreen(ProgressScreen):
     """Shown while an Apply, a dry run, an Undo or a recovery runs. An Apply has one row per flavor in turn (its
-    reports name the flavor: report_unit)."""
+    reports name the flavor: report_unit); an Undo of several flavors backs them up up to `parallelism` at once,
+    one row each."""
 
     ID_PREFIX = "ace"
     STAGE_TITLES = STAGE_TITLES
     SIMULATED_STAGE = "check"
 
     def __init__(self, title: str, *, dry_run: bool = False, first_stage: str = "",
-                 flavors: Sequence[Flavor] = ()) -> None:
-        super().__init__(title, dry_run=dry_run, first_stage=first_stage, units=flavors,
+                 flavors: Sequence[Flavor] = (), parallelism: int = 1) -> None:
+        super().__init__(title, dry_run=dry_run, first_stage=first_stage, units=flavors, parallelism=parallelism,
                          label=lambda flavor: flavor.display_name)
 
 
@@ -1301,9 +1302,9 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             extra.append(f"The {plural(pending, 'pending change')} not applied yet will be dropped.")
         title, body, alerts = undo_confirm(journal)
         self.app.push_screen(ConfirmScreen(title, body, (*alerts, *extra), kind="destructive"),
-                             lambda ok: self._undo_confirmed(ok, path, check))
+                             lambda ok: self._undo_confirmed(ok, path, check, journal))
 
-    def _undo_confirmed(self, ok: bool | None, path: Path, check: WowCheck) -> None:
+    def _undo_confirmed(self, ok: bool | None, path: Path, check: WowCheck, journal: Journal | None = None) -> None:
         log_event("ui.selection", screen="confirm", control="undo_confirm", value=bool(ok))
         wow_root = self.cfg.wow_path
         if not ok or wow_root is None:
@@ -1314,18 +1315,25 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             return
         self.app.busy = True
         self._refresh_buttons()
-        screen = ProfileProgressScreen("Undoing the last change", first_stage="undo")
+        # One row per flavor whose WTF folder is backed up first (up to [general] parallelism at once), as undo_run
+        # names them; the files are then put back in one more row.
+        folders = sorted({e["flavor"] for e in journal.entries}) if journal is not None else []
+        parallelism = self.cfg.parallelism
+        screen = ProfileProgressScreen("Undoing the last change", first_stage="undo",
+                                       flavors=[Flavor(folder, wow_root / folder) for folder in folders],
+                                       parallelism=parallelism)
         self.app.push_screen(screen)
         keep = self.cfg.keep_backups
-        self.run_worker(lambda: self._undo_worker(path, wow_root, root, keep, check, screen), thread=True,
-                        exclusive=True, group="run")
+        self.run_worker(lambda: self._undo_worker(path, wow_root, root, keep, check, screen, parallelism),
+                        thread=True, exclusive=True, group="run")
 
     def _undo_worker(self, path: Path, wow_root: Path, root: Path, keep_snapshots: int, check: WowCheck,
-                     screen: ProfileProgressScreen) -> None:
+                     screen: ProfileProgressScreen, parallelism: int = 1) -> None:
         try:
             with activity.running():
                 result = undo_run(path, wow_root=wow_root, root=root, keep_snapshots=keep_snapshots,
-                                  wow_check=check, progress=screen.report)
+                                  wow_check=check, progress=screen.report, parallelism=parallelism,
+                                  on_flavor=screen.start_unit, on_flavor_done=screen.finish_unit)
         except UndoError as exc:  # WoW running, locked files, the backup failed: nothing was changed
             log_exception("ace.undo", exc)
             self.app.call_from_thread(self._run_failed, screen, str(exc), False)

@@ -61,9 +61,10 @@ CORE_EVENTS: dict[str, EventSpec] = {
     "lock.overridden": EventSpec("warning", "The user took over an existing lock file and carried on."),
     "parallel.started": EventSpec("debug", "A run over several units (game versions) started (core/parallel.py): "
                                   "what, the units, and the threads it uses (1 = one after another)."),
-    "parallel.finished": EventSpec("debug", "A run over several units ended: how many, how many failed, seconds."),
+    "parallel.finished": EventSpec("debug", "A run over several units ended: how many, how many failed, how "
+                                   "many never started (an earlier unit failed and the run stops on one), seconds."),
     "parallel.unit_failed": EventSpec("error", "One unit of a run over several raised an unexpected error; the "
-                                      "other units carried on (what, unit, type, message, traceback)."),
+                                      "units already running carried on (what, unit, type, message, traceback)."),
     "ui.selection": EventSpec("info", "The user made a choice in the TUI or CLI."),
     "ui.quit_refused": EventSpec("info", "Ctrl+Q was pressed while a run was in progress and was refused."),
     "ui.item_toggled": EventSpec("debug", "The user ticked or unticked a single item."),

@@ -608,10 +608,22 @@ class RunTest(AceAppBase):
             await pilot.press("z")
             await settle(app, pilot)
             self.assertIsInstance(app.screen, ConfirmScreen)
-            app.screen.dismiss(True)
-            await settle(app, pilot)
+            self.cfg.set("general", "parallelism", "3", log=False)
+            seen = []
+            real = review_module.undo_run
+
+            def undo_run(*args, **kwargs):
+                screen = kwargs["on_flavor"].__self__
+                seen.append((kwargs["parallelism"], screen.rows, screen.title_text))
+                return real(*args, **kwargs)
+
+            with patch.object(review_module, "undo_run", undo_run):
+                app.screen.dismiss(True)
+                await settle(app, pilot)
             self.assertIsInstance(app.screen, ProfileResultScreen)
             self.assertEqual(path.read_bytes(), before)
+            # the WTF snapshots run up to [general] parallelism at once, one popup row per flavor of the journal
+            self.assertEqual(seen, [(3, 1, "Undoing the last change")])
 
     async def test_apply_refused_while_wow_runs(self):
         app = self.make_app()

@@ -11,6 +11,7 @@ from pathlib import Path
 
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor
+from wowtools.core.parallel import run_units
 from wowtools.tools.screenshot_organizer.naming import day_parts, parse_shot_name
 from wowtools.tools.screenshot_organizer.settings import source_dir, target_root
 
@@ -157,6 +158,20 @@ def waiting_count(flavor: Flavor, dest_dir: Path | None = None, *, copy: bool = 
         return count
     except OSError:
         return None
+
+
+def count_waiting(flavors: list[Flavor], dest_dir: Path | None = None, *, copy: bool = False,
+                  parallelism: int = 1) -> dict[str, int | None]:
+    """waiting_count of every flavor, by folder (the flavor picker's notes), up to `parallelism` flavors listed at
+    once ([general] parallelism: each is a read of its own folders). Never raises an OSError: an unreadable folder
+    is None."""
+    results = run_units(flavors, lambda flavor, _report: waiting_count(flavor, dest_dir, copy=copy),
+                        parallelism=parallelism, what="shots.count", label=lambda flavor: flavor.folder,
+                        stop_on_error=True)
+    for result in results:
+        if result.error is not None:
+            raise result.error
+    return {result.unit.folder: result.value for result in results}
 
 
 def scan(flavors: list[Flavor], dest_dir: Path | None, progress: ScanProgress | None = None, *,

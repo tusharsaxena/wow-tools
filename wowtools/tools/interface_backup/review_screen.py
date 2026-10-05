@@ -66,13 +66,15 @@ def free_bytes(path: Path | None, disk_usage: Callable = shutil.disk_usage) -> i
 
 class BackupProgressScreen(ProgressScreen):
     """Shown while a backup, a restore or an undo runs. `flavors` are the display names of the flavors the job
-    runs (one row each in turn: the job's on_flavor starts each)."""
+    runs: the job's on_flavor starts each in its own thread, so its reports land in its row. A backup of several
+    runs up to `parallelism` of them at once (one row each); a restore or an undo is one flavor."""
 
     ID_PREFIX = "ibackup"
     STAGE_TITLES = STAGE_TITLES
 
-    def __init__(self, title: str, first_stage: str = "backup", flavors: Sequence[str] = ()) -> None:
-        super().__init__(title, first_stage=first_stage, units=flavors)
+    def __init__(self, title: str, first_stage: str = "backup", flavors: Sequence[str] = (), *,
+                 parallelism: int = 1) -> None:
+        super().__init__(title, first_stage=first_stage, units=flavors, parallelism=parallelism)
 
 
 class BackupResultScreen(ResultBase):
@@ -263,19 +265,23 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         self._show_scan_progress(True)
         self._refresh_buttons()
         flavors, root, journal_dir = list(self.flavors), self._root(), self._journal_dir()
-        self.run_worker(lambda: self._scan_worker(flavors, root, journal_dir), thread=True, exclusive=True,
-                        group="scan")
+        parallelism = self.cfg.parallelism
+        self.run_worker(lambda: self._scan_worker(flavors, root, journal_dir, parallelism), thread=True,
+                        exclusive=True, group="scan")
 
     def _show_scan_progress(self, scanning: bool) -> None:
         """While scanning, the tree is replaced by a progress bar and the folder being read."""
         self.show_scan_box(scanning, "Reading the Interface and WTF folders")
 
-    def _scan_worker(self, flavors: list[Flavor], root: Path | None, journal_dir: Path | None) -> None:
+    def _scan_worker(self, flavors: list[Flavor], root: Path | None, journal_dir: Path | None,
+                     parallelism: int = 1) -> None:
         def progress(stage: str, current: int, total: int, detail: str) -> None:
             self.app.call_from_thread(self._scan_progress, current, total, detail)
 
         try:
-            scans = scan_flavors(flavors, with_stats=CHEAP_STATS, progress=progress)
+            # Flavors are read up to `parallelism` at once; each report names its flavor (the bar has no total).
+            scans = scan_flavors(flavors, with_stats=CHEAP_STATS, progress=progress,
+                                 parallelism=parallelism)
             backups = list_backups(root, {f.short_name for f in flavors})  # never raises
             undoable = latest_undoable(journal_dir)
         except Exception as exc:  # noqa: BLE001 - shown to the user, never a crash
@@ -648,9 +654,13 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         log_event("ui.selection", screen="confirm", control="back_up_confirm", value=bool(ok))
         if not ok or not self.idle or self.wow_folder_changed():
             return
-        self.run_job(BackupProgressScreen("Backing up", "backup", [s.flavor.display_name for s in scans]),
-                     lambda progress, on_flavor: back_up_all(scans, root, keep=keep, progress=progress,
-                                                             on_flavor=on_flavor),
+        parallelism = self.cfg.parallelism  # read here: the config is the UI thread's
+        screen = BackupProgressScreen("Backing up", "backup", [s.flavor.display_name for s in scans],
+                                      parallelism=parallelism)
+        self.run_job(screen, lambda progress, on_flavor: back_up_all(scans, root, keep=keep, progress=progress,
+                                                                     on_flavor=on_flavor,
+                                                                     on_flavor_done=screen.finish_unit,
+                                                                     parallelism=parallelism),
                      self._backup_done)
 
     def _backup_done(self, outcomes: list[BackupOutcome]) -> None:

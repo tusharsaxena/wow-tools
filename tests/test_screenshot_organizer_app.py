@@ -11,7 +11,7 @@ from tests.fixtures import BASE, TuiTestCase, build_screenshot_tree, build_wow_t
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
-from wowtools.tools.screenshot_organizer import app as app_module
+from wowtools.tools.screenshot_organizer import planner as planner_module
 from wowtools.tools.screenshot_organizer import review_screen as review_module
 from wowtools.tools.screenshot_organizer.app import ScreenshotSettingsScreen
 from wowtools.tools.screenshot_organizer.journal import latest_undoable
@@ -338,7 +338,7 @@ class ShotsAppTest(TuiTestCase):
         self.save_tool_cfg()
         release = threading.Event()
         self.addCleanup(release.set)
-        real = app_module.waiting_count
+        real = planner_module.waiting_count
         threads = []
 
         def slow_count(flavor, *args, **kwargs):
@@ -347,7 +347,7 @@ class ShotsAppTest(TuiTestCase):
             return real(flavor, *args, **kwargs)
 
         app = self.make_app()
-        with patch.object(app_module, "waiting_count", slow_count):
+        with patch.object(planner_module, "waiting_count", slow_count):
             async with app.run_test(size=SIZE) as pilot:
                 await self.open_tool(app, pilot)
                 picker = app.screen
@@ -369,14 +369,14 @@ class ShotsAppTest(TuiTestCase):
         self.save_tool_cfg()
         release = threading.Event()
         self.addCleanup(release.set)
-        real = app_module.waiting_count
+        real = planner_module.waiting_count
 
         def slow_count(flavor, *args, **kwargs):
             release.wait(5)
             return real(flavor, *args, **kwargs)
 
         app = self.make_app()
-        with patch.object(app_module, "waiting_count", slow_count):
+        with patch.object(planner_module, "waiting_count", slow_count):
             async with app.run_test(size=SIZE) as pilot:
                 await self.open_tool(app, pilot)
                 picker = app.screen

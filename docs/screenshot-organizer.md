@@ -182,7 +182,8 @@ The file itself uses these names, if you edit it by hand: `dest_dir`, `copy_mode
 Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
 first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),
 `keep_journals` (10) and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]`
-in `config\wow-tools.cfg`.
+in `config\wow-tools.cfg`. The flavor picker counts the screenshots waiting in up to `parallelism` game versions at once; filing
+them is one run with one journal.
 
 > Older versions called this tool `screenshots`. The app renames its old settings file, log folder and
 > `wow-tools\screenshots` folder to the new `screenshot-organizer` names automatically, and never overwrites
