@@ -137,12 +137,13 @@ class StructureTest(unittest.TestCase):
         from wowtools.ui.dialogs import ChoiceScreen
         from wowtools.ui.result_screen import ResultBase, ResultScreen
         from wowtools.ui.settings_form import ToolSettingsScreen
+        from wowtools.ui.suite_app import LockScreen
         from wowtools.ui.tool_flow import ToolFlow
         for screen in (wtf_review.ResultScreen, shots_review.ShotResultScreen, ib_review.BackupResultScreen,
                        restore_screen.RestoreResultScreen):
             self.assertTrue(issubclass(screen, ResultBase), screen)
         self.assertTrue(issubclass(ace_result.ProfileResultScreen, ResultScreen))
-        for screen in (wtf_review.RecoveryScreen, ace_review.ProfileRecoveryScreen):
+        for screen in (wtf_review.RecoveryScreen, ace_review.ProfileRecoveryScreen, LockScreen):
             self.assertTrue(issubclass(screen, ChoiceScreen), screen)
         for tool in TOOLS.values():
             flow = tool.flow()

@@ -106,6 +106,8 @@ class ToolFlow:
     def remember_flavor(self, choice: Flavor | str) -> str:
         """Keep the flavor picked ("" for All flavors) in [SECTION] last_flavor_choice; returns what is stored."""
         stored = "" if choice == ALL_FLAVORS else choice.folder  # type: ignore[union-attr]
+        # No "" fallback: a missing key is "never chosen" (WTF's picker then highlights [general] last_flavor), not
+        # All flavors, so a first All flavors pick is written.
         if self.tool_cfg.get(self.SECTION, "last_flavor_choice") != stored:
             self.tool_cfg.set(self.SECTION, "last_flavor_choice", stored, source="picker")
             self.tool_cfg.save_if_exists()

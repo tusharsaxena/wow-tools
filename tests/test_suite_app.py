@@ -92,11 +92,22 @@ class SuiteAppTest(TuiTestCase):
             async with app.run_test(size=SIZE) as pilot:
                 await pilot.pause()
                 self.assertIsInstance(app.screen, LockScreen)
-                self.assertIn("other-pc", str(app.screen.query_one("#lock-body").render()))
+                self.assertIn("other-pc", str(app.screen.query_one("#choice-message").render()))
                 self.assertEqual(app.screen.focused.id, "lock-quit")  # not known to be stale: Quit first
                 await pilot.press("q")
                 await pilot.pause()
             self.assertFalse(self.lock.held)
+        self.assertIn({"screen": "lock", "control": "lock", "value": "quit"},
+                      [r["data"] for r in records if r["event"] == "ui.selection"])
+
+    async def test_lock_conflict_escape_quits(self):
+        app = self.make_app(conflict=LockInfo(12345, "other-pc", "2026-10-03T10:00:00", "windows", "abc"))
+        with capture_events() as records:
+            async with app.run_test(size=SIZE) as pilot:
+                await pilot.pause()
+                await pilot.press("escape")  # ChoiceScreen's own Esc (close, off by default) is overridden: Quit
+                await pilot.pause()
+        self.assertFalse(self.lock.held)
         self.assertIn({"screen": "lock", "control": "lock", "value": "quit"},
                       [r["data"] for r in records if r["event"] == "ui.selection"])
 
@@ -122,7 +133,7 @@ class SuiteAppTest(TuiTestCase):
         async with app.run_test(size=SIZE) as pilot:
             await pilot.pause()
             self.assertEqual(app.screen.focused.id, "lock-override")
-            self.assertIn("left over from a crash", str(app.screen.query_one("#lock-body").render()))
+            self.assertIn("left over from a crash", str(app.screen.query_one("#choice-message").render()))
 
 
 class InstanceLockTest(unittest.TestCase):

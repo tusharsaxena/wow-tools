@@ -12,9 +12,8 @@ from typing import Any, ClassVar
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
-from textual.screen import ModalScreen, Screen
-from textual.widgets import Button, Footer, Header, OptionList, Static
+from textual.screen import Screen
+from textual.widgets import Footer, Header, OptionList, Static
 from textual.widgets.option_list import Option
 
 from wowtools.core.config import CONFIG_DIR, Config, ConfigError, tool_config_path
@@ -24,30 +23,27 @@ from wowtools.core.lock import InstanceLock, LockInfo
 from wowtools.tools import TOOLS
 from wowtools.ui.base import Ka0sApp
 from wowtools.ui.branding import Banner, BrandBar
-from wowtools.ui.dialogs import POPUP_WIDTH
+from wowtools.ui.dialogs import ChoiceScreen
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.tool_flow import ToolFlow
-from wowtools.ui.widgets import LIST_CURSOR_BACKGROUND, LIST_NAME_STYLE, NAV_BINDINGS, ButtonRow, NavHint, action_button
+from wowtools.ui.widgets import LIST_CURSOR_BACKGROUND, LIST_NAME_STYLE, NAV_BINDINGS, NavHint
 
 
-class LockScreen(ModalScreen[bool]):
-    """Another copy may be running: quit, or take the lock over and carry on."""
+class LockScreen(ChoiceScreen):
+    """Another copy may be running: quit, or take the lock over and carry on. Dismisses with "lock-override" or
+    "lock-quit" (Esc and q quit); Quit is focused first unless the other copy is known to be gone (D13)."""
 
-    DEFAULT_CSS = f"""
-    LockScreen {{ align: center middle; }}
-    LockScreen #lock-box {{ {POPUP_WIDTH} height: auto; border: thick $warning; background: $panel; padding: 1 2; }}
-    LockScreen #lock-title {{ color: $warning; text-style: bold; margin-bottom: 1; }}
-    LockScreen #lock-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
-    LockScreen Button {{ margin-left: 2; }}
-    """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("o", "answer(True)", "Override"), Binding("q,escape", "answer(False)", "Quit"),
-                *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("o", "choose('lock-override')", "Override"),
+                                         Binding("q,escape", "choose('lock-quit')", "Quit"), *NAV_BINDINGS]
 
     def __init__(self, holder: LockInfo, lock_path: Path) -> None:
-        super().__init__()
         self.holder = holder
         self.lock_path = lock_path
         self.stale = holder.stale
+        super().__init__("Ka0s WoW Tools may already be running", self.body(),
+                         [("lock-override", "Override and continue (o)", "revert"), ("lock-quit", "Quit (q)", "neutral")],
+                         default="lock-override" if self.stale else "lock-quit",
+                         hint="←→ choose · Enter/Space press · o override · q/Esc quit")
 
     def body(self) -> str:
         lines = [f"The lock file {self.lock_path} says Ka0s WoW Tools is already open:",
@@ -59,23 +55,8 @@ class LockScreen(ModalScreen[bool]):
                          "If the other copy is not really open (for example it crashed), override the lock.")
         return "\n".join(lines)
 
-    def compose(self) -> ComposeResult:
-        with Vertical(id="lock-box"):
-            yield Static(Text("Ka0s WoW Tools may already be running"), id="lock-title")
-            yield Static(Text(self.body()), id="lock-body")
-            with ButtonRow(id="lock-buttons"):
-                yield action_button("Override and continue (o)", "revert", id="lock-override")
-                yield action_button("Quit (q)", "neutral", id="lock-quit")
-            yield NavHint("←→ choose · Enter/Space press · o override · q/Esc quit")
-
-    def on_mount(self) -> None:
-        self.query_one("#lock-override" if self.stale else "#lock-quit", Button).focus()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        self.dismiss(event.button.id == "lock-override")
-
-    def action_answer(self, value: bool) -> None:
-        self.dismiss(value)
+    def action_choose(self, choice: str) -> None:
+        self.choose(choice)
 
 
 TOOL_NAME_STYLE = LIST_NAME_STYLE
@@ -144,7 +125,8 @@ class WowToolsApp(Ka0sApp):
         if self.conflict is not None and self.lock is not None:
             self.push_screen(LockScreen(self.conflict, self.lock.path), self._lock_answered)
 
-    def _lock_answered(self, override: bool | None) -> None:
+    def _lock_answered(self, choice: str | None) -> None:
+        override = choice == "lock-override"
         log_event("ui.selection", screen="lock", control="lock", value="override" if override else "quit")
         if not override or self.lock is None:
             self.exit()

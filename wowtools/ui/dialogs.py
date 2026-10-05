@@ -297,7 +297,8 @@ class ChoiceScreen(ModalScreen[str | None]):
     """A warning to act on (an earlier run did not finish, ...): a title in the warning colour, a message and one
     button per choice, given as (id, label, action kind). Pressing one calls choose(id), which dismisses with the
     id; a subclass may act first. `default` is the id focused at the start. With `escape` Esc dismisses with None
-    (the question comes back later); without it Esc does nothing and a button must be pressed."""
+    (the question comes back later); without it Esc does nothing and a button must be pressed. `hint` (optional)
+    is a NavHint line under the buttons."""
 
     DEFAULT_CSS = f"""
     ChoiceScreen {{ align: center middle; }}
@@ -310,13 +311,14 @@ class ChoiceScreen(ModalScreen[str | None]):
     BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "close", "Close", show=False)]
 
     def __init__(self, title: str, message: str, choices: Iterable[tuple[str, str, str]], *, default: str,
-                 escape: bool = False) -> None:
+                 escape: bool = False, hint: str = "") -> None:
         super().__init__()
         self.title_text = title
         self.message_text = message
         self.choices = list(choices)
         self.default = default
         self.escape = escape
+        self.hint = hint
 
     def compose(self) -> ComposeResult:
         with Vertical(id="choice-box"):
@@ -325,6 +327,8 @@ class ChoiceScreen(ModalScreen[str | None]):
             with ButtonRow(id="choice-buttons"):
                 for choice_id, label, kind in self.choices:
                     yield action_button(label, kind, id=choice_id)
+            if self.hint:
+                yield NavHint(self.hint)
 
     def on_mount(self) -> None:
         self.query_one(f"#{self.default}", Button).focus()
