@@ -11,7 +11,7 @@ from wowtools.core.install import WowInstall
 from wowtools.core.journal import list_journals
 from wowtools.tools.wtf_cleaner import journal as journal_mod
 from wowtools.tools.wtf_cleaner.cleaner import CleanError
-from wowtools.tools.wtf_cleaner.journal import (A_DELETED, clean_journal_dir, latest_undoable, prune_journals,
+from wowtools.tools.wtf_cleaner.journal import (A_DELETED, resolve_journal_dir, latest_undoable, prune_journals,
                                                 read_journal)
 from wowtools.tools.wtf_cleaner.multi import execute_flavors, scan_flavors
 from wowtools.tools.wtf_cleaner.rules import Criteria, evaluate
@@ -28,7 +28,7 @@ class CleanJournalTest(unittest.TestCase):
         self.retail_sv = self.root / "_retail_" / "WTF" / "Account" / "ACCT1" / "SavedVariables"
         self.install = WowInstall(self.root)
         self.backup_dir = self.tmp / "bk"
-        self.journals = clean_journal_dir(self.root)
+        self.journals = resolve_journal_dir(self.root)
 
     def plan(self, flavors=None):
         scans = scan_flavors(flavors or self.install.flavors())

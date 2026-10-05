@@ -11,7 +11,7 @@ import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from wowtools.core.backup import BackupError
 from wowtools.core.events import log_event
@@ -20,6 +20,7 @@ from wowtools.core.install import Flavor
 from wowtools.core.journal import mark_undone
 from wowtools.core.snapshot import prune_snapshots, take_snapshot
 from wowtools.core.svfiles import SvFileError, probe_lock
+from wowtools.core.undo import FAILED, RESTORED, SKIPPED, UndoResultBase, safe_destination
 from wowtools.tools.ace3_profile_manager.editor import (EDITED_SUBDIR, SNAPSHOT_PREFIX, SNAPSHOT_SUBDIR, Marker,
                                                         clear_marker)
 from wowtools.tools.ace3_profile_manager.journal import read_profile_journal, record_recovered
@@ -47,35 +48,15 @@ class UndoOutcome:
 
 
 @dataclass
-class UndoResult:
+class UndoResult(UndoResultBase):
     outcomes: list[UndoOutcome] = field(default_factory=list)
     journal_path: Path | None = None
     snapshots: list[Path] = field(default_factory=list)
 
-    def _with(self, status: str) -> list[UndoOutcome]:
-        return [o for o in self.outcomes if o.status == status]
-
-    @property
-    def restored(self) -> list[UndoOutcome]:
-        return self._with("restored")
-
-    @property
-    def skipped(self) -> list[UndoOutcome]:
-        return self._with("skipped")
-
-    @property
-    def failed(self) -> list[UndoOutcome]:
-        return self._with("failed")
-
 
 def destination(wow_root: Path, flavor: str, rel: str) -> Path | None:
     """<WoW>/<flavor>/<rel> when rel is WTF/Account/.../SavedVariables/<file>; None for anything else."""
-    pure = PurePosixPath(rel)
-    parts = pure.parts
-    if pure.is_absolute() or ".." in parts or len(parts) < 5 or parts[:2] != ("WTF", "Account") \
-            or parts[-2] != "SavedVariables" or "/" in flavor or "\\" in flavor or flavor in ("", ".", ".."):
-        return None
-    return wow_root.joinpath(flavor, *parts)
+    return safe_destination(wow_root, flavor, rel, prefix=("WTF", "Account"), min_parts=5, parent="SavedVariables")
 
 
 def _sha(data: bytes) -> str:
@@ -177,25 +158,25 @@ def undo_run(journal_path: Path, *, wow_root: Path, root: Path, keep_snapshots: 
         rel, flavor = entry["rel"], entry["flavor"]
         report("undo", index, len(targets), rel)
         if dest is None:
-            result.outcomes.append(UndoOutcome(flavor, rel, None, "skipped", "it is outside the WTF folder"))
+            result.outcomes.append(UndoOutcome(flavor, rel, None, SKIPPED, "it is outside the WTF folder"))
             log_event("ace.file_skipped", flavor=flavor, path=rel, reason="outside")
             continue
         try:
             current = dest.read_bytes()
         except OSError:
-            result.outcomes.append(UndoOutcome(flavor, rel, dest, "skipped", "the file is gone"))
+            result.outcomes.append(UndoOutcome(flavor, rel, dest, SKIPPED, "the file is gone"))
             log_event("ace.file_skipped", flavor=flavor, path=rel, reason="gone")
             continue
         if _sha(current) != entry["sha_after"]:
-            result.outcomes.append(UndoOutcome(flavor, rel, dest, "skipped", CHANGED_SINCE))
+            result.outcomes.append(UndoOutcome(flavor, rel, dest, SKIPPED, CHANGED_SINCE))
             log_event("ace.file_skipped", flavor=flavor, path=rel, reason="changed")
             continue
         problem = _put_back(_moved_zip(entry["zip"], root), rel, dest, entry["sha_before"])
         if problem is None:
-            result.outcomes.append(UndoOutcome(flavor, rel, dest, "restored"))
+            result.outcomes.append(UndoOutcome(flavor, rel, dest, RESTORED))
             log_event("ace.file_restored", flavor=flavor, path=rel)
         else:
-            result.outcomes.append(UndoOutcome(flavor, rel, dest, "failed", problem))
+            result.outcomes.append(UndoOutcome(flavor, rel, dest, FAILED, problem))
             log_event("ace.undo_failed", flavor=flavor, path=rel, error=problem)
     if result.restored or not result.failed:
         mark_undone(journal_path, len(result.restored), len(result.skipped))
@@ -227,7 +208,7 @@ def recover(marker: Marker, *, root: Path, journal_dir: Path | None = None, keep
         report("undo", index, len(marker.files), rel)
         dest = targets[rel]
         if dest is None:
-            result.outcomes.append(UndoOutcome(marker.flavor, rel, None, "skipped", "it is outside the WTF folder"))
+            result.outcomes.append(UndoOutcome(marker.flavor, rel, None, SKIPPED, "it is outside the WTF folder"))
             log_event("ace.file_skipped", flavor=marker.flavor, path=rel, reason="outside")
             continue
         current = _current_sha(dest)
@@ -236,12 +217,12 @@ def recover(marker: Marker, *, root: Path, journal_dir: Path | None = None, keep
             continue
         if current is None or current != marker.after.get(rel):
             detail = "the file is gone or could not be read" if current is None else CHANGED_SINCE
-            result.outcomes.append(UndoOutcome(marker.flavor, rel, dest, "skipped", detail))
+            result.outcomes.append(UndoOutcome(marker.flavor, rel, dest, SKIPPED, detail))
             log_event("ace.file_skipped", flavor=marker.flavor, path=rel,
                       reason="gone" if current is None else "changed")
             continue
         problem = _put_back(_moved_zip(marker.zip, root), rel, dest, sha_before)
-        status = "restored" if problem is None else "failed"
+        status = RESTORED if problem is None else FAILED
         result.outcomes.append(UndoOutcome(marker.flavor, rel, dest, status, problem or ""))
         log_event("ace.file_restored" if problem is None else "ace.undo_failed", flavor=marker.flavor, path=rel)
     back = original + [o.rel for o in result.restored]

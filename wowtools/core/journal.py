@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import IO, Any
 
+from wowtools.core.events import log_event
 from wowtools.core.fsutil import free_name
 from wowtools.core.paths import to_native, to_stored
 
@@ -203,9 +204,10 @@ def mark_undone(path: Path, restored: int, skipped: int) -> None:
     append_record(path, {"undone": now_iso(), "restored": restored, "skipped": skipped})
 
 
-def prune_journals(folder: Path | None, keep: int) -> list[Path]:
+def prune_journals(folder: Path | None, keep: int, *, event: str | None = None) -> list[Path]:
     """Delete all but the newest `keep` (at least 1) journals. Other files are never touched. Returns what was
-    removed; the tool logs its own pruned event."""
+    removed; when something was and `event` is given, logs it with the removed names and keep (a tool that logs
+    more, such as Interface Backup with the safety zips it drops, passes no event and logs its own)."""
     removed = []
     for path in list_journals(folder)[max(1, keep):]:
         try:
@@ -213,4 +215,26 @@ def prune_journals(folder: Path | None, keep: int) -> list[Path]:
             removed.append(path)
         except OSError:
             continue
+    if removed and event:
+        log_event(event, removed=[p.name for p in removed], keep=keep)
     return removed
+
+
+@dataclass(frozen=True)
+class ToolJournals:
+    """One tool's journals: where they live (journal_dir under its name), how its journals are read (its entry
+    rules) and the event it logs when old ones are pruned. A tool's journal module makes one and exports its bound
+    methods (resolve_journal_dir, latest_undoable, prune_journals) instead of writing the same wrappers again."""
+    tool: str
+    reader: Callable[[Path], Journal] = read_journal
+    pruned_event: str | None = None
+
+    def dir(self, wow_path: Path | None) -> Path | None:
+        """<WoW folder>/wow-tools/<tool>/journal (always under the WoW folder, whatever the tool's output folder)."""
+        return journal_dir(wow_path, self.tool)
+
+    def latest_undoable(self, folder: Path | None) -> Path | None:
+        return latest_undoable(folder, self.reader)
+
+    def prune(self, folder: Path | None, keep: int) -> list[Path]:
+        return prune_journals(folder, keep, event=self.pruned_event)

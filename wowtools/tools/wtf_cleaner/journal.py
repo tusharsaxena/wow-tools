@@ -15,7 +15,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from wowtools.core import journal as core
-from wowtools.core.events import log_event
 from wowtools.core.journal import Journal
 from wowtools.core.paths import to_native
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
@@ -23,10 +22,6 @@ from wowtools.tools.wtf_cleaner.events import TOOL_NAME
 A_DELETED = "deleted"
 A_ROLLED_BACK = "rolled_back"
 PATH_FIELDS = ("path", "zip", "snapshot")
-
-
-def clean_journal_dir(wow_path: Path | None) -> Path | None:
-    return core.journal_dir(wow_path, TOOL_NAME)
 
 
 class CleanJournal(core.JournalWriter):
@@ -75,12 +70,7 @@ def read_journal(path: Path) -> Journal:
     return journal
 
 
-def latest_undoable(folder: Path | None) -> Path | None:
-    return core.latest_undoable(folder, read_journal)
-
-
-def prune_journals(folder: Path | None, keep: int) -> list[Path]:
-    removed = core.prune_journals(folder, keep)
-    if removed:
-        log_event("clean.journal_pruned", removed=[p.name for p in removed], keep=keep)
-    return removed
+JOURNALS = core.ToolJournals(TOOL_NAME, read_journal, "clean.journal_pruned")
+resolve_journal_dir = JOURNALS.dir
+latest_undoable = JOURNALS.latest_undoable
+prune_journals = JOURNALS.prune

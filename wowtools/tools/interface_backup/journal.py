@@ -10,9 +10,9 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from wowtools.core import journal as core_journal
-from wowtools.core.journal import Journal, list_journals, read_journal
+from wowtools.core.journal import Journal, ToolJournals, list_journals, read_journal
 from wowtools.core.paths import to_native
+from wowtools.tools.interface_backup.events import TOOL_NAME
 
 PATH_FIELDS = ("flavor_path", "backup", "zip")
 _HEADER_PATHS = ("flavor_path", "backup")
@@ -32,10 +32,12 @@ def _replaced_only(path: Path) -> Journal:
     return replace(journal, entries=[e for e in journal.entries if e.get("action") == "replaced"])
 
 
-def latest_undoable(folder: Path | None) -> Path | None:
-    """The newest restore journal that replaced at least one part and was not undone (a restore whose parts were
-    all rolled back changed nothing, so it is passed over)."""
-    return core_journal.latest_undoable(folder, reader=_replaced_only)
+# latest_undoable: the newest restore journal that replaced at least one part and was not undone (a restore whose
+# parts were all rolled back changed nothing, so it is passed over). Pruning logs its own event (restore.py, with
+# the safety zips it drops), so none here. Journals are always under the WoW folder, whatever the backup folder.
+JOURNALS = ToolJournals(TOOL_NAME, _replaced_only)
+resolve_journal_dir = JOURNALS.dir
+latest_undoable = JOURNALS.latest_undoable
 
 
 def safety_zips_named(paths: list[Path]) -> set[str] | None:

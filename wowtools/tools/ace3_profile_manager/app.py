@@ -15,14 +15,14 @@ from textual.widgets import Button, Footer, Header, Input, Label, Static
 
 from wowtools.core.config import Config
 from wowtools.core.events import log_event
-from wowtools.core.install import Flavor, WowInstall
+from wowtools.core.install import Flavor, WowInstall, validate_backup_dir
 from wowtools.core.paths import to_native, to_stored
+from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager.blacklist_screen import BlacklistScreen
-from wowtools.tools.ace3_profile_manager.report import plural
 from wowtools.tools.ace3_profile_manager.review_screen import ProfileReviewScreen
 from wowtools.tools.ace3_profile_manager.settings import (SECTION, Pair, ProfileSettings, format_blacklist,
                                                           load_settings, migrate_backup_root, resolve_root,
-                                                          save_settings, unique_pairs, validate_backup_dir)
+                                                          save_settings, unique_pairs)
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.dialogs import settings_css

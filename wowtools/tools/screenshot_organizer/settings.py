@@ -1,5 +1,5 @@
 """The Screenshot Organizer's own settings: the [screenshot_organizer] section of config/screenshot-organizer.cfg,
-plus where things go (source folder, target root, journal folder)."""
+plus where things go (source folder, target root); the journal folder is journal.resolve_journal_dir."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,8 +7,6 @@ from pathlib import Path
 
 from wowtools.core.config import Config
 from wowtools.core.install import Flavor, WowInstall, validate_output_dir
-from wowtools.core.journal import journal_dir
-from wowtools.tools.screenshot_organizer.events import TOOL_NAME
 
 SECTION = "screenshot_organizer"
 SCREENSHOTS_DIR = "Screenshots"
@@ -42,11 +40,6 @@ def source_dir(flavor: Flavor) -> Path:
 def target_root(flavor: Flavor, dest_dir: Path | None) -> Path:
     """Where a flavor's YYYY/MM/DD folders go: <dest>/<flavor folder>, or in place in its Screenshots folder."""
     return dest_dir / flavor.folder if dest_dir is not None else source_dir(flavor)
-
-
-def resolve_journal_dir(wow_path: Path | None) -> Path | None:
-    """<WoW folder>/wow-tools/screenshot-organizer/journal: never inside the screenshot archive."""
-    return journal_dir(wow_path, TOOL_NAME)
 
 
 def validate_dest(dest: Path | None, install: WowInstall) -> str | None:

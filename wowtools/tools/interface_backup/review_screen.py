@@ -4,7 +4,6 @@ of a backup. The restore screens are in restore_screen.py."""
 from __future__ import annotations
 
 import shutil
-import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, ClassVar
@@ -22,23 +21,23 @@ from textual.worker import get_current_worker
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
-from wowtools.core.install import Flavor, WowInstall
+from wowtools.core.install import Flavor, WowInstall, validate_backup_dir
 from wowtools.core.journal import Journal
 from wowtools.core.paths import to_stored
 from wowtools.core.process import wow_check_for
+from wowtools.core.progress import PROGRESS_INTERVAL, ThrottledProgress
+from wowtools.core.text import plural
 from wowtools.tools.interface_backup.backup import BackupOutcome, back_up_all
 from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups, read_parts
-from wowtools.tools.interface_backup.journal import latest_undoable, read_restore_journal
-from wowtools.tools.interface_backup.report import (BACKUP_RESULT_COLUMNS, PARTS_PENDING, STAGE_TITLES,
-                                                    backup_confirm, backup_detail, backup_result_rows,
-                                                    backup_summary_rows, backup_text, backups_title, flavor_text, held_text, leftover_text, part_text,
-                                                    plural, restore_confirm, selection_text, undo_confirm,
-                                                    warnings_text)
+from wowtools.tools.interface_backup.journal import latest_undoable, read_restore_journal, resolve_journal_dir
+from wowtools.tools.interface_backup.report import (BACKUP_RESULT_COLUMNS, PARTS_PENDING, STAGE_TITLES, backup_confirm,
+                                                    backup_detail, backup_result_rows, backup_summary_rows, backup_text,
+                                                    backups_title, flavor_text, held_text, leftover_text, part_text,
+                                                    restore_confirm, selection_text, undo_confirm, warnings_text)
 from wowtools.tools.interface_backup.restore import RestoreError, RestorePlan, RestoreResult, RestoreStopped, restore
 from wowtools.tools.interface_backup.restore_screen import RestoreResultScreen, RestoreScreen
 from wowtools.tools.interface_backup.scanner import CHEAP_STATS, PARTS, FlavorScan, scan_flavors
-from wowtools.tools.interface_backup.settings import (load_settings, resolve_backup_root, resolve_journal_dir,
-                                                      validate_backup_dir)
+from wowtools.tools.interface_backup.settings import load_settings, resolve_backup_root
 from wowtools.tools.interface_backup.undo import undo_restore
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.dialogs import (ACCENT, BUSY_STYLE, RESULT_HINT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus,
@@ -49,38 +48,6 @@ NAV_HINT = REVIEW_HINT + "a all · n none · b back up · e restore · " + TREE_
 # Tree nodes that cannot be ticked: a backup always holds a flavor's whole Interface and WTF.
 READ_ONLY = ("part", "links", "link", "leftover", "warnings", "warning", "backups", "backup")
 WowCheck = Callable[[], "list[str] | None"]
-# Seconds between two per-file progress reports sent to the UI thread. Each costs a blocking call_from_thread
-# (~0.6 ms); an Interface folder of tens of thousands of files, reported per file in several stages, spent most of
-# a backup or restore in those round trips.
-PROGRESS_INTERVAL = 0.1
-
-
-class ThrottledProgress:
-    """progress(stage, current, total, detail) for a job's worker: forwards a report when the stage changes, when
-    it has no count (total 0) or ends a stage (current >= total), or when `interval` seconds passed since the last
-    one forwarded; the others are dropped. reset() forwards the next report whatever it is (a new flavor)."""
-
-    def __init__(self, forward: Callable[..., None], interval: float, clock: Callable[[], float] = time.monotonic):
-        self.forward = forward
-        self.interval = interval
-        self.clock = clock
-        self._stage: object = None
-        self._last = 0.0
-        self._fresh = True
-
-    def reset(self) -> None:
-        self._fresh = True
-
-    def __call__(self, *args: Any) -> None:
-        stage = args[0] if args else None
-        current, total = (args[1], args[2]) if len(args) >= 3 else (0, 0)
-        now = self.clock()
-        due = (self._fresh or stage != self._stage or not total or current >= total
-               or now - self._last >= self.interval)
-        if not due:
-            return
-        self._fresh, self._stage, self._last = False, stage, now
-        self.forward(*args)
 
 
 def free_bytes(path: Path | None, disk_usage: Callable = shutil.disk_usage) -> int | None:

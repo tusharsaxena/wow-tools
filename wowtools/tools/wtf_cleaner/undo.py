@@ -13,16 +13,14 @@ import os
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from wowtools.core.events import log_event
 from wowtools.core.fsutil import remove_quietly, safe_progress
 from wowtools.core.journal import mark_undone
+from wowtools.core.undo import FAILED, RESTORED, SKIPPED, UndoResultBase, safe_destination
 from wowtools.tools.wtf_cleaner.journal import read_journal
 
-RESTORED = "restored"
-SKIPPED = "skipped"
-FAILED = "failed"
 UndoProgress = Callable[[str, int, int, str], None]
 OUTSIDE = "outside the flavor's WTF folder"
 BACK = "a file is back at this path"
@@ -40,39 +38,13 @@ class UndoOutcome:
 
 
 @dataclass
-class UndoResult:
+class UndoResult(UndoResultBase):
     journal_path: Path
     started: str  # when the clean being undone started (its journal header)
     flavors: list[str]
     outcomes: list[UndoOutcome] = field(default_factory=list)
     dry_run: bool = False  # never a dry run: lets the result screen treat it like a clean result
     marked_undone: bool = False  # False when nothing was restored and something failed: it can be tried again
-
-    def _with(self, status: str) -> list[UndoOutcome]:
-        return [o for o in self.outcomes if o.status == status]
-
-    @property
-    def restored(self) -> list[UndoOutcome]:
-        return self._with(RESTORED)
-
-    @property
-    def skipped(self) -> list[UndoOutcome]:
-        return self._with(SKIPPED)
-
-    @property
-    def failed(self) -> list[UndoOutcome]:
-        return self._with(FAILED)
-
-
-def destination(wow_root: Path, flavor: str, rel: str) -> Path | None:
-    """<WoW>/<flavor>/<rel>, or None when the entry points outside that flavor's WTF folder."""
-    if not flavor or flavor in (".", "..") or "/" in flavor or "\\" in flavor or ":" in flavor:
-        return None
-    posix = PurePosixPath(rel)
-    parts = posix.parts
-    if posix.is_absolute() or len(parts) < 2 or parts[0] != "WTF" or ".." in parts or "\\" in rel or ":" in rel:
-        return None
-    return wow_root.joinpath(flavor, *parts)
 
 
 class _Zips:
@@ -146,7 +118,7 @@ def _extract(zf: zipfile.ZipFile, info: zipfile.ZipInfo, dest: Path, size: int, 
 
 def _restore_one(entry: dict, wow_root: Path, zips: _Zips) -> UndoOutcome:
     flavor, rel, size = entry["flavor"], entry["rel"], entry["size"]
-    dest = destination(wow_root, flavor, rel)
+    dest = safe_destination(wow_root, flavor, rel)  # anything under <flavor>/WTF
     path = dest if dest is not None else Path(str(entry.get("path") or rel))
 
     def outcome(status: str, detail: str = "", source: str = "") -> UndoOutcome:

@@ -7,11 +7,12 @@ from pathlib import Path
 from tests.fixtures import build_wow_tree
 from wowtools.core.config import Config
 from wowtools.core.events import REGISTRY, TOOL_REGISTRIES
-from wowtools.core.install import WowInstall
+from wowtools.core.install import WowInstall, validate_backup_dir
 from wowtools.core.journal import TOOLS_SUBDIR
 from wowtools.tools.interface_backup import events
+from wowtools.tools.interface_backup.journal import resolve_journal_dir
 from wowtools.tools.interface_backup.settings import (SECTION, BackupSettings, load_settings, resolve_backup_root,
-                                                      resolve_journal_dir, save_settings, validate_backup_dir)
+                                                      save_settings)
 
 
 class SettingsTest(unittest.TestCase):

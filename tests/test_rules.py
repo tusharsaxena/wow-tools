@@ -9,7 +9,7 @@ from tests.fixtures import NOW, build_solo_tree, build_wow_tree
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
-from wowtools.tools.wtf_cleaner.report import format_size
+from wowtools.core.text import human_size
 from wowtools.tools.wtf_cleaner.rules import Criteria, criterion_counts, evaluate
 from wowtools.tools.wtf_cleaner.scanner import scan
 from wowtools.tools.wtf_cleaner.settings import (DEFAULT_BACKUP_SUBDIR, SECTION, CleanerSettings, load_settings,
@@ -200,8 +200,8 @@ class ReportTest(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.retail = WowInstall(build_wow_tree(Path(tmp.name) / "World of Warcraft")).flavor("retail")
 
-    def test_format_size(self):
-        self.assertEqual(format_size(0), "0 B")
-        self.assertEqual(format_size(1023), "1023 B")
-        self.assertEqual(format_size(1536), "1.5 KB")
-        self.assertEqual(format_size(5 * 1024 * 1024), "5.0 MB")
+    def test_human_size(self):
+        self.assertEqual(human_size(0), "0 B")
+        self.assertEqual(human_size(1023), "1023 B")
+        self.assertEqual(human_size(1536), "1.5 KB")
+        self.assertEqual(human_size(5 * 1024 * 1024), "5.0 MB")

@@ -17,10 +17,11 @@ from textual.widgets import Button, Checkbox, DataTable, Footer, Header, Label, 
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor
 from wowtools.core.paths import to_stored
+from wowtools.core.text import human_size, plural
 from wowtools.tools.interface_backup.catalog import BackupInfo
 from wowtools.tools.interface_backup.report import (RESTORE_RESULT_COLUMNS, friendly_created, group_items,
-                                                    human_size, ordered_parts, plural, restore_lost_nothing,
-                                                    restore_result_rows, restore_summary, restore_summary_rows)
+                                                    ordered_parts, restore_lost_nothing, restore_result_rows,
+                                                    restore_summary, restore_summary_rows)
 from wowtools.tools.interface_backup.restore import (BackupContents, RestoreError, RestorePlan, RestoreResult,
                                                      case_key, open_backup, plan_restore)
 from wowtools.tools.interface_backup.scanner import PARTS, FlavorScan, scan_flavor

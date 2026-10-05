@@ -5,9 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from wowtools.core.install import FLAVOR_NAMES
+from wowtools.core.install import flavor_name
 from wowtools.core.journal import Journal, friendly_stamp
 from wowtools.core.paths import to_stored
+from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager.model import DEFAULT
 from wowtools.tools.ace3_profile_manager.multi import MultiApplyResult
 from wowtools.tools.ace3_profile_manager.ops import CopyOf, DbState, Original, Summary
@@ -32,14 +33,6 @@ STEPS = ("1 Tick profiles or characters (Space) → 2 pick an action below → 3
 CHARACTER_KINDS = ("char", "pair", "character")  # tree nodes that are one character
 RESULT_TEXT = {"edited": "changed", "would_edit": "would change", "skipped": "skipped", "failed": "failed",
                "rolled_back": "put back"}
-
-
-def plural(n: int, word: str, words: str | None = None) -> str:
-    return f"{n} {word if n == 1 else (words or word + 's')}"
-
-
-def flavor_name(folder: str) -> str:
-    return FLAVOR_NAMES.get(folder) or folder.strip("_").replace("_", " ").title()
 
 
 @dataclass

@@ -15,11 +15,12 @@ from textual.widgets import Button, DataTable, Footer, Header
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor
 from wowtools.core.paths import to_stored
+from wowtools.core.text import human_size
 from wowtools.tools.wtf_cleaner.cleaner import CleanResult
 from wowtools.tools.wtf_cleaner.multi import FlavorRun, MultiCleanResult, nothing_deleted
-from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, MULTI_RESULT_COLUMNS,
-                                               RESULT_COLUMNS, UNDO_COLUMNS, format_size, multi_result_rows,
-                                               result_rows, undo_row, undo_summary_rows)
+from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, MULTI_RESULT_COLUMNS, RESULT_COLUMNS,
+                                               UNDO_COLUMNS, multi_result_rows, result_rows, undo_row,
+                                               undo_summary_rows)
 from wowtools.tools.wtf_cleaner.undo import UndoResult
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.dialogs import RESULT_HINT, result_css, theme_colour
@@ -89,7 +90,7 @@ def summary_rows(result: CleanResult) -> list[tuple[str, str]]:
     rows += [
         ("Post-clean check", check),
         ("Would delete" if result.dry_run else "Deleted", f"{len(done)} files"),
-        ("Size", format_size(result.bytes_freed)),
+        ("Size", human_size(result.bytes_freed)),
         ("Skipped", f"{len(result.skipped)} files (changed or missing since the scan)"),
         ("Failed", f"{len(result.failed)} files"),
     ]

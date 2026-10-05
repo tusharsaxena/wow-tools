@@ -22,7 +22,7 @@ from wowtools.tools.wtf_cleaner import multi
 from wowtools.tools.wtf_cleaner import review_screen as review_module
 from wowtools.tools.wtf_cleaner.app import CleanerSettingsScreen
 from wowtools.tools.wtf_cleaner.cleaner import CleanError, CleanResult, FileOutcome
-from wowtools.tools.wtf_cleaner.journal import clean_journal_dir, latest_undoable
+from wowtools.tools.wtf_cleaner.journal import resolve_journal_dir, latest_undoable
 from wowtools.tools.wtf_cleaner.report import CRITERION_COLORS, RESULT_COLUMNS, result_rows
 from wowtools.tools.wtf_cleaner.review_screen import CleanProgressScreen, RecoveryScreen, ResultScreen, ReviewScreen
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, criterion_counts
@@ -1599,7 +1599,7 @@ class UndoLastCleanTest(AppTestCase):
         return app.screen
 
     async def test_undo_last_clean_puts_the_files_back(self):
-        journals = clean_journal_dir(self.root)
+        journals = resolve_journal_dir(self.root)
         app = self.make_app()
         with capture_events() as records:
             async with app.run_test(size=SIZE) as pilot:
@@ -1654,7 +1654,7 @@ class UndoLastCleanTest(AppTestCase):
             await self.run_key(app, pilot, "z", answer="n")
             self.assertIsInstance(app.screen, ReviewScreen)
         self.assertFalse((self.sv / "Uninstalled.lua").exists())
-        self.assertIsNotNone(latest_undoable(clean_journal_dir(self.root)))
+        self.assertIsNotNone(latest_undoable(resolve_journal_dir(self.root)))
 
     async def test_dry_run_offers_no_undo(self):
         app = self.make_app()
@@ -1664,7 +1664,7 @@ class UndoLastCleanTest(AppTestCase):
             self.assertNotIn("Run journal", dict(app.screen.summary_rows()))
             review = await self.back_to_review(app, pilot)
             self.assertTrue(review.query_one("#btn-undo", Button).disabled)
-        self.assertFalse(clean_journal_dir(self.root).exists())
+        self.assertFalse(resolve_journal_dir(self.root).exists())
 
     async def test_undo_is_disabled_while_scanning_or_busy(self):
         app = self.make_app()

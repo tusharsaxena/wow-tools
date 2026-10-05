@@ -512,23 +512,6 @@ class InterfaceBackupAppTest(TuiTestCase):
         self.assertFalse(any(r["event"] == "ibackup.backup_skipped" for r in records))
         self.assertFalse(any("anniversary" in n for n in self.zips()))
 
-    def test_throttled_progress_forwards_stage_changes_ends_and_one_per_interval(self):
-        now = [0.0]
-        sent = []
-        progress = review_module.ThrottledProgress(lambda *a: sent.append(a), 0.1, clock=lambda: now[0])
-        for i in range(1, 6):
-            progress("backup", i, 10, f"f{i}")  # first one forwarded, then nothing until the interval
-        now[0] = 0.15
-        progress("backup", 6, 10, "f6")  # interval passed
-        progress("backup", 7, 10, "f7")
-        progress("backup", 10, 10, "f10")  # end of the stage
-        progress("verify", 1, 10, "v1")  # new stage
-        progress("swap", 0, 0, "Interface")  # no count
-        progress.reset()
-        progress("swap", 0, 0, "WTF")
-        progress("verify", 2, 10, "v2")  # stage changed again
-        self.assertEqual([a[3] for a in sent], ["f1", "f6", "f10", "v1", "Interface", "WTF", "v2"])
-
     async def test_progress_reaches_the_screen_throttled(self):
         # Per-file reports go to the UI thread only on a stage change, at a stage's end, or once per interval:
         # forwarding every file of a big Interface folder made a backup through the UI ~13x slower than the logic.

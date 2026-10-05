@@ -58,6 +58,39 @@ class StructureTest(unittest.TestCase):
         where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & names}
         self.assertEqual(where, {("wowtools/core/fsutil.py", "safe_progress"),
                                  ("wowtools/core/fsutil.py", "remove_quietly")})
+        # The suite polish's shared helpers (spec D9): one definition in core, none copied into a tool. The names
+        # in `gone` were the tools' own copies; latest_undoable / prune_journals / resolve_journal_dir are a tool's
+        # ToolJournals methods, never a def of its own.
+        once = {"plural": "text.py", "human_size": "text.py", "flavor_name": "install.py",
+                "validate_backup_dir": "install.py", "latest_undoable": "journal.py", "prune_journals": "journal.py",
+                "safe_destination": "undo.py"}
+        gone = {"format_size", "clean_journal_dir", "resolve_journal_dir"}
+        where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & (set(once) | gone)}
+        self.assertEqual(where, {(f"wowtools/core/{module}", name) for name, module in once.items()})
+        classes = {"ThrottledProgress": "progress.py", "ToolJournals": "journal.py", "UndoResultBase": "undo.py"}
+        where = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
+                 if isinstance(node, ast.ClassDef) and node.name in classes}
+        self.assertEqual(where, {(f"wowtools/core/{module}", name) for name, module in classes.items()})
+
+    def test_tools_use_the_shared_helpers(self):
+        """Each tool's journals, undo results and markers go through core (no copy of the bodies)."""
+        from wowtools.core import journal, undo
+        from wowtools.tools.ace3_profile_manager import journal as ace_journal
+        from wowtools.tools.ace3_profile_manager import undo as ace_undo
+        from wowtools.tools.interface_backup import journal as ib_journal
+        from wowtools.tools.screenshot_organizer import journal as shots_journal
+        from wowtools.tools.wtf_cleaner import journal as wtf_journal
+        from wowtools.tools.wtf_cleaner import undo as wtf_undo
+        for module in (ace_journal, ib_journal, shots_journal, wtf_journal):
+            self.assertIsInstance(module.JOURNALS, journal.ToolJournals)
+            self.assertEqual(module.resolve_journal_dir, module.JOURNALS.dir)
+            self.assertEqual(module.latest_undoable, module.JOURNALS.latest_undoable)
+        for module in (ace_undo, wtf_undo):
+            self.assertTrue(issubclass(module.UndoResult, undo.UndoResultBase))
+        for path in ("wowtools/tools/wtf_cleaner/safety.py", "wowtools/tools/ace3_profile_manager/editor.py"):
+            self.assertIn("wowtools.core.marker", imported_modules(tree(REPO / path)) | {
+                f"{n.module}.{a.name}" for n in ast.walk(tree(REPO / path))
+                if isinstance(n, ast.ImportFrom) and n.module for a in n.names})
 
     def test_shared_dialogs_live_in_ui(self):
         from wowtools.tools.screenshot_organizer.review_screen import ShotProgressScreen

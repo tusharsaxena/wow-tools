@@ -18,15 +18,15 @@ from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, Prog
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
-from wowtools.core.install import ACCOUNT_WIDE, Flavor, WowInstall, validate_output_dir
+from wowtools.core.install import ACCOUNT_WIDE, Flavor, WowInstall, flavor_name, validate_backup_dir
 from wowtools.core.journal import friendly_stamp
 from wowtools.core.process import running_wtf_lockers, wow_check_for
+from wowtools.core.text import human_size, plural
 from wowtools.tools.wtf_cleaner.cleaner import CLEANED_SUBDIR, CleanError
-from wowtools.tools.wtf_cleaner.journal import clean_journal_dir, latest_undoable, read_journal
+from wowtools.tools.wtf_cleaner.journal import latest_undoable, read_journal, resolve_journal_dir
 from wowtools.tools.wtf_cleaner.multi import (FlavorScan, MultiCleanResult, execute_flavors, nothing_deleted,
                                               scan_flavors)
-from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT, STAGE_TITLES, age_days,
-                                               flavor_name, format_size, locker_warning, plural)
+from wowtools.tools.wtf_cleaner.report import CRITERION_COLORS, CRITERION_SHORT, STAGE_TITLES, age_days, locker_warning
 from wowtools.tools.wtf_cleaner.result_screen import ResultScreen, reasons_text
 from wowtools.tools.wtf_cleaner.rules import (CRITERIA, Proposal, ProposalItem, criterion_counts, evaluate,
                                              log_proposal_built, log_proposal_items)
@@ -226,7 +226,7 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
             self._refresh_undo()
 
     def _journal_dir(self) -> Path | None:
-        return clean_journal_dir(self.cfg.wow_path)
+        return resolve_journal_dir(self.cfg.wow_path)
 
     def _refresh_undo(self) -> None:
         """Undo last clean is offered only when there is a clean to undo, and never while scanning or busy."""
@@ -385,11 +385,11 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         if kind == "file":
             sv = data[2]
             return Text.assemble(mark, sv.name,
-                                 (f"  {format_size(sv.size)} · {age_days(sv.mtime, now)}d", "dim"))
+                                 (f"  {human_size(sv.size)} · {age_days(sv.mtime, now)}d", "dim"))
         if kind == "item":
             item = data[1]
             return Text.assemble(mark, (item.addon, "bold"), "  ", self._reasons(item.reasons),
-                                 ((f"  {plural(len(item.files), 'file')} · {format_size(item.total_size)} · "
+                                 ((f"  {plural(len(item.files), 'file')} · {human_size(item.total_size)} · "
                                    f"{age_days(item.newest_mtime, now)}d"), "dim"))
         items, name = data[1], data[2]
         if not items and data is not self.query_one("#proposal", Tree).root.data:
@@ -422,7 +422,7 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         files = sum(len(i.files) for i in selection)
         size = sum(i.total_size for i in selection)
         # The criteria are not repeated here: the left pane shows them.
-        text = f"Selected: {plural(len(selection), 'item')} · {plural(files, 'file')} · {format_size(size)}"
+        text = f"Selected: {plural(len(selection), 'item')} · {plural(files, 'file')} · {human_size(size)}"
         if self.proposal is not None and not self.proposal.items:
             text = "Nothing to clean with the current criteria.    " + text
         if self.proposal is not None and self.proposal.warnings:
@@ -541,7 +541,7 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         wow_path = self.cfg.wow_path
         if wow_path is None:
             return None
-        return validate_output_dir(self.settings.backup_dir, WowInstall(wow_path), what="backup folder")
+        return validate_backup_dir(self.settings.backup_dir, WowInstall(wow_path))
 
     def _start(self, dry_run: bool) -> None:
         if self.proposal is None or self.app.busy or self._checking:
@@ -649,7 +649,7 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
     def _counts(items: list[ProposalItem]) -> str:
         files = sum(len(i.files) for i in items)
         return (f"{plural(len(items), 'addon group')}, {plural(files, 'file')}, "
-                f"{format_size(sum(i.total_size for i in items))}")
+                f"{human_size(sum(i.total_size for i in items))}")
 
     def _confirmed(self, ok: bool | None, plan: list[tuple[Flavor, list[ProposalItem]]], backup: bool,
                    backup_dir: Path | None, dry_run: bool) -> None:

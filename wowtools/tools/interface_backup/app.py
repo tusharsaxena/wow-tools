@@ -14,13 +14,13 @@ from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Label, Static
 
 from wowtools.core.config import Config
-from wowtools.core.install import Flavor, WowInstall
+from wowtools.core.install import Flavor, WowInstall, validate_backup_dir
 from wowtools.core.paths import to_native, to_stored
 from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups
 from wowtools.tools.interface_backup.report import picker_note
 from wowtools.tools.interface_backup.review_screen import BackupReviewScreen
 from wowtools.tools.interface_backup.settings import (SECTION, BackupSettings, load_settings, resolve_backup_root,
-                                                      save_settings, validate_backup_dir)
+                                                      save_settings)
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.dialogs import settings_css
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen

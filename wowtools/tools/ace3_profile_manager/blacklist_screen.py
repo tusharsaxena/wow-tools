@@ -2,7 +2,6 @@
 (flavor, addon) pair is blacklisted. Opened from the settings screen and from the review."""
 from __future__ import annotations
 
-import time
 from collections.abc import Iterable
 from typing import ClassVar
 
@@ -18,7 +17,8 @@ from textual.widgets.tree import TreeNode
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor, WowInstall
-from wowtools.tools.ace3_profile_manager.report import plural
+from wowtools.core.progress import ThrottledProgress
+from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager.scanner import ScanResult, scan_flavors
 from wowtools.tools.ace3_profile_manager.settings import WILDCARD, Pair, is_blacklisted, unique_pairs
 from wowtools.ui.branding import BrandBar
@@ -28,7 +28,6 @@ from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 EXPLANATION = "Ticked addons are blacklisted: their profiles are shown but never changed."
 NAV_HINT = review_hint() + "a all · n none · " + TREE_HINT + "Esc cancel"
-PROGRESS_EVERY = 0.05  # seconds between two scan progress reports sent to the UI thread
 Key = tuple[str, str]  # (flavor folder, addon), casefolded
 
 
@@ -113,14 +112,9 @@ class BlacklistScreen(TwoPaneFocus, Screen["list[Pair] | None"]):
         self.run_worker(lambda: self._scan_worker(flavors), thread=True, exclusive=True, group="scan")
 
     def _scan_worker(self, flavors: list[Flavor]) -> None:
-        last = [0.0]
-
-        def progress(flavor: Flavor, current: int, total: int, name: str) -> None:
-            now = time.monotonic()
-            if current < total and now - last[0] < PROGRESS_EVERY:
-                return
-            last[0] = now
-            self.app.call_from_thread(self._scan_progress, current, total, name)
+        # The UI gets a report per PROGRESS_INTERVAL, plus each flavor's first and last (ThrottledProgress).
+        progress = ThrottledProgress(
+            lambda flavor, current, total, name: self.app.call_from_thread(self._scan_progress, current, total, name))
 
         try:
             scan = scan_flavors(flavors, progress=progress)

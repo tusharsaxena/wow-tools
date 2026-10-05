@@ -9,7 +9,6 @@ writes nothing at all.
 """
 from __future__ import annotations
 
-import json
 import os
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -17,9 +16,10 @@ from datetime import datetime
 from pathlib import Path
 
 from wowtools import __version__
+from wowtools.core import marker as core_marker
 from wowtools.core.backup import BackupEntry, BackupError, create_backup
 from wowtools.core.events import log_event
-from wowtools.core.fsutil import atomic_write_bytes, free_name, remove_quietly, safe_progress
+from wowtools.core.fsutil import atomic_write_bytes, free_name, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.core.journal import now_iso
 from wowtools.core.snapshot import prune_snapshots, take_snapshot
@@ -106,18 +106,15 @@ class Marker:
 
 
 def write_marker(root: Path, marker: Marker) -> None:
-    data = asdict(marker)
-    data["flavor_path"] = str(marker.flavor_path)
-    data["zip"] = str(marker.zip)
-    root.mkdir(parents=True, exist_ok=True)
-    atomic_write_bytes(root / MARKER_NAME, json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8"))
+    core_marker.write_marker(root, MARKER_NAME, asdict(marker))
 
 
 def read_marker(root: Path | None) -> Marker | None:
-    if root is None:
+    """The marker left by an Apply that did not finish, or None (missing or unreadable). Never raises."""
+    data = core_marker.read_marker(root, MARKER_NAME)
+    if data is None:
         return None
     try:
-        data = json.loads((root / MARKER_NAME).read_text(encoding="utf-8"))
         files, after = data["files"], data.get("after", {})
         if not all(isinstance(d, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in d.items())
                    for d in (files, after)):
@@ -129,7 +126,7 @@ def read_marker(root: Path | None) -> Marker | None:
 
 
 def clear_marker(root: Path) -> None:
-    remove_quietly(root / MARKER_NAME)
+    core_marker.clear_marker(root, MARKER_NAME)
 
 
 def edited_zip_path(root: Path, flavor_short: str, account: str | None, now: datetime) -> Path:

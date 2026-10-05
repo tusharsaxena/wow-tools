@@ -4,7 +4,6 @@ apply them, try them in a dry run, or undo the last change. A guidance line and 
 what can be done next."""
 from __future__ import annotations
 
-import time
 from collections.abc import Callable, Hashable, Iterable, Iterator
 from pathlib import Path
 from typing import ClassVar
@@ -21,26 +20,26 @@ from textual.widgets.tree import TreeNode
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
-from wowtools.core.install import Flavor, WowInstall
+from wowtools.core.install import Flavor, WowInstall, flavor_name, validate_backup_dir
 from wowtools.core.journal import Journal, friendly_stamp
 from wowtools.core.process import wow_check_for
+from wowtools.core.progress import ThrottledProgress
+from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager.blacklist_screen import BlacklistScreen
 from wowtools.tools.ace3_profile_manager.editor import ApplyError, Marker, clear_marker, read_marker
-from wowtools.tools.ace3_profile_manager.journal import latest_undoable, read_profile_journal
+from wowtools.tools.ace3_profile_manager.journal import latest_undoable, read_profile_journal, resolve_journal_dir
 from wowtools.tools.ace3_profile_manager.model import DEFAULT
 from wowtools.tools.ace3_profile_manager.multi import MultiApplyResult, apply_flavors
 from wowtools.tools.ace3_profile_manager.ops import DbKey, DbState, OpResult, Staging, valid_name
 from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
 from wowtools.tools.ace3_profile_manager.report import (CHARACTER_KINDS, DETAIL_COLUMNS, NO_PENDING, STAGE_TITLES,
                                                         STEPS, UNDO_COLUMNS, apply_confirm, apply_detail_rows,
-                                                        apply_summary_rows, flavor_name, guidance, pending_text, plural,
-                                                        selection_text, shorten, undo_confirm, undo_detail_rows,
-                                                        undo_summary_rows)
+                                                        apply_summary_rows, guidance, pending_text, selection_text,
+                                                        shorten, undo_confirm, undo_detail_rows, undo_summary_rows)
 from wowtools.tools.ace3_profile_manager.result_screen import ProfileResultScreen
 from wowtools.tools.ace3_profile_manager.scanner import ScanResult, SvFile, scan_flavors
 from wowtools.tools.ace3_profile_manager.settings import (Pair, format_blacklist, is_blacklisted, load_settings,
-                                                          resolve_journal_dir, resolve_root, save_settings, toggle_pair,
-                                                          validate_backup_dir)
+                                                          resolve_root, save_settings, toggle_pair)
 from wowtools.tools.ace3_profile_manager.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
 from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult, recover, undo_run
 from wowtools.ui.branding import BrandBar
@@ -55,7 +54,6 @@ NAV_HINT = (REVIEW_HINT + "a all · n none · d delete · p assign · m more · 
 WowCheck = Callable[[], "list[str] | None"]
 SHOW_FILTERS = {"only-multi": "only_multi", "only-unused": "only_unused", "show-leftovers": "leftovers",
                 "show-blacklisted": "blacklisted"}
-PROGRESS_EVERY = 0.05  # seconds between two scan progress reports sent to the UI thread
 GUIDE_MAX_ROWS = 2  # the guidance line leaves its per-node hint out rather than take more rows than this
 GROUP_KINDS = ("root", "flavor", "account")  # nodes too broad to stand for a selection when nothing is ticked
 # The action bar under the tree: (id, label, kind of action, action), green ones first, then red, then the rest.
@@ -397,14 +395,9 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
 
     def _scan_worker(self, flavors: list[Flavor], account: str | None, root: Path | None,
                      journal_dir: Path | None) -> None:
-        last = [0.0]
-
-        def progress(flavor: Flavor, current: int, total: int, name: str) -> None:
-            now = time.monotonic()
-            if current < total and now - last[0] < PROGRESS_EVERY:
-                return
-            last[0] = now
-            self.app.call_from_thread(self._scan_progress, current, total, name)
+        # The UI gets a report per PROGRESS_INTERVAL, plus each flavor's first and last (ThrottledProgress).
+        progress = ThrottledProgress(
+            lambda flavor, current, total, name: self.app.call_from_thread(self._scan_progress, current, total, name))
 
         try:
             scan = scan_flavors(flavors, account=account, progress=progress)

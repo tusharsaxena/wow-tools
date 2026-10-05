@@ -1,13 +1,12 @@
 """Interface Backup's own settings: the [interface_backup] section of config/interface-backup.cfg, plus where
-backups and journals go."""
+backups go (journals: journal.resolve_journal_dir)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
 
 from wowtools.core.config import Config
-from wowtools.core.install import WowInstall, validate_output_dir
-from wowtools.core.journal import TOOLS_SUBDIR, journal_dir
+from wowtools.core.journal import TOOLS_SUBDIR
 from wowtools.tools.interface_backup.events import TOOL_NAME
 
 SECTION = "interface_backup"
@@ -43,11 +42,3 @@ def resolve_backup_root(settings: BackupSettings, wow_path: Path | None) -> Path
     return base / TOOL_NAME
 
 
-def resolve_journal_dir(wow_path: Path | None) -> Path | None:
-    """<WoW folder>/wow-tools/interface-backup/journal: always under the WoW folder, whatever the backup folder."""
-    return journal_dir(wow_path, TOOL_NAME)
-
-
-def validate_backup_dir(path: Path | None, install: WowInstall) -> str | None:
-    """Why a backup folder is not allowed, or None if it is fine (None itself means the default)."""
-    return validate_output_dir(path, install, what="backup folder", example="D:\\WoW backups")

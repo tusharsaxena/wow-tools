@@ -170,10 +170,6 @@ class ReportTest(unittest.TestCase):
         self.assertTrue(any("LibDualSpec" in a for a in alerts))
         self.assertIn("Retail", body)
 
-    def test_plural(self):
-        self.assertEqual(report.plural(1, "profile"), "1 profile")
-        self.assertEqual(report.plural(2, "copy", "copies"), "2 copies")
-
     def test_removed_character_follows_a_renamed_profile(self):
         key = self.st("KickCDDB").key
         self.staging.remove_leftovers({key: ["Gone - Realm1"]})

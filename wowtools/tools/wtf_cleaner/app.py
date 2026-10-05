@@ -14,7 +14,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Label, Static
 
 from wowtools.core.config import Config
-from wowtools.core.install import Flavor, WowInstall, validate_output_dir
+from wowtools.core.install import Flavor, WowInstall, validate_backup_dir
 from wowtools.core.paths import to_native, to_stored
 from wowtools.tools.wtf_cleaner.report import CRITERION_LABELS
 from wowtools.tools.wtf_cleaner.review_screen import ReviewScreen
@@ -96,7 +96,7 @@ class CleanerSettingsScreen(Screen[bool]):
         backup_raw = self.query_one("#backup_dir", Input).value.strip()
         backup_dir = to_native(backup_raw) if backup_raw else None
         if self.wow_path is not None:
-            problem = validate_output_dir(backup_dir, WowInstall(self.wow_path), what="backup folder")
+            problem = validate_backup_dir(backup_dir, WowInstall(self.wow_path))
             if problem:
                 self.error_text = problem
                 self.query_one("#settings-error", Static).update(Text(self.error_text))

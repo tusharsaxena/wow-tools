@@ -23,7 +23,7 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
      suite standard: one JSON Lines file per real run in `journal_dir(wow_path, TOOL_NAME)`
      (`<WoW>/wow-tools/<tool>/journal/`). Open the `JournalWriter` (header) before the first change and stop if it
      cannot be written; `add_entry({"action": ..., ...})` after each change; `finish()` and `discard_if_empty()` at
-     the end; `prune_journals(dir, cfg.keep_journals)` (the shared `[general] keep_journals`; a tool has no retention setting
+     the end; `prune_journals(dir, cfg.keep_journals)` from the tool's `JOURNALS = ToolJournals(TOOL_NAME, read_journal, "<prefix>.journal_pruned")` (the shared `[general] keep_journals`; a tool has no retention setting
 of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep the
      tool's own entry fields, `read_journal` wrapper and undo rules in its own `journal.py` / `undo.py` (see
      `screenshot_organizer/`, `wtf_cleaner/` and `interface_backup/`, whose journal records restores only), offer only `latest_undoable(dir)`, `mark_undone()` after an

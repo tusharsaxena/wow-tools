@@ -7,9 +7,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from wowtools.core import journal as core_journal
 from wowtools.core.config import Config
-from wowtools.core.install import WowInstall, validate_output_dir
 from wowtools.core.journal import TOOLS_SUBDIR
 from wowtools.core.migrate import merge_folder_logged
 from wowtools.tools.ace3_profile_manager.events import TOOL_NAME
@@ -122,12 +120,3 @@ def migrate_backup_root(settings: ProfileSettings) -> None:
         merge_folder_logged(settings.backup_dir / OLD_ROOT_NAME, settings.backup_dir / ROOT_NAME)
 
 
-def resolve_journal_dir(wow_path: Path | None) -> Path | None:
-    return core_journal.journal_dir(wow_path, TOOL_NAME)
-
-
-def validate_backup_dir(path: Path | None, install: WowInstall) -> str | None:
-    """None when fine (empty means the default); else the reason, as Interface Backup does."""
-    if path is None:
-        return None
-    return validate_output_dir(path, install, what="backup folder", example="D:\\WoW backups")

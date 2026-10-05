@@ -12,8 +12,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from wowtools.core import journal as core
-from wowtools.core.events import log_event
 from wowtools.core.journal import Journal
+from wowtools.tools.ace3_profile_manager.events import TOOL_NAME
 
 A_EDITED = "edited"
 A_ROLLED_BACK = "rolled_back"
@@ -82,17 +82,6 @@ def record_recovered(folder: Path | None, flavor: str, zip_name: str, rels: list
     return changed
 
 
-def latest_undoable(folder: Path | None) -> Path | None:
-    return core.latest_undoable(folder, read_profile_journal)
-
-
-def prune_journals(folder: Path | None, keep: int) -> list[Path]:
-    removed = core.prune_journals(folder, keep)
-    if removed:
-        log_event("ace.journal_pruned", removed=[p.name for p in removed], keep=keep)
-    return removed
-
-
 def referenced_zips(folder: Path | None) -> set[str] | None:
     """The edited-*.zip names the journals in folder use; None when a journal could not be read (a reader such as
     a virus scanner or OneDrive may hold it for a moment): its zips are unknown, so none may be deleted."""
@@ -104,3 +93,9 @@ def referenced_zips(folder: Path | None) -> set[str] | None:
             return None
         names.update(entry["zip"].name for entry in journal.entries)
     return names
+
+
+JOURNALS = core.ToolJournals(TOOL_NAME, read_profile_journal, "ace.journal_pruned")
+resolve_journal_dir = JOURNALS.dir
+latest_undoable = JOURNALS.latest_undoable
+prune_journals = JOURNALS.prune

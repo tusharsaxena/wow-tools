@@ -5,9 +5,10 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from wowtools.core.install import Flavor
+from wowtools.core.install import flavor_name
 from wowtools.core.journal import Journal
 from wowtools.core.paths import to_stored
+from wowtools.core.text import human_size, plural
 from wowtools.tools.interface_backup.backup import BackupOutcome, skip_reason
 from wowtools.tools.interface_backup.catalog import BackupInfo
 from wowtools.tools.interface_backup.restore import PartOutcome, RestorePlan, RestoreResult
@@ -24,23 +25,6 @@ RESTORE_RESULT_COLUMNS = ("Part", "Outcome", "Details")
 _BACKUP_KINDS = {"created": "Backed up", "skipped": "Skipped", "failed": "Failed"}
 _PART_KINDS = {"restored": "Restored", "replaced_left": "Restored (old copy left)", "rolled_back": "Left as it was",
                "failed": "Failed"}
-
-
-def plural(n: int, word: str) -> str:
-    return f"{n} {word}{'' if n == 1 else 's'}"
-
-
-def human_size(n: int | None) -> str:
-    if n is None:
-        return "—"
-    if n < 1024:
-        return f"{n} B"
-    value = float(n)
-    for unit in ("KB", "MB", "GB", "TB"):
-        value /= 1024
-        if value < 1024 or unit == "TB":
-            break
-    return f"{value:.1f} {unit}"
 
 
 def _files_and_size(files: int, size: int | None) -> str:
@@ -320,7 +304,7 @@ def undo_confirm(journal: Journal) -> tuple[str, str]:
     """(title, body) for the Undo ConfirmScreen (which starts on No)."""
     parts = [str(e.get("part", "?")) for e in journal.entries if e.get("action") == "replaced"]
     folder = journal.header.get("flavor")
-    flavor = Flavor(folder, Path(folder)).display_name if isinstance(folder, str) and folder else "?"
+    flavor = flavor_name(folder) if isinstance(folder, str) and folder else "?"
     title = f"Undo the restore from {friendly_created(journal.started) if journal.started else 'an unknown time'}?"
     body = (f"Put {' and '.join(parts) or 'the restored folders'} of {flavor} back as they were before that restore, "
             "from its safety backup. Anything changed since the restore is lost.")
