@@ -23,7 +23,7 @@ The first version: four tools in one app.
     stay, and the bottom line and the "are you sure?" window say how many. `Esc` in the filter box clears it.
   - Every checkbox and box in a left panel has a row of its own, so `↑` / `↓` reach each one.
   - Buttons are coloured by what they do, the same in every tool: red deletes, amber overwrites, green only adds
-    files, violet undoes, cyan is a dry run, blue confirms, grey moves between screens, dim grey backs out.
+    something new, violet undoes, cyan is a dry run, blue confirms, grey moves between screens, dim grey backs out.
   - Every "are you sure?" window opens on **Yes**, coloured by what it does (red when it deletes, overwrites, undoes
     or drops pending changes); Enter and Space wait a quarter of a second after it opens and are ignored while
     a held key repeats, `y` / `n` / `Esc` answer at once. The update offer's "Update now" waits the same way.
@@ -55,11 +55,13 @@ The first version: four tools in one app.
   - Restores a backup exactly: the `Interface` folder, the `WTF` folder or both, after listing what would be
     removed or changed. It takes a safety backup first, and **Undo** puts the folders back.
   - Never follows linked addon folders (symlinks, junctions): they're left out of backups and kept by a restore.
+  - Backing up several game versions: one that fails never stops the others, and the results list each one.
 - **Ace3 Profile Manager**
   - Shows every Ace3 addon's profiles and which characters use them.
   - Deletes, renames and copies profiles, moves characters between them and removes characters that no longer
     exist.
-  - A blacklist (per game version, picked from a tree) keeps addons out of its reach.
+  - A blacklist (per game version, picked from a tree) keeps addons out of its reach. When the filter hides ticked
+    addons, **Save** says how many and asks first.
   - Changes wait as **pending changes** until you apply them; an action bar and a guidance line under the tree say
     what to do next.
   - Edits only the lines that change in each settings file, after backing up the whole `WTF` folder and every file

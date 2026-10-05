@@ -37,8 +37,10 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      `ui/review.py` (the review screen base: `ReviewBase`, `ReviewTree`, `TickModel`), `ui/tree_filter.py` (the tree filter: `TreeFilter`, `FilterInput`, `/`), `ui/result_screen.py`
      (`ResultBase` / `ResultScreen`), `ui/settings_form.py` (`ToolSettingsScreen`), `ui/tool_flow.py` (the
      `ToolFlow` helpers: `start`, `open_settings`, `remember_flavor`, `pick_account`, `fill_notes`),
-     `ui/dialogs.py` (popups and CSS), and in `core/` `journal.ToolJournals`, `marker`, `undo`, `progress`
-     (`ThrottledProgress`), `text` (`plural`, `human_size`) and `install` (`flavor_name`, `validate_backup_dir`).
+     `ui/dialogs.py` (popups and CSS), `ui/widgets.py` (`action_button`), and in `core/` `journal.ToolJournals`,
+     `marker`, `undo`, `progress` (`ThrottledProgress`), `parallel` (`run_units`: independent game versions,
+     `cfg.parallelism` at once; keep a run serial when its units share a journal or marker), `text` (`plural`,
+     `human_size`) and `install` (`flavor_name`, `validate_backup_dir`).
      See [architecture.md](architecture.md) for each module. A tool that changes SavedVariables files takes the
      whole-`WTF` snapshot from `core/snapshot.py` (folder and name prefix are parameters), the path guard and lock
      probe from `core/svfiles.py`, and `core.fsutil.atomic_write_bytes` for its writes, as the WTF Cleaner and the
@@ -80,7 +82,11 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      settings form on `ToolSettingsScreen` (`settings_css`), and hints that start with
      `REVIEW_HINT` (or `review_hint("tick or open")` when Space does more in your tree) and `RESULT_HINT`.
      Every tree screen binds `TREE_BINDINGS` (`x` expand all, `c` collapse all) and puts `TREE_HINT` in its hint
-     before `r rescan`; each focusable control of the left pane gets a row of its own.
+     before `r rescan`; each focusable control of the left pane gets a row of its own. Every tree screen also gets
+     the `/` filter from `wowtools/ui/tree_filter.py`: a `FilterInput` in the left pane and `FILTER_HINT` right
+     before `TREE_HINT`, through `TreeFilter` on a tick screen (placed before `ReviewBase`; supply `all_tick_keys()`
+     and `filter_texts(key)`, and a `HIDDEN_NOUN` for the "N selected … are hidden by the filter" line) or
+     `FilterBox` on a read-only tree.
      Build every button with `action_button(label, kind)` (`wowtools/ui/widgets.py`), never `Button(...)`, and pick
      its kind by what it does, as the other tools do: `destructive` (deletes), `overwrite` (overwrites or changes
      files), `create` (only adds files), `revert` (undo), `simulate` (dry run), `confirm` (Save, OK), `navigate`

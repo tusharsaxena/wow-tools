@@ -655,7 +655,7 @@ Shared screens and widgets in `wowtools/ui/` (the Textual half of the shared lib
 | Module | Job |
 |---|---|
 | `base` | `Ka0sApp`: registers the theme, the background update check, `u` (`UpdateScreen`, focused on "Update now" behind the dialogs `EnterGuard`; `UpdateProgressScreen`), `after_mount()` |
-| `theme` | `KA0S_THEME`, the Ka0s colours |
+| `theme` | `KA0S_THEME`, the Ka0s colours; `ACTION_COLOURS` (one button colour per action kind) and `action_variables()`, the `$act-<kind>` theme variables (`-lighten`, `-darken`, `-text`: whichever of the theme's foreground and background contrasts more, `contrast()`) |
 | `branding` | `Banner` (the shield art on the tool menu and the flavor and account pickers), `VersionLine` and `TermsText` (`TERMS`) on the tool menu, `BrandBar` and `BottomBar` (the footer and the brand bar in one row, on every screen), `update_key_free` / `update_notice` / `brand_texts` |
 | `suite_app` | `WowToolsApp`, `ToolMenuScreen` (the first screen; `ToolArea` holds its list and hint; `c` opens the changelog; with no tool open, `s` works on the menu only: `settings_allowed`, also hidden from the footer elsewhere through `check_action`), `LockScreen` (a `ChoiceScreen`: another copy may be running: Quit, or Override and continue) |
 | `changelog_screen` | `ChangelogScreen` (spec D3; `c` on the tool menu): the two-pane look (`two_pane_css`, `TwoPaneFocus`) with an `OptionList` of versions on the left (`VERSIONS_WIDTH` 36; newest first, one row each with its date, the running version marked "current" and highlighted first) and the highlighted version's notes as `Markdown` in a `NotesScroll` on the right (→/Tab/Enter go there, ↑/↓/PgUp/PgDn scroll it, ← back); Esc/q back to the menu. No changelog: the right pane says why |
