@@ -24,7 +24,7 @@ task; push after every milestone. Never merge without the user's go-ahead.
 | T5.2 | fixed-size progress popup | done | f19d754 | Shared `ProgressScreen(title, *, units, parallelism, what, label, dry_run, first_stage)`: fixed box (`POPUP_WIDTH`, height rows+10), title / overall bar "n of m game versions" / `min(parallelism, units)` unit rows (label, ellipsised stage, bar) / one-line ellipsised detail; bars fill a 45% column (`Bar { width: 1fr }`). Workers write a locked `core.progress.ProgressBoard` (`report`, `report_unit`, `start_unit`, `finish_unit`), drawn on a `PROGRESS_INTERVAL` timer: no `call_from_thread` per report. All four tools migrated (`update_progress`/`set_flavor` gone; IB drops `ThrottledProgress`). `tests/test_progress_popup.py` (15: board rows/reuse/threads, box size before/after long-text floods at BASE+TINY for 1/4/8 rows, 4 rows at TINY, bars fill, every tool's subclass). 1238 tests OK (2 skipped) |
 | T5.3 | apply parallel runs | done | 3bb0415 | `run_units(stop_on_error=)` + `UnitResult.started`. Parallel: IB `back_up_all` (`parallelism`, `on_flavor_done`; popup rows via thread-bound untagged reports) and `scan_flavors`, WTF `multi.scan_flavors` (counts added up under a lock when >1 at once), Shots picker `planner.count_waiting`, Ace3 `undo_run` snapshots (popup units = journal flavors). WTF Clean / Ace3 Apply serial (module docstrings say why). Board: a placeholder after named units is not counted. `tests/test_parallel_runs.py` (14), +3 run_units, +1 board, IB popup rows TUI test, Ace3 undo wiring. 1263 tests OK (2 skipped) |
 | T6.1 | docs sync | done | (this commit) | README Tests badge 1263/1263 (fresh run), green = adds something new (Ace3 Copy too); CLAUDE.md test time ~70s, shared-library list + `parallel`/`changelog`/`branding`/`action_button`, filter/button/confirm-kind conventions; adding-a-tool: `run_units`, the `/` filter on every tree; architecture `theme` row; CHANGELOG: IB failing version never stops the others, Blacklist Save asks when the filter hides ticks. events.md regenerated (no diff). 1263 tests OK (2 skipped) |
-| T6.2 | review, fixes, push | todo | | |
+| T6.2 | review, fixes, push | done (not pushed) | ae7f72c, 6e28464 | final review: 14 confirmed, 14 fixed, 1 part skipped: `_scan_failed` stays per tool (T1.2 decision, the four differ). Filter: one mark rule (counts what the filter shows), status rows filtered on their names, "Nothing matches the filter" line, failed scan's message kept; IB Back up Yes red while it prunes; WTF rescan guard; failed Undo deletes its snapshots; shared `find_locked`/`locked_message`, `ReviewBase._close_progress`; `tagged`/`reset()`/`hidden_ticked_count` gone; structure import check resolves relative and `from wowtools.tools import`; tests tightened; spec D10/D13, CHANGELOG, README, guides. 1272 tests OK (2 skipped) |
 
 ## Decisions taken during the build
 
@@ -204,3 +204,24 @@ task; push after every milestone. Never merge without the user's go-ahead.
   screenshot-06-screenshot-organizer-in-progress.png (old single-bar popup). As with the tool-menu screenshot in T3.2,
   they need the user's own terminal capture; they join the pre-release screenshot request (tool menu, Interface
   Backup, and these two progress popups).
+- **T6.2** Final whole-branch review: 14 findings, all confirmed; 14 fixed, 1 part skipped. Calls made:
+  - Group and root tick marks under a filter: one rule, **count what the filter shows** (`TreeFilter.shown_tick_mark`),
+    not every key as the finding suggested. Space on a group already ticks only the shown keys and the Ace3 builder
+    (filter and Show boxes) only ever holds shown keys, so this rule makes every mark predict what Space does and
+    needs no Ace3 rewrite; hidden ticks are on the summary line. Pinned in test_look_and_feel for all five tick trees.
+    The WTF root label is now set after the model is built (its filter texts were empty before).
+  - Status rows under a filter: filtered on their names like any row (the Shots/IB behaviour, D7's "matches and
+    their ancestors"): WTF "not scanned" flavors, Ace3 error flavors (name and error) and the Ace3 Scan warnings
+    group (its title keeps all, else the matching warnings). So an empty root means nothing matched, and
+    `FilterBox.note_no_match(root)` adds one dim `NO_MATCH_TEXT` line with no data (no tick/relabel touches it; Ace3
+    adds it after its label pass). IB Restore's low-space / nothing-lost notes stay unfiltered (summary notes, not rows).
+  - IB Back up's Yes: `destructive` while `keep_backups` > 0 (the run prunes), `create` only at 0; the T2.2 "create
+    for IB Back up" is superseded. The Back up button stays green (it adds a backup); README/CHANGELOG/guide say so.
+  - Failed Undo snapshots are deleted (new info event `ace.snapshot_discarded`) rather than pruned: the UndoError says
+    nothing was changed, so they protect nothing.
+  - Lock refusal shared as `svfiles.find_locked(files, fail, report)` + `locked_message(locked, verb)`; the Ace3 Undo /
+    recovery refusal now names the known lockers and says "…and N more" like the others ("try again"). Ace3 tests
+    patch `wowtools.core.svfiles.probe_lock`. WTF keeps `_probe_lock` (its tests call it). `_close_progress` moved to
+    `ReviewBase` (Ace3's popup-argument variant stays). `_scan_failed` not moved (T1.2 decision stands).
+  - WTF rescan guard returns on `_scanning` only, not `app.busy`, so the rescan after a clean's result still runs.
+
