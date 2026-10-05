@@ -74,7 +74,8 @@ folder it looked in) and the others carry on.
 
 - **All accounts** (the usual choice): an addon counts as "enabled" if *any* character on *any* account uses it.
 - **One account**: only that account's files are scanned, and only its characters count.
-- **All flavors**: every game version is scanned in turn, each with all its accounts.
+- **All flavors**: every game version is scanned (up to `parallelism` at once, see Settings), each with all its
+  accounts.
 
 A character that has never changed its addon list counts as having every addon enabled, because that's what WoW
 does.

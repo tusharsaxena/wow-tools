@@ -168,8 +168,9 @@ old backups") and the file it's working on. For each game version, the app:
 3. Gives the zip its real name.
 4. Only then deletes that game version's oldest backups beyond the number you keep.
 
-If anything goes wrong, the temporary zip is deleted and that game version is marked **Failed**; the next one
-still goes ahead. A backup never changes anything in your game folders.
+If anything goes wrong, the temporary zip is deleted and that game version is marked **Failed**; the others
+still go ahead (several may be backed up at once, see Settings). An unexpected error is that game version's
+**Failed** too; it doesn't stop the rest. A backup never changes anything in your game folders.
 
 A file that disappears while it's being zipped (WoW or an addon updater deleted it) is left out, and the results
 say how many. A file that's locked by another program stops that game version's backup; close the program and

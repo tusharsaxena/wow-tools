@@ -193,3 +193,7 @@ task; push after every milestone. Never merge without the user's go-ahead.
   GIL-bound: threads would not help) and recovery (one flavor). No extra `stat()` / `resolve()` was added anywhere.
 - **T5.3** `count_waiting` lives in `screenshot_organizer/planner.py` (UI-free, testable) and the picker test patches
   `planner.waiting_count` now.
+- **T5.3** review: 3 findings, 3 fixed, 0 rejected: WTF `scan.addons` and `scan.warning` now carry `flavor=` (flavors
+  scanned at once interleave in the log; test_scanner checks it); docs/wtf-cleaner.md "All flavors" no longer says
+  "in turn"; docs/interface-backup.md says the other game versions go ahead alongside a failed one and that an
+  unexpected error is that version's Failed. 1263 tests OK (2 skipped).
