@@ -85,7 +85,7 @@ class ReportTest(unittest.TestCase):
             self.assertEqual(report.guidance(kind, "Kaelys - Realm1", 0, 0, 0),
                              '"Kaelys - Realm1": Assign a profile, or remove it if a leftover')
         self.assertEqual(report.guidance("addon", "ElvUI", 0, 0, 0),
-                         "ElvUI: Keep only Default, Everyone → Default (More…)")
+                         "ElvUI: Only Default, Everyone → Default (below)")
 
     def test_guidance_on_a_blacklisted_node(self):
         """Feedback round 1 review: a locked addon offers no action but the unlock."""

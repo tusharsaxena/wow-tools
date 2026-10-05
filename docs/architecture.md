@@ -534,8 +534,8 @@ their original get a `rolled_back` line in the journal that holds their entries 
   `GUIDE_MAX_ROWS` (2) rows: a name too long for the hint's row at 120x30 is shortened with "…", and the hint is
   left out only if even that does not fit; on a locked addon the hint names it and the `u` unlock) and the action
   bar `#tree-actions`, a
-  `WrapButtonRow` of `TREE_ACTIONS` (Delete, Assign, Rename, Copy, Leftovers, Blacklist…, More…, Discard: two
-  rows at 120x30, one at 160x45), each button doing what its key does. With nothing ticked, Delete and Assign act on the
+  `WrapButtonRow` of `TREE_ACTIONS` (Delete, Assign, Rename, Copy, Only Default, Everyone → Default, Leftovers,
+  Blacklist…, More…, Discard: three rows at 120x30, two at 160x45), each button doing what its key does. With nothing ticked, Delete and Assign act on the
   highlighted node, but never on the root, a flavor or an account (`GROUP_KINDS`). The guide follows the cursor, the ticks and the pending
   changes. Discard is Backspace (`x`/`c` are expand and collapse all); `b` toggles the highlighted addon's
   (flavor, addon) pair (`settings.toggle_pair`) and saves at once; **Blacklist…** (`action_edit_blacklist`) opens
@@ -548,8 +548,8 @@ their original get a `rolled_back` line in the journal that holds their entries 
   dismisses with the new pair list (or `None`); pairs of flavors it does not show are kept, and a legacy `"*"`
   pair is saved as explicit pairs (for the hidden flavors too).
 - `popups.py`: `TargetScreen` (delete and assign: a target `Select` plus a new-name `Input`), `NameScreen` (rename
-  and copy, with live validation) and `ActionsScreen` (the `m` menu: quick actions plus every key the footer
-  hides), sharing `popup_css`. Apply and Undo use `ConfirmScreen` (`report.apply_confirm`/`undo_confirm`; alerts
+  and copy, with live validation) and `ActionsScreen` (the `m` menu: every key the footer
+  and the action bar hide, under the `ACTION_GROUPS` headings Selection and Modification), sharing `popup_css`. Apply and Undo use `ConfirmScreen` (`report.apply_confirm`/`undo_confirm`; alerts
   in red; Apply and Undo start on No, a dry run on Yes).
 - `ProfileProgressScreen` (ids `ace-*`, `report.STAGE_TITLES`) and `ProfileRecoveryScreen` (Put the originals
   back / Leave as is; Esc leaves the marker for the next scan).
@@ -610,8 +610,8 @@ grows when the window is larger; 80x24 only has to keep working (Addendum B of
 `tests/test_look_and_feel.py` runs each check for every tool: at BASE the left pane, its one-row buttons, the hint
 shape, the result layout, the settings forms (whole, Save included), the footer keys and the popups (fit with room
 around them; the Ace3 quick actions list every action without scrolling); the Ace3 tree pane keeps the plan's
-Review Focus 5 (action bar at most 2 rows, guide at most `GUIDE_MAX_ROWS` = 2, tree at least 12 rows). At LARGE the
-tree grows while the left pane keeps its width, the Ace3 action bar takes one row, and popups and forms stay at a
+Review Focus 5 (action bar at most 3 rows, guide at most `GUIDE_MAX_ROWS` = 2, tree at least 12 rows). At LARGE the
+tree grows while the left pane keeps its width, the Ace3 action bar takes at most two rows, and popups and forms stay at a
 readable width (at most 100 columns), centred. One TINY smoke test opens every tool's review, settings and result
 screens at 80x24 and focuses every focusable control; nothing there is hidden or shortened for that size. Tool tests
 that check a layout run at BASE (`…_at_base`).

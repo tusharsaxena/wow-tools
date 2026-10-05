@@ -58,13 +58,15 @@ PROGRESS_EVERY = 0.05  # seconds between two scan progress reports sent to the U
 GUIDE_MAX_ROWS = 2  # the guidance line leaves its per-node hint out rather than take more rows than this
 GROUP_KINDS = ("root", "flavor", "account")  # nodes too broad to stand for a selection when nothing is ticked
 # The action bar under the tree: (id, label, kind of action, action). Each button does what its key does; one with
-# nothing to act on stays enabled and says what to tick or highlight. The labels are short enough for one row at
-# 160x45 (and two at 120x30): tests/test_look_and_feel.py.
+# nothing to act on stays enabled and says what to tick or highlight. The labels are short enough for two rows at
+# 160x45 (and three at 120x30): tests/test_look_and_feel.py.
 TREE_ACTIONS = (
     ("act-delete", "Delete (d)", "delete", "delete"),
     ("act-assign", "Assign (p)", "apply", "assign"),
     ("act-rename", "Rename (e)", "apply", "rename"),
     ("act-copy", "Copy (k)", "apply", "copy"),
+    ("act-keep-default", "Only Default", "delete", "keep_default"),
+    ("act-everyone-default", "Everyone → Default", "apply", "everyone_default"),
     ("act-leftovers", "Leftovers (o)", "delete", "remove_leftovers"),
     ("act-blacklist", "Blacklist…", "neutral", "edit_blacklist"),
     ("act-more", "More… (m)", "neutral", "more"),
@@ -947,23 +949,31 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
             if choice is None or self.staging is None:
                 return
             keys = {"discard": self.action_discard, "rename": self.action_rename, "copy": self.action_copy,
-                    "remove_leftovers": self.action_remove_leftovers, "blacklist": self.action_blacklist,
-                    "edit_blacklist": self.action_edit_blacklist,
+                    "blacklist": self.action_blacklist, "edit_blacklist": self.action_edit_blacklist,
                     "unlock": self.action_unlock, "switch_view": self.action_switch_view,
-                    "search": self.action_focus_search}
-            if choice == "tick_leftovers":
-                self._tick_leftovers()
-            elif choice in keys:
+                    "search": self.action_focus_search, "tick_leftovers": self._tick_leftovers,
+                    "select_all": self.action_select_all, "select_none": self.action_select_none}
+            if choice in keys:
                 keys[choice]()
-            elif choice in ("keep_default", "everyone_default"):
-                keys = self._databases()
-                if not keys:
-                    self.notify("Tick or highlight an addon first")
-                    return
-                operation = (self.staging.keep_only_default if choice == "keep_default"
-                             else self.staging.everyone_to_default)
-                self._staged(operation(keys))
         self.app.push_screen(ActionsScreen(), done)
+
+    def _whole_databases(self, operation: str) -> None:
+        """Run a Staging operation (keep_only_default, everyone_to_default) on whole databases: the ticked ones,
+        else the highlighted addon's or database."""
+        if not self._ready():
+            return
+        assert self.staging is not None
+        keys = self._databases()
+        if not keys:
+            self.notify("Tick or highlight an addon first")
+            return
+        self._staged(getattr(self.staging, operation)(keys))
+
+    def action_keep_default(self) -> None:
+        self._whole_databases("keep_only_default")
+
+    def action_everyone_default(self) -> None:
+        self._whole_databases("everyone_to_default")
 
     def action_discard(self) -> None:
         if not self._ready():

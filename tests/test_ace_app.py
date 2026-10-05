@@ -385,15 +385,12 @@ class StagingTest(AceAppBase):
             self.assertGreater(review.staging.summary().reassigned, 0)
             self.assertEqual(review.ticked, set())
 
-    async def test_quick_action_keep_only_default_and_discard(self):
+    async def test_only_default_button_and_discard(self):
         app = self.make_app()
         async with app.run_test(size=(140, 50)) as pilot:
             review = await self.open_review(app, pilot)
             await self.highlight(app, pilot, review, "profile", "Healer")
-            await pilot.press("m")
-            await settle(app, pilot)
-            self.assertIsInstance(app.screen, ActionsScreen)
-            app.screen.dismiss("keep_default")
+            review.query_one("#act-keep-default", Button).press()
             await settle(app, pilot)
             self.assertEqual(review.staging.summary().deleted, 1)
             review.action_discard()
@@ -840,8 +837,7 @@ class ReviewFixesTest(AceAppBase):
     async def test_more_menu_lists_every_hidden_key(self):
         from wowtools.tools.ace_profiles.popups import ACTIONS
         ids = {action for action, _ in ACTIONS}
-        for action in ("rename", "copy", "remove_leftovers", "blacklist", "unlock", "switch_view", "search",
-                       "discard"):
+        for action in ("rename", "copy", "blacklist", "unlock", "switch_view", "search", "discard"):
             self.assertIn(action, ids)
         app = self.make_app()
         async with app.run_test(size=(140, 50)) as pilot:
@@ -980,7 +976,7 @@ class GuidanceTest(AceAppBase):
             await pilot.press("n")
             await settle(app, pilot)
             await self.highlight_addon(app, pilot, review, "ElvUI")
-            self.assertTrue(self.guide(review).startswith("ElvUI: Keep only Default"), self.guide(review))
+            self.assertTrue(self.guide(review).startswith("ElvUI: Only Default"), self.guide(review))
             await self.highlight(app, pilot, review, "profile", "Healer")
             await pilot.press("d")
             await settle(app, pilot)
@@ -997,10 +993,11 @@ class GuidanceTest(AceAppBase):
             review = await self.open_review(app, pilot)
             buttons = list(review.query_one("#tree-actions").query(Button))
             self.assertEqual([b.label.plain for b in buttons],
-                             ["Delete (d)", "Assign (p)", "Rename (e)", "Copy (k)", "Leftovers (o)", "Blacklist…",
-                              "More… (m)", "Discard (⌫)"])
+                             ["Delete (d)", "Assign (p)", "Rename (e)", "Copy (k)", "Only Default", "Everyone → Default",
+                              "Leftovers (o)", "Blacklist…", "More… (m)", "Discard (⌫)"])
             self.assertEqual([b.variant for b in buttons],
-                             ["error", "success", "success", "success", "error", "default", "default", "default"])
+                             ["error", "success", "success", "success", "error", "success", "error", "default",
+                              "default", "default"])
             self.assertFalse(any(b.disabled for b in buttons))
 
     async def press(self, app, pilot, review, button_id):
@@ -1333,3 +1330,25 @@ class PopupFeedbackTest(AceAppBase):
             self.assertEqual(screen.focused.id, "ok")
             await pilot.press("right")
             self.assertEqual(screen.focused.id, "cancel")
+
+    async def test_quick_actions_are_grouped_under_headings(self):
+        from wowtools.tools.ace_profiles.popups import ACTION_GROUPS
+        self.assertEqual([heading for heading, _ in ACTION_GROUPS], ["Selection", "Modification"])
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            await pilot.press("m")
+            await settle(app, pilot)
+            menu = app.screen.query_one("#actions-list")
+            headings = [o for o in menu._options if o.disabled]
+            self.assertEqual([str(o.prompt) for o in headings], ["Selection", "Modification"])
+            self.assertEqual(menu.highlighted_option.id, "tick_leftovers")
+            await pilot.press("up")  # the heading above is skipped: nothing to choose there
+            self.assertFalse(menu.highlighted_option.disabled)
+            await pilot.press("escape")
+            await settle(app, pilot)
+            await pilot.press("m")
+            await settle(app, pilot)
+            app.screen.dismiss("select_all")
+            await settle(app, pilot)
+            self.assertTrue(review.ticked)

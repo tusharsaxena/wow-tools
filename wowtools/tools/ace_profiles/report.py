@@ -146,7 +146,7 @@ def node_hint(node_kind: str | None, node_name: str, ticked: int, locked: str = 
     if node_kind in CHARACTER_KINDS:
         return f'"{node_name}": Assign a profile, or remove it if a leftover'
     if node_kind in ("addon", "db"):
-        return f"{node_name}: Keep only Default, Everyone → Default (More…)"
+        return f"{node_name}: Only Default, Everyone → Default (below)"
     return ""
 
 

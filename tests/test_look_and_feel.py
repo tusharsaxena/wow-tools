@@ -159,7 +159,7 @@ class LookAndFeelTest(TuiTestCase):
 
     async def test_ace_tree_pane_fits_with_its_guide_and_action_bar(self):
         """The Ace3 review's tree pane holds the tree, the guidance line and the action bar: at BASE each button and
-        the guide are drawn whole, the action bar takes at most 2 rows, the guide at most 2 and the tree keeps at
+        the guide are drawn whole, the action bar takes at most 3 rows, the guide at most 2 and the tree keeps at
         least 12, with and without pending changes."""
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
@@ -171,7 +171,7 @@ class LookAndFeelTest(TuiTestCase):
                     self.assertIn("pending change", str(review.query_one("#guide").render()))
                 pane = review.query_one("#tree-pane").region
                 buttons = list(review.query_one("#tree-actions").query(Button))
-                self.assertEqual(len(buttons), 8)
+                self.assertEqual(len(buttons), 10)
                 for widget in (*buttons, review.query_one("#guide")):
                     self.assert_inside(widget, pane)
                     self.assert_inside(widget, app.screen.region)
@@ -181,10 +181,10 @@ class LookAndFeelTest(TuiTestCase):
                     self.assert_inside(widget, left._replace(width=left.width - 1))
 
     def assert_ace_tree_pane_rows(self, review, note) -> None:
-        """Review Focus 5 of the terminal size plan, at BASE: action bar <= 2 rows, guide <= 2, tree >= 12."""
+        """Review Focus 5 of the terminal size plan, at BASE: action bar <= 3 rows, guide <= 2, tree >= 12."""
         buttons = list(review.query_one("#tree-actions").query(Button))
-        self.assertLessEqual(len({b.region.y for b in buttons}), 2, note)
-        self.assertLessEqual(review.query_one("#tree-actions").region.height, 2, note)
+        self.assertLessEqual(len({b.region.y for b in buttons}), 3, note)
+        self.assertLessEqual(review.query_one("#tree-actions").region.height, 3, note)
         self.assertLessEqual(review.query_one("#guide").region.height, 2, note)
         self.assertGreaterEqual(review.query_one("#profiles", Tree).region.height, 12, note)
 
@@ -271,15 +271,16 @@ class LookAndFeelTest(TuiTestCase):
                     self.assertRegex(lines[1], r"^\d ")
                     self.assertEqual(" ".join(lines), STEPS)
 
-    async def test_ace_action_bar_is_one_row_at_large(self):
-        """Review Focus 5: at LARGE the whole action bar under the tree takes one row, each button drawn whole."""
+    async def test_ace_action_bar_is_two_rows_at_large(self):
+        """Review Focus 5: at LARGE the whole action bar under the tree takes at most two rows, each button drawn
+        whole."""
         app = self.make_app()
         async with app.run_test(size=LARGE) as pilot:
             review = await self.open_review(app, pilot, "ace-profiles")
             bar = review.query_one("#tree-actions")
             buttons = list(bar.query(Button))
-            self.assertEqual(len({b.region.y for b in buttons}), 1, [b.region for b in buttons])
-            self.assertEqual(bar.region.height, 1)
+            self.assertLessEqual(len({b.region.y for b in buttons}), 2, [b.region for b in buttons])
+            self.assertLessEqual(bar.region.height, 2)
             for button in buttons:
                 self.assert_inside(button, review.query_one("#tree-pane").region)
                 self.assertGreaterEqual(button.region.width, len(button.label.plain) + 2, button.label)

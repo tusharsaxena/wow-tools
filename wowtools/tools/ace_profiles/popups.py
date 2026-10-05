@@ -16,24 +16,33 @@ from textual.widgets.option_list import Option
 from wowtools.core.events import log_event
 from wowtools.tools.ace_profiles.model import DEFAULT
 from wowtools.tools.ace_profiles.ops import valid_name
-from wowtools.ui.dialogs import ALERT_STYLE, POPUP_WIDTH
+from wowtools.ui.dialogs import ACCENT, ALERT_STYLE, POPUP_WIDTH
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, NavSelect, action_button
 
-# The quick actions, and every review key the footer has no room for (each label names its key).
-ACTIONS = (
-    ("keep_default", "Keep only Default (ticked or highlighted addons)"),
-    ("everyone_default", "Everyone → Default (ticked or highlighted addons)"),
-    ("tick_leftovers", "Tick all leftover characters"),
-    ("rename", "Rename the highlighted profile (e)"),
-    ("copy", "Copy the highlighted profile (k)"),
-    ("remove_leftovers", "Remove leftover characters (o)"),
-    ("blacklist", "Blacklist or un-blacklist the highlighted addon in its flavor (b)"),
-    ("edit_blacklist", "Edit the blacklist: every flavor and addon, ticked = blacklisted"),
-    ("unlock", "Unlock a blacklisted addon for this session, or lock it again (u)"),
-    ("switch_view", "Switch view: by addon / by character (v)"),
-    ("search", "Search (/)"),
-    ("discard", "Discard the pending changes (Backspace)"),
+# The quick actions, and every review key the footer and the action bar have no room for (each label names its key),
+# under two headings: what changes the selection (or what there is to select from), and what changes the selected
+# items. The most used actions (Delete, Assign, Only Default, Everyone → Default, Leftovers) are on the action bar.
+ACTION_GROUPS = (
+    ("Selection", (
+        ("tick_leftovers", "Tick all leftover characters"),
+        ("select_all", "Tick everything shown (a)"),
+        ("select_none", "Untick everything (n)"),
+        ("search", "Search (/)"),
+        ("switch_view", "Switch view: by addon / by character (v)"),
+    )),
+    ("Modification", (
+        ("rename", "Rename the highlighted profile (e)"),
+        ("copy", "Copy the highlighted profile (k)"),
+        ("blacklist", "Blacklist or un-blacklist the highlighted addon in its flavor (b)"),
+        ("edit_blacklist", "Edit the blacklist: every flavor and addon, ticked = blacklisted"),
+        ("unlock", "Unlock a blacklisted addon for this session, or lock it again (u)"),
+        ("discard", "Discard the pending changes (Backspace)"),
+    )),
 )
+ACTIONS = tuple(action for _, actions in ACTION_GROUPS for action in actions)
+ACTIONS_ROWS = len(ACTIONS) + 2 * len(ACTION_GROUPS) - 1  # every action, a heading per group, a gap between groups
+
+HEADING_STYLE = ACCENT  # a group heading in the quick actions menu, like a section heading in the left pane
 
 
 def popup_css(screen: str) -> str:
@@ -52,7 +61,7 @@ def popup_css(screen: str) -> str:
     {screen} .popup-error {{ height: auto; display: none; }}
     {screen} .popup-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
     {screen} Button {{ margin-left: 2; }}
-    {screen} OptionList {{ height: auto; max-height: {len(ACTIONS) + 2}; }}
+    {screen} OptionList {{ height: auto; max-height: {ACTIONS_ROWS + 2}; }}
     """
 
 
@@ -182,19 +191,28 @@ class NameScreen(ModalScreen[str | None]):
 
 
 class ActionsScreen(ModalScreen[str | None]):
-    """The quick actions menu (m). Dismisses with the chosen action's id, or None."""
+    """The quick actions menu (m), its actions under their group's heading (ACTION_GROUPS). Dismisses with the
+    chosen action's id, or None."""
 
     DEFAULT_CSS = popup_css("ActionsScreen")
     BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel")]
 
     def compose(self) -> ComposeResult:
+        options: list[Option | None] = []
+        for heading, actions in ACTION_GROUPS:
+            if options:
+                options.append(None)  # a gap between groups
+            options.append(Option(Text(heading, style=HEADING_STYLE), disabled=True))  # never highlighted
+            options += [Option(Text(f"  {label}"), id=action) for action, label in actions]
         with Vertical(classes="popup-box"):
             yield Static(Text("Quick actions"), classes="title")
-            yield OptionList(*[Option(Text(label), id=action) for action, label in ACTIONS], id="actions-list")
+            yield OptionList(*options, id="actions-list")
             yield NavHint("↑↓ choose · Enter select · Esc cancel")
 
     def on_mount(self) -> None:
-        self.query_one("#actions-list", OptionList).focus()
+        actions = self.query_one("#actions-list", OptionList)
+        actions.highlighted = 1  # the first action, under the first heading
+        actions.focus()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         event.stop()

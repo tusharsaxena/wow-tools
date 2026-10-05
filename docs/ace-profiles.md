@@ -26,8 +26,8 @@ edits, and **Undo last change** puts them back.
 Nothing you do on the review screen touches a file until you press **Apply**. In four steps:
 
 1. **Tick** the profiles or characters you want to change (`Space`), or just highlight one.
-2. **Pick an action** in the bar under the tree: **Delete**, **Assign**, **Rename**, **Copy**, **Leftovers**,
-   **Blacklist…** or **More…** (each button also has a key).
+2. **Pick an action** in the bar under the tree: **Delete**, **Assign**, **Rename**, **Copy**, **Only Default**,
+   **Everyone → Default**, **Leftovers**, **Blacklist…** or **More…** (most buttons also have a key).
 3. **Check the pending changes in the tree.** Each action shows its result in the tree straight away, marked so you
    can tell (`✘ deleted`, `was Healer` and so on), but it's only *pending*: nothing has been written yet. Make as
    many as you like; **Discard** (`Backspace`) drops them all.
@@ -84,9 +84,11 @@ that addon.
 | **Assign** | `p` | Moves the ticked characters, or the highlighted ones, to another profile |
 | **Rename** | `e` | Renames the highlighted profile |
 | **Copy** | `k` | Copies the highlighted profile under a new name |
+| **Only Default** | | Deletes every profile except "Default" of the ticked addons (or the highlighted one) and moves everyone onto "Default" |
+| **Everyone → Default** | | Moves every character of the ticked addons (or the highlighted one) to "Default" and keeps the other profiles |
 | **Leftovers** | `o` | Removes the ticked leftover characters |
 | **Blacklist…** | | Opens the [blacklist](#the-blacklist) screen |
-| **More…** | `m` | The quick actions, and every other key |
+| **More…** | `m` | The quick actions: every other key, in two groups |
 | **Discard** | `Backspace` | Drops every pending change |
 
 A button is never greyed out: if there's nothing for it to work on, it tells you what to tick or highlight first.
@@ -165,15 +167,19 @@ message lists the ones it skipped.
 
 ### Quick actions
 
-`m` opens a menu with the quick actions. They work on the ticked addons, or on the highlighted one when nothing is
-ticked:
+**Only Default** and **Everyone → Default** on the action bar work on whole addons: the ticked ones, or the
+highlighted one when nothing is ticked.
 
-- **Keep only Default**: deletes every profile except "Default" and moves everyone onto "Default".
+- **Only Default**: deletes every profile except "Default" and moves everyone onto "Default".
 - **Everyone → Default**: moves every character to "Default" and keeps the other profiles.
-- **Tick all leftover characters**: ticks every character tagged "no character folder" that's shown, ready for
-  `o`.
-- **Discard the pending changes**, and every key the bottom bar has no room for (`e`, `k`, `o`, `b`, `u`, `v`, `/`,
-  `Backspace`), so you can find them without this guide.
+
+`m` opens the quick actions menu, in two groups, so you can find every key without this guide:
+
+- **Selection** changes what's ticked or shown: **Tick all leftover characters** (every character tagged "no
+  character folder" that's shown, ready for **Leftovers**), tick everything shown (`a`), untick everything (`n`),
+  search (`/`) and switch view (`v`).
+- **Modification** changes the ticked or highlighted items: rename (`e`), copy (`k`), blacklist (`b`), edit the
+  blacklist, unlock (`u`) and discard the pending changes (`Backspace`).
 
 ### The blacklist
 
