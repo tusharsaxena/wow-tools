@@ -14,10 +14,10 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.screen import Screen
-from textual.widgets import Button, DataTable, Footer, Header
+from textual.widgets import Button, DataTable, Header
 
 from wowtools.core.events import log_event
-from wowtools.ui.branding import BrandBar
+from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import RESULT_HINT, result_css, theme_colour
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
@@ -106,8 +106,7 @@ class ResultBase(Screen[str]):
             for label, kind, button_id, _ in buttons:
                 yield action_button(label, kind, id=button_id)
         yield NavHint(RESULT_HINT + " · ".join(words for *_, words in buttons if words))
-        yield BrandBar()
-        yield Footer()
+        yield BottomBar()
 
     def on_mount(self) -> None:
         self.sub_title = self.result_title()

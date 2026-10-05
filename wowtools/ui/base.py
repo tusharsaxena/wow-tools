@@ -16,6 +16,7 @@ from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.updater import (ReleaseInfo, UpdateError, apply_update, check_for_update,
                                    persist_check_state)
+from wowtools.ui.branding import update_key_free, update_notice
 from wowtools.ui.dialogs import GUARD_BINDING, EnterGuard
 from wowtools.ui.theme import KA0S_THEME, action_variables
 from wowtools.ui.widgets import ACTION_CSS, NAV_BINDINGS, ButtonRow, NavHint, action_button
@@ -141,7 +142,7 @@ class Ka0sApp(App):
 
     def _update_found(self, release: ReleaseInfo) -> None:
         self.release = release
-        self.notify(f"v{release.version} is available. Press u to update.",
+        self.notify(f"Ka0s WoW Tools {update_notice(release.version, update_key_free(self.screen))}.",
                     title="Ka0s WoW Tools update", timeout=10)
 
     def action_update(self) -> None:

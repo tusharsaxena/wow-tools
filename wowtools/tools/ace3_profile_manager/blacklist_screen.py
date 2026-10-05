@@ -11,7 +11,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widget import Widget
-from textual.widgets import Button, Footer, Header, ProgressBar, Static, Tree
+from textual.widgets import Button, Header, ProgressBar, Static, Tree
 from textual.widgets.tree import TreeNode
 
 from wowtools.core.config import Config
@@ -22,7 +22,7 @@ from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager.report import scan_label
 from wowtools.tools.ace3_profile_manager.scanner import ScanResult, scan_flavors
 from wowtools.tools.ace3_profile_manager.settings import WILDCARD, Pair, is_blacklisted, unique_pairs
-from wowtools.ui.branding import BrandBar
+from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, TREE_BINDINGS, TREE_HINT, relabel_branch, review_hint, theme_colour, tick_mark,
                                 two_pane_css)
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
@@ -89,8 +89,7 @@ class BlacklistScreen(ReviewBase, Screen["list[Pair] | None"]):
                 yield Static("", id="scan-label")
             yield ReviewTree(Text("Blacklist", style=ACCENT), id="blacklist-tree")
         yield Static(Text(""), id="summary")
-        yield BrandBar()
-        yield Footer()
+        yield BottomBar()
 
     def on_mount(self) -> None:
         self.sub_title = "Ace3 Profile Manager · blacklist"

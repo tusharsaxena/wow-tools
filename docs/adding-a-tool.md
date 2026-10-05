@@ -54,8 +54,8 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      `remember_flavor(choice)`, ask for the account with `pick_account(flavor, then)`, and fill slow picker notes
      with `fill_notes(picker, work, ready)`. The settings form subclasses `ToolSettingsScreen`
      (`wowtools/ui/settings_form.py`: `FORM_TITLE`, `FIRST_FIELD`, `TICKS`, `load()`, `fields()`, `save()`;
-     `folder_input()` / `folder_value()` for a folder field). Put `Header()`, `BrandBar()` and `Footer()` on every
-     screen. The organizer's screens are in `app.py` (`ScreenshotSettingsScreen`) and `review_screen.py`
+     `folder_input()` / `folder_value()` for a folder field). Put `Header()` and `BottomBar()` (`wowtools/ui/branding.py`:
+     the footer and the version in one row) on every screen, never a `Footer()` of its own. The organizer's screens are in `app.py` (`ScreenshotSettingsScreen`) and `review_screen.py`
      (`ShotReviewScreen`, `ShotProgressScreen`, `ShotResultScreen`).
    - **Shared dialogs.** Take the confirm and progress dialogs from `wowtools/ui/dialogs.py`, never from another
      tool (a tool imports nothing from another tool; `tests/test_structure.py` checks it):

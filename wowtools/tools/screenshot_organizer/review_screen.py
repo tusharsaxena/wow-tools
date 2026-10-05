@@ -12,7 +12,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widget import Widget
-from textual.widgets import Button, DataTable, Footer, Header, Label, ProgressBar, Static, Tree
+from textual.widgets import Button, DataTable, Header, Label, ProgressBar, Static, Tree
 
 from wowtools.core import activity
 from wowtools.core.config import Config
@@ -28,7 +28,7 @@ from wowtools.tools.screenshot_organizer.report import (RESULT_COLUMNS, STAGE_TI
                                                         kind_class, result_rows, stopped_text, summary_rows)
 from wowtools.tools.screenshot_organizer.settings import load_settings, validate_dest
 from wowtools.tools.screenshot_organizer.undo import undo
-from wowtools.ui.branding import BrandBar
+from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                 relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.result_screen import ResultBase, result_bindings, status_style
@@ -140,8 +140,7 @@ class ShotReviewScreen(ReviewBase, Screen[str]):
                 yield Static("", id="scan-label")
             yield ReviewTree(Text(self.scope_label), id="shots")
         yield Static("", id="summary")
-        yield BrandBar()
-        yield Footer()
+        yield BottomBar()
 
     def on_mount(self) -> None:
         self.sub_title = f"Screenshot Organizer · {self.scope_label}"

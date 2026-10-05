@@ -13,6 +13,8 @@ from textual.widgets._footer import FooterKey
 
 from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, build_ace_tree, build_interface_tree, build_screenshot_tree,
                             build_wow_tree, make_config, settle)
+from wowtools import __version__
+from wowtools.core.updater import ReleaseInfo
 from wowtools.tools import TOOLS as TOOL_INFO
 from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
 from wowtools.ui.branding import BrandBar
@@ -425,6 +427,73 @@ class LookAndFeelTest(TuiTestCase):
         self.assertNotIn("palette", line)
         for key in keys:
             self.assertIn(f"{key.key_display} {key.description}", line)
+
+    def bottom_line(self, app) -> str:
+        return app.screen._compositor.render_strips()[-1].text
+
+    def assert_brand_shown(self, app, text: str) -> None:
+        """The BrandBar is on screen, on the last row next to the footer's keys (not under them), and `text` is in
+        what the terminal shows on that row."""
+        bar = app.screen.query_one(BrandBar)
+        line = self.bottom_line(app)
+        self.assertEqual(bar.region.bottom, app.screen.size.height, bar.region)
+        self.assertGreater(bar.region.width, 0, bar.region)
+        self.assertIn(text, line)
+        for key in app.screen.query(FooterKey):
+            if key.display:
+                self.assertLessEqual(key.region.right, bar.region.x, (key, bar.region))
+
+    async def test_brand_bar_shows_the_version_on_the_menu_and_every_review(self):
+        """Spec D5: the version shares the footer's row (one BottomBar), so it shows on the tool menu (whole, at
+        BASE and TINY), on every review and on a result screen (at least "v<version>" next to a compact footer),
+        while the footer still shows each of its keys at BASE."""
+        for size in (BASE, TINY):
+            with self.subTest(screen="menu", size=size):
+                app = self.make_app()
+                async with app.run_test(size=size) as pilot:
+                    await settle(app, pilot)
+                    self.assert_brand_shown(app, f"Ka0s WoW Tools v{__version__}")
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    review = await self.open_review(app, pilot, tool)
+                    self.assert_brand_shown(app, f"v{__version__}")
+                    self.assert_footer_whole(app)
+                    PREPARE.get(tool, lambda r: None)(review)
+                    getattr(review, f"action_{RUN_ACTION[tool]}")()
+                    await settle(app, pilot)
+                    app.screen.dismiss(True)
+                    await settle(app, pilot)
+                    self.assert_brand_shown(app, f"Ka0s WoW Tools v{__version__}")
+
+    async def test_brand_bar_shows_the_update_notice(self):
+        """Once a release is found the bottom row says so: whole on the tool menu, in a shorter wording that still
+        names the key on every review (the footer keeps each of its keys at BASE). Spec D15: the Ace3 review binds
+        u to Unlock, so there the notice sends the user to the tool menu and never says "press u" alone."""
+        release = ReleaseInfo.from_version("9.9.9")
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await settle(app, pilot)
+            app.release = release
+            await settle(app, pilot)
+            self.assert_brand_shown(app, f"⬆ v9.9.9 available, press u to update · Ka0s WoW Tools v{__version__}")
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    app.release = release
+                    await self.open_review(app, pilot, tool)
+                    bar = app.screen.query_one(BrandBar)
+                    shown = bar.shown_text
+                    self.assert_brand_shown(app, shown)
+                    self.assert_footer_whole(app)
+                    if tool == "ace3-profile-manager":
+                        self.assertIn("v9.9.9 available, press u on the tool menu to update", bar.text)
+                        self.assertIn(shown, ("⬆ v9.9.9: menu, u", "⬆ v9.9.9 (menu)"))
+                    else:
+                        self.assertIn("v9.9.9 available, press u to update", bar.text)
+                        self.assertIn(shown, ("⬆ v9.9.9: press u", "⬆ v9.9.9 (u)"))
 
     async def test_ace_left_pane_has_view_and_show_headings(self):
         """Addendum B: at 120x30 the Ace3 left pane has room for its View and Show section headings again, and the

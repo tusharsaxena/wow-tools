@@ -13,7 +13,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widget import Widget
-from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, ProgressBar, Static, Tree
+from textual.widgets import Button, Checkbox, Header, Input, Label, ProgressBar, Static, Tree
 
 from wowtools.core import activity
 from wowtools.core.config import Config
@@ -33,7 +33,7 @@ from wowtools.tools.wtf_cleaner.rules import (CRITERIA, Proposal, ProposalItem, 
 from wowtools.tools.wtf_cleaner.safety import SNAPSHOT_SUBDIR, Marker, clear_marker, read_marker, recovery_message
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir
 from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
-from wowtools.ui.branding import BrandBar
+from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceScreen, ConfirmScreen,
                                 ProgressScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
@@ -153,8 +153,7 @@ class ReviewScreen(ReviewBase, Screen[str]):
                 yield Static("", id="scan-label")
             yield ReviewTree(Text(self._root_name()), id="proposal")
         yield Static("", id="summary")
-        yield BrandBar()
-        yield Footer()
+        yield BottomBar()
 
     def on_mount(self) -> None:
         self.sub_title = f"WTF Cleaner · {self._scope()}"

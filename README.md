@@ -164,8 +164,9 @@ Each tool has its own guide, with pictures, that walks through every screen:
 
 ## Updates
 
-The app checks for a new version once a day while it's open. If there is one, the bottom bar says so; press `u`
-to install it. A small window stays up while it downloads and installs, then the app closes so you can start the
+The app checks for a new version once a day while it's open. If there is one, the bottom bar says so (at its right
+end, next to the version you have); press `u` to install it. On the Ace3 Profile Manager's review `u` unlocks an
+addon, so there the bar tells you to press `u` on the tool menu instead. A small window stays up while it downloads and installs, then the app closes so you can start the
 new version. You can also update from a terminal in the app's folder:
 
 - `wow-tools update --check` (on Windows `wow-tools.cmd update --check`, on Mac and Linux

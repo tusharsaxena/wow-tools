@@ -14,7 +14,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
 from textual.widget import Widget
-from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, ProgressBar, Static, Tree
+from textual.widgets import Button, Checkbox, Header, Input, Label, ProgressBar, Static, Tree
 from textual.widgets.tree import TreeNode
 
 from wowtools.core import activity
@@ -43,7 +43,7 @@ from wowtools.tools.ace3_profile_manager.settings import (Pair, format_blacklist
                                                           resolve_root, save_settings, toggle_pair)
 from wowtools.tools.ace3_profile_manager.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
 from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult, recover, undo_run
-from wowtools.ui.branding import BrandBar
+from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceScreen, ConfirmScreen, InfoScreen,
                                 ProgressScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
@@ -261,8 +261,7 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
         with Vertical(id="tip-rack"):
             yield ActionTip("", id="action-tip")
         yield Static(Text(self.summary_text), id="summary")
-        yield BrandBar()
-        yield Footer()
+        yield BottomBar()
 
     def on_mount(self) -> None:
         self.sub_title = f"Ace3 Profile Manager · {self.scope_label}"

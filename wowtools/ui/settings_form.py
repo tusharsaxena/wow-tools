@@ -14,12 +14,12 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
 from textual.widget import Widget
-from textual.widgets import Button, Footer, Header, Input, Static
+from textual.widgets import Button, Header, Input, Static
 
 from wowtools.core.config import Config
 from wowtools.core.install import WowInstall
 from wowtools.core.paths import to_native, to_stored
-from wowtools.ui.branding import BrandBar
+from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import settings_css
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, FormScroll, NavHint, action_button
 
@@ -80,8 +80,7 @@ class ToolSettingsScreen(Screen[bool]):
                 yield action_button("Save", "confirm", id="save")
                 yield action_button("Cancel", "cancel", id="cancel")
             yield NavHint(settings_hint(self.TICKS))
-        yield BrandBar()
-        yield Footer()
+        yield BottomBar()
 
     def on_mount(self) -> None:  # Textual also runs a subclass's own on_mount: no super() call there
         self.sub_title = self.FORM_TITLE

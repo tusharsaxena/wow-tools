@@ -24,7 +24,7 @@ from wowtools.core.updater import ReleaseInfo, UpdateError
 from wowtools.tools import TOOLS
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.base import Ka0sApp, UpdateProgressScreen, UpdateScreen
-from wowtools.ui.branding import BrandBar
+from wowtools.ui.branding import BrandBar, brand_texts, update_key_free, update_notice
 from wowtools.ui.dialogs import CONFIRM_GUARD
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
@@ -439,6 +439,37 @@ class AccountScreenTest(UiTestCase):
             await pilot.press("escape")
             await pilot.pause()
         self.assertEqual(app.results, [None])
+
+
+class U(Screen):
+    BINDINGS: ClassVar[list[Binding]] = [Binding("u", "unlock", "Unlock", show=False)]
+
+
+class BrandTextTest(UiTestCase):
+    def test_wordings_longest_first_and_the_key_named_right(self):
+        """brand_texts gives the brand bar its wordings longest first; each update wording keeps the new
+        version, and where u is the screen's own key (spec D15) none says "press u" without the tool menu."""
+        self.assertEqual(brand_texts("1.0.0", None, True), ["Ka0s WoW Tools v1.0.0", "v1.0.0"])
+        for key_free in (True, False):
+            texts = brand_texts("1.0.0", "2.0.0", key_free)
+            self.assertEqual(texts[0], f"⬆ {update_notice('2.0.0', key_free)} · Ka0s WoW Tools v1.0.0")
+            self.assertEqual([len(t) for t in texts], sorted((len(t) for t in texts), reverse=True))
+            self.assertTrue(all(t.startswith("⬆ v2.0.0") for t in texts), texts)
+            if not key_free:
+                self.assertFalse([t for t in texts if "press u" in t and "tool menu" not in t], texts)
+        self.assertEqual(update_notice("2.0.0", True), "v2.0.0 available, press u to update")
+        self.assertEqual(update_notice("2.0.0", False), "v2.0.0 available, press u on the tool menu to update")
+
+    async def test_a_screen_binding_u_is_not_key_free_and_the_toast_says_so(self):
+        app = Host(self.cfg, U())
+        notes = []
+        async with app.run_test(size=(120, 30)) as pilot:
+            await pilot.pause()
+            self.assertFalse(update_key_free(app.screen))
+            self.assertTrue(update_key_free(app.screen_stack[0]))
+            with patch.object(app, "notify", side_effect=lambda message, **kw: notes.append(message)):
+                app._update_found(ReleaseInfo.from_version("9.9.9"))
+        self.assertEqual(notes, ["Ka0s WoW Tools v9.9.9 available, press u on the tool menu to update."])
 
 
 class WrapItemsTest(unittest.TestCase):

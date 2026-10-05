@@ -583,7 +583,11 @@ their original get a `rolled_back` line in the journal that holds their entries 
 ## UI
 
 `Ka0sApp` registers the `ka0s` theme, starts the background update check, handles `u`, and exposes
-the `after_mount()` hook. Every screen shows a `Header`, the `BrandBar` and a `Footer`. Long-running or blocking work
+the `after_mount()` hook. Every screen shows a `Header` and ends with a `BottomBar`: one docked row holding a compact `Footer` (its keys
+from the left) and the `BrandBar` (the version and the update notice, right-aligned, in the longest wording that
+fits what the keys leave; docked on their own the two overlapped and the brand bar was never seen). Where a screen
+binds `u` itself (the Ace3 review's Unlock), the notice and the toast say to press `u` on the tool menu
+(`update_key_free`). Long-running or blocking work
 runs in thread workers and reports back with `call_from_thread`: scan, clean, organize, backup, restore, profile apply, undo, and also the
 running-programs check before a clean, backup, restore or undo confirm (PowerShell/`tasklist`; the
 review screen shows "Checking for running programs…" and ignores its action keys meanwhile), install detection on the setup screen, the organizer's
@@ -600,7 +604,7 @@ Shared screens and widgets in `wowtools/ui/` (the Textual half of the shared lib
 |---|---|
 | `base` | `Ka0sApp`: registers the theme, the background update check, `u` (`UpdateScreen`, focused on "Update now" behind the dialogs `EnterGuard`; `UpdateProgressScreen`), `after_mount()` |
 | `theme` | `KA0S_THEME`, the Ka0s colours |
-| `branding` | `Banner` (the shield art on the tool menu and the flavor and account pickers) and `BrandBar` (on every screen) |
+| `branding` | `Banner` (the shield art on the tool menu and the flavor and account pickers) `BrandBar` and `BottomBar` (the footer and the brand bar in one row, on every screen), `update_key_free` / `update_notice` / `brand_texts` |
 | `suite_app` | `WowToolsApp`, `ToolMenuScreen` (the first screen), `LockScreen` (a `ChoiceScreen`: another copy may be running: Quit, or Override and continue) |
 | `tool_flow` | `ToolFlow` base (spec D9): `start()` (`require_install()`, the shared WoW-folder setup, then `SETTINGS_SCREEN` with source `wizard` the first time the tool opens, then the tool's `_pick_flavor()`), `open_settings()` (`s`: the WoW-folder settings, then `SETTINGS_SCREEN`; never while it or a `SETTINGS_BLOCKERS` screen is on the stack), `_settings_done()` ("Settings saved…"), `_after_review(choice)` (`flavors` / `tools` / quit), `remember_flavor(choice)` and `pick_account(flavor, then)` (the last choices in `[SECTION]` `last_flavor_choice` / `last_account`, logged with source `picker`; the account picker only for several accounts, Esc back to the flavor picker), `fill_notes(picker, work, ready)` (a flavor picker's notes worked out in a thread, set only while that picker is still on the stack), `close()` |
 | `settings_form` | `ToolSettingsScreen(tool_cfg, wow_path, *, source)`: every tool's settings form (title `FORM_TITLE`, the tool's `fields()`, `#settings-error`, Save and Cancel, the hint from `settings_hint(TICKS)`, focus on `FIRST_FIELD`, Esc cancels). A tool supplies `load()`, `fields()` and `save()` (False after `_error(text)` keeps the form open); `folder_input()` / `folder_value()` handle a folder field (empty = the default, whose stored form `folder_hint(path)` shows), `wow_install` is the WoW folder when valid. Dismisses with True once saved |
@@ -626,8 +630,9 @@ grows when the window is larger; 80x24 only has to keep working (Addendum B of
 - settings forms are `FORM_WIDTH` (`width: 100%; max-width: 100`), centred, with compact checkboxes, so the whole
   form and its Save button show at 120x30;
 - a result screen's summary takes at most 60% of the height (`result_css`); the table below takes the rest;
-- footers show every key whole at 120 columns: the command palette's key is hidden suite-wide (Ctrl+P still opens
-  it), and keys that are on a button (the Ace3 review's `d`, `p`, `m`) are left off the footer;
+- footers show every key whole at 120 columns: the footer is compact (one space between keys), the command
+  palette's key is hidden suite-wide (Ctrl+P still opens it), and keys that are on a button (the Ace3 review's `d`,
+  `p`, `m`) are left off the footer; the brand bar takes what is left of the row (at least the version on a review);
 - paths on result screens are named inside a "Backup folder" row (`cleaned/<name>`, `snapshots/<name>`, …) rather
   than whole, so they fit (a file outside that folder keeps its whole path); the Screenshot Organizer names its
   targets inside a "Target folder" row (`report.target_folder`), each keeping its YYYY/MM/DD; a tree line longer

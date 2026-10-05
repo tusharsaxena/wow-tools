@@ -190,6 +190,14 @@ class StructureTest(unittest.TestCase):
                                or (isinstance(n.func, ast.Attribute) and n.func.attr == "Button"))]
         self.assertEqual(offenders, [])
 
+    def test_footer_and_brand_bar_only_in_the_bottom_bar(self):
+        """Screens yield a BottomBar; only it builds the Footer and the BrandBar, in one row (spec D5: docked on
+        their own the two overlapped and the brand bar never showed)."""
+        offenders = [f"{rel(path)}:{n.lineno}" for path in modules("wowtools") if rel(path) != "wowtools/ui/branding.py"
+                     for n in ast.walk(tree(path))
+                     if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in ("Footer", "BrandBar")]
+        self.assertEqual(offenders, [])
+
     def test_same_label_same_colour(self):
         """Every button label in wowtools has one action kind, and the key actions have the kind spec D12 gives
         them. Labels come from action_button(label, kind) calls and from the (…, label, kind, …) tuples that

@@ -13,7 +13,7 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.widgets import Footer, Header, OptionList, Static
+from textual.widgets import Header, OptionList, Static
 from textual.widgets.option_list import Option
 
 from wowtools.core.config import CONFIG_DIR, Config, ConfigError, tool_config_path
@@ -22,7 +22,7 @@ from wowtools.core.install import detect_installs
 from wowtools.core.lock import InstanceLock, LockInfo
 from wowtools.tools import TOOLS
 from wowtools.ui.base import Ka0sApp
-from wowtools.ui.branding import Banner, BrandBar
+from wowtools.ui.branding import Banner, BottomBar
 from wowtools.ui.dialogs import ChoiceScreen
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.tool_flow import ToolFlow
@@ -88,8 +88,7 @@ class ToolMenuScreen(Screen[None]):
         yield OptionList(*[Option(tool_label(t.title, t.description, width), id=t.name)
                            for t in TOOLS.values()], id="tools")
         yield NavHint("↑↓ choose · Enter open · s settings · q/Esc quit")
-        yield BrandBar()
-        yield Footer()
+        yield BottomBar()
 
     def on_mount(self) -> None:
         self.sub_title = "Choose a tool"

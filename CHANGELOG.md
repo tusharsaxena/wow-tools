@@ -24,6 +24,8 @@ The first version: four tools in one app.
   - Every "are you sure?" window opens on **Yes**, coloured by what it does (red when it deletes, overwrites, undoes
     or drops pending changes); Enter and Space wait a quarter of a second after it opens and are ignored while
     a held key repeats, `y` / `n` / `Esc` answer at once. The update offer's "Update now" waits the same way.
+  - The bottom row of every screen shows the version, and says when a new one is out and how to get it (on the
+    Ace3 Profile Manager's review, where `u` unlocks an addon, it points you to the tool menu).
 - **WTF Cleaner**
   - Finds settings left behind by addons you no longer use, shows them for review, backs them up and deletes them.
   - Works on one game version, one account or **All flavors**.

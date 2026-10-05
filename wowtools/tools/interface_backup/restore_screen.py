@@ -12,7 +12,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widget import Widget
-from textual.widgets import Button, Checkbox, DataTable, Footer, Header, Label, Static, Tree
+from textual.widgets import Button, Checkbox, DataTable, Header, Label, Static, Tree
 
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor
@@ -25,7 +25,7 @@ from wowtools.tools.interface_backup.report import (RESTORE_RESULT_COLUMNS, frie
 from wowtools.tools.interface_backup.restore import (BackupContents, RestoreError, RestorePlan, RestoreResult,
                                                      case_key, open_backup, plan_restore)
 from wowtools.tools.interface_backup.scanner import PARTS, FlavorScan, scan_flavor
-from wowtools.ui.branding import BrandBar
+from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import ACCENT, TREE_BINDINGS, TREE_HINT, TwoPaneFocus, review_hint, theme_colour, two_pane_css
 from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
 from wowtools.ui.review import ButtonActions, ReviewTree
@@ -111,8 +111,7 @@ class RestoreScreen(ButtonActions, TwoPaneFocus, Screen[RestorePlan | None]):
             # Short: the tree is narrow at 80 columns; the left pane has the kind and the zip.
             yield ReviewTree(Text(f"{self.flavor.display_name} · {self.info.when}", style=ACCENT), id="effects")
         yield Static("", id="summary")
-        yield BrandBar()
-        yield Footer()
+        yield BottomBar()
 
     def on_mount(self) -> None:
         self.sub_title = "Interface Backup · restore"

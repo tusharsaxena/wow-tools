@@ -227,7 +227,7 @@ version until you next save the blacklist.
 | `m` | Quick actions, and every key the bottom bar doesn't show |
 | `Backspace` | Discard all pending changes |
 | `b` | Put the highlighted addon on the blacklist, or take it off |
-| `u` | Unlock the highlighted blacklisted addon for this session, or lock it again |
+| `u` | Unlock the highlighted blacklisted addon for this session, or lock it again (so on this screen `u` doesn't update the app: press it on the tool menu) |
 | `v` | Switch view: By addon / By character |
 | `/` | Search |
 | `w` | **Apply** the pending changes (asks first; **Yes** is selected, in red) |

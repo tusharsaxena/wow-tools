@@ -14,7 +14,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widget import Widget
-from textual.widgets import Button, DataTable, Footer, Header, Label, ProgressBar, Static, Tree
+from textual.widgets import Button, DataTable, Header, Label, ProgressBar, Static, Tree
 from textual.widgets.tree import TreeNode
 from textual.worker import get_current_worker
 
@@ -39,7 +39,7 @@ from wowtools.tools.interface_backup.restore_screen import RestoreResultScreen, 
 from wowtools.tools.interface_backup.scanner import CHEAP_STATS, PARTS, FlavorScan, scan_flavors
 from wowtools.tools.interface_backup.settings import load_settings, resolve_backup_root
 from wowtools.tools.interface_backup.undo import undo_restore
-from wowtools.ui.branding import BrandBar
+from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                 relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
@@ -180,8 +180,7 @@ class BackupReviewScreen(ReviewBase, Screen[str]):
                 yield Static("", id="scan-label")
             yield ReviewTree(Text(self.scope_label), id="flavors")
         yield Static("", id="summary")
-        yield BrandBar()
-        yield Footer()
+        yield BottomBar()
 
     def on_mount(self) -> None:
         self.sub_title = f"Interface Backup · {self.scope_label}"

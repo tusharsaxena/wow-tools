@@ -9,13 +9,13 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Input, Label, Static
+from textual.widgets import Button, Header, Input, Label, Static
 
 from wowtools.core.config import GENERAL, Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import WowInstall, detect_installs
 from wowtools.core.paths import to_native, to_stored
-from wowtools.ui.branding import BrandBar
+from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import FORM_WIDTH
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, FormScroll, NavHint, action_button
 
@@ -63,8 +63,7 @@ class SetupScreen(Screen[bool]):
                 yield action_button("Save", "confirm", id="save")
                 yield action_button("Cancel", "cancel", id="cancel")
             yield NavHint("↑↓/Tab move · ←→ buttons · Enter save/press · Esc cancel")
-        yield BrandBar()
-        yield Footer()
+        yield BottomBar()
 
     def on_mount(self) -> None:
         self.sub_title = "Setup"
