@@ -155,7 +155,7 @@ class ResultScreen(ResultBase):
         return self.rows
 
     def extra_buttons(self) -> list[ResultButton]:
-        return [("Back to review (Esc)", "navigate", "back", "")] if self.back else []
+        return [("Back to review (Esc)", "cancel", "back", "")] if self.back else []
 
     def focus_id(self) -> str:
         return "back" if self.back else self.RESCAN

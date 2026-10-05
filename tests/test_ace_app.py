@@ -1013,9 +1013,10 @@ class GuidanceTest(AceAppBase):
             self.assertEqual([b.label.plain for b in buttons],
                              ["Assign (p)", "Rename (e)", "Copy (k)", "Everyone → Default (E)", "Delete (d)",
                               "Only Default (D)", "Leftovers (o)", "Blacklist…", "More… (m)", "Discard (⌫)"])
-            # staged changes first (amber), then staged deletes (red), then the rest
+            # staged changes first (amber; Copy only adds a profile: green), then staged deletes (red), the rest
             self.assertEqual([action_kind(b) for b in buttons],
-                             ["overwrite"] * 4 + ["destructive"] * 3 + ["navigate"] * 2 + ["cancel"])
+                             ["overwrite", "overwrite", "create", "overwrite"] + ["destructive"] * 3
+                             + ["navigate"] * 2 + ["cancel"])
             self.assertFalse(any(b.disabled for b in buttons))
 
     async def press(self, app, pilot, review, button_id):

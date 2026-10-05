@@ -56,15 +56,16 @@ SHOW_FILTERS = {"only-multi": "only_multi", "only-unused": "only_unused", "show-
                 "show-blacklisted": "blacklisted"}
 GUIDE_MAX_ROWS = 2  # the guidance line leaves its per-node hint out rather than take more rows than this
 GROUP_KINDS = ("root", "flavor", "account")  # nodes too broad to stand for a selection when nothing is ticked
-# The action bar under the tree: (id, label, kind of action, action), staged changes first (amber), then staged
-# deletes (red), then the rest; a staging button takes the colour of the action it stages (spec D12).
+# The action bar under the tree: (id, label, kind of action, action), staged changes first (amber; Copy is green: it
+# only adds a profile), then staged deletes (red), then the rest; a staging button takes the colour of the action it
+# stages (spec D12).
 # Each button does what its key does; one with nothing to act on stays enabled and says what to tick or highlight.
 # The focused button's tip (action_tip) says what it would do now. The labels are short enough for two rows at
 # 160x45 (and three at 120x30): tests/test_look_and_feel.py.
 TREE_ACTIONS = (
     ("act-assign", "Assign (p)", "overwrite", "assign"),
     ("act-rename", "Rename (e)", "overwrite", "rename"),
-    ("act-copy", "Copy (k)", "overwrite", "copy"),
+    ("act-copy", "Copy (k)", "create", "copy"),
     ("act-everyone-default", "Everyone → Default (E)", "overwrite", "everyone_default"),
     ("act-delete", "Delete (d)", "destructive", "delete"),
     ("act-keep-default", "Only Default (D)", "destructive", "keep_default"),

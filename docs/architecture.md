@@ -552,7 +552,7 @@ their original get a `rolled_back` line in the journal that holds their entries 
   left out only if even that does not fit; on a locked addon the hint names it and the `u` unlock) and the action
   bar `#tree-actions`, a
   `ActionBar` (a `WrapButtonRow`; ↑ goes back to the tree, and ↓ on the tree's last line comes to it) of
-  `TREE_ACTIONS`, staged changes first (amber), then staged deletes (red), then the rest (Assign, Rename, Copy,
+  `TREE_ACTIONS`, staged changes first (amber; Copy green, it only adds a profile), then staged deletes (red), then the rest (Assign, Rename, Copy,
   Everyone → Default (E), Delete, Only Default (D), Leftovers, Blacklist…, More…, Discard: three rows at 120x30, two at 160x45), each button doing what
   its key does. The focused button's `ActionTip` (`action_tip()`: what it would do with the ticks or the
   highlighted node now) sits on its own `action-tip` layer just above the guidance line over the bar, and
@@ -643,13 +643,13 @@ buttons alone. Each kind also keeps its nearest Textual variant, which is what a
 | Kind | Colour | Variant | Buttons |
 |---|---|---|---|
 | `destructive` | red | error | Clean, Ace3 Apply, Delete (d), Only Default (D), Leftovers (o) |
-| `overwrite` | amber | warning | Organize, Restore (restore screen), Update now, Override and continue, Assign, Rename, Copy, Everyone → Default |
-| `create` | green | success | Back up |
+| `overwrite` | amber | warning | Organize, Restore (restore screen), Update now, Override and continue, Assign, Rename, Everyone → Default |
+| `create` | green | success | Back up, Copy (k) (stages a new profile) |
 | `revert` | violet | warning | Undo last clean / run / restore / change, Undo (z), Put the originals back |
 | `simulate` | cyan | primary | Dry run |
 | `confirm` | blue | primary | Save (every form and the blacklist), OK, Yes, Remind me next time |
-| `navigate` | grey | default | Rescan, Other flavor, Tools, Back to review, Restore / Restore (e) (open the restore screen), Edit blacklist…, Blacklist…, More…, Select none |
-| `cancel` | dim grey | default | Cancel, No, Later, Quit, Back, Dismiss, Leave as is, Discard (⌫) |
+| `navigate` | grey | default | Rescan, Other flavor, Tools, Restore / Restore (e) (open the restore screen), Edit blacklist…, Blacklist…, More…, Select none |
+| `cancel` | dim grey | default | Cancel, No, Later, Quit, Back, Back to review, Dismiss, Leave as is, Discard (⌫) |
 
 Staging buttons (the Ace3 action bar) take the colour of the action they stage. Text on a coloured button is the
 theme's foreground or background, whichever has the higher contrast (at least 4.5:1, pinned). The WTF review shows
