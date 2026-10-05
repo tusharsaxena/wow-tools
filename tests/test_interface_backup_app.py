@@ -5,6 +5,7 @@ import re
 import tempfile
 import threading
 import time
+import types
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
@@ -1522,6 +1523,28 @@ class InterfaceBackupAppTest(TuiTestCase):
             await settle(app, pilot)
             self.assertIsInstance(app.screen, RestoreScreen)
 
+    async def test_restore_from_backup_result_clears_a_filter_that_hides_the_backups(self):
+        """A filter matching the parts but not "Backups" would hide every Backups group: Restore (e) on the result
+        clears it and still puts the cursor on the backup just made."""
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            review.filter_input().value = "interface"
+            await settle(app, pilot)
+            self.assertTrue(review.filtering)
+            await self.make_backup(app, pilot)
+            made = {o.path for o in app.screen.outcomes if o.kind == "created"}
+            await pilot.press("e")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertFalse(review.filtering)
+            self.assertEqual(review.filter_input().value, "")
+            self.assertFalse(self.notified(app, "No backups of these flavors yet."))
+            tree = review.query_one("#flavors", Tree)
+            self.assertEqual(tree.cursor_node.data[0], "backup")
+            self.assertIn(tree.cursor_node.data[1].path, made)
+
     async def test_restore_from_backup_result_goes_to_the_backup_just_made(self):
         """Every flavor already has a backup; a new one of a later flavor only: Restore (e) on its result puts the
         cursor on that new zip, not on the first flavor's older one."""
@@ -1975,3 +1998,20 @@ class InterfaceBackupAppTest(TuiTestCase):
                         self.assertTrue(box.y <= r.y and r.bottom <= box.bottom, (r, box))
                         hint = screen.query_one(NavHint).region
                         self.assertTrue(hint.bottom <= box.bottom, (hint, box))
+
+
+class RestoreFilterKeyTest(TuiTestCase):
+
+    def test_a_grouped_file_is_kept_apart_from_its_namesake_in_another_group(self):
+        """Two folder groups may hold the same relative file (embeds.xml): a match on one group's name shows its
+        file, never the other group's."""
+        items = [("Interface", "AddOns/Foo/embeds.xml"), ("Interface", "AddOns/Foo/foo.lua"),
+                 ("Interface", "AddOns/Bar/embeds.xml"), ("Interface", "AddOns/Bar/foo_compat.lua")]
+        plan = types.SimpleNamespace(removed=items, newer=[], links_kept=[], links_removed=[], unreadable=[])
+        screen = RestoreScreen.__new__(RestoreScreen)
+        screen.text_filter.text = "foo"
+        effects = screen._model(plan)
+        kept = screen._model_filter(effects)
+        groups = {g.data[2]: [f.data[2] for f in g.children if kept.shows(f)] for g in effects[0].children}
+        self.assertEqual(groups["Interface/AddOns/Foo"], ["embeds.xml", "foo.lua"])
+        self.assertEqual(groups["Interface/AddOns/Bar"], ["foo_compat.lua"])

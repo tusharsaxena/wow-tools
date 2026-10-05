@@ -108,3 +108,14 @@ task; push after every milestone. Never merge without the user's go-ahead.
   pane's first control, so `first_filter()` (and the first ←) goes there. A tree node a filter opens whose children
   load on expand gets them at once (`Tree.add(expand=True)` posts no NodeExpanded). Gotcha found: a screen method
   must not be called `_name` (Textual's DOMNode attribute).
+- **T4.2** review: 6 findings, 5 fixed, 1 rejected. Fixed: Ace3 popups count only the hidden ticks the action takes
+  (`_hidden_line(kind, noun, keep)`: Delete "profiles", Assign "characters", Remove leftovers only hidden leftover
+  characters; Only Default / Everyone → Default keep every hidden tick, their databases are taken). The note names
+  what hides the ticks: new `TreeFilter.hidden_ticked_keys()` and `hidden_cause(keys)` hooks
+  (`hidden_by_filter(n, noun, by)`); Ace3 says "the filter", "the Show boxes" (or both, "or") and "the view" (profile
+  ticks in By character, which has no profile rows), and `n` there also unticks those profile ticks (nowhere else to
+  untick them); Show-box-hidden ticks still stay on `n` (D8, like WTF's rule). IB result-screen Restore (`e`) clears
+  the filter before opening the Backups (it could hide every Backups group). IB Restore: a grouped file's data
+  carries its group name (`("file", kind, rel, group)`), so two groups' `embeds.xml` no longer share a ModelFilter
+  key. Rejected: Blacklist `_scanning` "never set": `show_scan_box(True)` sets it (ReviewBase), so `_can_rebuild()`
+  and Save already wait for the scan; a test now pins that. 1207 tests OK (2 skipped).

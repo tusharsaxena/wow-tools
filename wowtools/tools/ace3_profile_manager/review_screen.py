@@ -47,7 +47,7 @@ from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceScreen, ConfirmScreen, InfoScreen,
                                 ProgressScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
-from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, TreeFilter
+from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, TreeFilter, hidden_by_filter
 from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, WrapButtonRow, action_button,
                                  wrap_items)
 
@@ -684,12 +684,42 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         return [k for k in keys if k in shown]
 
     def tree_narrowed(self) -> bool:
-        """The Show boxes narrow the tree too: a tick one of them hides is counted like one the filter hides."""
+        """The Show boxes and the view narrow the tree too: a tick one of them hides is counted like one the
+        filter hides (and named by hidden_cause())."""
         return True
 
-    def _hidden_line(self) -> list[str]:
-        """The hidden-ticks line for a popup of an action that takes the ticks (none when nothing is hidden)."""
-        hidden = self.hidden_ticked_note() if self.ticked else ""
+    def _view_hidden(self, key: tuple) -> bool:
+        """The By character view has no profile rows: a profile tick is hidden by the view, not the filter."""
+        return self.view == "character" and key[0] == "p"
+
+    def hidden_cause(self, keys) -> str:
+        """What hides these ticks: the filter, the Show boxes (both, when both narrow) and the view."""
+        causes = []
+        if any(not self._view_hidden(k) for k in keys):
+            if self.filtering:
+                causes.append("the filter")
+            if self.filters.narrowing:
+                causes.append("the Show boxes")
+            if not causes:  # neither narrows (a tick the tree has no row for any more)
+                causes = ["the filter", "the Show boxes"]
+        if any(self._view_hidden(k) for k in keys):
+            causes.append("the view")
+        return " or ".join([", ".join(causes[:-1]), causes[-1]] if len(causes) > 2 else causes)
+
+    def select_none_keys(self) -> set[tuple]:
+        """What the tree shows, and the profile ticks the By character view hides (it has no row to untick them
+        on; the filter's and the Show boxes' hidden ticks stay, D8)."""
+        return set(self.shown_tick_keys()) | {k for k in self.ticked if self._view_hidden(k)}
+
+    def _hidden_line(self, kind: str | None = None, noun: str = "item",
+                     keep: Callable[[tuple], bool] | None = None) -> list[str]:
+        """The hidden-ticks line for a popup of an action that takes the ticks: only the hidden ticks it takes
+        (of this kind, and those `keep` keeps), none when nothing is hidden."""
+        if not self.ticked:
+            return []
+        keys = [k for k in self.hidden_ticked_keys()
+                if (kind is None or k[0] == kind) and (keep is None or keep(k))]
+        hidden = hidden_by_filter(len(keys), noun, self.hidden_cause(keys))
         return [f"{hidden}: they are included."] if hidden else []
 
     def ticks_frozen(self) -> bool:
@@ -904,7 +934,7 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             moved = sum(len(state.users(n)) for n in names)
             lines.append(f"{self._addon_name(key)}: {', '.join(names)} ({plural(moved, 'character')} move)")
         body = "\n".join(["Delete these profiles and move their characters to the profile chosen below:", *lines,
-                          *self._hidden_line()])
+                          *self._hidden_line("p", "profile")])
 
         def done(target: str | None) -> None:
             if target is not None and self.staging is not None:
@@ -920,7 +950,8 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             self.notify("Tick or highlight a character first")
             return
         lines = [f"{self._addon_name(key)}: {plural(len(chars), 'character')}" for key, chars in selection.items()]
-        body = "\n".join(["Move these characters to the profile chosen below:", *lines, *self._hidden_line()])
+        body = "\n".join(["Move these characters to the profile chosen below:", *lines,
+                          *self._hidden_line("c", "character")])
 
         def done(target: str | None) -> None:
             if target is not None and self.staging is not None:
@@ -988,8 +1019,8 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         def done(ok: bool | None) -> None:
             if ok and self.staging is not None:
                 self._staged(self.staging.remove_leftovers(selection))
-        self.app.push_screen(ConfirmScreen("Remove leftover characters?", body, tuple(self._hidden_line()),
-                                           kind="destructive", groups=groups), done)
+        self.app.push_screen(ConfirmScreen("Remove leftover characters?", body, tuple(self._hidden_line(
+            "c", "leftover character", lambda k: k[2] in staging.state(k[1]).leftovers)), kind="destructive", groups=groups), done)
 
     def _databases(self) -> list[DbKey]:
         """The databases of the ticked keys, else of the highlighted node's addon or database."""

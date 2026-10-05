@@ -280,8 +280,8 @@ class RestoreScreen(FilterBox, ButtonActions, TwoPaneFocus, Screen[RestorePlan |
                         node.children.append(ModelNode(("file", kind, name)))  # a group that is one file
                     else:
                         node.children.append(ModelNode(("group", kind, name),
-                                                       [ModelNode(("file", kind, f"{part}/{rel}"[len(name) + 1:]))
-                                                        for part, rel in members]))
+                                                       [ModelNode(("file", kind, f"{part}/{rel}"[len(name) + 1:],
+                                                                   name)) for part, rel in members]))
             else:
                 node.children = [ModelNode(("file", kind, item if isinstance(item, str) else "/".join(item)))
                                  for item in items]
@@ -292,10 +292,11 @@ class RestoreScreen(FilterBox, ButtonActions, TwoPaneFocus, Screen[RestorePlan |
     def _filter_name(data) -> str:
         if data[0] == "effect":
             return next(title for kind, title, _ in EFFECTS if kind == data[1])
-        return data[-1]
+        return data[2]
 
     def _model_filter(self, effects: list[ModelNode]) -> ModelFilter:
-        # A file's identity is its effect and text, a group's its effect and name: the same for what an expand adds.
+        # A file's identity is its effect and text (and, in a group, the group's name: two groups may hold the same
+        # embeds.xml), a group's its effect and name: the same for what an expand adds.
         return self.model_filter(effects, lambda n: n.children, lambda n: (self._filter_name(n.data),),
                                  key=lambda n: n.data)
 

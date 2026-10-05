@@ -476,7 +476,13 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
 
     def _show_newest_backup(self) -> None:
         """Restore (e) from a result screen: open the Backups of the flavors and put the cursor on the newest
-        backup of them all (not a safety zip): the one just made, whichever flavor it is in."""
+        backup of them all (not a safety zip): the one just made, whichever flavor it is in. A filter would hide
+        it (and maybe every Backups group), so it is cleared first."""
+        if self.filtering:
+            self.text_filter.text = ""
+            self.filter_input().value = ""  # its Changed event finds the text already empty: no second rebuild
+            log_event("ui.selection", screen=self.LOG_SCREEN, control="filter", value="")
+            self._rebuild()
         tree = self.query_one("#flavors", Tree)
         opened = False
         for flavor_node in tree.root.children:

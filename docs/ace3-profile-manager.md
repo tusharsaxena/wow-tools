@@ -152,8 +152,10 @@ character name contains what you type (upper or lower case doesn't matter), and 
 
 The filter and the Show boxes only change what you see. `a` and `n` tick and untick what's shown; a tick they
 hide stays, and **Delete**, **Assign**, **Leftovers**, **Only Default** and **Everyone → Default** still take it.
-When that's the case, the bottom bar and the window those actions open say how many ("2 selected items are hidden
-by the filter").
+When that's the case, the bottom bar says how many and what hides them ("2 selected items are hidden by the filter",
+"... by the Show boxes"), and the window an action opens counts only the ones it takes ("2 selected profiles are
+hidden by the filter: they are included"). By character has no profile rows, so profile ticks are "hidden by the
+view" there, and `n` unticks them too.
 
 ## The changes you can make
 
@@ -223,7 +225,7 @@ version until you next save the blacklist.
 | Key | Does |
 |---|---|
 | `Space` | Tick or untick the highlighted line |
-| `a` / `n` | Tick / untick everything shown (ticks hidden by the Show boxes or the filter stay) |
+| `a` / `n` | Tick / untick everything shown (ticks hidden by the Show boxes or the filter stay; `n` in By character also unticks the profiles) |
 | `d` | Delete the ticked profiles |
 | `p` | Assign a profile to the ticked characters |
 | `e` | Rename the highlighted profile |

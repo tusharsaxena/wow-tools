@@ -33,13 +33,14 @@ FILTER_BINDINGS = [Binding("slash", "focus_filter", "Filter", show=False, priori
 Node = TypeVar("Node")
 
 
-def hidden_by_filter(count: int, noun: str = "item") -> str:
+def hidden_by_filter(count: int, noun: str = "item", by: str = "the filter") -> str:
     """The line a summary and a run's confirm add while the filter hides ticked items ("" when it hides none).
-    `noun` is what the screen's summary counts ("3 selected files are hidden by the filter")."""
+    `noun` is what the screen's summary counts ("3 selected files are hidden by the filter"); `by` names what hides
+    them where more than the filter can (Ace3's Show boxes and view)."""
     if count <= 0:
         return ""
     verb = "is" if count == 1 else "are"
-    return f"{plural(count, 'selected ' + noun)} {verb} hidden by the filter"
+    return f"{plural(count, 'selected ' + noun)} {verb} hidden by {by}"
 
 
 class TextFilter:
@@ -248,17 +249,27 @@ class TreeFilter(FilterBox):
         tree too, Ace3's Show boxes, says so here)."""
         return self.filtering
 
-    def hidden_ticked_count(self) -> int:
-        """How many ticked items the filter hides: they stay ticked and the run takes them."""
+    def hidden_ticked_keys(self) -> list[Hashable]:
+        """The ticked keys the filter hides: they stay ticked and the run takes them."""
         if not self.tree_narrowed():
-            return 0
+            return []
         every = list(self.all_tick_keys())
         shown = set(self.filter_keys(every))
-        return len(self.tick_model().ticked_among(k for k in every if k not in shown))
+        return list(self.tick_model().ticked_among(k for k in every if k not in shown))
+
+    def hidden_ticked_count(self) -> int:
+        """How many ticked items the filter hides."""
+        return len(self.hidden_ticked_keys())
+
+    def hidden_cause(self, keys: Collection[Hashable]) -> str:
+        """What hides these ticked keys, for the note: the filter (a screen whose own controls narrow the tree too
+        names them)."""
+        return "the filter"
 
     def hidden_ticked_note(self) -> str:
         """"N selected items are hidden by the filter", or "" when it hides none: for the summary and confirms."""
-        return hidden_by_filter(self.hidden_ticked_count(), self.HIDDEN_NOUN)
+        keys = self.hidden_ticked_keys()
+        return hidden_by_filter(len(keys), self.HIDDEN_NOUN, self.hidden_cause(keys))
 
     def filter_changed(self) -> None:
         """The filter text changed: rebuild the tree (folded into one rebuild while the user types)."""
