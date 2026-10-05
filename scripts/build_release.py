@@ -28,7 +28,9 @@ def zip_name(version: str) -> str:
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=False)
+    # UTF-8, not the locale's code page: CHANGELOG.md is UTF-8, and cp1252 cannot decode every byte of it.
+    return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", check=False)
 
 
 def build(repo: Path, version: str, out_dir: Path) -> tuple[Path, Path]:

@@ -22,7 +22,9 @@ they set `[general] allow_unverified_updates = true`. So a release without the a
 3. Add the `CHANGELOG.md` entry for vX.Y.Z: a `## [X.Y.Z] - YYYY-MM-DD` heading (today's date) above the previous
    one, with what changed (move anything under `## [Unreleased]` into it). Every tagged release must have an entry:
    the app shows it (`c` on the tool menu), a test fails while `__version__` has none, and step 6 refuses a tag
-   without one. It goes in before the release commit, so the tagged archive carries it.
+   without one. It goes in before the release commit, so the tagged archive carries it. To pull a release later,
+   append ` [YANKED]` to its heading (the app marks it "yanked"); never delete its entry. Close every code fence:
+   an unclosed one makes the whole file malformed.
 4. Commit: `git commit -am "release: vX.Y.Z"`.
 5. Tag and push: `git tag vX.Y.Z && git push origin HEAD --tags`.
 6. Build the assets from the tag: `python3 scripts/build_release.py`. It writes `dist/wow-tools-vX.Y.Z.zip` and

@@ -15,7 +15,7 @@ from wowtools.core.bootstrap import REPO_ROOT
 from wowtools.core.changelog import (CHANGELOG_PATH, UNRELEASED, Changelog, ChangelogError, entry_for, load_changelog,
                                      parse_changelog)
 from wowtools.core.events import capture_events
-from wowtools.ui.changelog_screen import VERSIONS_WIDTH, ChangelogScreen, NotesScroll
+from wowtools.ui.changelog_screen import VERSIONS_WIDTH, ChangelogScreen, NotesScroll, notes_title, version_label
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.suite_app import MENU_HINT, ToolMenuScreen, WowToolsApp
 
@@ -83,11 +83,34 @@ class ParseChangelogTest(unittest.TestCase):
             "## Notes\n": "expected",
             "## [Unreleased] - 2026-10-05\n": "takes no date",
             "## [0.1.0] - 2026-10-05\n## [0.1.0] - 2026-10-06\n": "appears twice",
+            "## [Unreleased] [YANKED]\n": "takes no date",
+            "## [0.1.0] - 2026-10-05 [PULLED]\n": "expected",
+            # an unclosed fence would swallow every later heading
+            "## [0.2.0] - 2026-10-06\n- x\n```\ncode\n## [0.1.0] - 2026-10-05\n- y\n": "line 3: code fence",
+            # ~~~ does not close a ``` fence
+            "## [0.2.0] - 2026-10-06\n```\n~~~\n## [0.1.0] - 2026-10-05\n": "never closed",
         }
         for text, reason in bad.items():
             with self.subTest(text=text), self.assertRaises(ChangelogError) as ctx:
                 parse_changelog(text)
             self.assertIn(reason, str(ctx.exception))
+
+    def test_a_fence_closes_only_on_its_own_marker(self):
+        text = ("## [0.1.0] - 2026-10-05\n````\nexample:\n```\n## [9.9.9] - 2026-01-01\n```\n````\n"
+                "~~~\n```\n## [8.8.8] - 2026-01-01\n~~~~\n## [0.2.0] - 2026-10-06\n- two\n")
+        entries = parse_changelog(text)
+        self.assertEqual([e.version for e in entries], ["0.2.0", "0.1.0"])
+        self.assertIn("## [9.9.9] - 2026-01-01", entries[1].body)
+        self.assertIn("## [8.8.8] - 2026-01-01", entries[1].body)
+
+    def test_a_yanked_release_parses_and_is_marked(self):
+        entries = parse_changelog("## [0.2.0] - 2026-10-06 [YANKED]\n- bad\n## [0.1.0] - 2026-10-05\n- ok\n")
+        self.assertEqual([(e.version, e.date, e.yanked) for e in entries],
+                         [("0.2.0", "2026-10-06", True), ("0.1.0", "2026-10-05", False)])
+        self.assertEqual(entries[0].body, "- bad")
+        self.assertEqual(version_label(entries[0], 8, current="0.1.0").plain, "v0.2.0  2026-10-06  yanked")
+        self.assertEqual(notes_title(entries[0]), "v0.2.0 · 2026-10-06 · yanked")
+        self.assertEqual(notes_title(entries[1]), "v0.1.0 · 2026-10-05")
 
     def test_a_bad_heading_names_its_line(self):
         with self.assertRaises(ChangelogError) as ctx:

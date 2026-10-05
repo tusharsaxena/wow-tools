@@ -1,9 +1,11 @@
 """CHANGELOG.md, parsed for the changelog screen and the release check (spec D2). No UI here.
 
-The file follows Keep a Changelog: a `## [X.Y.Z] - YYYY-MM-DD` heading per release, plus an optional
-`## [Unreleased]` one; everything under a heading, up to the next, is that version's notes (Markdown). Text above
-the first heading is the file's introduction and is not an entry. CHANGELOG.md sits at the install root, a root *.md
-file the updater ships and replaces (core/updater.py `_shipped_names`), so the notes always match the program."""
+The file follows Keep a Changelog: a `## [X.Y.Z] - YYYY-MM-DD` heading per release (a trailing ` [YANKED]` marks a
+pulled release), plus an optional `## [Unreleased]` one; everything under a heading, up to the next, is that
+version's notes (Markdown). Text above the first heading is the file's introduction and is not an entry. A `## `
+line inside a code fence is notes; a fence closes only on the same character repeated at least as often as the one
+that opened it (CommonMark). CHANGELOG.md sits at the install root, a root *.md file the updater ships and replaces
+(core/updater.py `_shipped_names`), so the notes always match the program."""
 from __future__ import annotations
 
 import re
@@ -18,14 +20,16 @@ CHANGELOG_NAME = "CHANGELOG.md"
 CHANGELOG_PATH = REPO_ROOT / CHANGELOG_NAME
 UNRELEASED = "Unreleased"
 
-_HEADING_RE = re.compile(r"^## \[(?P<version>[^\]]*)\](?:\s+-\s+(?P<date>\S+))?\s*$")
+_HEADING_RE = re.compile(r"^## \[(?P<version>[^\]]*)\](?:\s+-\s+(?P<date>\S+))?(?P<yanked>\s+\[YANKED\])?\s*$",
+                         re.IGNORECASE)
 _VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_FENCE_RE = re.compile(r"^\s*(```|~~~)")
+_FENCE_RE = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})(?P<rest>.*)$")
 
 
 class ChangelogError(ValueError):
-    """CHANGELOG.md does not follow the format: a bad version heading, a duplicate version, or no entry at all."""
+    """CHANGELOG.md does not follow the format: a bad version heading, a duplicate version, an unclosed code fence,
+    or no entry at all."""
 
 
 @dataclass(frozen=True)
@@ -33,6 +37,7 @@ class ChangelogEntry:
     version: str  # "X.Y.Z", or UNRELEASED
     date: str | None  # "YYYY-MM-DD"; None for UNRELEASED
     body: str  # the version's notes, Markdown, without the heading
+    yanked: bool = False  # "## [X.Y.Z] - YYYY-MM-DD [YANKED]": the release was pulled
 
     @property
     def unreleased(self) -> bool:
@@ -49,16 +54,16 @@ class Changelog:
     problem: str | None = None
 
 
-def _heading(line: str, number: int) -> tuple[str, str | None]:
+def _heading(line: str, number: int) -> tuple[str, str | None, bool]:
     match = _HEADING_RE.match(line)
     if match is None:
         raise ChangelogError(f"line {number}: expected '## [X.Y.Z] - YYYY-MM-DD' or '## [{UNRELEASED}]', "
                              f"found {line.strip()!r}")
-    version, when = match.group("version").strip(), match.group("date")
+    version, when, yanked = match.group("version").strip(), match.group("date"), match.group("yanked") is not None
     if version.lower() == UNRELEASED.lower():
-        if when is not None:
-            raise ChangelogError(f"line {number}: [{UNRELEASED}] takes no date")
-        return UNRELEASED, None
+        if when is not None or yanked:
+            raise ChangelogError(f"line {number}: [{UNRELEASED}] takes no date and no [YANKED]")
+        return UNRELEASED, None, False
     if not _VERSION_RE.match(version):
         raise ChangelogError(f"line {number}: {version!r} is not a version (X.Y.Z)")
     if when is None:
@@ -69,26 +74,37 @@ def _heading(line: str, number: int) -> tuple[str, str | None]:
         valid = False
     if not valid:
         raise ChangelogError(f"line {number}: {when!r} is not a date (YYYY-MM-DD)")
-    return version, when
+    return version, when, yanked
+
+
+def _fence_closes(line: str, opener: str) -> bool:
+    """True if `line` closes the fence `opener` opened: the same character, at least as many, nothing after it."""
+    match = _FENCE_RE.match(line)
+    return (match is not None and match.group("fence")[0] == opener[0]
+            and len(match.group("fence")) >= len(opener) and not match.group("rest").strip())
 
 
 def parse_changelog(text: str) -> list[ChangelogEntry]:
     """The entries of a CHANGELOG.md text, newest first ([Unreleased] on top). Every `## ` heading outside a code
-    fence must be a version heading; raises ChangelogError for a bad one, a duplicate version or no entry."""
+    fence must be a version heading; raises ChangelogError for a bad one, a duplicate version, an unclosed fence or
+    no entry."""
     entries: list[ChangelogEntry] = []
     seen: set[str] = set()
-    current: tuple[str, str | None] | None = None
+    current: tuple[str, str | None, bool] | None = None
     body: list[str] = []
-    fenced = False
+    fence: tuple[str, int] | None = None  # the open fence's marker and line
 
     def close() -> None:
         if current is not None:
-            entries.append(ChangelogEntry(current[0], current[1], "\n".join(body).strip("\n")))
+            entries.append(ChangelogEntry(current[0], current[1], "\n".join(body).strip("\n"), current[2]))
 
     for number, line in enumerate(text.splitlines(), 1):
-        if _FENCE_RE.match(line):
-            fenced = not fenced
-        elif not fenced and line.startswith("## "):
+        if fence is not None:
+            if _fence_closes(line, fence[0]):
+                fence = None
+        elif (opened := _FENCE_RE.match(line)) is not None:
+            fence = (opened.group("fence"), number)
+        elif line.startswith("## "):
             close()
             current = _heading(line, number)
             if current[0] in seen:
@@ -98,6 +114,8 @@ def parse_changelog(text: str) -> list[ChangelogEntry]:
             continue
         if current is not None:
             body.append(line)
+    if fence is not None:
+        raise ChangelogError(f"line {fence[1]}: code fence {fence[0]} is never closed")
     close()
     if not entries:
         raise ChangelogError("no version entries (## [X.Y.Z] - YYYY-MM-DD)")

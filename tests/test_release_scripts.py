@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import unittest
 import zipfile
+from unittest import mock
 from pathlib import Path
 
 from wowtools.core import updater
@@ -79,7 +80,7 @@ class BuildReleaseTest(unittest.TestCase):
         if changelog is None:
             path.unlink()
         else:
-            path.write_text(changelog)
+            path.write_text(changelog, encoding="utf-8")
         git(self.repo, "add", "-A")
         git(self.repo, "commit", "-q", "-m", "changelog")
         git(self.repo, "tag", "-f", "v0.2.0")
@@ -104,6 +105,16 @@ class BuildReleaseTest(unittest.TestCase):
                 with self.assertRaises(SystemExit) as ctx:
                     self.build_release.build(self.repo, "0.2.0", self.out)
                 self.assertIn(message, str(ctx.exception))
+
+    def test_the_tags_changelog_is_read_as_utf8_whatever_the_locale(self):
+        # cp1252 (Windows) cannot decode 0x81/0x8D/0x8F/0x90/0x9D, bytes of e.g. U+2010, Á and č in UTF-8
+        notes = "- Non-ASCII: \u2010 \u00c1 \u010d \u2191\u2193.\n"
+        self.retag(f"# Changelog\n\n## [0.2.0] - 2026-11-01\n\n{notes}")
+        shown = self.build_release._git(self.repo, "show", "v0.2.0:CHANGELOG.md")
+        self.assertIn(notes, shown.stdout)
+        with mock.patch.object(self.build_release.subprocess, "run", wraps=subprocess.run) as run:
+            self.build_release.check_changelog(self.repo, "v0.2.0", "0.2.0")
+        self.assertEqual(run.call_args.kwargs["encoding"], "utf-8")
 
     def test_the_changelog_is_read_at_the_tag_not_the_working_tree(self):
         (self.repo / "CHANGELOG.md").write_text("broken\n")  # uncommitted: the tag's file is what ships

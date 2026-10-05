@@ -22,6 +22,7 @@ from wowtools.ui.widgets import LIST_CURSOR_BACKGROUND, LIST_NAME_STYLE, NAV_BIN
 
 VERSIONS_WIDTH = 36  # the left pane: a version, its date and the "current" mark on one row
 CURRENT_MARK = "current"
+YANKED_MARK = "yanked"
 CHANGELOG_HINT = "↑↓ version · →/Tab notes · ← versions · Esc/q back"
 
 
@@ -30,14 +31,16 @@ def version_name(entry: ChangelogEntry) -> str:
 
 
 def version_label(entry: ChangelogEntry, width: int, current: str = __version__) -> Text:
-    """A version row: the version (v0.1.0, or Unreleased) padded to `width`, its date, and "current" on the
-    running version."""
+    """A version row: the version (v0.1.0, or Unreleased) padded to `width`, its date, "yanked" on a pulled
+    release and "current" on the running version."""
+    yanked = ("  " + YANKED_MARK, f"bold {KA0S_THEME.error}") if entry.yanked else ""
     mark = ("  " + CURRENT_MARK, f"bold {KA0S_THEME.success}") if entry.version == current else ""
-    return Text.assemble((version_name(entry).ljust(width), LIST_NAME_STYLE), entry.date or "", mark)
+    return Text.assemble((version_name(entry).ljust(width), LIST_NAME_STYLE), entry.date or "", yanked, mark)
 
 
 def notes_title(entry: ChangelogEntry) -> str:
-    return f"{version_name(entry)} · {entry.date}" if entry.date else version_name(entry)
+    title = f"{version_name(entry)} · {entry.date}" if entry.date else version_name(entry)
+    return f"{title} · {YANKED_MARK}" if entry.yanked else title
 
 
 class NotesScroll(VerticalScroll):
