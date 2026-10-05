@@ -586,8 +586,8 @@ their original get a `rolled_back` line in the journal that holds their entries 
 the `after_mount()` hook. Every screen shows a `Header` and ends with a `BottomBar`: one docked row holding a compact `Footer` (its keys
 from the left) and the `BrandBar` (the version and the update notice, right-aligned, in the longest wording that
 fits what the keys leave; docked on their own the two overlapped and the brand bar was never seen). Where a screen
-binds `u` itself (the Ace3 review's Unlock), the notice and the toast say to press `u` on the tool menu
-(`update_key_free`). Long-running or blocking work
+binds `u` itself (the Ace3 review's Unlock) or a text box has focus, the notice and the toast say to press `u` on
+the tool menu (`update_key_free`; the bar follows focus changes, and a popup is judged by the screen under it). Long-running or blocking work
 runs in thread workers and reports back with `call_from_thread`: scan, clean, organize, backup, restore, profile apply, undo, and also the
 running-programs check before a clean, backup, restore or undo confirm (PowerShell/`tasklist`; the
 review screen shows "Checking for running programs…" and ignores its action keys meanwhile), install detection on the setup screen, the organizer's

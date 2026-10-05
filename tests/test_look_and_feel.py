@@ -467,6 +467,18 @@ class LookAndFeelTest(TuiTestCase):
                     await settle(app, pilot)
                     self.assert_brand_shown(app, f"Ka0s WoW Tools v{__version__}")
 
+    async def test_every_review_still_renders_at_tiny_with_an_update(self):
+        """Pinned as accepted (T3.1): at 80x24 a review's compact footer overflows 80 columns and the brand bar
+        gets no room, but the review opens and renders with an update found."""
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=TINY) as pilot:
+                    app.release = ReleaseInfo.from_version("9.9.9")
+                    review = await self.open_review(app, pilot, tool)
+                    self.assertIs(app.screen, review)
+                    self.assertTrue(app.screen.query_one(BrandBar).text.startswith("⬆ v9.9.9"))
+
     async def test_brand_bar_shows_the_update_notice(self):
         """Once a release is found the bottom row says so: whole on the tool menu, in a shorter wording that still
         names the key on every review (the footer keeps each of its keys at BASE). Spec D15: the Ace3 review binds

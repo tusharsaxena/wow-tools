@@ -6,8 +6,8 @@ from rich.cells import cell_len
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal
-from textual.screen import Screen
-from textual.widgets import Footer, Static
+from textual.screen import ModalScreen, Screen
+from textual.widgets import Footer, Input, Static, TextArea
 
 from wowtools import __version__
 
@@ -35,8 +35,20 @@ class Banner(Static):
 
 
 def update_key_free(screen: Screen) -> bool:
-    """True when `u` on this screen reaches the app's update action: a screen can bind `u` itself (the Ace3
-    review's Unlock), and then the update notice must not tell the user to press it there (spec D15)."""
+    """True when `u` on this screen reaches the app's update action (spec D15). It does not when the screen binds
+    `u` itself (the Ace3 review's Unlock) or when a text box has focus (it types the letter); then the update
+    notice must not tell the user to press it there. A popup (ModalScreen) is judged by the screen under it,
+    where the key lands once the popup closes."""
+    if isinstance(screen, ModalScreen):
+        try:
+            stack = screen.app.screen_stack
+        except Exception:  # noqa: BLE001 - not mounted: judge the popup itself
+            stack = []
+        below = [s for s in stack[:stack.index(screen)] if not isinstance(s, ModalScreen)] if screen in stack else []
+        if below:
+            screen = below[-1]
+    if isinstance(screen.focused, (Input, TextArea)):
+        return False
     return all(binding.action in ("update", "app.update")
                for binding in screen._bindings.key_to_bindings.get("u", []))
 
@@ -80,6 +92,8 @@ class BrandBar(Static):
 
     def on_mount(self) -> None:
         self.watch(self.app, "release", self._show, init=True)
+        # a text box taking focus takes `u` too (update_key_free), so the wording follows the focus
+        self.watch(self.screen, "focused", lambda _focused: self._show(getattr(self.app, "release", None)), init=False)
 
     def _show(self, release) -> None:
         self.texts = brand_texts(__version__, None if release is None else release.version,

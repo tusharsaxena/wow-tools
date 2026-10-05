@@ -11,7 +11,7 @@ from typing import ClassVar
 from unittest.mock import patch
 
 from textual.binding import Binding
-from textual.screen import Screen
+from textual.screen import ModalScreen, Screen
 from textual.widgets import Input, Label, OptionList, Static
 from textual.worker import WorkerCancelled, WorkerFailed
 
@@ -24,8 +24,8 @@ from wowtools.core.updater import ReleaseInfo, UpdateError
 from wowtools.tools import TOOLS
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.base import Ka0sApp, UpdateProgressScreen, UpdateScreen
-from wowtools.ui.branding import BrandBar, brand_texts, update_key_free, update_notice
-from wowtools.ui.dialogs import CONFIRM_GUARD
+from wowtools.ui.branding import BottomBar, BrandBar, brand_texts, update_key_free, update_notice
+from wowtools.ui.dialogs import CONFIRM_GUARD, InfoScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
@@ -467,6 +467,43 @@ class BrandTextTest(UiTestCase):
             await pilot.pause()
             self.assertFalse(update_key_free(app.screen))
             self.assertTrue(update_key_free(app.screen_stack[0]))
+            with patch.object(app, "notify", side_effect=lambda message, **kw: notes.append(message)):
+                app._update_found(ReleaseInfo.from_version("9.9.9"))
+        self.assertEqual(notes, ["Ka0s WoW Tools v9.9.9 available, press u on the tool menu to update."])
+
+    async def test_a_focused_text_box_is_not_key_free_and_the_bar_follows_the_focus(self):
+        """A focused Input types the `u`, so the bar names the tool menu while it has focus, and says "press u"
+        again once the focus leaves it."""
+        class Form(Screen):
+            def compose(self):
+                yield Input(id="field")
+                yield Static("x", id="other")
+                yield BottomBar()
+
+        app = Host(self.cfg, Form())
+        async with app.run_test(size=(120, 30)) as pilot:
+            await pilot.pause()
+            app.screen.query_one("#field").focus()
+            app.release = ReleaseInfo.from_version("9.9.9")
+            await pilot.pause()
+            self.assertFalse(update_key_free(app.screen))
+            bar = app.screen.query_one(BrandBar)
+            self.assertIn("press u on the tool menu", bar.text)
+            app.screen.set_focus(None)
+            await pilot.pause()
+            self.assertTrue(update_key_free(app.screen))
+            self.assertIn("press u to update", bar.text)
+
+    async def test_a_popup_is_judged_by_the_screen_under_it(self):
+        """The toast for a release found while a popup sits over a screen binding u names the tool menu."""
+        app = Host(self.cfg, U())
+        notes = []
+        async with app.run_test(size=(120, 30)) as pilot:
+            await pilot.pause()
+            app.push_screen(InfoScreen("Title", {}))
+            await pilot.pause()
+            self.assertIsInstance(app.screen, ModalScreen)
+            self.assertFalse(update_key_free(app.screen))
             with patch.object(app, "notify", side_effect=lambda message, **kw: notes.append(message)):
                 app._update_found(ReleaseInfo.from_version("9.9.9"))
         self.assertEqual(notes, ["Ka0s WoW Tools v9.9.9 available, press u on the tool menu to update."])
