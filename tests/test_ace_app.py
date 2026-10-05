@@ -994,11 +994,10 @@ class GuidanceTest(AceAppBase):
             review = await self.open_review(app, pilot)
             buttons = list(review.query_one("#tree-actions").query(Button))
             self.assertEqual([b.label.plain for b in buttons],
-                             ["Delete (d)", "Assign (p)", "Rename (e)", "Copy (k)", "Only Default", "Everyone → Default",
-                              "Leftovers (o)", "Blacklist…", "More… (m)", "Discard (⌫)"])
-            self.assertEqual([b.variant for b in buttons],
-                             ["error", "success", "success", "success", "error", "success", "error", "default",
-                              "default", "default"])
+                             ["Assign (p)", "Rename (e)", "Copy (k)", "Everyone → Default (E)", "Delete (d)",
+                              "Only Default (D)", "Leftovers (o)", "Blacklist…", "More… (m)", "Discard (⌫)"])
+            self.assertEqual([b.variant for b in buttons],  # green first, then red, then the rest
+                             ["success"] * 4 + ["error"] * 3 + ["default"] * 3)
             self.assertFalse(any(b.disabled for b in buttons))
 
     async def press(self, app, pilot, review, button_id):
@@ -1354,3 +1353,68 @@ class PopupFeedbackTest(AceAppBase):
             app.screen.dismiss("select_all")
             await settle(app, pilot)
             self.assertTrue(review.ticked)
+
+
+class ActionBarFeedbackTest(AceAppBase):
+    """Action bar feedback: ↓ from the tree's last line reaches the bar (↑ goes back), D and E run Only Default and
+    Everyone → Default, the focused button's tip says what it would do, and toasts show above the tip and the bar."""
+
+    async def test_down_from_the_last_tree_line_reaches_the_bar(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#profiles", Tree)
+            tree.focus()
+            tree.move_cursor(tree.get_node_at_line(tree.last_line))
+            await pilot.press("down")
+            self.assertEqual(review.focused.id, "act-assign")
+            await pilot.press("right", "right", "right", "right", "right", "right", "right", "right")
+            self.assertEqual(review.focused.id, "act-more")  # on the second row
+            await pilot.press("up")
+            self.assertIs(review.focused, tree)
+
+    async def test_shift_keys_run_only_default_and_everyone_default(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.highlight(app, pilot, review, "profile", "Healer")
+            await pilot.press("E")
+            await settle(app, pilot)
+            if isinstance(app.screen, InfoScreen):
+                app.screen.dismiss(None)
+                await settle(app, pilot)
+            self.assertGreater(review.staging.summary().reassigned, 0)
+            self.assertEqual(review.staging.summary().deleted, 0)
+            await self.highlight(app, pilot, review, "profile", "Healer")
+            await pilot.press("D")
+            await settle(app, pilot)
+            self.assertGreater(review.staging.summary().deleted, 0)
+
+    async def test_focused_button_shows_what_it_would_do_with_toasts_above(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE, notifications=True) as pilot:
+            review = await self.open_review(app, pilot)
+            rack = review.query_one("#tip-rack")
+            self.assertFalse(rack.display)
+            await self.highlight(app, pilot, review, "profile", "Healer")
+            review.query_one("#act-delete", Button).focus()
+            await settle(app, pilot)
+            self.assertTrue(rack.display)
+            tip = review.query_one("#action-tip")
+            text = str(tip.render())
+            self.assertIn("Delete (d)", text)
+            self.assertIn("Delete 1 profile in ElvUI", text)
+            bar = review.query_one("#tree-actions").region
+            self.assertLessEqual(tip.region.bottom, bar.y)
+            self.assertGreater(tip.region.bottom, bar.y - 2)  # just above the bar
+            review.notify("A toast")
+            await settle(app, pilot)
+            toasts = review.query_one("#textual-toastrack").region
+            self.assertLessEqual(toasts.bottom, tip.region.y)
+            review.query_one("#act-discard", Button).focus()
+            await settle(app, pilot)
+            self.assertIn("no pending changes", str(tip.render()))
+            review.query_one("#profiles", Tree).focus()
+            await settle(app, pilot)
+            self.assertFalse(rack.display)
+            self.assertLessEqual(review.query_one("#textual-toastrack").region.bottom, bar.y)  # above the bar

@@ -58,16 +58,17 @@ SHOW_FILTERS = {"only-multi": "only_multi", "only-unused": "only_unused", "show-
 PROGRESS_EVERY = 0.05  # seconds between two scan progress reports sent to the UI thread
 GUIDE_MAX_ROWS = 2  # the guidance line leaves its per-node hint out rather than take more rows than this
 GROUP_KINDS = ("root", "flavor", "account")  # nodes too broad to stand for a selection when nothing is ticked
-# The action bar under the tree: (id, label, kind of action, action). Each button does what its key does; one with
-# nothing to act on stays enabled and says what to tick or highlight. The labels are short enough for two rows at
+# The action bar under the tree: (id, label, kind of action, action), green ones first, then red, then the rest.
+# Each button does what its key does; one with nothing to act on stays enabled and says what to tick or highlight.
+# The focused button's tip (action_tip) says what it would do now. The labels are short enough for two rows at
 # 160x45 (and three at 120x30): tests/test_look_and_feel.py.
 TREE_ACTIONS = (
-    ("act-delete", "Delete (d)", "delete", "delete"),
     ("act-assign", "Assign (p)", "apply", "assign"),
     ("act-rename", "Rename (e)", "apply", "rename"),
     ("act-copy", "Copy (k)", "apply", "copy"),
-    ("act-keep-default", "Only Default", "delete", "keep_default"),
-    ("act-everyone-default", "Everyone → Default", "apply", "everyone_default"),
+    ("act-everyone-default", "Everyone → Default (E)", "apply", "everyone_default"),
+    ("act-delete", "Delete (d)", "delete", "delete"),
+    ("act-keep-default", "Only Default (D)", "delete", "keep_default"),
     ("act-leftovers", "Leftovers (o)", "delete", "remove_leftovers"),
     ("act-blacklist", "Blacklist…", "neutral", "edit_blacklist"),
     ("act-more", "More… (m)", "neutral", "more"),
@@ -146,9 +147,35 @@ class ProfileRecoveryScreen(ModalScreen[str]):
 
 
 class ProfileTree(Tree):
-    """The profiles tree. ← jumps to the left panel (instead of scrolling sideways)."""
+    """The profiles tree. ← jumps to the left panel (instead of scrolling sideways); ↓ on the last line goes on to
+    the action bar under it."""
 
-    BINDINGS: ClassVar[list[Binding]] = [Binding("left", "screen.focus_filters", "Filters", show=False)]
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("left", "screen.focus_filters", "Filters", show=False),
+        Binding("down", "down_or_bar", "Down", show=False),
+    ]
+
+    def action_down_or_bar(self) -> None:
+        if self.cursor_line >= self.last_line:
+            self.screen.query_one("#tree-actions Button", Button).focus()
+        else:
+            self.action_cursor_down()
+
+
+class ActionBar(WrapButtonRow):
+    """The action bar under the tree. ↑ goes back to the tree, from either row."""
+
+    BINDINGS: ClassVar[list[Binding]] = [Binding("up", "screen.focus_tree", "Tree", show=False)]
+
+
+class ActionTip(Static):
+    """What the focused action bar button would do now, in a toast-like box just above the bar (see
+    ProfileReviewScreen._place_overlays). Shown only while a button of the bar has focus."""
+
+    def on_resize(self) -> None:
+        place = getattr(self.screen, "_place_overlays", None)
+        if place is not None:
+            place()  # its height is known now: the toasts go above it
 
 
 class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
@@ -166,6 +193,11 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
     ProfileReviewScreen #profiles { height: 1fr; }
     ProfileReviewScreen #guide { height: auto; color: $text-muted; padding: 0 1; }
     ProfileReviewScreen #tree-actions { padding: 0 1; }
+    ProfileReviewScreen { layers: default action-tip; }
+    ProfileReviewScreen #tip-rack { layer: action-tip; dock: bottom; width: 1fr; height: auto; align: right bottom;
+                                    visibility: hidden; display: none; overflow-y: scroll; }
+    ProfileReviewScreen #action-tip { visibility: visible; width: 60; max-width: 50%; height: auto; padding: 1 1;
+                                      background: $panel-lighten-1; border-left: outer $accent; }
     """
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("space", "toggle", "Tick/untick", priority=True),
@@ -178,6 +210,8 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         Binding("e", "rename", "Rename", show=False),
         Binding("k", "copy", "Copy", show=False),
         Binding("o", "remove_leftovers", "Remove leftovers", show=False),
+        Binding("D", "keep_default", "Only Default", show=False),
+        Binding("E", "everyone_default", "Everyone → Default", show=False),
         Binding("m", "more", "More", show=False),
         Binding("backspace", "discard", "Discard", show=False),
         Binding("b", "blacklist", "Blacklist", show=False),
@@ -258,9 +292,11 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
                     yield Static("", id="scan-label")
                 yield ProfileTree(Text(self.scope_label), id="profiles")
                 yield Static(Text(self.guide_text), id="guide")
-                with WrapButtonRow(id="tree-actions"):
+                with ActionBar(id="tree-actions"):
                     for button_id, label, kind, _ in TREE_ACTIONS:
                         yield action_button(label, kind, id=button_id, compact=True)
+        with Vertical(id="tip-rack"):
+            yield ActionTip("", id="action-tip")
         yield Static(Text(self.summary_text), id="summary")
         yield BrandBar()
         yield Footer()
@@ -270,6 +306,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self.query_one("#scan-box").display = False
         self.query_one("#profiles", Tree).focus()
         self._refresh_buttons()
+        self.call_after_refresh(self._place_overlays)
         self._scan()
 
     # --- panes (←/→): TwoPaneFocus ------------------------------------------------------------------
@@ -491,6 +528,8 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self.query_one("#pending", Static).update(self._pending_line(pending_text(summary)))
         self._refresh_buttons()
         self._update_guide()
+        if self._focused_action() is not None:  # the ticks or the pending changes changed what it would do
+            self._update_tip()
 
     @staticmethod
     def _pending_line(text: str) -> Text:
@@ -547,6 +586,105 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
 
     def on_resize(self) -> None:
         self.call_after_refresh(self._update_guide)  # once the guide has its new width
+        self.call_after_refresh(self._place_overlays)  # the action bar may take another number of rows
+
+    # --- the action tip, and where toasts go -----------------------------------------------------------
+    def on_descendant_focus(self, event) -> None:
+        super().on_descendant_focus(event)
+        self._update_tip()
+
+    def on_descendant_blur(self, event) -> None:
+        self.call_after_refresh(self._update_tip)  # once focus has landed (maybe on another button of the bar)
+
+    def _focused_action(self) -> str | None:
+        """The action of the focused action bar button, or None when focus is elsewhere."""
+        focused = self.focused
+        if not isinstance(focused, Button) or focused.parent is None or focused.parent.id != "tree-actions":
+            return None
+        return next((name for button_id, _, _, name in TREE_ACTIONS if button_id == focused.id), None)
+
+    def _update_tip(self) -> None:
+        """Show what the focused action bar button would do now (or hide the tip), then place it and the toasts."""
+        if not self.is_attached:
+            return
+        action = self._focused_action()
+        rack = self.query_one("#tip-rack")
+        rack.display = action is not None and self.staging is not None
+        if rack.display and action is not None:
+            label = next(label for _, label, _, name in TREE_ACTIONS if name == action)
+            self.query_one("#action-tip", Static).update(Text.assemble((label, "bold"), "\n",
+                                                                       self.action_tip(action)))
+        self.call_after_refresh(self._place_overlays)
+
+    def _place_overlays(self) -> None:
+        """The tip sits just above the action bar, and toasts just above the tip (or the bar), so neither covers
+        the bar."""
+        if not self.is_attached:
+            return
+        bar = self.query_one("#tree-actions")
+        above = max(self.size.height - bar.region.y, 1) if bar.region.height else 1
+        rack = self.query_one("#tip-rack")
+        rack.styles.margin = (0, 0, above, 0)
+        if rack.display:
+            above += self.query_one("#action-tip").outer_size.height  # the rack is invisible and reports no size
+        for toasts in self.query("#textual-toastrack"):  # Textual's rack of notifications on this screen
+            toasts.styles.margin = (0, 0, above, 0)
+
+    def action_tip(self, action: str) -> str:
+        """What an action bar button would do with the ticks (or the highlighted node) as they are now."""
+        assert self.staging is not None
+        staging = self.staging
+
+        def addons(keys: Iterable[DbKey]) -> str:
+            names = list(dict.fromkeys(staging.state(k).file.addon for k in keys))
+            return ", ".join(names) if len(names) <= 3 else f"{len(names)} addons"
+
+        if action == "delete":
+            profiles = self.selected_profiles()
+            if not profiles:
+                return "Tick profiles, or highlight a profile or an addon, first."
+            moved = sum(len(staging.state(k).users(n)) for k, names in profiles.items() for n in names)
+            return (f"Delete {plural(sum(map(len, profiles.values())), 'profile')} in {addons(profiles)}: "
+                    f"{plural(moved, 'character')} move to a profile you choose next.")
+        if action == "assign":
+            chars = self.selected_chars()
+            if not chars:
+                return "Tick characters, or highlight one, first."
+            return (f"Move {plural(sum(map(len, chars.values())), 'character')} in {addons(chars)} to a profile you "
+                    "choose next.")
+        if action in ("rename", "copy"):
+            node = self.query_one("#profiles", Tree).cursor_node
+            data = node.data if node is not None else None
+            if data is None or data[0] != "profile":
+                return "Highlight a profile first."
+            where = f'"{data[2]}" in {staging.state(data[1]).file.addon}'
+            return (f"Give {where} a new name; its characters follow it." if action == "rename"
+                    else f"Copy {where} (its settings) under a new name.")
+        if action in ("keep_default", "everyone_default"):
+            keys = self._databases()
+            if not keys:
+                return "Tick addons, or highlight one, first."
+            if action == "keep_default":
+                return (f'In {addons(keys)}: delete every profile except "Default" and move every character onto '
+                        '"Default".')
+            return f'In {addons(keys)}: move every character to "Default". The other profiles stay.'
+        if action == "remove_leftovers":
+            chars = {k: [c for c in names if c in staging.state(k).leftovers]
+                     for k, names in self.selected_chars().items()}
+            chars = {k: names for k, names in chars.items() if names}
+            if not chars:
+                return "Tick or highlight leftover characters first (More… ticks them all)."
+            return (f"Remove {plural(sum(map(len, chars.values())), 'leftover character')} (no folder in WTF any "
+                    f"more) from {addons(chars)}.")
+        if action == "edit_blacklist":
+            return "Choose the addons this tool never changes, in every game version."
+        if action == "more":
+            return "Ticking helpers, search and view, then rename, copy, blacklist, unlock and discard."
+        if action == "discard":
+            total = staging.summary().total
+            return (f"Drop all {plural(total, 'pending change')}. Nothing has been written yet." if total
+                    else "There are no pending changes to drop.")
+        return ""
 
     def on_tree_node_highlighted(self, event: Tree.NodeHighlighted) -> None:
         if event.control.id == "profiles":

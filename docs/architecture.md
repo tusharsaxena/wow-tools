@@ -538,8 +538,12 @@ their original get a `rolled_back` line in the journal that holds their entries 
   `GUIDE_MAX_ROWS` (2) rows: a name too long for the hint's row at 120x30 is shortened with "…", and the hint is
   left out only if even that does not fit; on a locked addon the hint names it and the `u` unlock) and the action
   bar `#tree-actions`, a
-  `WrapButtonRow` of `TREE_ACTIONS` (Delete, Assign, Rename, Copy, Only Default, Everyone → Default, Leftovers,
-  Blacklist…, More…, Discard: three rows at 120x30, two at 160x45), each button doing what its key does. With nothing ticked, Delete and Assign act on the
+  `ActionBar` (a `WrapButtonRow`; ↑ goes back to the tree, and ↓ on the tree's last line comes to it) of
+  `TREE_ACTIONS`, green first, then red, then the rest (Assign, Rename, Copy, Everyone → Default (E), Delete, Only
+  Default (D), Leftovers, Blacklist…, More…, Discard: three rows at 120x30, two at 160x45), each button doing what
+  its key does. The focused button's `ActionTip` (`action_tip()`: what it would do with the ticks or the
+  highlighted node now) sits on its own `action-tip` layer just above the bar, and `_place_overlays()` keeps
+  Textual's toast rack above the tip (or the bar). With nothing ticked, Delete and Assign act on the
   highlighted node, but never on the root, a flavor or an account (`GROUP_KINDS`). The guide follows the cursor, the ticks and the pending
   changes. Discard is Backspace (`x`/`c` are expand and collapse all); `b` toggles the highlighted addon's
   (flavor, addon) pair (`settings.toggle_pair`) and saves at once; **Blacklist…** (`action_edit_blacklist`) opens
