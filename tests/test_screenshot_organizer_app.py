@@ -506,8 +506,62 @@ class ShotsAppTest(TuiTestCase):
         self.assertEqual(kinds, {"btn-organize": "overwrite", "btn-dry": "simulate", "btn-rescan": "navigate",
                                  "btn-undo": "revert"})
 
+    # --- the tree filter (spec D7/D8): it matches the plan (a day's files load on expand), a / n act on what it
+    #     shows, hidden ticks stay and are said in the summary and the confirm; Esc clears it ----------------
+    def shown_files(self, review) -> list[str]:
+        return sorted(n.data[1].src.name for n in _walk(review.query_one("#shots", Tree).root)
+                      if n.data and n.data[0] == "file")
+
+    async def test_filter_narrows_and_keeps_hidden_ticks(self):
+        self.save_tool_cfg(dest_dir=str(self.dest))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            await pilot.press("slash")
+            await pilot.pause()
+            await pilot.press(*"2019-07")
+            await settle(app, pilot)
+            tree = review.query_one("#shots", Tree)
+            days = [n for n in _walk(tree.root) if n.data and n.data[0] == "day"]
+            self.assertEqual([n.data[2].isoformat() for n in days], ["2019-07-31"])
+            self.assertTrue(days[0].is_expanded)  # it matches: open, its files loaded
+            await settle(app, pilot)
+            self.assertEqual(len(self.shown_files(review)), 2)
+            self.assertEqual({n.data[1].flavor.display_name for n in tree.root.children}, {"Retail"})
+            await pilot.press("enter")  # keeps the filter, back to the tree
+            await pilot.pause()
+            await pilot.press("n")
+            self.assertEqual(len(review.selection()), 4)  # the two shown unticked, the hidden four kept
+            self.assertIn("4 selected shots are hidden by the filter", review.summary_text)
+            await pilot.press("y")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertIn("4 selected shots are hidden by the filter: they are simulated too.",
+                          app.screen.body_text)
+            app.screen.dismiss(False)
+            await settle(app, pilot)
+            await pilot.press("a")
+            self.assertEqual(len(review.selection()), 6)
+            await pilot.press("slash")
+            await pilot.pause()
+            await pilot.press("escape")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertGreater(len(tree.root.children), 1)  # every flavor again
+            self.assertNotIn("hidden by the filter", review.summary_text)
+
+    async def test_filter_on_a_file_name_opens_its_day(self):
+        self.save_tool_cfg(dest_dir=str(self.dest))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            review.filter_input().value = A[:-4].upper()
+            await settle(app, pilot)
+            self.assertEqual(self.shown_files(review), [A])
+            self.assertEqual(review.filter_keys(review.all_tick_keys()), [self.shots / A])
+
+
 def _walk(node):
     yield node
     for child in node.children:
         yield from _walk(child)
-

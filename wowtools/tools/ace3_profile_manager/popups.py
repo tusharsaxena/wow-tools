@@ -26,8 +26,8 @@ ACTION_GROUPS = (
     ("Selection", (
         ("tick_leftovers", "Tick all leftover characters"),
         ("select_all", "Tick everything shown (a)"),
-        ("select_none", "Untick everything (n)"),
-        ("search", "Search (/)"),
+        ("select_none", "Untick everything shown (n)"),
+        ("filter", "Filter the tree (/)"),
         ("switch_view", "Switch view: by addon / by character (v)"),
     )),
     ("Modification", (

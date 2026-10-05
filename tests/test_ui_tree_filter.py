@@ -104,6 +104,7 @@ class HiddenByFilterTest(unittest.TestCase):
         self.assertEqual(hidden_by_filter(-1), "")
         self.assertEqual(hidden_by_filter(1), "1 selected item is hidden by the filter")
         self.assertEqual(hidden_by_filter(3), "3 selected items are hidden by the filter")
+        self.assertEqual(hidden_by_filter(2, "file"), "2 selected files are hidden by the filter")  # HIDDEN_NOUN
 
 
 class ToyFilterReview(TreeFilter, ReviewBase, Screen[str]):

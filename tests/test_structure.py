@@ -129,6 +129,16 @@ class StructureTest(unittest.TestCase):
                   and any(isinstance(b, ast.Name) and b.id == "TreeFilter" for b in node.bases)
                   and "all_tick_keys" not in {f.name for f in node.body if isinstance(f, ast.FunctionDef)}]
         self.assertEqual(forgot, [])
+        # Ace3's own search went onto the shared filter (T4.2): no focus_search action or match of its own, no tree
+        # screen handles a filter box's changes itself, and the tree builder's Filters has no search text.
+        tools = {n for p in modules("wowtools/tools") for n in defined_functions(tree(p))}
+        self.assertEqual(tools & {"action_focus_search", "matches"}, set())
+        screens = [rel(p) for p in modules("wowtools/tools")
+                   if p.name in ("review_screen.py", "restore_screen.py", "blacklist_screen.py")]
+        self.assertEqual(len(screens), 6)
+        self.assertEqual([p for p in screens if "on_input_changed" in defined_functions(tree(REPO / p))], [])
+        from wowtools.tools.ace3_profile_manager.tree_view import Filters
+        self.assertFalse({"search", "matches"} & set(dir(Filters())))
 
     def test_shared_dialogs_live_in_ui(self):
         from wowtools.tools.screenshot_organizer.review_screen import ShotProgressScreen

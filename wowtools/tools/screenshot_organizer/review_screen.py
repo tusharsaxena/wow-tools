@@ -33,10 +33,13 @@ from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, 
                                 relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.result_screen import ResultBase, result_bindings, status_style
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
+from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, ModelFilter, ModelNode, TreeFilter
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-NAV_HINT = REVIEW_HINT + "a all · n none · o organize · y dry run · " + TREE_HINT + "r rescan · z undo · f flavors · t tools"
+NAV_HINT = (REVIEW_HINT + "a all · n none · o organize · y dry run · " + FILTER_HINT + TREE_HINT +
+            "r rescan · z undo · f flavors · t tools")
 READ_ONLY = ("conflicts", "skipped", "conflict", "skip")  # tree nodes that cannot be ticked
+FILED_TITLE = "Already filed"
 
 
 class ShotProgressScreen(ProgressScreen):
@@ -81,9 +84,10 @@ class ShotResultScreen(ResultBase):
                           *(Text(c) for c in rest))
 
 
-class ShotReviewScreen(ReviewBase, Screen[str]):
+class ShotReviewScreen(TreeFilter, ReviewBase, Screen[str]):
     TREE_SELECTOR = "#shots"
     LOG_SCREEN = "shots_review"
+    HIDDEN_NOUN = "shot"
     BUTTON_ACTIONS: ClassVar[dict[str, str]] = {"btn-organize": "organize", "btn-dry": "dry_run",
                                                 "btn-rescan": "rescan", "btn-undo": "undo"}
     DEFAULT_CSS = two_pane_css("ShotReviewScreen", "#shots")
@@ -101,6 +105,7 @@ class ShotReviewScreen(ReviewBase, Screen[str]):
         Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
+        *FILTER_BINDINGS,
         *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
@@ -116,6 +121,8 @@ class ShotReviewScreen(ReviewBase, Screen[str]):
         self.unchecked: set[Path] = set()
         self.summary_text = ""
         self._items_by_key: dict[tuple, list[ShotItem]] = {}
+        self._filter_texts: dict[Path, tuple[str, ...]] = {}  # a shot's labels from its flavor down: the filter's
+        self._kept: ModelFilter | None = None  # what the filter keeps of the plan (files load on expand)
         self._progress_screen: ShotProgressScreen | None = None
         self._last_filter: Widget | None = None
         self._scanning = False
@@ -129,6 +136,7 @@ class ShotReviewScreen(ReviewBase, Screen[str]):
                 yield Static(Text(destination_label(self.settings.dest_dir)), id="dest-label")
                 yield Label("Mode", classes="section")
                 yield Static(Text(self._mode_text()), id="mode-label")
+                yield FilterInput()
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Organize", "overwrite", id="btn-organize")
                     yield action_button("Dry run", "simulate", id="btn-dry")
@@ -163,7 +171,8 @@ class ShotReviewScreen(ReviewBase, Screen[str]):
 
     # --- panes (←/→): TwoPaneFocus ------------------------------------------------------------------
     def first_filter(self) -> Widget | None:
-        return next((b for b in self.query("#actions Button").results(Button) if b.focusable), None)
+        """The left pane's first control: the filter box (then the buttons)."""
+        return self.filter_input()
 
     # --- scanning ------------------------------------------------------------------------------
     def action_rescan(self) -> None:
@@ -272,18 +281,14 @@ class ShotReviewScreen(ReviewBase, Screen[str]):
             return []
         return self._items_by_key.get(self._key(data), [])
 
-    def _rebuild(self) -> None:
-        plan = self.plan
-        if plan is None:
-            return
-        self._index(plan)
-        tree = self.query_one("#shots", Tree)
-        tree.clear()
-        tree.root.data = ("root",)
-        tree.root.set_label(self._label(tree.root.data))
+    def _model(self, plan: Plan) -> list[ModelNode]:
+        """The plan as model nodes, one per flavor (the files of a day or of Already filed too: they load on expand
+        in the tree but the filter matches them), and each shot's labels for filter_texts()."""
+        self._filter_texts = {}
+        flavors = []
         for fp in plan.flavors:
-            data = ("flavor", fp)
-            flavor_node = tree.root.add(self._label(data), data=data, expand=True)
+            name = fp.flavor.display_name
+            flavor = ModelNode(("flavor", fp))
             years: dict[str, dict[str, list[date]]] = {}
             for item in self._items_by_key.get(("flavor", fp.flavor.folder), []):
                 year, month, _ = day_parts(item.day)
@@ -291,40 +296,112 @@ class ShotReviewScreen(ReviewBase, Screen[str]):
                 if not days or days[-1] != item.day:
                     days.append(item.day)
             for year in sorted(years):
-                data = ("year", fp, year)
-                year_node = flavor_node.add(self._label(data), data=data, expand=True)
+                year_node = ModelNode(("year", fp, year))
                 for month in sorted(years[year]):
-                    data = ("month", fp, year, month)
-                    month_node = year_node.add(self._label(data), data=data, expand=True)
+                    month_node = ModelNode(("month", fp, year, month))
                     for day in years[year][month]:
                         data = ("day", fp, day)
-                        month_node.add(self._label(data), data=data, allow_expand=True)  # files load on expand
+                        items = self._items(data)
+                        month_node.children.append(ModelNode(data, [ModelNode(("file", i)) for i in items]))
+                        for i in items:
+                            self._filter_texts[i.src] = (name, year, month, day.isoformat(), i.src.name)
+                    year_node.children.append(month_node)
+                flavor.children.append(year_node)
             if fp.filed:
                 data = ("filed", fp)
-                flavor_node.add(self._label(data), data=data, allow_expand=True)  # files load on expand
+                items = self._items(data)
+                flavor.children.append(ModelNode(data, [ModelNode(("file", i)) for i in items]))
+                for i in items:
+                    self._filter_texts[i.src] = (name, FILED_TITLE, i.src.name)
             if fp.conflicts:
-                data = ("conflicts", fp)
-                node = flavor_node.add(self._label(data), data=data)
-                for item in fp.conflicts:
-                    node.add_leaf(Text.assemble((item.src.name, "dim"), (f"  → {item.dst.parent}", "dim")),
-                                  data=("conflict", item))
+                flavor.children.append(ModelNode(("conflicts", fp), [ModelNode(("conflict", i))
+                                                                     for i in fp.conflicts]))
             if fp.skipped:
-                data = ("skipped", fp)
-                node = flavor_node.add(self._label(data), data=data)
-                for skipped in fp.skipped:
-                    node.add_leaf(Text(skipped.path.name, style="dim"), data=("skip", skipped))
-            if not flavor_node.children:
-                flavor_node.allow_expand = False  # nothing under it: no expand arrow
+                flavor.children.append(ModelNode(("skipped", fp), [ModelNode(("skip", s)) for s in fp.skipped]))
+            flavors.append(flavor)
+        return flavors
+
+    @staticmethod
+    def _ident(node: ModelNode) -> tuple:
+        """A model node's identity, the same for the node a day's expand builds (the filter's key)."""
+        data = node.data
+        kind = data[0]
+        if kind in ("file", "conflict"):
+            return kind, data[1].src
+        if kind == "skip":
+            return kind, data[1].path
+        if kind in ("conflicts", "skipped"):
+            return kind, data[1].flavor.folder
+        return ShotReviewScreen._key(data)
+
+    @staticmethod
+    def _filter_name(data) -> str:
+        """What the filter matches a node on: the name its label shows."""
+        kind = data[0]
+        if kind == "flavor":
+            return data[1].flavor.display_name
+        if kind == "day":
+            return data[2].isoformat()
+        if kind in ("file", "conflict"):
+            return data[1].src.name
+        if kind == "skip":
+            return data[1].path.name
+        return {"filed": FILED_TITLE, "conflicts": "Conflicts", "skipped": "Skipped"}.get(kind, data[-1])
+
+    def _rebuild(self) -> None:
+        plan = self.plan
+        if plan is None:
+            return
+        self._index(plan)
+        flavors = self._model(plan)
+        kept = self._kept = self.model_filter(flavors, lambda n: n.children, lambda n: (self._filter_name(n.data),),
+                                              key=self._ident)
+        tree = self.query_one("#shots", Tree)
+        tree.clear()
+        tree.root.data = ("root",)
+        tree.root.set_label(self._label(tree.root.data))
+        for flavor in flavors:
+            if kept.shows(flavor):
+                self._add_node(tree.root, flavor, kept)
         tree.root.expand()
         self._update_summary()
 
+    def _add_node(self, parent, node: ModelNode, kept: ModelFilter) -> None:
+        """Add node and what the filter keeps below it. Flavors, years and months open; a day and Already filed
+        get their files on expand (open when the filter opens them); conflicts and skipped start closed."""
+        data = node.data
+        kind = data[0]
+        if kind in ("day", "filed"):
+            added = parent.add(self._label(data), data=data, allow_expand=True)  # files load on expand
+            if kept.opens(node):
+                self._load_files(added)
+                added.expand()
+            return
+        if kind in ("conflict", "skip"):
+            name = data[1].src.name if kind == "conflict" else data[1].path.name
+            note = f"  → {data[1].dst.parent}" if kind == "conflict" else ""
+            parent.add_leaf(Text.assemble((name, "dim"), (note, "dim")), data=data)
+            return
+        added = parent.add(self._label(data), data=data,
+                           expand=kind in ("flavor", "year", "month") or kept.opens(node))
+        for child in node.children:
+            if kept.shows(child):
+                self._add_node(added, child, kept)
+        if kind == "flavor" and not added.children:
+            added.allow_expand = False  # nothing under it: no expand arrow
+
     def on_tree_node_expanded(self, event: Tree.NodeExpanded) -> None:
-        node = event.node
+        self._load_files(event.node)
+
+    def _load_files(self, node) -> None:
+        """A day's or Already filed's files, those the filter keeps, the first time it opens."""
         if node.data is None or node.data[0] not in ("day", "filed") or node.children:
             return
+        kept = self._kept
         for item in self._items(node.data):
             data = ("file", item)
-            node.add_leaf(self._label(data), data=data)
+            if kept is None or kept.shows(ModelNode(data)):
+                node.add_leaf(self._label(data), data=data)
 
     def _mark(self, items: list[ShotItem]) -> tuple[str, str]:
         return tick_mark(items, self.unchecked, lambda i: i.src, success=theme_colour(self.app, "success"))
@@ -344,7 +421,7 @@ class ShotReviewScreen(ReviewBase, Screen[str]):
             extra = ("  possible duplicate", "dim") if item.state == MAYBE_DUPLICATE else ""
             return Text.assemble(mark, item.src.name, extra)
         if kind == "filed":
-            return Text.assemble(mark, (f"Already filed ({len(items)})", ACCENT),
+            return Text.assemble(mark, (f"{FILED_TITLE} ({len(items)})", ACCENT),
                                  ("  an identical copy is already in its date folder", "dim"))
         if kind == "root":
             name = self.scope_label
@@ -390,6 +467,9 @@ class ShotReviewScreen(ReviewBase, Screen[str]):
             self.query_one(button_id, Button).disabled = not plan.selectable
         if plan.warnings:
             text += f"    ⚠ {plural(len(plan.warnings), 'folder')} could not be read (see the log)"
+        hidden = self.hidden_ticked_note()
+        if hidden:
+            text += f"    {hidden}"
         self.summary_text = text
         self.query_one("#summary", Static).update(Text(text))
 
@@ -405,6 +485,9 @@ class ShotReviewScreen(ReviewBase, Screen[str]):
     def all_tick_keys(self) -> list[Path]:
         """Day and already-filed files load on expand: the keys come from the plan."""
         return [i.src for i in self.plan.selectable] if self.plan is not None else []
+
+    def filter_texts(self, key: Path) -> tuple[str, ...]:
+        return self._filter_texts.get(key, ())
 
     def select_all_keys(self) -> list[Path]:
         # Everything to file; already-filed copies (copy mode) keep whatever the user chose for them.
@@ -433,7 +516,9 @@ class ShotReviewScreen(ReviewBase, Screen[str]):
             self.notify("Nothing is selected.")
             return
         title, body = confirm_text(selection, self.plan, self.settings, dry_run)
-        self.app.push_screen(ConfirmScreen(title, body, kind="simulate" if dry_run else "destructive"),
+        hidden = self.hidden_ticked_note()
+        alerts = (f"{hidden}: they are {'simulated' if dry_run else 'organized'} too.",) if hidden else ()
+        self.app.push_screen(ConfirmScreen(title, body, alerts, kind="simulate" if dry_run else "destructive"),
                              lambda ok: self._confirmed(ok, selection, dry_run))
 
     def _confirmed(self, ok: bool | None, selection: list[ShotItem], dry_run: bool) -> None:

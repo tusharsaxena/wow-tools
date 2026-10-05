@@ -4,7 +4,7 @@ of a backup. The restore screens are in restore_screen.py."""
 from __future__ import annotations
 
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Hashable
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -44,9 +44,11 @@ from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, 
                                 relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
+from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, ModelFilter, ModelNode, TreeFilter
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-NAV_HINT = REVIEW_HINT + "a all · n none · b back up · e restore · " + TREE_HINT + "r rescan · z undo · f flavors · t tools"
+NAV_HINT = (REVIEW_HINT + "a all · n none · b back up · e restore · " + FILTER_HINT + TREE_HINT +
+            "r rescan · z undo · f flavors · t tools")
 # Tree nodes that cannot be ticked: a backup always holds a flavor's whole Interface and WTF.
 READ_ONLY = ("part", "links", "link", "leftover", "warnings", "warning", "backups", "backup")
 
@@ -102,13 +104,14 @@ class BackupResultScreen(ResultBase):
             table.add_row(Text(flavor), Text(kind, style=style), *(Text(c) for c in rest))
 
 
-class BackupReviewScreen(ReviewBase, Screen[str]):
+class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
     """The chosen flavors as a tree (what Interface and WTF hold, links, warnings, the flavor's backups) with
     flavor ticks for Back up, a highlighted backup for Restore, and Undo. Dismisses with "flavors", "tools" or
     "quit"."""
 
     TREE_SELECTOR = "#flavors"
     LOG_SCREEN = "ibackup_review"
+    HIDDEN_NOUN = "flavor"
     BUTTON_ACTIONS: ClassVar[dict[str, str]] = {"btn-backup": "back_up", "btn-restore": "restore", "btn-undo": "undo",
                                                 "btn-rescan": "rescan"}
     DEFAULT_CSS = two_pane_css("BackupReviewScreen", "#flavors")
@@ -126,6 +129,7 @@ class BackupReviewScreen(ReviewBase, Screen[str]):
         Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
+        *FILTER_BINDINGS,
         *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
@@ -152,6 +156,7 @@ class BackupReviewScreen(ReviewBase, Screen[str]):
         self.parts: dict[Path, tuple[str, ...] | None] = {}  # a backup's parts, read per zip by a worker
         self.summary_text = ""
         self._backup_nodes: dict[Path, TreeNode] = {}
+        self._kept: ModelFilter | None = None  # what the filter keeps (links, warnings and backups load on expand)
         self._scanning = False
         self._checking = False  # the running-WoW check is in its worker
         # What a result screen asked for once its rescan is done: ("restore", None) for Restore (e), or ("undo",
@@ -169,6 +174,7 @@ class BackupReviewScreen(ReviewBase, Screen[str]):
                 yield Static("", id="folder-label")
                 yield Label("Keep", classes="section")
                 yield Static("", id="keep-label")
+                yield FilterInput()
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Back up", "create", id="btn-backup")
                     yield action_button("Restore", "navigate", id="btn-restore")
@@ -196,7 +202,8 @@ class BackupReviewScreen(ReviewBase, Screen[str]):
 
     # --- panes (←/→): TwoPaneFocus ------------------------------------------------------------------
     def first_filter(self) -> Widget | None:
-        return next((b for b in self.query("#actions Button").results(Button) if b.focusable), None)
+        """The left pane's first control: the filter box (then the buttons)."""
+        return self.filter_input()
 
     # --- the WoW folder ------------------------------------------------------------------------
     def wow_folder_changed(self) -> bool:
@@ -319,59 +326,128 @@ class BackupReviewScreen(ReviewBase, Screen[str]):
     def _flavor_backups(self, scan: FlavorScan) -> list[BackupInfo]:
         return [b for b in self.backups if b.flavor_short == scan.flavor.short_name]
 
+    # The tree's nodes for the filter: what it matches each kind on (the name its label starts with) and an identity
+    # that is the same for the node an expand builds.
+    def _model(self, scans: list[FlavorScan]) -> list[ModelNode]:
+        """The flavors as model nodes, with what loads on expand (links, warnings, backups): the filter matches it."""
+        flavors = []
+        for scan in scans:
+            node = ModelNode(("flavor", scan), [ModelNode(("part", name, scan)) for name in PARTS])
+            if scan.link_count:
+                node.children.append(ModelNode(("links", scan), [ModelNode(("link", text, scan))
+                                                                 for text in self._links(scan)]))
+            if scan.leftovers:
+                node.children.append(ModelNode(("leftover", scan)))
+            if any(p.errors for p in scan.parts.values()):
+                node.children.append(ModelNode(("warnings", scan), [ModelNode(("warning", error, scan))
+                                                                    for p in scan.parts.values()
+                                                                    for error in p.errors]))
+            node.children.append(ModelNode(("backups", scan), [ModelNode(("backup", info))
+                                                               for info in self._flavor_backups(scan)]))
+            flavors.append(node)
+        return flavors
+
+    @staticmethod
+    def _links(scan: FlavorScan) -> list[str]:
+        return [f"{name}/{rel}" for name in PARTS for rel in scan.parts[name].links]
+
+    @staticmethod
+    def _ident(node: ModelNode) -> tuple:
+        data = node.data
+        kind = data[0]
+        if kind == "backup":
+            return kind, data[1].path
+        folder = data[-1].flavor.folder
+        return (kind, folder, data[1]) if kind in ("part", "link", "warning") else (kind, folder)
+
+    @staticmethod
+    def _filter_name(data) -> str:
+        kind = data[0]
+        if kind == "flavor":
+            return data[1].flavor.display_name
+        if kind in ("part", "link", "warning"):
+            return data[1]
+        if kind == "backup":
+            info = data[1]
+            return f"{'safety' if info.is_safety else 'backup'} {info.when}"
+        return {"links": "Links", "leftover": leftover_text(data[1]), "warnings": "Scan warnings",
+                "backups": "Backups"}[kind]
+
+    def _model_filter(self) -> ModelFilter:
+        return self.model_filter(self._model(self.scans or []), lambda n: n.children,
+                                 lambda n: (self._filter_name(n.data),), key=self._ident)
+
     def _rebuild(self) -> None:
         scans = self.scans
         if scans is None:
             return
+        kept = self._kept = self._model_filter()
         tree = self.query_one("#flavors", Tree)
         tree.clear()
         self._backup_nodes = {}
         tree.root.data = ("root",)
         tree.root.set_label(self._label(tree.root.data))
-        for scan in scans:
-            data = ("flavor", scan)
-            node = tree.root.add(self._label(data), data=data, expand=True)
-            for name in PARTS:
-                part = scan.parts[name]
-                node.add_leaf(Text.assemble((name, "bold"), (f"  {part_text(part)}", "dim")), data=("part", scan))
-            if scan.link_count:
-                node.add(Text.assemble((f"Links ({scan.link_count})", "bold"),
-                                       ("  not backed up; a restore keeps them", "dim")),
-                         data=("links", scan), allow_expand=True)  # paths load on expand
-            if scan.leftovers:
-                node.add_leaf(Text(f"⚠ {leftover_text(scan)}", style=f"bold {theme_colour(self.app, 'warning')}"),
-                              data=("leftover", scan))
-            if any(p.errors for p in scan.parts.values()):
-                node.add(Text(f"⚠ {warnings_text(scan)}", style=f"bold {theme_colour(self.app, 'warning')}"),
-                         data=("warnings", scan), allow_expand=True)  # lines load on expand
-            backups = self._flavor_backups(scan)
-            if backups:
-                node.add(Text.assemble((backups_title(backups), "bold"),
-                                       ("  highlight one and press e to restore it", "dim")),
-                         data=("backups", scan), allow_expand=True)  # zips load on expand, parts in a worker
-            else:
-                node.add_leaf(Text.assemble(("Backups (0)", "bold"), ("  none yet", "dim")), data=("backups", scan))
+        warning = f"bold {theme_colour(self.app, 'warning')}"
+        for flavor in self._model(scans):
+            if not kept.shows(flavor):
+                continue
+            scan = flavor.data[1]
+            node = tree.root.add(self._label(flavor.data), data=flavor.data, expand=True)
+            for child in flavor.children:
+                if not kept.shows(child):
+                    continue
+                data, kind = child.data, child.data[0]
+                opens, added = kept.opens(child), None
+                if kind == "part":
+                    part = scan.parts[data[1]]
+                    node.add_leaf(Text.assemble((data[1], "bold"), (f"  {part_text(part)}", "dim")), data=data)
+                elif kind == "links":
+                    added = node.add(Text.assemble((f"Links ({scan.link_count})", "bold"),
+                                                   ("  not backed up; a restore keeps them", "dim")),
+                                     data=data, allow_expand=True)  # paths load on expand
+                elif kind == "leftover":
+                    node.add_leaf(Text(f"⚠ {leftover_text(scan)}", style=warning), data=data)
+                elif kind == "warnings":
+                    added = node.add(Text(f"⚠ {warnings_text(scan)}", style=warning), data=data,
+                                     allow_expand=True)  # lines load on expand
+                elif child.children:
+                    added = node.add(Text.assemble((backups_title(self._flavor_backups(scan)), "bold"),
+                                                   ("  highlight one and press e to restore it", "dim")),
+                                     data=data, allow_expand=True)  # zips load on expand, parts in a worker
+                else:
+                    node.add_leaf(Text.assemble(("Backups (0)", "bold"), ("  none yet", "dim")), data=data)
+                if opens and added is not None:
+                    self._load_children(added)  # the filter opens it: its matches show
+                    added.expand()
         tree.root.expand()
         self._update_summary()
 
+    def _shown(self, data) -> bool:
+        """The filter keeps this node (one an expand adds)."""
+        return self._kept is None or self._kept.shows(ModelNode(data))
+
     def on_tree_node_expanded(self, event: Tree.NodeExpanded) -> None:
-        node = event.node
+        self._load_children(event.node)
+
+    def _load_children(self, node: TreeNode) -> None:
+        """Links, warnings and backups load the first time they open (what the filter keeps of them)."""
         if node.data is None or node.children:
             return
         kind, scan = node.data[0], node.data[-1]
         if kind == "links":
-            for name in PARTS:
-                for rel in scan.parts[name].links:
-                    node.add_leaf(Text(f"{name}/{rel}", style="dim"), data=("link", scan))
+            for text in self._links(scan):
+                if self._shown(("link", text, scan)):
+                    node.add_leaf(Text(text, style="dim"), data=("link", text, scan))
         elif kind == "warnings":
             for part in scan.parts.values():
                 for error in part.errors:
-                    node.add_leaf(Text(error, style="dim"), data=("warning", scan))
+                    if self._shown(("warning", error, scan)):
+                        node.add_leaf(Text(error, style="dim"), data=("warning", error, scan))
         elif kind == "backups":
             self._add_backups(node, scan)
 
     def _add_backups(self, node: TreeNode, scan: FlavorScan) -> None:
-        backups = self._flavor_backups(scan)
+        backups = [b for b in self._flavor_backups(scan) if self._shown(("backup", b))]
         for info in backups:
             parts = self.parts.get(info.path, PARTS_PENDING)
             self._backup_nodes[info.path] = node.add_leaf(Text(backup_text(info, parts)), data=("backup", info))
@@ -471,6 +547,9 @@ class BackupReviewScreen(ReviewBase, Screen[str]):
         hint = (f"{backup_detail(info, self.parts.get(info.path, PARTS_PENDING))}: e restores it" if info is not None
                 else "Highlight a backup and press e to restore it.")
         text = f"{selection_text(self.selection())}    {hint}"
+        hidden = self.hidden_ticked_note()
+        if hidden:
+            text += f"    {hidden}"
         blocked = [s.flavor.display_name for s in self.scans if s.leftovers]
         if blocked:
             text += f"    ⚠ Restore blocked for {', '.join(blocked)} (interrupted restore)"
@@ -490,7 +569,22 @@ class BackupReviewScreen(ReviewBase, Screen[str]):
         return [s.flavor.folder for s in self._scans_of(node.data)]
 
     def all_tick_keys(self) -> list[str]:
-        return [f.folder for f in self.flavors]
+        """The flavors with something to back up (the others have no tick): every one before the first scan."""
+        if self.scans is None:
+            return [f.folder for f in self.flavors]
+        return [s.flavor.folder for s in self.scans if s.has_data]
+
+    def filter_texts(self, key: str) -> tuple[str, ...]:
+        return next(((f.display_name,) for f in self.flavors if f.folder == key), ())
+
+    def filter_keys(self, keys: Collection[Hashable]) -> list[Hashable]:
+        """The flavors the filter shows: a flavor shows when its name or anything in it matches (a backup's date,
+        a link), so its tick stays usable while the filter finds something in it."""
+        if not self.filtering or self.scans is None:
+            return super().filter_keys(keys)
+        kept = self._model_filter()
+        shown = {n.data[1].flavor.folder for n in self._model(self.scans) if kept.shows(n)}
+        return [k for k in keys if k in shown]
 
     def tick_log_key(self, node, keys) -> str:
         return "root" if node.data[0] == "root" else keys[0]
@@ -538,6 +632,9 @@ class BackupReviewScreen(ReviewBase, Screen[str]):
                         free: int | None) -> None:
         keep = self.cfg.keep_backups
         title, body, alerts = backup_confirm(scans, root, keep, running, free)
+        hidden = self.hidden_ticked_note()
+        if hidden:
+            alerts = (*alerts, f"{hidden}: they are backed up too.")
         self.app.push_screen(ConfirmScreen(title, body, alerts, kind="create"),
                              lambda ok: self._backup_confirmed(ok, scans, root, keep))
 

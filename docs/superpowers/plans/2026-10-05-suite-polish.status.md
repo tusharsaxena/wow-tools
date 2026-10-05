@@ -19,7 +19,7 @@ task; push after every milestone. Never merge without the user's go-ahead.
 | T3.2 | version under banner, terms, menu tests | done | 0dfde33 | `branding.VersionLine` (`version_text`: `v0.1.0`, `· v9.9.9 available, press u to update` once found) under the Banner's name line; `branding.TERMS` + `TermsText` above the `BottomBar`; menu `ToolArea` (list + hint, 1fr, list max-height capped so the hint stays under it); `Banner.show_art(False)` under 30 rows. README `## Terms of use` (pinned word for word in test_docs), Updates and Terminal size; architecture UI; CHANGELOG. Tests: menu at BASE (no scroll, version line under the name, every tool, hint, terms in 2 rows, footer keys, update wording) and at TINY and 80x18 (terms, footer, every tool highlighted and on screen, Enter opens). 1135 tests OK (2 skipped) |
 | T3.3 | changelog parser + screen + release check | done | 366c2b2 | `core/changelog.py` (`parse_changelog` newest first, `[Unreleased]` on top, strict headings, fenced `## ` kept as notes; `entry_for`; `load_changelog` never raises, logs `changelog.unreadable`); `ui/changelog_screen.ChangelogScreen` (two-pane, `OptionList` versions with dates and "current", `Markdown` notes in `NotesScroll`) on menu `c`; `s` hidden and inert off the menu with no tool open; `build_release.check_changelog`. test_docs regex stand-in replaced; new `tests/test_changelog.py`, look-and-feel BASE/TINY, 4 build_release tests. releasing step 3, CLAUDE.md, README, architecture, CHANGELOG. 1159 tests OK (2 skipped) |
 | T4.1 | shared tree filter | done | afdbf6b | New `ui/tree_filter.py`: `TextFilter` (casefold substring), `ModelFilter` (keeps/opens on model data, lazy children included), `FilterInput` (one row, Esc clears + tree, → at end to tree), `TreeFilter` mixin (`/` via `FILTER_BINDINGS`, `FILTER_HINT`, debounced rebuild, `filter_keys()` from `filter_texts(key)`, `hidden_ticked_count/_note`, `hidden_by_filter(n)`). No tool wired yet (T4.2). `tests/test_ui_tree_filter.py` (21: unit + toy TUI screen), pinned in test_structure. 1184 tests OK (2 skipped) |
-| T4.2 | filter in every tree screen | todo | | |
+| T4.2 | filter in every tree screen | done | (this commit) | `FilterInput` on WTF, Shots, IB review (`TreeFilter`), IB Restore (`FilterBox`, read-only), Ace3 review (shared box in `#search`; `Filters.search`/`matches`, `action_focus_search`, its own `on_input_changed` and `action_back` gone) and Blacklist. Built from `ModelNode`s (new in `ui/tree_filter.py`) through `ModelFilter`; lazy groups the filter opens load at once. Hidden-ticks line on every summary and run confirm (Ace3: the tick-taking popups; Blacklist Save asks only then). Tests: look-and-feel at BASE+TINY for 5 screens, per-tool filter tests, structure pin extended. 1202 tests OK (2 skipped) |
 | T5.1 | parallelism setting + runner + thread safety | todo | | |
 | T5.2 | fixed-size progress popup | todo | | |
 | T5.3 | apply parallel runs | todo | | |
@@ -76,3 +76,35 @@ task; push after every milestone. Never merge without the user's go-ahead.
 - **T4.1** Matched groups open, and so does every group above a match (`ModelFilter.opened`); the items of a matched group that do not match themselves stay closed. The model filter returns nothing to traverse when the filter is empty (`shows()` is True, `opens()` False), so an unfiltered rebuild costs nothing extra. Restoring the user's own expansion after a filter is cleared stays per screen (Ace3's `searching` rule), not shared.
 - **T4.1** Logging: no event per keystroke; `ui.selection` `control=filter` with the trimmed text on Enter, and with `""` when Esc clears a non-empty box (no new event, so `docs/events.md` is unchanged). Esc is a `FilterInput` binding (the focused widget's bindings run before the screen's non-priority Esc), so Esc on the tree keeps leaving as today without any screen override. Placeholder `"Filter (/)"` (the D7 "Filter" name plus its key; fits the 44-column Restore pane), hint item `FILTER_HINT = "/ filter · "` to sit right before `TREE_HINT` (the look-and-feel test needs nothing between `TREE_HINT` and `r rescan`).
 - **T4.1** review: 6 findings, 5 fixed, 0 rejected, 1 deferred to T4.2. Fixed: the input handlers match the box by `FILTER_SELECTOR` (`filter_input()`), so `FilterInput(id="search")` filters (test). `/` is a priority binding whose action skips (types) on a text box, the filter's own included, and leaves an integer/number box such as WTF's max age (test). Space narrows a node's keys through `filter_keys()` in `TickActions.action_toggle`, so a group or the root ticks only what the filter shows on every screen (toy no longer narrows by hand; root test). Split into `FilterBox` (box, `/`, Esc/Enter, `model_filter`; needs `LOG_SCREEN`, `action_focus_tree()`, `filter_changed()`) and `TreeFilter(FilterBox)` (ticks): **IB Restore in T4.2 takes `FilterBox`, adds `LOG_SCREEN = "ibackup_restore"` and a `filter_changed()` that rebuilds from its plan** (read-only toy test). `TreeFilter.all_tick_keys()` is abstract (a model-wide set, never the filtered root's: Ace3 review and Blacklist must add one in T4.2), with a unit test and a test_structure check that every `TreeFilter` subclass defines it. Deferred: **T4.2 extends `test_tree_filter_lives_in_ui` to forbid `action_focus_search`, a `#search` on_input_changed and `Filters.matches`/`search` once Ace3 moves onto the shared filter** (they exist today, so the pin cannot forbid them yet).
+- **T4.2** The hidden-ticks line names each screen's unit, not always "items": `hidden_by_filter(n, noun)` with a
+  `TreeFilter.HIDDEN_NOUN` per screen (WTF "files", Shots "shots", IB "flavors", Blacklist "addons", Ace3 "items"
+  for profiles and characters together), because the WTF summary already uses "items" for addon groups and counts
+  files. The spec's "N selected items are hidden by the filter" is the wording otherwise. Confirms carry it as an
+  alert ending "they are cleaned / organized / backed up / simulated / saved / included too".
+- **T4.2** The filter matches names (the bold/accent part of a label), not sizes, ages or tags: flavor (only when
+  several are shown; a single flavor is the root, never matched), account, owner, addon, file (WTF); flavor, year,
+  month, ISO day, "Already filed", file, Conflicts/Skipped and their files (Shots); flavor, part, "Links" and link
+  paths, warnings, "Backups" and "backup|safety <when>" (IB); effect title, folder group, file (Restore); flavor and
+  addon (Blacklist). Ace3 keeps its own path match in `TreeBuilder` (addon, database, profile, character) through
+  the shared `TextFilter`, now with the account and (several flavors) the flavor in front, so it agrees with D7's
+  "a matched group keeps everything in it"; its "every group opens while filtering, the user's expansion comes back
+  after" rule stays.
+- **T4.2** Ace3 `n` now unticks what is shown (the T1.2 `select_none_keys` override is gone). Its tree builder
+  already narrows, so `filter_keys` = the root's keys, `all_tick_keys` = those plus every tick, and a new
+  `TreeFilter.tree_narrowed()` hook (Ace3: always true) makes ticks hidden by a Show box count as hidden too: the
+  structure pin forbids a tool's own `hidden_ticked_count`. `_selected()` keeps taking every tick, hidden ones
+  included, and falls back to the highlighted node only when nothing at all is ticked (the filter is a view, D8).
+  Ace3 ticks never reach Apply (they feed the staging actions), so the line is on Delete / Assign (TargetScreen
+  body), Leftovers (ConfirmScreen alert) and a toast for Only Default / Everyone → Default, not on the Apply confirm.
+  More menu: "Untick everything shown (n)", "Filter the tree (/)" (action id `filter`).
+- **T4.2** IB review: a flavor's tick key shows while anything in the flavor matches (`filter_keys` override over
+  the model), so a filter on a backup date keeps that flavor tickable. `all_tick_keys` is now the flavors with data
+  (a flavor with nothing to back up has no tick; it counted as a hidden "tick" otherwise); `n` therefore no longer
+  adds such a flavor to `unchecked` (one test updated). The Blacklist Save asks (`ConfirmScreen`, kind `confirm`,
+  logged `blacklist_save_confirm`) only when the filter hides ticked addons; otherwise it saves at once as before.
+- **T4.2** Layout: `FilterInput` gets `margin-top: 1` from `two_pane_css` (a row apart from the control above it, e.g.
+  WTF's max-age box); no "Filter" heading (the placeholder "Filter (/)" is the label). Ace3 still fits its hint with
+  three pending rows and keeps its 12 tree rows at BASE. In Shots and IB (only buttons before) the box is the left
+  pane's first control, so `first_filter()` (and the first ←) goes there. A tree node a filter opens whose children
+  load on expand gets them at once (`Tree.add(expand=True)` posts no NodeExpanded). Gotcha found: a screen method
+  must not be called `_name` (Textual's DOMNode attribute).

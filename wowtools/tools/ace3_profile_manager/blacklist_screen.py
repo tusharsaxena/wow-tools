@@ -15,7 +15,7 @@ from textual.widgets import Button, Header, ProgressBar, Static, Tree
 from textual.widgets.tree import TreeNode
 
 from wowtools.core.config import Config
-from wowtools.core.events import log_exception
+from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.progress import ThrottledProgress
 from wowtools.core.text import plural
@@ -23,13 +23,14 @@ from wowtools.tools.ace3_profile_manager.report import scan_label
 from wowtools.tools.ace3_profile_manager.scanner import ScanResult, scan_flavors
 from wowtools.tools.ace3_profile_manager.settings import WILDCARD, Pair, is_blacklisted, unique_pairs
 from wowtools.ui.branding import BottomBar
-from wowtools.ui.dialogs import (ACCENT, TREE_BINDINGS, TREE_HINT, relabel_branch, review_hint, theme_colour, tick_mark,
-                                two_pane_css)
+from wowtools.ui.dialogs import (ACCENT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, relabel_branch, review_hint,
+                                theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
+from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, TreeFilter
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 EXPLANATION = "Ticked addons are blacklisted: their profiles are shown but never changed."
-NAV_HINT = review_hint() + "a all · n none · " + TREE_HINT + "Esc cancel"
+NAV_HINT = review_hint() + "a all · n none · " + FILTER_HINT + TREE_HINT + "Esc cancel"
 Key = tuple[str, str]  # (flavor folder, addon), casefolded
 
 
@@ -37,7 +38,7 @@ def _key(flavor: str, addon: str) -> Key:
     return flavor.casefold(), addon.casefold()
 
 
-class BlacklistScreen(ReviewBase, Screen["list[Pair] | None"]):
+class BlacklistScreen(TreeFilter, ReviewBase, Screen["list[Pair] | None"]):
     """Tick the (flavor, addon) pairs to blacklist. Dismisses with the new pair list (Save), or None (Cancel, Esc).
 
     `cfg` is the suite config (its WoW folder names every flavor of the install); `flavors` are the flavors shown;
@@ -47,6 +48,7 @@ class BlacklistScreen(ReviewBase, Screen["list[Pair] | None"]):
 
     TREE_SELECTOR = "#blacklist-tree"
     LOG_SCREEN = "ace_blacklist"
+    HIDDEN_NOUN = "addon"
     BUTTON_ACTIONS: ClassVar[dict[str, str]] = {"save": "save", "select-none": "select_none", "cancel": "cancel"}
     DEFAULT_CSS = two_pane_css("BlacklistScreen", "#blacklist-tree") + """
     BlacklistScreen #explain { height: auto; margin-top: 1; }
@@ -58,6 +60,7 @@ class BlacklistScreen(ReviewBase, Screen["list[Pair] | None"]):
         Binding("escape", "cancel", "Cancel"),
         Binding("left", "focus_filters", "Buttons", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
+        *FILTER_BINDINGS,
         *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
@@ -70,6 +73,7 @@ class BlacklistScreen(ReviewBase, Screen["list[Pair] | None"]):
         self.shown_folders = {f.folder.casefold() for f in self.flavors}
         self.ticked: set[Key] = set()
         self.names: dict[Key, Pair] = {}  # every addon in the tree, with its spelling
+        self.flavor_names: dict[Key, str] = {}  # the flavor's display name of each, for the filter
         self.scan: ScanResult | None = None
         self._scanning = False
 
@@ -79,6 +83,7 @@ class BlacklistScreen(ReviewBase, Screen["list[Pair] | None"]):
         with Horizontal(id="body"):
             with Vertical(id="filters"):
                 yield Static(Text(EXPLANATION), id="explain")
+                yield FilterInput()
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Save", "confirm", id="save")
                     yield action_button("Select none", "navigate", id="select-none")
@@ -140,11 +145,21 @@ class BlacklistScreen(ReviewBase, Screen["list[Pair] | None"]):
                     addons.setdefault(addon_file.file.addon.casefold(), addon_file.file.addon)
         return found
 
+    def _can_rebuild(self) -> bool:
+        return not self._scanning
+
+    def _rebuild(self) -> None:
+        """The filter changed (TreeFilter, through the debounced rebuild): build the tree again."""
+        self._build(self.query_one("#blacklist-tree", Tree))
+
     def _build(self, tree: Tree) -> None:
+        """Every flavor and its addons; what the filter shows (a flavor's name, or an addon's) and a ticked pair
+        stays ticked whatever the filter hides."""
         tree.clear()
         root = tree.root
         root.data = ("root",)
         found = self._found()
+        text_filter = self.text_filter
         for flavor in self.flavors:
             folder = flavor.folder
             addons = dict(found.get(folder.casefold(), {}))
@@ -154,21 +169,29 @@ class BlacklistScreen(ReviewBase, Screen["list[Pair] | None"]):
                 if where.casefold() in (folder.casefold(), WILDCARD) and addon.casefold() not in addons:
                     addons[addon.casefold()] = addon
                     missing.add(addon.casefold())
+            for name in sorted(addons):
+                key = _key(folder, addons[name])
+                if key not in self.names:  # the first build: the blacklist's ticks (later ones keep the user's)
+                    self.names[key] = (folder, addons[name])
+                    self.flavor_names[key] = flavor.display_name
+                    if is_blacklisted(self.pairs, folder, addons[name]):
+                        self.ticked.add(key)
+            shown = [name for name in sorted(addons)
+                     if text_filter.path_matches((flavor.display_name, addons[name]))]
+            if not shown and not text_filter.matches(flavor.display_name):
+                continue  # nothing of it matches
             node = root.add(Text(""), data=("flavor", folder, flavor.display_name), expand=True)
             if not addons:
                 node.add_leaf(Text("no Ace3 data", style="dim"), data=("note",))
                 node.allow_expand = False
-            for name in sorted(addons):
-                addon = addons[name]
-                key = _key(folder, addon)
-                self.names[key] = (folder, addon)
-                if is_blacklisted(self.pairs, folder, addon):
-                    self.ticked.add(key)
-                node.add_leaf(Text(""), data=("addon", folder, addon, name in missing))
+            for name in shown:
+                node.add_leaf(Text(""), data=("addon", folder, addons[name], name in missing))
         root.expand()
         self._refresh_labels()
 
     def _keys(self, data) -> list[Key]:
+        """The keys a tick on this node covers (TickActions narrows a flavor's or the root's to what the filter
+        shows)."""
         if data is None:
             return []
         if data[0] == "addon":
@@ -180,10 +203,14 @@ class BlacklistScreen(ReviewBase, Screen["list[Pair] | None"]):
             return list(self.names)
         return []
 
+    def _shown_keys(self, data) -> list[Key]:
+        """The keys under this node that the filter shows: its mark counts these."""
+        return list(self.filter_keys(self._keys(data)))
+
     def _label(self, data) -> Text:
         if data is None:
             return Text("")
-        keys = self._keys(data)
+        keys = self._shown_keys(data)
         mark = tick_mark(keys, self.tick_model().unticked, success=theme_colour(self.app, "success")) if keys \
             else ("  ", "")
         if data[0] == "flavor":
@@ -200,8 +227,9 @@ class BlacklistScreen(ReviewBase, Screen["list[Pair] | None"]):
     def _refresh_labels(self, node: TreeNode | None = None) -> None:
         relabel_branch(self.query_one("#blacklist-tree", Tree), node, self._label, skip=("note",))
         count = len(self.ticked)
-        self.query_one("#summary", Static).update(
-            Text(f"{plural(count, 'addon')} blacklisted" if count else "Nothing blacklisted"))
+        text = f"{plural(count, 'addon')} blacklisted" if count else "Nothing blacklisted"
+        hidden = self.hidden_ticked_note()
+        self.query_one("#summary", Static).update(Text(f"{text}    {hidden}" if hidden else text))
 
     # --- ticks (Space, a, n: ReviewBase) ------------------------------------------------------------
     def tick_model(self) -> TickModel:
@@ -209,6 +237,12 @@ class BlacklistScreen(ReviewBase, Screen["list[Pair] | None"]):
 
     def node_tick_keys(self, node) -> list[Key]:
         return self._keys(node.data if node is not None else None)
+
+    def all_tick_keys(self) -> list[Key]:
+        return list(self.names)
+
+    def filter_texts(self, key: Key) -> tuple[str, ...]:
+        return self.flavor_names.get(key, ""), self.names.get(key, ("", ""))[1]
 
     def tick_log_key(self, node, keys) -> str:
         return str(node.data[1:3])
@@ -242,4 +276,16 @@ class BlacklistScreen(ReviewBase, Screen["list[Pair] | None"]):
     def action_save(self) -> None:
         if self._scanning:
             return
-        self.dismiss(self.result())
+        hidden = self.hidden_ticked_note()
+        if not hidden:
+            self.dismiss(self.result())
+            return
+        # A save with ticks the filter hides: say so first (they are saved like the others).
+        body = f"{plural(len(self.ticked), 'addon')} will be blacklisted."
+        self.app.push_screen(ConfirmScreen("Save the blacklist?", body, (f"{hidden}: they are saved too.",),
+                                           kind="confirm"), self._save_confirmed)
+
+    def _save_confirmed(self, ok: bool | None) -> None:
+        log_event("ui.selection", screen="confirm", control="blacklist_save_confirm", value=bool(ok))
+        if ok:
+            self.dismiss(self.result())

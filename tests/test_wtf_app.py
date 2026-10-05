@@ -1752,3 +1752,64 @@ class UndoLastCleanTest(AppTestCase):
                 await settle(app, pilot)
                 self.assertIsInstance(app.screen, ConfirmScreen)
                 self.assertIn(wanted, app.screen.body_text)
+
+
+class TreeFilterTest(AppTestCase):
+    """Spec D7/D8 on the WTF Cleaner review: the filter narrows the proposal (on top of the criteria), a / n act on
+    what it shows, hidden ticks stay, count and are said in the summary and the confirm; Esc clears it."""
+
+    def addons(self, review) -> set[str]:
+        return {n.data[1].addon for n in _walk(review.query_one("#proposal", Tree).root)
+                if n.data and n.data[0] == "item"}
+
+    async def test_filter_narrows_and_keeps_hidden_ticks(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            every = set(review.all_tick_keys())
+            self.assertGreater(len(self.addons(review)), 1)
+            await pilot.press("slash")
+            await pilot.pause()
+            await pilot.press(*"UNINST")
+            await settle(app, pilot)
+            self.assertEqual(self.addons(review), {"Uninstalled"})
+            shown = {f.path for i in review.proposal.items if i.addon == "Uninstalled" for f in i.files}
+            self.assertEqual(set(review.shown_tick_keys()), shown)
+            await pilot.press("enter")  # keeps the filter, back to the tree
+            await pilot.pause()
+            await pilot.press("n")
+            self.assertEqual(review.unchecked, shown)  # only what the filter shows
+            note = f"{len(every - shown)} selected files are hidden by the filter"
+            self.assertIn(note, review.summary_text)
+            self.assertTrue(review.summary_text.startswith("Selected: "))
+            await pilot.press("y")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertIn(f"{note}: they are simulated too.", app.screen.body_text)
+            app.screen.dismiss(False)
+            await settle(app, pilot)
+            await pilot.press("a")
+            self.assertEqual(review.unchecked, set())
+            await pilot.press("slash")
+            await pilot.pause()
+            await pilot.press("escape")  # clears the filter: everything again, nothing hidden
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertGreater(len(self.addons(review)), 1)
+            self.assertNotIn("hidden by the filter", review.summary_text)
+
+    async def test_filter_matches_accounts_and_files_and_opens_the_addon(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            item = review.proposal.items[0]
+            review.filter_input().value = item.files[0].name
+            await settle(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            node = next(n for n in _walk(tree.root) if n.data and n.data[0] == "item"
+                        and n.data[1].key == item.key)
+            self.assertTrue(node.is_expanded)  # a file in it matches: the addon opens
+            self.assertEqual([str(c.label).split("  ")[0][2:] for c in node.children], [item.files[0].name])
+            review.filter_input().value = item.account
+            await settle(app, pilot)
+            self.assertEqual({n.data[2] for n in tree.root.children if n.data}, {item.account})  # its account

@@ -18,6 +18,9 @@ The first version: four tools in one app.
   - How many backups and journals to keep is one setting for every tool (10 each; 0 backups keeps them all), on
     the first settings screen.
   - `x` expands and `c` collapses every line of a tree, on every tree screen.
+  - `/` filters every tree: type part of a name (an addon, a file, a date, a profile…) and the tree keeps the
+    matching lines and the groups they're in. `a` / `n` tick or untick only what the filter shows; ticks it hides
+    stay, and the bottom line and the "are you sure?" window say how many. `Esc` in the filter box clears it.
   - Every checkbox and box in a left panel has a row of its own, so `↑` / `↓` reach each one.
   - Buttons are coloured by what they do, the same in every tool: red deletes, amber overwrites, green only adds
     files, violet undoes, cyan is a dry run, blue confirms, grey moves between screens, dim grey backs out.

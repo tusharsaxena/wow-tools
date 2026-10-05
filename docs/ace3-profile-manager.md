@@ -100,7 +100,7 @@ ticks everything shown).
 back to the tree. Messages pop up just above the hint line over the bar (and above the box that describes the
 selected button), so they never cover either.
 
-**On the left** are the view boxes, the filters, a search box, a **Pending changes** line that sums them up, and
+**On the left** are the view boxes, the Show boxes, the **Filter** box, a **Pending changes** line that sums them up, and
 the buttons.
 
 **At the bottom** a bar counts what's ticked and what's pending, for example
@@ -146,8 +146,14 @@ the screen.
 | **Leftover characters** (on) | Characters tagged "no character folder". Untick to hide them |
 | **Blacklisted addons** (on) | Addons on your blacklist. Untick to hide them |
 
-The search box (`/`) keeps only lines whose addon, profile or character name contains what you type (upper or
-lower case doesn't matter). `Esc` takes you from the search box back to the tree.
+The **Filter** box (`/`) keeps only lines whose game version (with **All flavors**), account, addon, profile or
+character name contains what you type (upper or lower case doesn't matter), and opens the groups they're in.
+`Enter` goes back to the tree and keeps the filter; `Esc` in the box clears it.
+
+The filter and the Show boxes only change what you see. `a` and `n` tick and untick what's shown; a tick they
+hide stays, and **Delete**, **Assign**, **Leftovers**, **Only Default** and **Everyone → Default** still take it.
+When that's the case, the bottom bar and the window those actions open say how many ("2 selected items are hidden
+by the filter").
 
 ## The changes you can make
 
@@ -183,8 +189,8 @@ highlighted one when nothing is ticked.
 `m` opens the quick actions menu, in two groups, so you can find every key without this guide:
 
 - **Selection** changes what's ticked or shown: **Tick all leftover characters** (every character tagged "no
-  character folder" that's shown, ready for **Leftovers**), tick everything shown (`a`), untick everything,
-  hidden or not (`n`), search (`/`) and switch view (`v`).
+  character folder" that's shown, ready for **Leftovers**), tick everything shown (`a`), untick everything
+  shown (`n`), filter the tree (`/`) and switch view (`v`).
 - **Modification** changes the ticked or highlighted items: rename (`e`), copy (`k`), blacklist (`b`), edit the
   blacklist, unlock (`u`) and discard the pending changes (`Backspace`).
 
@@ -199,10 +205,11 @@ change.
 - `b` adds the highlighted addon, in its game version, to the blacklist, or takes it off. It's saved at once.
 - **Blacklist…** (in the action bar, and **Edit blacklist…** in the settings) opens the **blacklist screen**: a tree
   of game version → addon listing every addon with Ace3 profiles. Nothing is ticked except what's already
-  blacklisted; tick the ones you want blacklisted (`Space`, `a` all, `n` none, `x` / `c` expand and collapse) and
-  press **Save**, or **Cancel** (`Esc`) to leave it as it was. A blacklisted addon that's no longer installed is
-  listed with "(not found)" so you can take it off; so is one blacklisted (from an older version) in every game
-  version, under each version that doesn't have it.
+  blacklisted; tick the ones you want blacklisted (`Space`, `a` all, `n` none, `/` filter, `x` / `c` expand and
+  collapse) and press **Save**, or **Cancel** (`Esc`) to leave it as it was. `a` and `n` act on what the filter
+  shows; when it hides ticked addons, **Save** says how many and asks first (they're saved too). A blacklisted
+  addon that's no longer installed is listed with "(not found)" so you can take it off; so is one blacklisted
+  (from an older version) in every game version, under each version that doesn't have it.
 - `u` **unlocks** a blacklisted addon for this session only: it can be changed until you close the tool, and it's
   tagged "unlocked". Press `u` again to lock it again.
 - Blacklisting or locking an addon throws away any pending changes for it, and says so.
@@ -216,7 +223,7 @@ version until you next save the blacklist.
 | Key | Does |
 |---|---|
 | `Space` | Tick or untick the highlighted line |
-| `a` / `n` | Tick everything shown (ticks hidden by the Show boxes or the search stay) / untick everything, hidden or not |
+| `a` / `n` | Tick / untick everything shown (ticks hidden by the Show boxes or the filter stay) |
 | `d` | Delete the ticked profiles |
 | `p` | Assign a profile to the ticked characters |
 | `e` | Rename the highlighted profile |
@@ -229,13 +236,13 @@ version until you next save the blacklist.
 | `b` | Put the highlighted addon on the blacklist, or take it off |
 | `u` | Unlock the highlighted blacklisted addon for this session, or lock it again (so on this screen `u` doesn't update the app: press it on the tool menu) |
 | `v` | Switch view: By addon / By character |
-| `/` | Search |
+| `/` | Filter the tree |
 | `w` | **Apply** the pending changes (asks first; **Yes** is selected, in red) |
 | `y` | **Dry run** (asks first; **Yes** is selected) |
 | `x` / `c` | Expand every line of the tree / collapse them all |
 | `r` | Scan again |
 | `z` | **Undo last change** (asks first; **Yes** is selected, in red) |
-| `f` or `Esc` | Pick another game version (from the search box, `Esc` goes back to the tree) |
+| `f` or `Esc` | Pick another game version (in the filter box, `Esc` clears the filter and goes back to the tree) |
 | `t` | Back to the tool menu |
 | `s` | Settings |
 | `q` | Quit |
@@ -404,7 +411,7 @@ in `config\wow-tools.cfg`. The WTF backups (`snapshots`) follow `keep_backups`.
 | A file was "skipped: changed since the scan; rescan" | WoW (or another program) saved that file after the scan. Press `r` to scan again, make that addon's changes again and apply. The other files were changed as planned. |
 | My changes were undone after I played | WoW was running while you applied, or an addon synced its profiles back. Close WoW completely, apply again, then start the game. |
 | "files are locked by another program" | Close the Raider.IO client or the WeakAuras Companion, then apply again. Nothing was changed. |
-| An addon is missing from the tree | It doesn't use Ace3 profiles, its file is blacklisted and hidden (tick **Blacklisted addons** under **Show**), or a filter or search hides it. If its file couldn't be read, it's listed under **Scan warnings** at the bottom of the tree. |
+| An addon is missing from the tree | It doesn't use Ace3 profiles, its file is blacklisted and hidden (tick **Blacklisted addons** under **Show**), or a Show box or the filter hides it. If its file couldn't be read, it's listed under **Scan warnings** at the bottom of the tree. |
 | "Not done" with a list of addons | The change couldn't be made in those addons (blacklisted, a name already taken, …); the message says why for each. It was made in the others. |
 | A character keeps a profile I changed | It has **spec profiles**: LibDualSpec switches its profile by spec at login. See the [FAQ](#faq). |
 | "An earlier change did not finish" | See [If a change was interrupted](#if-a-change-was-interrupted). |

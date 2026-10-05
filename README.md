@@ -122,6 +122,8 @@ The app opens in a terminal window. You drive it with the keyboard:
 | `↑` `↓` | Move up and down |
 | `Enter` | Choose |
 | `x` `c` | Expand or collapse every line of a tree |
+| `/` | Filter a tree: type part of a name, `Enter` keeps the filter, `Esc` clears it |
+| `a` `n` | Tick or untick everything the tree shows |
 | `c` (tool menu) | What's new: the changelog |
 | `Esc` | Go back |
 | `s` | Settings |

@@ -24,6 +24,7 @@ from wowtools.ui.dialogs import (FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_H
                                  ProgressScreen)
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import MENU_HINT, WowToolsApp
+from wowtools.ui.tree_filter import FILTER_HINT, FILTER_PLACEHOLDER, FilterInput
 from wowtools.ui.widgets import NavHint, action_kind
 
 POPUP_MAX_WIDTH = 100  # a popup or confirm at LARGE: a readable width, never stretched edge to edge
@@ -140,6 +141,56 @@ class LookAndFeelTest(TuiTestCase):
                                 if w.focusable and actions not in w.ancestors]
                     rows = [w.region.y for w in controls]
                     self.assertEqual(len(rows), len(set(rows)), [(w.id, w.region) for w in controls])
+
+    async def test_every_tree_screen_has_the_filter_box(self):
+        """Spec D7 at BASE and TINY: every review and the Ace3 blacklist have the tree filter in the left pane, one
+        row of its own with the same label; the hint names `/ filter` right before the tree keys; `/` reaches it,
+        and Esc in it clears it and stays on the screen (the Interface Backup restore screen: its own tests)."""
+        for size in (BASE, TINY):
+            for tool in (*TOOLS, "blacklist"):
+                with self.subTest(size=size, tool=tool):
+                    app = self.make_app()
+                    async with app.run_test(size=size) as pilot:
+                        await pilot.pause()
+                        app.open_tool("ace3-profile-manager" if tool == "blacklist" else tool)
+                        await settle(app, pilot)
+                        if not isinstance(app.screen, FlavorScreen):  # first open: the settings, saved as they are
+                            app.screen._save()
+                            await settle(app, pilot)
+                        app.screen.dismiss(ALL_FLAVORS)
+                        await settle(app, pilot)
+                        screen = app.screen
+                        if tool == "blacklist":
+                            screen.action_edit_blacklist()
+                            await settle(app, pilot)
+                            screen = app.screen
+                        field = screen.filter_input()
+                        self.assertIsInstance(field, FilterInput)
+                        self.assertEqual(field.placeholder, FILTER_PLACEHOLDER)
+                        self.assertEqual(field.outer_size.height, 1)
+                        pane = screen.query_one("#filters")
+                        self.assertIn(pane, field.ancestors)
+                        others = [w for w in pane.query("*") if w.focusable and w is not field]
+                        self.assertNotIn(field.region.y, [w.region.y for w in others])
+                        hint = screen.query_one(NavHint)
+                        self.assertIn(FILTER_HINT + TREE_HINT, hint.hint)
+                        if size == BASE:
+                            inside = pane.region._replace(width=pane.region.width - 1)
+                            for widget in (field, hint):
+                                self.assert_inside(widget, inside)
+                        tree = screen.query_one(screen.TREE_SELECTOR, Tree)
+                        tree.focus()
+                        await pilot.press("slash")
+                        await pilot.pause()
+                        await pilot.press("z", "z")
+                        await settle(app, pilot)
+                        self.assertIs(screen.focused, field)
+                        self.assertEqual(field.value, "zz")
+                        await pilot.press("escape")
+                        await settle(app, pilot)
+                        self.assertEqual(field.value, "")
+                        self.assertIs(app.screen, screen)
+                        self.assertIs(screen.focused, tree)
 
     async def test_review_tree_expands_and_collapses_all(self):
         for tool in TOOLS:

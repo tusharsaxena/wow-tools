@@ -4,7 +4,7 @@ apply them, try them in a dry run, or undo the last change. A guidance line and 
 what can be done next."""
 from __future__ import annotations
 
-from collections.abc import Callable, Hashable, Iterable, Iterator
+from collections.abc import Callable, Collection, Hashable, Iterable, Iterator
 from pathlib import Path
 from typing import ClassVar
 
@@ -14,7 +14,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
 from textual.widget import Widget
-from textual.widgets import Button, Checkbox, Header, Input, Label, ProgressBar, Static, Tree
+from textual.widgets import Button, Checkbox, Header, Label, ProgressBar, Static, Tree
 from textual.widgets.tree import TreeNode
 
 from wowtools.core import activity
@@ -47,10 +47,12 @@ from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceScreen, ConfirmScreen, InfoScreen,
                                 ProgressScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
+from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, TreeFilter
 from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, WrapButtonRow, action_button,
                                  wrap_items)
 
-NAV_HINT = (REVIEW_HINT + "a all · n none · d delete · p assign · m more · w apply · y dry run · " + TREE_HINT +
+NAV_HINT = (REVIEW_HINT + "a all · n none · d delete · p assign · m more · w apply · y dry run · " + FILTER_HINT +
+            TREE_HINT +
             "r rescan · z undo · f flavors · t tools")
 SHOW_FILTERS = {"only-multi": "only_multi", "only-unused": "only_unused", "show-leftovers": "leftovers",
                 "show-blacklisted": "blacklisted"}
@@ -137,13 +139,14 @@ class ActionTip(Static):
             place()  # its height is known now: the toasts go above it
 
 
-class ProfileReviewScreen(ReviewBase, Screen[str]):
+class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
     """The AceDB databases of the chosen flavors (and account) as a tree. Dismisses with "flavors", "tools" or
     "quit". `unlocked` is the flow's set of casefolded blacklisted (flavor folder, addon) pairs unlocked this
     session (shared, not copied)."""
 
     TREE_SELECTOR = "#profiles"
     LOG_SCREEN = "ace_review"
+    FILTER_SELECTOR = "#search"  # the shared tree filter, in the box the search had
     PREFLIGHT_TEXT = "Checking whether WoW is running…"
     BUTTON_ACTIONS: ClassVar[dict[str, str]] = {
         "btn-apply": "apply", "btn-dry-run": "dry_run", "btn-rescan": "rescan", "btn-undo": "undo",
@@ -181,7 +184,6 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
         Binding("b", "blacklist", "Blacklist", show=False),
         Binding("u", "unlock", "Unlock", show=False),
         Binding("v", "switch_view", "View", show=False),
-        Binding("slash", "focus_search", "Search", show=False),
         Binding("w", "apply", "Apply"),
         Binding("y", "dry_run", "Dry run"),
         Binding("r", "rescan", "Rescan"),
@@ -189,9 +191,10 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
         Binding("f", "leave('flavors')", "Flavors"),
         Binding("t", "leave('tools')", "Tools"),
         Binding("q", "leave('quit')", "Quit"),
-        Binding("escape", "back", "Flavors", show=False),
+        Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
+        *FILTER_BINDINGS,
         *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
@@ -241,7 +244,7 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
                 yield Ka0sCheckbox("Only unused profiles", False, id="only-unused", compact=True)
                 yield Ka0sCheckbox("Leftover characters", True, id="show-leftovers", compact=True)
                 yield Ka0sCheckbox("Blacklisted addons", True, id="show-blacklisted", compact=True)
-                yield Input(placeholder="Search addon, profile or character", id="search", compact=True)
+                yield FilterInput(id="search")
                 yield Static(self._pending_line(NO_PENDING), id="pending")
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Apply", "destructive", id="btn-apply")
@@ -422,7 +425,7 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
         self.filters.view = self.view
         self._builder = TreeBuilder(self.scan, self.staging, self.filters, scope_label=self.scope_label,
                                     locked=self.locked, blacklisted=self._blacklisted, expanded=self._expanded,
-                                    warning_style=theme_colour(self.app, "warning"))
+                                    warning_style=theme_colour(self.app, "warning"), text_filter=self.text_filter)
         self._builder.build(tree)
         for node in self._walk_tree():
             node.set_label(self._label(node.data))
@@ -459,6 +462,9 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
         summary = self.staging.summary()
         profiles, chars = counts(self.ticked)
         self.summary_text = selection_text(profiles, chars, summary, len(self.scan.warnings))
+        hidden = self.hidden_ticked_note()
+        if hidden:
+            self.summary_text += f"    {hidden}"
         self.query_one("#summary", Static).update(Text(self.summary_text))
         self.query_one("#pending", Static).update(self._pending_line(pending_text(summary)))
         self._refresh_buttons()
@@ -616,7 +622,7 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
         if action == "edit_blacklist":
             return "Choose the addons this tool never changes, in every game version."
         if action == "more":
-            return "Ticking helpers, search and view, then rename, copy, blacklist, unlock and discard."
+            return "Ticking helpers, filter and view, then rename, copy, blacklist, unlock and discard."
         if action == "discard":
             total = staging.summary().total
             return (f"Drop all {plural(total, 'pending change')}. Nothing has been written yet." if total
@@ -650,7 +656,9 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
         """The ticked characters, or the highlighted node's when nothing is ticked."""
         return self._selected("c")
 
-    # --- ticks (Space, a, n: ReviewBase; a ticks the keys shown, n unticks every key) ----------------------
+    # --- ticks (Space, a, n: ReviewBase; a and n act on the keys shown, TreeFilter) ----------------------
+    # The builder already leaves out what the filter and the Show boxes hide, so "shown" is the tree's root keys,
+    # and a tick either of them hides stays, counts toward the actions and is said on the bottom line.
     def tick_model(self) -> TickModel:
         return TickModel.of_ticked(self.ticked)  # nothing starts ticked
 
@@ -660,11 +668,29 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
     def tick_log_key(self, node, keys) -> str:
         return str(ident(node.data))
 
-    def select_none_keys(self) -> set[tuple]:
-        """Every tick, hidden ones too: the actions take every ticked key and fall back to the highlighted node
-        only when nothing is ticked, so `n` must leave no hidden tick behind until the summary and the confirms
-        say how many ticks the search and the Show boxes hide (spec D8)."""
-        return set(self.ticked)
+    def _shown_keys(self) -> set[tuple]:
+        return set(self._tick_keys(self.query_one("#profiles", Tree).root)) if self.is_attached else set()
+
+    def all_tick_keys(self) -> set[tuple]:
+        """The keys the tree shows and every tick (a hidden tick is a key of the model the tree leaves out)."""
+        return self._shown_keys() | self.ticked
+
+    def filter_texts(self, key) -> tuple[str, ...]:
+        return ()  # unused: filter_keys() takes the keys the builder kept
+
+    def filter_keys(self, keys: Collection[Hashable]) -> list[Hashable]:
+        """The keys the tree shows: the builder matched the filter (and applied the Show boxes) on the model."""
+        shown = self._shown_keys()
+        return [k for k in keys if k in shown]
+
+    def tree_narrowed(self) -> bool:
+        """The Show boxes narrow the tree too: a tick one of them hides is counted like one the filter hides."""
+        return True
+
+    def _hidden_line(self) -> list[str]:
+        """The hidden-ticks line for a popup of an action that takes the ticks (none when nothing is hidden)."""
+        hidden = self.hidden_ticked_note() if self.ticked else ""
+        return [f"{hidden}: they are included."] if hidden else []
 
     def ticks_frozen(self) -> bool:
         return not self.idle
@@ -694,18 +720,6 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
 
     def action_switch_view(self) -> None:
         self._set_view("character" if self.view == "addon" else "addon")
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id == "search":
-            self.filters.search = event.value
-            self._schedule_rebuild()
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id == "search":
-            self.query_one("#profiles", Tree).focus()
-
-    def action_focus_search(self) -> None:
-        self.query_one("#search", Input).focus()
 
     # --- blacklist -------------------------------------------------------------------------------
     def _file_of(self, node: TreeNode | None) -> SvFile | None:
@@ -889,7 +903,8 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
             state = self.staging.state(key)
             moved = sum(len(state.users(n)) for n in names)
             lines.append(f"{self._addon_name(key)}: {', '.join(names)} ({plural(moved, 'character')} move)")
-        body = "\n".join(["Delete these profiles and move their characters to the profile chosen below:", *lines])
+        body = "\n".join(["Delete these profiles and move their characters to the profile chosen below:", *lines,
+                          *self._hidden_line()])
 
         def done(target: str | None) -> None:
             if target is not None and self.staging is not None:
@@ -905,7 +920,7 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
             self.notify("Tick or highlight a character first")
             return
         lines = [f"{self._addon_name(key)}: {plural(len(chars), 'character')}" for key, chars in selection.items()]
-        body = "\n".join(["Move these characters to the profile chosen below:", *lines])
+        body = "\n".join(["Move these characters to the profile chosen below:", *lines, *self._hidden_line()])
 
         def done(target: str | None) -> None:
             if target is not None and self.staging is not None:
@@ -973,7 +988,8 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
         def done(ok: bool | None) -> None:
             if ok and self.staging is not None:
                 self._staged(self.staging.remove_leftovers(selection))
-        self.app.push_screen(ConfirmScreen("Remove leftover characters?", body, kind="destructive", groups=groups), done)
+        self.app.push_screen(ConfirmScreen("Remove leftover characters?", body, tuple(self._hidden_line()),
+                                           kind="destructive", groups=groups), done)
 
     def _databases(self) -> list[DbKey]:
         """The databases of the ticked keys, else of the highlighted node's addon or database."""
@@ -1009,7 +1025,7 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
             keys = {"discard": self.action_discard, "rename": self.action_rename, "copy": self.action_copy,
                     "blacklist": self.action_blacklist, "edit_blacklist": self.action_edit_blacklist,
                     "unlock": self.action_unlock, "switch_view": self.action_switch_view,
-                    "search": self.action_focus_search, "tick_leftovers": self._tick_leftovers,
+                    "filter": self.action_focus_filter, "tick_leftovers": self._tick_leftovers,
                     "select_all": self.action_select_all, "select_none": self.action_select_none}
             if choice in keys:
                 keys[choice]()
@@ -1025,6 +1041,8 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
         if not keys:
             self.notify("Tick or highlight an addon first")
             return
+        for line in self._hidden_line():  # staged at once, no popup: said in a toast
+            self.notify(line, severity="warning")
         self._staged(getattr(self.staging, operation)(keys))
 
     def action_keep_default(self) -> None:
@@ -1366,13 +1384,6 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
         self._scan()
 
     # --- leaving -------------------------------------------------------------------------------
-    def action_back(self) -> None:
-        """Esc: out of the search box back to the tree; else back to the flavor picker."""
-        if isinstance(self.focused, Input):
-            self.query_one("#profiles", Tree).focus()
-            return
-        self.action_leave("flavors")
-
     def action_leave(self, choice: str) -> None:
         if self.app.busy:
             return

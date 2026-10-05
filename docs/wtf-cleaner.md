@@ -88,7 +88,8 @@ suggests nothing there. The scan notes this in its warnings.
 | Key | Does |
 |---|---|
 | `Space` | Tick or untick the highlighted line |
-| `a` / `n` | Tick / untick every file shown (a file a rule hides keeps its tick) |
+| `a` / `n` | Tick / untick every file shown (a file a rule or the filter hides keeps its tick) |
+| `/` | Filter the tree (see below) |
 | `1` `2` `3` `4` | Switch a rule on or off |
 | `w` | **Clean** the ticked files (asks first; **Yes** is selected, in red) |
 | `y` | **Dry run** (asks first; **Yes** is selected) |
@@ -101,6 +102,17 @@ suggests nothing there. The scan notes this in its warnings.
 | `q` | Quit |
 | `←` `→` | Jump between the list and the left panel |
 | `Tab` | Move to the next control |
+
+### Filtering the tree
+
+`/` puts you in the **Filter** box on the left. Type part of a name: an account, a character, an addon or a file
+(upper or lower case doesn't matter). The tree keeps the matching lines and the groups they're in, and opens an
+addon when one of its files matches; a matching account or addon keeps everything in it. The filter works on top
+of the rules. `Enter` goes back to the tree and keeps the filter; `Esc` in the box clears it.
+
+The filter only changes what you see. `a` and `n` tick and untick what it shows; a file it hides keeps its tick and
+is still cleaned. When that's the case, the bottom bar and the confirmation say so ("12 selected files are hidden
+by the filter").
 
 ## Cleaning
 

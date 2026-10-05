@@ -37,12 +37,13 @@ from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceScreen, ConfirmScreen,
                                 ProgressScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
+from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, ModelFilter, ModelNode, TreeFilter
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
 WARNING_STYLE = "#E8B04B"
 ALL_FLAVORS_LABEL = "All flavors"
 __all__ = ["CleanProgressScreen", "RecoveryScreen", "ResultScreen", "ReviewScreen"]
-NAV_HINT = REVIEW_HINT + ("a all · n none · w clean · y dry run · " + TREE_HINT +
+NAV_HINT = REVIEW_HINT + ("a all · n none · w clean · y dry run · " + FILTER_HINT + TREE_HINT +
                           "r rescan · z undo · f flavors · t tools · 1-4 criteria")
 
 
@@ -76,9 +77,10 @@ class RecoveryScreen(ChoiceScreen):
             self.dismiss("remind")
 
 
-class ReviewScreen(ReviewBase, Screen[str]):
+class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
     TREE_SELECTOR = "#proposal"
     LOG_SCREEN = "review"
+    HIDDEN_NOUN = "file"
     BUTTON_ACTIONS: ClassVar[dict[str, str]] = {"btn-clean": "clean", "btn-dry": "dry_run", "btn-rescan": "rescan",
                                                 "btn-undo": "undo"}
     DEFAULT_CSS = two_pane_css("ReviewScreen", "#proposal")
@@ -100,6 +102,7 @@ class ReviewScreen(ReviewBase, Screen[str]):
         Binding("4", "criterion(3)", CRITERION_SHORT["stray_copies"], show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
+        *FILTER_BINDINGS,
         *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
@@ -124,6 +127,7 @@ class ReviewScreen(ReviewBase, Screen[str]):
         self.proposals: list[tuple[Flavor, Proposal]] = []  # one per flavor that scanned
         self.proposal: Proposal | None = None  # every flavor's items together
         self.unchecked: set[Path] = set()
+        self._filter_texts: dict[Path, tuple[str, ...]] = {}  # a file's labels from the top: the filter's match
         self.summary_text = ""
         self._progress_screen: CleanProgressScreen | None = None
         self._last_filter: Widget | None = None
@@ -142,6 +146,7 @@ class ReviewScreen(ReviewBase, Screen[str]):
                                        id=f"crit_{name}", compact=True)
                 yield Label("Max age in days (Enter)", classes="section")
                 yield Input(str(self.criteria.max_age_days), type="integer", id="max_age", compact=True)
+                yield FilterInput()
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Clean", "destructive", id="btn-clean")
                     yield action_button("Dry run", "simulate", id="btn-dry")
@@ -277,42 +282,74 @@ class ReviewScreen(ReviewBase, Screen[str]):
         tree.clear()
         tree.root.data = ("group", self.proposal.items, self._root_name())
         tree.root.set_label(self._label(tree.root.data))
+        self._filter_texts = {}
+        top: list[ModelNode | Text] = []  # the flavors (several) or the accounts (one); a Text: a flavor not scanned
         for flavor_scan in self.scans:
             if flavor_scan.result is None:  # several flavors only: say why this one is not offered
-                tree.root.add_leaf(Text.assemble("  ", (flavor_scan.flavor.display_name, ACCENT),
-                                                 (f"  not scanned: {flavor_scan.note or flavor_scan.error}",
-                                                  WARNING_STYLE)))
+                top.append(Text.assemble("  ", (flavor_scan.flavor.display_name, ACCENT),
+                                         (f"  not scanned: {flavor_scan.note or flavor_scan.error}", WARNING_STYLE)))
                 continue
             items = by_folder[flavor_scan.flavor.folder].items
-            parent = tree.root
             if self.multi:
-                data = ("group", items, flavor_scan.flavor.display_name)
-                parent = tree.root.add(self._label(data), data=data, expand=True)
-            self._add_accounts(parent, flavor_scan.result.account_names, items)
+                name = flavor_scan.flavor.display_name
+                top.append(ModelNode(("group", items, name),
+                                     self._account_nodes(flavor_scan.result.account_names, items, (name,))))
+            else:
+                top += self._account_nodes(flavor_scan.result.account_names, items, ())
+        kept = self.model_filter([n for n in top if isinstance(n, ModelNode)], lambda n: n.children,
+                                 lambda n: (self._filter_name(n.data),), key=id)
+        for node in top:
+            if isinstance(node, Text):
+                tree.root.add_leaf(node)  # not scanned: said whatever the filter
+            else:
+                self._add_node(tree.root, node, kept)
         tree.root.expand()
         self._update_summary()
 
-    def _add_accounts(self, parent, account_names: tuple[str, ...], proposal_items: list[ProposalItem]) -> None:
-        """account → account-wide / character → addon → files, under parent (the root or a flavor node)."""
+    def _account_nodes(self, account_names: tuple[str, ...], proposal_items: list[ProposalItem],
+                       path: tuple[str, ...]) -> list[ModelNode]:
+        """account → account-wide / character → addon → files, as model nodes; `path` is the flavor's name when
+        there are several (the labels above a file, for the filter)."""
         owners: dict[str, dict[str, list[ProposalItem]]] = {name: {} for name in account_names}
         for item in proposal_items:
             owners.setdefault(item.account, {}).setdefault(item.owner_label, []).append(item)
+        accounts = []
         for account in sorted(owners, key=str.casefold):
             account_items = [i for items in owners[account].values() for i in items]
-            data = ("group", account_items, account)
-            account_node = parent.add(self._label(data), data=data, expand=True)
+            account_node = ModelNode(("group", account_items, account))
             for owner in sorted(owners[account], key=lambda o: (o != ACCOUNT_WIDE, o.casefold())):
                 items = sorted(owners[account][owner], key=lambda i: i.addon.casefold())
-                data = ("group", items, owner)
-                owner_node = account_node.add(self._label(data), data=data, expand=True)
+                owner_node = ModelNode(("group", items, owner))
                 for item in items:
-                    data = ("item", item)
-                    item_node = owner_node.add(self._label(data), data=data)
+                    item_node = ModelNode(("item", item))
                     for sv in item.files:
-                        data = ("file", item, sv)
-                        item_node.add_leaf(self._label(data), data=data)
-            if not account_node.children:
-                account_node.allow_expand = False  # an account with nothing to clean
+                        item_node.children.append(ModelNode(("file", item, sv)))
+                        self._filter_texts[sv.path] = (*path, account, owner, item.addon, sv.name)
+                    owner_node.children.append(item_node)
+                account_node.children.append(owner_node)
+            accounts.append(account_node)
+        return accounts
+
+    def _add_node(self, parent, node: ModelNode, kept: ModelFilter) -> None:
+        """Add node and what the filter keeps below it under parent: groups open (as before the filter), an addon
+        opens when the filter opens it (a file in it matches)."""
+        if not kept.shows(node):
+            return
+        kind = node.data[0]
+        if kind == "file":
+            parent.add_leaf(self._label(node.data), data=node.data)
+            return
+        added = parent.add(self._label(node.data), data=node.data, expand=kind == "group" or kept.opens(node))
+        for child in node.children:
+            self._add_node(added, child, kept)
+        if not added.children:
+            added.allow_expand = False  # an account with nothing to clean
+
+    @staticmethod
+    def _filter_name(data) -> str:
+        """What the filter matches a node on: a group's name, an addon, a file's name."""
+        kind = data[0]
+        return data[2].name if kind == "file" else data[1].addon if kind == "item" else data[2]
 
     @staticmethod
     def _paths(data) -> list[Path]:
@@ -383,6 +420,9 @@ class ReviewScreen(ReviewBase, Screen[str]):
         not_scanned = [s.flavor.display_name for s in self.scans if s.result is None]
         if not_scanned:
             text += f"    ⚠ not scanned: {', '.join(not_scanned)}"
+        hidden = self.hidden_ticked_note()
+        if hidden:
+            text += f"    {hidden}"
         self.summary_text = text
         self.query_one("#summary", Static).update(Text(text))
 
@@ -401,6 +441,9 @@ class ReviewScreen(ReviewBase, Screen[str]):
 
     def all_tick_keys(self) -> list[Path]:
         return [f.path for item in self.proposal.items for f in item.files] if self.proposal is not None else []
+
+    def filter_texts(self, key: Path) -> tuple[str, ...]:
+        return self._filter_texts.get(key, ())
 
     def tick_log_key(self, node, keys) -> str:
         kind = node.data[0]
@@ -519,6 +562,9 @@ class ReviewScreen(ReviewBase, Screen[str]):
         if lockers:
             log_event("locker.running_warning", executables=lockers)
             alerts.append(locker_warning(lockers))
+        hidden = self.hidden_ticked_note()
+        if hidden:
+            alerts.append(f"{hidden}: they are {'simulated' if dry_run else 'cleaned'} too.")
         title = "Simulate this clean?" if dry_run else "Back up and delete these files?"
         self.app.push_screen(ConfirmScreen(title, "\n".join(lines), tuple(alerts),
                                            kind="simulate" if dry_run else "destructive"),

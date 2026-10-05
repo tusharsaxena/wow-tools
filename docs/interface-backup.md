@@ -110,6 +110,14 @@ or "all backups"), the buttons and the keys.
 up"). When a backup is highlighted, it names that backup in full, with its date and time; otherwise it says how
 to pick one. It also warns when a restore is blocked or the scan skipped something.
 
+**Filter**: `/` puts you in the **Filter** box on the left. Type part of a name: a game version, a link, a warning
+or a backup's date and time (`2026-10-04`); upper or lower case doesn't matter. The tree keeps the matching lines
+and the game versions they're in, and opens a **Backups** (or **Links**) line when something in it matches. A game
+version stays shown, and tickable, while anything in it matches. `Enter` goes back to the tree and keeps the filter;
+`Esc` in the box clears it. The filter only changes what you see: `a` and `n` act on the game versions shown, and a
+ticked one it hides is still backed up; the bottom bar and the confirmation say so ("1 selected flavor is hidden
+by the filter").
+
 On Windows you see file counts and sizes. From WSL, Mac or Linux the review shows file counts only: reading
 every file's size there takes a disk round trip per file, and an `Interface` folder can hold tens of thousands of
 files. The backup itself works the same, and the results screen shows the sizes.
@@ -119,7 +127,8 @@ files. The backup itself works the same, and the results screen shows the sizes.
 | Key | Does |
 |---|---|
 | `Space` | Tick or untick the highlighted game version (or the top line, for all of them) |
-| `a` / `n` | Tick every game version / untick every game version |
+| `a` / `n` | Tick / untick every game version shown |
+| `/` | Filter the tree (see below) |
 | `Enter` | Open or close the highlighted line; on a backup, **Restore** it |
 | `b` | **Back up** the ticked game versions (asks first; **Yes** is selected, in green) |
 | `e` | **Restore** the highlighted backup |
@@ -204,7 +213,9 @@ made, if that differs). Under **Restore** are two boxes, **Interface** and **WTF
 - A folder that is itself a link says "(link: restore by hand)" and can't be ticked. See
   [Links and junctions](#links-and-junctions).
 
-Below them are **Restore** (amber: it overwrites files) and **Back**.
+Below them are the **Filter** box (`/`), then **Restore** (amber: it overwrites files) and **Back**. The filter only
+narrows the tree on the right (type part of a folder or file name: `WeakAuras`); it never changes what is
+restored. `Esc` in the box clears it.
 
 **On the right** is a tree of what the restore would cost you, compared with your folders as they are now. It's
 worked out again each time you tick or untick a box ("Comparing the backup with your folders…" meanwhile):
@@ -228,6 +239,7 @@ lost, the tree says so: "Nothing on disk would be lost".
 |---|---|
 | `Space` | Tick or untick the highlighted box, or open a line of the tree |
 | `o` | **Restore** the ticked folders (asks first) |
+| `/` | Filter the tree (only what you see: the restore is the same) |
 | `x` / `c` | Expand every line of the tree / collapse them all |
 | `b` or `Esc` | Back to the review screen |
 | `←` `→` | Jump between the tree and the left panel |

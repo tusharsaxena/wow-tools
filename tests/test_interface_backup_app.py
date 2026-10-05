@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from textual.widgets import Button, Checkbox, DataTable, Input, OptionList, Static, Tree
 
-from tests.fixtures import BASE, TuiTestCase, build_interface_tree, build_wow_tree, make_config, settle
+from tests.fixtures import BASE, TINY, TuiTestCase, build_interface_tree, build_wow_tree, make_config, settle
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
@@ -29,6 +29,7 @@ from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
+from wowtools.ui.tree_filter import FILTER_HINT, FilterInput
 from wowtools.ui.widgets import NavHint, action_kind
 
 SIZE = (140, 50)
@@ -351,7 +352,8 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertEqual(app.screen.query_one("#result-table", DataTable).row_count, 1)
             await pilot.press("r")
             await settle(app, pilot)
-            self.assertEqual(review.unchecked, {f.folder for f in review.flavors} - {"_classic_era_"})  # kept
+            # kept (n unticks the flavors with a tick: Retail PTR has nothing to back up)
+            self.assertEqual(review.unchecked, {s.flavor.folder for s in review.scans if s.has_data} - {"_classic_era_"})
         self.assertEqual([n.split("-2")[0] for n in self.zips()], ["backup-classic_era"])
 
     async def test_flavor_with_nothing_to_back_up_has_no_tick(self):
@@ -407,8 +409,8 @@ class InterfaceBackupAppTest(TuiTestCase):
             review = await self.open_review(app, pilot)
             tree = review.query_one("#flavors", Tree)
             self.assertIs(review.focused, tree)
-            await pilot.press("left")
-            self.assertIn(review.focused, list(review.query_one("#actions").query(Button)))
+            await pilot.press("left")  # the left pane's first control: the filter box
+            self.assertIs(review.focused, review.filter_input())
             review.query_one("#btn-backup", Button).focus()
             await pilot.press("right")
             self.assertIs(review.focused, review.query_one("#btn-restore", Button))
@@ -1862,3 +1864,114 @@ class InterfaceBackupAppTest(TuiTestCase):
                 options = picker.query_one("#flavors", OptionList)
                 labels = [str(options.get_option_at_index(n).prompt) for n in range(options.option_count)]
                 self.assertTrue(all("no backups yet" in label for label in labels), labels)
+
+    # --- the tree filter (spec D7/D8): on the review (flavor ticks; a flavor stays while something in it matches)
+    #     and on the restore screen (read-only: it only narrows the tree) --------------------------------------
+
+    async def test_review_filter_narrows_and_keeps_hidden_ticks(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            ticked = len(review.selection())
+            self.assertGreater(ticked, 1)
+            await pilot.press("slash")
+            await pilot.pause()
+            await pilot.press(*"anniv")
+            await settle(app, pilot)
+            self.assertEqual(list(self.flavor_nodes(review)), ["Anniversary"])
+            await pilot.press("enter")  # keeps the filter, back to the tree
+            await pilot.pause()
+            await pilot.press("n")  # unticks Anniversary only
+            self.assertEqual(len(review.selection()), ticked - 1)
+            self.assertNotIn("_anniversary_", [s.flavor.folder for s in review.selection()])
+            note = f"{ticked - 1} selected flavor{'s are' if ticked > 2 else ' is'} hidden by the filter"
+            self.assertIn(note, review.summary_text)
+            await pilot.press("b")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertIn(f"{note}: they are backed up too.", app.screen.body_text)
+            app.screen.dismiss(False)
+            await settle(app, pilot)
+            await pilot.press("slash")
+            await pilot.pause()
+            await pilot.press("escape")
+            await settle(app, pilot)
+            self.assertGreater(len(self.flavor_nodes(review)), 1)
+            self.assertNotIn("hidden by the filter", review.summary_text)
+
+    async def test_review_filter_finds_a_backup_and_keeps_its_flavor_tickable(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            info = next(b for b in review.backups if b.flavor_short == "retail")
+            review.filter_input().value = info.when
+            await settle(app, pilot)
+            flavors = self.flavor_nodes(review)
+            self.assertIn("Retail", flavors)
+            group = self.child(flavors["Retail"], "backups")
+            self.assertTrue(group.is_expanded)  # opened by the filter, its matching zip listed
+            self.assertIn(info.path, [c.data[1].path for c in group.children])
+            self.assertIn("_retail_", review.shown_tick_keys())
+
+    async def test_restore_filter_narrows_the_tree(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        addons = self.root / "_retail_" / "Interface" / "AddOns"
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            for rel in ("WeakAuras/wa.lua", "WeakAuras/wb.lua", "Plater/p.lua"):
+                (addons / rel).parent.mkdir(parents=True, exist_ok=True)
+                (addons / rel).write_text("x", encoding="utf-8")
+            screen = await self.open_restore(app, pilot)
+            self.assertIn(FILTER_HINT + "x expand all", screen.query_one(NavHint).hint)
+            removed = self.effect(screen, "removed")
+            self.assertEqual(len(removed.children), 2)
+            screen.query_one("#effects", Tree).focus()
+            await pilot.press("slash")
+            await pilot.pause()
+            self.assertIsInstance(screen.focused, FilterInput)
+            await pilot.press("w", "b")  # typed: never Back (b)
+            await settle(app, pilot)
+            self.assertIs(app.screen, screen)
+            removed = self.effect(screen, "removed")
+            self.assertEqual([c.data[2] for c in removed.children], ["Interface/AddOns/WeakAuras"])
+            group = removed.children[0]
+            self.assertTrue(group.is_expanded)
+            self.assertEqual([str(c.label) for c in group.children], ["wb.lua"])
+            await pilot.press("escape")  # clears the filter, stays on the screen
+            await settle(app, pilot)
+            self.assertIs(app.screen, screen)
+            self.assertEqual(len(self.effect(screen, "removed").children), 2)
+            self.assertFalse(self.effect(screen, "removed").children[0].is_expanded)
+
+    async def test_restore_filter_box_at_base_and_tiny(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        for size in (BASE, TINY):
+            with self.subTest(size=size):
+                app = self.make_app()
+                async with app.run_test(size=size) as pilot:
+                    await self.open_review(app, pilot)
+                    if not self.zips():
+                        await self.make_backup(app, pilot)
+                        await pilot.press("r")
+                        await settle(app, pilot)
+                    screen = await self.open_restore(app, pilot)
+                    field = screen.filter_input()
+                    pane = screen.query_one("#filters")
+                    self.assertIn(pane, field.ancestors)
+                    self.assertEqual(field.outer_size.height, 1)
+                    others = [w for w in pane.query("*") if w.focusable and w is not field]
+                    self.assertNotIn(field.region.y, [w.region.y for w in others])
+                    if size == BASE:
+                        r, box = field.region, pane.region
+                        self.assertTrue(box.y <= r.y and r.bottom <= box.bottom, (r, box))
+                        hint = screen.query_one(NavHint).region
+                        self.assertTrue(hint.bottom <= box.bottom, (hint, box))

@@ -21,7 +21,7 @@ from wowtools.core.events import log_event
 from wowtools.core.text import plural
 
 __all__ = ["FILTER_BINDINGS", "FILTER_HINT", "FILTER_ID", "FILTER_PLACEHOLDER", "FilterBox", "FilterInput",
-           "ModelFilter", "TextFilter", "TreeFilter", "hidden_by_filter"]
+           "ModelFilter", "ModelNode", "TextFilter", "TreeFilter", "hidden_by_filter"]
 
 FILTER_ID = "tree-filter"
 FILTER_PLACEHOLDER = "Filter (/)"
@@ -33,12 +33,13 @@ FILTER_BINDINGS = [Binding("slash", "focus_filter", "Filter", show=False, priori
 Node = TypeVar("Node")
 
 
-def hidden_by_filter(count: int) -> str:
-    """The line a summary and a run's confirm add while the filter hides ticked items ("" when it hides none)."""
+def hidden_by_filter(count: int, noun: str = "item") -> str:
+    """The line a summary and a run's confirm add while the filter hides ticked items ("" when it hides none).
+    `noun` is what the screen's summary counts ("3 selected files are hidden by the filter")."""
     if count <= 0:
         return ""
     verb = "is" if count == 1 else "are"
-    return f"{plural(count, 'selected item')} {verb} hidden by the filter"
+    return f"{plural(count, 'selected ' + noun)} {verb} hidden by the filter"
 
 
 class TextFilter:
@@ -64,6 +65,18 @@ class TextFilter:
     def path_matches(self, path: Iterable[str]) -> bool:
         """True when an item shows: its own label or one of its groups' (the path from the top) matches."""
         return self.matches(*path)
+
+
+class ModelNode:
+    """A node of a screen's tree before it is built, for a screen whose model is not a tree already: its data (as
+    the tree node gets it) and its children. ModelFilter works on these (key=id), then the screen adds only the
+    nodes it keeps."""
+
+    __slots__ = ("children", "data")
+
+    def __init__(self, data, children: list[ModelNode] | None = None) -> None:
+        self.data = data
+        self.children: list[ModelNode] = children if children is not None else []
 
 
 class ModelFilter(Generic[Node]):
@@ -211,7 +224,10 @@ class TreeFilter(FilterBox):
     rebuild narrows, so the hidden ticks would never be counted: TreeFilter makes it abstract). It may override
     `filter_changed()` (the default reschedules the rebuild) and, where the keys a node shows are not simply the
     matching items, `filter_keys()`. It relies on ReviewBase for the rest: TREE_SELECTOR, LOG_SCREEN, tick_model(),
-    _schedule_rebuild() and action_focus_tree()."""
+    _schedule_rebuild() and action_focus_tree(). HIDDEN_NOUN is what one tick key is in the screen's summary
+    ("file", "shot", "flavor"), for hidden_ticked_note()."""
+
+    HIDDEN_NOUN: ClassVar[str] = "item"
 
     def filter_texts(self, key: Hashable) -> Sequence[str]:
         """The labels this tick key's item is matched on: its groups' and its own."""
@@ -227,9 +243,14 @@ class TreeFilter(FilterBox):
             return keys
         return [key for key in keys if self.text_filter.path_matches(self.filter_texts(key))]
 
+    def tree_narrowed(self) -> bool:
+        """True when the tree may leave keys out: while the filter is set (a screen whose own controls narrow the
+        tree too, Ace3's Show boxes, says so here)."""
+        return self.filtering
+
     def hidden_ticked_count(self) -> int:
         """How many ticked items the filter hides: they stay ticked and the run takes them."""
-        if not self.filtering:
+        if not self.tree_narrowed():
             return 0
         every = list(self.all_tick_keys())
         shown = set(self.filter_keys(every))
@@ -237,7 +258,7 @@ class TreeFilter(FilterBox):
 
     def hidden_ticked_note(self) -> str:
         """"N selected items are hidden by the filter", or "" when it hides none: for the summary and confirms."""
-        return hidden_by_filter(self.hidden_ticked_count())
+        return hidden_by_filter(self.hidden_ticked_count(), self.HIDDEN_NOUN)
 
     def filter_changed(self) -> None:
         """The filter text changed: rebuild the tree (folded into one rebuild while the user types)."""
