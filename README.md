@@ -208,7 +208,7 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 
 | File | Holds |
 |---|---|
-| `config\wow-tools.cfg` | Shared by every tool (`[general]`): your WoW folder, how many backups to keep per game version (`keep_backups`, 10; 0 keeps all) and journals per tool (`keep_journals`, 10), plus update and log options |
+| `config\wow-tools.cfg` | Shared by every tool (`[general]`): your WoW folder, how many backups to keep per game version (`keep_backups`, 10; 0 keeps all) and journals per tool (`keep_journals`, 10), how many game versions to work on at once (`parallelism`, 2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder, where working on several at once is slower), plus update and log options |
 | `config\wtf-cleaner.cfg` | The WTF Cleaner's settings |
 | `config\screenshot-organizer.cfg` | The Screenshot Organizer's settings |
 | `config\interface-backup.cfg` | Interface Backup's settings |
@@ -259,7 +259,7 @@ If you use WSL (Linux inside Windows), the same folder works from both sides. Ru
 | "No WoW flavor folders were found" | Pick the `World of Warcraft` folder itself, not `_retail_` inside it. |
 | "Ka0s WoW Tools may already be running" | See *Why does it say another copy may already be running?* in the [FAQ](#faq). |
 | The window looks garbled or too small | Make the terminal window bigger (at least 120 columns by 30 lines; see [Terminal size](#terminal-size)), or use Windows Terminal (the default on Windows 11). |
-| It's very slow on WSL | WSL (Linux inside Windows) is slow at reading files on Windows drives such as `C:` or `G:`: every file takes a moment to check, and a WoW folder has thousands of them. Start the app from Windows instead, by double-clicking `wow-tools.cmd`. It uses the same settings, so nothing needs setting up again. If you stay on WSL, give the first scan time; the progress bar shows it's still working. |
+| It's very slow on WSL | WSL (Linux inside Windows) is slow at reading files on Windows drives such as `C:` or `G:`: every file takes a moment to check, and a WoW folder has thousands of them. Start the app from Windows instead, by double-clicking `wow-tools.cmd`. It uses the same settings, so nothing needs setting up again. If you stay on WSL, give the first scan time; the progress bar shows it's still working, and set "Game versions to work on at once" to 1 in the general settings (`s` on the tool menu). |
 | A tool does something unexpected | See the troubleshooting table at the end of that tool's guide. |
 | Something looks wrong and I want to report it | Follow [Reporting a bug](#reporting-a-bug) below. |
 

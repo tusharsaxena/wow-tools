@@ -892,6 +892,8 @@ class KeyboardNavigationTest(AppTestCase):
             await pilot.press("down")
             self.assertEqual(setup.focused.id, "keep-journals")
             await pilot.press("down")
+            self.assertEqual(setup.focused.id, "parallelism")
+            await pilot.press("down")
             self.assertEqual(setup.focused.id, "save")
             await pilot.press("enter")
             await pilot.pause()

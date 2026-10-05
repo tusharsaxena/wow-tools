@@ -45,6 +45,9 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `folder.renamed` | info | A renamed tool's folder (logs/<tool>/ or <WoW>/wow-tools/<tool>/) was moved to its new name; logged as a warning when entries clashed or failed to move. |
 | `lock.conflict` | warning | Another copy of Ka0s WoW Tools appears to be running (its lock file exists). |
 | `lock.overridden` | warning | The user took over an existing lock file and carried on. |
+| `parallel.finished` | debug | A run over several units ended: how many, how many failed, seconds. |
+| `parallel.started` | debug | A run over several units (game versions) started (core/parallel.py): what, the units, and the threads it uses (1 = one after another). |
+| `parallel.unit_failed` | error | One unit of a run over several raised an unexpected error; the other units carried on (what, unit, type, message, traceback). |
 | `session.end` | info | The process is exiting (waited_for_worker is set when it first waited for a running clean, organize or undo to finish). |
 | `session.start` | info | The launcher or a tool started. |
 | `session.waiting_for_worker` | warning | The app closed while a clean, organize or undo was still running; the lock is kept until it finishes. |

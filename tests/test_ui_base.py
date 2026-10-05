@@ -279,14 +279,17 @@ class SetupScreenTest(UiTestCase):
             await pilot.pause()
             self.assertEqual(screen.query_one("#keep-backups", Input).value, "10")
             self.assertEqual(screen.query_one("#keep-journals", Input).value, "10")
+            self.assertEqual(screen.query_one("#parallelism", Input).value, "2")
             screen.query_one("#keep-backups", Input).value = "0"
             screen.query_one("#keep-journals", Input).value = "4"
+            screen.query_one("#parallelism", Input).value = "1"
             await pilot.click("#save")
             await pilot.pause()
         self.assertEqual(app.results, [True])
         saved = Config(self.cfg.path).load()
-        self.assertEqual((saved.keep_backups, saved.keep_journals), (0, 4))
+        self.assertEqual((saved.keep_backups, saved.keep_journals, saved.parallelism), (0, 4, 1))
         self.assertEqual(saved.get("general", "keep_backups"), "0")
+        self.assertEqual(saved.get("general", "parallelism"), "1")
 
     async def test_down_reaches_every_field_at_80x24(self):
         """Feedback round 1 review: at 80x24 the form is taller than the screen; ↓ still moves focus field by field
@@ -297,25 +300,27 @@ class SetupScreenTest(UiTestCase):
         async with app.run_test(size=(80, 24)) as pilot:
             await pilot.pause()
             self.assertEqual(screen.focused.id, "wow_path")
-            for expected in ("keep-backups", "keep-journals", "save"):
+            for expected in ("keep-backups", "keep-journals", "parallelism", "save"):
                 await pilot.press("down")
                 await pilot.pause()
                 self.assertEqual(screen.focused.id, expected)
             await pilot.press("up")
             await pilot.pause()
-            self.assertEqual(screen.focused.id, "keep-journals")
+            self.assertEqual(screen.focused.id, "parallelism")
 
     async def test_rejects_bad_retention_values(self):
         self.cfg.set("general", "wow_path", str(self.root), log=False)
         screen = SetupScreen(self.cfg, first_run=False, detect=list)
         app = Host(self.cfg, screen)
-        cases = (("keep-backups", "lots"), ("keep-backups", "-1"), ("keep-journals", "x"), ("keep-journals", "0"))
+        cases = (("keep-backups", "lots"), ("keep-backups", "-1"), ("keep-journals", "x"), ("keep-journals", "0"),
+                 ("parallelism", "0"), ("parallelism", "9"), ("parallelism", "many"))
         async with app.run_test(size=(120, 50)) as pilot:
             await pilot.pause()
             for box, value in cases:
                 screen.error_text = ""
                 screen.query_one("#keep-backups", Input).value = "10"
                 screen.query_one("#keep-journals", Input).value = "10"
+                screen.query_one("#parallelism", Input).value = "2"
                 screen.query_one(f"#{box}", Input).value = value
                 screen._save()
                 await pilot.pause()
@@ -323,6 +328,7 @@ class SetupScreenTest(UiTestCase):
                 self.assertEqual(app.results, [], (box, value))
         self.assertIsNone(Config(self.cfg.path).load().get("general", "keep_backups"))
         self.assertIsNone(Config(self.cfg.path).load().get("general", "keep_journals"))
+        self.assertIsNone(Config(self.cfg.path).load().get("general", "parallelism"))
 
     async def test_detects_installs_in_background(self):
         """F-005: the drive scan runs in a worker; the screen opens at once and fills in what it finds."""

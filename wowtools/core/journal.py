@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -59,56 +60,69 @@ def _stored(value: Any) -> Any:
 class JournalWriter:
     """`open()` creates the file (exclusive) and writes the header before the run touches anything, so a journal
     that cannot be written stops the run first. `add_entry()` writes one change (Path values are stored with
-    to_stored()). `discard_if_empty()` removes a header-only journal, so a run that changes nothing leaves none."""
+    to_stored()). `discard_if_empty()` removes a header-only journal, so a run that changes nothing leaves none.
+
+    Thread-safe: units of a parallel run (core/parallel.py) may share one writer. Every method holds one re-entrant
+    lock, so lines never interleave and `count` stays right; a subclass that writes a record and changes its own
+    state (CleanJournal.add_rolled_back) takes `self.lock` around both."""
 
     def __init__(self, path: Path, header: dict[str, Any]) -> None:
         self.path = path
         self.header = {"version": JOURNAL_VERSION, "started": now_iso(),
                        **{k: _stored(v) for k, v in header.items()}}
         self.count = 0
+        self.lock = threading.RLock()
         self._handle: IO[str] | None = None
 
     def _write(self, record: dict[str, Any]) -> None:
-        assert self._handle is not None
-        self._handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-        self._handle.flush()
+        line = json.dumps(record, ensure_ascii=False) + "\n"
+        with self.lock:
+            assert self._handle is not None
+            self._handle.write(line)
+            self._handle.flush()
 
     def open(self) -> None:
-        if self._handle is not None:
-            return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._handle = self.path.open("x", encoding="utf-8")
-        try:
-            self._write(self.header)
-        except BaseException:
-            self.close()
-            self.path.unlink(missing_ok=True)
-            raise
+        with self.lock:
+            if self._handle is not None:
+                return
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self._handle = self.path.open("x", encoding="utf-8")
+            try:
+                self._write(self.header)
+            except BaseException:
+                self.close()
+                self.path.unlink(missing_ok=True)
+                raise
 
     def add_entry(self, entry: dict[str, Any]) -> None:
         """Append one completed change. `entry` must have an "action"."""
-        if self._handle is None:
-            self.open()
-        self._write({k: _stored(v) for k, v in entry.items()})
-        self.count += 1
+        record = {k: _stored(v) for k, v in entry.items()}
+        with self.lock:
+            if self._handle is None:
+                self.open()
+            self._write(record)
+            self.count += 1
 
     def finish(self) -> None:
-        if self._handle is not None:
-            self._write({"finished": now_iso(), "entries": self.count})
+        with self.lock:
+            if self._handle is not None:
+                self._write({"finished": now_iso(), "entries": self.count})
 
     def close(self) -> None:
-        if self._handle is not None:
-            self._handle.close()
-            self._handle = None
+        with self.lock:
+            if self._handle is not None:
+                self._handle.close()
+                self._handle = None
 
     def discard_if_empty(self) -> None:
         """Close, and delete the file if no entry was written (a run that changed nothing)."""
-        self.close()
-        if self.count == 0:
-            try:
-                self.path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        with self.lock:
+            self.close()
+            if self.count == 0:
+                try:
+                    self.path.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     @property
     def opened(self) -> bool:

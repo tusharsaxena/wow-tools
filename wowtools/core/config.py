@@ -28,6 +28,11 @@ RETIRED_GENERAL_KEYS = ("backup_dir",)
 # flavor, 0 = keep all; and run journals kept per tool, at least 1.
 DEFAULT_KEEP_BACKUPS = 10
 DEFAULT_KEEP_JOURNALS = 10
+# Game versions a tool works on at once ([general] parallelism, core/parallel.py), 1-8. 2 suits an SSD; a hard drive
+# or a WSL /mnt (drvfs) folder is often faster with 1, since parallel zips there fight over the same disk.
+DEFAULT_PARALLELISM = 2
+MIN_PARALLELISM = 1
+MAX_PARALLELISM = 8
 # The per-tool keys these replaced: ignored when read, removed when a tool saves its settings.
 RETIRED_TOOL_KEYS = ("keep_backups", "keep_snapshots", "keep_journals")
 _TRUE = {"1", "true", "yes", "on"}
@@ -208,6 +213,12 @@ class Config:
     def keep_journals(self) -> int:
         """Run journals kept per tool (at least 1: Undo uses the newest)."""
         return max(1, self.get_int(GENERAL, "keep_journals", DEFAULT_KEEP_JOURNALS))
+
+    @property
+    def parallelism(self) -> int:
+        """Game versions worked on at once (core/parallel.py), clamped to 1-8; unreadable gives the default (2)."""
+        value = self.get_int(GENERAL, "parallelism", DEFAULT_PARALLELISM)
+        return max(MIN_PARALLELISM, min(MAX_PARALLELISM, value))
 
     @property
     def last_update_check(self) -> datetime | None:

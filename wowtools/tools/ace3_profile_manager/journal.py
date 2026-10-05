@@ -27,18 +27,20 @@ class ProfileJournal(core.JournalWriter):
 
     def add_edited(self, *, flavor: str, path: Path, rel: str, zip_path: Path, sha_before: str, sha_after: str,
                    size_before: int, size_after: int, changes: list[str]) -> None:
-        self.add_entry({"action": A_EDITED, "flavor": flavor, "path": path, "rel": rel, "zip": zip_path,
-                        "sha_before": sha_before, "sha_after": sha_after, "size_before": size_before,
-                        "size_after": size_after, "changes": list(changes)})
-        self._edited.add((flavor, rel))
+        with self.lock:
+            self.add_entry({"action": A_EDITED, "flavor": flavor, "path": path, "rel": rel, "zip": zip_path,
+                            "sha_before": sha_before, "sha_after": sha_after, "size_before": size_before,
+                            "size_after": size_after, "changes": list(changes)})
+            self._edited.add((flavor, rel))
 
     def add_rolled_back(self, *, flavor: str, rels: list[str]) -> None:
-        undone = {(flavor, rel) for rel in rels} & self._edited
-        if not undone:
-            return
-        self._write({"action": A_ROLLED_BACK, "flavor": flavor, "rels": sorted(rel for _, rel in undone)})
-        self._edited -= undone
-        self.count -= len(undone)
+        with self.lock:
+            undone = {(flavor, rel) for rel in rels} & self._edited
+            if not undone:
+                return
+            self._write({"action": A_ROLLED_BACK, "flavor": flavor, "rels": sorted(rel for _, rel in undone)})
+            self._edited -= undone
+            self.count -= len(undone)
 
 
 def read_profile_journal(path: Path) -> Journal:

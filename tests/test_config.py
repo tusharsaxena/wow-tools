@@ -79,6 +79,14 @@ class ConfigTest(unittest.TestCase):
         cfg.set("general", "keep_journals", "3", log=False)
         self.assertEqual((cfg.keep_backups, cfg.keep_journals), (4, 3))
 
+    def test_parallelism_defaults_to_two_and_is_clamped(self):
+        """D10: [general] parallelism, 1-8, default 2; out of range is clamped, unreadable gives the default."""
+        cfg = Config(self.path)
+        self.assertEqual(cfg.parallelism, 2)
+        for raw, expected in (("1", 1), ("8", 8), ("0", 1), ("-4", 1), ("9", 8), ("64", 8), ("lots", 2), ("", 2)):
+            cfg.set("general", "parallelism", raw, log=False)
+            self.assertEqual(cfg.parallelism, expected, raw)
+
     def test_remove_drops_a_key_and_logs_it(self):
         cfg = Config(self.path)
         cfg.set("tool", "keep_backups", "3", log=False)

@@ -20,7 +20,7 @@ task; push after every milestone. Never merge without the user's go-ahead.
 | T3.3 | changelog parser + screen + release check | done | 366c2b2 | `core/changelog.py` (`parse_changelog` newest first, `[Unreleased]` on top, strict headings, fenced `## ` kept as notes; `entry_for`; `load_changelog` never raises, logs `changelog.unreadable`); `ui/changelog_screen.ChangelogScreen` (two-pane, `OptionList` versions with dates and "current", `Markdown` notes in `NotesScroll`) on menu `c`; `s` hidden and inert off the menu with no tool open; `build_release.check_changelog`. test_docs regex stand-in replaced; new `tests/test_changelog.py`, look-and-feel BASE/TINY, 4 build_release tests. releasing step 3, CLAUDE.md, README, architecture, CHANGELOG. 1159 tests OK (2 skipped) |
 | T4.1 | shared tree filter | done | afdbf6b | New `ui/tree_filter.py`: `TextFilter` (casefold substring), `ModelFilter` (keeps/opens on model data, lazy children included), `FilterInput` (one row, Esc clears + tree, → at end to tree), `TreeFilter` mixin (`/` via `FILTER_BINDINGS`, `FILTER_HINT`, debounced rebuild, `filter_keys()` from `filter_texts(key)`, `hidden_ticked_count/_note`, `hidden_by_filter(n)`). No tool wired yet (T4.2). `tests/test_ui_tree_filter.py` (21: unit + toy TUI screen), pinned in test_structure. 1184 tests OK (2 skipped) |
 | T4.2 | filter in every tree screen | done | aaf858d | `FilterInput` on WTF, Shots, IB review (`TreeFilter`), IB Restore (`FilterBox`, read-only), Ace3 review (shared box in `#search`; `Filters.search`/`matches`, `action_focus_search`, its own `on_input_changed` and `action_back` gone) and Blacklist. Built from `ModelNode`s (new in `ui/tree_filter.py`) through `ModelFilter`; lazy groups the filter opens load at once. Hidden-ticks line on every summary and run confirm (Ace3: the tick-taking popups; Blacklist Save asks only then). Tests: look-and-feel at BASE+TINY for 5 screens, per-tool filter tests, structure pin extended. 1202 tests OK (2 skipped) |
-| T5.1 | parallelism setting + runner + thread safety | todo | | |
+| T5.1 | parallelism setting + runner + thread safety | done | 9e57c30 | `[general] parallelism` (`Config.parallelism`, default 2, clamped 1-8; `#parallelism` on the setup screen, Save refuses outside 1-8, help in the label). New `core/parallel.py` `run_units` (serial in the caller at 1, `ThreadPoolExecutor` otherwise; input order; per-unit `Exception` kept in `UnitResult`; unit-tagged progress; `on_start`/`on_done`); events `parallel.started`/`finished`/`unit_failed`. `JournalWriter` locked (RLock, also in Clean/Profile journal subclasses); `EventLog.emit` holds its (now re-entrant) lock around the time stamp and both sinks. `tests/test_parallel.py` (14: barrier concurrency, order, isolation, serial path, BaseException, journal + event log under 8/6 threads). 1222 tests OK (2 skipped) |
 | T5.2 | fixed-size progress popup | todo | | |
 | T5.3 | apply parallel runs | todo | | |
 | T6.1 | docs sync | todo | | |
@@ -119,3 +119,18 @@ task; push after every milestone. Never merge without the user's go-ahead.
   carries its group name (`("file", kind, rel, group)`), so two groups' `embeds.xml` no longer share a ModelFilter
   key. Rejected: Blacklist `_scanning` "never set": `show_scan_box(True)` sets it (ReviewBase), so `_can_rebuild()`
   and Save already wait for the scan; a test now pins that. 1207 tests OK (2 skipped).
+- **T5.1** The runner does not enter `activity.running()` itself: file-changing callers already wrap their job in one,
+  and a read-only scan (also a T5.3 user) should not hold up quit's `wait_idle`. `run_units` returns only once every
+  pool thread is done (also when a `KeyboardInterrupt` propagates; queued units are cancelled first), so the caller's
+  one `running()` covers every thread. It catches `Exception` per unit, not `BaseException`.
+- **T5.1** A11 (lifting the WTF / Ace3 `FlavorRun` + `Multi*Result` containers) was not done: the two differ in
+  substance (WTF's `error` is the exception and a result wins over it; Ace3's is a string and an error wins, because
+  a stopped Ace3 flavor keeps its partial result), both stay serial (D10), and the runner's `UnitResult` is what the
+  parallel callers in T5.3 use. Lifting them would change both tools for no parallel gain.
+- **T5.1** The setup form has no room at 120x30 for a separate hint line under the new field (the look-and-feel test
+  wants the whole form, Save included, on screen), so the slow-disk advice is in the label: "Game versions to work on
+  at once (1-8; use 1 on a slow disk: a hard drive or WSL /mnt)". `Config.parallelism` clamps (0 → 1, 9 → 8); the
+  form refuses out-of-range values instead, like the retention fields.
+- **T5.1** `EventLog` now takes its lock (re-entrant) around the time stamp, `records.append` and both sinks, not just
+  each file write: with parallel workers each log file is then in time order and the events and text files list
+  lines in the same order. `JournalWriter` serialises JSON outside the lock and only the write+flush inside.

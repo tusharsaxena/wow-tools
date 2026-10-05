@@ -31,19 +31,21 @@ class CleanJournal(core.JournalWriter):
 
     def add_deleted(self, *, flavor: str, path: Path, rel: str, size: int, mtime: float, zip_path: Path | None,
                     snapshot: Path | None) -> None:
-        self.add_entry({"action": A_DELETED, "flavor": flavor, "path": path, "rel": rel, "size": size,
-                        "mtime": mtime, "zip": zip_path, "snapshot": snapshot})
-        self._deleted.add((flavor, rel))
+        with self.lock:
+            self.add_entry({"action": A_DELETED, "flavor": flavor, "path": path, "rel": rel, "size": size,
+                            "mtime": mtime, "zip": zip_path, "snapshot": snapshot})
+            self._deleted.add((flavor, rel))
 
     def add_rolled_back(self, *, flavor: str, rels: list[str]) -> None:
         """These deletes of this run were put back. Their entries no longer count: a journal left with none is
         discarded like one that deleted nothing."""
-        undone = {(flavor, rel) for rel in rels} & self._deleted
-        if not undone:
-            return
-        self._write({"action": A_ROLLED_BACK, "flavor": flavor, "rels": sorted(rel for _, rel in undone)})
-        self._deleted -= undone
-        self.count -= len(undone)
+        with self.lock:
+            undone = {(flavor, rel) for rel in rels} & self._deleted
+            if not undone:
+                return
+            self._write({"action": A_ROLLED_BACK, "flavor": flavor, "rels": sorted(rel for _, rel in undone)})
+            self._deleted -= undone
+            self.count -= len(undone)
 
 
 def read_journal(path: Path) -> Journal:
