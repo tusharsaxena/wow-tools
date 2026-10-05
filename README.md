@@ -127,8 +127,8 @@ confirms (Save, OK), **grey** moves between screens or rescans, and **dim grey**
 
 Every "are you sure?" window opens with **Yes** selected, coloured the same way: red when it deletes, overwrites,
 undoes or throws away pending changes, cyan for a dry run, green for a backup. So read it before you press Enter.
-For a quarter of a second after it opens, Enter and Space do nothing there, so a key you were still holding can't
-answer it for you. `y` answers Yes, `n` or `Esc` No.
+For a quarter of a second after it opens, Enter and Space do nothing there, and a key you are still holding is
+ignored until you let it go, so it can't answer for you (the update offer's **Update now** waits the same way). `y` answers Yes, `n` or `Esc` No.
 
 ### Terminal size
 

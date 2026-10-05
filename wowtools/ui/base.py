@@ -16,11 +16,14 @@ from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.updater import (ReleaseInfo, UpdateError, apply_update, check_for_update,
                                    persist_check_state)
+from wowtools.ui.dialogs import GUARD_BINDING, EnterGuard
 from wowtools.ui.theme import KA0S_THEME, action_variables
 from wowtools.ui.widgets import ACTION_CSS, NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 
-class UpdateScreen(ModalScreen[bool]):
+class UpdateScreen(EnterGuard, ModalScreen[bool]):
+    """Offers a new release. "Update now" is focused at the start, so Enter waits CONFIRM_GUARD (EnterGuard)."""
+
     DEFAULT_CSS = """
     UpdateScreen { align: center middle; }
     UpdateScreen #update-box { width: 76; height: auto; max-height: 85%; border: thick $accent;
@@ -29,7 +32,8 @@ class UpdateScreen(ModalScreen[bool]):
     UpdateScreen #update-buttons { height: auto; align-horizontal: right; }
     UpdateScreen Button { margin-left: 2; }
     """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "later", "Later"), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "later", "Later"), GUARD_BINDING,
+                                         *NAV_BINDINGS]
 
     def __init__(self, release: ReleaseInfo) -> None:
         super().__init__()
@@ -46,6 +50,7 @@ class UpdateScreen(ModalScreen[bool]):
             yield NavHint("←→ buttons · ↑↓/Tab move · Enter/Space press · Esc later")
 
     def on_mount(self) -> None:
+        self.start_guard()
         self.query_one("#update-yes", Button).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:

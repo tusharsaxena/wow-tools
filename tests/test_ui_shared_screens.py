@@ -154,10 +154,10 @@ class FakeClock:
 
 class ConfirmScreenTest(TuiTestCase):
     """Spec D13: every confirm opens on Yes (Yes, No in that order), Yes coloured by its kind; Enter and Space are
-    ignored for CONFIRM_GUARD seconds after it opens, `y`, `n` and Esc never are."""
+    ignored for CONFIRM_GUARD seconds after it opens and while a held key repeats, `y`, `n` and Esc never are."""
 
     def guarded(self) -> FakeClock:
-        self.assertGreaterEqual(CONFIRM_GUARD, 0.2)  # the real guard: long enough for a held Enter, not a wait
+        self.assertGreaterEqual(CONFIRM_GUARD, 0.2)  # the real guard: longer than a double press, not a wait
         self.confirm_guard(CONFIRM_GUARD)
         clock = FakeClock()
         patcher = mock.patch.object(dialogs, "monotonic", clock)
@@ -189,25 +189,36 @@ class ConfirmScreenTest(TuiTestCase):
             async with app.run_test(size=TINY) as pilot:
                 await pilot.pause()
                 clock.now += CONFIRM_GUARD - 0.01
-                await pilot.press(key)  # a key held from the screen below: ignored
+                await pilot.press(key)  # a key from the screen below: ignored, and the wait starts again
                 await pilot.pause()
                 self.assertIs(app.screen, screen)
                 self.assertEqual(app.results, [])
                 clock.now += 0.02
                 await pilot.press(key)
                 await pilot.pause()
+                self.assertEqual(app.results, [])
+                clock.now += CONFIRM_GUARD
+                await pilot.press(key)
+                await pilot.pause()
             self.assertEqual(app.results, [True], key)
 
-    async def test_enter_pressed_at_once_is_ignored(self):
-        self.confirm_guard(CONFIRM_GUARD)  # the real clock: a test presses well within 250 ms of the mount
+    async def test_a_held_enter_never_answers(self):
+        clock = self.guarded()
         screen = ConfirmScreen("Title", "Body", kind="destructive")
         app = Host(screen)
         async with app.run_test(size=TINY) as pilot:
             await pilot.pause()
-            await pilot.press("enter")
+            await pilot.press("enter")  # pressed at once
+            for _ in range(10):  # then auto-repeat, every 0.1 s, well past CONFIRM_GUARD from the mount
+                clock.now += 0.1
+                await pilot.press("enter")
             await pilot.pause()
             self.assertIs(app.screen, screen)
-        self.assertEqual(app.results, [])
+            self.assertEqual(app.results, [])
+            clock.now += CONFIRM_GUARD + 0.05  # the key is let go, then pressed again
+            await pilot.press("enter")
+            await pilot.pause()
+        self.assertEqual(app.results, [True])
 
     async def test_y_n_and_escape_are_never_delayed(self):
         self.guarded()

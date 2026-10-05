@@ -31,8 +31,9 @@ FILTERS_WIDTH = 50  # the left pane: wide enough for four action buttons in one 
 # A popup's width: readable, with room around it at 120x30, centred and never stretched when the window grows, and
 # never more than 90% of a smaller window.
 POPUP_WIDTH = "width: 90; max-width: 90%;"
-# Enter or Space on a ConfirmScreen's focused button does nothing for this long (seconds) after the popup opens, so
-# an Enter held or repeated from the screen below cannot answer Yes by itself (`y` and the mouse are not delayed).
+# Enter or Space on a ConfirmScreen's focused button does nothing until this long (seconds) has passed since the
+# popup opened and since the last Enter/Space it ignored. A held Enter keeps repeating, so it is ignored until the
+# key is let go; a fresh press after that answers (`y` and the mouse are not delayed).
 CONFIRM_GUARD = 0.25
 # A settings form's width: the whole window up to 100 columns, centred (never stretched edge to edge).
 FORM_WIDTH = "width: 100%; max-width: 100;"
@@ -251,7 +252,8 @@ class TwoPaneFocus(TreeKeys):
 
 class EnterGuard:
     """For a popup whose focused button is the one Enter would press: Enter and Space on a button do nothing for
-    CONFIRM_GUARD seconds after the popup opens (ConfirmScreen and ChoiceScreen). Bind GUARD_BINDING and call
+    CONFIRM_GUARD seconds after the popup opens, and every one ignored starts that wait again, so a held key's
+    auto-repeat never gets through (ConfirmScreen, ChoiceScreen, UpdateScreen). Bind GUARD_BINDING and call
     start_guard() in on_mount."""
 
     opened_at = 0.0
@@ -260,9 +262,12 @@ class EnterGuard:
         self.opened_at = monotonic()
 
     def action_guard_press(self) -> None:
-        """Swallow Enter/Space on a button while the popup is new; otherwise let the key through (the button, the
-        button row or the detail tree acts on it as usual)."""
-        if isinstance(getattr(self, "focused", None), Button) and monotonic() - self.opened_at < CONFIRM_GUARD:
+        """Swallow Enter/Space on a button while the popup is new or the key keeps repeating (each one swallowed
+        restarts the wait); otherwise let the key through (the button, the button row or the detail tree acts on it
+        as usual)."""
+        now = monotonic()
+        if isinstance(getattr(self, "focused", None), Button) and now - self.opened_at < CONFIRM_GUARD:
+            self.opened_at = now
             return
         raise SkipAction()
 
@@ -274,7 +279,7 @@ class ConfirmScreen(EnterGuard, TreeKeys, ModalScreen[bool]):
     """A yes/no question. Yes is focused at the start (Yes, No in that order), so Enter answers Yes; the safeguards
     are Yes's colour, `kind` (an action kind of `action_button`: "destructive" for anything that deletes,
     overwrites, puts files back or drops pending work, "simulate" for a dry run, "create" for a backup) and
-    CONFIRM_GUARD: Enter and Space are ignored for that long after the popup opens. `y` answers Yes, `n` and Esc
+    CONFIRM_GUARD: Enter and Space are ignored for that long after the popup opens (and while a held key repeats). `y` answers Yes, `n` and Esc
     No, at once. `alerts` are extra lines shown in red; `groups` ({label: items}) lists the details in a tree below
     the body (detail_tree)."""
 

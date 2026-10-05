@@ -252,7 +252,7 @@ def restore_confirm_alerts(plan: RestorePlan) -> list[str]:
 
 def restore_confirm(plan: RestorePlan, when: str, running: list[str] | None, *,
                     backup_free: int | None = None) -> tuple[str, str, tuple[str, ...]]:
-    """(title, body, alerts) for the Restore ConfirmScreen (which starts on No). The alerts are counts, one line
+    """(title, body, alerts) for the Restore ConfirmScreen (it opens on Yes, kind "destructive"). The alerts are counts, one line
     per kind (restore_confirm_alerts), never the full lists. `backup_free`: free bytes on the backup drive, where
     the safety backup goes (None: unknown); the zip is taken to be at most the folders' size, as for a backup."""
     parts = " and ".join(plan.parts)
@@ -301,7 +301,7 @@ def restore_summary_rows(result: RestoreResult) -> list[tuple[str, str]]:
 
 
 def undo_confirm(journal: Journal) -> tuple[str, str]:
-    """(title, body) for the Undo ConfirmScreen (which starts on No)."""
+    """(title, body) for the Undo ConfirmScreen (it opens on Yes, kind "destructive")."""
     parts = [str(e.get("part", "?")) for e in journal.entries if e.get("action") == "replaced"]
     folder = journal.header.get("flavor")
     flavor = flavor_name(folder) if isinstance(folder, str) and folder else "?"

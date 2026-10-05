@@ -22,8 +22,8 @@ The first version: four tools in one app.
   - Buttons are coloured by what they do, the same in every tool: red deletes, amber overwrites, green only adds
     files, violet undoes, cyan is a dry run, blue confirms, grey moves between screens, dim grey backs out.
   - Every "are you sure?" window opens on **Yes**, coloured by what it does (red when it deletes, overwrites, undoes
-    or drops pending changes); Enter and Space wait a quarter of a second after it opens, `y` / `n` / `Esc` answer
-    at once.
+    or drops pending changes); Enter and Space wait a quarter of a second after it opens and are ignored while
+    a held key repeats, `y` / `n` / `Esc` answer at once. The update offer's "Update now" waits the same way.
 - **WTF Cleaner**
   - Finds settings left behind by addons you no longer use, shows them for review, backs them up and deletes them.
   - Works on one game version, one account or **All flavors**.

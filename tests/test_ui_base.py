@@ -25,6 +25,7 @@ from wowtools.tools import TOOLS
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.base import Ka0sApp, UpdateProgressScreen, UpdateScreen
 from wowtools.ui.branding import BrandBar
+from wowtools.ui.dialogs import CONFIRM_GUARD
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
@@ -366,6 +367,21 @@ class UpdateScreenKeyboardTest(UiTestCase):
             self.assertEqual(screen.focused.id, "update-no")
             await pilot.press("enter")
             await pilot.pause()
+        self.assertEqual(app.results, [False])
+
+    async def test_update_now_waits_for_the_enter_guard(self):
+        self.confirm_guard(CONFIRM_GUARD)
+        with patch("wowtools.ui.dialogs.monotonic", lambda: 1000.0):  # time stands still: always within the guard
+            screen = UpdateScreen(ReleaseInfo.from_version("9.9.9"))
+            app = Host(self.cfg, screen)
+            async with app.run_test(size=(120, 40)) as pilot:
+                await pilot.pause()
+                self.assertEqual(screen.focused.id, "update-yes")
+                await pilot.press("enter")
+                await pilot.pause()
+                self.assertIs(app.screen, screen)
+                await pilot.press("escape")
+                await pilot.pause()
         self.assertEqual(app.results, [False])
 
 
