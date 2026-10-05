@@ -1405,8 +1405,8 @@ class ActionBarFeedbackTest(AceAppBase):
             self.assertIn("Delete (d)", text)
             self.assertIn("Delete 1 profile in ElvUI", text)
             bar = review.query_one("#tree-actions").region
-            self.assertLessEqual(tip.region.bottom, bar.y)
-            self.assertGreater(tip.region.bottom, bar.y - 2)  # just above the bar
+            guide = review.query_one("#guide").region
+            self.assertEqual(tip.region.bottom, guide.y)  # just above the guidance line over the bar
             review.notify("A toast")
             await settle(app, pilot)
             toasts = review.query_one("#textual-toastrack").region
@@ -1417,4 +1417,5 @@ class ActionBarFeedbackTest(AceAppBase):
             review.query_one("#profiles", Tree).focus()
             await settle(app, pilot)
             self.assertFalse(rack.display)
-            self.assertLessEqual(review.query_one("#textual-toastrack").region.bottom, bar.y)  # above the bar
+            self.assertLessEqual(review.query_one("#textual-toastrack").region.bottom, guide.y)  # above the guide
+            self.assertLess(guide.y, bar.y)

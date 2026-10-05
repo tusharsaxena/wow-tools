@@ -28,7 +28,7 @@ Nothing you do on the review screen touches a file until you press **Apply**. In
 1. **Tick** the profiles or characters you want to change (`Space`), or just highlight one.
 2. **Pick an action** in the bar under the tree: **Assign**, **Rename**, **Copy**, **Everyone → Default**,
    **Delete**, **Only Default**, **Leftovers**, **Blacklist…** or **More…** (most buttons also have a key). While a
-   button is selected, a box above the bar says what it would do with what you've ticked or highlighted.
+   button is selected, a box above the bar's hint line says what it would do with what you've ticked or highlighted.
 3. **Check the pending changes in the tree.** Each action shows its result in the tree straight away, marked so you
    can tell (`✘ deleted`, `was Healer` and so on), but it's only *pending*: nothing has been written yet. Make as
    many as you like; **Discard** (`Backspace`) drops them all.
@@ -96,8 +96,8 @@ A button is never greyed out: if there's nothing for it to work on, it tells you
 With nothing ticked, a game version, an account or the top line doesn't count as highlighted: tick first (`a`
 ticks everything shown).
 `Tab` from the tree reaches the bar, and so does `↓` on the tree's last line; `←` `→` move along it and `↑` goes
-back to the tree. Messages pop up just above the bar (and above the box that describes the selected button), so
-they never cover it.
+back to the tree. Messages pop up just above the hint line over the bar (and above the box that describes the
+selected button), so they never cover either.
 
 **On the left** are the view boxes, the filters, a search box, a **Pending changes** line that sums them up, and
 the buttons.

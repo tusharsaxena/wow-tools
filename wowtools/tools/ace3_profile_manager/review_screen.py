@@ -170,7 +170,8 @@ class ActionBar(WrapButtonRow):
 
 class ActionTip(Static):
     """What the focused action bar button would do now, in a toast-like box just above the bar (see
-    ProfileReviewScreen._place_overlays). Shown only while a button of the bar has focus."""
+    ProfileReviewScreen._place_overlays): above the guidance line over the bar. Shown only while a button of the
+    bar has focus."""
 
     def on_resize(self) -> None:
         place = getattr(self.screen, "_place_overlays", None)
@@ -567,6 +568,7 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         if text != self.guide_text or shown != self._guide_shown:
             self.guide_text, self._guide_shown = text, shown
             guide.update(Text(shown))
+            self.call_after_refresh(self._place_overlays)  # it may now take another number of rows
 
     def _shortened_guidance(self, kind, name: str, profiles: int, chars: int, total: int, locked: str) -> str:
         """The guidance with the node's (or locked addon's) name shortened with "…" until the guide fits in
@@ -617,12 +619,13 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         self.call_after_refresh(self._place_overlays)
 
     def _place_overlays(self) -> None:
-        """The tip sits just above the action bar, and toasts just above the tip (or the bar), so neither covers
-        the bar."""
+        """The tip sits just above the guidance line over the action bar, and toasts just above the tip (or the
+        guidance line), so neither covers the line or the bar."""
         if not self.is_attached:
             return
-        bar = self.query_one("#tree-actions")
-        above = max(self.size.height - bar.region.y, 1) if bar.region.height else 1
+        top = next((w.region.y for w in (self.query_one("#guide"), self.query_one("#tree-actions"))
+                    if w.display and w.region.height), None)
+        above = max(self.size.height - top, 1) if top is not None else 1
         rack = self.query_one("#tip-rack")
         rack.styles.margin = (0, 0, above, 0)
         if rack.display:
