@@ -8,6 +8,7 @@ from pathlib import Path
 
 from wowtools import __version__
 from wowtools.core.backup import BackupError
+from wowtools.core.config import DEFAULT_KEEP_BACKUPS, DEFAULT_KEEP_JOURNALS
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor
 from wowtools.core.journal import new_journal_path
@@ -16,9 +17,7 @@ from wowtools.tools.wtf_cleaner.cleaner import CleanError, CleanProgress, CleanR
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
 from wowtools.tools.wtf_cleaner.journal import CleanJournal, prune_journals
 from wowtools.tools.wtf_cleaner.rules import ProposalItem
-from wowtools.tools.wtf_cleaner.safety import DEFAULT_KEEP_SNAPSHOTS
 from wowtools.tools.wtf_cleaner.scanner import ScanError, ScanProgress, ScanResult, scan
-from wowtools.tools.wtf_cleaner.settings import DEFAULT_KEEP_JOURNALS
 
 
 @dataclass
@@ -27,6 +26,7 @@ class FlavorScan:
     flavor: Flavor
     result: ScanResult | None = None
     error: str | None = None
+    note: str | None = None  # the error in a few words, for the review tree (ScanError.short)
 
 
 def scan_flavors(flavors: list[Flavor], *, account: str | None = None,
@@ -44,7 +44,7 @@ def scan_flavors(flavors: list[Flavor], *, account: str | None = None,
             scans.append(FlavorScan(flavor, scan(flavor, account=account, progress=report)))
         except ScanError as exc:
             log_exception("scan", exc)
-            scans.append(FlavorScan(flavor, error=str(exc)))
+            scans.append(FlavorScan(flavor, error=str(exc), note=exc.short))
     return scans
 
 
@@ -112,7 +112,7 @@ class MultiCleanResult:
 
 def execute_flavors(plan: list[tuple[Flavor, list[ProposalItem]]], *, dry_run: bool, backup: bool,
                     backup_dir: Path | None, account: str | None = None,
-                    keep_backups: int = DEFAULT_KEEP_SNAPSHOTS, progress: CleanProgress | None = None,
+                    keep_backups: int = DEFAULT_KEEP_BACKUPS, progress: CleanProgress | None = None,
                     on_flavor: Callable[[Flavor, int, int], None] | None = None, journal_dir: Path | None = None,
                     keep_journals: int = DEFAULT_KEEP_JOURNALS) -> MultiCleanResult:
     """Run execute() for each (flavor, selection) in turn. A BackupError or CleanError stops the run before the

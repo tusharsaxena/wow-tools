@@ -15,15 +15,23 @@ _NO_HARDLINK = {errno.EPERM, errno.EACCES, errno.ENOTSUP, errno.EOPNOTSUPP, errn
 _LINK_TAGS = (0xA000000C, 0xA0000003)
 
 
-def atomic_write_text(path: Path, text: str) -> None:
-    """Write text to path so a reader (or the next start, after a crash) sees either the old file or the new one,
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    """Write data to path so a reader (or the next start, after a crash) sees either the old file or the new one,
     never a truncated mix: write <name>.partial next to it, then os.replace it over the target. If the write or
-    the replace fails, the original file is untouched and the partial is removed."""
+    the replace fails, the original file is untouched and the partial is removed.
+
+    Whatever already sits at <name>.partial (a stale partial, or a symlink or junction) is removed first, never
+    followed, and the partial is then created exclusively, so the bytes can never land outside the folder."""
     path = Path(path)
     partial = path.with_name(path.name + ".partial")
     try:
-        with partial.open("w", encoding="utf-8") as handle:
-            handle.write(text)
+        if is_link(partial):
+            _unlink_link(partial)
+        elif partial.exists():
+            os.remove(partial)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        with os.fdopen(os.open(partial, flags, 0o666), "wb") as handle:
+            handle.write(data)
         os.replace(partial, path)
     except BaseException:
         try:
@@ -31,6 +39,12 @@ def atomic_write_text(path: Path, text: str) -> None:
         except OSError:
             pass
         raise
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    """atomic_write_bytes() of text encoded as UTF-8, with each newline written as os.linesep (as a text-mode
+    write does), so files written before keep their line endings on Windows."""
+    atomic_write_bytes(path, text.replace("\n", os.linesep).encode("utf-8"))
 
 
 def rename_no_replace(src: Path, dst: Path) -> None:

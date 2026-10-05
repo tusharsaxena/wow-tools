@@ -10,11 +10,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.fixtures import NOW, build_wow_tree
+from wowtools.core import svfiles as svfiles_module
 from wowtools.core.backup import BackupError
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.tools.wtf_cleaner import cleaner as cleaner_module
-from wowtools.tools.wtf_cleaner.cleaner import CleanError, execute
+from wowtools.tools.wtf_cleaner.cleaner import CleanError, execute, prune_dry_run_zips
 from wowtools.tools.wtf_cleaner.rules import Criteria, ProposalItem, evaluate
 from wowtools.tools.wtf_cleaner.safety import MARKER_NAME
 from wowtools.tools.wtf_cleaner.scanner import SVFile, scan
@@ -416,13 +417,13 @@ class LockAndCheckTest(unittest.TestCase):
 
     def _lock(self, locked_name):
         """Windows refuses to rename a file another program holds open; simulate that for one file."""
-        original = cleaner_module.rename_no_replace
+        original = svfiles_module.rename_no_replace
 
         def rename(src, dst):
             if Path(src).name == locked_name:
                 raise PermissionError(13, "The process cannot access the file because it is being used")
             return original(src, dst)
-        return patch.object(cleaner_module, "rename_no_replace", rename)
+        return patch.object(svfiles_module, "rename_no_replace", rename)
 
     def test_locked_file_stops_a_real_clean_before_anything(self):
         before = snapshot(self.root)
@@ -549,6 +550,24 @@ class ZipLayoutTest(unittest.TestCase):
         pruned = [r for r in records if r["event"] == "backup.dry_runs_pruned"]
         self.assertEqual(len(pruned), 1)
         self.assertEqual(pruned[0]["data"]["keep"], 3)
+
+    def test_keep_backups_zero_prunes_no_dry_run_zips_or_backups(self):
+        """Feedback round 1: the global keep_backups 0 means keep all."""
+        cleaned, backups = self.backup_dir / "cleaned", self.backup_dir / "backup"
+        cleaned.mkdir(parents=True)
+        backups.mkdir(parents=True)
+        for day in range(1, 4):
+            (cleaned / f"dryrun-retail-all-202609{day:02d}-120000.zip").write_bytes(b"old")
+            (backups / f"backup-retail-202609{day:02d}-120000.zip").write_bytes(b"old")
+        self.assertEqual(prune_dry_run_zips(self.backup_dir, "retail", 0), [])
+        result = execute(self.proposal.items, self.retail, dry_run=True, backup=True,
+                         backup_dir=self.backup_dir, now=WHEN, keep_backups=0)
+        self.assertEqual(result.dry_runs_pruned, [])
+        self.assertEqual(len(list(cleaned.iterdir())), 4)
+        result = execute(self.proposal.items, self.retail, dry_run=False, backup=True,
+                         backup_dir=self.backup_dir, now=WHEN, keep_backups=0)
+        self.assertEqual(result.pruned, [])
+        self.assertEqual(len(list(backups.iterdir())), 4)
 
     def test_real_clean_prunes_no_dry_run_zips(self):
         folder = self.backup_dir / "cleaned"

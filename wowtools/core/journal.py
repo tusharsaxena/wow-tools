@@ -186,16 +186,21 @@ def latest_undoable(folder: Path | None, reader: Callable[[Path], Journal] = rea
     return None
 
 
-def mark_undone(path: Path, restored: int, skipped: int) -> None:
-    record = json.dumps({"undone": now_iso(), "restored": restored, "skipped": skipped}) + "\n"
+def append_record(path: Path, record: dict[str, Any]) -> None:
+    """Append one JSON line to an existing journal (an undo or recovery record)."""
+    line = json.dumps(record, ensure_ascii=False) + "\n"
     with path.open("a+b") as handle:
         handle.seek(0, 2)
         if handle.tell():
             handle.seek(-1, 2)
             if handle.read(1) != b"\n":
-                record = "\n" + record  # the last line was torn by a crash: start the record on its own line
+                line = "\n" + line  # the last line was torn by a crash: start the record on its own line
         handle.seek(0, 2)
-        handle.write(record.encode("utf-8"))
+        handle.write(line.encode("utf-8"))
+
+
+def mark_undone(path: Path, restored: int, skipped: int) -> None:
+    append_record(path, {"undone": now_iso(), "restored": restored, "skipped": skipped})
 
 
 def prune_journals(folder: Path | None, keep: int) -> list[Path]:

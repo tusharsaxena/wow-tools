@@ -29,11 +29,11 @@ from wowtools.tools.screenshot_organizer.report import (RESULT_COLUMNS, STAGE_TI
 from wowtools.tools.screenshot_organizer.settings import load_settings, resolve_journal_dir, validate_dest
 from wowtools.tools.screenshot_organizer.undo import undo
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (ACCENT, RESULT_HINT, REVIEW_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus, relabel_branch,
+from wowtools.ui.dialogs import (ACCENT, RESULT_HINT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus, relabel_branch,
                                 result_css, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-NAV_HINT = REVIEW_HINT + "a all · n none · o organize · y dry run · r rescan · z undo · f flavors · t tools"
+NAV_HINT = REVIEW_HINT + "a all · n none · o organize · y dry run · " + TREE_HINT + "r rescan · z undo · f flavors · t tools"
 READ_ONLY = ("conflicts", "skipped", "conflict", "skip")  # tree nodes that cannot be ticked
 
 
@@ -130,6 +130,7 @@ class ShotReviewScreen(TwoPaneFocus, Screen[str]):
         Binding("escape", "flavors", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
+        *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
 
@@ -517,9 +518,10 @@ class ShotReviewScreen(TwoPaneFocus, Screen[str]):
             return
         # The scanned plan's destination, not the current settings: the plan's targets were computed from it.
         dest_dir, settings, journal_dir = self.plan.dest_dir, self.settings, self._journal_dir()
+        keep_journals = self.cfg.keep_journals
         self._run(ShotProgressScreen(dry_run=dry_run),
                   lambda progress: execute(selection, dest_dir=dest_dir, copy=settings.copy_mode, dry_run=dry_run,
-                                           journal_dir=journal_dir, keep_journals=settings.keep_journals,
+                                           journal_dir=journal_dir, keep_journals=keep_journals,
                                            progress=progress))
 
     def _run(self, progress_screen: ShotProgressScreen, job) -> None:

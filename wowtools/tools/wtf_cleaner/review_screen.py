@@ -34,16 +34,16 @@ from wowtools.tools.wtf_cleaner.safety import SNAPSHOT_SUBDIR, Marker, clear_mar
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir
 from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (ACCENT, BUSY_STYLE, REVIEW_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus,
-                                relabel_branch, theme_colour, tick_mark, two_pane_css)
+from wowtools.ui.dialogs import (ACCENT, BUSY_STYLE, POPUP_WIDTH, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
+                                ProgressScreen, TwoPaneFocus, relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
 WARNING_STYLE = "#E8B04B"
 ALL_FLAVORS_LABEL = "All flavors"
 # ConfirmScreen now lives in wowtools.ui.dialogs; it stays importable from here for one release.
 __all__ = ["CleanProgressScreen", "ConfirmScreen", "RecoveryScreen", "ResultScreen", "ReviewScreen"]
-NAV_HINT = REVIEW_HINT + ("a all · n none · c clean · y dry run · r rescan · z undo · f flavors · t tools · "
-                          "1-4 criteria")
+NAV_HINT = REVIEW_HINT + ("a all · n none · w clean · y dry run · " + TREE_HINT +
+                          "r rescan · z undo · f flavors · t tools · 1-4 criteria")
 
 
 class CleanProgressScreen(ProgressScreen):
@@ -60,13 +60,13 @@ class CleanProgressScreen(ProgressScreen):
 class RecoveryScreen(ModalScreen[str]):
     """An earlier clean did not finish: say where its WTF backup is. Never restores anything itself."""
 
-    DEFAULT_CSS = """
-    RecoveryScreen { align: center middle; }
-    RecoveryScreen #recovery-box { width: 90; height: auto; border: thick $warning; background: $panel;
-                                   padding: 1 2; }
-    RecoveryScreen #recovery-title { color: $warning; text-style: bold; margin-bottom: 1; }
-    RecoveryScreen #recovery-buttons { height: auto; align-horizontal: right; margin-top: 1; }
-    RecoveryScreen Button { margin-left: 2; }
+    DEFAULT_CSS = f"""
+    RecoveryScreen {{ align: center middle; }}
+    RecoveryScreen #recovery-box {{ {POPUP_WIDTH} height: auto; border: thick $warning; background: $panel;
+                                   padding: 1 2; }}
+    RecoveryScreen #recovery-title {{ color: $warning; text-style: bold; margin-bottom: 1; }}
+    RecoveryScreen #recovery-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
+    RecoveryScreen Button {{ margin-left: 2; }}
     """
 
     def __init__(self, marker: Marker, backup_dir: Path) -> None:
@@ -107,7 +107,7 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         Binding("space", "toggle", "Tick/untick", priority=True),
         Binding("a", "select_all", "All"),
         Binding("n", "select_none", "None"),
-        Binding("c", "clean", "Clean"),
+        Binding("w", "clean", "Clean"),
         Binding("y", "dry_run", "Dry run"),
         Binding("r", "rescan", "Rescan"),
         Binding("z", "undo", "Undo"),
@@ -121,6 +121,7 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         Binding("4", "criterion(3)", CRITERION_SHORT["stray_copies"], show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
+        *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
 
@@ -328,7 +329,8 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         for flavor_scan in self.scans:
             if flavor_scan.result is None:  # several flavors only: say why this one is not offered
                 tree.root.add_leaf(Text.assemble("  ", (flavor_scan.flavor.display_name, ACCENT),
-                                                 (f"  not scanned: {flavor_scan.error}", WARNING_STYLE)))
+                                                 (f"  not scanned: {flavor_scan.note or flavor_scan.error}",
+                                                  WARNING_STYLE)))
                 continue
             items = by_folder[flavor_scan.flavor.folder].items
             parent = tree.root
@@ -622,17 +624,16 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
             lines.append(f"The files to clean are zipped to: {backup_dir / CLEANED_SUBDIR if backup_dir else '?'}")
         else:
             alerts.append("The files to clean will not be zipped (turned off in settings).")
+        keep = self.cfg.keep_backups
+        kept = (f"{'the newest ' + str(keep) if keep > 0 else 'all'} of {'each' if self.multi else 'this'} "
+                "flavor are kept")
         if not dry_run:
             what = "Each flavor's whole WTF folder is backed up first" if self.multi else \
                 "The whole WTF folder is backed up first"
-            lines.append(f"{what} to: {backup_dir / SNAPSHOT_SUBDIR if backup_dir else '?'} "
-                         f"(the newest {self.settings.keep_backups} of {'each' if self.multi else 'this'} "
-                         f"flavor are kept)")
+            lines.append(f"{what} to: {backup_dir / SNAPSHOT_SUBDIR if backup_dir else '?'} ({kept})")
         if dry_run:
-            lines.append(f"DRY RUN: a dryrun-... zip of the files is written (the newest "
-                          f"{self.settings.keep_backups} of {'each' if self.multi else 'this'} flavor are kept), "
-                          "nothing is deleted." if backup
-                          else "DRY RUN: nothing will be written or deleted.")
+            lines.append(f"DRY RUN: a dryrun-... zip of the files is written ({kept}), nothing is deleted."
+                         if backup else "DRY RUN: nothing will be written or deleted.")
         else:
             lines.append("A run journal is written, so Undo last clean (z) can put the files back.")
         if running:
@@ -679,9 +680,9 @@ class ReviewScreen(TwoPaneFocus, Screen[str]):
         try:
             with activity.running():
                 result = execute_flavors(plan, dry_run=dry_run, backup=backup, backup_dir=backup_dir,
-                                         account=self.account, keep_backups=self.settings.keep_backups,
+                                         account=self.account, keep_backups=self.cfg.keep_backups,
                                          progress=progress, on_flavor=on_flavor, journal_dir=self._journal_dir(),
-                                         keep_journals=self.settings.keep_journals)
+                                         keep_journals=self.cfg.keep_journals)
         except Exception as exc:  # noqa: BLE001 - anything unexpected is shown and logged, never a crash
             log_exception("clean", exc)
             self.app.call_from_thread(self._clean_crashed, exc, dry_run, backup_dir if backup else None)

@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from wowtools.core.config import Config, tool_config_path
+from wowtools.core.events import log_event
 from wowtools.core.fsutil import atomic_write_text
 from wowtools.core.journal import TOOLS_SUBDIR
 
@@ -68,6 +69,20 @@ def merge_folder(old: Path, new: Path) -> FolderMerge | None:
     _merge_into(old, new, "", result)
     result.old_removed = _remove_if_empty(old)
     return result
+
+
+def merge_folder_logged(old: Path, new: Path) -> None:
+    """merge_folder, logged as folder.renamed (nothing when old/ is not a folder). Never raises."""
+    try:
+        result = merge_folder(old, new)
+    except OSError as exc:
+        log_event("folder.renamed", level="error", old=str(old), new=str(new), error=str(exc))
+        return
+    if result is None:
+        return
+    level = "warning" if result.clashes or result.errors else None
+    log_event("folder.renamed", level=level, old=str(old), new=str(new), renamed=result.renamed,
+              moved=len(result.moved), clashes=result.clashes, errors=result.errors, old_removed=result.old_removed)
 
 
 def _merge_into(old: Path, new: Path, prefix: str, result: FolderMerge) -> None:

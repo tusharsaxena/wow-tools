@@ -24,6 +24,12 @@ LEGACY_CONFIG_PATH = REPO_ROOT / "wow-tools.cfg"  # the single shared file used 
 GENERAL = "general"
 # [general] keys that nothing reads any more; dropped when a legacy config is migrated.
 RETIRED_GENERAL_KEYS = ("backup_dir",)
+# Retention, shared by every tool ([general]): backups (snapshots, dry-run zips, Interface Backup zips) kept per
+# flavor, 0 = keep all; and run journals kept per tool, at least 1.
+DEFAULT_KEEP_BACKUPS = 10
+DEFAULT_KEEP_JOURNALS = 10
+# The per-tool keys these replaced: ignored when read, removed when a tool saves its settings.
+RETIRED_TOOL_KEYS = ("keep_backups", "keep_snapshots", "keep_journals")
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 
@@ -140,6 +146,20 @@ class Config:
         if log:
             log_event("config.changed", section=section, key=key, old=old, new=new, source=source)
 
+    def remove(self, section: str, key: str, *, source: str = "app", log: bool = True) -> None:
+        """Drop a key (nothing happens when it is not there). Logged as a change to None."""
+        old = self.get(section, key)
+        if old is None:
+            return
+        self._parser.remove_option(section, key)
+        if log:
+            log_event("config.changed", section=section, key=key, old=old, new=None, source=source)
+
+    def remove_retired(self, section: str, *, source: str = "app") -> None:
+        """Drop the per-tool retention keys that [general] keep_backups / keep_journals replaced."""
+        for key in RETIRED_TOOL_KEYS:
+            self.remove(section, key, source=source)
+
     def get_path(self, section: str, key: str) -> Path | None:
         raw = (self.get(section, key) or "").strip()
         return to_native(raw) if raw else None
@@ -177,6 +197,17 @@ class Config:
     @property
     def log_retention_days(self) -> int:
         return max(1, self.get_int(GENERAL, "log_retention_days", 90))
+
+    @property
+    def keep_backups(self) -> int:
+        """Backups kept per flavor by every tool; 0 = keep all. A negative or unreadable value gives the default."""
+        value = self.get_int(GENERAL, "keep_backups", DEFAULT_KEEP_BACKUPS)
+        return value if value >= 0 else DEFAULT_KEEP_BACKUPS
+
+    @property
+    def keep_journals(self) -> int:
+        """Run journals kept per tool (at least 1: Undo uses the newest)."""
+        return max(1, self.get_int(GENERAL, "keep_journals", DEFAULT_KEEP_JOURNALS))
 
     @property
     def last_update_check(self) -> datetime | None:

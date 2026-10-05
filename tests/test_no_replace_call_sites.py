@@ -11,6 +11,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.fixtures import build_wow_tree
+from wowtools.core import snapshot as core_snapshot
+from wowtools.core import svfiles
 from wowtools.core.backup import BackupEntry, BackupError, create_backup
 from wowtools.core.fsutil import rename_no_replace
 from wowtools.core.install import WowInstall
@@ -68,13 +70,13 @@ class NoReplaceCallSiteTest(unittest.TestCase):
         taken = self.tmp / "backups" / "backup" / "backup-retail-20260927-140311.zip"
         taken.parent.mkdir(parents=True)
         taken.write_bytes(b"older backup")
-        with patch.object(safety, "snapshot_path", lambda *args: taken), self.assertRaises(BackupError):
+        with patch.object(core_snapshot, "snapshot_path", lambda *args: taken), self.assertRaises(BackupError):
             safety.take_snapshot(flavor, self.tmp / "backups", WHEN)
         self.assertEqual(taken.read_bytes(), b"older backup")
 
     def test_lock_probe_put_back_never_replaces(self):
         """A new file at the original name during the probe stays; the probed file is left at the aside name."""
-        real = cleaner.rename_no_replace
+        real = svfiles.rename_no_replace
         calls = []
 
         def rename_then_new_file(src, dst):
@@ -83,7 +85,7 @@ class NoReplaceCallSiteTest(unittest.TestCase):
             if len(calls) == 1:
                 self.src.write_bytes(b"new file")  # appears at the original name right after the probe's rename
 
-        with patch.object(cleaner, "rename_no_replace", rename_then_new_file), self.assertRaises(CleanError):
+        with patch.object(svfiles, "rename_no_replace", rename_then_new_file), self.assertRaises(CleanError):
             cleaner._probe_lock(self.src)
         self.assertEqual(self.src.read_bytes(), b"new file")
         self.assertEqual(self.src.with_name("src.jpg" + cleaner.LOCK_PROBE_SUFFIX).read_bytes(), b"source")

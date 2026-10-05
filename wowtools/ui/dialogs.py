@@ -1,4 +1,5 @@
-"""Dialogs and screen helpers shared by every tool: the yes/no confirmation, the progress modal of a run, tick marks
+"""Dialogs and screen helpers shared by every tool: the yes/no confirmation, an information popup (both can list
+their details in a tree), the progress modal of a run, tick marks
 and relabelling for review trees, the two-pane (filters + tree) focus moves, and theme colours with the Ka0s
 colours as a fallback. A tool's screens import these; no tool imports another tool's screens."""
 from __future__ import annotations
@@ -24,7 +25,12 @@ BUSY_STYLE = "bold #E8B04B"  # a summary line that says work is going on ("Check
 
 # One look for every tool: the same left pane, action row, bottom line and hints on the two-pane screens, the
 # same layout and hints on the result screens, the same form on the settings screens.
-FILTERS_WIDTH = 50  # the left pane: wide enough for four action buttons in one row
+FILTERS_WIDTH = 50  # the left pane: wide enough for four action buttons in one row; the tree takes the rest (1fr)
+# A popup's width: readable, with room around it at 120x30, centred and never stretched when the window grows, and
+# never more than 90% of a smaller window.
+POPUP_WIDTH = "width: 90; max-width: 90%;"
+# A settings form's width: the whole window up to 100 columns, centred (never stretched edge to edge).
+FORM_WIDTH = "width: 100%; max-width: 100;"
 
 
 def review_hint(space: str = "tick") -> str:
@@ -33,6 +39,12 @@ def review_hint(space: str = "tick") -> str:
 
 
 REVIEW_HINT = review_hint()
+TREE_HINT = "x expand all · c collapse all · "  # every tree screen's hint names these, before r rescan
+# Every tree screen binds these (with TreeKeys' actions, which TwoPaneFocus has).
+TREE_BINDINGS = [
+    Binding("x", "expand_all", "Expand all", show=False),
+    Binding("c", "collapse_all", "Collapse all", show=False),
+]
 RESULT_HINT = "↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · "
 
 
@@ -56,11 +68,12 @@ def two_pane_css(screen: str, tree: str, *, width: int = FILTERS_WIDTH) -> str:
 
 
 def result_css(screen: str) -> str:
-    """DEFAULT_CSS of a result screen called `screen`: #result holds the Item/Value #result-summary (at most half
-    the height) above the detail table (class result-detail), then the .buttons row and the NavHint."""
+    """DEFAULT_CSS of a result screen called `screen`: #result holds the Item/Value #result-summary (at most 60% of
+    the height: a one-flavor clean's 10 rows fit at 120x30) above the detail table (class result-detail), then the
+    .buttons row and the NavHint."""
     return f"""
     {screen} #result {{ height: 1fr; padding: 1 2; }}
-    {screen} #result-summary {{ height: auto; max-height: 50%; margin-bottom: 1; }}
+    {screen} #result-summary {{ height: auto; max-height: 60%; margin-bottom: 1; }}
     {screen} .result-detail {{ height: 1fr; }}
     {screen} .buttons {{ height: auto; padding: 0 2; }}
     {screen} .buttons Button {{ min-width: 0; width: auto; margin-right: 1; }}
@@ -70,12 +83,14 @@ def result_css(screen: str) -> str:
 
 def settings_css(screen: str) -> str:
     """DEFAULT_CSS of a tool's settings screen called `screen` (a FormScroll #settings with a .title, labels,
-    inputs, checkboxes, #settings-error and a .buttons row)."""
+    inputs, compact checkboxes, #settings-error and a .buttons row): a readable width (FORM_WIDTH), centred."""
     return f"""
-    {screen} #settings {{ padding: 0 2; }}
+    {screen} {{ align-horizontal: center; }}
+    {screen} #settings {{ {FORM_WIDTH} padding: 0 2; }}
     {screen} .title {{ color: $accent; text-style: bold; margin: 1 0; }}
     {screen} Label {{ width: 1fr; height: auto; }}
     {screen} Ka0sCheckbox {{ margin-bottom: 1; }}
+    {screen} Ka0sCheckbox.-textual-compact {{ margin-bottom: 0; }}
     {screen} #settings-error {{ color: $error; height: auto; }}
     {screen} .buttons {{ height: auto; margin-top: 1; }}
     {screen} Button {{ margin-right: 2; }}
@@ -90,6 +105,36 @@ def theme_colour(app, name: str) -> str:
     except Exception:  # noqa: BLE001 - no app or no theme yet: use the Ka0s colour
         colour = None
     return colour or getattr(KA0S_THEME, name)
+
+
+DETAIL_ROWS = 12  # a popup's detail tree opens every branch when it fits in this many lines
+
+
+def detail_tree(groups: dict[str, list[str]]) -> Tree:
+    """A popup's read-only detail tree (#details): one branch per group, labelled with how many items it holds, its
+    items as leaves; a group with no items is a leaf. Every branch starts open when everything fits in DETAIL_ROWS
+    lines, else closed (Space or Enter opens one, x opens all)."""
+    tree: Tree = Tree("", id="details", classes="popup-tree")
+    tree.show_root = False
+    tree.auto_expand = True
+    open_all = len(groups) + sum(len(items) for items in groups.values()) <= DETAIL_ROWS
+    for label, items in groups.items():
+        if not items:
+            tree.root.add_leaf(Text(label))
+            continue
+        branch = tree.root.add(Text.assemble((label, "bold"), f" ({len(items)})"), expand=open_all)
+        for item in items:
+            branch.add_leaf(Text(item))
+    return tree
+
+
+def detail_hint(groups: dict[str, list[str]] | None) -> str:
+    """The part of a popup's hint about its detail tree (none without one)."""
+    return f"↑↓/Tab move · Space open · {TREE_HINT}" if groups else ""
+
+
+# At 120x30 a confirm with a full detail tree shows its buttons and its two-line hint; a smaller window scrolls the box.
+POPUP_TREE_CSS = "height: auto; max-height: 40vh; margin-top: 1; padding: 0 1; background: $surface;"
 
 
 def tick_mark(items: Iterable, unchecked: Collection[Hashable], key: Callable[[object], Hashable] | None = None,
@@ -123,11 +168,56 @@ def relabel_branch(tree: Tree, node, label: Callable[[object], Text], skip: Coll
         stack.extend(current.children)
 
 
-class TwoPaneFocus:
-    """Mixin for a review screen with a left panel (id "filters") and a tree (TREE_SELECTOR): ← goes back to the
-    control last focused in the panel (or first_filter()), → goes to the tree."""
+class TreeKeys:
+    """Mixin for a screen with a tree (TREE_SELECTOR): x expands every node below the root, c collapses them (the
+    root stays open). Bind them with TREE_BINDINGS. A node whose children load on expand (on_tree_node_expanded)
+    loads them too: those children are leaves in every tool."""
 
     TREE_SELECTOR = "Tree"
+
+    def _tree_for_keys(self) -> Tree | None:
+        found = self.query(self.TREE_SELECTOR)
+        tree = found.first(Tree) if found else None  # a popup's detail tree is optional
+        return tree if tree is not None and tree.display else None  # hidden while a scan runs
+
+    def action_expand_all(self) -> None:
+        tree = self._tree_for_keys()
+        if tree is None:
+            return
+        cursor = tree.cursor_node
+        stack = list(tree.root.children)
+        while stack:
+            node = stack.pop()
+            if node.allow_expand and not node.is_expanded:
+                node.expand()
+            stack.extend(node.children)
+        self._keep_cursor(tree, cursor)
+
+    def action_collapse_all(self) -> None:
+        tree = self._tree_for_keys()
+        if tree is None:
+            return
+        cursor = tree.cursor_node
+        while cursor is not None and cursor.parent is not None and cursor.parent is not tree.root:
+            cursor = cursor.parent  # the top-level node it was under stays highlighted
+        for node in tree.root.children:
+            node.collapse_all()
+        self._keep_cursor(tree, cursor)
+
+    @staticmethod
+    def _keep_cursor(tree: Tree, node) -> None:
+        if node is None:
+            return
+        tree.get_node_at_line(0)  # lay the lines out now, so move_cursor finds the node's new line
+        if node.line >= 0:
+            tree.move_cursor(node)
+
+
+class TwoPaneFocus(TreeKeys):
+    """Mixin for a review screen with a left panel (id "filters") and a tree (TREE_SELECTOR): ← goes back to the
+    control last focused in the panel (or first_filter()), → goes to the tree. x and c expand and collapse the
+    whole tree (TreeKeys)."""
+
     _last_filter: Widget | None = None
 
     def first_filter(self) -> Widget | None:
@@ -154,25 +244,30 @@ class TwoPaneFocus:
             tree.focus()
 
 
-class ConfirmScreen(ModalScreen[bool]):
+class ConfirmScreen(TreeKeys, ModalScreen[bool]):
     """A yes/no question. `alerts` are extra lines shown in red; `default_yes` decides which button has focus (risky
-    actions start on No)."""
+    actions start on No). `groups` ({label: items}) lists the details in a tree below the body (detail_tree)."""
 
-    DEFAULT_CSS = """
-    ConfirmScreen { align: center middle; }
-    ConfirmScreen #confirm-box { width: 80; height: auto; border: thick $accent; background: $panel; padding: 1 2; }
-    ConfirmScreen #confirm-title { color: $accent; text-style: bold; margin-bottom: 1; }
-    ConfirmScreen #confirm-buttons { height: auto; align-horizontal: right; margin-top: 1; }
-    ConfirmScreen Button { margin-left: 2; }
+    DEFAULT_CSS = f"""
+    ConfirmScreen {{ align: center middle; }}
+    ConfirmScreen #confirm-box {{ {POPUP_WIDTH} height: auto; max-height: 100%; overflow-y: auto;
+                                 border: thick $accent; background: $panel; padding: 1 2; }}
+    ConfirmScreen #confirm-title {{ color: $accent; text-style: bold; margin-bottom: 1; }}
+    ConfirmScreen .popup-tree {{ {POPUP_TREE_CSS} }}
+    ConfirmScreen #confirm-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
+    ConfirmScreen Button {{ margin-left: 2; }}
     """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("y", "answer(True)", "Yes"), Binding("n,escape", "answer(False)", "No"), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("y", "answer(True)", "Yes"), Binding("n,escape", "answer(False)", "No"),
+                                         *NAV_BINDINGS, *TREE_BINDINGS]
 
-    def __init__(self, title: str, body: str, alerts: tuple[str, ...] = (), *, default_yes: bool = False) -> None:
+    def __init__(self, title: str, body: str, alerts: tuple[str, ...] = (), *, default_yes: bool = False,
+                 groups: dict[str, list[str]] | None = None) -> None:
         super().__init__()
         self.default_yes = default_yes
         self.title_text = title
         self.alerts = alerts
         self.body_text = "\n".join([body, *alerts]) if alerts else body
+        self.groups = groups
 
     def compose(self) -> ComposeResult:
         with Vertical(id="confirm-box"):
@@ -181,10 +276,12 @@ class ConfirmScreen(ModalScreen[bool]):
             for alert in self.alerts:
                 body.highlight_words([alert], style=ALERT_STYLE)
             yield Static(body)
+            if self.groups:
+                yield detail_tree(self.groups)
             with ButtonRow(id="confirm-buttons"):
                 yield action_button("Yes (y)", "confirm", id="yes")
                 yield action_button("No (n)", "neutral", id="no")
-            yield NavHint("←→ choose · Enter/Space press · y yes · n/Esc no")
+            yield NavHint(f"{detail_hint(self.groups)}←→ choose · Enter/Space press · y yes · n/Esc no")
 
     def on_mount(self) -> None:
         self.query_one("#yes" if self.default_yes else "#no", Button).focus()
@@ -196,6 +293,48 @@ class ConfirmScreen(ModalScreen[bool]):
         self.dismiss(value)
 
 
+class InfoScreen(TreeKeys, ModalScreen[None]):
+    """Something to read and acknowledge, in place of a notification too long for one: an optional body, then the
+    details in a tree (detail_tree), and an OK button."""
+
+    DEFAULT_CSS = f"""
+    InfoScreen {{ align: center middle; }}
+    InfoScreen #info-box {{ {POPUP_WIDTH} height: auto; max-height: 100%; overflow-y: auto;
+                           border: thick $accent; background: $panel; padding: 1 2; }}
+    InfoScreen #info-title {{ color: $accent; text-style: bold; }}
+    InfoScreen #info-body {{ margin-top: 1; }}
+    InfoScreen .popup-tree {{ {POPUP_TREE_CSS} }}
+    InfoScreen #info-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
+    """
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "close", "Close"), *NAV_BINDINGS, *TREE_BINDINGS]
+
+    def __init__(self, title: str, groups: dict[str, list[str]], body: str = "") -> None:
+        super().__init__()
+        self.title_text = title
+        self.groups = groups
+        self.body_text = body
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="info-box"):
+            yield Static(Text(self.title_text), id="info-title")
+            if self.body_text:
+                yield Static(Text(self.body_text), id="info-body")
+            yield detail_tree(self.groups)
+            with ButtonRow(id="info-buttons"):
+                yield action_button("OK", "confirm", id="ok")
+            yield NavHint(f"{detail_hint(self.groups)}Enter/Space OK · Esc close")
+
+    def on_mount(self) -> None:
+        self.query_one("#ok", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        self.dismiss(None)
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+
 class ProgressScreen(ModalScreen[None]):
     """Shown while a run, dry run or undo works in a worker: the stage, a progress bar and the current file.
 
@@ -205,12 +344,13 @@ class ProgressScreen(ModalScreen[None]):
     "not known" and runs the bar as indeterminate. set_flavor(label) puts "<label>: " in front of the stage title
     while several flavors run one after another."""
 
-    DEFAULT_CSS = """
-    ProgressScreen { align: center middle; }
-    ProgressScreen .progress-box { width: 80; height: auto; border: thick $accent; background: $panel; padding: 1 2; }
-    ProgressScreen .progress-stage { color: $accent; text-style: bold; margin-bottom: 1; }
-    ProgressScreen .progress-bar { width: 1fr; }
-    ProgressScreen .progress-file { color: $text-muted; margin-top: 1; height: 2; overflow: hidden hidden; }
+    DEFAULT_CSS = f"""
+    ProgressScreen {{ align: center middle; }}
+    ProgressScreen .progress-box {{ {POPUP_WIDTH} height: auto; border: thick $accent; background: $panel;
+                                   padding: 1 2; }}
+    ProgressScreen .progress-stage {{ color: $accent; text-style: bold; margin-bottom: 1; }}
+    ProgressScreen .progress-bar {{ width: 1fr; }}
+    ProgressScreen .progress-file {{ color: $text-muted; margin-top: 1; height: 2; overflow: hidden hidden; }}
     """
     ID_PREFIX = "progress"
     STAGE_TITLES: ClassVar[dict[str, str]] = {}

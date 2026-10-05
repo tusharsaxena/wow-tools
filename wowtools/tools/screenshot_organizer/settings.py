@@ -12,7 +12,6 @@ from wowtools.tools.screenshot_organizer.events import TOOL_NAME
 
 SECTION = "screenshot_organizer"
 SCREENSHOTS_DIR = "Screenshots"
-DEFAULT_KEEP_JOURNALS = 10
 
 
 @dataclass
@@ -20,20 +19,19 @@ class ShotSettings:
     dest_dir: Path | None = None  # None (stored as empty) means organise in place
     copy_mode: bool = False
     last_flavor_choice: str = ""  # "" means all flavors, else a flavor folder such as _retail_
-    keep_journals: int = DEFAULT_KEEP_JOURNALS
+    # Journals to keep are global: Config.keep_journals ([general]).
 
 
 def load_settings(cfg: Config) -> ShotSettings:
     return ShotSettings(cfg.get_path(SECTION, "dest_dir"), cfg.get_bool(SECTION, "copy_mode", False),
-                        (cfg.get(SECTION, "last_flavor_choice") or "").strip(),
-                        max(1, cfg.get_int(SECTION, "keep_journals", DEFAULT_KEEP_JOURNALS)))
+                        (cfg.get(SECTION, "last_flavor_choice") or "").strip())
 
 
 def save_settings(cfg: Config, settings: ShotSettings, *, source: str = "settings") -> None:
     cfg.set_path(SECTION, "dest_dir", settings.dest_dir, source=source)
     cfg.set(SECTION, "copy_mode", settings.copy_mode, source=source)
     cfg.set(SECTION, "last_flavor_choice", settings.last_flavor_choice, source=source)
-    cfg.set(SECTION, "keep_journals", settings.keep_journals, source=source)
+    cfg.remove_retired(SECTION, source=source)
     cfg.save()
 
 

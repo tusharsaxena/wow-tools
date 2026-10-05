@@ -25,11 +25,11 @@ from wowtools.tools.interface_backup.restore import (BackupContents, RestoreErro
                                                      case_key, open_backup, plan_restore)
 from wowtools.tools.interface_backup.scanner import PARTS, FlavorScan, scan_flavor
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import ACCENT, RESULT_HINT, TwoPaneFocus, result_css, review_hint, theme_colour, two_pane_css
+from wowtools.ui.dialogs import ACCENT, RESULT_HINT, TREE_BINDINGS, TREE_HINT, TwoPaneFocus, result_css, review_hint, theme_colour, two_pane_css
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
 # The review's hint shape, then the keys of this screen. Space here ticks a part or opens a node of the effects tree.
-NAV_HINT = review_hint("tick or open") + "o restore · b/Esc back"
+NAV_HINT = review_hint("tick or open") + TREE_HINT + "o restore · b/Esc back"
 # The tree's top nodes: (kind, title, note). Their children are loaded on expand (groups of files, links, lines).
 EFFECTS = (
     ("removed", "Will be removed", "on disk now, not in the backup"),
@@ -75,6 +75,7 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
         Binding("escape", "cancel", "Back", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
+        *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
 
@@ -283,12 +284,12 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
             else:
                 tree.root.add(label, data=("effect", kind), allow_expand=True)  # lines load on expand
         if plan.low_space:
-            tree.root.add_leaf(Text(f"⚠ Low disk space: {human_size(plan.free_bytes)} free on the WoW drive, about "
-                                    f"{human_size(plan.bytes_needed)} needed.", style=warning), data=("note",))
+            tree.root.add_leaf(Text(f"⚠ Low disk space on the WoW drive: {human_size(plan.free_bytes)} free, "
+                                    f"~{human_size(plan.bytes_needed)} needed", style=warning), data=("note",))
         if restore_lost_nothing(plan):
             success = f"bold {theme_colour(self.app, 'success')}"
             tree.root.add_leaf(Text.assemble(("Nothing on disk would be lost", success),
-                                             ("  your folders hold nothing the backup lacks", "dim")), data=("note",))
+                                             ("  everything is in the backup", "dim")), data=("note",))
         tree.root.expand()
 
     def on_tree_node_expanded(self, event: Tree.NodeExpanded) -> None:

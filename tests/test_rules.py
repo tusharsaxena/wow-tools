@@ -156,15 +156,18 @@ class SettingsTest(unittest.TestCase):
         cfg.set_path(SECTION, "backup_dir", Path("/elsewhere/bk"))
         self.assertEqual(resolve_backup_dir(load_settings(cfg), Path("/games/wow")), Path("/elsewhere/bk"))
 
-    def test_keep_backups_round_trip_and_floor(self):
+    def test_retention_is_global_and_stale_keys_go_on_save(self):
+        """Feedback round 1: retention lives in [general]; the old per-tool keys are ignored, then removed."""
         cfg = Config(self.path)
-        self.assertEqual(load_settings(cfg).keep_backups, 5)
+        for key, value in (("keep_backups", "3"), ("keep_journals", "2"), ("keep_snapshots", "2")):
+            cfg.set(SECTION, key, value, log=False)
         settings = load_settings(cfg)
-        settings.keep_backups = 8
+        for name in ("keep_backups", "keep_journals", "keep_snapshots"):
+            self.assertFalse(hasattr(settings, name), name)
         save_settings(cfg, settings)
-        self.assertEqual(load_settings(Config(self.path).load()).keep_backups, 8)
-        cfg.set(SECTION, "keep_backups", "0")
-        self.assertEqual(load_settings(cfg).keep_backups, 1)
+        again = Config(self.path).load()
+        for key in ("keep_backups", "keep_journals", "keep_snapshots"):
+            self.assertIsNone(again.get(SECTION, key), key)
 
     def test_settings_round_trip_backup_dir(self):
         cfg = Config(self.path)

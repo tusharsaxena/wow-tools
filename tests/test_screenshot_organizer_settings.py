@@ -11,9 +11,8 @@ from wowtools.core.events import REGISTRY
 from wowtools.core.install import WowInstall
 from wowtools.core.paths import to_native
 from wowtools.tools.screenshot_organizer import events
-from wowtools.tools.screenshot_organizer.settings import (DEFAULT_KEEP_JOURNALS, SECTION, ShotSettings, load_settings,
-                                                          resolve_journal_dir, save_settings, source_dir, target_root,
-                                                          validate_dest)
+from wowtools.tools.screenshot_organizer.settings import (SECTION, ShotSettings, load_settings, resolve_journal_dir,
+                                                          save_settings, source_dir, target_root, validate_dest)
 
 
 class SettingsTest(unittest.TestCase):
@@ -28,19 +27,23 @@ class SettingsTest(unittest.TestCase):
     def test_defaults_and_round_trip(self):
         cfg = Config(self.tmp / "screenshot-organizer.cfg")
         self.assertEqual(load_settings(cfg), ShotSettings())
-        save_settings(cfg, ShotSettings(self.tmp / "arch", True, "_retail_", 3))
+        save_settings(cfg, ShotSettings(self.tmp / "arch", True, "_retail_"))
         again = load_settings(Config(cfg.path).load())
-        self.assertEqual(again, ShotSettings(self.tmp / "arch", True, "_retail_", 3))
+        self.assertEqual(again, ShotSettings(self.tmp / "arch", True, "_retail_"))
 
     def test_bad_values_fall_back(self):
         cfg = Config(self.tmp / "screenshot-organizer.cfg")
         cfg.set(SECTION, "copy_mode", "maybe", log=False)
-        cfg.set(SECTION, "keep_journals", "0", log=False)
+        self.assertFalse(load_settings(cfg).copy_mode)
+
+    def test_retention_is_global_and_stale_keys_go_on_save(self):
+        """Feedback round 1: retention lives in [general]; the old per-tool key is ignored, then removed."""
+        cfg = Config(self.tmp / "screenshot-organizer.cfg")
+        cfg.set(SECTION, "keep_journals", "2", log=False)
         s = load_settings(cfg)
-        self.assertFalse(s.copy_mode)
-        self.assertEqual(s.keep_journals, 1)
-        cfg.set(SECTION, "keep_journals", "x", log=False)
-        self.assertEqual(load_settings(cfg).keep_journals, DEFAULT_KEEP_JOURNALS)
+        self.assertFalse(hasattr(s, "keep_journals"))
+        save_settings(cfg, s)
+        self.assertIsNone(Config(cfg.path).load().get(SECTION, "keep_journals"))
 
     def test_target_root(self):
         self.assertEqual(source_dir(self.retail), self.root / "_retail_" / "Screenshots")

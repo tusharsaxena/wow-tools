@@ -60,6 +60,38 @@ class ConfigTest(unittest.TestCase):
         self.assertIsNone(cfg.last_update_check)
         self.assertEqual(cfg.get_int("general", "log_retention_days", 7), 7)
 
+    def test_retention_defaults_are_ten_and_ten(self):
+        """Feedback round 1: retention is one global setting in [general]."""
+        cfg = Config(self.path).load()
+        self.assertEqual((cfg.keep_backups, cfg.keep_journals), (10, 10))
+
+    def test_retention_bad_values_fall_back(self):
+        cfg = Config(self.path)
+        cfg.set("general", "keep_backups", "lots", log=False)
+        cfg.set("general", "keep_journals", "few", log=False)
+        self.assertEqual((cfg.keep_backups, cfg.keep_journals), (10, 10))
+        cfg.set("general", "keep_backups", "-3", log=False)
+        self.assertEqual(cfg.keep_backups, 10)
+        cfg.set("general", "keep_backups", "0", log=False)  # 0 = keep all
+        cfg.set("general", "keep_journals", "0", log=False)  # at least 1
+        self.assertEqual((cfg.keep_backups, cfg.keep_journals), (0, 1))
+        cfg.set("general", "keep_backups", "4", log=False)
+        cfg.set("general", "keep_journals", "3", log=False)
+        self.assertEqual((cfg.keep_backups, cfg.keep_journals), (4, 3))
+
+    def test_remove_drops_a_key_and_logs_it(self):
+        cfg = Config(self.path)
+        cfg.set("tool", "keep_backups", "3", log=False)
+        cfg.set("tool", "other", "x", log=False)
+        with capture_events() as records:
+            cfg.remove("tool", "keep_backups")
+            cfg.remove("tool", "keep_backups")  # gone already: nothing happens
+            cfg.remove("nosuch", "key")
+        self.assertIsNone(cfg.get("tool", "keep_backups"))
+        self.assertEqual(cfg.get("tool", "other"), "x")
+        changed = [r["data"] for r in records if r["event"] == "config.changed"]
+        self.assertEqual([(c["key"], c["old"], c["new"]) for c in changed], [("keep_backups", "3", None)])
+
     def test_backup_dir_is_not_a_general_setting(self):
         cfg = Config(self.path)
         cfg.set("general", "wow_path", "/games/wow")

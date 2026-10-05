@@ -41,11 +41,11 @@ from wowtools.tools.interface_backup.settings import (load_settings, resolve_bac
                                                       validate_backup_dir)
 from wowtools.tools.interface_backup.undo import undo_restore
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (ACCENT, BUSY_STYLE, RESULT_HINT, REVIEW_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus,
+from wowtools.ui.dialogs import (ACCENT, BUSY_STYLE, RESULT_HINT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus,
                                 relabel_branch, result_css, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-NAV_HINT = REVIEW_HINT + "a all · n none · b back up · e restore · r rescan · z undo · f flavors · t tools"
+NAV_HINT = REVIEW_HINT + "a all · n none · b back up · e restore · " + TREE_HINT + "r rescan · z undo · f flavors · t tools"
 # Tree nodes that cannot be ticked: a backup always holds a flavor's whole Interface and WTF.
 READ_ONLY = ("part", "links", "link", "leftover", "warnings", "warning", "backups", "backup")
 WowCheck = Callable[[], "list[str] | None"]
@@ -184,6 +184,7 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
         Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
+        *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
 
@@ -247,7 +248,7 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
 
     def _show_settings(self) -> None:
         root = self._root()
-        keep = self.settings.keep_backups
+        keep = self.cfg.keep_backups
         self.query_one("#folder-label", Static).update(Text(to_stored(root) if root else "?"))
         self.query_one("#keep-label", Static).update(Text("all backups" if keep == 0 else
                                                           f"newest {keep} per flavor"))
@@ -646,7 +647,7 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
 
     def _confirm_backup(self, scans: list[FlavorScan], root: Path, running: list[str] | None,
                         free: int | None) -> None:
-        keep = self.settings.keep_backups
+        keep = self.cfg.keep_backups
         title, body, alerts = backup_confirm(scans, root, keep, running, free)
         self.app.push_screen(ConfirmScreen(title, body, alerts, default_yes=True),
                              lambda ok: self._backup_confirmed(ok, scans, root, keep))
@@ -787,7 +788,7 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
     def _restore_confirmed(self, ok: bool | None, plan: RestorePlan) -> None:
         log_event("ui.selection", screen="confirm", control="restore_confirm", value=bool(ok))
         self.settings = load_settings(self.tool_cfg)
-        root, journal_dir, keep = self._root(), self._journal_dir(), self.settings.keep_journals
+        root, journal_dir, keep = self._root(), self._journal_dir(), self.cfg.keep_journals
         if not ok or not self.idle or self.wow_folder_changed():
             return
         problem = self._folder_problem()

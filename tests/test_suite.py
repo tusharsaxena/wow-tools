@@ -209,6 +209,20 @@ class SuiteTest(unittest.TestCase):
         config_event = next(r for r in records if r["event"] == "config.renamed")
         self.assertEqual(config_event["data"]["new"], str(self.config_dir / "screenshot-organizer.cfg"))
 
+    def test_ace_profiles_becomes_ace3_profile_manager_on_start(self):
+        (self.config_dir / "ace-profiles.cfg").write_text("[ace_profiles]\nblacklist = _retail_:ElvUI\n",
+                                                          encoding="utf-8")
+        _write_file(self.log_dir / "ace-profiles" / "events-2026-10-01.log", "old")
+        _write_file(self.root / "wow-tools" / "ace-profiles" / "edited" / "edited-1.zip", "z")
+        code, _, _ = self.run_suite([])
+        self.assertEqual(code, 0)
+        self.assertFalse((self.config_dir / "ace-profiles.cfg").exists())
+        self.assertEqual(Config(self.config_dir / "ace3-profile-manager.cfg").load()
+                         .get("ace3_profile_manager", "blacklist"), "_retail_:ElvUI")
+        self.assertTrue((self.log_dir / "ace3-profile-manager" / "events-2026-10-01.log").is_file())
+        self.assertFalse((self.root / "wow-tools" / "ace-profiles").exists())
+        self.assertTrue((self.root / "wow-tools" / "ace3-profile-manager" / "edited" / "edited-1.zip").is_file())
+
     def test_renamed_tool_with_legacy_config_section(self):
         legacy = self.tmp / "wow-tools.cfg"
         legacy.write_text(f"[general]\nwow_path = {self.root}\ncheck_for_updates = false\n\n"

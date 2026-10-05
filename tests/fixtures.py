@@ -24,6 +24,8 @@ _notaflavor: not a flavor folder
 build_screenshot_tree(root) adds Screenshots folders (see its docstring); SHOT_BYTES maps each valid shot
 name to its bytes.
 build_interface_tree(root) adds known bytes to _retail_'s Interface and WTF and an empty _ptr_ flavor.
+build_ace_tree(root) builds a separate install with AceDB SavedVariables (CRLF, written byte-exact; see its
+docstring and the ACE_* texts); ace_lua(*lines) makes SavedVariables text the way WoW writes it.
 """
 from __future__ import annotations
 
@@ -34,6 +36,12 @@ import unittest
 from pathlib import Path
 
 from wowtools.core.config import Config
+
+# Terminal sizes (docs/superpowers/specs/2026-10-04-ace-profiles-design.md, Addendum B): screens are designed for
+# Windows Terminal's default window (BASE) and grow when it is maximized (LARGE); TINY only has to keep working.
+BASE = (120, 30)
+LARGE = (160, 45)
+TINY = (80, 24)
 
 NOW = time.time()
 DAY = 86400.0
@@ -184,4 +192,89 @@ def build_interface_tree(root: Path) -> Path:
     _write_bytes(retail / "Interface" / "AddOns" / "Details" / "core.lua", b"det")
     _write_bytes(retail / "WTF" / "Config.wtf", b"SET a 1\n")
     (root / "_ptr_").mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def ace_lua(*lines: str) -> str:
+    """SavedVariables text the way WoW writes it: a leading blank line, CRLF, no indentation."""
+    return "\r\n" + "\r\n".join(lines) + "\r\n"
+
+
+def _write_lua(path: Path, text: str, mtime: float = FRESH) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
+    os.utime(path, (mtime, mtime))
+    return path
+
+
+ACE_KICKCD = ace_lua(
+    'KickCDDB = {', '["profileKeys"] = {', '["Kaelys - Realm1"] = "Default",', '["Mierin - Khaz Modan"] = "Default",',
+    '["Gone - Realm1"] = "Default",', '},', '["profiles"] = {', '["Default"] = {', '["scale"] = 0.6000000000000001,',
+    '["text"] = "a\\"b\\\\c\\n\\000",', '[114052] = true,', '},', '["Backup"] = {', '},', '},',
+    '["global"] = {', '["schemaVersion"] = 3,', '},', '}',
+    'KickCDPerfDB = {', '["runs"] = 3,', '}')
+ACE_HANDYNOTES = ace_lua(
+    'HandyNotesDB = {', '["profileKeys"] = {', '["Kaelys - Realm1"] = "Kaelys - Realm1",',
+    '["Mierin - Khaz Modan"] = "Mierin - Khaz Modan",', '},', '["profiles"] = {',
+    '["Kaelys - Realm1"] = {', '["icon_scale"] = 1.5,', '},', '["Mierin - Khaz Modan"] = {', '},',
+    '["Unused - Realm1"] = {', '["icon_scale"] = 2,', '},', '},', '}',
+    'HandyNotes_MapNotesDB = {', '["profileKeys"] = {', '["Kaelys - Realm1"] = "Default",', '},',
+    '["profiles"] = {', '["Default"] = {', '["notes"] = {', '"TOP",', 'nil,', '"TOP",', '},', '},', '},', '}')
+ACE_ELVUI = ace_lua(
+    'ElvDB = {', '["profileKeys"] = {', '["Kaelys - Realm1"] = "Default",', '["Mierin - Khaz Modan"] = "Healer",', '},',
+    '["profiles"] = {', '["Default"] = {', '["x"] = 1,', '},', '["Healer"] = {', '["x"] = 2,', '},', '},',
+    '["namespaces"] = {', '["Bags"] = {', '["profiles"] = {', '["Default"] = {', '["b"] = 1,', '},',
+    '["Healer"] = {', '["b"] = 2,', '},', '},', '},', '["LibDualSpec-1.0"] = {', '["char"] = {',
+    '["Kaelys - Realm1"] = {', '["enabled"] = true,', '[1] = "Default",', '[2] = "Healer",', '},', '},', '},', '},',
+    '}',
+    'ElvPrivateDB = {', '["profileKeys"] = {', '["Kaelys - Realm1"] = "Kaelys - Realm1",', '},',
+    '["profiles"] = {', '["Kaelys - Realm1"] = {', '["install"] = true,', '},', '},', '}')
+ACE_STOCK = ace_lua('StockDB = {', '["profileKeys"] = {', '["Kaelys - Realm1"] = "Gone",', '},', '["global"] = {',
+                    '},', '}')
+ACE_MEMENTO = ace_lua('Memento = {', '["profileKeys"] = {', '["Player-3725-0A"] = {', '},', '},', '}')
+ACE_BROKEN = ace_lua('BrokenDB = {', '["profileKeys"] = {', '["Kaelys - Realm1"] = "Default",')
+ACE_PERCHAR = ace_lua('PerCharDB = {', '["profileKeys"] = {', '["Kaelys - Realm1"] = "Default",', '},',
+                      '["profiles"] = {', '["Default"] = {', '},', '},', '}')
+ACE_ACCT2 = ace_lua('KickCDDB = {', '["profileKeys"] = {', '["Chârb - Realm2"] = "Default",', '},',
+                    '["profiles"] = {', '["Default"] = {', '},', '},', '}')
+ACE_QUESTIE = ace_lua('QuestieConfig = {', '["profileKeys"] = {', '["Kaelys - Realm1"] = "Default",', '},',
+                      '["profiles"] = {', '["Default"] = {', '},', '},', '}')
+
+
+def build_ace_tree(root: Path) -> Path:
+    """A WoW install with AceDB SavedVariables (see ACE_* above):
+
+    _retail_/WTF/Account/ACCT1: characters Realm1/Kaelys and "Khaz Modan"/Mierin
+      SavedVariables: KickCD.lua (KickCDDB, Default shared, leftover "Gone - Realm1", unused Backup; KickCDPerfDB
+      plain), KickCD.lua.bak (ignored), HandyNotes.lua (char-keyed HandyNotesDB with an unused profile, plus
+      HandyNotes_MapNotesDB), ElvUI.lua (ElvDB with namespace Bags and LibDualSpec; ElvPrivateDB), Stock.lua
+      (StockDB: missing profile "Gone"), Memento.lua (look-alike), Broken.lua (unparsable), Plain.lua (no AceDB),
+      Blizzard_AceThing.lua (skipped by name)
+      Realm1/Kaelys/SavedVariables/PerChar.lua (per-character PerCharDB)
+    _retail_/WTF/Account/ACCT2: Realm2/Chârb; SavedVariables/KickCD.lua
+    _classic_era_/WTF/Account/ACCT1: Realm1/Kaelys; SavedVariables/Questie.lua (QuestieConfig)
+    """
+    retail = root / "_retail_"
+    _addon(retail, "KickCD")
+    acct1 = retail / "WTF" / "Account" / "ACCT1"
+    sv = acct1 / "SavedVariables"
+    _write_lua(sv / "KickCD.lua", ACE_KICKCD)
+    _write_lua(sv / "KickCD.lua.bak", ACE_KICKCD)
+    _write_lua(sv / "HandyNotes.lua", ACE_HANDYNOTES)
+    _write_lua(sv / "ElvUI.lua", ACE_ELVUI)
+    _write_lua(sv / "Stock.lua", ACE_STOCK)
+    _write_lua(sv / "Memento.lua", ACE_MEMENTO)
+    _write_lua(sv / "Broken.lua", ACE_BROKEN)
+    _write_lua(sv / "Plain.lua", ace_lua('PlainDB = {', '["x"] = 1,', '}'))
+    _write_lua(sv / "Blizzard_AceThing.lua", ACE_PERCHAR)
+    _write_lua(acct1 / "Realm1" / "Kaelys" / "SavedVariables" / "PerChar.lua", ACE_PERCHAR)
+    (acct1 / "Khaz Modan" / "Mierin").mkdir(parents=True, exist_ok=True)
+    acct2 = retail / "WTF" / "Account" / "ACCT2"
+    _write_lua(acct2 / "SavedVariables" / "KickCD.lua", ACE_ACCT2)
+    (acct2 / "Realm2" / "Chârb").mkdir(parents=True, exist_ok=True)
+    era = root / "_classic_era_"
+    _addon(era, "Questie")
+    _write_lua(era / "WTF" / "Account" / "ACCT1" / "SavedVariables" / "Questie.lua", ACE_QUESTIE)
+    (era / "WTF" / "Account" / "ACCT1" / "Realm1" / "Kaelys").mkdir(parents=True, exist_ok=True)
     return root

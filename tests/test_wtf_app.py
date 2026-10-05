@@ -11,12 +11,13 @@ from pathlib import Path
 from textual.app import App
 from textual.widgets import Button, DataTable, Input, OptionList, ProgressBar, Static, Tree
 
-from tests.fixtures import TuiTestCase, build_wow_tree, make_config, settle
+from tests.fixtures import BASE, TuiTestCase, build_wow_tree, make_config, settle
 from wowtools.core import activity
 from wowtools.core.backup import BackupError
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
+from wowtools.core.paths import to_stored
 from wowtools.tools.wtf_cleaner import multi
 from wowtools.tools.wtf_cleaner import review_screen as review_module
 from wowtools.tools.wtf_cleaner.app import CleanerSettingsScreen
@@ -58,6 +59,13 @@ class AppTestCase(TuiTestCase):
         return WowToolsApp(cfg, config_dir=cfg.path.parent, check_updates=False, detect=list,
                            tool_options={"wtf-cleaner": {"wow_check": lambda: list(running),
                                                          "locker_check": lambda: list(lockers)}})
+
+    def assert_reasons_shown_whole(self, files: DataTable) -> None:
+        """Every column up to Reasons ends inside the table: why each file goes reads without scrolling."""
+        columns = files.ordered_columns
+        labels = [str(c.label) for c in columns]
+        end = sum(c.get_render_width(files) for c in columns[:labels.index("Reasons") + 1])
+        self.assertLessEqual(end, files.scrollable_content_region.width, labels)
 
     async def enter_tool(self, app, pilot):
         """The menu is the first screen; Enter opens the only tool, the WTF Cleaner."""
@@ -108,6 +116,21 @@ class ReviewFlowTest(AppTestCase):
         self.assertIn({"screen": "review", "control": "dry_run", "value": True},
                       [r["data"] for r in records if r["event"] == "ui.selection"])
 
+    async def test_clean_is_on_w_and_c_collapses(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            self.assertIn("w clean", review.query_one(NavHint).hint)
+            await pilot.press("c")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)  # c collapses the tree, it never cleans
+            tree = review.query_one("#proposal", Tree)
+            self.assertTrue(all(not n.is_expanded for n in tree.root.children))
+            await pilot.press("w")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertEqual(app.screen.title_text, "Back up and delete these files?")
+
     async def test_real_clean_backs_up_and_deletes(self):
         app = self.make_app()
         pushed = []
@@ -120,7 +143,7 @@ class ReviewFlowTest(AppTestCase):
         app.push_screen = spy
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)  # the running-programs check runs in a worker
             self.assertIsInstance(app.screen, ConfirmScreen)
             await pilot.press("y")
@@ -157,7 +180,7 @@ class ReviewFlowTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)
             await pilot.press("y")
             await settle(app, pilot)
@@ -186,7 +209,7 @@ class ReviewFlowTest(AppTestCase):
                 review = await self.open_review(app, pilot)
                 messages = []
                 review.notify = lambda message, **kwargs: messages.append(message)
-                await pilot.press("c")
+                await pilot.press("w")
                 await settle(app, pilot)
                 await pilot.press("y")
                 await settle(app, pilot)
@@ -228,7 +251,7 @@ class ReviewFlowTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)
             await pilot.press("n")
             await pilot.pause()
@@ -257,7 +280,7 @@ class ReviewFlowTest(AppTestCase):
         with capture_events() as records:
             async with app.run_test(size=SIZE) as pilot:
                 await self.open_review(app, pilot)
-                await pilot.press("c")
+                await pilot.press("w")
                 await settle(app, pilot)  # the running-programs check runs in a worker
                 self.assertIsInstance(app.screen, ConfirmScreen)
                 self.assertIn("Wow.exe", app.screen.body_text)
@@ -269,7 +292,7 @@ class ReviewFlowTest(AppTestCase):
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
             app.flow.tool_cfg.set("wtf_cleaner", "backup_before_delete", False)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)  # the running-programs check runs in a worker
             self.assertIsInstance(app.screen, ConfirmScreen)
             self.assertIn("will not be zipped", app.screen.alerts[0])
@@ -467,7 +490,7 @@ class RecoveryDialogTest(AppTestCase):
                 await pilot.pause()
                 self.assertIsInstance(app.screen, ReviewScreen)
                 # A real clean is refused while the marker exists: nothing is deleted.
-                await pilot.press("c")
+                await pilot.press("w")
                 await settle(app, pilot)
                 await pilot.press("y")
                 await pilot.pause()
@@ -584,16 +607,16 @@ class FirstRunTest(AppTestCase):
         self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).backup_dir, target)
 
 
-    async def test_settings_labels_wrap_at_80_columns(self):
+    async def test_settings_labels_wrap_at_base(self):
         app = self.make_app()
-        async with app.run_test(size=(80, 24)) as pilot:
+        async with app.run_test(size=BASE) as pilot:
             await pilot.pause()
             screen = CleanerSettingsScreen(self.tool_cfg, self.root, source="settings")
             app.push_screen(screen)
             await pilot.pause()
             for label in screen.query("Label"):
                 text = str(label.render())
-                self.assertLessEqual(label.region.right, 80, text)
+                self.assertLessEqual(label.region.right, BASE[0], text)
                 self.assertGreaterEqual(label.region.width * label.region.height, len(text), text)
 
 class BackupFolderValidationTest(AppTestCase):
@@ -620,7 +643,7 @@ class BackupFolderValidationTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
-            for key in ("c", "y"):
+            for key in ("w", "y"):
                 app._notifications.clear()
                 await pilot.press(key)
                 await pilot.pause()
@@ -647,7 +670,7 @@ class KeyboardNavigationTest(AppTestCase):
             await pilot.press("enter")
             await pilot.pause()
             self.assertIs(app.screen, review)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)  # the running-programs check runs in a worker
             confirm = app.screen
             self.assertIsInstance(confirm, ConfirmScreen)
@@ -664,7 +687,7 @@ class KeyboardNavigationTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)
             self.assertEqual(app.screen.focused.id, "no")
             await pilot.press("space")  # Space on the focused No button: cancel
@@ -717,10 +740,14 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertEqual(rows["WTF backup"], "not taken (dry run)")
             for key in ("Cleaned files zip", "Size", "Skipped", "Failed"):
                 self.assertIn(key, rows)
+            # Names inside the backup folder, which has a row of its own: a whole path does not fit at 120x30.
+            self.assertTrue(rows["Cleaned files zip"].startswith(str(Path("cleaned", "dryrun-retail-"))),
+                            rows["Cleaned files zip"])
+            self.assertEqual(rows["Backup folder"], to_stored(self.backup_dir))
             files = screen.query_one("#result-files", DataTable)
             self.assertEqual(files.row_count, 8)
             self.assertEqual([str(c.label) for c in files.ordered_columns],
-                             ["Status", "Account", "Character", "Addon", "File", "Size", "Reasons"])
+                             ["Status", "Account", "Character", "Addon", "Reasons", "Size", "File"])
             self.assertTrue(screen.query(ButtonRow))
             self.assertTrue(screen.query(NavHint))
             self.assertEqual(screen.focused.id, "review")
@@ -731,7 +758,7 @@ class KeyboardNavigationTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)
             await pilot.press("y")
             await pilot.pause()
@@ -741,8 +768,85 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertEqual(rows["Mode"], "Clean")
             self.assertIn("8", rows["Deleted"])
             self.assertTrue(rows["WTF backup"].endswith(".zip"))
-            self.assertIn("backup-", rows["WTF backup"])
+            self.assertTrue(rows["WTF backup"].startswith(str(Path("backup", "backup-retail-"))), rows["WTF backup"])
+            self.assertTrue(rows["Cleaned files zip"].startswith(str(Path("cleaned", "cleaned-retail-"))),
+                            rows["Cleaned files zip"])
+            self.assertEqual(rows["Backup folder"], to_stored(self.backup_dir))
+            journal = app.screen.result.journal_path
+            # The journal is in <WoW>/wow-tools/wtf-cleaner/journal, not in this backup folder: its whole path,
+            # with the Undo note on a row of its own.
+            self.assertFalse(journal.is_relative_to(self.backup_dir))
+            self.assertEqual(rows["Run journal"], to_stored(journal))
+            self.assertEqual(rows[""], "(Undo last clean (z) puts these files back)")
             self.assertEqual(rows["Post-clean check"], "passed")
+
+    def test_multi_summary_names_the_journal_by_where_it_is(self):
+        """Several flavors: the run journal's row names it inside the backup folder when it is there, else whole."""
+        from wowtools.core.install import Flavor
+        from wowtools.tools.wtf_cleaner.multi import FlavorRun, MultiCleanResult
+        from wowtools.tools.wtf_cleaner.result_screen import multi_summary_rows
+        flavor = Flavor("_retail_", self.root / "_retail_")
+        journal = self.root / "wow-tools" / "wtf-cleaner" / "journal" / "journal-20261004-153304.jsonl"
+        for folder, expected in ((self.backup_dir, to_stored(journal)),
+                                 (self.root / "wow-tools" / "wtf-cleaner", str(Path("journal", journal.name)))):
+            clean = CleanResult(dry_run=False, backup_path=folder / "cleaned" / "cleaned-retail-x.zip",
+                                journal_path=journal)
+            result = MultiCleanResult(dry_run=False, runs=[FlavorRun(flavor, [], result=clean)], journal_path=journal)
+            rows = multi_summary_rows(result)
+            self.assertEqual(rows[0], ("Run journal", expected, False))  # on top, before the flavor's block
+
+    async def test_real_clean_result_names_the_journal_inside_the_default_backup_folder(self):
+        """With no backup folder set, the default one (<WoW>/wow-tools/wtf-cleaner) holds journal/: the journal
+        is named inside it, and the summary still fits at 120x30."""
+        self.tool_cfg.remove("wtf_cleaner", "backup_dir", log=False)
+        self.tool_cfg.save()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_review(app, pilot)
+            await pilot.press("w")
+            await settle(app, pilot)
+            await pilot.press("y")
+            await pilot.pause()
+            await settle(app, pilot)
+            summary = app.screen.query_one("#result-summary", DataTable)
+            rows = {str(summary.get_row_at(i)[0]): str(summary.get_row_at(i)[1]) for i in range(summary.row_count)}
+            folder = self.root / "wow-tools" / "wtf-cleaner"
+            self.assertEqual(rows["Backup folder"], to_stored(folder))
+            journal = app.screen.result.journal_path
+            self.assertEqual(rows["Run journal"],
+                             f"{journal.relative_to(folder)} (Undo last clean (z) puts these files back)")
+            self.assertTrue(rows["Run journal"].startswith(str(Path("journal", ""))))
+            self.assertEqual(summary.row_count, 10)
+            self.assertEqual((summary.max_scroll_x, summary.max_scroll_y), (0, 0))
+
+    async def test_result_reasons_show_at_base_for_one_flavor(self):
+        acct = self.root / "_retail_" / "WTF" / "Account" / "ACCT1" / "SavedVariables"
+        (acct / "Auctionator.lua.pre-schema8-20260926-103400").write_text("x = 1\n", encoding="utf-8")
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_review(app, pilot)
+            await pilot.press("y")
+            await settle(app, pilot)
+            await pilot.press("y")
+            await pilot.pause()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ResultScreen)
+            self.assert_reasons_shown_whole(app.screen.query_one("#result-files", DataTable))
+
+    async def test_real_clean_result_summary_fits_at_base(self):
+        """At 120x30 a clean's summary shows every row, each value whole (no scrolling either way)."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_review(app, pilot)
+            await pilot.press("w")
+            await settle(app, pilot)
+            await pilot.press("y")
+            await pilot.pause()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ResultScreen)
+            summary = app.screen.query_one("#result-summary", DataTable)
+            self.assertEqual(summary.row_count, 11)  # the journal's whole path, then the Undo note
+            self.assertEqual((summary.max_scroll_x, summary.max_scroll_y), (0, 0))
 
     async def test_setup_and_settings_keyboard_only(self):
         cfg = Config(self.tmp / "fresh" / "wow-tools.cfg")
@@ -761,6 +865,10 @@ class KeyboardNavigationTest(AppTestCase):
             await pilot.press(*str(self.root)[-3:])
             self.assertEqual(box.value, str(self.root))
             await pilot.press("down")
+            self.assertEqual(setup.focused.id, "keep-backups")
+            await pilot.press("down")
+            self.assertEqual(setup.focused.id, "keep-journals")
+            await pilot.press("down")
             self.assertEqual(setup.focused.id, "save")
             await pilot.press("enter")
             await pilot.pause()
@@ -770,11 +878,10 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertTrue(settings.query(NavHint))
             self.assertFalse(settings.query("Switch"))
             order = [settings.focused.id]
-            for _ in range(9):
+            for _ in range(7):
                 await pilot.press("down")
                 order.append(settings.focused.id)
-            self.assertEqual(order, ["max_age", "backup_dir", "keep_backups", "keep_journals",
-                                     *[f"sw_{n}" for n in CRITERIA],
+            self.assertEqual(order, ["max_age", "backup_dir", *[f"sw_{n}" for n in CRITERIA],
                                      "sw_backup", "save"])
             for name in (*[f"sw_{n}" for n in CRITERIA], "sw_backup"):
                 self.assertIsInstance(settings.query_one(f"#{name}"), Ka0sCheckbox)
@@ -915,7 +1022,7 @@ class ProposalLoggingTest(AppTestCase):
         with capture_events() as records:
             async with app.run_test(size=SIZE) as pilot:
                 await self.open_review(app, pilot)
-                await pilot.press("c")
+                await pilot.press("w")
                 await settle(app, pilot)
                 await pilot.press("n")
                 await pilot.pause()
@@ -942,12 +1049,12 @@ class PreflightWorkerTest(AppTestCase):
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
             started = time.monotonic()
-            await pilot.press("c")
+            await pilot.press("w")
             await pilot.pause()
             self.assertLess(time.monotonic() - started, 1.0)
             self.assertIs(app.screen, review)
             self.assertIn("Checking for running programs", str(review.query_one("#summary", Static).render()))
-            await pilot.press("c")  # ignored while the check runs
+            await pilot.press("w")  # ignored while the check runs
             await pilot.press("y")
             await pilot.pause()
             release.set()
@@ -966,7 +1073,7 @@ class PreflightWorkerTest(AppTestCase):
         app = self.make_slow_app(release)
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)
             await pilot.press("y")
             await settle(app, pilot)
@@ -997,7 +1104,7 @@ class PreflightWorkerTest(AppTestCase):
             review = await self.open_review(app, pilot)
             before = review._selection_by_flavor()
             self.assertTrue(before)
-            await pilot.press("c")
+            await pilot.press("w")
             await pilot.pause()
             for key in ("n", "space", "1", "3"):  # select none, untick, two criteria: all ignored meanwhile
                 await pilot.press(key)
@@ -1021,7 +1128,7 @@ class PreflightWorkerTest(AppTestCase):
         app = self.make_slow_app(release)
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
-            await pilot.press("c")
+            await pilot.press("w")
             await pilot.pause()
             await pilot.press("f")  # back to the flavor picker
             await pilot.pause()
@@ -1063,7 +1170,7 @@ class LockerWarningTest(AppTestCase):
                 self.assertNotIn("RaiderIO", app.screen.body_text)
                 await pilot.press("n")
                 await pilot.pause()
-                await pilot.press("c")
+                await pilot.press("w")
                 await settle(app, pilot)
                 self.assertIn("RaiderIO.exe appears to be running", app.screen.body_text)
             self.assertIn("locker.running_warning", [r["event"] for r in records])
@@ -1100,7 +1207,7 @@ class AllFlavorsTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_all(app, pilot)
-            await self.run_mode(app, pilot, "c")
+            await self.run_mode(app, pilot, "w")
             await pilot.press("r")
             await pilot.pause()
             await settle(app, pilot)
@@ -1159,7 +1266,9 @@ class AllFlavorsTest(AppTestCase):
             self.assertIn("All flavors", str(tree.root.label))
             flavors = {str(n.label).strip().lstrip("✔◩✘ ").split("  ")[0]: n for n in tree.root.children}
             self.assertEqual(sorted(flavors), ["Anniversary", "Classic Era", "Retail"])
-            self.assertIn("No addons found", str(flavors["Anniversary"].label))
+            # In a few words (the whole message, with its path, is in the log): the line fits the tree at 120x30.
+            self.assertEqual(str(flavors["Anniversary"].label).split("  ", 2)[-1],
+                             "not scanned: no addons installed")
             self.assertFalse(flavors["Anniversary"].children)
             self.assertEqual([n.data[2] for n in flavors["Classic Era"].children], ["ACCT1"])
             self.assertEqual([n.data[2] for n in flavors["Retail"].children], ["ACCT1", "ACCT2"])
@@ -1202,7 +1311,7 @@ class AllFlavorsTest(AppTestCase):
         app = self.make_app(running=["WowClassic.exe"])
         async with app.run_test(size=SIZE) as pilot:
             await self.open_all(app, pilot)
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)  # the running-programs check runs in a worker
             confirm = app.screen
             self.assertIsInstance(confirm, ConfirmScreen)
@@ -1211,6 +1320,33 @@ class AllFlavorsTest(AppTestCase):
             self.assertIn("WowClassic.exe", confirm.body_text)
             self.assertNotIn("Anniversary", confirm.body_text)
             await pilot.press("n")
+
+    async def test_not_scanned_flavor_lines_fit_the_tree_at_base(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_all(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            lines = [n for n in tree.root.children if "not scanned" in str(n.label)]
+            self.assertTrue(lines)
+            for node in lines:  # the label after the tree's "├── " guide
+                self.assertLessEqual(4 + node.label.cell_len, tree.scrollable_content_region.width, node.label)
+
+    async def test_result_reasons_show_at_base(self):
+        """At 120x30 the per-file table's Reasons column shows whole, for one flavor and for All flavors (the
+        Flavor column): a long stray-copy file name ends at the window's edge instead."""
+        acct = self.root / "_retail_" / "WTF" / "Account" / "ACCT1" / "SavedVariables"
+        (acct / "Auctionator.lua.pre-schema8-20260926-103400").write_text("x = 1\n", encoding="utf-8")
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_all(app, pilot)
+            await self.run_mode(app, pilot, "y")
+            self.assertIsInstance(app.screen, ResultScreen)
+            files = app.screen.query_one("#result-files", DataTable)
+            labels = [str(c.label) for c in files.ordered_columns]
+            self.assertIn("Flavor", labels)
+            names = [str(files.get_row_at(i)[labels.index("File")]) for i in range(files.row_count)]
+            self.assertTrue(any("pre-schema8" in name for name in names), names)
+            self.assert_reasons_shown_whole(files)
 
     async def test_dry_run_across_flavors_deletes_nothing(self):
         app = self.make_app()
@@ -1238,7 +1374,7 @@ class AllFlavorsTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_all(app, pilot)
-            await self.run_mode(app, pilot, "c")
+            await self.run_mode(app, pilot, "w")
             screen = app.screen
             self.assertIsInstance(screen, ResultScreen)
             self.assertEqual(len(screen.result.deleted), 9)
@@ -1264,7 +1400,7 @@ class AllFlavorsTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_all(app, pilot)
-            await self.run_mode(app, pilot, "c")
+            await self.run_mode(app, pilot, "w")
             self.assertIs(app.screen, review)
         self.assertEqual(calls, ["_classic_era_"])
         self.assertTrue((self.sv / "Uninstalled.lua").exists())
@@ -1283,7 +1419,7 @@ class AllFlavorsTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_all(app, pilot)
-            await self.run_mode(app, pilot, "c")
+            await self.run_mode(app, pilot, "w")
             screen = app.screen
             self.assertIsInstance(screen, ResultScreen)
             self.assertEqual(len(screen.result.deleted), 1)
@@ -1311,7 +1447,7 @@ class AllFlavorsTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_all(app, pilot)
-            await self.run_mode(app, pilot, "c")
+            await self.run_mode(app, pilot, "w")
             screen = app.screen
             self.assertIsInstance(screen, ResultScreen)
             summary = screen.query_one("#result-summary", DataTable)
@@ -1333,7 +1469,7 @@ class AllFlavorsTest(AppTestCase):
             review = await self.open_all(app, pilot)
             messages = []
             review.notify = lambda message, **kwargs: messages.append(message)
-            await self.run_mode(app, pilot, "c")
+            await self.run_mode(app, pilot, "w")
             self.assertIs(app.screen, review)
         self.assertEqual(len(messages), 1)
         self.assertTrue(messages[0].startswith("Classic Era: Clean stopped"), messages[0])
@@ -1352,7 +1488,7 @@ class AllFlavorsTest(AppTestCase):
             review = await self.open_all(app, pilot)
             messages = []
             review.notify = lambda message, **kwargs: messages.append(message)
-            await self.run_mode(app, pilot, "c")
+            await self.run_mode(app, pilot, "w")
         self.assertEqual(messages, ["Classic Era: Nothing was deleted: disk full\nNot started: Retail."])
 
     async def test_summary_scrolls_from_the_keyboard_with_several_flavors(self):
@@ -1389,7 +1525,7 @@ class AllFlavorsTest(AppTestCase):
             review = await self.open_all(app, pilot)
             full = review._selection_by_flavor()
             review._selection_by_flavor = lambda: [(f, items) for f, items in full if f.folder == "_retail_"]
-            await pilot.press("c")
+            await pilot.press("w")
             await settle(app, pilot)  # the running-programs check runs in a worker
             confirm = app.screen
             self.assertIsInstance(confirm, ConfirmScreen)
@@ -1414,12 +1550,12 @@ class ResultRowsTest(unittest.TestCase):
                         ("stray_copies",)),
         ])
         rows = result_rows(result, retail)
-        self.assertEqual(RESULT_COLUMNS, ("Status", "Account", "Character", "Addon", "File", "Size", "Reasons"))
+        self.assertEqual(RESULT_COLUMNS, ("Status", "Account", "Character", "Addon", "Reasons", "Size", "File"))
         self.assertEqual(len(rows), 3)
-        self.assertEqual(rows[0], ("Deleted", "ACCT1", "account-wide", "Uninstalled", "Uninstalled.lua.bak",
-                                   "2.0 KB", "not_installed"))
+        self.assertEqual(rows[0], ("Deleted", "ACCT1", "account-wide", "Uninstalled", "not_installed", "2.0 KB",
+                                   "Uninstalled.lua.bak"))
         self.assertEqual(rows[1], ("Skipped: changed since the scan", "ACCT1", "Realm1/CharA", "Uninstalled",
-                                   "Uninstalled.lua", "10 B", "not_installed, older_than"))
+                                   "not_installed, older_than", "10 B", "Uninstalled.lua"))
         self.assertEqual(rows[2][0], "Failed: denied")
         self.assertEqual(rows[2][3], "Details")
         self.assertTrue(all(len(row) == len(RESULT_COLUMNS) for row in rows))
@@ -1475,10 +1611,12 @@ class UndoLastCleanTest(AppTestCase):
                 await pilot.press("z")
                 await settle(app, pilot)
                 self.assertIs(app.screen, review)
-                await self.run_key(app, pilot, "c")
+                await self.run_key(app, pilot, "w")
                 self.assertIsInstance(app.screen, ResultScreen)
-                rows = dict(app.screen.summary_rows())
-                self.assertIn("Undo last clean (z)", rows["Run journal"])
+                rows = app.screen.summary_rows()
+                at = [item for item, _ in rows].index("Run journal")
+                # the journal is outside this backup folder: its whole path, the Undo note on the next row
+                self.assertIn("Undo last clean (z)", rows[at + 1][1])
                 review = await self.back_to_review(app, pilot)
                 self.assertFalse(review.query_one("#btn-undo", Button).disabled)
                 await pilot.press("z")
@@ -1511,7 +1649,7 @@ class UndoLastCleanTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
-            await self.run_key(app, pilot, "c")
+            await self.run_key(app, pilot, "w")
             await self.back_to_review(app, pilot)
             await self.run_key(app, pilot, "z", answer="n")
             self.assertIsInstance(app.screen, ReviewScreen)
@@ -1532,7 +1670,7 @@ class UndoLastCleanTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
-            await self.run_key(app, pilot, "c")
+            await self.run_key(app, pilot, "w")
             review = await self.back_to_review(app, pilot)
             button = review.query_one("#btn-undo", Button)
             self.assertFalse(button.disabled)
@@ -1557,28 +1695,36 @@ class UndoLastCleanTest(AppTestCase):
         app = self.make_app(running=["Wow.exe (pid 1)"])
         async with app.run_test(size=SIZE) as pilot:
             await self.open_review(app, pilot)
-            await self.run_key(app, pilot, "c")
+            await self.run_key(app, pilot, "w")
             await self.back_to_review(app, pilot)
             await pilot.press("z")
             await settle(app, pilot)  # the running-programs check runs in a worker
             self.assertIsInstance(app.screen, ConfirmScreen)
             self.assertIn("WoW appears to be running", app.screen.body_text)
 
-    async def test_settings_keep_journals(self):
+    async def test_settings_have_no_retention_inputs(self):
+        """Feedback round 1: backups and journals to keep are global ([general], the `s` screen)."""
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await pilot.pause()
             screen = CleanerSettingsScreen(self.tool_cfg, self.root, source="settings")
             app.push_screen(screen)
             await pilot.pause()
-            self.assertEqual(screen.query_one("#keep_journals", Input).value, "10")
-            screen.query_one("#keep_journals", Input).value = "0"
-            screen.query_one("#save", Button).press()
-            await pilot.pause()
-            self.assertIs(app.screen, screen)
-            self.assertEqual(screen.error_text, "Keep at least 1 journal.")
-            screen.query_one("#keep_journals", Input).value = "3"
-            screen.query_one("#save", Button).press()
-            await pilot.pause()
-            self.assertIsNot(app.screen, screen)
-        self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).keep_journals, 3)
+            for box in ("#keep_backups", "#keep_journals", "#keep-backups", "#keep-journals"):
+                self.assertFalse(screen.query(box), box)
+
+    async def test_retention_comes_from_general_not_the_tool_file(self):
+        """Feedback round 1: a stale per-tool keep_backups is ignored; the global value is used (0 = keep all)."""
+        self.tool_cfg.set("wtf_cleaner", "keep_backups", "3", log=False)
+        self.tool_cfg.save()
+        for keep, wanted in (("7", "the newest 7 of this flavor are kept"), ("0", "all of this flavor are kept")):
+            self.cfg.set("general", "keep_backups", keep, log=False)
+            app = self.make_app()
+            async with app.run_test(size=SIZE) as pilot:
+                review = await self.open_review(app, pilot)
+                review.query_one("#btn-dry", Button).focus()
+                await pilot.pause()
+                await pilot.press("enter")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, ConfirmScreen)
+                self.assertIn(wanted, app.screen.body_text)

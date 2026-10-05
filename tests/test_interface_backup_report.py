@@ -56,7 +56,10 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(report.flavor_text(retail, backups), "1 file · 100 B · 1 backup, last 2026-10-04 15:30:12")
         empty = FlavorScan(RETAIL, {"Interface": PartScan("Interface", RETAIL.path / "Interface"),
                                     "WTF": PartScan("WTF", RETAIL.path / "WTF")})
-        self.assertEqual(report.flavor_text(empty, []), "nothing to back up: no Interface or WTF folder · no backups yet")
+        # nothing to back up and no backups: "no backups yet" adds nothing, and the line fits the tree at 120x30
+        self.assertEqual(report.flavor_text(empty, []), "nothing to back up: no Interface or WTF folder")
+        self.assertEqual(report.flavor_text(empty, backups),
+                         "nothing to back up: no Interface or WTF folder · 1 backup, last 2026-10-04 15:30:12")
         self.assertIn("WTF.replaced", report.leftover_text(retail))
         self.assertIn("Restore is blocked", report.leftover_text(retail))
         self.assertEqual(report.held_text([retail, empty]), "1 file · 100 B")
@@ -76,13 +79,13 @@ class ReportTest(unittest.TestCase):
         # Seconds everywhere: two backups (or a backup and its safety zip) are often a few seconds apart.
         self.assertEqual(report.picker_note([info("20261004-153012")]), "1 backup, last 2026-10-04 15:30:12")
         b = info("20261004-153012")
-        # Kind and time first: at 80x24 the tree shows about 16 columns of a backup's line.
-        self.assertEqual(report.backup_text(b), "backup 15:30:12 · 2026-10-04 · … · 2.0 KB")
+        # Kind, then the whole date and time as everywhere else (the tree has room for it at 120x30).
+        self.assertEqual(report.backup_text(b), "backup 2026-10-04 15:30:12 · … · 2.0 KB")
         self.assertEqual(report.backup_text(b, ("Interface", "WTF")),
-                         "backup 15:30:12 · 2026-10-04 · Interface, WTF · 2.0 KB")
-        self.assertEqual(report.backup_text(b, None), "backup 15:30:12 · 2026-10-04 · ? · 2.0 KB")
+                         "backup 2026-10-04 15:30:12 · Interface, WTF · 2.0 KB")
+        self.assertEqual(report.backup_text(b, None), "backup 2026-10-04 15:30:12 · ? · 2.0 KB")
         self.assertEqual(report.backup_text(info("20261003-010203", "pre-restore", 100), ()),
-                         "safety 01:02:03 · 2026-10-03 · none · 100 B")
+                         "safety 2026-10-03 01:02:03 · none · 100 B")
         self.assertEqual(report.backup_detail(b, ("Interface", "WTF")),
                          "Backup from 2026-10-04 15:30:12 · Interface, WTF · 2.0 KB")
         self.assertEqual(report.backup_detail(info("20261003-010203", "pre-restore", 100)),
@@ -231,7 +234,7 @@ class ReportTest(unittest.TestCase):
         rows = dict(report.restore_summary_rows(done))
         self.assertEqual(rows["Flavor"], "Retail")
         self.assertEqual(rows["Restore"], "finished")
-        # File names, the folders on rows of their own: whole paths are cut at 80 columns.
+        # File names, the folders on rows of their own: whole paths would be cut.
         self.assertEqual(rows["Restored from"], "x.zip")
         self.assertEqual(rows["Safety backup"], "pre.zip")
         self.assertEqual(rows["Zips in"], to_stored(Path("/bk")))

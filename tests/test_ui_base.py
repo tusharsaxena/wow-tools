@@ -5,6 +5,7 @@ import contextlib
 import tempfile
 import threading
 import time
+import unittest
 from pathlib import Path
 from typing import ClassVar
 from unittest.mock import patch
@@ -250,6 +251,60 @@ class SetupScreenTest(UiTestCase):
         changed = [r for r in records if r["event"] == "config.changed"]
         self.assertEqual(changed[0]["data"]["source"], "wizard")
 
+    async def test_saves_retention_to_general(self):
+        """Feedback round 1: backups and journals to keep are global, edited here."""
+        self.cfg.set("general", "wow_path", str(self.root), log=False)
+        screen = SetupScreen(self.cfg, first_run=False, detect=list)
+        app = Host(self.cfg, screen)
+        async with app.run_test(size=(120, 50)) as pilot:
+            await pilot.pause()
+            self.assertEqual(screen.query_one("#keep-backups", Input).value, "10")
+            self.assertEqual(screen.query_one("#keep-journals", Input).value, "10")
+            screen.query_one("#keep-backups", Input).value = "0"
+            screen.query_one("#keep-journals", Input).value = "4"
+            await pilot.click("#save")
+            await pilot.pause()
+        self.assertEqual(app.results, [True])
+        saved = Config(self.cfg.path).load()
+        self.assertEqual((saved.keep_backups, saved.keep_journals), (0, 4))
+        self.assertEqual(saved.get("general", "keep_backups"), "0")
+
+    async def test_down_reaches_every_field_at_80x24(self):
+        """Feedback round 1 review: at 80x24 the form is taller than the screen; ↓ still moves focus field by field
+        (it used to scroll the form instead, so the retention fields were reachable only with Tab)."""
+        self.cfg.set("general", "wow_path", str(self.root), log=False)
+        screen = SetupScreen(self.cfg, first_run=False, detect=list)
+        app = Host(self.cfg, screen)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            self.assertEqual(screen.focused.id, "wow_path")
+            for expected in ("keep-backups", "keep-journals", "save"):
+                await pilot.press("down")
+                await pilot.pause()
+                self.assertEqual(screen.focused.id, expected)
+            await pilot.press("up")
+            await pilot.pause()
+            self.assertEqual(screen.focused.id, "keep-journals")
+
+    async def test_rejects_bad_retention_values(self):
+        self.cfg.set("general", "wow_path", str(self.root), log=False)
+        screen = SetupScreen(self.cfg, first_run=False, detect=list)
+        app = Host(self.cfg, screen)
+        cases = (("keep-backups", "lots"), ("keep-backups", "-1"), ("keep-journals", "x"), ("keep-journals", "0"))
+        async with app.run_test(size=(120, 50)) as pilot:
+            await pilot.pause()
+            for box, value in cases:
+                screen.error_text = ""
+                screen.query_one("#keep-backups", Input).value = "10"
+                screen.query_one("#keep-journals", Input).value = "10"
+                screen.query_one(f"#{box}", Input).value = value
+                screen._save()
+                await pilot.pause()
+                self.assertTrue(screen.error_text, (box, value))
+                self.assertEqual(app.results, [], (box, value))
+        self.assertIsNone(Config(self.cfg.path).load().get("general", "keep_backups"))
+        self.assertIsNone(Config(self.cfg.path).load().get("general", "keep_journals"))
+
     async def test_detects_installs_in_background(self):
         """F-005: the drive scan runs in a worker; the screen opens at once and fills in what it finds."""
         release = threading.Event()
@@ -368,3 +423,15 @@ class AccountScreenTest(UiTestCase):
             await pilot.press("escape")
             await pilot.pause()
         self.assertEqual(app.results, [None])
+
+
+class WrapItemsTest(unittest.TestCase):
+    def test_breaks_only_between_items_and_counts_the_mark(self):
+        from wowtools.ui.widgets import wrap_items
+        text = "a all · n none · r rescan · c collapse all"
+        self.assertEqual(wrap_items(text, 0), text)  # width not known yet
+        self.assertEqual(wrap_items(text, 80), text)
+        self.assertEqual(wrap_items(text, 18), "a all · n none ·\nr rescan ·\nc collapse all")
+        for line in wrap_items(text, 18).splitlines():
+            self.assertLessEqual(len(line), 18)
+        self.assertEqual(wrap_items("1 a → 2 b → 3 c", 8, " → "), "1 a →\n2 b →\n3 c")

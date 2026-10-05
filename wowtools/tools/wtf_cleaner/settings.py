@@ -8,11 +8,9 @@ from wowtools.core.config import Config
 from wowtools.core.journal import TOOLS_SUBDIR
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, Criteria
-from wowtools.tools.wtf_cleaner.safety import DEFAULT_KEEP_SNAPSHOTS
 
 SECTION = "wtf_cleaner"
 DEFAULT_BACKUP_SUBDIR = Path(TOOLS_SUBDIR) / TOOL_NAME
-DEFAULT_KEEP_JOURNALS = 10
 
 
 @dataclass
@@ -21,11 +19,10 @@ class CleanerSettings:
     backup_before_delete: bool = True
     backup_dir: Path | None = None
     last_account: str | None = None  # None (stored as empty) means all accounts
-    keep_backups: int = DEFAULT_KEEP_SNAPSHOTS  # WTF backups to keep per flavor (backup/backup-<flavor>-<stamp>.zip)
     # The flavor picker's last choice: "" means All flavors, else a flavor folder such as _retail_. None means
     # never chosen (not stored); the picker then highlights [general] last_flavor.
     last_flavor_choice: str | None = None
-    keep_journals: int = DEFAULT_KEEP_JOURNALS  # run journals to keep (<WoW>/wow-tools/wtf-cleaner/journal)
+    # Backups and journals to keep are global: Config.keep_backups / keep_journals ([general]).
 
 
 def load_settings(cfg: Config) -> CleanerSettings:
@@ -35,9 +32,7 @@ def load_settings(cfg: Config) -> CleanerSettings:
     return CleanerSettings(criteria, cfg.get_bool(SECTION, "backup_before_delete", True),
                            cfg.get_path(SECTION, "backup_dir"),
                            (cfg.get(SECTION, "last_account") or "").strip() or None,
-                           max(1, cfg.get_int(SECTION, "keep_backups", DEFAULT_KEEP_SNAPSHOTS)),
-                           None if choice is None else choice.strip(),
-                           max(1, cfg.get_int(SECTION, "keep_journals", DEFAULT_KEEP_JOURNALS)))
+                           None if choice is None else choice.strip())
 
 
 def save_settings(cfg: Config, settings: CleanerSettings, *, source: str = "settings") -> None:
@@ -47,8 +42,7 @@ def save_settings(cfg: Config, settings: CleanerSettings, *, source: str = "sett
     cfg.set(SECTION, "backup_before_delete", settings.backup_before_delete, source=source)
     cfg.set_path(SECTION, "backup_dir", settings.backup_dir, source=source)
     cfg.set(SECTION, "last_account", settings.last_account or "", source=source)
-    cfg.set(SECTION, "keep_backups", settings.keep_backups, source=source)
-    cfg.set(SECTION, "keep_journals", settings.keep_journals, source=source)
+    cfg.remove_retired(SECTION, source=source)
     if settings.last_flavor_choice is not None:
         cfg.set(SECTION, "last_flavor_choice", settings.last_flavor_choice, source=source)
     cfg.save()

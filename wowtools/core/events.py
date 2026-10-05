@@ -49,7 +49,7 @@ CORE_EVENTS: dict[str, EventSpec] = {
     "session.waiting_for_worker": EventSpec("warning", "The app closed while a clean, organize or undo was still "
                                                        "running; the lock is kept until it finishes."),
     "config.created": EventSpec("info", "A config file in config/ was written for the first time."),
-    "config.changed": EventSpec("info", "A config value changed, or was overridden for one run."),
+    "config.changed": EventSpec("info", "A config value changed or was removed, or was overridden for one run."),
     "config.migrated": EventSpec("info", "The old shared wow-tools.cfg was split into config/ (one file per tool)."),
     "config.renamed": EventSpec("info", "A renamed tool's config file was moved to its new name (merged into the new "
                                         "file when both existed)."),

@@ -71,6 +71,7 @@ explained below).
 | `a` / `n` | Tick everything to sort / untick everything |
 | `o` | **Organize** the ticked screenshots (asks first; the answer starts on **No**) |
 | `y` | **Dry run** (asks first; the answer starts on **Yes**) |
+| `x` / `c` | Expand every line of the tree / collapse them all |
 | `r` | Scan again |
 | `z` | **Undo last run** (asks first; the answer starts on **No**) |
 | `f` or `Esc` | Pick another game version |
@@ -156,20 +157,23 @@ Undo is careful too:
   it back yourself) is left alone and listed as already back.
 
 Each run's record (its **journal**) is kept in `<your WoW folder>\wow-tools\screenshot-organizer\journal`, never
-in your screenshot archive. The newest 10 are kept.
+in your screenshot archive. The newest 10 are kept (a shared setting, see below).
 
 ## Settings
 
-Press `s` in the organizer. The settings are saved in `config\screenshot-organizer.cfg`.
+Press `s` in the organizer (you get the shared settings first, then the organizer's). The organizer's settings are
+saved in `config\screenshot-organizer.cfg`.
 
 | Setting | Starts as | What it means |
 |---|---|---|
 | Destination folder | empty | Where screenshots go. Empty means sort them in place |
 | Copy instead of move | off | Keep the originals in `Screenshots` as well |
-| Journals to keep | 10 | How many run records to keep for Undo |
 
-The file itself uses these names, if you edit it by hand: `dest_dir`, `copy_mode`, `keep_journals` and
-`last_flavor_choice`.
+The file itself uses these names, if you edit it by hand: `dest_dir`, `copy_mode` and `last_flavor_choice`.
+
+Backups and journals to keep are shared by every tool: they're on the first screen `s` opens (the one with
+your WoW folder), and saved as `keep_backups` (10; `0` keeps all) and `keep_journals` (10) under `[general]`
+in `config\wow-tools.cfg`.
 
 > Older versions called this tool `screenshots`. The app renames its old settings file, log folder and
 > `wow-tools\screenshots` folder to the new `screenshot-organizer` names automatically, and never overwrites

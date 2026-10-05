@@ -23,11 +23,16 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
      suite standard: one JSON Lines file per real run in `journal_dir(wow_path, TOOL_NAME)`
      (`<WoW>/wow-tools/<tool>/journal/`). Open the `JournalWriter` (header) before the first change and stop if it
      cannot be written; `add_entry({"action": ..., ...})` after each change; `finish()` and `discard_if_empty()` at
-     the end; `prune_journals(dir, keep_journals)` with a `keep_journals` setting (default 10, at least 1). Keep the
+     the end; `prune_journals(dir, cfg.keep_journals)` (the shared `[general] keep_journals`; a tool has no retention setting
+of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep the
      tool's own entry fields, `read_journal` wrapper and undo rules in its own `journal.py` / `undo.py` (see
      `screenshot_organizer/`, `wtf_cleaner/` and `interface_backup/`, whose journal records restores only), offer only `latest_undoable(dir)`, `mark_undone()` after an
      undo, and give the review screen an amber Undo button (`action_button(..., "revert")`, key `z`, confirm
      starting on No). A dry run writes no journal.
+   - **Code another tool already has** moves to `wowtools/core/` first, never imported across tools. A tool that
+     changes SavedVariables files takes the whole-`WTF` snapshot from `core/snapshot.py` (folder and name prefix are
+     parameters), the path guard and lock probe from `core/svfiles.py`, and `core.fsutil.atomic_write_bytes` for its
+     writes, as the WTF Cleaner and the Ace3 Profile Manager do.
    - `settings.py` for the tool's own settings: the `[screenshot_organizer]` section of `config/screenshot-organizer.cfg`.
      Follow `wtf_cleaner/settings.py`; it takes the tool's `Config`, never the suite one.
    - `app.py` with `class ScreenshotsFlow(ToolFlow)` and `FLOW = ScreenshotsFlow`. `start()` pushes the first
@@ -38,7 +43,8 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
      `review_screen.py` (`ShotReviewScreen`, `ShotProgressScreen`, `ShotResultScreen`).
    - **Shared dialogs.** Take the confirm and progress dialogs from `wowtools/ui/dialogs.py`, never from another
      tool (a tool imports nothing from another tool; `tests/test_structure.py` checks it):
-     `ConfirmScreen(title, body, alerts, default_yes=...)` (start on No for anything that changes files), and a
+     `ConfirmScreen(title, body, alerts, default_yes=..., groups=...)` (start on No for anything that changes files;
+     `groups` lists long details in a tree), `InfoScreen(title, groups)` for notes too long for a notification, and a
      subclass of `ProgressScreen` with your own `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, fed by the
      run's `progress(stage, current, total, detail)` through `app.call_from_thread`. Wrap that callback with
      `core.fsutil.safe_progress` inside the run. A review tree can use `tick_mark`, `relabel_branch` and the
@@ -47,7 +53,11 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
      `two_pane_css(screen, tree)` for the review (left pane `FILTERS_WIDTH` wide, four action buttons in one row),
      `result_css(screen)` for the result, `settings_css(screen)` for the settings form, and hints that start with
      `REVIEW_HINT` (or `review_hint("tick or open")` when Space does more in your tree) and `RESULT_HINT`.
-     `tests/test_look_and_feel.py` checks every tool against them; add yours to its `TOOLS`.
+     Every tree screen binds `TREE_BINDINGS` (`x` expand all, `c` collapse all) and puts `TREE_HINT` in its hint
+     before `r rescan`; each focusable control of the left pane gets a row of its own.
+     Lay the screens out for 120x30 (Windows Terminal's default window) and let trees and tables take any extra
+     room; 80x24 only has to keep working. `tests/test_look_and_feel.py` checks every tool against them at those
+     sizes; add yours to its `TOOLS`.
 2. **Register** it in `wowtools/tools/__init__.py`:
    `Tool("screenshot-organizer", "Screenshot Organizer", "File screenshots into year/month/day folders, per flavor.",
    "wowtools.tools.screenshot_organizer.app", "screenshot_organizer")`. It appears in the tool menu. There are no per-tool wrappers or command-line modes: every tool
@@ -70,3 +80,6 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
    Nothing else moves: a tool whose output folder is named after `TOOL_NAME` inside a folder the user chose
    (Interface Backup's `<backup folder>/interface-backup`, when the backup folder is set) needs that subfolder
    moved too, which migrate does not do. Without it the tool lists no backups and Undo refuses the moved journals.
+   The Ace3 Profile Manager's rename from `ace-profiles` is the worked example: `settings.migrate_backup_root()`
+   moves `<backup_dir>/ace-profiles` with `merge_folder_logged()` when the tool opens, and `undo._moved_zip()`
+   finds a journal's `edited-*.zip` by name in the new folder.

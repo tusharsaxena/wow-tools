@@ -10,7 +10,6 @@ from __future__ import annotations
 import os
 import re
 import stat
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -18,16 +17,19 @@ from pathlib import Path
 
 from wowtools import __version__
 from wowtools.core.backup import BackupEntry, BackupError, create_backup
+from wowtools.core.config import DEFAULT_KEEP_BACKUPS
 from wowtools.core.events import log_event
-from wowtools.core.fsutil import free_name, rename_no_replace, safe_progress
+from wowtools.core.fsutil import free_name, safe_progress
 from wowtools.core.install import Flavor
+from wowtools.core.svfiles import (LOCK_PROBE_SUFFIX, SvFileError, SvGuard, lstat_or_none,  # noqa: F401 - re-exported
+                                   probe_lock, saved_variables_folders)
+from wowtools.core.svfiles import recover_probe_leftovers as core_recover_probe_leftovers
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
 from wowtools.tools.wtf_cleaner.journal import CleanJournal
 from wowtools.tools.wtf_cleaner.rules import ProposalItem
-from wowtools.tools.wtf_cleaner.safety import (DEFAULT_KEEP_SNAPSHOTS, MARKER_NAME, Marker, check_clean, clear_marker,
-                                               prune_snapshots, read_marker, restore_deleted, take_snapshot,
-                                               write_marker)
-from wowtools.tools.wtf_cleaner.scanner import LOCK_PROBE_SUFFIX, SVFile
+from wowtools.tools.wtf_cleaner.safety import (MARKER_NAME, Marker, check_clean, clear_marker, prune_snapshots,
+                                               read_marker, restore_deleted, take_snapshot, write_marker)
+from wowtools.tools.wtf_cleaner.scanner import SVFile
 
 CleanProgress = Callable[[str, int, int, str], None]
 CLEANED_SUBDIR = "cleaned"
@@ -92,39 +94,17 @@ class CleanResult:
         return sum(o.size for o in self.outcomes if o.status in ("deleted", "would_delete"))
 
 
-class _Guard:
-    """Refuses any path outside <flavor>/WTF/Account or not directly inside a SavedVariables folder.
-
-    Resolving a path is slow on some drives (about 13ms per file on a Windows drive under WSL), so the account
-    folder is resolved once and each parent folder once. A file that is itself a link is resolved in full.
-    """
-
-    def __init__(self, flavor: Flavor) -> None:
-        self.flavor = flavor
-        self.root = flavor.account_dir.resolve()
-        self.parents: dict[Path, Path] = {}
+class _Guard(SvGuard):
+    """core.svfiles.SvGuard, raising CleanError (same message) instead of SvFileError."""
 
     def check(self, path: Path, info: os.stat_result | None) -> None:
-        if info is not None and stat.S_ISLNK(info.st_mode):
-            resolved = path.resolve()
-        else:
-            parent = self.parents.get(path.parent)
-            if parent is None:
-                parent = self.parents[path.parent] = path.parent.resolve()
-            resolved = parent / path.name
         try:
-            resolved.relative_to(self.root)
-        except ValueError:
-            raise CleanError(f"Refusing to touch {path}: it is outside {self.flavor.account_dir}") from None
-        if resolved.parent.name != "SavedVariables":
-            raise CleanError(f"Refusing to touch {path}: it is not inside a SavedVariables folder")
+            super().check(path, info)
+        except SvFileError as exc:
+            raise CleanError(str(exc)) from None
 
 
-def _lstat(path: Path) -> os.stat_result | None:
-    try:
-        return os.lstat(path)
-    except OSError:
-        return None
+_lstat = lstat_or_none
 
 
 def _recheck(sv: SVFile, info: os.stat_result | None) -> str | None:
@@ -139,59 +119,20 @@ def _recheck(sv: SVFile, info: os.stat_result | None) -> str | None:
 
 def recover_probe_leftovers(folders: list[Path], flavor: Flavor) -> list[Path]:
     """Rename back every <name>.wowtools-lockcheck left in these SavedVariables folders by a crash during an
-    earlier lock check, when <name> itself is absent (never overwriting). Runs before a real clean's lock check and
-    WTF backup, over every SavedVariables folder in the clean's scope. Returns the files put back; a leftover that cannot be renamed is left alone."""
-    recovered: list[Path] = []
-    for folder in folders:
-        try:
-            leftovers = sorted(p for p in folder.iterdir() if p.name.endswith(LOCK_PROBE_SUFFIX))
-        except OSError:
-            continue
-        for leftover in leftovers:
-            original = leftover.with_name(leftover.name[:-len(LOCK_PROBE_SUFFIX)])
-            try:
-                rename_no_replace(leftover, original)
-            except OSError:
-                continue  # the original exists again, or the rename failed: the scan keeps warning about it
-            recovered.append(original)
-            log_event("clean.probe_recovered", flavor=flavor.folder, path=_relative(original, flavor))
-    return recovered
-
-
-def saved_variables_folders(flavor: Flavor, account: str | None = None) -> list[Path]:
-    """Every SavedVariables folder a scan of this scope reads: each account's and each character's (one account,
-    any case, when `account` is given). Unreadable folders are left out."""
-    accounts = flavor.accounts()
-    if account is not None:
-        accounts = [a for a in accounts if a.name.casefold() == account.casefold()]
-    folders: list[Path] = []
-    for acct in accounts:
-        folders.append(acct.saved_variables_dir)
-        folders.extend(c.saved_variables_dir for c in acct.characters())
-    return folders
+    earlier lock check, when <name> itself is absent (never overwriting); logs clean.probe_recovered for each.
+    Runs before a real clean's lock check and WTF backup, over every SavedVariables folder in the clean's scope.
+    Returns the files put back; a leftover that cannot be renamed is left alone."""
+    return core_recover_probe_leftovers(folders, on_recovered=lambda original: log_event(
+        "clean.probe_recovered", flavor=flavor.folder, path=_relative(original, flavor)))
 
 
 def _probe_lock(path: Path) -> str | None:
-    """Rename the file aside and straight back. Windows refuses the rename exactly when another process holds the
-    file open without allowing deletion, so a failure here means the delete would fail too. Returns the error, or
-    None if the file can be deleted (or is gone, which the recheck already reported)."""
-    aside = path.with_name(path.name + LOCK_PROBE_SUFFIX)
+    """core.svfiles.probe_lock, raising CleanError when the file cannot be put back. Returns the error, or None
+    if the file can be deleted (or is gone, which the recheck already reported)."""
     try:
-        rename_no_replace(path, aside)
-    except (FileNotFoundError, FileExistsError):
-        return None  # gone (the recheck reported it), or never overwrite anything; the delete reports real problems
-    except OSError as exc:
-        return exc.strerror or str(exc)
-    for attempt in range(5):
-        try:
-            rename_no_replace(aside, path)
-            return None
-        except OSError as exc:
-            if attempt == 4 or isinstance(exc, FileExistsError):  # a new file at path: never replace it
-                raise CleanError(f"Could not put {path.name} back after a lock check ({exc}). It is at {aside}: "
-                                 f"rename it back to {path.name}. Nothing was deleted.") from exc
-            time.sleep(0.1)
-    return None
+        return probe_lock(path)
+    except SvFileError as exc:
+        raise CleanError(f"{exc} Nothing was deleted.") from exc.__cause__
 
 
 def _refuse_locked(ready: list[tuple[ProposalItem, SVFile]], flavor: Flavor, report: CleanProgress) -> None:
@@ -274,7 +215,7 @@ def _restore_after(exc: BaseException, snapshot: Path, backup_dir: Path, flavor:
 
 def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup: bool,
             backup_dir: Path | None, now: datetime | None = None, progress: CleanProgress | None = None,
-            account: str | None = None, keep_backups: int = DEFAULT_KEEP_SNAPSHOTS,
+            account: str | None = None, keep_backups: int = DEFAULT_KEEP_BACKUPS,
             journal: CleanJournal | None = None) -> CleanResult:
     """account is the scope of the clean (None = all accounts); it names the cleaned-files zip. journal (real
     cleans) is the run journal: opened before anything is touched, one entry after each delete."""
@@ -395,8 +336,10 @@ def cleaned_zip_path(backup_dir: Path, flavor_short: str, account: str | None, n
 
 
 def prune_dry_run_zips(backup_dir: Path, flavor_short: str, keep: int) -> list[Path]:
-    """Delete all but the newest `keep` (at least 1) dry-run zips of this flavor (any account) in
-    <backup_dir>/cleaned. Real cleaned-files zips, other flavors' zips and other files are never touched."""
+    """Delete all but the newest `keep` dry-run zips of this flavor (any account) in <backup_dir>/cleaned; keep 0
+    (or less) keeps all. Real cleaned-files zips, other flavors' zips and other files are never touched."""
+    if keep <= 0:
+        return []
     folder = backup_dir / CLEANED_SUBDIR
     try:
         matches = [(m, p) for p in folder.iterdir() if (m := DRY_RUN_ZIP_NAME.match(p.name)) and p.is_file()]
@@ -405,7 +348,7 @@ def prune_dry_run_zips(backup_dir: Path, flavor_short: str, keep: int) -> list[P
     found = [p for m, p in sorted(matches, key=lambda mp: (mp[0]["stamp"], int(mp[0]["n"] or 1)), reverse=True)
              if m["flavor"] == flavor_short]
     removed: list[Path] = []
-    for path in found[max(1, keep):]:
+    for path in found[keep:]:
         try:
             path.unlink()
             removed.append(path)

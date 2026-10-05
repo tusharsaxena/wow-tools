@@ -66,7 +66,8 @@ STAGE_TITLES = {
     "undo": "Undoing the last clean",
 }
 
-RESULT_COLUMNS = ("Status", "Account", "Character", "Addon", "File", "Size", "Reasons")
+# Reasons (why each file goes) before Size and File: at 120x30 a long file name ends at the window's edge, not them.
+RESULT_COLUMNS = ("Status", "Account", "Character", "Addon", "Reasons", "Size", "File")
 MULTI_RESULT_COLUMNS = ("Status", "Flavor", *RESULT_COLUMNS[1:])  # a clean across several flavors
 STATUS_LABELS = {"deleted": "Deleted", "would_delete": "Would delete", "skipped": "Skipped", "failed": "Failed"}
 
@@ -89,8 +90,8 @@ def outcome_row(outcome, flavor: Flavor) -> tuple[str, ...]:
     if outcome.detail:
         status = f"{status}: {outcome.detail}"
     account, character = _owner(outcome.path, flavor)
-    return (status, account, character, addon_name_for(outcome.path.name) or "", outcome.path.name,
-            format_size(outcome.size), ", ".join(outcome.reasons))
+    return (status, account, character, addon_name_for(outcome.path.name) or "", ", ".join(outcome.reasons),
+            format_size(outcome.size), outcome.path.name)
 
 
 def result_rows(result, flavor: Flavor) -> list[tuple[str, ...]]:
