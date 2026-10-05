@@ -156,8 +156,9 @@ The first time you open a tool, it asks for two things:
 1. **Your World of Warcraft folder.** This is the folder that holds `_retail_`, `_classic_` and so on, for
    example `C:\Program Files (x86)\World of Warcraft`. The app looks in the usual places and suggests what it
    finds (this can take a few seconds; you can type the folder meanwhile). You only answer this once; every tool shares it.
-   The same screen asks how many backups to keep per game version (10; 0 keeps them all) and how many journals
-   each tool keeps (10). Both apply to every tool.
+   The same screen asks how many backups to keep per game version (10; 0 keeps them all), how many journals
+   each tool keeps (10) and how many game versions to work on at once (2; use 1 on a hard drive or a WSL `/mnt`
+   folder). All three apply to every tool.
 2. **That tool's settings.** Each guide explains them. If you're not sure, keep the suggested values.
 
 Then you pick which version of the game to work on, or **All flavors** for every version at once. ("Flavor" is
@@ -215,7 +216,7 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 | `config\ace3-profile-manager.cfg` | The Ace3 Profile Manager's settings (`[ace3_profile_manager]`): backup folder and the blacklist of addons (each in one game version) it never changes |
 
 The easiest way to change them is to press `s` in the app: the first screen is the shared one (WoW folder,
-backups and journals to keep), then the tool's own. You can also open the files in Notepad while the app
+backups and journals to keep, game versions to work on at once), then the tool's own. You can also open the files in Notepad while the app
 is closed. The guides list every setting.
 
 ## Undo and run journals

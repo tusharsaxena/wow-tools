@@ -382,8 +382,9 @@ The file itself uses these names, if you edit it by hand: `backup_dir` and `last
 you picked last time; empty means **All flavors**). The backup folder is checked again before every backup and
 restore, in case the file was edited by hand.
 
-Backups and journals to keep are shared by every tool: they're on the first screen `s` opens (the one with
-your WoW folder), and saved as `keep_backups` (10; `0` keeps all) and `keep_journals` (10) under `[general]`
+Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
+first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),
+`keep_journals` (10) and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]`
 in `config\wow-tools.cfg`. Restore journals follow `keep_journals`, and each keeps its
 safety backup.
 

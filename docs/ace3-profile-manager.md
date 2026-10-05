@@ -386,8 +386,9 @@ The file itself uses these names, if you edit it by hand: `backup_dir`, `blackli
 `_retail_:ElvUI, _classic_era_:Questie`), `last_flavor_choice` (the game version you picked last time; empty means
 **All flavors**) and `last_account` (empty means all accounts).
 
-Backups and journals to keep are shared by every tool: they're on the first screen `s` opens (the one with
-your WoW folder), and saved as `keep_backups` (10; `0` keeps all) and `keep_journals` (10) under `[general]`
+Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
+first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),
+`keep_journals` (10) and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]`
 in `config\wow-tools.cfg`. The WTF backups (`snapshots`) follow `keep_backups`.
 
 ## FAQ

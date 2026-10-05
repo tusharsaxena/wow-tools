@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import tempfile
 import threading
+import time
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -11,6 +12,7 @@ from pathlib import Path
 from wowtools.core.events import EventLog, capture_events
 from wowtools.core.journal import JournalWriter, read_journal
 from wowtools.core.parallel import UnitResult, clamp_parallelism, run_units, workers_for
+from wowtools.core.progress import ThrottledProgress
 from wowtools.tools.wtf_cleaner.journal import CleanJournal
 
 WAIT = 10  # seconds a synchronisation primitive waits before the test fails (never reached when it passes)
@@ -152,6 +154,46 @@ class RunUnitsTest(unittest.TestCase):
                     run_units(units, fn, parallelism=parallelism)
                 # Serial: the loop stops at once. Parallel: run_units returned only after "slow" finished.
                 self.assertEqual(other_done.is_set(), parallelism == 2)
+
+    def test_units_not_yet_started_never_start_after_a_base_exception(self):
+        """A unit's KeyboardInterrupt stops queued units from starting even while an earlier unit still runs."""
+        called = []
+        lock = threading.Lock()
+
+        def fn(unit, report):
+            with lock:
+                called.append(unit)
+            if unit == 0:
+                self.assertTrue(stop_raised.wait(WAIT))
+                time.sleep(0.05)  # the freed thread takes the next unit meanwhile
+            if unit == 1:
+                stop_raised.set()
+                raise KeyboardInterrupt
+            return unit
+
+        stop_raised = threading.Event()
+        with capture_events(), self.assertRaises(KeyboardInterrupt):
+            run_units(range(6), fn, parallelism=2)
+        self.assertEqual(sorted(called), [0, 1])
+
+    def test_tagged_throttled_progress_forwards_every_units_stage_end(self):
+        """run_units' progress(unit, stage, current, total, detail) through ThrottledProgress(tagged=True): the
+        first report and the stage end of every unit and stage reach forward, the counts in between are throttled."""
+        forwarded = []
+        throttled = ThrottledProgress(lambda *a: forwarded.append(a), interval=60, tagged=True)
+
+        def fn(unit, report):
+            for stage in ("scan", "zip"):
+                for current in range(1, 6):
+                    report(stage, current, 5, f"{unit}/{current}")
+            return unit
+
+        with capture_events():
+            results = run_units(["retail", "classic"], fn, parallelism=2, progress=throttled)
+        self.assertTrue(all(r.ok for r in results))
+        expected = sorted((unit, stage, current, 5, f"{unit}/{current}") for unit in ("retail", "classic")
+                          for stage in ("scan", "zip") for current in (1, 5))
+        self.assertEqual(sorted(forwarded), expected)
 
     def test_progress_is_tagged_with_the_unit_and_never_breaks_a_run(self):
         seen = []

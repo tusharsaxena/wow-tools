@@ -179,8 +179,9 @@ saved in `config\screenshot-organizer.cfg`.
 
 The file itself uses these names, if you edit it by hand: `dest_dir`, `copy_mode` and `last_flavor_choice`.
 
-Backups and journals to keep are shared by every tool: they're on the first screen `s` opens (the one with
-your WoW folder), and saved as `keep_backups` (10; `0` keeps all) and `keep_journals` (10) under `[general]`
+Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
+first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),
+`keep_journals` (10) and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]`
 in `config\wow-tools.cfg`.
 
 > Older versions called this tool `screenshots`. The app renames its old settings file, log folder and

@@ -7,7 +7,8 @@ with parallelism 1 behaves as before this module existed. Results always come ba
 A unit that raises does not stop the others: its exception is kept in its UnitResult (and logged as
 parallel.unit_failed), like Interface Backup's back_up_all always kept one flavor's failure from stopping the next.
 A BaseException that is not an Exception (KeyboardInterrupt, SystemExit) still propagates, after every unit already
-started has finished.
+started has finished; a unit that had not started by the time it was raised never starts (parallel.finished is then
+not logged).
 
 Where it runs: inside the tool's one Textual thread worker (run_worker(thread=True)), so Textual still sees a single
 job. run_units returns only once every pool thread is done, so the caller's single `with activity.running():`
@@ -16,10 +17,13 @@ activity.running() itself: a read-only scan does not hold up quit.
 
 What several units may share, and is safe to share: log_event (EventLog holds a lock), a JournalWriter (locked),
 ThrottledProgress (locked, throttled per thread) and the `progress` callback here (called from the unit's own
-thread; it must be thread-safe, for example a ThrottledProgress that forwards through call_from_thread).
+thread as progress(unit, stage, current, total, detail); it must be thread-safe, for example a
+ThrottledProgress(forward, tagged=True) whose forward goes through call_from_thread: tagged, it reads the unit
+first and keeps each unit's stages apart).
 """
 from __future__ import annotations
 
+import threading
 import time
 import traceback
 from collections.abc import Callable, Sequence
@@ -78,10 +82,13 @@ def run_units(units: Sequence[U], fn: Callable[[U, Report], R], *, parallelism: 
     tell_start, tell_done, tell = safe_progress(on_start), safe_progress(on_done), safe_progress(progress)
     log_event("parallel.started", what=what, units=[label(u) for u in items], workers=workers)
     started = time.monotonic()
+    stopping = threading.Event()  # set by a unit's BaseException: a unit not yet started never starts
 
     def one(index: int, unit: U) -> UnitResult[U, R]:
-        tell_start(unit, index, total)
         result: UnitResult[U, R] = UnitResult(unit)
+        if stopping.is_set():
+            return result  # never read: run_units raises the earlier unit's BaseException
+        tell_start(unit, index, total)
         try:
             result.value = fn(unit, lambda *args: tell(unit, *args))
         except Exception as exc:  # noqa: BLE001 - one unit's failure is its own; the others carry on
@@ -89,6 +96,9 @@ def run_units(units: Sequence[U], fn: Callable[[U, Report], R], *, parallelism: 
             log_event("parallel.unit_failed", what=what, unit=label(unit), type=type(exc).__name__,
                       message=str(exc),
                       traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
+        except BaseException:
+            stopping.set()
+            raise
         tell_done(result)
         return result
 
@@ -102,7 +112,7 @@ def run_units(units: Sequence[U], fn: Callable[[U, Report], R], *, parallelism: 
                 results = [future.result() for future in futures]
             except BaseException:
                 for future in futures:
-                    future.cancel()  # units not started yet never start; running ones finish first
+                    future.cancel()  # queued units never start (`stopping` covers the ones a thread already took)
                 raise
     log_event("parallel.finished", what=what, units=total, failed=sum(not r.ok for r in results), workers=workers,
               seconds=round(time.monotonic() - started, 3))

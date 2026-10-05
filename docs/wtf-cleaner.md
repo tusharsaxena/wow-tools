@@ -236,8 +236,9 @@ The file itself uses these names, if you edit it by hand: `max_age_days`, `crite
 `criterion_not_enabled`, `criterion_older_than`, `criterion_stray_copies`, `backup_before_delete`, `backup_dir`,
 `last_account` and `last_flavor_choice`.
 
-Backups and journals to keep are shared by every tool: they're on the first screen `s` opens (the one with
-your WoW folder), and saved as `keep_backups` (10; `0` keeps all) and `keep_journals` (10) under `[general]`
+Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
+first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),
+`keep_journals` (10) and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]`
 in `config\wow-tools.cfg`. The WTF backups and the dry-run zips both follow
 `keep_backups`.
 

@@ -134,3 +134,8 @@ task; push after every milestone. Never merge without the user's go-ahead.
 - **T5.1** `EventLog` now takes its lock (re-entrant) around the time stamp, `records.append` and both sinks, not just
   each file write: with parallel workers each log file is then in time order and the events and text files list
   lines in the same order. `JournalWriter` serialises JSON outside the lock and only the write+flush inside.
+- **T5.1** review: 4 findings (2 the same), all fixed, 0 rejected: `ThrottledProgress(tagged=True)` takes
+  `run_units`' unit-first `progress(unit, stage, current, total, detail)` (unit + stage is the stage; test runs
+  `run_units` through it and checks every unit's stage end is forwarded); a unit's `BaseException` sets a flag so
+  units not yet started never start, even while an earlier unit still runs (test); `parallelism` added to README
+  "The first time", the `s` sentence and the four guides' shared-settings paragraph.

@@ -24,11 +24,16 @@ class ThrottledProgress:
     Workers that share one should report distinct stages (a unit's label in it), or their counts mix in one bar.
     The decision and the forward both run under one lock, so reports reach the UI in the order they were decided:
     a report decided earlier never lands after a later stage end. `forward` must not call this object again (the
-    lock is not re-entrant); a blocking call_from_thread is fine, the UI thread never reports progress."""
+    lock is not re-entrant); a blocking call_from_thread is fine, the UI thread never reports progress.
+
+    tagged=True takes core/parallel.py's unit-tagged reports, progress(unit, stage, current, total, detail): the
+    unit and the stage together are the stage it tracks, the counts are the next two arguments, and every argument,
+    the unit included, is forwarded. Pass it as run_units(progress=...)."""
 
     def __init__(self, forward: Callable[..., None], interval: float = PROGRESS_INTERVAL,
-                 clock: Callable[[], float] = time.monotonic):
+                 clock: Callable[[], float] = time.monotonic, *, tagged: bool = False):
         self.forward = forward
+        self.tagged = tagged
         self.interval = interval
         self.clock = clock
         self._lock = threading.Lock()
@@ -39,8 +44,9 @@ class ThrottledProgress:
             self._state.clear()
 
     def __call__(self, *args: Any) -> None:
-        stage = args[0] if args else None
-        current, total = (args[1], args[2]) if len(args) >= 3 else (0, 0)
+        lead = 2 if self.tagged else 1  # leading arguments that name the stage: (unit, stage) or (stage,)
+        stage = tuple(args[:lead])
+        current, total = (args[lead], args[lead + 1]) if len(args) >= lead + 2 else (0, 0)
         thread = threading.get_ident()
         with self._lock:
             now = self.clock()
