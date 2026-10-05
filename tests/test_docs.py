@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
-import re
 import unittest
 
 from wowtools import __version__
 from wowtools.core.bootstrap import REPO_ROOT
+from wowtools.core.changelog import entry_for, parse_changelog
 from wowtools.tools import TOOLS
 from wowtools.ui.branding import TERMS
 
@@ -45,7 +45,9 @@ class DocsTest(unittest.TestCase):
         self.assertNotIn("| Version | Date | Highlights |", readme)  # the history lives in CHANGELOG.md
         changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
         self.assertTrue(changelog.startswith("# Changelog\n"))
-        self.assertRegex(changelog, rf"(?m)^## \[{re.escape(__version__)}\] - \d{{4}}-\d{{2}}-\d{{2}}$")
+        # Every tagged release needs an entry (build_release.py refuses a tag without one); the app shows them.
+        self.assertIsNotNone(entry_for(parse_changelog(changelog), __version__),
+                             f"CHANGELOG.md has no '## [{__version__}] - YYYY-MM-DD' entry")
 
     def test_readme_has_the_menus_terms_of_use(self):
         """Spec D6: the README carries the tool menu's terms word for word (however the lines are wrapped)."""

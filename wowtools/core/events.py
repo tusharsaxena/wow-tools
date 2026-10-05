@@ -48,6 +48,8 @@ CORE_EVENTS: dict[str, EventSpec] = {
                                      "running clean, organize or undo to finish)."),
     "session.waiting_for_worker": EventSpec("warning", "The app closed while a clean, organize or undo was still "
                                                        "running; the lock is kept until it finishes."),
+    "changelog.unreadable": EventSpec("warning", "CHANGELOG.md was missing, unreadable or malformed, so the changelog "
+                                                 "screen showed nothing (the reason is in `reason`)."),
     "config.created": EventSpec("info", "A config file in config/ was written for the first time."),
     "config.changed": EventSpec("info", "A config value changed or was removed, or was overridden for one run."),
     "config.migrated": EventSpec("info", "The old shared wow-tools.cfg was split into config/ (one file per tool)."),

@@ -19,12 +19,17 @@ they set `[general] allow_unverified_updates = true`. So a release without the a
    passes on all four jobs (Linux and Windows, Python 3.10 and 3.13). Locally: `python3 scripts/run_tests.py`
    and `python3 scripts/gen_event_docs.py --check`.
 2. Bump `__version__` in `wowtools/__init__.py`, following semver.
-3. Commit: `git commit -am "release: vX.Y.Z"`.
-4. Tag and push: `git tag vX.Y.Z && git push origin HEAD --tags`.
-5. Build the assets from the tag: `python3 scripts/build_release.py`. It writes `dist/wow-tools-vX.Y.Z.zip` and
-   `dist/SHA256SUMS` (`dist/` is not committed), refuses if the tag is missing or holds another version, and
-   prints the command for the next step. To check the sum by hand: `cd dist && sha256sum -c SHA256SUMS`.
-6. Publish the release with both assets:
+3. Add the `CHANGELOG.md` entry for vX.Y.Z: a `## [X.Y.Z] - YYYY-MM-DD` heading (today's date) above the previous
+   one, with what changed (move anything under `## [Unreleased]` into it). Every tagged release must have an entry:
+   the app shows it (`c` on the tool menu), a test fails while `__version__` has none, and step 6 refuses a tag
+   without one. It goes in before the release commit, so the tagged archive carries it.
+4. Commit: `git commit -am "release: vX.Y.Z"`.
+5. Tag and push: `git tag vX.Y.Z && git push origin HEAD --tags`.
+6. Build the assets from the tag: `python3 scripts/build_release.py`. It writes `dist/wow-tools-vX.Y.Z.zip` and
+   `dist/SHA256SUMS` (`dist/` is not committed), refuses if the tag is missing, holds another version or its
+   `CHANGELOG.md` has no entry for the version, and prints the command for the next step. To check the sum by
+   hand: `cd dist && sha256sum -c SHA256SUMS`.
+7. Publish the release with both assets:
 
    ```sh
    gh release create vX.Y.Z dist/wow-tools-vX.Y.Z.zip dist/SHA256SUMS \
@@ -33,7 +38,7 @@ they set `[general] allow_unverified_updates = true`. So a release without the a
 
    The notes appear in the in-app update prompt. If you forgot the assets, add them before anyone updates:
    `gh release upload vX.Y.Z dist/wow-tools-vX.Y.Z.zip dist/SHA256SUMS`.
-7. Check: on a zip install of the previous version, `./wow-tools.sh update` should say
+8. Check: on a zip install of the previous version, `./wow-tools.sh update` should say
    "Updated Ka0s WoW Tools to vX.Y.Z", and the log should have an `update.verified` event.
 
 Never re-use or move a tag, and never replace a published asset. Git installs would fail to fast-forward, and a

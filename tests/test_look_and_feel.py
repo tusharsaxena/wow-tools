@@ -14,10 +14,12 @@ from textual.widgets._footer import FooterKey
 from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, build_ace_tree, build_interface_tree, build_screenshot_tree,
                             build_wow_tree, make_config, settle)
 from wowtools import __version__
+from wowtools.core.changelog import Changelog, parse_changelog
 from wowtools.core.updater import ReleaseInfo
 from wowtools.tools import TOOLS as TOOL_INFO
 from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
 from wowtools.ui.branding import BANNER_NAME, TERMS, Banner, BrandBar, TermsText, VersionLine
+from wowtools.ui.changelog_screen import CHANGELOG_HINT, VERSIONS_WIDTH, ChangelogScreen
 from wowtools.ui.dialogs import (FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_HINT, ConfirmScreen, InfoScreen,
                                  ProgressScreen)
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
@@ -570,6 +572,42 @@ class LookAndFeelTest(TuiTestCase):
                     self.assertGreaterEqual(options.region.height, 3)
                     self.assertLessEqual(options.region.bottom, screen.query_one(TermsText).region.y)
                     self.assert_terms_whole(app, max_rows=3)
+
+    async def test_changelog_screen_at_base_and_tiny(self):
+        """Spec D3: the changelog in the suite's two-pane look at BASE and still whole at TINY: the version list and
+        its hint inside the left pane (VERSIONS_WIDTH wide), one whole row per version, newest first, the current one
+        marked, the notes filling the right, the footer's keys whole and the version on the bottom row."""
+        changelog = Changelog(parse_changelog(
+            "## [Unreleased]\n- Soon.\n## [0.10.0] - 2027-01-02\n- Ten.\n## [0.2.0] - 2026-11-01\n- Two.\n"
+            "## [0.1.0] - 2026-10-05\n- One.\n"))
+        for size in (BASE, TINY):
+            with self.subTest(size=size):
+                app = self.make_app()
+                async with app.run_test(size=size) as pilot:
+                    await settle(app, pilot)
+                    app.push_screen(ChangelogScreen(changelog, current="0.2.0"))
+                    await settle(app, pilot)
+                    screen = app.screen
+                    pane = screen.query_one("#filters")
+                    self.assertEqual(pane.outer_size.width, VERSIONS_WIDTH)
+                    versions = screen.query_one("#versions", OptionList)
+                    hint = screen.query_one(NavHint)
+                    self.assertEqual(hint.hint, CHANGELOG_HINT)
+                    inside = pane.region._replace(width=pane.region.width - 1)  # anything but the border
+                    for widget in (versions, hint):
+                        self.assert_inside(widget, inside)
+                    self.assertEqual((versions.max_scroll_x, versions.max_scroll_y), (0, 0))
+                    lines = self.screen_lines(app)
+                    rows = [line for line in lines if line.startswith(" ▊ ")]
+                    self.assertEqual(len(rows), 4, rows)  # one row each
+                    for row, text in zip(rows, ("Unreleased", "v0.10.0  2027-01-02", "v0.2.0   2026-11-01  current",
+                                                "v0.1.0   2026-10-05")):
+                        self.assertIn(text, row)
+                    notes = screen.query_one("#notes")
+                    self.assertEqual((notes.region.x, notes.region.right), (pane.region.right, size[0]))
+                    self.assertIn("v0.2.0 · 2026-11-01", "\n".join(lines))
+                    self.assert_footer_whole(app)
+                    self.assertIn(f"v{__version__}", lines[-1])
 
     async def test_every_review_still_renders_at_tiny_with_an_update(self):
         """Pinned as accepted (T3.1): at 80x24 a review's compact footer overflows 80 columns and the brand bar

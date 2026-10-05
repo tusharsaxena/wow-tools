@@ -122,6 +122,7 @@ The app opens in a terminal window. You drive it with the keyboard:
 | `↑` `↓` | Move up and down |
 | `Enter` | Choose |
 | `x` `c` | Expand or collapse every line of a tree |
+| `c` (tool menu) | What's new: the changelog |
 | `Esc` | Go back |
 | `s` | Settings |
 | `q` | Quit |
@@ -277,7 +278,8 @@ Please file reports there, so nothing gets lost.
 
 ## Version History
 
-What changed in each version is in [CHANGELOG.md](CHANGELOG.md), newest first.
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md), newest first. The app shows it too: press `c` on
+the tool menu for every version on the left (yours marked "current") and its notes on the right; `Esc` goes back.
 
 ## Credits
 

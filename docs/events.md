@@ -36,6 +36,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 
 | Event | Level | Description |
 |---|---|---|
+| `changelog.unreadable` | warning | CHANGELOG.md was missing, unreadable or malformed, so the changelog screen showed nothing (the reason is in `reason`). |
 | `config.changed` | info | A config value changed or was removed, or was overridden for one run. |
 | `config.created` | info | A config file in config/ was written for the first time. |
 | `config.migrated` | info | The old shared wow-tools.cfg was split into config/ (one file per tool). |

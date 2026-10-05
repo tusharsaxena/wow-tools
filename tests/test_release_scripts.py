@@ -16,6 +16,7 @@ from wowtools.core.bootstrap import REPO_ROOT
 from wowtools.core.updater import ReleaseInfo, UpdateError, apply_update
 
 HAS_GIT = shutil.which("git") is not None
+CHANGELOG = "# Changelog\n\n## [0.2.0] - 2026-11-01\n\n- Two.\n\n## [0.1.0] - 2026-10-05\n\n- One.\n"
 
 
 def load_script(name: str):
@@ -41,6 +42,7 @@ class BuildReleaseTest(unittest.TestCase):
         (self.repo / "wowtools").mkdir(parents=True)
         (self.repo / "wowtools" / "__init__.py").write_text('__version__ = "0.2.0"\n')
         (self.repo / "README.md").write_text("readme 0.2.0\n")
+        (self.repo / "CHANGELOG.md").write_text(CHANGELOG)
         (self.repo / "vendor").mkdir()
         (self.repo / "vendor" / "lib.py").write_text("# lib\n")
         git(self.repo, "init", "-q")
@@ -70,6 +72,43 @@ class BuildReleaseTest(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             self.build_release.build(self.repo, "0.4.0", self.out)
         self.assertIn("0.2.0", str(ctx.exception))
+
+    def retag(self, changelog: str | None) -> None:
+        """Move v0.2.0 onto a commit whose CHANGELOG.md is `changelog` (None: deleted)."""
+        path = self.repo / "CHANGELOG.md"
+        if changelog is None:
+            path.unlink()
+        else:
+            path.write_text(changelog)
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "changelog")
+        git(self.repo, "tag", "-f", "v0.2.0")
+
+    def test_refuses_a_tag_without_a_changelog_entry_for_its_version(self):
+        self.retag("# Changelog\n\n## [0.1.0] - 2026-10-05\n\n- One.\n")
+        with self.assertRaises(SystemExit) as ctx:
+            self.build_release.build(self.repo, "0.2.0", self.out)
+        self.assertIn("no entry for 0.2.0", str(ctx.exception))
+        self.assertFalse((self.out / "wow-tools-v0.2.0.zip").exists())
+
+    def test_an_unreleased_section_is_not_the_versions_entry(self):
+        self.retag("# Changelog\n\n## [Unreleased]\n\n- Two.\n\n## [0.1.0] - 2026-10-05\n\n- One.\n")
+        with self.assertRaises(SystemExit) as ctx:
+            self.build_release.build(self.repo, "0.2.0", self.out)
+        self.assertIn("no entry for 0.2.0", str(ctx.exception))
+
+    def test_refuses_a_tag_without_a_changelog_or_with_a_malformed_one(self):
+        for changelog, message in ((None, "has no CHANGELOG.md"), ("## [0.2.0]\n", "malformed")):
+            with self.subTest(message=message):
+                self.retag(changelog)
+                with self.assertRaises(SystemExit) as ctx:
+                    self.build_release.build(self.repo, "0.2.0", self.out)
+                self.assertIn(message, str(ctx.exception))
+
+    def test_the_changelog_is_read_at_the_tag_not_the_working_tree(self):
+        (self.repo / "CHANGELOG.md").write_text("broken\n")  # uncommitted: the tag's file is what ships
+        zip_path, _ = self.build_release.build(self.repo, "0.2.0", self.out)
+        self.assertTrue(zip_path.is_file())
 
     def test_updater_accepts_the_built_assets_and_refuses_a_changed_zip(self):
         zip_path, sums_path = self.build_release.build(self.repo, "0.2.0", self.out)

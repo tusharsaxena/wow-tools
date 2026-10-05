@@ -28,6 +28,8 @@ The first version: four tools in one app.
     Ace3 Profile Manager's review, where `u` unlocks an addon, it points you to the tool menu).
   - The tool menu shows the version under the banner (and the new one, once found), and the terms of use along
     its bottom; in a short window the tool list scrolls so the terms and the keys stay in view.
+  - `c` on the tool menu opens the changelog: every version on the left (yours marked "current"), its notes on the
+    right.
 - **WTF Cleaner**
   - Finds settings left behind by addons you no longer use, shows them for review, backs them up and deletes them.
   - Works on one game version, one account or **All flavors**.

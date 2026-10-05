@@ -25,6 +25,7 @@ from wowtools.core.lock import InstanceLock, LockInfo
 from wowtools.tools import TOOLS
 from wowtools.ui.base import Ka0sApp
 from wowtools.ui.branding import Banner, BottomBar, TermsText, VersionLine
+from wowtools.ui.changelog_screen import ChangelogScreen
 from wowtools.ui.dialogs import ChoiceScreen
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.tool_flow import ToolFlow
@@ -70,7 +71,7 @@ def tool_label(title: str, description: str, width: int) -> Text:
     return Text.assemble((title.ljust(width), TOOL_NAME_STYLE), description)
 
 
-MENU_HINT = "↑↓ choose · Enter open · s settings · q/Esc quit"
+MENU_HINT = "↑↓ choose · Enter open · c changelog · s settings · q/Esc quit"
 
 
 class ToolArea(Vertical):
@@ -111,7 +112,8 @@ class ToolMenuScreen(Screen[None]):
     ToolMenuScreen NavHint {{ padding: 0 2; }}
     ToolMenuScreen TermsText {{ margin-top: 1; padding: 0; text-align: center; }}
     """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("q,escape", "app.quit", "Quit"), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("c", "changelog", "Changelog"),
+                                         Binding("q,escape", "app.quit", "Quit"), *NAV_BINDINGS]
 
     def compose(self) -> ComposeResult:
         width = max(len(t.title) for t in TOOLS.values()) + 3  # names in one column, descriptions in the next
@@ -148,6 +150,11 @@ class ToolMenuScreen(Screen[None]):
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         self.app.open_tool(event.option.id or "")
+
+    def action_changelog(self) -> None:
+        """Spec D3: the changelog, over the menu; Esc or q comes back here."""
+        log_event("ui.selection", screen="tool_menu", control="changelog", value="open")
+        self.app.push_screen(ChangelogScreen())
 
 
 class WowToolsApp(Ka0sApp):
@@ -207,8 +214,20 @@ class WowToolsApp(Ka0sApp):
         self.sub_title = self.SUB_TITLE
 
     # --- settings ---------------------------------------------------------------------------------
-    def action_settings(self) -> None:
+    def settings_allowed(self) -> bool:
+        """`s` opens the open tool's settings, or with no tool open the general settings from the tool menu only:
+        not over the changelog, an update offer or the setup and lock screens (critic b6)."""
         if self.busy or isinstance(self.screen, (SetupScreen, LockScreen)):
+            return False
+        return self.flow is not None or self.screen is self.menu
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "settings" and not self.settings_allowed():
+            return False  # hidden from the footer, and the key does nothing
+        return super().check_action(action, parameters)
+
+    def action_settings(self) -> None:
+        if not self.settings_allowed():
             return
         if self.flow is not None:
             self.flow.open_settings()

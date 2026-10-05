@@ -11,7 +11,8 @@ Specs and plans: `docs/superpowers/`.
   Tools never start on their own and have no CLI mode.
 - Rebuild vendored libs: `python3 scripts/update_vendor.py` (hashed, from `requirements.lock`; `--lock` after editing
   `requirements.txt`). Event docs: `python3 scripts/gen_event_docs.py`. Release assets (zip + `SHA256SUMS`):
-  `python3 scripts/build_release.py` (`docs/releasing.md`)
+  `python3 scripts/build_release.py` (`docs/releasing.md`). Every tagged release needs a `CHANGELOG.md` entry
+  (`## [X.Y.Z] - YYYY-MM-DD`, parsed by `core/changelog.py`, shown in-app on `c`); `build_release.py` refuses a tag without one.
 
 Conventions:
 - Python 3.10 floor; `from __future__ import annotations` in every module (`wowtools/`, `scripts/`, `tests/`);
