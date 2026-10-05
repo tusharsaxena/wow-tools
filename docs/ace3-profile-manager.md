@@ -304,7 +304,7 @@ From here, `r` scans again, `f` picks another game version, `t` goes back to the
 
 ## Undo last change
 
-Changed your mind? **Undo last change** (`z`, the amber button) puts back every file the most recent Apply
+Changed your mind? **Undo last change** (`z`, the violet button) puts back every file the most recent Apply
 changed, from the zip of the original files. It asks first, naming when that change ran and in which game versions.
 Close WoW first: Undo refuses while it's running, just like Apply.
 

@@ -177,6 +177,54 @@ class StructureTest(unittest.TestCase):
         self.assertNotIn("#4CC38A", found)  # the theme's success colour comes from KA0S_THEME
         self.assertEqual(len(found.get("86400.0", [])), 1)
 
+    def test_every_button_is_built_with_an_action_kind(self):
+        """Only action_button constructs a Button, so every button carries an action kind (spec D12)."""
+        offenders = []
+        for path in modules("wowtools"):
+            module = tree(path)
+            builders = {id(n) for f in ast.walk(module)
+                        if isinstance(f, ast.FunctionDef) and f.name == "action_button" for n in ast.walk(f)}
+            offenders += [f"{rel(path)}:{n.lineno}" for n in ast.walk(module)
+                          if isinstance(n, ast.Call) and id(n) not in builders
+                          and ((isinstance(n.func, ast.Name) and n.func.id == "Button")
+                               or (isinstance(n.func, ast.Attribute) and n.func.attr == "Button"))]
+        self.assertEqual(offenders, [])
+
+    def test_same_label_same_colour(self):
+        """Every button label in wowtools has one action kind, and the key actions have the kind spec D12 gives
+        them. Labels come from action_button(label, kind) calls and from the (…, label, kind, …) tuples that
+        result screens, ChoiceScreen and the Ace3 action bar are built from (the label sits just before the kind)."""
+        from wowtools.ui.widgets import ACTION_VARIANTS
+        kinds: dict[str, set[str]] = {}
+        for path in modules("wowtools"):
+            for node in ast.walk(tree(path)):
+                pairs = []
+                if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "action_button":
+                    pairs = [node.args[:2]]
+                elif isinstance(node, ast.Tuple):
+                    pairs = list(zip(node.elts, node.elts[1:]))
+                for label, kind in pairs:
+                    if (isinstance(label, ast.Constant) and isinstance(kind, ast.Constant)
+                            and kind.value in ACTION_VARIANTS):
+                        kinds.setdefault(label.value, set()).add(kind.value)
+        # Interface Backup's review screen has a Restore that only opens the restore screen (navigate, grey); the
+        # restore screen's Restore overwrites (amber). The left pane has no room for a longer label.
+        self.assertEqual({label: k for label, k in kinds.items() if len(k) > 1},
+                         {"Restore": {"navigate", "overwrite"}})
+        expected = {
+            "Clean": "destructive", "Apply": "destructive", "Delete (d)": "destructive", "Leftovers (o)": "destructive",
+            "Organize": "overwrite", "Update now": "overwrite", "Assign (p)": "overwrite",
+            "Override and continue (o)": "overwrite", "Back up": "create",
+            "Undo last clean": "revert", "Undo last run": "revert", "Undo last restore": "revert",
+            "Undo last change": "revert", "Undo (z)": "revert", "Put the originals back": "revert",
+            "Dry run": "simulate", "Save": "confirm", "OK": "confirm", "Yes (y)": "confirm",
+            "Rescan": "navigate", "Rescan (r)": "navigate", "Restore (e)": "navigate", "Other flavor (f)": "navigate",
+            "Tools (t)": "navigate", "More… (m)": "navigate", "Edit blacklist…": "navigate",
+            "Cancel": "cancel", "No (n)": "cancel", "Later": "cancel", "Quit (q)": "cancel", "Back": "cancel",
+            "Discard (⌫)": "cancel",
+        }
+        self.assertEqual({label: next(iter(kinds.get(label, {"missing"}))) for label in expected}, expected)
+
     def test_dead_code_is_gone(self):
         from wowtools.core import install
         from wowtools.core.journal import JournalWriter

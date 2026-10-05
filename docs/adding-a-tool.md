@@ -27,7 +27,7 @@ This walks through how the Screenshot Organizer (`screenshot-organizer`) was add
 of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep the
      tool's own entry fields, `read_journal` wrapper and undo rules in its own `journal.py` / `undo.py` (see
      `screenshot_organizer/`, `wtf_cleaner/` and `interface_backup/`, whose journal records restores only), offer only `latest_undoable(dir)`, `mark_undone()` after an
-     undo, and give the review screen an amber Undo button (`action_button(..., "revert")`, key `z`, confirm
+     undo, and give the review screen a violet Undo button (`action_button(..., "revert")`, key `z`, confirm
      starting on No). A dry run writes no journal.
    - **The shared library.** `wowtools/core/` (UI-free, never imports `textual`) and `wowtools/ui/` (Textual) are the
      suite's shared library: in-repo reusable code, not a separate package. Anything two or more tools need lives
@@ -77,6 +77,11 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      `REVIEW_HINT` (or `review_hint("tick or open")` when Space does more in your tree) and `RESULT_HINT`.
      Every tree screen binds `TREE_BINDINGS` (`x` expand all, `c` collapse all) and puts `TREE_HINT` in its hint
      before `r rescan`; each focusable control of the left pane gets a row of its own.
+     Build every button with `action_button(label, kind)` (`wowtools/ui/widgets.py`), never `Button(...)`, and pick
+     its kind by what it does, as the other tools do: `destructive` (deletes), `overwrite` (overwrites or changes
+     files), `create` (only adds files), `revert` (undo), `simulate` (dry run), `confirm` (Save, OK), `navigate`
+     (Rescan, Other flavor, a button that opens a screen) or `cancel` (Cancel, Back, Quit). A button that stages a
+     change takes the kind of the change. `tests/test_structure.py` checks that one label has one kind everywhere.
      Lay the screens out for 120x30 (Windows Terminal's default window) and let trees and tables take any extra
      room; 80x24 only has to keep working. `tests/test_look_and_feel.py` checks every tool against them at those
      sizes; add yours to its `TOOLS`.

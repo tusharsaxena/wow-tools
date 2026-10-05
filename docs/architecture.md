@@ -384,7 +384,7 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
 
 - `BackupReviewScreen(cfg, tool_cfg, flavors, scope_label, *, wow_check, disk_usage, wow_root)`: `ReviewBase`
   (`ui/review.py`), `two_pane_css`. Left pane `#filters`: "Backup folder", "Keep" ("newest N per flavor" / "all backups"), the
-  action row **Back up** (apply), **Restore** (neutral: it opens the restore screen), **Rescan**, **Undo last
+  action row **Back up** (create), **Restore** (navigate: it opens the restore screen), **Rescan**, **Undo last
   restore** (revert; disabled when nothing is undoable), and the NavHint. Right: a `ReviewTree` (`#flavors`), filled
   after a worker scans (`scan_flavors`, `list_backups`, `latest_undoable`): the root (scope label, files and size
   ticked) → a node per flavor (tick, `report.flavor_text`) → read-only children: `Interface` and `WTF`
@@ -415,7 +415,7 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
   the tree's root and effect titles fit at 120 columns). Left: "Backup" (flavor, kind and date; size, parts
   and files once read; "made …" when the manifest's date differs), "Restore" with an `Interface` and a `WTF`
   `Ka0sCheckbox` (`#part-Interface`, `#part-WTF`; disabled for a part the backup lacks or that is a link; both off
-  when a leftover, another flavor's backup or an unreadable zip blocks it), **Restore** (apply, `o`) and **Back**
+  when a leftover, another flavor's backup or an unreadable zip blocks it), **Restore** (overwrite, `o`) and **Back**
   (`b`/Esc). Right: a `ReviewTree` (`#effects`) rooted at "<flavor> · <date>": "Will be removed (N files)" and
   "Newer now than in the backup (N files)" (open, one node per folder group from `report.group_items`, files on
   expand), "Links kept", "Links replaced", "Could not be read" (lines on expand), a low-space leaf, or "Nothing on
@@ -538,7 +538,7 @@ their original get a `rolled_back` line in the journal that holds their entries 
 
 - `ProfileReviewScreen` (`review_screen.py`): `ReviewBase`, `two_pane_css`. Left pane `#filters`, one control per row: the
   View pair under a "View" heading (By addon / By character), the Show boxes under a "Show" heading, the search `Input`, the `#pending` line (`report.pending_text`, "N pending changes" or `NO_PENDING`) and the
-  action row **Apply** (delete variant), **Dry run**, **Rescan**, **Undo last change** (revert). Right:
+  action row **Apply** (destructive), **Dry run**, **Rescan**, **Undo last change** (revert). Right:
   `ProfileTree` (`#profiles`, a `ReviewTree` whose ↓ on the last line goes on to the action bar), built by `tree_view.TreeBuilder` from the scan, the staging and `Filters`; each
   rebuild keeps expansion and the cursor by `ident`. Labels and tags come from `report.profile_rows` and
   `char_tags`. Ticks are `("p", DbKey, profile)` and `("c", DbKey, char)`; groups tick their descendants; locked
@@ -552,8 +552,8 @@ their original get a `rolled_back` line in the journal that holds their entries 
   left out only if even that does not fit; on a locked addon the hint names it and the `u` unlock) and the action
   bar `#tree-actions`, a
   `ActionBar` (a `WrapButtonRow`; ↑ goes back to the tree, and ↓ on the tree's last line comes to it) of
-  `TREE_ACTIONS`, green first, then red, then the rest (Assign, Rename, Copy, Everyone → Default (E), Delete, Only
-  Default (D), Leftovers, Blacklist…, More…, Discard: three rows at 120x30, two at 160x45), each button doing what
+  `TREE_ACTIONS`, staged changes first (amber), then staged deletes (red), then the rest (Assign, Rename, Copy,
+  Everyone → Default (E), Delete, Only Default (D), Leftovers, Blacklist…, More…, Discard: three rows at 120x30, two at 160x45), each button doing what
   its key does. The focused button's `ActionTip` (`action_tip()`: what it would do with the ticks or the
   highlighted node now) sits on its own `action-tip` layer just above the guidance line over the bar, and
   `_place_overlays()` keeps Textual's toast rack above the tip (or the guidance line). With nothing ticked, Delete and Assign act on the
@@ -610,7 +610,7 @@ Shared screens and widgets in `wowtools/ui/` (the Textual half of the shared lib
 | `account_screen` | `AccountScreen(cfg, flavor, last)`: "All accounts" plus each account. Dismisses with the name, `""` for all, or `None` for back. The WTF Cleaner and the Ace3 Profile Manager show it only when a flavor has more than one account and save the choice as their own `last_account`. |
 | `dialogs` | What every tool's screens share, so no tool imports another tool's screens: `ConfirmScreen(title, body, alerts=(), *, default_yes=False, groups=None)` (yes/no; `alerts` in red; risky actions start on No; `groups` ({label: items}) listed in a `detail_tree`), `InfoScreen(title, groups, body="")` (something to read and acknowledge with OK, its details in a `detail_tree`), `ChoiceScreen(title, message, choices, *, default, escape=False)` (a warning with one button per `(id, label, kind)`; dismisses with the id, through `choose(id)`, which a subclass may extend; Esc closes with None only with `escape`: the WTF Cleaner's `RecoveryScreen` and the Ace3 `ProfileRecoveryScreen`), `detail_tree(groups)` / `detail_hint(groups)` (a popup's read-only tree, every branch open when it all fits in `DETAIL_ROWS` = 12 lines; `POPUP_TREE_CSS`), `ProgressScreen` (stage, bar and current file of a run; a tool subclasses it with `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, and calls `update_progress(stage, current, total, detail)`, plus `set_flavor(label)` across several flavors), `tick_mark(items, unchecked, key, success=)` (✔ / ◩ / ✘ for a review-tree line), `relabel_branch(tree, node, label, skip=)` (after a tick), the `TwoPaneFocus` mixin (←/→ between the left `#filters` panel and the tree; it is a `TreeKeys`, whose `x`/`c` expand and collapse every node below the root, bound with `TREE_BINDINGS` and named in the hint by `TREE_HINT`), `theme_colour(app, name)` (the theme's colour, or the Ka0s one before a theme is set), and the one look every tool's screens are built from: `two_pane_css(screen, tree, width=FILTERS_WIDTH)` (review: left pane `#filters`, `FILTERS_WIDTH` = 50, one-row actions, scan box, summary), `ACCENT` (names in a tree) and `BUSY_STYLE` (a summary line while work runs), `result_css(screen)` (the summary takes at most 60% of the height), `settings_css(screen)` (the form at `FORM_WIDTH`: up to 100 columns, centred; compact checkboxes), and the hint starts `REVIEW_HINT` / `review_hint(space)` and `RESULT_HINT` |
 | `review` | The review screens' shared machinery (spec D9), so no tool copies it: `ReviewTree` (← to the left pane; the Ace3 `ProfileTree` adds ↓ to its action bar), `TickModel` (ticks kept as the ticked keys or as the unticked ones, changed in place; `unticked` feeds `tick_mark`) and `NotTicked`, and the mixins `ReviewBase` puts together over `TwoPaneFocus`: `TickActions` (Space ticks the highlighted node, presses a button, toggles a checkbox or types into an input; `a` / `n` act on `shown_tick_keys()` only: the screen's `all_tick_keys()` narrowed by `filter_keys()`, the one hook a filter takes, so hidden ticks stay; a screen supplies `tick_model()`, `node_tick_keys(node)`, `tick_log_key()`, `LOG_SCREEN` and, if it needs them, `all_tick_keys()`, `select_all_keys()`, `select_none_keys()` and `ticks_frozen()`, which `ReviewBase` sets while the running-programs check runs), `Preflight` (`run_preflight(check, then, extra)`: the running-programs check and `extra()` in a worker, `then(running, extra_result)` on the UI thread while the screen is shown; `_checking` and `_checking_changed()`, `PREFLIGHT_TEXT` on the summary), `ScheduledRebuild` (`_schedule_rebuild()`: the tree's loading indicator and "Updating the list…", then one `_rebuild()`), `ButtonActions` (`BUTTON_ACTIONS`: button id → action name), plus `action_leave(choice)` (never while `app.busy`), `show_scan_box(scanning, label)` and `_scan_progress(current, total, label)` |
-| `widgets` | `action_button(label, action)` and `ACTION_VARIANTS` (one colour per kind of action in every tool: delete red, apply green, simulate blue, revert amber, confirm blue, neutral grey), `LIST_NAME_STYLE` / `LIST_CURSOR_BACKGROUND` (pick lists), `Ka0sCheckbox` (✔/✘ marks), `ButtonRow` (←/→ move focus between its buttons, Space presses the focused one), `WrapButtonRow` (a `ButtonRow` of compact one-row buttons in a grid whose column count follows its width; the Ace3 review's action bar), `NAV_BINDINGS` (↑/↓ move focus; not priority bindings, so a focused tree, list, table or input keeps its arrow keys), `NavSelect` (a `Select` that leaves ↑/↓ to `NAV_BINDINGS`; Enter or Space opens its list), and `NavHint` (the key hint every screen shows; when it takes more than one row it breaks only between its
+| `widgets` | `action_button(label, kind)` (the only place a `Button` is built: the kind's nearest Textual variant plus a `-act-<kind>` class), `ACTION_VARIANTS` (the eight kinds), `action_kind(button)` and `ACTION_CSS` (the kind colours, in `Ka0sApp.CSS`; see [Look and feel](#look-and-feel-and-terminal-size)), `LIST_NAME_STYLE` / `LIST_CURSOR_BACKGROUND` (pick lists), `Ka0sCheckbox` (✔/✘ marks), `ButtonRow` (←/→ move focus between its buttons, Space presses the focused one), `WrapButtonRow` (a `ButtonRow` of compact one-row buttons in a grid whose column count follows its width; the Ace3 review's action bar), `NAV_BINDINGS` (↑/↓ move focus; not priority bindings, so a focused tree, list, table or input keeps its arrow keys), `NavSelect` (a `Select` that leaves ↑/↓ to `NAV_BINDINGS`; Enter or Space opens its list), and `NavHint` (the key hint every screen shows; when it takes more than one row it breaks only between its
 " · " items, `wrap_items`, so a key stays with its action), `FormScroll` (a scrolling form where ↑/↓ still move focus; `open_at_top()` after the first focus) |
 
 ### Look and feel and terminal size
@@ -633,6 +633,32 @@ grows when the window is larger; 80x24 only has to keep working (Addendum B of
   targets inside a "Target folder" row (`report.target_folder`), each keeping its YYYY/MM/DD; a tree line longer
   than its pane scrolls sideways.
 
+**Button colours** (spec D12). Every button is built by `action_button(label, kind)` and coloured by what it
+does, the same in every tool. The colours are theme variables (`ACTION_COLOURS` in `ui/theme.py` becomes
+`$act-<kind>`, `-lighten`, `-darken` and `-text` in `KA0S_THEME.variables`, and `Ka0sApp.get_theme_variable_defaults`
+supplies them under any theme); `ACTION_CSS` in `ui/widgets.py` paints a `Button.-act-<kind>` with them, its hover
+and its pressed state, and leaves Textual's dimmed disabled buttons, bold-reverse focused label and edge-less compact
+buttons alone. Each kind also keeps its nearest Textual variant, which is what a plain `App` shows.
+
+| Kind | Colour | Variant | Buttons |
+|---|---|---|---|
+| `destructive` | red | error | Clean, Ace3 Apply, Delete (d), Only Default (D), Leftovers (o) |
+| `overwrite` | amber | warning | Organize, Restore (restore screen), Update now, Override and continue, Assign, Rename, Copy, Everyone → Default |
+| `create` | green | success | Back up |
+| `revert` | violet | warning | Undo last clean / run / restore / change, Undo (z), Put the originals back |
+| `simulate` | cyan | primary | Dry run |
+| `confirm` | blue | primary | Save (every form and the blacklist), OK, Yes, Remind me next time |
+| `navigate` | grey | default | Rescan, Other flavor, Tools, Back to review, Restore / Restore (e) (open the restore screen), Edit blacklist…, Blacklist…, More…, Select none |
+| `cancel` | dim grey | default | Cancel, No, Later, Quit, Back, Dismiss, Leave as is, Discard (⌫) |
+
+Staging buttons (the Ace3 action bar) take the colour of the action they stage. Text on a coloured button is the
+theme's foreground or background, whichever has the higher contrast (at least 4.5:1, pinned). The WTF review shows
+its criteria in colour next to its buttons: only red is shared there (Not installed, the files Clean deletes); the
+violet leans to red and the cyan to green, a clear hue away from the criterion purple and the confirm blue. Interface
+Backup's review **Restore** opens the restore screen, so it is grey there and amber on the restore screen: the one
+label with two kinds. `tests/test_structure.py` pins that only `action_button` builds a `Button` and the key
+mappings; the look-and-feel screens check every button shows its kind's colour.
+
 `tests/fixtures.py` names the sizes: `BASE = (120, 30)`, `LARGE = (160, 45)`, `TINY = (80, 24)`.
 `tests/test_look_and_feel.py` runs each check for every tool: at BASE the left pane, its one-row buttons, the hint
 shape, the result layout, the settings forms (whole, Save included), the footer keys and the popups (fit with room
@@ -648,7 +674,7 @@ The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfC
 `include_all=True` and `last=last_flavor_choice`; All flavors skips the account screen. `review_screen.py` holds:
 
 - `ReviewScreen(cfg, tool_cfg, flavors, *, account, wow_check, locker_check)`: a `ReviewBase`; tree, criteria, the Clean /
-  Dry run / Rescan buttons and **Undo last clean** (amber, key `z`, last in the same row; disabled when nothing is
+  Dry run / Rescan buttons and **Undo last clean** (violet, key `z`, last in the same row; disabled when nothing is
   undoable, while scanning and while busy; its confirm starts on No and names the clean's time, flavors and file
   count). `flavors` is one `Flavor` (root = the flavor, accounts below) or a list (root = All
   flavors, a node per flavor, a "not scanned" leaf for a flavor whose scan failed). `wow_check` covers every

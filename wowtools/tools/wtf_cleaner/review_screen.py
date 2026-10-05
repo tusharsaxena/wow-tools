@@ -63,7 +63,7 @@ class RecoveryScreen(ChoiceScreen):
 
     def __init__(self, marker: Marker, backup_dir: Path) -> None:
         super().__init__("An earlier clean did not finish", recovery_message(marker),
-                         [("recovery-dismiss", "Dismiss (keep the backup)", "neutral"),
+                         [("recovery-dismiss", "Dismiss (keep the backup)", "cancel"),
                           ("recovery-remind", "Remind me next time", "confirm")], default="recovery-remind")
         self.marker = marker
         self.backup_dir = backup_dir
@@ -143,9 +143,9 @@ class ReviewScreen(ReviewBase, Screen[str]):
                 yield Label("Max age in days (Enter)", classes="section")
                 yield Input(str(self.criteria.max_age_days), type="integer", id="max_age", compact=True)
                 with ButtonRow(id="actions", wrap=False):
-                    yield action_button("Clean", "delete", id="btn-clean")
+                    yield action_button("Clean", "destructive", id="btn-clean")
                     yield action_button("Dry run", "simulate", id="btn-dry")
-                    yield action_button("Rescan", "neutral", id="btn-rescan")
+                    yield action_button("Rescan", "navigate", id="btn-rescan")
                     yield action_button("Undo last clean", "revert", id="btn-undo")
                 yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):

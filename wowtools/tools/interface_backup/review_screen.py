@@ -90,7 +90,7 @@ class BackupResultScreen(ResultBase):
         return "Interface Backup · result"
 
     def extra_buttons(self) -> list[ResultButton]:
-        return [("Restore (e)", "neutral", "restore", "e restore")]
+        return [("Restore (e)", "navigate", "restore", "e restore")]
 
     def summary_rows(self) -> list[tuple[str, str]]:
         return backup_summary_rows(self.outcomes)
@@ -170,9 +170,9 @@ class BackupReviewScreen(ReviewBase, Screen[str]):
                 yield Label("Keep", classes="section")
                 yield Static("", id="keep-label")
                 with ButtonRow(id="actions", wrap=False):
-                    yield action_button("Back up", "apply", id="btn-backup")
-                    yield action_button("Restore", "neutral", id="btn-restore")
-                    yield action_button("Rescan", "neutral", id="btn-rescan")
+                    yield action_button("Back up", "create", id="btn-backup")
+                    yield action_button("Restore", "navigate", id="btn-restore")
+                    yield action_button("Rescan", "navigate", id="btn-rescan")
                     yield action_button("Undo last restore", "revert", id="btn-undo")
                 yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):

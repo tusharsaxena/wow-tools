@@ -80,9 +80,9 @@ class BlacklistScreen(ReviewBase, Screen["list[Pair] | None"]):
             with Vertical(id="filters"):
                 yield Static(Text(EXPLANATION), id="explain")
                 with ButtonRow(id="actions", wrap=False):
-                    yield action_button("Save", "apply", id="save")
-                    yield action_button("Select none", "neutral", id="select-none")
-                    yield action_button("Cancel", "neutral", id="cancel")
+                    yield action_button("Save", "confirm", id="save")
+                    yield action_button("Select none", "navigate", id="select-none")
+                    yield action_button("Cancel", "cancel", id="cancel")
                 yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)

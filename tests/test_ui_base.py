@@ -435,3 +435,46 @@ class WrapItemsTest(unittest.TestCase):
         for line in wrap_items(text, 18).splitlines():
             self.assertLessEqual(len(line), 18)
         self.assertEqual(wrap_items("1 a → 2 b → 3 c", 8, " → "), "1 a →\n2 b →\n3 c")
+
+
+class ActionColoursTest(unittest.TestCase):
+    def test_every_kind_has_a_readable_colour_and_a_variant(self):
+        from wowtools.ui.theme import ACTION_COLOURS, KA0S_THEME, action_text, contrast
+        from wowtools.ui.widgets import ACTION_CSS, ACTION_VARIANTS
+        self.assertEqual(list(ACTION_COLOURS), list(ACTION_VARIANTS))
+        self.assertEqual(len(ACTION_COLOURS), 8)
+        for kind, (background, _) in ACTION_COLOURS.items():
+            with self.subTest(kind=kind):
+                self.assertGreaterEqual(contrast(background, action_text(kind)), 4.5)
+                self.assertIn(f"-act-{kind}", ACTION_CSS)
+                self.assertEqual(KA0S_THEME.variables[f"act-{kind}"], background)
+        backgrounds = [background for background, _ in ACTION_COLOURS.values()]
+        self.assertEqual(len(set(backgrounds)), 8)  # eight kinds, eight colours
+
+    def test_button_colours_keep_clear_of_the_wtf_criterion_colours(self):
+        """The WTF review shows its criteria in colour next to its Clean (red), Dry run (cyan), Rescan (grey) and
+        Undo (violet) buttons: only red is shared (not installed means deleted); the others are other hues."""
+        from textual.color import Color
+        from wowtools.tools.wtf_cleaner.report import CRITERION_COLORS
+        from wowtools.ui.theme import ACTION_COLOURS
+        self.assertEqual(ACTION_COLOURS["destructive"][0], CRITERION_COLORS["not_installed"])
+
+        def hue(colour):
+            return Color.parse(colour).hsl[0] * 360
+
+        for kind in ("simulate", "revert"):
+            for criterion, colour in CRITERION_COLORS.items():
+                with self.subTest(kind=kind, criterion=criterion):
+                    gap = abs(hue(ACTION_COLOURS[kind][0]) - hue(colour)) % 360
+                    self.assertGreaterEqual(min(gap, 360 - gap), 25)
+
+    def test_action_button_kinds(self):
+        from wowtools.ui.widgets import action_button, action_kind
+        cases = {"destructive": "error", "overwrite": "warning", "create": "success", "revert": "warning",
+                 "simulate": "primary", "confirm": "primary", "navigate": "default", "cancel": "default"}
+        for kind, variant in cases.items():
+            button = action_button("Go", kind, id="go", classes="extra")
+            self.assertEqual((button.variant, action_kind(button)), (variant, kind))
+            self.assertTrue(button.has_class("extra"))
+        with self.assertRaises(ValueError):
+            action_button("Go", "apply")

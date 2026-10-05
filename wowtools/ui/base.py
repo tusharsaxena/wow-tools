@@ -16,8 +16,8 @@ from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.updater import (ReleaseInfo, UpdateError, apply_update, check_for_update,
                                    persist_check_state)
-from wowtools.ui.theme import KA0S_THEME
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
+from wowtools.ui.theme import KA0S_THEME, action_variables
+from wowtools.ui.widgets import ACTION_CSS, NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 
 class UpdateScreen(ModalScreen[bool]):
@@ -41,8 +41,8 @@ class UpdateScreen(ModalScreen[bool]):
             with VerticalScroll(id="update-notes"):
                 yield Markdown(self.release.notes or "_No release notes._")
             with ButtonRow(id="update-buttons"):
-                yield action_button("Update now", "confirm", id="update-yes")
-                yield action_button("Later", "neutral", id="update-no")
+                yield action_button("Update now", "overwrite", id="update-yes")
+                yield action_button("Later", "cancel", id="update-no")
             yield NavHint("←→ buttons · ↑↓/Tab move · Enter/Space press · Esc later")
 
     def on_mount(self) -> None:
@@ -79,8 +79,8 @@ class Ka0sApp(App):
 
     TITLE = "Ka0s · WoW Tools"
     # The footer leaves out the command palette's key (Ctrl+P still opens it; nothing documents it): at 120x30 the
-    # review screens need that room for their own keys.
-    CSS = "Footer FooterKey.-command-palette { display: none; }"
+    # review screens need that room for their own keys. ACTION_CSS colours every button by its action kind.
+    CSS = "Footer FooterKey.-command-palette { display: none; }" + ACTION_CSS
     BINDINGS: ClassVar[list[Binding]] = [Binding("u", "update", "Update", show=False)]
     release: reactive[ReleaseInfo | None] = reactive(None)
 
@@ -99,6 +99,11 @@ class Ka0sApp(App):
 
     def after_mount(self) -> None:
         """Hook for subclasses."""
+
+    def get_theme_variable_defaults(self) -> dict[str, str]:
+        """The `$act-<kind>` button colours exist under every theme (ACTION_CSS is parsed before on_mount switches
+        to the Ka0s theme, and the command palette can switch to another)."""
+        return {**super().get_theme_variable_defaults(), **action_variables()}
 
     def _handle_exception(self, error: Exception) -> None:
         """Textual's (private) hook for an unhandled exception in a handler or worker: it sets return_code = 1,

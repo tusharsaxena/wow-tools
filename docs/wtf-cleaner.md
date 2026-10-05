@@ -153,7 +153,7 @@ game version are kept (the same number as WTF backups, 5 unless you change it).
 
 ## Undo last clean
 
-Changed your mind? **Undo last clean** (`z`, the amber button) puts back every file the most recent clean
+Changed your mind? **Undo last clean** (`z`, the violet button) puts back every file the most recent clean
 deleted. It asks first and tells you when that clean ran and how many files it removed.
 
 - Files come back from the zip the cleaner made before deleting, or from the backup of your whole `WTF` folder.

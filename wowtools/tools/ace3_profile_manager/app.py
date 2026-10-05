@@ -49,7 +49,7 @@ class ProfileSettingsScreen(ToolSettingsScreen):
                                 placeholder=folder_hint(resolve_root(ProfileSettings(), self.wow_path)))
         yield Label("Blacklist: addons whose profiles are shown but never changed, per flavor")
         yield Static(Text(blacklist_summary(self.blacklist)), id="blacklist-summary")
-        yield action_button("Edit blacklist…", "neutral", id="edit-blacklist")
+        yield action_button("Edit blacklist…", "navigate", id="edit-blacklist")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:  # Save and Cancel: ToolSettingsScreen's handler
         if event.button.id == "edit-blacklist":

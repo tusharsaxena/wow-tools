@@ -17,20 +17,56 @@ from textual.widgets import Button, Checkbox, Select, Static
 LIST_NAME_STYLE = "bold #F2C14E"
 LIST_CURSOR_BACKGROUND = "#1C4E8F"
 
-# One colour per kind of action, the same in every tool (Textual Button variants). Pick buttons by what they do:
+# One colour per kind of action, the same in every tool (spec D12). Pick a button's kind by what it does; the colours
+# are the theme's `$act-<kind>` variables (ui/theme.py ACTION_COLOURS) and each kind also keeps the nearest Textual
+# variant, which is what a plain App (no Ka0s theme) shows.
 ACTION_VARIANTS = {
-    "delete": "error",      # removes files for good (Clean): red
-    "apply": "success",     # changes files, can be undone (Organize): green
-    "simulate": "primary",  # shows what would happen, changes nothing (Dry run): blue
-    "revert": "warning",    # puts a change back, or overrides a safeguard (Undo last run, Override): amber
-    "confirm": "primary",   # the expected next step of a dialog (Save, Yes, Update now, Remind me): blue
-    "neutral": "default",   # refresh, navigation and backing out (Rescan, Other flavor, Tools, Quit, Cancel, No)
+    "destructive": "error",   # deletes for good, or stages a delete (Clean, Ace3 Apply, Delete (d)): red
+    "overwrite": "warning",   # overwrites files, or stages a change (Organize, Restore, Update now, Assign (p)): amber
+    "create": "success",      # only adds files (Back up): green
+    "revert": "warning",      # puts a change back (Undo last run, Undo (z), Put the originals back): violet
+    "simulate": "primary",    # shows what would happen, changes nothing (Dry run): cyan
+    "confirm": "primary",     # the expected next step of a dialog (Save, OK, Yes, Remind me next time): blue
+    "navigate": "default",    # moves between screens or refreshes (Rescan, Other flavor, Tools, More…): grey
+    "cancel": "default",      # backs out or declines (Cancel, No, Later, Quit, Back, Discard): dim grey
 }
 
 
-def action_button(label: str, action: str, **kwargs) -> Button:
-    """A Button coloured by the kind of action it performs (see ACTION_VARIANTS)."""
-    return Button(label, variant=ACTION_VARIANTS[action], **kwargs)
+def action_class(kind: str) -> str:
+    return f"-act-{kind}"
+
+
+def action_button(label: str, kind: str, **kwargs) -> Button:
+    """A Button coloured by the kind of action it performs (see ACTION_VARIANTS): the nearest Textual variant plus
+    the `-act-<kind>` class that ACTION_CSS colours. Every button in wowtools is built here."""
+    if kind not in ACTION_VARIANTS:
+        raise ValueError(f"unknown action kind {kind!r}")
+    classes = " ".join(c for c in (kwargs.pop("classes", None), action_class(kind)) if c)
+    return Button(label, variant=ACTION_VARIANTS[kind], classes=classes, **kwargs)
+
+
+def action_kind(button: Button) -> str | None:
+    """The action kind a button was built with (None for one not built by action_button)."""
+    return next((kind for kind in ACTION_VARIANTS if button.has_class(action_class(kind))), None)
+
+
+def _kind_css(kind: str) -> str:
+    v = f"$act-{kind}"
+    return f"""
+    Button.{action_class(kind)} {{ color: {v}-text; background: {v};
+                                  border-top: tall {v}-lighten; border-bottom: tall {v}-darken; }}
+    Button.{action_class(kind)}:hover {{ background: {v}-darken; border-top: tall {v}; }}
+    Button.{action_class(kind)}.-active {{ background: {v}; border-top: tall {v}-darken;
+                                          border-bottom: tall {v}-lighten; }}
+    """
+
+
+# App-level CSS (Ka0sApp.CSS) colouring each kind from the theme's `$act-<kind>` variables. It overrides the
+# variant colours; Textual's own Button CSS still dims a disabled button and marks the focused one (bold reverse
+# label). A compact button (the Ace3 action bar) keeps no edges: on its one row they would hide the label.
+ACTION_CSS = "".join(_kind_css(kind) for kind in ACTION_VARIANTS) + """
+    Button.-textual-compact { border: none !important; }
+    """
 
 
 CHECK_ON = "✔"

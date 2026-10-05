@@ -78,7 +78,7 @@ class ToolSettingsScreen(Screen[bool]):
             yield Static("", id="settings-error")
             with ButtonRow(classes="buttons"):
                 yield action_button("Save", "confirm", id="save")
-                yield action_button("Cancel", "neutral", id="cancel")
+                yield action_button("Cancel", "cancel", id="cancel")
             yield NavHint(settings_hint(self.TICKS))
         yield BrandBar()
         yield Footer()

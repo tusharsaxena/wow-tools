@@ -23,6 +23,7 @@ from wowtools.tools.ace3_profile_manager.settings import load_settings
 from wowtools.ui.dialogs import ConfirmScreen, InfoScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
+from wowtools.ui.widgets import action_kind
 
 TOOL = "ace3-profile-manager"
 
@@ -1012,8 +1013,9 @@ class GuidanceTest(AceAppBase):
             self.assertEqual([b.label.plain for b in buttons],
                              ["Assign (p)", "Rename (e)", "Copy (k)", "Everyone → Default (E)", "Delete (d)",
                               "Only Default (D)", "Leftovers (o)", "Blacklist…", "More… (m)", "Discard (⌫)"])
-            self.assertEqual([b.variant for b in buttons],  # green first, then red, then the rest
-                             ["success"] * 4 + ["error"] * 3 + ["default"] * 3)
+            # staged changes first (amber), then staged deletes (red), then the rest
+            self.assertEqual([action_kind(b) for b in buttons],
+                             ["overwrite"] * 4 + ["destructive"] * 3 + ["navigate"] * 2 + ["cancel"])
             self.assertFalse(any(b.disabled for b in buttons))
 
     async def press(self, app, pilot, review, button_id):

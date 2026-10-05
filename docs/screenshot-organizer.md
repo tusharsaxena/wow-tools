@@ -138,7 +138,7 @@ alone); the run then compares the two files and says "Already filed" or "Conflic
 
 ## Undo last run
 
-Changed your mind? **Undo last run** (`z`, the amber button) reverses the most recent run:
+Changed your mind? **Undo last run** (`z`, the violet button) reverses the most recent run:
 
 - Moved screenshots go back to their `Screenshots` folder.
 - Copies are removed (only if the original is still there). A copy you already deleted yourself counts as

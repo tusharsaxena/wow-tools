@@ -121,6 +121,10 @@ Each screen lists its keys along the bottom, so you don't have to remember them.
 changing or writing files (a clean, a sort, a backup, a restore, a profile change or an undo), the app won't quit until it has
 finished.
 
+Buttons are coloured by what they do, the same in every tool: **red** deletes, **amber** overwrites or changes
+files, **green** only adds files (a backup), **violet** undoes, **cyan** is a dry run that changes nothing, **blue**
+confirms (Save, OK), **grey** moves between screens or rescans, and **dim grey** backs out (Cancel, Back, Quit).
+
 ### Terminal size
 
 The app is laid out for the window Windows Terminal (the default on Windows 11) opens: 120 columns by 30 lines.

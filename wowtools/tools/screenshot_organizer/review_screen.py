@@ -130,9 +130,9 @@ class ShotReviewScreen(ReviewBase, Screen[str]):
                 yield Label("Mode", classes="section")
                 yield Static(Text(self._mode_text()), id="mode-label")
                 with ButtonRow(id="actions", wrap=False):
-                    yield action_button("Organize", "apply", id="btn-organize")
+                    yield action_button("Organize", "overwrite", id="btn-organize")
                     yield action_button("Dry run", "simulate", id="btn-dry")
-                    yield action_button("Rescan", "neutral", id="btn-rescan")
+                    yield action_button("Rescan", "navigate", id="btn-rescan")
                     yield action_button("Undo last run", "revert", id="btn-undo")
                 yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):

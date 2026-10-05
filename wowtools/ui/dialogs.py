@@ -280,7 +280,7 @@ class ConfirmScreen(TreeKeys, ModalScreen[bool]):
                 yield detail_tree(self.groups)
             with ButtonRow(id="confirm-buttons"):
                 yield action_button("Yes (y)", "confirm", id="yes")
-                yield action_button("No (n)", "neutral", id="no")
+                yield action_button("No (n)", "cancel", id="no")
             yield NavHint(f"{detail_hint(self.groups)}←→ choose · Enter/Space press · y yes · n/Esc no")
 
     def on_mount(self) -> None:

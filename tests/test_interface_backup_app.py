@@ -29,7 +29,7 @@ from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
-from wowtools.ui.widgets import ACTION_VARIANTS, NavHint
+from wowtools.ui.widgets import NavHint, action_kind
 
 SIZE = (140, 50)
 
@@ -279,12 +279,10 @@ class InterfaceBackupAppTest(TuiTestCase):
                 self.assertIn("b back up", screen_hint.hint)
             labels = [str(b.label) for b in review.query_one("#actions").query(Button)]
             self.assertEqual(labels, ["Back up", "Restore", "Rescan", "Undo last restore"])
-            variants = {i: review.query_one(f"#{i}", Button).variant
-                        for i in ("btn-backup", "btn-restore", "btn-undo", "btn-rescan")}
-        self.assertEqual(variants, {"btn-backup": ACTION_VARIANTS["apply"],
-                                    "btn-restore": ACTION_VARIANTS["neutral"],
-                                    "btn-undo": ACTION_VARIANTS["revert"],
-                                    "btn-rescan": ACTION_VARIANTS["neutral"]})
+            kinds = {i: action_kind(review.query_one(f"#{i}", Button))
+                     for i in ("btn-backup", "btn-restore", "btn-undo", "btn-rescan")}
+        self.assertEqual(kinds, {"btn-backup": "create", "btn-restore": "navigate", "btn-undo": "revert",
+                                 "btn-rescan": "navigate"})
 
     async def test_ticks_space_all_and_none(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
@@ -767,7 +765,7 @@ class InterfaceBackupAppTest(TuiTestCase):
                 self.assertEqual(app.screen.sub_title, "Interface Backup · restore result")
                 self.assertTrue(app.screen.result.ok)
                 self.assertIsNotNone(app.screen.result.safety_zip)
-                self.assertEqual(app.screen.query_one("#undo", Button).variant, ACTION_VARIANTS["revert"])
+                self.assertEqual(action_kind(app.screen.query_one("#undo", Button)), "revert")
                 self.assertIn("z", app.screen.active_bindings)
                 self.assertFalse(app.busy)
                 self.assertFalse(extra.exists())
@@ -1421,8 +1419,8 @@ class InterfaceBackupAppTest(TuiTestCase):
             await pilot.press("r")
             await settle(app, pilot)
             screen = await self.open_restore(app, pilot)
-            self.assertEqual(screen.query_one("#btn-restore", Button).variant, ACTION_VARIANTS["apply"])
-            self.assertEqual(screen.query_one("#btn-back", Button).variant, ACTION_VARIANTS["neutral"])
+            self.assertEqual(action_kind(screen.query_one("#btn-restore", Button)), "overwrite")
+            self.assertEqual(action_kind(screen.query_one("#btn-back", Button)), "cancel")
             info = str(screen.query_one("#backup-info", Static).render())
             self.assertIn("Retail", info)
             self.assertIn("Interface, WTF", info)

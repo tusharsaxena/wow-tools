@@ -105,8 +105,8 @@ class RestoreScreen(ButtonActions, TwoPaneFocus, Screen[RestorePlan | None]):
                 for part in PARTS:
                     yield Ka0sCheckbox(part, True, id=f"part-{part}", disabled=True, compact=True)
                 with ButtonRow(id="actions", wrap=False):
-                    yield action_button("Restore", "apply", id="btn-restore", disabled=True)
-                    yield action_button("Back", "neutral", id="btn-back")
+                    yield action_button("Restore", "overwrite", id="btn-restore", disabled=True)
+                    yield action_button("Back", "cancel", id="btn-back")
                 yield NavHint(NAV_HINT)
             # Short: the tree is narrow at 80 columns; the left pane has the kind and the zip.
             yield ReviewTree(Text(f"{self.flavor.display_name} · {self.info.when}", style=ACCENT), id="effects")

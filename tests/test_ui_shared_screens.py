@@ -143,7 +143,7 @@ class ResultScreenTest(TuiTestCase):
 class ChoiceScreenTest(TuiTestCase):
     def make(self, **kwargs) -> ChoiceScreen:
         return ChoiceScreen("Something did not finish", "Line one\nLine two",
-                            [("leave", "Leave", "neutral"), ("fix", "Fix it", "revert")], default="fix", **kwargs)
+                            [("leave", "Leave", "cancel"), ("fix", "Fix it", "revert")], default="fix", **kwargs)
 
     async def test_default_focus_and_choice(self):
         screen = self.make()

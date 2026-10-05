@@ -22,8 +22,9 @@ from wowtools.ui.dialogs import RESULT_HINT, result_css, theme_colour
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 # (label, action kind, id = dismiss value, hint words) of the buttons after a result screen's own ones.
-NAV_BUTTONS = (("Other flavor (f)", "neutral", "flavors", "f other flavor"), ("Tools (t)", "neutral", "tools", "t tools"),
-               ("Quit (q)", "neutral", "quit", "q quit"))
+NAV_BUTTONS = (("Other flavor (f)", "navigate", "flavors", "f other flavor"),
+               ("Tools (t)", "navigate", "tools", "t tools"),
+               ("Quit (q)", "cancel", "quit", "q quit"))
 ResultButton = tuple[str, str, str, str]
 
 
@@ -87,7 +88,7 @@ class ResultBase(Screen[str]):
         return []
 
     def buttons(self) -> list[ResultButton]:
-        return [*self.lead_buttons(), ("Rescan (r)", "neutral", self.RESCAN, "r rescan"), *self.extra_buttons(),
+        return [*self.lead_buttons(), ("Rescan (r)", "navigate", self.RESCAN, "r rescan"), *self.extra_buttons(),
                 *NAV_BUTTONS]
 
     def focus_id(self) -> str:
@@ -154,7 +155,7 @@ class ResultScreen(ResultBase):
         return self.rows
 
     def extra_buttons(self) -> list[ResultButton]:
-        return [("Back to review (Esc)", "confirm", "back", "")] if self.back else []
+        return [("Back to review (Esc)", "navigate", "back", "")] if self.back else []
 
     def focus_id(self) -> str:
         return "back" if self.back else self.RESCAN

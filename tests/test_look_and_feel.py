@@ -20,7 +20,7 @@ from wowtools.ui.dialogs import (FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_H
                                  ProgressScreen)
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
-from wowtools.ui.widgets import NavHint
+from wowtools.ui.widgets import NavHint, action_kind
 
 POPUP_MAX_WIDTH = 100  # a popup or confirm at LARGE: a readable width, never stretched edge to edge
 FORM_MAX_WIDTH = 100  # a settings form, at any size
@@ -551,6 +551,7 @@ class LookAndFeelTest(TuiTestCase):
 
     async def tab_through(self, app, pilot, name: str) -> None:
         screen = app.screen
+        self.assert_buttons_coloured(app, screen, name)
         chain = list(screen.focus_chain)
         self.assertTrue(chain, name)
         reached = set()
@@ -560,3 +561,13 @@ class LookAndFeelTest(TuiTestCase):
             self.assertIs(app.screen, screen, name)  # Tab never leaves the screen
             reached.add(screen.focused)
         self.assertEqual([w for w in chain if w not in reached], [], name)
+
+    def assert_buttons_coloured(self, app, screen, name: str) -> None:
+        """Every button was built by action_button and shows its kind's theme colour (ACTION_CSS applies)."""
+        variables = app.get_css_variables()
+        for button in screen.query(Button):
+            kind = action_kind(button)
+            self.assertIsNotNone(kind, f"{name}: {button.id} has no action kind")
+            if not button.disabled and not button.mouse_hover:
+                self.assertEqual(button.styles.background.hex, variables[f"act-{kind}"], f"{name}: {button.id}")
+                self.assertEqual(button.styles.color.hex, variables[f"act-{kind}-text"], f"{name}: {button.id}")

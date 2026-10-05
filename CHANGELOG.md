@@ -19,6 +19,8 @@ The first version: four tools in one app.
     the first settings screen.
   - `x` expands and `c` collapses every line of a tree, on every tree screen.
   - Every checkbox and box in a left panel has a row of its own, so `↑` / `↓` reach each one.
+  - Buttons are coloured by what they do, the same in every tool: red deletes, amber overwrites, green only adds
+    files, violet undoes, cyan is a dry run, blue confirms, grey moves between screens, dim grey backs out.
 - **WTF Cleaner**
   - Finds settings left behind by addons you no longer use, shows them for review, backs them up and deletes them.
   - Works on one game version, one account or **All flavors**.

@@ -61,7 +61,7 @@ class SetupScreen(Screen[bool]):
             yield Static("", id="setup-error")
             with ButtonRow(classes="buttons"):
                 yield action_button("Save", "confirm", id="save")
-                yield action_button("Cancel", "neutral", id="cancel")
+                yield action_button("Cancel", "cancel", id="cancel")
             yield NavHint("↑↓/Tab move · ←→ buttons · Enter save/press · Esc cancel")
         yield BrandBar()
         yield Footer()

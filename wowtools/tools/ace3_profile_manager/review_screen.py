@@ -56,21 +56,22 @@ SHOW_FILTERS = {"only-multi": "only_multi", "only-unused": "only_unused", "show-
                 "show-blacklisted": "blacklisted"}
 GUIDE_MAX_ROWS = 2  # the guidance line leaves its per-node hint out rather than take more rows than this
 GROUP_KINDS = ("root", "flavor", "account")  # nodes too broad to stand for a selection when nothing is ticked
-# The action bar under the tree: (id, label, kind of action, action), green ones first, then red, then the rest.
+# The action bar under the tree: (id, label, kind of action, action), staged changes first (amber), then staged
+# deletes (red), then the rest; a staging button takes the colour of the action it stages (spec D12).
 # Each button does what its key does; one with nothing to act on stays enabled and says what to tick or highlight.
 # The focused button's tip (action_tip) says what it would do now. The labels are short enough for two rows at
 # 160x45 (and three at 120x30): tests/test_look_and_feel.py.
 TREE_ACTIONS = (
-    ("act-assign", "Assign (p)", "apply", "assign"),
-    ("act-rename", "Rename (e)", "apply", "rename"),
-    ("act-copy", "Copy (k)", "apply", "copy"),
-    ("act-everyone-default", "Everyone → Default (E)", "apply", "everyone_default"),
-    ("act-delete", "Delete (d)", "delete", "delete"),
-    ("act-keep-default", "Only Default (D)", "delete", "keep_default"),
-    ("act-leftovers", "Leftovers (o)", "delete", "remove_leftovers"),
-    ("act-blacklist", "Blacklist…", "neutral", "edit_blacklist"),
-    ("act-more", "More… (m)", "neutral", "more"),
-    ("act-discard", "Discard (⌫)", "neutral", "discard"),
+    ("act-assign", "Assign (p)", "overwrite", "assign"),
+    ("act-rename", "Rename (e)", "overwrite", "rename"),
+    ("act-copy", "Copy (k)", "overwrite", "copy"),
+    ("act-everyone-default", "Everyone → Default (E)", "overwrite", "everyone_default"),
+    ("act-delete", "Delete (d)", "destructive", "delete"),
+    ("act-keep-default", "Only Default (D)", "destructive", "keep_default"),
+    ("act-leftovers", "Leftovers (o)", "destructive", "remove_leftovers"),
+    ("act-blacklist", "Blacklist…", "navigate", "edit_blacklist"),
+    ("act-more", "More… (m)", "navigate", "more"),
+    ("act-discard", "Discard (⌫)", "cancel", "discard"),
 )
 
 
@@ -88,7 +89,7 @@ class ProfileRecoveryScreen(ChoiceScreen):
 
     def __init__(self, marker: Marker) -> None:
         super().__init__("An earlier change did not finish", recovery_text(marker),
-                         [("leave", "Leave as is", "neutral"), ("put_back", "Put the originals back", "revert")],
+                         [("leave", "Leave as is", "cancel"), ("put_back", "Put the originals back", "revert")],
                          default="put_back", escape=True)
         self.marker = marker
 
@@ -242,9 +243,9 @@ class ProfileReviewScreen(ReviewBase, Screen[str]):
                 yield Input(placeholder="Search addon, profile or character", id="search", compact=True)
                 yield Static(self._pending_line(NO_PENDING), id="pending")
                 with ButtonRow(id="actions", wrap=False):
-                    yield action_button("Apply", "delete", id="btn-apply")
+                    yield action_button("Apply", "destructive", id="btn-apply")
                     yield action_button("Dry run", "simulate", id="btn-dry-run")
-                    yield action_button("Rescan", "neutral", id="btn-rescan")
+                    yield action_button("Rescan", "navigate", id="btn-rescan")
                     yield action_button("Undo last change", "revert", id="btn-undo")
                 yield NavHint(NAV_HINT)
             with Vertical(id="tree-pane"):

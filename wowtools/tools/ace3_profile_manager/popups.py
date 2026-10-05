@@ -98,7 +98,7 @@ class TargetScreen(ModalScreen[str | None]):
             yield Static("", id="target-error", classes="popup-error")
             with ButtonRow(classes="popup-buttons"):
                 yield action_button("OK", "confirm", id="ok")
-                yield action_button("Cancel", "neutral", id="cancel")
+                yield action_button("Cancel", "cancel", id="cancel")
             yield NavHint("↑↓/Tab move · Enter/Space open the list · ←→ buttons · Esc cancel")
 
     def on_mount(self) -> None:
@@ -158,7 +158,7 @@ class NameScreen(ModalScreen[str | None]):
             yield Static("", id="name-error", classes="popup-error")
             with ButtonRow(classes="popup-buttons"):
                 yield action_button("OK", "confirm", id="ok")
-                yield action_button("Cancel", "neutral", id="cancel")
+                yield action_button("Cancel", "cancel", id="cancel")
             yield NavHint("Enter OK · ↑↓/Tab move · ←→ buttons · Esc cancel")
 
     def on_mount(self) -> None:

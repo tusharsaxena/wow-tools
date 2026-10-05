@@ -204,7 +204,7 @@ made, if that differs). Under **Restore** are two boxes, **Interface** and **WTF
 - A folder that is itself a link says "(link: restore by hand)" and can't be ticked. See
   [Links and junctions](#links-and-junctions).
 
-Below them are **Restore** (green) and **Back**.
+Below them are **Restore** (amber: it overwrites files) and **Back**.
 
 **On the right** is a tree of what the restore would cost you, compared with your folders as they are now. It's
 worked out again each time you tick or untick a box ("Comparing the backup with your folders…" meanwhile):
@@ -285,7 +285,7 @@ screen, without `z`.
 
 ## Undo
 
-Changed your mind? **Undo last restore** (`z`, the amber button on the review screen, or **Undo** on the
+Changed your mind? **Undo last restore** (`z`, the violet button on the review screen, or **Undo** on the
 restore results) puts the folders that the most recent restore replaced back as
 they were before it, from that restore's safety backup. It asks first, naming when that restore ran, which folders
 and which game version. The answer starts on **No**.

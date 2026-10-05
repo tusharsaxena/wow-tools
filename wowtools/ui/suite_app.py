@@ -41,7 +41,8 @@ class LockScreen(ChoiceScreen):
         self.lock_path = lock_path
         self.stale = holder.stale
         super().__init__("Ka0s WoW Tools may already be running", self.body(),
-                         [("lock-override", "Override and continue (o)", "revert"), ("lock-quit", "Quit (q)", "neutral")],
+                         [("lock-override", "Override and continue (o)", "overwrite"),
+                          ("lock-quit", "Quit (q)", "cancel")],
                          default="lock-override" if self.stale else "lock-quit",
                          hint="←→ choose · Enter/Space press · o override · q/Esc quit")
 

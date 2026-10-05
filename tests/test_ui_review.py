@@ -94,8 +94,8 @@ class ToyReview(ReviewBase, Screen[str]):
                 yield Ka0sCheckbox("Box", False, id="box", compact=True)
                 yield Input(id="filter", compact=True)
                 with ButtonRow(id="actions", wrap=False):
-                    yield action_button("Go", "apply", id="btn-go")
-                    yield action_button("Other", "neutral", id="btn-other")
+                    yield action_button("Go", "overwrite", id="btn-go")
+                    yield action_button("Other", "navigate", id="btn-other")
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)
                 yield Static("", id="scan-label")
