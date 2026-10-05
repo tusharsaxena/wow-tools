@@ -592,9 +592,11 @@ The tool menu (`ToolMenuScreen`) puts a `VersionLine` right under the `Banner`'s
 "· vX.Y.Z available, press u to update" once the check finds one; `version_text`) and a `TermsText` (spec D6,
 `branding.TERMS`, pinned word for word in the README by `tests/test_docs.py`) right above the `BottomBar`. Its
 `ToolArea` (the list and the hint, `height: 1fr`) caps the list's height so the hint stays under it and the list
-scrolls in a short window; under 30 rows the banner shows only its name line (`Banner.show_art`). At 120x30
-everything shows without scrolling, and at 80x24 the terms, the footer and every tool stay reachable
-(`tests/test_look_and_feel.py`). Long-running or blocking work
+scrolls in a short window; under 30 rows, or when the art would make the list scroll (a narrow window wraps each
+description onto two rows; `ToolMenuScreen.fit_art`), the banner shows only its name line (`Banner.show_art`). At
+120x30 everything shows without scrolling, and at 80x24 the terms, the footer and every tool stay reachable
+(`tests/test_look_and_feel.py`). The terms take two rows at 120 columns and three below about 115. TINY is the floor:
+below it the list keeps one tool row and the hint is hidden rather than overlap the terms. Long-running or blocking work
 runs in thread workers and reports back with `call_from_thread`: scan, clean, organize, backup, restore, profile apply, undo, and also the
 running-programs check before a clean, backup, restore or undo confirm (PowerShell/`tasklist`; the
 review screen shows "Checking for running programs…" and ignores its action keys meanwhile), install detection on the setup screen, the organizer's

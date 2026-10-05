@@ -75,12 +75,19 @@ MENU_HINT = "↑↓ choose · Enter open · s settings · q/Esc quit"
 
 class ToolArea(Vertical):
     """The tool list and the hint under it, in the rows the banner and the terms leave. The list is as tall as its
-    tools, up to what leaves the hint room, then it scrolls (a short window); the hint stays right under it."""
+    tools, up to what leaves the hint room, then it scrolls (a short window); the hint stays right under it. In a
+    window too short for even one tool row and the hint (below TINY), the hint is hidden."""
+
+    MIN_LIST_ROWS = 3  # the border and one tool row
 
     def on_resize(self, event: Resize) -> None:
         hint = self.query_one(NavHint)
         hint_rows = len(wrap_items(hint.hint, event.size.width - 4).splitlines()) + 1  # its margin-top
-        self.query_one("#tools", OptionList).styles.max_height = max(3, event.size.height - 1 - hint_rows)
+        room = event.size.height - 1 - hint_rows  # the list's margin-top, then the hint
+        hint.display = room >= self.MIN_LIST_ROWS  # below TINY the hint gives way before the list loses its last row
+        self.query_one("#tools", OptionList).styles.max_height = max(
+            self.MIN_LIST_ROWS, room if hint.display else event.size.height - 1)
+        self.screen.call_after_refresh(self.screen.fit_art)
 
 
 class ToolMenuScreen(Screen[None]):
@@ -88,7 +95,9 @@ class ToolMenuScreen(Screen[None]):
 
     Top to bottom: the banner with the version under it (spec D4), the tool list, the hint, then the terms of use
     (spec D6) right above the bottom bar. The list's area takes what is left, so in a short window the terms and the
-    footer stay put and the list scrolls; under MENU_ART_ROWS rows the shield art gives way to its name line."""
+    footer stay put and the list scrolls; under MENU_ART_ROWS rows, or when the art would make the list scroll (a
+    narrow window wraps each description onto two rows), the shield art gives way to its name line. The layout floor
+    is TINY: below it the list keeps at least one row and the hint, the terms and the footer may not all fit."""
 
     MENU_ART_ROWS = 30  # BASE: at least this many rows show the whole shield
     DEFAULT_CSS = f"""
@@ -119,6 +128,13 @@ class ToolMenuScreen(Screen[None]):
 
     def on_resize(self, event: Resize) -> None:
         self.query_one(Banner).show_art(event.size.height >= self.MENU_ART_ROWS)
+        self.call_after_refresh(self.fit_art)
+
+    def fit_art(self) -> None:
+        """Every tool beats the shield: drop the art once the laid-out list would have to scroll with it."""
+        banner = self.query_one(Banner)
+        if banner.art and self.query_one("#tools", OptionList).max_scroll_y > 0:
+            banner.show_art(False)
 
     def on_mount(self) -> None:
         self.sub_title = "Choose a tool"

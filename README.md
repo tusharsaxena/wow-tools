@@ -143,8 +143,8 @@ ignored until you let it go, so it can't answer for you (the update offer's **Up
 
 The app is laid out for the window Windows Terminal (the default on Windows 11) opens: 120 columns by 30 lines.
 Maximize the window and the lists and tables grow to fill it. A smaller window still works, but it's cramped and
-you'll scroll more (on the tool menu the banner shrinks to one line and the tool list scrolls, so the terms of use
-and the keys at the bottom stay in view).
+you'll scroll more (on the tool menu the banner shrinks to one line when the tools need its room, and the tool list
+scrolls, so the terms of use and the keys at the bottom stay in view).
 
 ### The first time
 

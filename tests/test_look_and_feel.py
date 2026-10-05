@@ -17,7 +17,7 @@ from wowtools import __version__
 from wowtools.core.updater import ReleaseInfo
 from wowtools.tools import TOOLS as TOOL_INFO
 from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
-from wowtools.ui.branding import BANNER_NAME, TERMS, BrandBar, TermsText, VersionLine
+from wowtools.ui.branding import BANNER_NAME, TERMS, Banner, BrandBar, TermsText, VersionLine
 from wowtools.ui.dialogs import (FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_HINT, ConfirmScreen, InfoScreen,
                                  ProgressScreen)
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
@@ -506,15 +506,17 @@ class LookAndFeelTest(TuiTestCase):
 
     async def test_menu_keeps_terms_and_footer_and_reaches_every_tool_when_small(self):
         """At TINY (and shorter) the terms and the footer stay on screen; the tool list scrolls instead, and every
-        tool can be highlighted and is then on screen."""
+        tool can be highlighted and is then on screen. Below about 115 columns the D6 wording takes three rows (it
+        cannot fit two at 80), pinned here as accepted."""
         for size in (TINY, (80, 18)):
             with self.subTest(size=size):
                 app = self.make_app()
                 async with app.run_test(size=size) as pilot:
                     await settle(app, pilot)
                     self.assertEqual(app.screen.max_scroll_y, 0)
-                    self.assert_terms_whole(app)
+                    self.assert_terms_whole(app, max_rows=3)
                     self.assert_footer_whole(app)
+                    self.assert_hint_shown(app)
                     self.assertIn(f"v{__version__}", "\n".join(self.screen_lines(app)))
                     options = app.screen.query_one("#tools", OptionList)
                     for index, tool in enumerate(TOOL_INFO.values()):
@@ -523,10 +525,51 @@ class LookAndFeelTest(TuiTestCase):
                             await pilot.pause()
                         self.assertEqual(options.highlighted, index)
                         self.assertIn(tool.title, "\n".join(self.screen_lines(app)), size)
-                    self.assert_terms_whole(app)
+                    self.assert_terms_whole(app, max_rows=3)
                     await pilot.press("enter")
                     await settle(app, pilot)
                     self.assertIsNotNone(app.flow)
+
+    def assert_hint_shown(self, app) -> None:
+        """The menu hint shows whole, below the tool list and above the terms."""
+        screen = app.screen
+        hint = screen.query_one(NavHint)
+        options = screen.query_one("#tools", OptionList)
+        self.assertTrue(hint.display)
+        self.assertGreaterEqual(hint.region.y, options.region.bottom, (hint.region, options.region))
+        self.assertLessEqual(hint.region.bottom, screen.query_one(TermsText).region.y, hint.region)
+        self.assertIn(MENU_HINT, self.screen_lines(app)[hint.region.y])
+
+    async def test_menu_drops_the_art_before_the_tool_list_scrolls(self):
+        """A 30-row window narrower than 120 columns wraps each description onto two rows; the shield art then gives
+        way to its name line so every tool still shows without the list scrolling, and comes back at full width."""
+        app = self.make_app()
+        async with app.run_test(size=(80, 30)) as pilot:
+            await settle(app, pilot)
+            screen = app.screen
+            options = screen.query_one("#tools", OptionList)
+            self.assertEqual(options.max_scroll_y, 0)
+            self.assertFalse(screen.query_one(Banner).art)
+            self.assert_hint_shown(app)
+            await pilot.resize_terminal(*BASE)
+            await settle(app, pilot)
+            self.assertTrue(screen.query_one(Banner).art)
+            self.assertEqual(options.max_scroll_y, 0)
+
+    async def test_menu_hides_the_hint_below_tiny_rather_than_overlap(self):
+        """Below the TINY floor the list keeps one tool row: the hint is hidden on purpose, and the list, the terms
+        and the footer do not overlap."""
+        for size in ((80, 16), (80, 14)):
+            with self.subTest(size=size):
+                app = self.make_app()
+                async with app.run_test(size=size) as pilot:
+                    await settle(app, pilot)
+                    screen = app.screen
+                    options = screen.query_one("#tools", OptionList)
+                    self.assertFalse(screen.query_one(NavHint).display)
+                    self.assertGreaterEqual(options.region.height, 3)
+                    self.assertLessEqual(options.region.bottom, screen.query_one(TermsText).region.y)
+                    self.assert_terms_whole(app, max_rows=3)
 
     async def test_every_review_still_renders_at_tiny_with_an_update(self):
         """Pinned as accepted (T3.1): at 80x24 a review's compact footer overflows 80 columns and the brand bar
