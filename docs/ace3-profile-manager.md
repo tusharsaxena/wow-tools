@@ -49,8 +49,9 @@ changes and a very long name highlighted, it shows only the pending changes so t
 5. The tool reads every addon's settings file and shows the review screen. Nothing is ticked yet.
 6. Tick the profiles or characters you want to change, and press a button in the action bar under the tree, or its
    key: `d` deletes profiles, `p` moves characters to another profile, `e` renames a profile, `k` copies one, `o`
-   removes leftover characters, and `m` opens the quick actions. Each change becomes a **pending change**: the tree
-   shows the result straight away, but no file is touched yet. Make as many changes as you like.
+   removes leftover characters, `D` (Shift+D) keeps only "Default", `E` (Shift+E) moves everyone to "Default", and
+   `m` opens the quick actions. Each change becomes a **pending change**: the tree shows the result straight away,
+   but no file is touched yet. Make as many changes as you like.
 7. Press **Dry run** (`y`) if you'd like every change checked without writing anything.
 8. Press **Apply** (`w`), read the summary, and press **Yes**.
 9. The results screen lists every change and what happened to it.
@@ -166,7 +167,10 @@ A profile name can be up to 100 characters. Names are case-sensitive, as in the 
 profiles), and you can't rename or copy onto a name the addon already has.
 
 If a change can't be made in some of the ticked addons (a blacklisted addon, say), it's made in the others and a
-message lists the ones it skipped.
+message lists the ones it skipped. Anything else worth knowing about a change (for example, that an addon will
+create "Default" itself at its next login) opens a **Notes** box, grouped by note with the addons under each.
+**Leftovers** asks first, listing the characters it will remove under each addon (`Space` opens an addon, `x`
+opens them all).
 
 ### Quick actions
 
@@ -218,6 +222,8 @@ version until you next save the blacklist.
 | `e` | Rename the highlighted profile |
 | `k` | Copy the highlighted profile |
 | `o` | Remove the ticked leftover characters |
+| `D` (Shift+D) | Only Default: delete every profile except "Default" of the ticked (or highlighted) addons |
+| `E` (Shift+E) | Everyone → Default: move every character of the ticked (or highlighted) addons to "Default" |
 | `m` | Quick actions, and every key the bottom bar doesn't show |
 | `Backspace` | Discard all pending changes |
 | `b` | Put the highlighted addon on the blacklist, or take it off |
@@ -383,7 +389,7 @@ in `config\wow-tools.cfg`. The WTF backups (`snapshots`) follow `keep_backups`.
 | Why is a profile "missing"? | A character points at a profile that has no settings saved. That's normal: the addon creates it, with its defaults, when that character next logs in. Moving characters to a new name you typed does the same. |
 | I removed a leftover character and it came back. | Logging in on that character (or a new character with the same name and realm) makes the addon add it again. "No character folder" means WoW has no folder for it in that account right now; if you still play it, leave it alone. |
 | What is LibDualSpec, and why "spec profiles"? | Some addons can switch your profile automatically when you change talent spec, using a library called LibDualSpec. For a character with that switched on, the spec setting wins at login, so assigning it another profile here may not stick. Renaming or deleting a profile updates its spec settings too, as the game would. Turn spec switching off in the addon's own options if you want a fixed profile. |
-| Can I delete "Default"? | Yes, but most addons put every new character on "Default", and recreate it with its defaults when one logs in. The confirm warns you. "Keep only Default" is usually what you want instead. |
+| Can I delete "Default"? | Yes, but most addons put every new character on "Default", and recreate it with its defaults when one logs in. The confirm warns you. **Only Default** is usually what you want instead. |
 | Are my settings inside a profile safe? | Yes. The tool never changes what's in a profile: a renamed profile keeps its settings exactly, and a copy is an exact copy. |
 | Can I copy a profile to another addon, account or game version? | No. Profiles belong to one addon on one account; copying works within the same addon only. |
 | What's the difference between Dry run and Apply? | A **Dry run** checks every pending change and shows the results without writing anything. **Apply** writes them, after backing everything up. |
@@ -398,7 +404,7 @@ in `config\wow-tools.cfg`. The WTF backups (`snapshots`) follow `keep_backups`.
 | A file was "skipped: changed since the scan; rescan" | WoW (or another program) saved that file after the scan. Press `r` to scan again, make that addon's changes again and apply. The other files were changed as planned. |
 | My changes were undone after I played | WoW was running while you applied, or an addon synced its profiles back. Close WoW completely, apply again, then start the game. |
 | "files are locked by another program" | Close the Raider.IO client or the WeakAuras Companion, then apply again. Nothing was changed. |
-| An addon is missing from the tree | It doesn't use Ace3 profiles, its file is blacklisted and hidden (tick **Show blacklisted addons**), or a filter or search hides it. If its file couldn't be read, it's listed under **Scan warnings** at the bottom of the tree. |
+| An addon is missing from the tree | It doesn't use Ace3 profiles, its file is blacklisted and hidden (tick **Blacklisted addons** under **Show**), or a filter or search hides it. If its file couldn't be read, it's listed under **Scan warnings** at the bottom of the tree. |
 | "Not done" with a list of addons | The change couldn't be made in those addons (blacklisted, a name already taken, …); the message says why for each. It was made in the others. |
 | A character keeps a profile I changed | It has **spec profiles**: LibDualSpec switches its profile by spec at login. See the [FAQ](#faq). |
 | "An earlier change did not finish" | See [If a change was interrupted](#if-a-change-was-interrupted). |

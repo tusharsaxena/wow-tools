@@ -43,7 +43,8 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      `review_screen.py` (`ShotReviewScreen`, `ShotProgressScreen`, `ShotResultScreen`).
    - **Shared dialogs.** Take the confirm and progress dialogs from `wowtools/ui/dialogs.py`, never from another
      tool (a tool imports nothing from another tool; `tests/test_structure.py` checks it):
-     `ConfirmScreen(title, body, alerts, default_yes=...)` (start on No for anything that changes files), and a
+     `ConfirmScreen(title, body, alerts, default_yes=..., groups=...)` (start on No for anything that changes files;
+     `groups` lists long details in a tree), `InfoScreen(title, groups)` for notes too long for a notification, and a
      subclass of `ProgressScreen` with your own `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, fed by the
      run's `progress(stage, current, total, detail)` through `app.call_from_thread`. Wrap that callback with
      `core.fsutil.safe_progress` inside the run. A review tree can use `tick_mark`, `relabel_branch` and the
@@ -79,3 +80,6 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
    Nothing else moves: a tool whose output folder is named after `TOOL_NAME` inside a folder the user chose
    (Interface Backup's `<backup folder>/interface-backup`, when the backup folder is set) needs that subfolder
    moved too, which migrate does not do. Without it the tool lists no backups and Undo refuses the moved journals.
+   The Ace3 Profile Manager's rename from `ace-profiles` is the worked example: `settings.migrate_backup_root()`
+   moves `<backup_dir>/ace-profiles` with `merge_folder_logged()` when the tool opens, and `undo._moved_zip()`
+   finds a journal's `edited-*.zip` by name in the new folder.

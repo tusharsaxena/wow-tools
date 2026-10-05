@@ -49,7 +49,7 @@ class DocsTest(unittest.TestCase):
     def test_ace3_profile_manager_guide_and_readme(self):
         guide = (REPO_ROOT / "docs" / "ace3-profile-manager.md").read_text(encoding="utf-8")
         for needle in ("Close WoW", "## Step by step", "## The review screen", "## Keys on the review screen",
-                       "Keep only Default", "Everyone → Default", "blacklist", "unlock", "## What the tool never touches",
+                       "Only Default", "Everyone → Default", "blacklist", "unlock", "## What the tool never touches",
                        "## Dry run", "## Undo last change", "changed since", "snapshots\\snapshot-<flavor>-",
                        "edited\\edited-<flavor>-<account>-", "journal\\journal-", "edit-in-progress.json",
                        "Put the originals back", "## Settings", "keep_backups", "## FAQ", "LibDualSpec",
