@@ -7,6 +7,7 @@ import unittest
 from wowtools import __version__
 from wowtools.core.bootstrap import REPO_ROOT
 from wowtools.tools import TOOLS
+from wowtools.ui.branding import TERMS
 
 
 def load_generator():
@@ -45,6 +46,12 @@ class DocsTest(unittest.TestCase):
         changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
         self.assertTrue(changelog.startswith("# Changelog\n"))
         self.assertRegex(changelog, rf"(?m)^## \[{re.escape(__version__)}\] - \d{{4}}-\d{{2}}-\d{{2}}$")
+
+    def test_readme_has_the_menus_terms_of_use(self):
+        """Spec D6: the README carries the tool menu's terms word for word (however the lines are wrapped)."""
+        readme = " ".join((REPO_ROOT / "README.md").read_text(encoding="utf-8").split())
+        self.assertTrue(TERMS in readme, "README.md lacks the terms of use (wowtools.ui.branding.TERMS)")
+        self.assertIn("## Terms of use", readme)
 
     def test_user_docs_cover_the_entry_point_tools_and_safety(self):
         readme = "\n".join((REPO_ROOT / p).read_text(encoding="utf-8")

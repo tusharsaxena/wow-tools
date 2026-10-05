@@ -1,5 +1,6 @@
-"""Ka0s branding widgets: the shield banner, and the bottom bar every screen ends with (the footer's keys on the
-left, the brand bar's version and update notice on the right, in one row)."""
+"""Ka0s branding widgets: the shield banner (with the version line and the terms of use on the tool menu), and the
+bottom bar every screen ends with (the footer's keys on the left, the brand bar's version and update notice on the
+right, in one row)."""
 from __future__ import annotations
 
 from rich.cells import cell_len
@@ -11,6 +12,7 @@ from textual.widgets import Footer, Input, Static, TextArea
 
 from wowtools import __version__
 
+BANNER_NAME = "K a 0 s   ·   W o W   T o o l s"
 BANNER = "\n".join([  # noqa: FLY002 - one row of the art per line
     "  ▗▄▄▄▄▄▄▄▄▄▄▄▖  ",
     "  ▐ ██  ▄██▀  ▌  ",
@@ -20,8 +22,13 @@ BANNER = "\n".join([  # noqa: FLY002 - one row of the art per line
     "   ▀▄       ▄▀   ",
     "     ▀▀▄▄▄▀▀     ",
     "",
-    "K a 0 s   ·   W o W   T o o l s",
+    BANNER_NAME,
 ])
+
+# Spec D6: shown at the bottom of the tool menu and, word for word, in the README (tests/test_docs.py pins both).
+TERMS = ("Terms of use: Ka0s WoW Tools is provided as is, without warranty of any kind, and you use it at your own "
+         "risk. Every tool backs up the files it changes before changing them, but keep your own backups of anything "
+         "you can't afford to lose.")
 
 
 class Banner(Static):
@@ -32,6 +39,53 @@ class Banner(Static):
 
     def __init__(self) -> None:
         super().__init__(Text(BANNER))
+        self.art = True
+
+    def show_art(self, art: bool) -> None:
+        """The whole shield, or only the name line (the tool menu in a short window keeps its rows for the list)."""
+        if art != self.art:
+            self.art = art
+            self.update(Text(BANNER if art else BANNER_NAME))
+
+
+def version_text(version: str, release_version: str | None) -> str:
+    """The tool menu's line under the banner (spec D4): the version, and the new one once the updater finds it. The
+    menu does not bind u itself, so the notice always says to press it."""
+    if release_version is None:
+        return f"v{version}"
+    return f"v{version} · {update_notice(release_version, key_free=True)}"
+
+
+class VersionLine(Static):
+    """The version under the banner on the tool menu, muted and centred; it names the new version once found."""
+
+    DEFAULT_CSS = """
+    VersionLine { width: 100%; height: auto; text-align: center; color: $text-muted; }
+    VersionLine.-update { color: $warning; text-style: bold; }
+    """
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(version_text(__version__, None), **kwargs)
+        self.text = version_text(__version__, None)
+
+    def on_mount(self) -> None:
+        self.watch(self.app, "release", self._show, init=True)
+
+    def _show(self, release) -> None:
+        self.text = version_text(__version__, None if release is None else release.version)
+        self.set_class(release is not None, "-update")
+        self.update(self.text)
+
+
+class TermsText(Static):
+    """The terms of use (spec D6), muted and wrapped; no acceptance click."""
+
+    DEFAULT_CSS = """
+    TermsText { width: 100%; height: auto; color: $text-muted; padding: 0 2; }
+    """
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(TERMS, **kwargs)
 
 
 def update_key_free(screen: Screen) -> bool:

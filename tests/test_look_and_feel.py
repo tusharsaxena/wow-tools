@@ -8,7 +8,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from textual.widgets import Button, Checkbox, DataTable, Tree
+from textual.widgets import Button, Checkbox, DataTable, OptionList, Tree
 from textual.widgets._footer import FooterKey
 
 from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, build_ace_tree, build_interface_tree, build_screenshot_tree,
@@ -17,11 +17,11 @@ from wowtools import __version__
 from wowtools.core.updater import ReleaseInfo
 from wowtools.tools import TOOLS as TOOL_INFO
 from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
-from wowtools.ui.branding import BrandBar
+from wowtools.ui.branding import BANNER_NAME, TERMS, BrandBar, TermsText, VersionLine
 from wowtools.ui.dialogs import (FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_HINT, ConfirmScreen, InfoScreen,
                                  ProgressScreen)
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
-from wowtools.ui.suite_app import WowToolsApp
+from wowtools.ui.suite_app import MENU_HINT, WowToolsApp
 from wowtools.ui.widgets import NavHint, action_kind
 
 POPUP_MAX_WIDTH = 100  # a popup or confirm at LARGE: a readable width, never stretched edge to edge
@@ -466,6 +466,67 @@ class LookAndFeelTest(TuiTestCase):
                     app.screen.dismiss(True)
                     await settle(app, pilot)
                     self.assert_brand_shown(app, f"Ka0s WoW Tools v{__version__}")
+
+    def screen_lines(self, app) -> list[str]:
+        return [strip.text for strip in app.screen._compositor.render_strips()]
+
+    def assert_terms_whole(self, app, max_rows: int | None = None) -> None:
+        """The terms of use show whole, right above the bottom row, in at most max_rows rows."""
+        terms = app.screen.query_one(TermsText)
+        rows = self.screen_lines(app)[terms.region.y:terms.region.bottom]
+        self.assertEqual(terms.region.bottom, app.screen.size.height - 1, terms.region)
+        self.assertEqual(" ".join(" ".join(rows).split()), TERMS)
+        if max_rows is not None:
+            self.assertLessEqual(len(rows), max_rows, rows)
+
+    async def test_menu_shows_everything_at_base(self):
+        """Spec D4/D6 at BASE: the version line right under the banner's name, every tool, the hint, the terms (two
+        rows) and every footer key show at once, nothing scrolls; with an update found the version line says so."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await settle(app, pilot)
+            screen, lines = app.screen, self.screen_lines(app)
+            self.assertEqual(screen.max_scroll_y, 0)
+            name_row = next(i for i, line in enumerate(lines) if BANNER_NAME in line)
+            self.assertEqual(lines[name_row + 1].strip(), f"v{__version__}")
+            self.assertEqual(screen.query_one(VersionLine).region.y, name_row + 1)
+            options = screen.query_one("#tools", OptionList)
+            self.assertEqual(options.max_scroll_y, 0)
+            text = "\n".join(lines)
+            for tool in TOOL_INFO.values():
+                self.assertIn(f"{tool.title}   ", text)
+                self.assertIn(tool.description, text)
+            self.assertIn(MENU_HINT, text)
+            self.assert_terms_whole(app, max_rows=2)
+            self.assert_footer_whole(app)
+            app.release = ReleaseInfo.from_version("9.9.9")
+            await settle(app, pilot)
+            self.assertEqual(self.screen_lines(app)[name_row + 1].strip(),
+                             f"v{__version__} · v9.9.9 available, press u to update")
+
+    async def test_menu_keeps_terms_and_footer_and_reaches_every_tool_when_small(self):
+        """At TINY (and shorter) the terms and the footer stay on screen; the tool list scrolls instead, and every
+        tool can be highlighted and is then on screen."""
+        for size in (TINY, (80, 18)):
+            with self.subTest(size=size):
+                app = self.make_app()
+                async with app.run_test(size=size) as pilot:
+                    await settle(app, pilot)
+                    self.assertEqual(app.screen.max_scroll_y, 0)
+                    self.assert_terms_whole(app)
+                    self.assert_footer_whole(app)
+                    self.assertIn(f"v{__version__}", "\n".join(self.screen_lines(app)))
+                    options = app.screen.query_one("#tools", OptionList)
+                    for index, tool in enumerate(TOOL_INFO.values()):
+                        if index:
+                            await pilot.press("down")
+                            await pilot.pause()
+                        self.assertEqual(options.highlighted, index)
+                        self.assertIn(tool.title, "\n".join(self.screen_lines(app)), size)
+                    self.assert_terms_whole(app)
+                    await pilot.press("enter")
+                    await settle(app, pilot)
+                    self.assertIsNotNone(app.flow)
 
     async def test_every_review_still_renders_at_tiny_with_an_update(self):
         """Pinned as accepted (T3.1): at 80x24 a review's compact footer overflows 80 columns and the brand bar

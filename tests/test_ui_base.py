@@ -24,7 +24,8 @@ from wowtools.core.updater import ReleaseInfo, UpdateError
 from wowtools.tools import TOOLS
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.base import Ka0sApp, UpdateProgressScreen, UpdateScreen
-from wowtools.ui.branding import BottomBar, BrandBar, brand_texts, update_key_free, update_notice
+from wowtools.ui.branding import (BottomBar, BrandBar, VersionLine, brand_texts, update_key_free, update_notice,
+                                  version_text)
 from wowtools.ui.dialogs import CONFIRM_GUARD, InfoScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
@@ -68,6 +69,23 @@ class SuiteAppBaseTest(UiTestCase):
             options = app.screen.query_one("#tools", OptionList)
             self.assertEqual([options.get_option_at_index(i).id for i in range(options.option_count)],
                              list(TOOLS))
+
+    def test_version_text_names_the_new_version(self):
+        """Spec D4: the menu's line under the banner is the version, plus the update notice once one is found."""
+        self.assertEqual(version_text("0.1.0", None), "v0.1.0")
+        self.assertEqual(version_text("0.1.0", "9.9.9"), "v0.1.0 · v9.9.9 available, press u to update")
+
+    async def test_menu_version_line_follows_the_update_check(self):
+        app = self.make_app()
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            line = app.screen.query_one(VersionLine)
+            self.assertEqual(line.text, f"v{__version__}")
+            self.assertFalse(line.has_class("-update"))
+            app._update_found(ReleaseInfo.from_version("9.9.9"))
+            await pilot.pause()
+            self.assertEqual(line.text, f"v{__version__} · v9.9.9 available, press u to update")
+            self.assertTrue(line.has_class("-update"))
 
     async def test_update_badge_and_prompt(self):
         app = self.make_app()

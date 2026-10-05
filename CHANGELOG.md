@@ -26,6 +26,8 @@ The first version: four tools in one app.
     a held key repeats, `y` / `n` / `Esc` answer at once. The update offer's "Update now" waits the same way.
   - The bottom row of every screen shows the version, and says when a new one is out and how to get it (on the
     Ace3 Profile Manager's review, where `u` unlocks an addon, it points you to the tool menu).
+  - The tool menu shows the version under the banner (and the new one, once found), and the terms of use along
+    its bottom; in a short window the tool list scrolls so the terms and the keys stay in view.
 - **WTF Cleaner**
   - Finds settings left behind by addons you no longer use, shows them for review, backs them up and deletes them.
   - Works on one game version, one account or **All flavors**.

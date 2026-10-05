@@ -587,7 +587,14 @@ the `after_mount()` hook. Every screen shows a `Header` and ends with a `BottomB
 from the left) and the `BrandBar` (the version and the update notice, right-aligned, in the longest wording that
 fits what the keys leave; docked on their own the two overlapped and the brand bar was never seen). Where a screen
 binds `u` itself (the Ace3 review's Unlock) or a text box has focus, the notice and the toast say to press `u` on
-the tool menu (`update_key_free`; the bar follows focus changes, and a popup is judged by the screen under it). Long-running or blocking work
+the tool menu (`update_key_free`; the bar follows focus changes, and a popup is judged by the screen under it).
+The tool menu (`ToolMenuScreen`) puts a `VersionLine` right under the `Banner`'s name line (`v<version>`, plus
+"· vX.Y.Z available, press u to update" once the check finds one; `version_text`) and a `TermsText` (spec D6,
+`branding.TERMS`, pinned word for word in the README by `tests/test_docs.py`) right above the `BottomBar`. Its
+`ToolArea` (the list and the hint, `height: 1fr`) caps the list's height so the hint stays under it and the list
+scrolls in a short window; under 30 rows the banner shows only its name line (`Banner.show_art`). At 120x30
+everything shows without scrolling, and at 80x24 the terms, the footer and every tool stay reachable
+(`tests/test_look_and_feel.py`). Long-running or blocking work
 runs in thread workers and reports back with `call_from_thread`: scan, clean, organize, backup, restore, profile apply, undo, and also the
 running-programs check before a clean, backup, restore or undo confirm (PowerShell/`tasklist`; the
 review screen shows "Checking for running programs…" and ignores its action keys meanwhile), install detection on the setup screen, the organizer's
@@ -604,8 +611,8 @@ Shared screens and widgets in `wowtools/ui/` (the Textual half of the shared lib
 |---|---|
 | `base` | `Ka0sApp`: registers the theme, the background update check, `u` (`UpdateScreen`, focused on "Update now" behind the dialogs `EnterGuard`; `UpdateProgressScreen`), `after_mount()` |
 | `theme` | `KA0S_THEME`, the Ka0s colours |
-| `branding` | `Banner` (the shield art on the tool menu and the flavor and account pickers) `BrandBar` and `BottomBar` (the footer and the brand bar in one row, on every screen), `update_key_free` / `update_notice` / `brand_texts` |
-| `suite_app` | `WowToolsApp`, `ToolMenuScreen` (the first screen), `LockScreen` (a `ChoiceScreen`: another copy may be running: Quit, or Override and continue) |
+| `branding` | `Banner` (the shield art on the tool menu and the flavor and account pickers), `VersionLine` and `TermsText` (`TERMS`) on the tool menu, `BrandBar` and `BottomBar` (the footer and the brand bar in one row, on every screen), `update_key_free` / `update_notice` / `brand_texts` |
+| `suite_app` | `WowToolsApp`, `ToolMenuScreen` (the first screen; `ToolArea` holds its list and hint), `LockScreen` (a `ChoiceScreen`: another copy may be running: Quit, or Override and continue) |
 | `tool_flow` | `ToolFlow` base (spec D9): `start()` (`require_install()`, the shared WoW-folder setup, then `SETTINGS_SCREEN` with source `wizard` the first time the tool opens, then the tool's `_pick_flavor()`), `open_settings()` (`s`: the WoW-folder settings, then `SETTINGS_SCREEN`; never while it or a `SETTINGS_BLOCKERS` screen is on the stack), `_settings_done()` ("Settings saved…"), `_after_review(choice)` (`flavors` / `tools` / quit), `remember_flavor(choice)` and `pick_account(flavor, then)` (the last choices in `[SECTION]` `last_flavor_choice` / `last_account`, logged with source `picker`; the account picker only for several accounts, Esc back to the flavor picker), `fill_notes(picker, work, ready)` (a flavor picker's notes worked out in a thread, set only while that picker is still on the stack), `close()` |
 | `settings_form` | `ToolSettingsScreen(tool_cfg, wow_path, *, source)`: every tool's settings form (title `FORM_TITLE`, the tool's `fields()`, `#settings-error`, Save and Cancel, the hint from `settings_hint(TICKS)`, focus on `FIRST_FIELD`, Esc cancels). A tool supplies `load()`, `fields()` and `save()` (False after `_error(text)` keeps the form open); `folder_input()` / `folder_value()` handle a folder field (empty = the default, whose stored form `folder_hint(path)` shows), `wow_install` is the WoW folder when valid. Dismisses with True once saved |
 | `result_screen` | `ResultBase`: every result screen's layout (`#result-summary` Item/Value above the detail table `DETAIL_ID`, the buttons: `lead_buttons()`, Rescan (`RESCAN`, the dismiss value), `extra_buttons()`, Other flavor, Tools, Quit; the hint built from them), keys (`result_bindings(rescan, before=, after=)`) and `ui.selection` logging (`LOG_SCREEN`); a tool screen fills `summary_rows()` / `fill_summary()` and `fill_detail()`. `ResultScreen(sub_title, summary_rows, columns, detail_rows, *, back=False)`: the generic one built from rows, its last cell a status coloured by `STATUS_COLOURS` (first words); `back` adds "Back to review (Esc)". `status_colour(status, colours, prefix=)` / `status_style(app, colour)` colour a status cell on every result screen |

@@ -31,6 +31,15 @@ touches a file. The WTF Cleaner, the Screenshot Organizer and the Ace3 Profile M
 (a **Dry run**) that shows what would happen without changing anything. And if you change your mind afterwards, you
 can undo the last clean, the last sort, the last restore or the last profile change.
 
+## Terms of use
+
+Terms of use: Ka0s WoW Tools is provided as is, without warranty of any kind, and you use it at your own risk. Every
+tool backs up the files it changes before changing them, but keep your own backups of anything you can't afford to
+lose.
+
+The tool menu shows these terms along its bottom. They say in plain words what the [MIT License](LICENSE) says: the
+software comes with no warranty.
+
 ## Screenshots
 
 **_WTF Cleaner: the list of leftover addon settings, ready to clean_**
@@ -134,7 +143,8 @@ ignored until you let it go, so it can't answer for you (the update offer's **Up
 
 The app is laid out for the window Windows Terminal (the default on Windows 11) opens: 120 columns by 30 lines.
 Maximize the window and the lists and tables grow to fill it. A smaller window still works, but it's cramped and
-you'll scroll more.
+you'll scroll more (on the tool menu the banner shrinks to one line and the tool list scrolls, so the terms of use
+and the keys at the bottom stay in view).
 
 ### The first time
 
@@ -165,7 +175,7 @@ Each tool has its own guide, with pictures, that walks through every screen:
 ## Updates
 
 The app checks for a new version once a day while it's open. If there is one, the bottom bar says so (at its right
-end, next to the version you have); press `u` to install it. On the Ace3 Profile Manager's review `u` unlocks an
+end, next to the version you have), and so does the line under the banner on the tool menu; press `u` to install it. On the Ace3 Profile Manager's review `u` unlocks an
 addon, so there (and while a text box has focus, where `u` types the letter) the bar tells you to press `u` on the
 tool menu instead. A small window stays up while it downloads and installs, then the app closes so you can start the
 new version. You can also update from a terminal in the app's folder:
