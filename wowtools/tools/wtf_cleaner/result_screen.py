@@ -6,13 +6,9 @@ from pathlib import Path
 from typing import ClassVar
 
 from rich.text import Text
-from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
-from textual.screen import Screen
-from textual.widgets import Button, DataTable, Footer, Header
+from textual.widgets import DataTable
 
-from wowtools.core.events import log_event
 from wowtools.core.install import Flavor
 from wowtools.core.paths import to_stored
 from wowtools.core.text import human_size
@@ -22,9 +18,7 @@ from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT
                                                UNDO_COLUMNS, multi_result_rows, result_rows, undo_row,
                                                undo_summary_rows)
 from wowtools.tools.wtf_cleaner.undo import UndoResult
-from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import RESULT_HINT, result_css, theme_colour
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
+from wowtools.ui.result_screen import ResultBase, result_bindings, status_colour, status_style
 
 UNDO_NOTE = "(Undo last clean (z) puts these files back)"
 BLOCK_STYLE = "bold #5CC8FF"
@@ -126,63 +120,50 @@ def multi_summary_rows(result: MultiCleanResult) -> list[tuple[str, str, bool]]:
     return rows
 
 
-class ResultScreen(Screen[str]):
+class ResultScreen(ResultBase):
     """The outcome of a clean or dry run: a summary table, a per-file table and what to do next. `result` is a
     CleanResult (with its flavor), a MultiCleanResult (several flavors: one summary block each, and a Flavor
     column) or an UndoResult (Undo last clean: the same layout, titled "undo result")."""
 
-    DEFAULT_CSS = result_css("ResultScreen")
-    BINDINGS: ClassVar[list[Binding]] = [Binding("r", "choose('review')", "Rescan"), Binding("f", "choose('flavors')", "Flavors"),
-                Binding("t", "choose('tools')", "Tools"), Binding("q", "choose('quit')", "Quit"),
-                Binding("escape", "choose('review')", "Back", show=False),
-                *NAV_BINDINGS]
+    RESCAN = "review"
+    DETAIL_ID = "result-files"
+    BINDINGS: ClassVar[list[Binding]] = result_bindings(RESCAN)
 
     def __init__(self, result: CleanResult | MultiCleanResult | UndoResult, flavor: Flavor | None = None) -> None:
         super().__init__()
         self.result = result
         self.flavor = flavor
 
-    def compose(self) -> ComposeResult:
-        yield Header()
-        with Vertical(id="result"):
-            summary = DataTable(id="result-summary", cursor_type="none", zebra_stripes=True)
-            # Read-only summary: not a focus stop for one flavor. With several flavors it can outgrow its 60%
-            # cap, so it takes focus there and the arrow keys scroll it (no cursor).
-            summary.can_focus = isinstance(self.result, MultiCleanResult)
-            yield summary
-            yield DataTable(id="result-files", classes="result-detail", cursor_type="row", zebra_stripes=True)
-        with ButtonRow(classes="buttons"):
-            yield action_button("Rescan (r)", "neutral", id="review")
-            yield action_button("Other flavor (f)", "neutral", id="flavors")
-            yield action_button("Tools (t)", "neutral", id="tools")
-            yield action_button("Quit (q)", "neutral", id="quit")
-        yield NavHint(RESULT_HINT + "r rescan · f other flavor · t tools · q quit")
-        yield BrandBar()
-        yield Footer()
+    def summary_focusable(self) -> bool:
+        # With several flavors the summary can outgrow its 60% cap: it takes focus there and the arrow keys scroll
+        # it (no cursor).
+        return isinstance(self.result, MultiCleanResult)
 
-    def on_mount(self) -> None:
-        summary = self.query_one("#result-summary", DataTable)
-        summary.add_columns("Item", "Value")
-        files = self.query_one("#result-files", DataTable)
+    def result_title(self) -> str:
         if isinstance(self.result, UndoResult):
-            self.sub_title = "WTF Cleaner · undo result"
-            summary.add_rows((Text(item), Text(value)) for item, value in undo_summary_rows(self.result))
+            return "WTF Cleaner · undo result"
+        return "WTF Cleaner · dry run result" if self.result.dry_run else "WTF Cleaner · result"
+
+    def fill_summary(self, summary: DataTable) -> None:
+        if isinstance(self.result, MultiCleanResult):
+            summary.add_rows((Text(item, style=BLOCK_STYLE if heading else ""), Text(value))
+                             for item, value, heading in multi_summary_rows(self.result))
+        else:
+            super().fill_summary(summary)
+
+    def fill_detail(self, files: DataTable) -> None:
+        if isinstance(self.result, UndoResult):
             files.add_columns(*UNDO_COLUMNS)
             for outcome in self.result.outcomes:
                 status, *rest = undo_row(outcome)
                 files.add_row(Text(status, style=self._status_style(outcome.status)), *(Text(c) for c in rest))
-            self.query_one("#review", Button).focus()
             return
-        self.sub_title = "WTF Cleaner · dry run result" if self.result.dry_run else "WTF Cleaner · result"
         if isinstance(self.result, MultiCleanResult):
-            summary.add_rows((Text(item, style=BLOCK_STYLE if heading else ""), Text(value))
-                             for item, value, heading in multi_summary_rows(self.result))
             files.add_columns(*MULTI_RESULT_COLUMNS)
             outcomes = [outcome for _, outcome in self.result.outcomes]
             rows = multi_result_rows(self.result)
         else:
             assert self.flavor is not None
-            summary.add_rows((Text(item), Text(value)) for item, value in self.summary_rows())
             files.add_columns(*RESULT_COLUMNS)
             outcomes = self.result.outcomes
             rows = result_rows(self.result, self.flavor)
@@ -192,7 +173,6 @@ class ResultScreen(Screen[str]):
             cells[0] = Text(row[0], style=self._status_style(outcome.status))
             cells[reasons] = reasons_text(list(outcome.reasons))
             files.add_row(*cells)
-        self.query_one("#review", Button).focus()
 
     def summary_rows(self) -> list[tuple[str, str]]:
         if isinstance(self.result, UndoResult):
@@ -202,12 +182,4 @@ class ResultScreen(Screen[str]):
         return summary_rows(self.result)
 
     def _status_style(self, status: str) -> str:
-        name = STATUS_COLOURS.get(status)
-        return f"bold {theme_colour(self.app, name)}" if name else "bold"
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        self.action_choose(event.button.id or "quit")
-
-    def action_choose(self, choice: str) -> None:
-        log_event("ui.selection", screen="result", control="next", value=choice)
-        self.dismiss(choice)
+        return status_style(self.app, status_colour(status, STATUS_COLOURS))

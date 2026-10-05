@@ -1,5 +1,5 @@
 """Dialogs and screen helpers shared by every tool: the yes/no confirmation, an information popup (both can list
-their details in a tree), the progress modal of a run, tick marks
+their details in a tree), a warning with a choice of buttons, the progress modal of a run, tick marks
 and relabelling for review trees, the two-pane (filters + tree) focus moves, and theme colours with the Ka0s
 colours as a fallback. A tool's screens import these; no tool imports another tool's screens."""
 from __future__ import annotations
@@ -291,6 +291,56 @@ class ConfirmScreen(TreeKeys, ModalScreen[bool]):
 
     def action_answer(self, value: bool) -> None:
         self.dismiss(value)
+
+
+class ChoiceScreen(ModalScreen[str | None]):
+    """A warning to act on (an earlier run did not finish, ...): a title in the warning colour, a message and one
+    button per choice, given as (id, label, action kind). Pressing one calls choose(id), which dismisses with the
+    id; a subclass may act first. `default` is the id focused at the start. With `escape` Esc dismisses with None
+    (the question comes back later); without it Esc does nothing and a button must be pressed."""
+
+    DEFAULT_CSS = f"""
+    ChoiceScreen {{ align: center middle; }}
+    ChoiceScreen #choice-box {{ {POPUP_WIDTH} height: auto; max-height: 100%; overflow-y: auto;
+                               border: thick $warning; background: $panel; padding: 1 2; }}
+    ChoiceScreen #choice-title {{ color: $warning; text-style: bold; margin-bottom: 1; }}
+    ChoiceScreen #choice-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
+    ChoiceScreen Button {{ margin-left: 2; }}
+    """
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "close", "Close", show=False)]
+
+    def __init__(self, title: str, message: str, choices: Iterable[tuple[str, str, str]], *, default: str,
+                 escape: bool = False) -> None:
+        super().__init__()
+        self.title_text = title
+        self.message_text = message
+        self.choices = list(choices)
+        self.default = default
+        self.escape = escape
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="choice-box"):
+            yield Static(Text(self.title_text), id="choice-title")
+            yield Static(Text(self.message_text), id="choice-message")
+            with ButtonRow(id="choice-buttons"):
+                for choice_id, label, kind in self.choices:
+                    yield action_button(label, kind, id=choice_id)
+
+    def on_mount(self) -> None:
+        self.query_one(f"#{self.default}", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        self.choose(event.button.id or "")
+
+    def choose(self, choice: str) -> None:
+        self.dismiss(choice)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        return self.escape if action == "close" else True
+
+    def action_close(self) -> None:
+        self.dismiss(None)
 
 
 class InfoScreen(TreeKeys, ModalScreen[None]):

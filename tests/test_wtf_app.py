@@ -483,7 +483,7 @@ class RecoveryDialogTest(AppTestCase):
         await pilot.pause()
         await settle(app, pilot)
         self.assertIsInstance(app.screen, RecoveryScreen)
-        self.assertIn(str(self.snapshot), app.screen.message)
+        self.assertIn(str(self.snapshot), app.screen.message_text)
         return app.screen
 
     async def test_recovery_dialog_dismiss_clears_marker_keeps_snapshot(self):

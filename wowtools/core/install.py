@@ -136,6 +136,14 @@ class WowInstall:
     def is_valid(self) -> bool:
         return self.root.is_dir() and bool(self.flavors())
 
+    @classmethod
+    def at(cls, root: Path | None) -> WowInstall | None:
+        """The install at `root` when it is a valid one (a folder with flavor folders), else None."""
+        if root is None:
+            return None
+        install = cls(root)
+        return install if install.is_valid() else None
+
     def flavor(self, name: str) -> Flavor | None:
         wanted = name.strip().strip("_").casefold()
         for flavor in self.flavors():

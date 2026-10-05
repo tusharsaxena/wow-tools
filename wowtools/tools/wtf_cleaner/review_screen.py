@@ -11,7 +11,7 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.screen import ModalScreen, Screen
+from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, ProgressBar, Static, Tree
 
@@ -34,7 +34,7 @@ from wowtools.tools.wtf_cleaner.safety import SNAPSHOT_SUBDIR, Marker, clear_mar
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir
 from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (ACCENT, POPUP_WIDTH, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
+from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceScreen, ConfirmScreen,
                                 ProgressScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
@@ -57,37 +57,19 @@ class CleanProgressScreen(ProgressScreen):
         super().__init__(dry_run=dry_run, first_stage=first_stage)
 
 
-class RecoveryScreen(ModalScreen[str]):
-    """An earlier clean did not finish: say where its WTF backup is. Never restores anything itself."""
-
-    DEFAULT_CSS = f"""
-    RecoveryScreen {{ align: center middle; }}
-    RecoveryScreen #recovery-box {{ {POPUP_WIDTH} height: auto; border: thick $warning; background: $panel;
-                                   padding: 1 2; }}
-    RecoveryScreen #recovery-title {{ color: $warning; text-style: bold; margin-bottom: 1; }}
-    RecoveryScreen #recovery-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
-    RecoveryScreen Button {{ margin-left: 2; }}
-    """
+class RecoveryScreen(ChoiceScreen):
+    """An earlier clean did not finish: say where its WTF backup is. Never restores anything itself. Dismisses with
+    "dismissed" (the marker is cleared, the backup kept) or "remind"; Esc does nothing."""
 
     def __init__(self, marker: Marker, backup_dir: Path) -> None:
-        super().__init__()
+        super().__init__("An earlier clean did not finish", recovery_message(marker),
+                         [("recovery-dismiss", "Dismiss (keep the backup)", "neutral"),
+                          ("recovery-remind", "Remind me next time", "confirm")], default="recovery-remind")
         self.marker = marker
         self.backup_dir = backup_dir
-        self.message = recovery_message(marker)
 
-    def compose(self) -> ComposeResult:
-        with Vertical(id="recovery-box"):
-            yield Static(Text("An earlier clean did not finish"), id="recovery-title")
-            yield Static(Text(self.message))
-            with ButtonRow(id="recovery-buttons"):
-                yield action_button("Dismiss (keep the backup)", "neutral", id="recovery-dismiss")
-                yield action_button("Remind me next time", "confirm", id="recovery-remind")
-
-    def on_mount(self) -> None:
-        self.query_one("#recovery-remind", Button).focus()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "recovery-dismiss":
+    def choose(self, choice: str) -> None:
+        if choice == "recovery-dismiss":
             clear_marker(self.backup_dir)  # the snapshot stays where it is
             self.dismiss("dismissed")
         else:

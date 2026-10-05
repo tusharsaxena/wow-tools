@@ -124,6 +124,45 @@ class StructureTest(unittest.TestCase):
         self.assertEqual(classes, {("wowtools/ui/dialogs.py", "ConfirmScreen"),
                                    ("wowtools/ui/dialogs.py", "ProgressScreen")})
 
+    def test_result_choice_settings_and_flow_live_in_ui(self):
+        """Result screens, warning popups with a choice, settings forms and the flow steps every tool takes are
+        wowtools/ui's (spec D9): each tool screen subclasses the shared one, and no tool copies a flow step."""
+        from wowtools.tools import TOOLS
+        from wowtools.tools.ace3_profile_manager import result_screen as ace_result
+        from wowtools.tools.ace3_profile_manager import review_screen as ace_review
+        from wowtools.tools.interface_backup import restore_screen
+        from wowtools.tools.interface_backup import review_screen as ib_review
+        from wowtools.tools.screenshot_organizer import review_screen as shots_review
+        from wowtools.tools.wtf_cleaner import review_screen as wtf_review
+        from wowtools.ui.dialogs import ChoiceScreen
+        from wowtools.ui.result_screen import ResultBase, ResultScreen
+        from wowtools.ui.settings_form import ToolSettingsScreen
+        from wowtools.ui.tool_flow import ToolFlow
+        for screen in (wtf_review.ResultScreen, shots_review.ShotResultScreen, ib_review.BackupResultScreen,
+                       restore_screen.RestoreResultScreen):
+            self.assertTrue(issubclass(screen, ResultBase), screen)
+        self.assertTrue(issubclass(ace_result.ProfileResultScreen, ResultScreen))
+        for screen in (wtf_review.RecoveryScreen, ace_review.ProfileRecoveryScreen):
+            self.assertTrue(issubclass(screen, ChoiceScreen), screen)
+        for tool in TOOLS.values():
+            flow = tool.flow()
+            self.assertTrue(issubclass(flow, ToolFlow))
+            self.assertTrue(issubclass(flow.SETTINGS_SCREEN, ToolSettingsScreen), tool.name)
+            self.assertEqual(flow.SECTION, tool.section)
+        classes = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
+                   if isinstance(node, ast.ClassDef) and node.name in ("ResultBase", "ChoiceScreen", "ToolSettingsScreen")}
+        self.assertEqual(classes, {("wowtools/ui/result_screen.py", "ResultBase"),
+                                   ("wowtools/ui/dialogs.py", "ChoiceScreen"),
+                                   ("wowtools/ui/settings_form.py", "ToolSettingsScreen")})
+        # The flow steps and form plumbing: ToolFlow's / ToolSettingsScreen's only. Interface Backup's
+        # _settings_done wraps the shared one (a changed WoW folder says nothing).
+        shared = {"start", "open_settings", "_after_review", "remember_flavor", "pick_account", "fill_notes",
+                  "_after_account", "_default_backup_hint", "_count_worker", "_notes_worker", "_settings_done",
+                  "_error", "action_cancel", "_save"}
+        where = {(rel(p), n) for p in modules("wowtools/tools") if p.name == "app.py"
+                 for n in defined_functions(tree(p)) & shared}
+        self.assertEqual(where, {("wowtools/tools/interface_backup/app.py", "_settings_done")})
+
     def test_literals_are_defined_once(self):
         found: dict[str, list[str]] = {}
         for path in modules("wowtools"):

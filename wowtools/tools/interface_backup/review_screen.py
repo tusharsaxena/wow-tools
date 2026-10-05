@@ -40,8 +40,9 @@ from wowtools.tools.interface_backup.scanner import CHEAP_STATS, PARTS, FlavorSc
 from wowtools.tools.interface_backup.settings import load_settings, resolve_backup_root
 from wowtools.tools.interface_backup.undo import undo_restore
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (ACCENT, RESULT_HINT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
-                                ProgressScreen, relabel_branch, result_css, theme_colour, tick_mark, two_pane_css)
+from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
+                                relabel_branch, theme_colour, tick_mark, two_pane_css)
+from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
@@ -72,56 +73,33 @@ class BackupProgressScreen(ProgressScreen):
         super().__init__(first_stage=first_stage)
 
 
-class BackupResultScreen(Screen[str]):
+class BackupResultScreen(ResultBase):
     """The outcome of a backup: a summary table, one row per flavor and what to do next."""
 
-    DEFAULT_CSS = result_css("BackupResultScreen")
-    BINDINGS: ClassVar[list[Binding]] = [
-        Binding("r", "choose('review')", "Rescan"), Binding("e", "choose('restore')", "Restore"),
-        Binding("f", "choose('flavors')", "Flavors"), Binding("t", "choose('tools')", "Tools"),
-        Binding("q", "choose('quit')", "Quit"), Binding("escape", "choose('review')", "Back", show=False),
-        *NAV_BINDINGS]
+    LOG_SCREEN = "ibackup_result"
+    RESCAN = "review"
+    DETAIL_ID = "result-table"
+    BINDINGS: ClassVar[list[Binding]] = result_bindings(RESCAN, after=[Binding("e", "choose('restore')", "Restore")])
+    STATUS_COLOURS: ClassVar[dict[str, str]] = {"created": "success", "failed": "error", "skipped": "warning"}
 
     def __init__(self, outcomes: list[BackupOutcome]) -> None:
         super().__init__()
         self.outcomes = outcomes
 
-    def compose(self) -> ComposeResult:
-        yield Header()
-        with Vertical(id="result"):
-            summary = DataTable(id="result-summary", cursor_type="none", zebra_stripes=True)
-            summary.can_focus = False  # read-only summary: not a focus stop
-            yield summary
-            yield DataTable(id="result-table", classes="result-detail", cursor_type="row", zebra_stripes=True)
-        with ButtonRow(classes="buttons"):
-            yield action_button("Rescan (r)", "neutral", id="review")
-            yield action_button("Restore (e)", "neutral", id="restore")
-            yield action_button("Other flavor (f)", "neutral", id="flavors")
-            yield action_button("Tools (t)", "neutral", id="tools")
-            yield action_button("Quit (q)", "neutral", id="quit")
-        yield NavHint(RESULT_HINT + "r rescan · e restore · f other flavor · t tools · q quit")
-        yield BrandBar()
-        yield Footer()
+    def result_title(self) -> str:
+        return "Interface Backup · result"
 
-    def on_mount(self) -> None:
-        self.sub_title = "Interface Backup · result"
-        summary = self.query_one("#result-summary", DataTable)
-        summary.add_columns("Item", "Value")
-        summary.add_rows((Text(item), Text(value)) for item, value in backup_summary_rows(self.outcomes))
-        table = self.query_one("#result-table", DataTable)
+    def extra_buttons(self) -> list[ResultButton]:
+        return [("Restore (e)", "neutral", "restore", "e restore")]
+
+    def summary_rows(self) -> list[tuple[str, str]]:
+        return backup_summary_rows(self.outcomes)
+
+    def fill_detail(self, table: DataTable) -> None:
         table.add_columns(*BACKUP_RESULT_COLUMNS)
-        styles = {"created": "success", "failed": "error", "skipped": "warning"}
         for outcome, (flavor, kind, *rest) in zip(self.outcomes, backup_result_rows(self.outcomes)):
-            style = f"bold {theme_colour(self.app, styles[outcome.kind])}" if outcome.kind in styles else ""
+            style = status_style(self.app, status_colour(outcome.kind, self.STATUS_COLOURS), plain="")
             table.add_row(Text(flavor), Text(kind, style=style), *(Text(c) for c in rest))
-        self.query_one("#review", Button).focus()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        self.action_choose(event.button.id or "quit")
-
-    def action_choose(self, choice: str) -> None:
-        log_event("ui.selection", screen="ibackup_result", control="next", value=choice)
-        self.dismiss(choice)
 
 
 class BackupReviewScreen(ReviewBase, Screen[str]):

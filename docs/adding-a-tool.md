@@ -35,16 +35,24 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      writes, as the WTF Cleaner and the Ace3 Profile Manager do.
    - `settings.py` for the tool's own settings: the `[screenshot_organizer]` section of `config/screenshot-organizer.cfg`.
      Follow `wtf_cleaner/settings.py`; it takes the tool's `Config`, never the suite one.
-   - `app.py` with `class ScreenshotsFlow(ToolFlow)` and `FLOW = ScreenshotsFlow`. `start()` pushes the first
-     screen; call `self.require_install(...)` first if the tool needs the WoW folder, and `self.close()` to go
-     back to the menu. `self.cfg` is the shared suite config and `self.tool_cfg` the tool's own file. Reuse
-     `FlavorScreen` for the flavor (`include_all=True` adds "All flavors"), and put `Header()`, `BrandBar()` and
-     `Footer()` on every screen. The organizer's screens are in `app.py` (`ScreenshotSettingsScreen`) and
-     `review_screen.py` (`ShotReviewScreen`, `ShotProgressScreen`, `ShotResultScreen`).
+   - `app.py` with `class ScreenshotsFlow(ToolFlow)` and `FLOW = ScreenshotsFlow`. Set `SECTION` (the tool's
+     config section) and `SETTINGS_SCREEN`, and implement `_pick_flavor()`: `ToolFlow.start()` checks the WoW
+     folder (`require_install`), opens the settings the first time the tool is opened, then calls it, and `s`
+     (`open_settings()`) and the review's `flavors` / `tools` / quit (`_after_review`) need nothing more.
+     `self.close()` goes back to the menu. `self.cfg` is the shared suite config and `self.tool_cfg` the tool's
+     own file. Reuse `FlavorScreen` for the flavor (`include_all=True` adds "All flavors"), keep the pick with
+     `remember_flavor(choice)`, ask for the account with `pick_account(flavor, then)`, and fill slow picker notes
+     with `fill_notes(picker, work, ready)`. The settings form subclasses `ToolSettingsScreen`
+     (`wowtools/ui/settings_form.py`: `FORM_TITLE`, `FIRST_FIELD`, `TICKS`, `load()`, `fields()`, `save()`;
+     `folder_input()` / `folder_value()` for a folder field). Put `Header()`, `BrandBar()` and `Footer()` on every
+     screen. The organizer's screens are in `app.py` (`ScreenshotSettingsScreen`) and `review_screen.py`
+     (`ShotReviewScreen`, `ShotProgressScreen`, `ShotResultScreen`).
    - **Shared dialogs.** Take the confirm and progress dialogs from `wowtools/ui/dialogs.py`, never from another
      tool (a tool imports nothing from another tool; `tests/test_structure.py` checks it):
      `ConfirmScreen(title, body, alerts, default_yes=..., groups=...)` (start on No for anything that changes files;
-     `groups` lists long details in a tree), `InfoScreen(title, groups)` for notes too long for a notification, and a
+     `groups` lists long details in a tree), `InfoScreen(title, groups)` for notes too long for a notification,
+     `ChoiceScreen(title, message, choices, default=...)` for a warning with a choice of buttons (an unfinished
+     run), and a
      subclass of `ProgressScreen` with your own `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, fed by the
      run's `progress(stage, current, total, detail)` through `app.call_from_thread`. Wrap that callback with
      `core.fsutil.safe_progress` inside the run. A review tree can use `tick_mark`, `relabel_branch` and, from
@@ -53,7 +61,9 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      `theme_colour(app, "success")` gives theme colours with the Ka0s fallback.
    - **One look.** Build the screens' CSS and hints from the same module, so a new tool looks like the others:
      `two_pane_css(screen, tree)` for the review (left pane `FILTERS_WIDTH` wide, four action buttons in one row),
-     `result_css(screen)` for the result, `settings_css(screen)` for the settings form, and hints that start with
+     a result screen on `ResultBase` (or the row-built `ResultScreen`) from `wowtools/ui/result_screen.py`, which
+     brings the result layout, buttons and keys (`result_bindings`) and colours status cells (`status_style`), a
+     settings form on `ToolSettingsScreen` (`settings_css`), and hints that start with
      `REVIEW_HINT` (or `review_hint("tick or open")` when Space does more in your tree) and `RESULT_HINT`.
      Every tree screen binds `TREE_BINDINGS` (`x` expand all, `c` collapse all) and puts `TREE_HINT` in its hint
      before `r rescan`; each focusable control of the left pane gets a row of its own.

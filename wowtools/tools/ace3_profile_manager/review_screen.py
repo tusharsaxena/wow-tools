@@ -44,7 +44,7 @@ from wowtools.tools.ace3_profile_manager.settings import (Pair, format_blacklist
 from wowtools.tools.ace3_profile_manager.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
 from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult, recover, undo_run
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (POPUP_WIDTH, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, InfoScreen,
+from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceScreen, ConfirmScreen, InfoScreen,
                                 ProgressScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
 from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, WrapButtonRow, action_button,
@@ -82,50 +82,27 @@ class ProfileProgressScreen(ProgressScreen):
     SIMULATED_STAGE = "check"
 
 
-class ProfileRecoveryScreen(ModalScreen[str]):
+class ProfileRecoveryScreen(ChoiceScreen):
     """An earlier Apply did not finish: put the originals back from its zip, or leave the files as they are.
     Dismisses with "put_back" or "leave" (None when closed with Esc: offered again at the next scan)."""
 
-    DEFAULT_CSS = f"""
-    ProfileRecoveryScreen {{ align: center middle; }}
-    ProfileRecoveryScreen #recovery-box {{ {POPUP_WIDTH} height: auto; max-height: 100%; overflow-y: auto;
-                                          border: thick $warning; background: $panel; padding: 1 2; }}
-    ProfileRecoveryScreen #recovery-title {{ color: $warning; text-style: bold; margin-bottom: 1; }}
-    ProfileRecoveryScreen #recovery-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
-    ProfileRecoveryScreen Button {{ margin-left: 2; }}
-    """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "dismiss", "Close", show=False)]
-
     def __init__(self, marker: Marker) -> None:
-        super().__init__()
+        super().__init__("An earlier change did not finish", recovery_text(marker),
+                         [("leave", "Leave as is", "neutral"), ("put_back", "Put the originals back", "revert")],
+                         default="put_back", escape=True)
         self.marker = marker
 
-    def message(self) -> str:
-        marker = self.marker
-        return "\n".join([
-            (f"A change to {flavor_name(marker.flavor)} started {friendly_stamp(marker.started)} did not finish "
-             f"({plural(len(marker.files), 'file')})."),
-            "The original files are in:",
-            str(marker.zip),
-            ("Put the originals back: each file the change wrote is restored from that zip; a file saved since "
-             "(by WoW) is left as it is."),
-            "Leave as is: the files stay as they are now; the zip and the WTF backup are kept.",
-        ])
 
-    def compose(self) -> ComposeResult:
-        with Vertical(id="recovery-box"):
-            yield Static(Text("An earlier change did not finish"), id="recovery-title")
-            yield Static(Text(self.message()))
-            with ButtonRow(id="recovery-buttons"):
-                yield action_button("Leave as is", "neutral", id="leave")
-                yield action_button("Put the originals back", "revert", id="put_back")
-
-    def on_mount(self) -> None:
-        self.query_one("#put_back", Button).focus()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        event.stop()
-        self.dismiss(event.button.id)
+def recovery_text(marker: Marker) -> str:
+    return "\n".join([
+        (f"A change to {flavor_name(marker.flavor)} started {friendly_stamp(marker.started)} did not finish "
+         f"({plural(len(marker.files), 'file')})."),
+        "The original files are in:",
+        str(marker.zip),
+        ("Put the originals back: each file the change wrote is restored from that zip; a file saved since "
+         "(by WoW) is left as it is."),
+        "Leave as is: the files stay as they are now; the zip and the WTF backup are kept.",
+    ])
 
 
 class ProfileTree(ReviewTree):

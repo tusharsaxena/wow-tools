@@ -29,8 +29,9 @@ from wowtools.tools.screenshot_organizer.report import (RESULT_COLUMNS, STAGE_TI
 from wowtools.tools.screenshot_organizer.settings import load_settings, validate_dest
 from wowtools.tools.screenshot_organizer.undo import undo
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (ACCENT, RESULT_HINT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
-                                ProgressScreen, relabel_branch, result_css, theme_colour, tick_mark, two_pane_css)
+from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
+                                relabel_branch, theme_colour, tick_mark, two_pane_css)
+from wowtools.ui.result_screen import ResultBase, result_bindings, status_style
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
@@ -50,62 +51,34 @@ class ShotProgressScreen(ProgressScreen):
         super().__init__(dry_run=dry_run, first_stage=first_stage, stage_titles=stage_titles)
 
 
-class ShotResultScreen(Screen[str]):
+class ShotResultScreen(ResultBase):
     """The outcome of a run, dry run or undo: a summary table, a per-file table and what to do next."""
 
-    DEFAULT_CSS = result_css("ShotResultScreen")
-    BINDINGS: ClassVar[list[Binding]] = [Binding("r", "choose('review')", "Rescan"), Binding("f", "choose('flavors')", "Flavors"),
-                Binding("t", "choose('tools')", "Tools"), Binding("q", "choose('quit')", "Quit"),
-                Binding("escape", "choose('review')", "Back", show=False),
-                *NAV_BINDINGS]
+    LOG_SCREEN = "shots_result"
+    RESCAN = "review"
+    DETAIL_ID = "result-files"
+    BINDINGS: ClassVar[list[Binding]] = result_bindings(RESCAN)
 
     def __init__(self, result: OrganizeResult) -> None:
         super().__init__()
         self.result = result
 
-    def compose(self) -> ComposeResult:
-        yield Header()
-        with Vertical(id="result"):
-            summary = DataTable(id="result-summary", cursor_type="none", zebra_stripes=True)
-            summary.can_focus = False  # read-only summary: not a focus stop
-            yield summary
-            yield DataTable(id="result-files", classes="result-detail", cursor_type="row", zebra_stripes=True)
-        with ButtonRow(classes="buttons"):
-            yield action_button("Rescan (r)", "neutral", id="review")
-            yield action_button("Other flavor (f)", "neutral", id="flavors")
-            yield action_button("Tools (t)", "neutral", id="tools")
-            yield action_button("Quit (q)", "neutral", id="quit")
-        yield NavHint(RESULT_HINT + "r rescan · f other flavor · t tools · q quit")
-        yield BrandBar()
-        yield Footer()
-
-    def on_mount(self) -> None:
+    def result_title(self) -> str:
         if self.result.undo:
-            self.sub_title = "Screenshot Organizer · undo result"
-        elif self.result.dry_run:
-            self.sub_title = "Screenshot Organizer · dry run result"
-        else:
-            self.sub_title = "Screenshot Organizer · result"
-        summary = self.query_one("#result-summary", DataTable)
-        summary.add_columns("Item", "Value")
-        summary.add_rows((Text(item), Text(value)) for item, value in summary_rows(self.result))
-        files = self.query_one("#result-files", DataTable)
+            return "Screenshot Organizer · undo result"
+        if self.result.dry_run:
+            return "Screenshot Organizer · dry run result"
+        return "Screenshot Organizer · result"
+
+    def summary_rows(self) -> list[tuple[str, str]]:
+        return summary_rows(self.result)
+
+    def fill_detail(self, files: DataTable) -> None:
         files.add_columns(*RESULT_COLUMNS)
         for outcome, row in zip(self.result.outcomes, result_rows(self.result)):
             label, *rest = row
-            files.add_row(Text(label, style=self._kind_style(outcome.kind)), *(Text(c) for c in rest))
-        self.query_one("#review", Button).focus()
-
-    def _kind_style(self, kind: str) -> str:
-        name = kind_class(kind)
-        return f"bold {theme_colour(self.app, name)}" if name else ""
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        self.action_choose(event.button.id or "quit")
-
-    def action_choose(self, choice: str) -> None:
-        log_event("ui.selection", screen="shots_result", control="next", value=choice)
-        self.dismiss(choice)
+            files.add_row(Text(label, style=status_style(self.app, kind_class(outcome.kind), plain="")),
+                          *(Text(c) for c in rest))
 
 
 class ShotReviewScreen(ReviewBase, Screen[str]):

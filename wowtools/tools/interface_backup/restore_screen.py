@@ -26,8 +26,8 @@ from wowtools.tools.interface_backup.restore import (BackupContents, RestoreErro
                                                      case_key, open_backup, plan_restore)
 from wowtools.tools.interface_backup.scanner import PARTS, FlavorScan, scan_flavor
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (ACCENT, RESULT_HINT, TREE_BINDINGS, TREE_HINT, TwoPaneFocus, result_css, review_hint,
-                                theme_colour, two_pane_css)
+from wowtools.ui.dialogs import ACCENT, TREE_BINDINGS, TREE_HINT, TwoPaneFocus, review_hint, theme_colour, two_pane_css
+from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
 from wowtools.ui.review import ButtonActions, ReviewTree
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
@@ -315,16 +315,16 @@ class RestoreScreen(ButtonActions, TwoPaneFocus, Screen[RestorePlan | None]):
         self.dismiss(None)
 
 
-class RestoreResultScreen(Screen[str]):
+class RestoreResultScreen(ResultBase):
     """The outcome of a restore or an undo, per part. Dismisses with "undo", "review", "flavors", "tools" or
     "quit"."""
 
-    DEFAULT_CSS = result_css("RestoreResultScreen")
-    BINDINGS: ClassVar[list[Binding]] = [
-        Binding("z", "choose('undo')", "Undo"), Binding("r", "choose('review')", "Rescan"),
-        Binding("f", "choose('flavors')", "Flavors"), Binding("t", "choose('tools')", "Tools"),
-        Binding("q", "choose('quit')", "Quit"), Binding("escape", "choose('review')", "Back", show=False),
-        *NAV_BINDINGS]
+    LOG_SCREEN = "ibackup_restore_result"
+    RESCAN = "review"
+    DETAIL_ID = "result-table"
+    BINDINGS: ClassVar[list[Binding]] = result_bindings(RESCAN, before=[Binding("z", "choose('undo')", "Undo")])
+    STATUS_COLOURS: ClassVar[dict[str, str]] = {"restored": "success", "replaced_left": "warning",
+                                                "rolled_back": "warning", "failed": "error"}
 
     def __init__(self, result: RestoreResult) -> None:
         super().__init__()
@@ -341,45 +341,23 @@ class RestoreResultScreen(Screen[str]):
         """z is not a key here (nor in the footer) when there is no Undo."""
         return not (action == "choose" and parameters == ("undo",) and not self.can_undo)
 
-    def compose(self) -> ComposeResult:
-        yield Header()
-        with Vertical(id="result"):
-            summary = DataTable(id="result-summary", cursor_type="none", zebra_stripes=True)
-            summary.can_focus = False  # read-only summary: not a focus stop
-            yield summary
-            yield DataTable(id="result-table", classes="result-detail", cursor_type="row", zebra_stripes=True)
-        with ButtonRow(classes="buttons"):
-            if self.can_undo:
-                yield action_button("Undo (z)", "revert", id="undo")
-            yield action_button("Rescan (r)", "neutral", id="review")
-            yield action_button("Other flavor (f)", "neutral", id="flavors")
-            yield action_button("Tools (t)", "neutral", id="tools")
-            yield action_button("Quit (q)", "neutral", id="quit")
-        hint = RESULT_HINT + ("z undo · " if self.can_undo else "")
-        yield NavHint(hint + "r rescan · f other flavor · t tools · q quit")
-        yield BrandBar()
-        yield Footer()
+    def lead_buttons(self) -> list[ResultButton]:
+        return [("Undo (z)", "revert", "undo", "z undo")] if self.can_undo else []
 
-    def on_mount(self) -> None:
+    def result_title(self) -> str:
+        return "Interface Backup · undo result" if self.result.undo else "Interface Backup · restore result"
+
+    def summary_rows(self) -> list[tuple[str, str]]:
+        return restore_summary_rows(self.result)
+
+    def fill_detail(self, table: DataTable) -> None:
         r = self.result
-        self.sub_title = "Interface Backup · undo result" if r.undo else "Interface Backup · restore result"
-        summary = self.query_one("#result-summary", DataTable)
-        summary.add_columns("Item", "Value")
-        summary.add_rows((Text(item), Text(value)) for item, value in restore_summary_rows(r))
-        table = self.query_one("#result-table", DataTable)
         table.add_columns(*RESTORE_RESULT_COLUMNS)
-        styles = {"restored": "success", "replaced_left": "warning", "rolled_back": "warning", "failed": "error"}
         for outcome, (part, kind, reason) in zip(ordered_parts(r), restore_result_rows(r)):
-            style = f"bold {theme_colour(self.app, styles.get(outcome.kind, 'warning'))}"
+            style = status_style(self.app, status_colour(outcome.kind, self.STATUS_COLOURS) or "warning")
             table.add_row(Text(part), Text(kind, style=style), Text(reason))
-        self.query_one("#review", Button).focus()
 
     def action_choose(self, choice: str) -> None:
         if choice == "undo" and not self.can_undo:
             return
-        log_event("ui.selection", screen="ibackup_restore_result", control="next", value=choice)
-        self.dismiss(choice)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        event.stop()
-        self.action_choose(event.button.id or "quit")
+        super().action_choose(choice)

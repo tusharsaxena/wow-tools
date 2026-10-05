@@ -714,10 +714,10 @@ class ReviewFixesTest(AceAppBase):
             await self.write_torn_marker(review)
             await pilot.press("r")
             await settle(app, pilot)
-            box = app.screen.query_one("#recovery-box")
+            box = app.screen.query_one("#choice-box")
             for button in app.screen.query("Button"):
                 self.assertTrue(inside(button, box), button.id)
-            self.assertIn(str(app.screen.marker.zip), app.screen.message().splitlines())
+            self.assertIn(str(app.screen.marker.zip), app.screen.message_text.splitlines())
 
     async def test_leaving_with_staged_changes_asks_first(self):
         app = self.make_app()
