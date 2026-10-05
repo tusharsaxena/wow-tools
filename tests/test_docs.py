@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import unittest
 
+from wowtools import __version__
 from wowtools.core.bootstrap import REPO_ROOT
 from wowtools.tools import TOOLS
 
@@ -34,6 +36,15 @@ class DocsTest(unittest.TestCase):
             self.assertTrue((REPO_ROOT / guide).is_file(), guide)
         self.assertIn("## version history", readme.lower())
         self.assertNotIn("## For developers", readme)
+
+    def test_version_badge_and_changelog_match_the_version(self):
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn(f"badge/Version-{__version__}-blue", readme)
+        self.assertIn("](CHANGELOG.md)", readme)
+        self.assertNotIn("| Version | Date | Highlights |", readme)  # the history lives in CHANGELOG.md
+        changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertTrue(changelog.startswith("# Changelog\n"))
+        self.assertRegex(changelog, rf"(?m)^## \[{re.escape(__version__)}\] - \d{{4}}-\d{{2}}-\d{{2}}$")
 
     def test_user_docs_cover_the_entry_point_tools_and_safety(self):
         readme = "\n".join((REPO_ROOT / p).read_text(encoding="utf-8")

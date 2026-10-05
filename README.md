@@ -1,6 +1,6 @@
 # Ka0s WoW Tools
 
-![Version](https://img.shields.io/badge/Version-1.0.0-blue)
+![Version](https://img.shields.io/badge/Version-0.1.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-yellow)
 ![Platforms](https://img.shields.io/badge/Platforms-Windows_%7C_macOS_%7C_Linux-purple)
 ![Tests](https://img.shields.io/badge/Tests-1053%2F1053_passing-green)
@@ -256,10 +256,7 @@ Please file reports there, so nothing gets lost.
 
 ## Version History
 
-| Version | Date | Highlights |
-|---------|------|------------|
-| Unreleased | — | - **Ace3 Profile Manager**, a fourth tool: shows every Ace3 addon's profiles and which characters use them; delete, rename and copy profiles, move characters between them and remove characters that no longer exist, with a blacklist (per game version, picked from a tree), **Dry run** and **Undo last change**; an action bar and a guidance line under the tree say what to do next, and changes wait as **pending changes** until you apply them<br>- Edits only the lines that change in each settings file, after backing up the whole `WTF` folder and every file it edits; refuses while WoW is running<br>- **Interface Backup**, a third tool: zips each game version's `Interface` and `WTF` folders (your addons and their settings) into one dated, checked zip; keeps the newest 10 per game version<br>- Restores a backup exactly, the `Interface` folder, the `WTF` folder or both, after listing what would be removed or changed; takes a safety backup first, and **Undo** puts the folders back<br>- Never follows linked addon folders (symlinks, junctions): they're left out of backups and kept by a restore<br>- How many backups and journals to keep is now one setting for every tool (10 each; 0 backups keeps them all), on the first settings screen<br>- `x` expands and `c` collapses every line of a tree, on every tree screen; the WTF Cleaner's **Clean** moves to `w`<br>- Every checkbox and box in a left panel has a row of its own, so `↑` / `↓` reach each one |
-| 1.0.0 | 2026-10-04 | - First release, with two tools in one app<br>- **WTF Cleaner**: finds settings left behind by addons you no longer use, shows them for review, backs them up and deletes them; works on one game version, one account or **All flavors**; **Dry run** and **Undo last clean**<br>- **Screenshot Organizer**: sorts screenshots into year, month and day folders, in place or into an archive folder; duplicate checks, copy mode, **Dry run** and **Undo last run**<br>- Works with every installed game version (Retail, Classic, Classic Era, Anniversary, PTR and Beta) on Windows, Mac, Linux and WSL<br>- Checks for updates and installs them for you |
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md), newest first.
 
 ## Credits
 
