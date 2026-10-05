@@ -436,6 +436,7 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         self._builder.build(tree)
         for node in self._walk_tree():
             node.set_label(self._label(node.data))
+        self.note_no_match(tree.root)  # after the labels: it has no data, so _label would blank it
         tree.get_node_at_line(0)  # lay the lines out now, so the cursor (and move_cursor) find the new nodes
         if cursor_id is not None:
             target = next((n for n in self._walk_tree() if n.data is not None and ident(n.data) == cursor_id), None)

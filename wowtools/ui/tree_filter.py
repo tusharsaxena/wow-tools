@@ -13,18 +13,21 @@ from __future__ import annotations
 from collections.abc import Callable, Collection, Hashable, Iterable, Sequence
 from typing import ClassVar, Generic, TypeVar
 
+from rich.text import Text
 from textual.actions import SkipAction
 from textual.binding import Binding
 from textual.widgets import Input
 
 from wowtools.core.events import log_event
 from wowtools.core.text import plural
+from wowtools.ui.dialogs import theme_colour, tick_mark
 
-__all__ = ["FILTER_BINDINGS", "FILTER_HINT", "FILTER_ID", "FILTER_PLACEHOLDER", "FilterBox", "FilterInput",
-           "ModelFilter", "ModelNode", "TextFilter", "TreeFilter", "hidden_by_filter"]
+__all__ = ["FILTER_BINDINGS", "FILTER_HINT", "FILTER_ID", "FILTER_PLACEHOLDER", "NO_MATCH_TEXT", "FilterBox",
+           "FilterInput", "ModelFilter", "ModelNode", "TextFilter", "TreeFilter", "hidden_by_filter"]
 
 FILTER_ID = "tree-filter"
 FILTER_PLACEHOLDER = "Filter (/)"
+NO_MATCH_TEXT = "Nothing matches the filter (Esc in the box clears it)"
 FILTER_HINT = "/ filter · "  # a screen's hint names it right before TREE_HINT
 # Every tree screen with a filter binds this (FilterBox's action). Priority, so `/` leaves another control that
 # would take the key first (an integer box would ring the bell); the action skips it to a text box.
@@ -169,6 +172,14 @@ class FilterBox:
         """What the current filter keeps and opens of the screen's model (see ModelFilter)."""
         return ModelFilter(self.text_filter, roots, children, texts, key)
 
+    def note_no_match(self, root) -> None:
+        """Every screen calls this at the end of a build: when the filter leaves nothing under the tree's root, a
+        dim line says so (NO_MATCH_TEXT) rather than an empty tree that reads as "nothing to do". It has no data,
+        so no tick, relabel or expand touches it. Status rows (a flavor not scanned, scan warnings) are filtered on
+        their names like every other row, so an empty root means nothing matched."""
+        if self.filtering and not root.children:
+            root.add_leaf(Text(NO_MATCH_TEXT, style="dim"))
+
     # --- the input -----------------------------------------------------------------------------
     def filter_input(self) -> Input:
         return self.query_one(self.FILTER_SELECTOR, Input)
@@ -257,9 +268,19 @@ class TreeFilter(FilterBox):
         shown = set(self.filter_keys(every))
         return list(self.tick_model().ticked_among(k for k in every if k not in shown))
 
-    def hidden_ticked_count(self) -> int:
-        """How many ticked items the filter hides."""
-        return len(self.hidden_ticked_keys())
+    def shown_tick_mark(self, items: Iterable, key: Callable[[object], Hashable] | None = None) -> tuple[str, str]:
+        """The tick mark of a node covering `items` (`key(item)` is its tick key; the item itself by default): over
+        the items the filter shows only, so a group's mark says what Space on it would tick or untick. One rule for
+        every tool's tree (the Ace3 builders only ever hold the shown keys); the ticks it hides are counted on the
+        summary line instead (hidden_ticked_note). No mark when the filter shows none of them."""
+        items = list(items)
+        if self.filtering:
+            keys = [item if key is None else key(item) for item in items]
+            shown = set(self.filter_keys(keys))
+            items = [item for item, k in zip(items, keys) if k in shown]
+            if not items:
+                return "  ", ""
+        return tick_mark(items, self.tick_model().unticked, key, success=theme_colour(self.app, "success"))
 
     def hidden_cause(self, keys: Collection[Hashable]) -> str:
         """What hides these ticked keys, for the note: the filter (a screen whose own controls narrow the tree too

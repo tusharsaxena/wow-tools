@@ -379,21 +379,21 @@ class TreeFilterTest(TuiTestCase):
                 async def test(app, review, pilot):
                     await pilot.press("a")  # no filter: everything
                     self.assertEqual(review.ticked(), KEYS)
-                    self.assertEqual(review.hidden_ticked_count(), 0)
+                    self.assertEqual(len(review.hidden_ticked_keys()), 0)
                     await self.type_filter(app, review, pilot, "ap")
                     await pilot.press("enter")
                     self.assertIs(review.focused, review.query_one("#toy", Tree))
                     await pilot.press("n")  # unticks apple and apricot only
                     self.assertEqual(review.ticked(), [("Beta", "Banana"), ("Beta", "cherry")])
-                    self.assertEqual(review.hidden_ticked_count(), 2)  # hidden, still ticked, still counted
+                    self.assertEqual(len(review.hidden_ticked_keys()), 2)  # hidden, still ticked, still counted
                     self.assertEqual(review.hidden_ticked_note(), "2 selected items are hidden by the filter")
                     self.assertEqual(summary(review), "2 ticked · 2 selected items are hidden by the filter")
                     await pilot.press("a")
                     self.assertEqual(review.ticked(), KEYS)
-                    self.assertEqual(review.hidden_ticked_count(), 2)
+                    self.assertEqual(len(review.hidden_ticked_keys()), 2)
                     await pilot.press("slash", "escape")  # cleared: nothing hidden
                     await settle(app, pilot)
-                    self.assertEqual(review.hidden_ticked_count(), 0)
+                    self.assertEqual(len(review.hidden_ticked_keys()), 0)
                     self.assertEqual(summary(review), "4 ticked")
                 await self.run_toy(test, stores_ticked)
 

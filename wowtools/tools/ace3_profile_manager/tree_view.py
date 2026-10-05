@@ -101,10 +101,13 @@ class TreeBuilder:
         for flavor_scan in self.scan.flavors:
             self._flavor(root, flavor_scan, multi)
         warnings = self.scan.warnings
-        if warnings:
-            node = self._add(root, ("warnings", warnings),
-                             Text(f"⚠ Scan warnings ({len(warnings)})", style=f"bold {self.warning_style}"))
-            for warning in warnings:
+        title = f"⚠ Scan warnings ({len(warnings)})"
+        # The filter keeps the group when its title matches (all of it) or the warnings that match, as any group
+        shown = warnings if self.text_filter.matches(title) else \
+            [w for w in warnings if self.text_filter.matches(w.message)]
+        if shown:
+            node = self._add(root, ("warnings", warnings), Text(title, style=f"bold {self.warning_style}"))
+            for warning in shown:
                 self._add(node, ("note", warning.message), Text(warning.message, style="dim"), leaf=True)
         root.expand()
         self._gather(root)
@@ -123,6 +126,8 @@ class TreeBuilder:
         name = flavor_scan.flavor.display_name
         data = ("flavor", flavor_scan)
         if flavor_scan.error:
+            if not self.text_filter.matches(name, flavor_scan.error):
+                return  # filtered on its name and its error, like any other row
             self._add(root, data, Text.assemble((name, ACCENT), (f"  {flavor_scan.error}", self.warning_style)),
                       (), leaf=True)
             return

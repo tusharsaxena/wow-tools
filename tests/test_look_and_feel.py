@@ -24,8 +24,8 @@ from wowtools.ui.dialogs import (FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_H
                                  ProgressScreen)
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import MENU_HINT, WowToolsApp
-from wowtools.ui.tree_filter import FILTER_HINT, FILTER_PLACEHOLDER, FilterInput
-from wowtools.ui.widgets import NavHint, action_kind
+from wowtools.ui.tree_filter import FILTER_HINT, FILTER_PLACEHOLDER, NO_MATCH_TEXT, FilterInput
+from wowtools.ui.widgets import CHECK_OFF, NavHint, action_kind
 
 POPUP_MAX_WIDTH = 100  # a popup or confirm at LARGE: a readable width, never stretched edge to edge
 FORM_MAX_WIDTH = 100  # a settings form, at any size
@@ -66,8 +66,9 @@ class LookAndFeelTest(TuiTestCase):
         await pilot.pause()
         app.open_tool(tool)
         await settle(app, pilot)
-        app.screen._save()  # first open: the tool's settings, saved as they are
-        await settle(app, pilot)
+        if not isinstance(app.screen, FlavorScreen):
+            app.screen._save()  # first open: the tool's settings, saved as they are
+            await settle(app, pilot)
         self.assertIsInstance(app.screen, FlavorScreen)
         app.screen.dismiss(ALL_FLAVORS)
         await settle(app, pilot)
@@ -191,6 +192,70 @@ class LookAndFeelTest(TuiTestCase):
                         self.assertEqual(field.value, "")
                         self.assertIs(app.screen, screen)
                         self.assertIs(screen.focused, tree)
+
+    async def test_a_group_mark_counts_what_the_filter_shows(self):
+        """One rule in every tick tree: with the filter set, a group's and the root's mark count only the items the
+        filter shows (what Space on them ticks); the ticks it hides are said on the bottom line. Tick everything,
+        filter to part of it, untick what is shown: the root is unticked (✘) in every tool, not part-ticked."""
+        texts = {"wtf-cleaner": "auctionator", "screenshot-organizer": "classic", "interface-backup": "classic",
+                 "ace3-profile-manager": "kickcd", "blacklist": "elv"}
+        for tool, text in texts.items():
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    if tool == "blacklist":
+                        review = await self.open_review(app, pilot, "ace3-profile-manager")
+                        review.action_edit_blacklist()
+                        await settle(app, pilot)
+                        screen = app.screen
+                    else:
+                        screen = await self.open_review(app, pilot, tool)
+                    tree = screen.query_one(screen.TREE_SELECTOR, Tree)
+                    tree.focus()
+                    await pilot.press("a")
+                    await settle(app, pilot)
+                    screen.filter_input().value = text
+                    await settle(app, pilot)
+                    tree.focus()
+                    await pilot.press("n")
+                    await settle(app, pilot)
+                    self.assertTrue(tree.root.label.plain.startswith(CHECK_OFF), tree.root.label.plain)
+                    self.assertIn("hidden by", str(screen.query_one("#summary").render()))
+
+    async def test_a_filter_that_matches_nothing_says_so(self):
+        """Every tick tree: a filter that matches nothing leaves one dim line saying so (status rows such as a
+        flavor that was not scanned are filtered on their names too, so nothing else stays)."""
+        for tool in (*TOOLS, "blacklist"):
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    screen = await self.open_review(app, pilot, "ace3-profile-manager" if tool == "blacklist"
+                                                    else tool)
+                    if tool == "blacklist":
+                        screen.action_edit_blacklist()
+                        await settle(app, pilot)
+                        screen = app.screen
+                    tree = screen.query_one(screen.TREE_SELECTOR, Tree)
+                    screen.filter_input().value = "zzzq"
+                    await settle(app, pilot)
+                    self.assertEqual([str(n.label) for n in tree.root.children], [NO_MATCH_TEXT])
+                    screen.filter_input().value = ""
+                    await settle(app, pilot)
+                    self.assertNotIn(NO_MATCH_TEXT, [str(n.label) for n in tree.root.children])
+
+    async def test_the_filter_keeps_a_failed_scans_message(self):
+        """Typing in the filter after a failed scan leaves the failure on the bottom line (nothing to rebuild)."""
+        for tool, model in (("screenshot-organizer", "plan"), ("interface-backup", "scans")):
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    review = await self.open_review(app, pilot, tool)
+                    setattr(review, model, None)
+                    review._scan_failed("The scan failed: disk gone")
+                    await settle(app, pilot)
+                    review.filter_input().value = "re"
+                    await settle(app, pilot)
+                    self.assertIn("disk gone", str(review.query_one("#summary").render()))
 
     async def test_review_tree_expands_and_collapses_all(self):
         for tool in TOOLS:

@@ -30,7 +30,7 @@ from wowtools.tools.screenshot_organizer.settings import load_settings, validate
 from wowtools.tools.screenshot_organizer.undo import undo
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
-                                relabel_branch, theme_colour, tick_mark, two_pane_css)
+                                relabel_branch, two_pane_css)
 from wowtools.ui.result_screen import ResultBase, result_bindings, status_style
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, ModelFilter, ModelNode, TreeFilter
@@ -349,6 +349,9 @@ class ShotReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             return data[1].path.name
         return {"filed": FILED_TITLE, "conflicts": "Conflicts", "skipped": "Skipped"}.get(kind, data[-1])
 
+    def _can_rebuild(self) -> bool:
+        return self.plan is not None  # before a scan, or after a failed one, the bottom line keeps what it says
+
     def _rebuild(self) -> None:
         plan = self.plan
         if plan is None:
@@ -364,6 +367,7 @@ class ShotReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         for flavor in flavors:
             if kept.shows(flavor):
                 self._add_node(tree.root, flavor, kept)
+        self.note_no_match(tree.root)
         tree.root.expand()
         self._update_summary()
 
@@ -405,7 +409,7 @@ class ShotReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                 node.add_leaf(self._label(data), data=data)
 
     def _mark(self, items: list[ShotItem]) -> tuple[str, str]:
-        return tick_mark(items, self.unchecked, lambda i: i.src, success=theme_colour(self.app, "success"))
+        return self.shown_tick_mark(items, lambda i: i.src)
 
     def _label(self, data) -> Text:
         kind = data[0]

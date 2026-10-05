@@ -134,12 +134,13 @@ changing or writing files (a clean, a sort, a backup, a restore, a profile chang
 finished.
 
 Buttons are coloured by what they do, the same in every tool: **red** deletes, **amber** overwrites or changes
-files, **green** only adds something new (a backup, an Ace3 profile copy), **violet** undoes, **cyan** is a dry run
+files, **green** adds something new (a backup, an Ace3 profile copy), **violet** undoes, **cyan** is a dry run
 that changes nothing, **blue** confirms (Save, OK), **grey** moves between screens or rescans, and **dim grey** backs
 out (Cancel, Back, Quit).
 
 Every "are you sure?" window opens with **Yes** selected, coloured the same way: red when it deletes, overwrites,
-undoes or throws away pending changes, cyan for a dry run, green for a backup. So read it before you press Enter.
+undoes or throws away pending changes, cyan for a dry run. A backup's is red when older backups are deleted to
+keep the number you set, green only when every backup is kept. So read it before you press Enter.
 For a quarter of a second after it opens, Enter and Space do nothing there, and a key you are still holding is
 ignored until you let it go, so it can't answer for you (the update offer's **Update now** waits the same way). `y` answers Yes, `n` or `Esc` No.
 

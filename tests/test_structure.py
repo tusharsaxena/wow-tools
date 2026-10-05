@@ -119,7 +119,7 @@ class StructureTest(unittest.TestCase):
         classes = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
                    if isinstance(node, ast.ClassDef) and node.name in names}
         self.assertEqual(classes, {("wowtools/ui/tree_filter.py", n) for n in names})
-        shared = {"action_focus_filter", "clear_filter", "hidden_by_filter", "hidden_ticked_count",
+        shared = {"action_focus_filter", "clear_filter", "hidden_by_filter", "shown_tick_mark",
                   "hidden_ticked_note"}
         where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & shared}
         self.assertEqual(where, {("wowtools/ui/tree_filter.py", n) for n in shared})

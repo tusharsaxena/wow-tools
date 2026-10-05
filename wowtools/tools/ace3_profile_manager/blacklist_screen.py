@@ -24,7 +24,7 @@ from wowtools.tools.ace3_profile_manager.scanner import ScanResult, scan_flavors
 from wowtools.tools.ace3_profile_manager.settings import WILDCARD, Pair, is_blacklisted, unique_pairs
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, relabel_branch, review_hint,
-                                theme_colour, tick_mark, two_pane_css)
+                                two_pane_css)
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, TreeFilter
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
@@ -186,6 +186,7 @@ class BlacklistScreen(TreeFilter, ReviewBase, Screen["list[Pair] | None"]):
                 node.allow_expand = False
             for name in shown:
                 node.add_leaf(Text(""), data=("addon", folder, addons[name], name in missing))
+        self.note_no_match(root)
         root.expand()
         self._refresh_labels()
 
@@ -203,16 +204,11 @@ class BlacklistScreen(TreeFilter, ReviewBase, Screen["list[Pair] | None"]):
             return list(self.names)
         return []
 
-    def _shown_keys(self, data) -> list[Key]:
-        """The keys under this node that the filter shows: its mark counts these."""
-        return list(self.filter_keys(self._keys(data)))
-
     def _label(self, data) -> Text:
         if data is None:
             return Text("")
-        keys = self._shown_keys(data)
-        mark = tick_mark(keys, self.tick_model().unticked, success=theme_colour(self.app, "success")) if keys \
-            else ("  ", "")
+        keys = self._keys(data)
+        mark = self.shown_tick_mark(keys) if keys else ("  ", "")
         if data[0] == "flavor":
             return Text.assemble(mark, (data[2], ACCENT))
         if data[0] == "addon":

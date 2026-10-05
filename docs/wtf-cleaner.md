@@ -109,7 +109,8 @@ suggests nothing there. The scan notes this in its warnings.
 `/` puts you in the **Filter** box on the left. Type part of a name: an account, a character, an addon or a file
 (upper or lower case doesn't matter). The tree keeps the matching lines and the groups they're in, and opens an
 addon when one of its files matches; a matching account or addon keeps everything in it. The filter works on top
-of the rules. `Enter` goes back to the tree and keeps the filter; `Esc` in the box clears it.
+of the rules. A game version that wasn't scanned stays only while its name matches, and a filter that matches
+nothing says so in the tree. `Enter` goes back to the tree and keeps the filter; `Esc` in the box clears it.
 
 The filter only changes what you see. `a` and `n` tick and untick what it shows; a file it hides keeps its tick and
 is still cleaned. When that's the case, the bottom bar and the confirmation say so ("12 selected files are hidden

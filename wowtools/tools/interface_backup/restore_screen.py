@@ -334,6 +334,7 @@ class RestoreScreen(FilterBox, ButtonActions, TwoPaneFocus, Screen[RestorePlan |
             else:
                 lines = tree.root.add(label, data=effect.data, allow_expand=True)  # lines load on expand
                 self._open_if(lines, kept.opens(effect))
+        self.note_no_match(tree.root)  # before the notes, which are not items: the filter never hides them
         if plan.low_space:  # the notes are not items: the filter never hides them
             tree.root.add_leaf(Text(f"⚠ Low disk space on the WoW drive: {human_size(plan.free_bytes)} free, "
                                     f"~{human_size(plan.bytes_needed)} needed", style=warning), data=("note",))

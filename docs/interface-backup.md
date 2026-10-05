@@ -130,7 +130,7 @@ files. The backup itself works the same, and the results screen shows the sizes.
 | `a` / `n` | Tick / untick every game version shown |
 | `/` | Filter the tree (see below) |
 | `Enter` | Open or close the highlighted line; on a backup, **Restore** it |
-| `b` | **Back up** the ticked game versions (asks first; **Yes** is selected, in green) |
+| `b` | **Back up** the ticked game versions (asks first; **Yes** is selected, red when older backups are deleted to keep the number set, green when all are kept) |
 | `e` | **Restore** the highlighted backup |
 | `x` / `c` | Expand every line of the tree / collapse them all |
 | `r` | Scan again |

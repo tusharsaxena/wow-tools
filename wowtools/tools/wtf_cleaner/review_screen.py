@@ -35,7 +35,7 @@ from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_di
 from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceScreen, ConfirmScreen,
-                                ProgressScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
+                                ProgressScreen, relabel_branch, two_pane_css)
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, ModelFilter, ModelNode, TreeFilter
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
@@ -287,13 +287,16 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         tree = self.query_one("#proposal", Tree)
         tree.clear()
         tree.root.data = ("group", self.proposal.items, self._root_name())
-        tree.root.set_label(self._label(tree.root.data))
         self._filter_texts = {}
-        top: list[ModelNode | Text] = []  # the flavors (several) or the accounts (one); a Text: a flavor not scanned
+        # The flavors (several) or the accounts (one); a (name, Text): a flavor not scanned, kept by the filter when
+        # its name matches (as a flavor row is in every tool)
+        top: list[ModelNode | tuple[str, Text]] = []
         for flavor_scan in self.scans:
             if flavor_scan.result is None:  # several flavors only: say why this one is not offered
-                top.append(Text.assemble("  ", (flavor_scan.flavor.display_name, ACCENT),
-                                         (f"  not scanned: {flavor_scan.note or flavor_scan.error}", WARNING_STYLE)))
+                name = flavor_scan.flavor.display_name
+                top.append((name, Text.assemble("  ", (name, ACCENT),
+                                                (f"  not scanned: {flavor_scan.note or flavor_scan.error}",
+                                                 WARNING_STYLE))))
                 continue
             items = by_folder[flavor_scan.flavor.folder].items
             if self.multi:
@@ -305,10 +308,12 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         kept = self.model_filter([n for n in top if isinstance(n, ModelNode)], lambda n: n.children,
                                  lambda n: (self._filter_name(n.data),), key=id)
         for node in top:
-            if isinstance(node, Text):
-                tree.root.add_leaf(node)  # not scanned: said whatever the filter
-            else:
+            if isinstance(node, ModelNode):
                 self._add_node(tree.root, node, kept)
+            elif self.text_filter.matches(node[0]):
+                tree.root.add_leaf(node[1])  # not scanned
+        self.note_no_match(tree.root)
+        tree.root.set_label(self._label(tree.root.data))  # its mark counts what the filter shows: texts known now
         tree.root.expand()
         self._update_summary()
 
@@ -367,7 +372,7 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         return [f.path for item in data[1] for f in item.files]
 
     def _mark(self, paths: list[Path]) -> tuple[str, str]:
-        return tick_mark(paths, self.unchecked, success=theme_colour(self.app, "success"))
+        return self.shown_tick_mark(paths)
 
     @staticmethod
     def _reasons(reasons: list[str]) -> Text:

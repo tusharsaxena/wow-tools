@@ -447,6 +447,18 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertIsInstance(app.screen, ToolMenuScreen)
 
     # --- back up ----------------------------------------------------------------------------------
+    async def test_back_up_keeping_every_backup_is_green(self):
+        """With keep_backups 0 nothing is deleted: the backup only adds a zip, so its Yes is green (create)."""
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        self.cfg.set("general", "keep_backups", "0", log=False)
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await pilot.press("b")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assert_starts_on_yes(app.screen, "create")
+
     async def test_back_up_all_flavors(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
         app = self.make_app()
@@ -456,7 +468,8 @@ class InterfaceBackupAppTest(TuiTestCase):
                 await pilot.press("b")
                 await settle(app, pilot)
                 self.assertIsInstance(app.screen, ConfirmScreen)
-                self.assert_starts_on_yes(app.screen, "create")  # a backup only adds a zip
+                # D13: red, the newest 10 are kept and older ones deleted
+                self.assert_starts_on_yes(app.screen, "destructive")
                 self.assertIn("Back up 3 flavors?", app.screen.title_text)
                 await pilot.press("y")
                 await settle(app, pilot)

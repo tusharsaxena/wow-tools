@@ -349,11 +349,11 @@ class ReviewTest(AceAppBase):
             await settle(app, pilot)
             self.assertEqual(review.ticked, everything - shown)
             hidden = len(everything - shown)
-            self.assertEqual(review.hidden_ticked_count(), hidden)
+            self.assertEqual(len(review.hidden_ticked_keys()), hidden)
             self.assertIn(f"{hidden} selected items are hidden by the filter", review.summary_text)
             review.query_one("#search", Input).value = ""
             await settle(app, pilot)
-            self.assertEqual(review.hidden_ticked_count(), 0)
+            self.assertEqual(len(review.hidden_ticked_keys()), 0)
             self.assertNotIn("hidden by the filter", review.summary_text)
 
     async def test_hidden_ticks_are_said_in_the_popups_that_take_them(self):
@@ -389,7 +389,7 @@ class ReviewTest(AceAppBase):
             review.query_one("#only-multi").value = True
             await settle(app, pilot)
             self.assertFalse(review.filtering)
-            hidden = review.hidden_ticked_count()
+            hidden = len(review.hidden_ticked_keys())
             self.assertGreater(hidden, 0)
             self.assertIn(f"{hidden} selected items are hidden by the Show boxes", review.summary_text)
             self.assertNotIn("filter", review.summary_text)

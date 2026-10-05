@@ -40,7 +40,7 @@ from wowtools.tools.interface_backup.settings import load_settings, resolve_back
 from wowtools.tools.interface_backup.undo import undo_restore
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
-                                relabel_branch, theme_colour, tick_mark, two_pane_css)
+                                relabel_branch, theme_colour, two_pane_css)
 from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, ModelFilter, ModelNode, TreeFilter
@@ -383,6 +383,9 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         return self.model_filter(self._model(self.scans or []), lambda n: n.children,
                                  lambda n: (self._filter_name(n.data),), key=self._ident)
 
+    def _can_rebuild(self) -> bool:
+        return self.scans is not None  # before a scan, or after a failed one, the bottom line keeps what it says
+
     def _rebuild(self) -> None:
         scans = self.scans
         if scans is None:
@@ -425,6 +428,7 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                 if opens and added is not None:
                     self._load_children(added)  # the filter opens it: its matches show
                     added.expand()
+        self.note_no_match(tree.root)
         tree.root.expand()
         self._update_summary()
 
@@ -521,7 +525,7 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
     def _mark(self, scans: list[FlavorScan]) -> tuple[str, str]:
         if not scans:
             return "  ", ""  # nothing to back up: no tick, as in the other tools
-        return tick_mark(scans, self.unchecked, lambda s: s.flavor.folder, success=theme_colour(self.app, "success"))
+        return self.shown_tick_mark(scans, lambda s: s.flavor.folder)
 
     def _scans_of(self, data) -> list[FlavorScan]:
         """The flavors a tick on this node covers: those with something to back up (the others have no tick)."""
@@ -647,7 +651,8 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         hidden = self.hidden_ticked_note()
         if hidden:
             alerts = (*alerts, f"{hidden}: they are backed up too.")
-        self.app.push_screen(ConfirmScreen(title, body, alerts, kind="create"),
+        # D13: Yes is red when the run deletes; with a retention set, it deletes the backups beyond it
+        self.app.push_screen(ConfirmScreen(title, body, alerts, kind="destructive" if keep > 0 else "create"),
                              lambda ok: self._backup_confirmed(ok, scans, root, keep))
 
     def _backup_confirmed(self, ok: bool | None, scans: list[FlavorScan], root: Path, keep: int) -> None:
