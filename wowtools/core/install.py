@@ -38,10 +38,6 @@ COMMON_SUBPATHS = (
 )
 
 
-class InstallError(Exception):
-    """The configured folder is not a usable WoW install."""
-
-
 def _subdirs(path: Path, on_error: ErrorHandler | None = None) -> list[Path]:
     if not path.is_dir():
         return []

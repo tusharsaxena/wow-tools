@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import time
 import zipfile
 from dataclasses import asdict, dataclass
@@ -26,7 +25,6 @@ from wowtools.core.snapshot import LIST_REPORT_EVERY, SnapshotProgress, wtf_file
 MARKER_NAME = "clean-in-progress.json"
 SNAPSHOT_SUBDIR = "backup"
 SNAPSHOT_PREFIX = "backup"
-SNAPSHOT_NAME = re.compile(r"^backup-(?P<flavor>.+?)-(?P<stamp>\d{8}-\d{6})(?:-(?P<n>\d+))?\.zip$")
 
 
 @dataclass(frozen=True)

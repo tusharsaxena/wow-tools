@@ -61,7 +61,6 @@ class StructureTest(unittest.TestCase):
         from wowtools.tools.screenshot_organizer.review_screen import ShotProgressScreen
         from wowtools.tools.wtf_cleaner import review_screen
         from wowtools.ui import dialogs
-        self.assertIs(review_screen.ConfirmScreen, dialogs.ConfirmScreen)  # kept as a re-export for one release
         self.assertEqual(dialogs.ConfirmScreen.__module__, "wowtools.ui.dialogs")
         self.assertTrue(issubclass(review_screen.CleanProgressScreen, dialogs.ProgressScreen))
         self.assertTrue(issubclass(ShotProgressScreen, dialogs.ProgressScreen))
@@ -84,12 +83,23 @@ class StructureTest(unittest.TestCase):
         self.assertEqual(len(found.get("86400.0", [])), 1)
 
     def test_dead_code_is_gone(self):
+        from wowtools.core import install
         from wowtools.core.journal import JournalWriter
         from wowtools.core.migrate import FolderMerge
+        from wowtools.tools.wtf_cleaner import review_screen, safety
         from wowtools.tools.wtf_cleaner.rules import ProposalItem
         self.assertFalse(hasattr(JournalWriter, "is_open"))
         self.assertFalse(hasattr(FolderMerge, "changed"))
         self.assertFalse(hasattr(ProposalItem, "scope"))
+        self.assertFalse(hasattr(install, "InstallError"))
+        self.assertFalse(hasattr(safety, "SNAPSHOT_NAME"))
+        self.assertFalse(hasattr(safety, "re"))
+        self.assertNotIn("ConfirmScreen", review_screen.__all__)  # import it from wowtools.ui.dialogs
+
+    def test_core_never_imports_textual(self):
+        offenders = sorted(f"{rel(p)} imports {m}" for p in modules("wowtools/core") for m in imported_modules(tree(p))
+                           if m == "textual" or m.startswith("textual."))
+        self.assertEqual(offenders, [])
 
     def test_every_module_has_the_future_import(self):
         missing = []

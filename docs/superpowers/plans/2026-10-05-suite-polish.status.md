@@ -7,7 +7,7 @@ task; push after every milestone. Never merge without the user's go-ahead.
 | Task | Title | Status | Commit | Notes |
 |---|---|---|---|---|
 | T0.1 | branch, spec, plan, ledger | done | | |
-| T0.2 | dead code, core-no-textual test | todo | | |
+| T0.2 | dead code, core-no-textual test | done | | InstallError, SNAPSHOT_NAME + `import re`, ConfirmScreen re-export gone; pinned; core-no-textual AST test. 1056 tests OK (2 skipped) |
 | T0.3 | version 0.1.0, CHANGELOG.md | todo | | |
 | T1.1 | core helpers | todo | | |
 | T1.2 | review-screen base in ui | todo | | |
@@ -27,3 +27,5 @@ task; push after every milestone. Never merge without the user's go-ahead.
 | T6.2 | review, fixes, push | todo | | |
 
 ## Decisions taken during the build
+
+- **T0.2** The ConfirmScreen re-export is pinned as `"ConfirmScreen" not in review_screen.__all__`, not `not hasattr`: review_screen still imports ConfirmScreen from `ui.dialogs` for its own confirms, so the name stays a module attribute. Nothing outside frozen historical plans imported it from there. `ruff check` panics on a stale `.ruff_cache` in this checkout; `ruff check --no-cache .` is clean.
