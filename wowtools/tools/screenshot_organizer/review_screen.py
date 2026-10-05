@@ -555,6 +555,7 @@ class ShotReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             log_exception("shots.ui", exc)
             self.app.call_from_thread(self._job_failed, exc)
             return
+        progress_screen.finish_all()  # the run ended: the board ends at m of m
         self.app.call_from_thread(self._job_done, result)
 
     def _close_progress(self) -> None:

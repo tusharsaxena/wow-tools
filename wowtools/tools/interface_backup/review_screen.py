@@ -677,6 +677,7 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         except Exception as exc:  # noqa: BLE001 - shown by the UI
             self.app.call_from_thread(self._job_failed, exc)
             return
+        screen.finish_all()  # the run ended: the board ends at m of m
         self.app.call_from_thread(self._job_done, done, result)
 
     def _close_progress(self) -> None:

@@ -117,6 +117,21 @@ class ProgressBoardTest(unittest.TestCase):
         _, view = board.snapshot()
         self.assertEqual(([r.label for r in view.rows], view.done), (["c", "b"], 1))
 
+    def test_finish_all_ends_a_run_at_m_of_m(self):
+        board = ProgressBoard(1, 3)
+        for unit in "abc":
+            board.start(unit)
+            board.report("zip", 2, 2)
+        self.assertEqual(board.snapshot()[1].done, 2)  # the last unit runs until the run says it ended
+        board.finish_all()
+        _, view = board.snapshot()
+        self.assertEqual((view.done, view.units, view.rows[0].label, view.rows[0].finished), (3, 3, "c", True))
+        single = ProgressBoard(1, 1, first_stage="undo")
+        single.report("undo", 5, 5)
+        single.finish_all()
+        _, view = single.snapshot()
+        self.assertEqual((view.done, view.units), (1, 1))
+
     def test_a_late_report_of_a_finished_unit_is_dropped(self):
         board = ProgressBoard(1, 2)
         board.report_unit("a", "zip", 1, 2)
@@ -227,7 +242,7 @@ class ProgressScreenTest(TuiTestCase):
             self.assertEqual(str(screen.query_one("#demo-overall-label", Static).render()), "0 of 6 game versions")
         app = Host()
         async with app.run_test(size=BASE) as pilot:  # Textual's Bar is 32 wide unless told to fill its row
-            screen = Demo("Backing up", first_stage="work")
+            screen = Demo("Backing up", units=FLAVORS[:2], first_stage="work")
             await app.push_screen(screen)
             await pilot.pause()
             for bar_id in ("#demo-row-0-bar", "#demo-overall"):
@@ -252,6 +267,45 @@ class ProgressScreenTest(TuiTestCase):
             labels = [str(screen.query_one(f"#demo-row-{i}-label", Static).render()) for i in range(2)]
             self.assertEqual(labels, ["Classic Era", "Classic"])
             self.assertEqual(str(screen.query_one("#demo-overall-label", Static).render()), "1 of 3 game versions")
+
+    async def test_a_single_unit_run_has_no_overall_bar(self):
+        for make in (lambda: Demo("Undoing", first_stage="undo"), lambda: Demo("Restoring", units=FLAVORS[:1]),
+                     lambda: ShotProgressScreen(first_stage="undo"),
+                     lambda: BackupProgressScreen("Restoring", "verify", ["Retail"])):
+            app = Host()
+            async with app.run_test(size=TINY) as pilot:
+                screen = make()
+                with self.subTest(screen=type(screen).__name__, title=screen.title_text):
+                    await app.push_screen(screen)
+                    screen.report(screen.board.snapshot()[1].rows[0].stage or "work", 5, 5)
+                    screen.refresh_progress()
+                    await pilot.pause()
+                    self.assertFalse(screen.query_one(f"#{screen.ID_PREFIX}-overall-row").display)
+                    box = screen.query_one(f"#{screen.ID_PREFIX}-box").region
+                    self.assertEqual(box.height, screen.box_height())
+                    self.assertEqual(screen.box_height(), screen.rows + 8)
+                    detail = screen.query_one(f"#{screen.ID_PREFIX}-detail").region
+                    self.assertTrue(box.contains_region(detail))
+
+    async def test_a_finished_run_ends_at_m_of_m(self):
+        app = Host()
+        async with app.run_test(size=BASE) as pilot:
+            screen = Demo("Backing up", units=FLAVORS[:3])
+            await app.push_screen(screen)
+            workers = Workers(self)
+            for i, flavor in enumerate(FLAVORS[:3]):  # a serial run: one thread starts each unit in turn
+                workers.on("1", lambda f=flavor, i=i: (screen.start_unit(f, i, 3), screen.report("work", 4, 4)))
+            screen.refresh_progress()
+            await pilot.pause()
+            self.assertEqual(str(screen.query_one("#demo-overall-label", Static).render()), "2 of 3 game versions")
+            screen.finish_all()
+            screen.refresh_progress()
+            await pilot.pause()
+            self.assertTrue(screen.query_one("#demo-overall-row").display)
+            self.assertEqual(str(screen.query_one("#demo-overall-label", Static).render()), "3 of 3 game versions")
+            overall = screen.query_one("#demo-overall", ProgressBar)
+            self.assertEqual((overall.progress, overall.total), (3, 3))
+            self.assertEqual(str(screen.query_one("#demo-row-0-stage", Static).render()), "Done")
 
     async def test_reports_from_threads_are_drawn_on_the_timer(self):
         app = Host()

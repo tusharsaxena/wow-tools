@@ -159,3 +159,13 @@ task; push after every milestone. Never merge without the user's go-ahead.
   its stage. The detail line names the unit when there is more than one row.
 - **T5.2** IB's "throttled" test became `test_progress_never_waits_for_the_ui_thread`: every per-file report reaches
   the board (>600 for 300 files) while `call_from_thread` is called fewer than 20 times for the whole job.
+- **T5.2** review: 3 findings, 3 handled (2 fixed, 1 deferred), 0 rejected. Fixed (both mediums, one issue): no tool
+  finished the last unit, so a single-unit run showed an "Overall" bar stuck at 0 of 1 and a multi-unit run ended at
+  m-1 of m. The overall row (`<prefix>-overall-row`) is now shown only when the popup opens with more than one unit
+  (box height rows+8 without it, rows+10 with it, fixed at open), and `ProgressBoard.finish_all()` /
+  `ProgressScreen.finish_all()` ends the running units; every tool's worker calls it once its job returns (WTF
+  clean/undo, Shots job, IB job, Ace3 apply/undo/recover). New tests: board `finish_all` (3 of 3, single 1 of 1), a
+  single-unit popup has no overall row at TINY (Demo, Shots undo, IB restore), a serial 3-unit popup ends at "3 of
+  3 game versions" with the last row Done. Deferred (low): docs/assets/screenshot-03-wtfcleaner-in-progress.png
+  (docs/wtf-cleaner.md) and screenshot-06-screenshot-organizer-in-progress.png (docs/screenshot-organizer.md) show the
+  old single-bar popup; **T6.1 and the pre-release screenshot request must retake both**. 1241 tests OK (2 skipped).

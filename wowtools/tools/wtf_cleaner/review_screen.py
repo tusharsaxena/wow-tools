@@ -608,6 +608,7 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             log_exception("clean", exc)
             self.app.call_from_thread(self._clean_crashed, exc, dry_run, backup_dir if backup else None)
             return
+        progress_screen.finish_all()  # the run ended: the board ends at m of m
         stopped = result.stopped
         if stopped is not None and isinstance(stopped.error, CleanError):
             log_exception("clean", stopped.error)
@@ -726,6 +727,7 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             log_exception("clean.undo", exc)
             self.app.call_from_thread(self._undo_failed, exc)
             return
+        progress_screen.finish_all()
         self.app.call_from_thread(self._undone, result)
 
     def _undo_failed(self, exc: Exception) -> None:

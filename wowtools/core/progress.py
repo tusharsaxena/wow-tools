@@ -133,6 +133,14 @@ class ProgressBoard:
                 self._finish(unit)
                 self._version += 1
 
+    def finish_all(self) -> None:
+        """The run ended: every unit still running (the last one of a serial run, the placeholder) is done, so the
+        board ends at `units` of `units`."""
+        with self._lock:
+            for unit in list(self._running):
+                self._finish(unit)
+            self._version += 1
+
     def report(self, stage: str, current: int = 0, total: int = 0, detail: str | None = None) -> None:
         """progress(stage, current, total, detail) of the unit the calling thread runs."""
         with self._lock:

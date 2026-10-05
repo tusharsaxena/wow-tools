@@ -441,19 +441,21 @@ class InfoScreen(TreeKeys, ModalScreen[None]):
 
 class ProgressScreen(ModalScreen[None]):
     """Shown while a run, dry run or undo works in a worker. One box for every tool, the same size from open to
-    close: a title, an overall bar ("1 of 3 game versions"), one row per running unit (its label, stage and bar)
+    close: a title, an overall bar ("1 of 3 game versions", only when the run was opened with more than one unit:
+    a single-unit run's one row is its whole progress), one row per running unit (its label, stage and bar)
     and the newest detail (a file), every line one line high and ellipsised. There are min(parallelism, units)
     unit rows, chosen at open: a serial run has one, reused by each unit in turn; a parallel run gives a finished
     unit's row to the next one.
 
-    A tool subclasses it with its own ID_PREFIX (widget ids <prefix>-box, -title, -overall, -overall-label,
-    -row-<i>-label, -row-<i>-stage, -row-<i>-bar, -detail), STAGE_TITLES and SIMULATED_STAGE (the stage a dry run
-    calls "Simulating").
+    A tool subclasses it with its own ID_PREFIX (widget ids <prefix>-box, -title, -overall-row, -overall,
+    -overall-label, -row-<i>-label, -row-<i>-stage, -row-<i>-bar, -detail), STAGE_TITLES and SIMULATED_STAGE (the
+    stage a dry run calls "Simulating").
 
     The workers write to it directly, from any thread, and never wait for the UI: report(stage, current, total,
     detail) is a serial run's progress callback, report_unit(unit, stage, ...) a unit-tagged one's (run_units),
     start_unit(unit, index, total) says a unit starts (run_units' on_start, a tool's on_flavor) and
-    finish_unit(unit) that it ended. They land in a ProgressBoard (core/progress.py, locked), which the screen
+    finish_unit(unit) that it ended; finish_all() (the worker, once its job returned) ends the units still
+    running, so the board ends at "m of m" and the last row shows Done. They land in a ProgressBoard (core/progress.py, locked), which the screen
     draws on a timer (PROGRESS_INTERVAL), so N threads never queue on the UI loop. A total of 0 means "not known"
     and runs that row's bar as indeterminate."""
 
@@ -488,6 +490,7 @@ class ProgressScreen(ModalScreen[None]):
         self.what = what
         units = list(units)
         self.rows = workers_for(parallelism, len(units)) if units else 1
+        self.show_overall = len(units) > 1  # fixed at open, as the box's height is
         # The label column is as wide as the longest unit's label (up to PROGRESS_LABEL_WIDTH), fixed at open; a
         # run without named units has none and a unit's label (from start_unit) goes in front of its stage.
         self.label_width = min(max((len(label(u)) for u in units), default=0), PROGRESS_LABEL_WIDTH)
@@ -508,20 +511,25 @@ class ProgressScreen(ModalScreen[None]):
     def finish_unit(self, unit: Any = None) -> None:
         self.board.finish(unit)
 
+    def finish_all(self) -> None:
+        self.board.finish_all()
+
     # --- drawing (UI thread) -----------------------------------------------------------------------
     def _part_id(self, part: str) -> str:
         return f"{self.ID_PREFIX}-{part}"
 
     def box_height(self) -> int:
-        """Border 2, padding 2, title 1 + gap, overall 1 + gap, the unit rows + gap, detail 1."""
-        return self.rows + 10
+        """Border 2, padding 2, title 1 + gap, overall 1 + gap (when shown), the unit rows + gap, detail 1."""
+        return self.rows + (10 if self.show_overall else 8)
 
     def compose(self) -> ComposeResult:
         box = Vertical(id=self._part_id("box"), classes="progress-box")
         box.styles.height = self.box_height()
         with box:
             yield Static(Text(self.title_text), id=self._part_id("title"), classes="progress-title")
-            with Horizontal(classes="progress-row progress-overall"):
+            overall = Horizontal(id=self._part_id("overall-row"), classes="progress-row progress-overall")
+            overall.display = self.show_overall
+            with overall:
                 yield Static("", id=self._part_id("overall-label"), classes="progress-overall-label")
                 yield ProgressBar(id=self._part_id("overall"), classes="progress-bar", show_eta=False)
             with Vertical(classes="progress-units"):

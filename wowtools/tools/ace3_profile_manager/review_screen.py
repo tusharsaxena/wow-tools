@@ -1226,6 +1226,7 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             self.app.call_from_thread(self._run_failed, screen, f"The run stopped unexpectedly: "
                                       f"{type(exc).__name__}: {exc}", not dry_run)
             return
+        screen.finish_all()  # the run ended: the board ends at m of m
         self.app.call_from_thread(self._applied, screen, result)
 
     def _close_progress(self, screen: ModalScreen) -> None:
@@ -1334,6 +1335,7 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             self.app.call_from_thread(self._run_failed, screen, f"Undo stopped unexpectedly: "
                                       f"{type(exc).__name__}: {exc}", True)
             return
+        screen.finish_all()
         self.app.call_from_thread(self._undone, screen, result)
 
     def _undone(self, screen: ModalScreen, result: UndoResult) -> None:
@@ -1390,6 +1392,7 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             self.app.call_from_thread(self._run_failed, screen, f"Putting the originals back stopped: "
                                       f"{type(exc).__name__}: {exc}", True)
             return
+        screen.finish_all()
         self.app.call_from_thread(self._recovered, screen, result)
 
     def _recovered(self, screen: ModalScreen, result: UndoResult) -> None:
