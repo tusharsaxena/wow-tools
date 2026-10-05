@@ -20,7 +20,7 @@ from wowtools.tools.ace_profiles.result_screen import ProfileResultScreen
 from wowtools.tools.ace_profiles.review_screen import ProfileReviewScreen
 from wowtools.tools.ace_profiles.scanner import sha256_of
 from wowtools.tools.ace_profiles.settings import load_settings
-from wowtools.ui.dialogs import ConfirmScreen
+from wowtools.ui.dialogs import ConfirmScreen, InfoScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
 
@@ -1257,3 +1257,79 @@ class FeedbackReviewFixesTest(AceAppBase):
             await settle(app, pilot)
             await self.highlight(app, pilot, review, "profile", "Healer")
             self.assertIn("Delete, Rename or Copy", str(review.query_one("#guide").render()))
+
+
+class PopupFeedbackTest(AceAppBase):
+    """Popup feedback: the leftover confirm lists its characters in a tree, a staged operation's notes open a popup
+    (not a notification), and ↑/↓ reach every field and button of the target and name popups."""
+
+    async def test_leftover_confirm_lists_characters_in_a_tree(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.highlight(app, pilot, review, "char", "Gone - Realm1")
+            review.action_remove_leftovers()
+            await settle(app, pilot)
+            screen = app.screen
+            self.assertIsInstance(screen, ConfirmScreen)
+            tree = screen.query_one("#details", Tree)
+            branch = tree.root.children[0]
+            self.assertIn("KickCD", str(branch.label))
+            self.assertTrue(branch.is_expanded)  # few lines: open
+            self.assertEqual([str(c.label) for c in branch.children], ["Gone - Realm1"])
+            self.assertIs(screen.focused, screen.query_one("#no", Button))
+            await pilot.press("up", "up")  # No, Yes, then the tree
+            self.assertIs(screen.focused, tree)
+            await pilot.press("c")
+            self.assertFalse(branch.is_expanded)
+
+    async def test_notes_open_a_popup_grouped_by_message(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            with patch.object(review, "notify") as notify:
+                review._staged(review_module.OpResult(notes=[
+                    'AddonA: "Default" will be created by the addon at its next login, with its defaults.',
+                    'AddonB: "Default" will be created by the addon at its next login, with its defaults.',
+                    "a note with no addon"]))
+                await settle(app, pilot)
+            notify.assert_not_called()
+            screen = app.screen
+            self.assertIsInstance(screen, InfoScreen)
+            nodes = screen.query_one("#details", Tree).root.children
+            self.assertEqual([str(n.label) for n in nodes],
+                             ['"Default" will be created by the addon at its next login, with its defaults (2)',
+                              "a note with no addon"])
+            self.assertEqual([str(c.label) for c in nodes[0].children], ["AddonA", "AddonB"])
+            await pilot.press("enter")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+
+    async def test_arrow_keys_reach_every_field_and_button(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await pilot.pause()
+            screen = TargetScreen("Assign a profile", "Body", ["Default", "Healer"])
+            app.push_screen(screen)
+            await settle(app, pilot)
+            order = ["target", "new-name", "ok"]
+            self.assertEqual(screen.focused.id, "target")
+            for expected in order[1:]:
+                await pilot.press("down")
+                self.assertEqual(screen.focused.id, expected)
+            await pilot.press("right")
+            self.assertEqual(screen.focused.id, "cancel")
+            await pilot.press("up", "up", "up")
+            self.assertEqual(screen.focused.id, "target")
+            await pilot.press("enter")  # Enter still opens the list
+            await settle(app, pilot)
+            self.assertTrue(screen.query_one("#target").expanded)
+            screen.dismiss(None)
+            await settle(app, pilot)
+            screen = NameScreen("Rename a profile", "Body", "Healer")
+            app.push_screen(screen)
+            await settle(app, pilot)
+            await pilot.press("down")
+            self.assertEqual(screen.focused.id, "ok")
+            await pilot.press("right")
+            self.assertEqual(screen.focused.id, "cancel")

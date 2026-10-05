@@ -16,7 +16,8 @@ from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, build_ace_tree, buil
 from wowtools.tools import TOOLS as TOOL_INFO
 from wowtools.tools.ace_profiles.popups import ActionsScreen, NameScreen, TargetScreen
 from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_HINT, ConfirmScreen, ProgressScreen
+from wowtools.ui.dialogs import (FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_HINT, ConfirmScreen, InfoScreen,
+                                 ProgressScreen)
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
 from wowtools.ui.widgets import NavHint
@@ -459,7 +460,9 @@ class LookAndFeelTest(TuiTestCase):
     async def test_popups_keep_a_readable_width_at_large(self):
         """At LARGE each tool's run confirm, the progress popup and the Ace3 popups stay at most POPUP_MAX_WIDTH
         columns wide and centred; at BASE they fit with room around them."""
-        popups = (lambda: ConfirmScreen("Title", "Body"), lambda: ProgressScreen(first_stage="check"),
+        groups = {f"Addon{i}": [f"Char{j} - Realm" for j in range(i)] for i in range(20)}
+        popups = (lambda: ConfirmScreen("Title", "Body"), lambda: ConfirmScreen("Title", "Body", groups=groups),
+                  lambda: InfoScreen("Title", groups), lambda: ProgressScreen(first_stage="check"),
                   lambda: TargetScreen("Title", "Body", ["Default", "Healer"]), lambda: NameScreen("Title", "Body"),
                   ActionsScreen)
         for size in (BASE, LARGE):

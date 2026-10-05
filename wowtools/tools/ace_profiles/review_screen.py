@@ -44,7 +44,8 @@ from wowtools.tools.ace_profiles.tree_view import READ_ONLY, Filters, TreeBuilde
 from wowtools.tools.ace_profiles.undo import UndoError, UndoResult, recover, undo_run
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.dialogs import (BUSY_STYLE, POPUP_WIDTH, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
-                                ProgressScreen, TwoPaneFocus, relabel_branch, theme_colour, tick_mark, two_pane_css)
+                                InfoScreen, ProgressScreen, TwoPaneFocus, relabel_branch, theme_colour, tick_mark,
+                                two_pane_css)
 from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, WrapButtonRow, action_button,
                                  wrap_items)
 
@@ -789,12 +790,24 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         if result.refused:
             lines = [f"{self._addon_name(key)}: {reason}" for key, reason in result.refused]
             self.notify(self._lines(lines), title=f"Not done ({len(lines)})", severity="warning", timeout=15)
-        notes = list(dict.fromkeys(result.notes))
-        if notes:
-            self.notify(self._lines(notes), timeout=15)
         changed = set(result.applied)
         self.ticked = {k for k in self.ticked if k[1] not in changed}
         self.refresh_view()
+        if result.notes:
+            self.app.push_screen(InfoScreen("Notes", self._notes_by_message(result.notes)))
+
+    @staticmethod
+    def _notes_by_message(notes: list[str]) -> dict[str, list[str]]:
+        """Notes ("<addon>: <message>") grouped by message, with the addons it concerns under it."""
+        groups: dict[str, list[str]] = {}
+        for note in dict.fromkeys(notes):
+            addon, sep, message = note.partition(": ")
+            if not sep:
+                groups.setdefault(note, [])
+                continue
+            message = message.rstrip(".")
+            groups.setdefault(message[:1].upper() + message[1:], []).append(addon)
+        return groups
 
     @staticmethod
     def _lines(lines: list[str], most: int = 8) -> str:
@@ -894,13 +907,13 @@ class ProfileReviewScreen(TwoPaneFocus, Screen[str]):
         if not selection:
             self.notify("Tick or highlight a leftover character first")
             return
-        lines = [f"{self._addon_name(key)}: {', '.join(chars)}" for key, chars in selection.items()]
-        body = "\n".join(["These characters have no folder in WTF any more. Remove their entries:", *lines])
+        groups = {self._addon_name(key): chars for key, chars in selection.items()}
+        body = "These characters have no folder in WTF any more. Remove their entries from these addons:"
 
         def done(ok: bool | None) -> None:
             if ok and self.staging is not None:
                 self._staged(self.staging.remove_leftovers(selection))
-        self.app.push_screen(ConfirmScreen("Remove leftover characters?", body), done)
+        self.app.push_screen(ConfirmScreen("Remove leftover characters?", body, groups=groups), done)
 
     def _databases(self) -> list[DbKey]:
         """The databases of the ticked keys, else of the highlighted node's addon or database."""

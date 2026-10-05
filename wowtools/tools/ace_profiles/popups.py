@@ -17,7 +17,7 @@ from wowtools.core.events import log_event
 from wowtools.tools.ace_profiles.model import DEFAULT
 from wowtools.tools.ace_profiles.ops import valid_name
 from wowtools.ui.dialogs import ALERT_STYLE, POPUP_WIDTH
-from wowtools.ui.widgets import ButtonRow, NavHint, action_button
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, NavSelect, action_button
 
 # The quick actions, and every review key the footer has no room for (each label names its key).
 ACTIONS = (
@@ -64,10 +64,11 @@ def show_error(line: Static, problem: str | None) -> None:
 class TargetScreen(ModalScreen[str | None]):
     """Choose the profile that characters move to (delete, assign): a list of the profiles there are (preselected:
     `default` when it is one of them, else the first), or a new name typed below it (which wins when not blank).
-    With no profile to offer only the new name is asked for. Dismisses with the name, or None."""
+    With no profile to offer only the new name is asked for. ↑/↓ move between the list, the name and the buttons
+    (Enter or Space opens the list). Dismisses with the name, or None."""
 
     DEFAULT_CSS = popup_css("TargetScreen")
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel")]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
 
     def __init__(self, title: str, body: str, targets: list[str], default: str = DEFAULT) -> None:
         super().__init__()
@@ -81,7 +82,7 @@ class TargetScreen(ModalScreen[str | None]):
             yield Static(Text(self.title_text), classes="title")
             yield Static(Text(self.body_text), classes="popup-body")
             if self.targets:
-                yield Select([(Text(name), name) for name in self.targets], value=self.default, allow_blank=False,
+                yield NavSelect([(Text(name), name) for name in self.targets], value=self.default, allow_blank=False,
                              id="target", compact=True)
             yield Input(placeholder="or type a new profile name" if self.targets else "new profile name",
                         id="new-name", compact=True)
@@ -89,7 +90,7 @@ class TargetScreen(ModalScreen[str | None]):
             with ButtonRow(classes="popup-buttons"):
                 yield action_button("OK", "confirm", id="ok")
                 yield action_button("Cancel", "neutral", id="cancel")
-            yield NavHint("Tab move · Enter choose · Esc cancel")
+            yield NavHint("↑↓/Tab move · Enter/Space open the list · ←→ buttons · Esc cancel")
 
     def on_mount(self) -> None:
         self.query_one("#target" if self.targets else "#new-name").focus()
@@ -127,10 +128,10 @@ class TargetScreen(ModalScreen[str | None]):
 
 class NameScreen(ModalScreen[str | None]):
     """Type a profile name (rename, copy). `check` returns a problem with the name, or None. Dismisses with the
-    name, or None."""
+    name, or None. ↑/↓ move between the name and the buttons."""
 
     DEFAULT_CSS = popup_css("NameScreen")
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel")]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
 
     def __init__(self, title: str, body: str, initial: str = "",
                  check: Callable[[str], str | None] = valid_name) -> None:
@@ -149,7 +150,7 @@ class NameScreen(ModalScreen[str | None]):
             with ButtonRow(classes="popup-buttons"):
                 yield action_button("OK", "confirm", id="ok")
                 yield action_button("Cancel", "neutral", id="cancel")
-            yield NavHint("Enter OK · Tab move · Esc cancel")
+            yield NavHint("Enter OK · ↑↓/Tab move · ←→ buttons · Esc cancel")
 
     def on_mount(self) -> None:
         self.query_one("#name", Input).focus()

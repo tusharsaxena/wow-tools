@@ -1,5 +1,5 @@
 """Small shared widgets: a checkbox with ✔/✘ marks, a button row with ←/→ focus (and one that wraps onto more rows),
-arrow-key focus bindings."""
+arrow-key focus bindings and a drop-down that leaves ↑/↓ to them."""
 from __future__ import annotations
 
 from typing import ClassVar
@@ -10,7 +10,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
 from textual.content import Content
 from textual.events import Resize
-from textual.widgets import Button, Checkbox, Static
+from textual.widgets import Button, Checkbox, Select, Static
 
 # Pick lists (tool menu, flavor picker): names in gold, in their own column, readable on the cursor row too, whose
 # background is a deeper blue than the default cursor for that reason.
@@ -42,6 +42,16 @@ NAV_BINDINGS = [
     Binding("up", "app.focus_previous", "Previous", show=False),
     Binding("down", "app.focus_next", "Next", show=False),
 ]
+
+
+class NavSelect(Select):
+    """A Select that leaves ↑/↓ to NAV_BINDINGS (move focus), so a popup's fields and buttons are all reachable by
+    arrow keys; Enter or Space opens its list (where ↑/↓ choose)."""
+
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("enter,space", "show_overlay", "Show menu", show=False),
+        *NAV_BINDINGS,
+    ]
 
 
 class FormScroll(VerticalScroll):

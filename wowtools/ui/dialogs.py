@@ -1,4 +1,5 @@
-"""Dialogs and screen helpers shared by every tool: the yes/no confirmation, the progress modal of a run, tick marks
+"""Dialogs and screen helpers shared by every tool: the yes/no confirmation, an information popup (both can list
+their details in a tree), the progress modal of a run, tick marks
 and relabelling for review trees, the two-pane (filters + tree) focus moves, and theme colours with the Ka0s
 colours as a fallback. A tool's screens import these; no tool imports another tool's screens."""
 from __future__ import annotations
@@ -106,6 +107,36 @@ def theme_colour(app, name: str) -> str:
     return colour or getattr(KA0S_THEME, name)
 
 
+DETAIL_ROWS = 12  # a popup's detail tree opens every branch when it fits in this many lines
+
+
+def detail_tree(groups: dict[str, list[str]]) -> Tree:
+    """A popup's read-only detail tree (#details): one branch per group, labelled with how many items it holds, its
+    items as leaves; a group with no items is a leaf. Every branch starts open when everything fits in DETAIL_ROWS
+    lines, else closed (Space or Enter opens one, x opens all)."""
+    tree: Tree = Tree("", id="details", classes="popup-tree")
+    tree.show_root = False
+    tree.auto_expand = True
+    open_all = len(groups) + sum(len(items) for items in groups.values()) <= DETAIL_ROWS
+    for label, items in groups.items():
+        if not items:
+            tree.root.add_leaf(Text(label))
+            continue
+        branch = tree.root.add(Text.assemble((label, "bold"), f" ({len(items)})"), expand=open_all)
+        for item in items:
+            branch.add_leaf(Text(item))
+    return tree
+
+
+def detail_hint(groups: dict[str, list[str]] | None) -> str:
+    """The part of a popup's hint about its detail tree (none without one)."""
+    return f"↑↓/Tab move · Space open · {TREE_HINT}" if groups else ""
+
+
+# At 120x30 a confirm with a full detail tree shows its buttons and its two-line hint; a smaller window scrolls the box.
+POPUP_TREE_CSS = "height: auto; max-height: 40vh; margin-top: 1; padding: 0 1; background: $surface;"
+
+
 def tick_mark(items: Iterable, unchecked: Collection[Hashable], key: Callable[[object], Hashable] | None = None,
               *, success: str | None = None) -> tuple[str, str]:
     """(mark, style) for a review-tree line covering `items`: ✘ when every item is unticked, ◩ when some are, ✔
@@ -145,8 +176,9 @@ class TreeKeys:
     TREE_SELECTOR = "Tree"
 
     def _tree_for_keys(self) -> Tree | None:
-        tree = self.query_one(self.TREE_SELECTOR, Tree)
-        return tree if tree.display else None  # hidden while a scan runs
+        found = self.query(self.TREE_SELECTOR)
+        tree = found.first(Tree) if found else None  # a popup's detail tree is optional
+        return tree if tree is not None and tree.display else None  # hidden while a scan runs
 
     def action_expand_all(self) -> None:
         tree = self._tree_for_keys()
@@ -212,26 +244,30 @@ class TwoPaneFocus(TreeKeys):
             tree.focus()
 
 
-class ConfirmScreen(ModalScreen[bool]):
+class ConfirmScreen(TreeKeys, ModalScreen[bool]):
     """A yes/no question. `alerts` are extra lines shown in red; `default_yes` decides which button has focus (risky
-    actions start on No)."""
+    actions start on No). `groups` ({label: items}) lists the details in a tree below the body (detail_tree)."""
 
     DEFAULT_CSS = f"""
     ConfirmScreen {{ align: center middle; }}
-    ConfirmScreen #confirm-box {{ {POPUP_WIDTH} height: auto; border: thick $accent; background: $panel;
-                                 padding: 1 2; }}
+    ConfirmScreen #confirm-box {{ {POPUP_WIDTH} height: auto; max-height: 100%; overflow-y: auto;
+                                 border: thick $accent; background: $panel; padding: 1 2; }}
     ConfirmScreen #confirm-title {{ color: $accent; text-style: bold; margin-bottom: 1; }}
+    ConfirmScreen .popup-tree {{ {POPUP_TREE_CSS} }}
     ConfirmScreen #confirm-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
     ConfirmScreen Button {{ margin-left: 2; }}
     """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("y", "answer(True)", "Yes"), Binding("n,escape", "answer(False)", "No"), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("y", "answer(True)", "Yes"), Binding("n,escape", "answer(False)", "No"),
+                                         *NAV_BINDINGS, *TREE_BINDINGS]
 
-    def __init__(self, title: str, body: str, alerts: tuple[str, ...] = (), *, default_yes: bool = False) -> None:
+    def __init__(self, title: str, body: str, alerts: tuple[str, ...] = (), *, default_yes: bool = False,
+                 groups: dict[str, list[str]] | None = None) -> None:
         super().__init__()
         self.default_yes = default_yes
         self.title_text = title
         self.alerts = alerts
         self.body_text = "\n".join([body, *alerts]) if alerts else body
+        self.groups = groups
 
     def compose(self) -> ComposeResult:
         with Vertical(id="confirm-box"):
@@ -240,10 +276,12 @@ class ConfirmScreen(ModalScreen[bool]):
             for alert in self.alerts:
                 body.highlight_words([alert], style=ALERT_STYLE)
             yield Static(body)
+            if self.groups:
+                yield detail_tree(self.groups)
             with ButtonRow(id="confirm-buttons"):
                 yield action_button("Yes (y)", "confirm", id="yes")
                 yield action_button("No (n)", "neutral", id="no")
-            yield NavHint("←→ choose · Enter/Space press · y yes · n/Esc no")
+            yield NavHint(f"{detail_hint(self.groups)}←→ choose · Enter/Space press · y yes · n/Esc no")
 
     def on_mount(self) -> None:
         self.query_one("#yes" if self.default_yes else "#no", Button).focus()
@@ -253,6 +291,48 @@ class ConfirmScreen(ModalScreen[bool]):
 
     def action_answer(self, value: bool) -> None:
         self.dismiss(value)
+
+
+class InfoScreen(TreeKeys, ModalScreen[None]):
+    """Something to read and acknowledge, in place of a notification too long for one: an optional body, then the
+    details in a tree (detail_tree), and an OK button."""
+
+    DEFAULT_CSS = f"""
+    InfoScreen {{ align: center middle; }}
+    InfoScreen #info-box {{ {POPUP_WIDTH} height: auto; max-height: 100%; overflow-y: auto;
+                           border: thick $accent; background: $panel; padding: 1 2; }}
+    InfoScreen #info-title {{ color: $accent; text-style: bold; }}
+    InfoScreen #info-body {{ margin-top: 1; }}
+    InfoScreen .popup-tree {{ {POPUP_TREE_CSS} }}
+    InfoScreen #info-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
+    """
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "close", "Close"), *NAV_BINDINGS, *TREE_BINDINGS]
+
+    def __init__(self, title: str, groups: dict[str, list[str]], body: str = "") -> None:
+        super().__init__()
+        self.title_text = title
+        self.groups = groups
+        self.body_text = body
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="info-box"):
+            yield Static(Text(self.title_text), id="info-title")
+            if self.body_text:
+                yield Static(Text(self.body_text), id="info-body")
+            yield detail_tree(self.groups)
+            with ButtonRow(id="info-buttons"):
+                yield action_button("OK", "confirm", id="ok")
+            yield NavHint(f"{detail_hint(self.groups)}Enter/Space OK · Esc close")
+
+    def on_mount(self) -> None:
+        self.query_one("#ok", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        self.dismiss(None)
+
+    def action_close(self) -> None:
+        self.dismiss(None)
 
 
 class ProgressScreen(ModalScreen[None]):
