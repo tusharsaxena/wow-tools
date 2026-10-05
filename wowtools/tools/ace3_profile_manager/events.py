@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from wowtools.core.events import EventSpec, register_events
 
-TOOL_NAME = "ace-profiles"
+TOOL_NAME = "ace3-profile-manager"
 
 EVENTS: dict[str, EventSpec] = {
     "ace.scan_started": EventSpec("info", "A scan of one flavor's SavedVariables for AceDB databases started."),

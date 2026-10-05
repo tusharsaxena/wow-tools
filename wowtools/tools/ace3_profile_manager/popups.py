@@ -14,8 +14,8 @@ from textual.widgets import Button, Input, OptionList, Select, Static
 from textual.widgets.option_list import Option
 
 from wowtools.core.events import log_event
-from wowtools.tools.ace_profiles.model import DEFAULT
-from wowtools.tools.ace_profiles.ops import valid_name
+from wowtools.tools.ace3_profile_manager.model import DEFAULT
+from wowtools.tools.ace3_profile_manager.ops import valid_name
 from wowtools.ui.dialogs import ACCENT, ALERT_STYLE, POPUP_WIDTH
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, NavSelect, action_button
 

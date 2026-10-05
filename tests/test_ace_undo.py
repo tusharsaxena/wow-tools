@@ -11,8 +11,8 @@ from tests.fixtures import build_ace_tree
 from wowtools.core.fsutil import atomic_write_bytes
 from wowtools.core.install import WowInstall
 from wowtools.core.journal import read_journal
-from wowtools.tools.ace_profiles import editor, multi, ops, scanner, undo
-from wowtools.tools.ace_profiles.journal import latest_undoable
+from wowtools.tools.ace3_profile_manager import editor, multi, ops, scanner, undo
+from wowtools.tools.ace3_profile_manager.journal import latest_undoable
 
 WHEN = datetime(2026, 10, 4, 12, 0, 0)
 
@@ -69,6 +69,15 @@ class UndoTest(unittest.TestCase):
         result = self.undo()
         self.assertEqual(len(result.failed), 2)
         self.assertEqual(latest_undoable(self.journals), self.journal)
+
+    def test_undo_finds_its_zips_after_the_folder_moved(self):
+        """The rename from ace-profiles: the journal still names <old root>/edited/<zip>; Undo reads the zip of that
+        name in the new root's edited folder."""
+        moved = self.tmp / "renamed"
+        self.root.rename(moved)
+        result = undo.undo_run(self.journal, wow_root=self.wow, root=moved, keep_snapshots=2, now=WHEN)
+        self.assertEqual(len(result.restored), 2)
+        self.assertEqual({p: p.read_bytes() for p in (self.elv, self.kick)}, self.before)
 
     def test_undo_prunes_snapshots_to_keep_snapshots(self):
         """M4 review: Undo's WTF backup is pruned to keep_snapshots, as Apply's is."""
@@ -140,7 +149,7 @@ class RecoverTest(unittest.TestCase):
                 raise OSError("disk full")
         journal = _journal(base)
         self.addCleanup(journal.close)
-        with patch("wowtools.tools.ace_profiles.editor.restore_original", side_effect=OSError("no")), \
+        with patch("wowtools.tools.ace3_profile_manager.editor.restore_original", side_effect=OSError("no")), \
                 self.assertRaises(editor.ApplyError):
             editor.apply_flavor(flavor, staging.changed(), root=root, journal=journal, dry_run=False,
                                 keep_snapshots=2, now=WHEN, write=write)
@@ -201,7 +210,7 @@ class RecoverTest(unittest.TestCase):
 
     def test_recover_refused_when_a_file_is_locked(self):
         root, marker, sv, _original = self._torn()
-        with patch("wowtools.tools.ace_profiles.undo.probe_lock", return_value="in use"), \
+        with patch("wowtools.tools.ace3_profile_manager.undo.probe_lock", return_value="in use"), \
                 self.assertRaises(undo.UndoError):
             undo.recover(marker, root=root, wow_check=list)
         self.assertEqual(sv.read_bytes(), b"what the run wrote")
@@ -239,7 +248,7 @@ class RecoverJournalTest(unittest.TestCase):
             else:
                 raise OSError("killed")
         journal = _journal(base)
-        with patch("wowtools.tools.ace_profiles.editor.restore_original", side_effect=OSError("no")), \
+        with patch("wowtools.tools.ace3_profile_manager.editor.restore_original", side_effect=OSError("no")), \
                 self.assertRaises(editor.ApplyError):
             editor.apply_flavor(self.flavor, staging.changed(), root=self.root, journal=journal, dry_run=False,
                                 keep_snapshots=2, now=WHEN, write=write)
@@ -270,5 +279,5 @@ class RecoverJournalTest(unittest.TestCase):
 
 
 def _journal(base):
-    from wowtools.tools.ace_profiles.journal import ProfileJournal
+    from wowtools.tools.ace3_profile_manager.journal import ProfileJournal
     return ProfileJournal(base / "journal" / "journal-20261004-120000.jsonl", {"kind": "apply"})

@@ -18,7 +18,7 @@ from wowtools.core.config import (CONFIG_DIR, LEGACY_CONFIG_PATH, SUITE_CONFIG_N
                                   migrate_legacy_config)
 from wowtools.core.events import get_event_log, init_event_log, log_event, log_exception
 from wowtools.core.lock import LOCK_PATH, InstanceLock, LockInfo
-from wowtools.core.migrate import ConfigMigration, merge_folder, migrate_tool_config, tool_folder_pairs
+from wowtools.core.migrate import ConfigMigration, merge_folder_logged, migrate_tool_config, tool_folder_pairs
 from wowtools.core.paths import is_wsl
 from wowtools.core.updater import UpdateError, apply_update, check_for_update, run_update_command
 from wowtools.tools import RENAMED_TOOLS, TOOLS
@@ -115,17 +115,7 @@ def _migrate_renamed_folders(log_dir: Path | None, wow_path: Path | None) -> Non
     """Move renamed tools' folders (logs/<old>/, <WoW>/wow-tools/<old>/) to the new name. Never fatal."""
     for rename in RENAMED_TOOLS:
         for old, new in tool_folder_pairs(rename, log_dir, wow_path):
-            try:
-                result = merge_folder(old, new)
-            except OSError as exc:
-                log_event("folder.renamed", level="error", old=str(old), new=str(new), error=str(exc))
-                continue
-            if result is None:
-                continue
-            level = "warning" if result.clashes or result.errors else None
-            log_event("folder.renamed", level=level, old=str(old), new=str(new), renamed=result.renamed,
-                      moved=len(result.moved), clashes=result.clashes, errors=result.errors,
-                      old_removed=result.old_removed)
+            merge_folder_logged(old, new)
 
 
 def _auto_update(cfg: Config) -> bool:

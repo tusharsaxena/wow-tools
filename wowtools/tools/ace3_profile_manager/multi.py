@@ -11,10 +11,11 @@ from wowtools import __version__
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor
 from wowtools.core.journal import new_journal_path
-from wowtools.tools.ace_profiles.editor import (EDITED_SUBDIR, ApplyError, ApplyResult, FileOutcome, apply_flavor,
-                                                read_marker)
-from wowtools.tools.ace_profiles.journal import ProfileJournal, prune_journals, referenced_zips
-from wowtools.tools.ace_profiles.ops import DbState
+from wowtools.tools.ace3_profile_manager.editor import (EDITED_SUBDIR, ApplyError, ApplyResult, FileOutcome,
+                                                        apply_flavor, read_marker)
+from wowtools.tools.ace3_profile_manager.events import TOOL_NAME
+from wowtools.tools.ace3_profile_manager.journal import ProfileJournal, prune_journals, referenced_zips
+from wowtools.tools.ace3_profile_manager.ops import DbState
 
 EDITED_NAME = re.compile(r"^edited-.+-\d{8}-\d{6}(?:-\d+)?\.zip$")
 
@@ -114,7 +115,7 @@ def apply_flavors(plan: list[tuple[Flavor, list[DbState]]], *, root: Path, journ
     journal = None
     if not dry_run:
         journal = ProfileJournal(new_journal_path(journal_dir, now),
-                                 {"tool": "ace-profiles", "kind": "apply", "flavors": [f.folder for f, _ in plan],
+                                 {"tool": TOOL_NAME, "kind": "apply", "flavors": [f.folder for f, _ in plan],
                                   "root": root, "suite_version": __version__})
         result.journal_path = journal.path
     try:

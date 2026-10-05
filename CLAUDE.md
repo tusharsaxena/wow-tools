@@ -2,8 +2,8 @@
 
 Out-of-game WoW companion tools (Ka0s branded). Tools: WTF Cleaner (`wtf-cleaner`), Screenshot Organizer
 (`screenshot-organizer`, package `tools/screenshot_organizer`), Interface Backup (`interface-backup`, package
-`tools/interface_backup`), Ace3 Profile Manager (`ace-profiles`, package `tools/ace_profiles`). Specs and plans:
-`docs/superpowers/`.
+`tools/interface_backup`), Ace3 Profile Manager (`ace3-profile-manager`, package `tools/ace3_profile_manager`).
+Specs and plans: `docs/superpowers/`.
 
 - Tests: `python3 scripts/run_tests.py` (parallel, ~10s; `-k TEXT` to filter, `-j N` processes). Serial, verbose:
   `python3 -m unittest discover -s tests -t . -v`

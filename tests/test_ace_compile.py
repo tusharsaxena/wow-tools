@@ -7,7 +7,7 @@ from pathlib import Path
 
 from tests.fixtures import build_ace_tree
 from wowtools.core.install import WowInstall
-from wowtools.tools.ace_profiles import luasv, model, ops, scanner, verify
+from wowtools.tools.ace3_profile_manager import luasv, model, ops, scanner, verify
 
 
 class CompileTest(unittest.TestCase):

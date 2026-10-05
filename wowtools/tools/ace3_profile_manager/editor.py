@@ -24,11 +24,11 @@ from wowtools.core.install import Flavor
 from wowtools.core.journal import now_iso
 from wowtools.core.snapshot import prune_snapshots, take_snapshot
 from wowtools.core.svfiles import SvFileError, SvGuard, lstat_or_none, probe_lock, recover_probe_leftovers
-from wowtools.tools.ace_profiles.events import TOOL_NAME
-from wowtools.tools.ace_profiles.journal import ProfileJournal
-from wowtools.tools.ace_profiles.ops import DbState, FileEdit, compile_file
-from wowtools.tools.ace_profiles.scanner import SvFile, sha256_of
-from wowtools.tools.ace_profiles.verify import verify_edit
+from wowtools.tools.ace3_profile_manager.events import TOOL_NAME
+from wowtools.tools.ace3_profile_manager.journal import ProfileJournal
+from wowtools.tools.ace3_profile_manager.ops import DbState, FileEdit, compile_file
+from wowtools.tools.ace3_profile_manager.scanner import SvFile, sha256_of
+from wowtools.tools.ace3_profile_manager.verify import verify_edit
 
 SNAPSHOT_SUBDIR = "snapshots"
 SNAPSHOT_PREFIX = "snapshot"

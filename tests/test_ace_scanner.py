@@ -9,7 +9,7 @@ from pathlib import Path
 from tests.fixtures import build_ace_tree
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
-from wowtools.tools.ace_profiles import scanner
+from wowtools.tools.ace3_profile_manager import scanner
 
 
 class ScannerTest(unittest.TestCase):

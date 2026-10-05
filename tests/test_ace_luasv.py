@@ -4,8 +4,8 @@ from __future__ import annotations
 import time
 import unittest
 
-from wowtools.tools.ace_profiles import luasv
-from wowtools.tools.ace_profiles.luasv import LuaParseError, Opaque, Table
+from wowtools.tools.ace3_profile_manager import luasv
+from wowtools.tools.ace3_profile_manager.luasv import LuaParseError, Opaque, Table
 
 CRLF_FILE = (b'\r\nKickCDDB = {\r\n["profileKeys"] = {\r\n["Ka\xc3\xa2los - Mug\'thol"] = "Default",\r\n'
              b'["Alt - Khaz Modan"] = "Default",\r\n},\r\n["profiles"] = {\r\n["Default"] = {\r\n'

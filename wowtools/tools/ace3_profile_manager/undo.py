@@ -20,8 +20,9 @@ from wowtools.core.install import Flavor
 from wowtools.core.journal import mark_undone
 from wowtools.core.snapshot import prune_snapshots, take_snapshot
 from wowtools.core.svfiles import SvFileError, probe_lock
-from wowtools.tools.ace_profiles.editor import SNAPSHOT_PREFIX, SNAPSHOT_SUBDIR, Marker, clear_marker
-from wowtools.tools.ace_profiles.journal import read_profile_journal, record_recovered
+from wowtools.tools.ace3_profile_manager.editor import (EDITED_SUBDIR, SNAPSHOT_PREFIX, SNAPSHOT_SUBDIR, Marker,
+                                                        clear_marker)
+from wowtools.tools.ace3_profile_manager.journal import read_profile_journal, record_recovered
 
 CHANGED_SINCE = "changed since the change was made (WoW may have saved it); left as it is"
 
@@ -86,6 +87,15 @@ def _current_sha(path: Path) -> str | None:
         return _sha(path.read_bytes())
     except OSError:
         return None
+
+
+def _moved_zip(zip_path: Path, root: Path) -> Path:
+    """zip_path, or the zip of that name in root's edited folder when zip_path is gone and that one is there: the
+    tool's folder was moved (renamed from ace-profiles) after the journal or marker recorded the path."""
+    if zip_path.exists():
+        return zip_path
+    moved = root / EDITED_SUBDIR / zip_path.name
+    return moved if moved.exists() else zip_path
 
 
 def _put_back(zip_path: Path, rel: str, dest: Path, sha_before: str) -> str | None:
@@ -180,7 +190,7 @@ def undo_run(journal_path: Path, *, wow_root: Path, root: Path, keep_snapshots: 
             result.outcomes.append(UndoOutcome(flavor, rel, dest, "skipped", CHANGED_SINCE))
             log_event("ace.file_skipped", flavor=flavor, path=rel, reason="changed")
             continue
-        problem = _put_back(entry["zip"], rel, dest, entry["sha_before"])
+        problem = _put_back(_moved_zip(entry["zip"], root), rel, dest, entry["sha_before"])
         if problem is None:
             result.outcomes.append(UndoOutcome(flavor, rel, dest, "restored"))
             log_event("ace.file_restored", flavor=flavor, path=rel)
@@ -230,7 +240,7 @@ def recover(marker: Marker, *, root: Path, journal_dir: Path | None = None, keep
             log_event("ace.file_skipped", flavor=marker.flavor, path=rel,
                       reason="gone" if current is None else "changed")
             continue
-        problem = _put_back(marker.zip, rel, dest, sha_before)
+        problem = _put_back(_moved_zip(marker.zip, root), rel, dest, sha_before)
         status = "restored" if problem is None else "failed"
         result.outcomes.append(UndoOutcome(marker.flavor, rel, dest, status, problem or ""))
         log_event("ace.file_restored" if problem is None else "ace.undo_failed", flavor=marker.flavor, path=rel)

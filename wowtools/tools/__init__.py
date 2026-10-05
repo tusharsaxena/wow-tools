@@ -30,9 +30,9 @@ TOOLS: dict[str, Tool] = {tool.name: tool for tool in (
     Tool("interface-backup", "Interface Backup",
          "Zip a flavor's Interface and WTF folders, and restore them.",
          "wowtools.tools.interface_backup.app", "interface_backup"),
-    Tool("ace-profiles", "Ace3 Profile Manager",
+    Tool("ace3-profile-manager", "Ace3 Profile Manager",
          "See and change which Ace3 profile each character uses.",
-         "wowtools.tools.ace_profiles.app", "ace_profiles"),
+         "wowtools.tools.ace3_profile_manager.app", "ace3_profile_manager"),
 )}
 
 # Tools that changed name. At start-up each tool's old config file, logs/<old>/ folder and
@@ -41,4 +41,5 @@ TOOLS: dict[str, Tool] = {tool.name: tool for tool in (
 # under the old name, so renaming such a tool needs that handled too (see docs/adding-a-tool.md, step 6).
 RENAMED_TOOLS: tuple[ToolRename, ...] = (
     ToolRename("screenshots", "screenshot-organizer", "screenshots", "screenshot_organizer"),
+    ToolRename("ace-profiles", "ace3-profile-manager", "ace_profiles", "ace3_profile_manager"),
 )

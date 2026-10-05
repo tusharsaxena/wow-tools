@@ -21,7 +21,7 @@ you land back on the menu.
 | **WTF Cleaner** | Finds settings files left behind by addons you no longer use, backs them up, and deletes them. | [WTF Cleaner guide](docs/wtf-cleaner.md) |
 | **Screenshot Organizer** | Sorts your WoW screenshots into folders by year, month and day, one set per game version. | [Screenshot Organizer guide](docs/screenshot-organizer.md) |
 | **Interface Backup** | Zips a game version's `Interface` and `WTF` folders (your addons and their settings), and puts them back from a zip. | [Interface Backup guide](docs/interface-backup.md) |
-| **Ace3 Profile Manager** | Shows the profiles of every addon built on Ace3 and which characters use them, and lets you delete, rename and copy profiles or move characters between them. | [Ace3 Profile Manager guide](docs/ace-profiles.md) |
+| **Ace3 Profile Manager** | Shows the profiles of every addon built on Ace3 and which characters use them, and lets you delete, rename and copy profiles or move characters between them. | [Ace3 Profile Manager guide](docs/ace3-profile-manager.md) |
 
 Every tool works with every version of the game you have installed: Retail, Classic, Classic Era, Anniversary,
 and the PTR and Beta clients. You can work on one version at a time or all of them at once.
@@ -150,7 +150,7 @@ Each tool has its own guide, with pictures, that walks through every screen:
   run.
 - [Interface Backup guide](docs/interface-backup.md): back up your addons and their settings, restore them, and
   undo a restore.
-- [Ace3 Profile Manager guide](docs/ace-profiles.md): tidy up Ace3 addon profiles, move characters between them,
+- [Ace3 Profile Manager guide](docs/ace3-profile-manager.md): tidy up Ace3 addon profiles, move characters between them,
   and undo a change.
 
 ## Updates
@@ -188,7 +188,7 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 | `config\wtf-cleaner.cfg` | The WTF Cleaner's settings |
 | `config\screenshot-organizer.cfg` | The Screenshot Organizer's settings |
 | `config\interface-backup.cfg` | Interface Backup's settings |
-| `config\ace-profiles.cfg` | The Ace3 Profile Manager's settings (`[ace_profiles]`): backup folder and the blacklist of addons (each in one game version) it never changes |
+| `config\ace3-profile-manager.cfg` | The Ace3 Profile Manager's settings (`[ace3_profile_manager]`): backup folder and the blacklist of addons (each in one game version) it never changes |
 
 The easiest way to change them is to press `s` in the app: the first screen is the shared one (WoW folder,
 backups and journals to keep), then the tool's own. You can also open the files in Notepad while the app
@@ -199,7 +199,7 @@ is closed. The guides list every setting.
 Every tool that changes files keeps a short record of what it did, called a **journal**, so it can undo its last
 run: the WTF Cleaner's last clean, the Screenshot Organizer's last sort, Interface Backup's last restore and the Ace3
 Profile Manager's last change. Journals are kept in your WoW folder, under `wow-tools\<tool name>\journal` (for
-example `wow-tools\ace-profiles\journal`). Each tool's guide explains its undo.
+example `wow-tools\ace3-profile-manager\journal`). Each tool's guide explains its undo.
 
 ## Logs
 

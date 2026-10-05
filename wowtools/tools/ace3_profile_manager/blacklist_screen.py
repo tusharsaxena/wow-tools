@@ -18,9 +18,9 @@ from textual.widgets.tree import TreeNode
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor, WowInstall
-from wowtools.tools.ace_profiles.report import plural
-from wowtools.tools.ace_profiles.scanner import ScanResult, scan_flavors
-from wowtools.tools.ace_profiles.settings import WILDCARD, Pair, is_blacklisted, unique_pairs
+from wowtools.tools.ace3_profile_manager.report import plural
+from wowtools.tools.ace3_profile_manager.scanner import ScanResult, scan_flavors
+from wowtools.tools.ace3_profile_manager.settings import WILDCARD, Pair, is_blacklisted, unique_pairs
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.dialogs import (ACCENT, TREE_BINDINGS, TREE_HINT, TwoPaneFocus, relabel_branch, review_hint,
                                  theme_colour, tick_mark, two_pane_css)

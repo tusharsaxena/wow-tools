@@ -1,4 +1,5 @@
-"""The Ace3 Profile Manager's own settings: the [ace_profiles] section of config/ace-profiles.cfg (spec §11)."""
+"""The Ace3 Profile Manager's own settings: the [ace3_profile_manager] section of config/ace3-profile-manager.cfg
+(spec §11)."""
 from __future__ import annotations
 
 import re
@@ -10,10 +11,12 @@ from wowtools.core import journal as core_journal
 from wowtools.core.config import Config
 from wowtools.core.install import WowInstall, validate_output_dir
 from wowtools.core.journal import TOOLS_SUBDIR
-from wowtools.tools.ace_profiles.events import TOOL_NAME
+from wowtools.core.migrate import merge_folder_logged
+from wowtools.tools.ace3_profile_manager.events import TOOL_NAME
 
-SECTION = "ace_profiles"
+SECTION = "ace3_profile_manager"
 ROOT_NAME = TOOL_NAME
+OLD_ROOT_NAME = "ace-profiles"  # the tool's name before the rename (RENAMED_TOOLS)
 _SPLIT = re.compile(r"[,\r\n]+")
 WILDCARD = "*"  # the flavor of a bare (legacy) blacklist name: every flavor
 Pair = tuple[str, str]  # (flavor folder, addon)
@@ -21,7 +24,8 @@ Pair = tuple[str, str]  # (flavor folder, addon)
 
 @dataclass
 class ProfileSettings:
-    backup_dir: Path | None = None  # None: <WoW folder>/wow-tools; the tool's files go to <backup_dir>/ace-profiles
+    # None: <WoW folder>/wow-tools. The tool's files go to <backup_dir>/ace3-profile-manager.
+    backup_dir: Path | None = None
     # (flavor folder, addon) pairs; the addon is the SavedVariables file name without .lua; flavor "*" = every flavor
     blacklist: list[Pair] = field(default_factory=list)
     last_flavor_choice: str | None = None  # "" = All flavors, else a flavor folder; None = never chosen
@@ -108,6 +112,14 @@ def resolve_root(settings: ProfileSettings, wow_path: Path | None) -> Path | Non
     if settings.backup_dir is not None:
         return settings.backup_dir / ROOT_NAME
     return wow_path / TOOLS_SUBDIR / ROOT_NAME if wow_path is not None else None
+
+
+def migrate_backup_root(settings: ProfileSettings) -> None:
+    """Move <backup_dir>/ace-profiles, the tool's folder under its old name, to <backup_dir>/ace3-profile-manager.
+    core/migrate.py moves <WoW>/wow-tools/<old>/ at start-up, but not a folder inside one the user chose. Never
+    raises; nothing is overwritten."""
+    if settings.backup_dir is not None:
+        merge_folder_logged(settings.backup_dir / OLD_ROOT_NAME, settings.backup_dir / ROOT_NAME)
 
 
 def resolve_journal_dir(wow_path: Path | None) -> Path | None:

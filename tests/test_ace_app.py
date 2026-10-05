@@ -11,20 +11,20 @@ from tests.fixtures import BASE, TuiTestCase, build_ace_tree, make_config, settl
 from wowtools.core.backup import BackupEntry, create_backup
 from wowtools.core.config import Config
 from wowtools.core.install import WowInstall
-from wowtools.tools.ace_profiles import editor
-from wowtools.tools.ace_profiles import review_screen as review_module
-from wowtools.tools.ace_profiles.app import ProfileSettingsScreen
-from wowtools.tools.ace_profiles.blacklist_screen import BlacklistScreen
-from wowtools.tools.ace_profiles.popups import ActionsScreen, NameScreen, TargetScreen
-from wowtools.tools.ace_profiles.result_screen import ProfileResultScreen
-from wowtools.tools.ace_profiles.review_screen import ProfileReviewScreen
-from wowtools.tools.ace_profiles.scanner import sha256_of
-from wowtools.tools.ace_profiles.settings import load_settings
+from wowtools.tools.ace3_profile_manager import editor
+from wowtools.tools.ace3_profile_manager import review_screen as review_module
+from wowtools.tools.ace3_profile_manager.app import ProfileSettingsScreen
+from wowtools.tools.ace3_profile_manager.blacklist_screen import BlacklistScreen
+from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
+from wowtools.tools.ace3_profile_manager.result_screen import ProfileResultScreen
+from wowtools.tools.ace3_profile_manager.review_screen import ProfileReviewScreen
+from wowtools.tools.ace3_profile_manager.scanner import sha256_of
+from wowtools.tools.ace3_profile_manager.settings import load_settings
 from wowtools.ui.dialogs import ConfirmScreen, InfoScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
 
-TOOL = "ace-profiles"
+TOOL = "ace3-profile-manager"
 
 
 class AceAppBase(TuiTestCase):
@@ -108,8 +108,8 @@ class FlowTest(AceAppBase):
             settings._save()
             await settle(app, pilot)
             self.assertIsInstance(app.screen, FlavorScreen)
-        tool = Config(self.config_dir / "ace-profiles.cfg").load()
-        self.assertEqual(tool.get("ace_profiles", "blacklist"), "_retail_:ElvUI")
+        tool = Config(self.config_dir / "ace3-profile-manager.cfg").load()
+        self.assertEqual(tool.get("ace3_profile_manager", "blacklist"), "_retail_:ElvUI")
         self.assertEqual(load_settings(tool).blacklist, [("_retail_", "ElvUI")])
 
     async def test_settings_have_no_retention_inputs(self):
@@ -234,7 +234,8 @@ class ReviewTest(AceAppBase):
             await settle(app, pilot)
             self.assertTrue(review.locked("_retail_", "ElvUI"))
             self.assertIn("blacklisted", "\n".join(labels(tree)))
-            self.assertEqual(load_settings(Config(self.config_dir / "ace-profiles.cfg").load()).blacklist, [("_retail_", "ElvUI")])
+            saved = load_settings(Config(self.config_dir / "ace3-profile-manager.cfg").load())
+            self.assertEqual(saved.blacklist, [("_retail_", "ElvUI")])
             tree.move_cursor(find_addon(tree, "ElvUI"))
             await pilot.press("space")
             await settle(app, pilot)
@@ -274,7 +275,7 @@ class ReviewTest(AceAppBase):
             await settle(app, pilot)
             self.assertIs(app.screen, review)
             self.assertTrue(review.locked("_classic_era_", "Questie"))
-            tool = Config(self.config_dir / "ace-profiles.cfg").load()
+            tool = Config(self.config_dir / "ace3-profile-manager.cfg").load()
             self.assertEqual(load_settings(tool).blacklist, [("_classic_era_", "Questie")])
 
     async def test_character_view_and_search(self):
@@ -426,8 +427,8 @@ class StagingTest(AceAppBase):
             self.assertEqual(review.staging.summary().total, 0)
 
     async def test_locked_addon_refuses_quick_action(self):
-        self.cfg_tool = Config(self.config_dir / "ace-profiles.cfg")
-        self.cfg_tool.set("ace_profiles", "blacklist", "ElvUI", log=False)
+        self.cfg_tool = Config(self.config_dir / "ace3-profile-manager.cfg")
+        self.cfg_tool.set("ace3_profile_manager", "blacklist", "ElvUI", log=False)
         self.cfg_tool.save()
         app = self.make_app()
         async with app.run_test(size=(140, 50)) as pilot:
@@ -461,9 +462,9 @@ class RunTest(AceAppBase):
 
     async def test_runs_use_the_global_retention(self):
         """Feedback round 1: Apply prunes to [general] keep_backups / keep_journals; stale tool keys are ignored."""
-        tool = Config(self.config_dir / "ace-profiles.cfg")
+        tool = Config(self.config_dir / "ace3-profile-manager.cfg")
         for key in ("keep_snapshots", "keep_backups", "keep_journals"):
-            tool.set("ace_profiles", key, "2", log=False)
+            tool.set("ace3_profile_manager", key, "2", log=False)
         tool.save()
         self.cfg.set("general", "keep_backups", "0", log=False)
         self.cfg.set("general", "keep_journals", "4", log=False)
@@ -526,7 +527,7 @@ class RunTest(AceAppBase):
             review = await self.open_review(app, pilot)
             path = next(k for k in review.staging.states if k.sv_name == "ElvDB").path
             original = path.read_bytes()
-            root = self.root / "wow-tools" / "ace-profiles"
+            root = self.root / "wow-tools" / "ace3-profile-manager"
             flavor = next(s for s in review.staging.states.values() if s.file.path == path).file.flavor
             zip_path = create_backup([BackupEntry(path)], flavor.path,
                                      root / "edited" / "edited-retail-all-20261004-120000.zip", {})
@@ -566,8 +567,8 @@ class ReviewFixesTest(AceAppBase):
         return key.path
 
     def blacklist(self, names):
-        tool = Config(self.config_dir / "ace-profiles.cfg").load()
-        tool.set("ace_profiles", "blacklist", names, log=False)
+        tool = Config(self.config_dir / "ace3-profile-manager.cfg").load()
+        tool.set("ace3_profile_manager", "blacklist", names, log=False)
         tool.save()
 
     async def assert_apply_writes_nothing(self, app, pilot, review, path):
@@ -614,7 +615,7 @@ class ReviewFixesTest(AceAppBase):
         async with app.run_test(size=(140, 50)) as pilot:
             review = await self.open_review(app, pilot)
             path = await self.stage_elv(app, pilot, review)
-            review.tool_cfg.set("ace_profiles", "blacklist", "ElvUI", log=False)  # what `s` saves, no rescan
+            review.tool_cfg.set("ace3_profile_manager", "blacklist", "ElvUI", log=False)  # what `s` saves, no rescan
             await self.assert_apply_writes_nothing(app, pilot, review, path)
             self.assertEqual(review.staging.summary().total, 0)
 
@@ -630,7 +631,7 @@ class ReviewFixesTest(AceAppBase):
             asked.append(list(folders))
             return process.wow_check_for(folders, lister=lambda: list(procs))
         app = WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list)
-        with patch("wowtools.tools.ace_profiles.review_screen.wow_check_for", side_effect=check_for):
+        with patch("wowtools.tools.ace3_profile_manager.review_screen.wow_check_for", side_effect=check_for):
             async with app.run_test(size=(140, 50)) as pilot:
                 review = await self.open_review(app, pilot)
                 path = await self.stage_elv(app, pilot, review)  # a Retail file
@@ -664,7 +665,7 @@ class ReviewFixesTest(AceAppBase):
     async def write_torn_marker(self, review):
         path = next(k for k in review.staging.states if k.sv_name == "ElvDB").path
         original = path.read_bytes()
-        root = self.root / "wow-tools" / "ace-profiles"
+        root = self.root / "wow-tools" / "ace3-profile-manager"
         flavor = next(s for s in review.staging.states.values() if s.file.path == path).file.flavor
         zip_path = create_backup([BackupEntry(path)], flavor.path,
                                  root / "edited" / "edited-retail-all-20261004-120000.zip", {})
@@ -835,7 +836,7 @@ class ReviewFixesTest(AceAppBase):
                 self.assertTrue(inside(widget, box), f"NameScreen: {widget}")
 
     async def test_more_menu_lists_every_hidden_key(self):
-        from wowtools.tools.ace_profiles.popups import ACTIONS
+        from wowtools.tools.ace3_profile_manager.popups import ACTIONS
         ids = {action for action, _ in ACTIONS}
         for action in ("rename", "copy", "blacklist", "unlock", "switch_view", "search", "discard"):
             self.assertIn(action, ids)
@@ -885,7 +886,7 @@ class FinalReviewFixesTest(AceAppBase):
             kick = next(k for k in review.staging.states if k.sv_name == "KickCDDB").path
             flavor = WowInstall(self.root).flavor("_retail_")
             rel = kick.relative_to(flavor.path).as_posix()
-            root = self.root / "wow-tools" / "ace-profiles"
+            root = self.root / "wow-tools" / "ace3-profile-manager"
             earlier = editor.Marker("_retail_", flavor.path, root / "edited" / "edited-retail-all-x.zip",
                                     {rel: "a"}, "2026-10-03T12:00:00+00:00", 1, "1.0.0", {rel: "b"})
             editor.write_marker(root, earlier)
@@ -910,7 +911,7 @@ class FinalReviewFixesTest(AceAppBase):
             path = await self.stage_elv(app, pilot, review)
             before = path.read_bytes()
             inside_wtf = self.root / "_retail_" / "WTF" / "bk"
-            review.tool_cfg.set_path("ace_profiles", "backup_dir", inside_wtf)  # edited by hand in the cfg
+            review.tool_cfg.set_path("ace3_profile_manager", "backup_dir", inside_wtf)  # edited by hand in the cfg
             await pilot.press("w")
             await settle(app, pilot)
             self.assertIs(app.screen, review)
@@ -936,7 +937,7 @@ class FinalReviewFixesTest(AceAppBase):
             asked.append(list(folders))
             return process.wow_check_for(folders, lister=lambda: list(procs))
         app = WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list)
-        with patch("wowtools.tools.ace_profiles.review_screen.wow_check_for", side_effect=check_for):
+        with patch("wowtools.tools.ace3_profile_manager.review_screen.wow_check_for", side_effect=check_for):
             async with app.run_test(size=(140, 50)) as pilot:
                 review = await self.open_review(app, pilot)  # All flavors
                 self.assertGreater(len(review.flavors), 1)
@@ -1183,7 +1184,8 @@ class FeedbackReviewFixesTest(AceAppBase):
         async with app.run_test(size=(140, 50)) as pilot:
             await pilot.pause()
             pairs = [("*", "KickCD"), ("_retail_", "Explicit")]
-            with patch("wowtools.tools.ace_profiles.blacklist_screen.scan_flavors", side_effect=OSError("boom")):
+            with patch("wowtools.tools.ace3_profile_manager.blacklist_screen.scan_flavors",
+                       side_effect=OSError("boom")):
                 _, results = await self.save_unchanged(app, pilot, pairs)
             self.assertEqual(sorted(results[0]), sorted([
                 ("_classic_era_", "KickCD"), ("_retail_", "KickCD"), ("_retail_", "Explicit")]))
@@ -1332,7 +1334,7 @@ class PopupFeedbackTest(AceAppBase):
             self.assertEqual(screen.focused.id, "cancel")
 
     async def test_quick_actions_are_grouped_under_headings(self):
-        from wowtools.tools.ace_profiles.popups import ACTION_GROUPS
+        from wowtools.tools.ace3_profile_manager.popups import ACTION_GROUPS
         self.assertEqual([heading for heading, _ in ACTION_GROUPS], ["Selection", "Modification"])
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:

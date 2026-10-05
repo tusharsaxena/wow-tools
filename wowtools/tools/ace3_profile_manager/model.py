@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from wowtools.tools.ace_profiles.luasv import Chunk, Field, Opaque, Scalar, Table, is_blank_table
+from wowtools.tools.ace3_profile_manager.luasv import Chunk, Field, Opaque, Scalar, Table, is_blank_table
 
 LDS = "LibDualSpec-1.0"
 DEFAULT = "Default"

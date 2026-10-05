@@ -11,7 +11,7 @@ from tests.fixtures import build_ace_tree
 from wowtools.core.fsutil import atomic_write_bytes
 from wowtools.core.install import WowInstall
 from wowtools.core.journal import list_journals
-from wowtools.tools.ace_profiles import editor, multi, ops, report, scanner
+from wowtools.tools.ace3_profile_manager import editor, multi, ops, report, scanner
 
 WHEN = datetime(2026, 10, 4, 12, 0, 0)
 
@@ -61,7 +61,7 @@ class MultiTest(unittest.TestCase):
             if flavor.folder == "_retail_":
                 raise editor.ApplyError("boom")
             return real(flavor, *args, **kwargs)
-        with patch("wowtools.tools.ace_profiles.multi.apply_flavor", failing):
+        with patch("wowtools.tools.ace3_profile_manager.multi.apply_flavor", failing):
             result = self.run_plan()
         self.assertEqual([r.status for r in result.runs], ["stopped", "not_started"])
         self.assertEqual(result.stopped.error, "boom")
@@ -81,7 +81,8 @@ class MultiTest(unittest.TestCase):
         edited = self.tmp / "out" / "edited"
         zips = sorted(edited.iterdir())
         self.assertTrue(zips)
-        with patch("wowtools.tools.ace_profiles.journal.read_profile_journal", side_effect=PermissionError("held")):
+        with patch("wowtools.tools.ace3_profile_manager.journal.read_profile_journal",
+                   side_effect=PermissionError("held")):
             removed = multi.prune_edited_zips(self.tmp / "out", self.tmp / "journal")
         self.assertEqual(removed, [])
         self.assertEqual(sorted(edited.iterdir()), zips)
@@ -98,7 +99,7 @@ class MultiTest(unittest.TestCase):
 
         def with_flaky_write(*args, **kwargs):
             return real(*args, write=flaky, **kwargs)
-        with patch("wowtools.tools.ace_profiles.multi.apply_flavor", with_flaky_write):
+        with patch("wowtools.tools.ace3_profile_manager.multi.apply_flavor", with_flaky_write):
             result = self.run_plan()
         self.assertEqual([r.status for r in result.runs], ["stopped", "not_started"])
         stopped = result.stopped.result

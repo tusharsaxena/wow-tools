@@ -17,11 +17,12 @@ from wowtools.core.config import Config
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.paths import to_native, to_stored
-from wowtools.tools.ace_profiles.blacklist_screen import BlacklistScreen
-from wowtools.tools.ace_profiles.report import plural
-from wowtools.tools.ace_profiles.review_screen import ProfileReviewScreen
-from wowtools.tools.ace_profiles.settings import (SECTION, Pair, ProfileSettings, format_blacklist, load_settings,
-                                                  resolve_root, save_settings, unique_pairs, validate_backup_dir)
+from wowtools.tools.ace3_profile_manager.blacklist_screen import BlacklistScreen
+from wowtools.tools.ace3_profile_manager.report import plural
+from wowtools.tools.ace3_profile_manager.review_screen import ProfileReviewScreen
+from wowtools.tools.ace3_profile_manager.settings import (SECTION, Pair, ProfileSettings, format_blacklist,
+                                                          load_settings, migrate_backup_root, resolve_root,
+                                                          save_settings, unique_pairs, validate_backup_dir)
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.dialogs import settings_css
@@ -54,7 +55,7 @@ class ProfileSettingsScreen(Screen[bool]):
         with FormScroll(id="settings", can_focus=False):
             yield Static(f"{TITLE} settings", classes="title")
             yield Label("Backup folder: holds snapshots/ (whole WTF folder) and edited/ (each changed file as it "
-                        "was). Leave empty to use <WoW folder>/wow-tools/ace-profiles")
+                        "was). Leave empty to use <WoW folder>/wow-tools/ace3-profile-manager")
             yield Input(to_stored(settings.backup_dir) if settings.backup_dir else "",
                         placeholder=_default_backup_hint(self.wow_path), id="backup-dir")
             yield Label("Blacklist: addons whose profiles are shown but never changed, per flavor")
@@ -129,7 +130,7 @@ def _default_backup_hint(wow_path: Path | None) -> str:
 
 
 class AceProfilesFlow(ToolFlow):
-    """The profile manager's workflow. Its settings live in config/ace-profiles.cfg; the WoW folder is shared.
+    """The profile manager's workflow. Its settings live in config/ace3-profile-manager.cfg; the WoW folder is shared.
     `unlocked` holds the (casefolded) blacklisted (flavor folder, addon) pairs unlocked this session: it lives on
     the flow, so it survives going back to the flavor picker, and goes when the tool closes."""
 
@@ -144,6 +145,7 @@ class AceProfilesFlow(ToolFlow):
         self.require_install(self._ready)
 
     def _ready(self, install: WowInstall, first_run: bool) -> None:
+        migrate_backup_root(load_settings(self.tool_cfg))
         if not self.tool_cfg.exists:  # first time this tool is opened: ask for its settings once
             self.app.push_screen(ProfileSettingsScreen(self.tool_cfg, self.cfg.wow_path, source="wizard"),
                                  lambda _: self._pick_flavor())

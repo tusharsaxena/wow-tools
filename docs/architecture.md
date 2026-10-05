@@ -55,15 +55,15 @@ Each tool owns one file with one section. `config/wtf-cleaner.cfg` `[wtf_cleaner
 folder; absent until first chosen, and then the picker pre-selects `[general] last_flavor`). `config/screenshot-organizer.cfg` `[screenshot_organizer]`: `dest_dir` (empty = in place),
 `copy_mode` and `last_flavor_choice` (empty = all flavors, else a flavor folder). `config/interface-backup.cfg` `[interface_backup]`: `backup_dir` (empty = `<wow_path>/wow-tools`;
 zips go to its `interface-backup` folder, `settings.resolve_backup_root()`) and
-`last_flavor_choice` (empty = all flavors, else a flavor folder). `config/ace-profiles.cfg` `[ace_profiles]`:
-`backup_dir` (empty = `<wow_path>/wow-tools`; files go to its `ace-profiles` folder, `settings.resolve_root()`),
+`last_flavor_choice` (empty = all flavors, else a flavor folder). `config/ace3-profile-manager.cfg` `[ace3_profile_manager]`:
+`backup_dir` (empty = `<wow_path>/wow-tools`; files go to its `ace3-profile-manager` folder, `settings.resolve_root()`),
 `blacklist` (comma-separated `flavor:addon` pairs such as `_retail_:ElvUI`, matched ignoring case;
 a bare name, from the first build, means every flavor (`"*"`) until the blacklist is next saved), `last_flavor_choice` and `last_account` (empty = all accounts). The retired `[general] backup_dir` is dropped by the migration. Paths are stored in Windows form when they point at a
 Windows drive. Unknown keys are preserved, and bad values fall back to defaults.
 
 **Renamed tools.** `suite.run()` applies every `RENAMED_TOOLS` line on each start, after the instance lock is
 taken and the suite config is loaded, before the app (the Screenshot Organizer was `screenshots` before it became
-`screenshot-organizer`). When another copy holds the lock (not known to be stale) they are skipped until a later
+`screenshot-organizer`, the Ace3 Profile Manager `ace-profiles` before it became `ace3-profile-manager`). When another copy holds the lock (not known to be stale) they are skipped until a later
 start, so nothing is moved under a running copy:
 
 - `config/<old>.cfg`: if `config/<new>.cfg` does not exist, it is written with everything from the old file (the
@@ -76,7 +76,11 @@ start, so nothing is moved under a running copy:
   exist, the old one is renamed. If both exist, entries that are not in the new folder are moved into it,
   sub-folders (such as `journal/`) are merged the same way, entries already there are left in the old folder,
   and the old folder is removed only if it ends up empty. Logged as `folder.renamed` (a warning when something
-  clashed or failed to move). A folder failure never stops the start.
+  clashed or failed to move). A folder failure never stops the start (`merge_folder_logged()`).
+- Not moved by the suite: a tool folder inside a folder the user chose. The Ace3 Profile Manager moves its own
+  `<backup_dir>/ace-profiles` when it opens (`settings.migrate_backup_root()`), and Undo and recovery look for an
+  `edited-*.zip` by name in the current `edited/` folder when the path a journal or marker recorded is gone
+  (`undo._moved_zip()`).
 
 ## WTF Cleaner data flow
 
@@ -424,7 +428,7 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
     undo_run(journal_path, wow_root, root, keep_snapshots, wow_check, progress) → UndoResult(outcomes, snapshots)
     recover(marker, root, journal_dir, keep_snapshots, wow_check, progress) → UndoResult
 
-Modules in `tools/ace_profiles/` (all UI-free except `app.py`, `review_screen.py`, `tree_view.py`, `popups.py`,
+Modules in `tools/ace3_profile_manager/` (all UI-free except `app.py`, `review_screen.py`, `tree_view.py`, `popups.py`,
 `blacklist_screen.py` and `result_screen.py`): `events`, `settings`, `luasv`, `model`, `scanner`, `ops`, `verify`, `editor`, `multi`,
 `journal`, `undo` and `report` (labels, tags, stage titles, confirm texts, result rows).
 
@@ -493,9 +497,9 @@ Afterwards journals are pruned to `keep_journals` and `prune_edited_zips` delete
 journal names (nothing when a journal cannot be read). The review screen checks the backup folder with
 `validate_backup_dir` before an Apply, an Undo or a recovery (it may have been edited by hand in the cfg).
 
-**Journal and Undo** (`journal.py`, `undo.py`). `<WoW>/wow-tools/ace-profiles/journal/journal-<stamp>.jsonl`:
+**Journal and Undo** (`journal.py`, `undo.py`). `<WoW>/wow-tools/ace3-profile-manager/journal/journal-<stamp>.jsonl`:
 
-    {"version": 1, "started": iso, "tool": "ace-profiles", "kind": "apply", "flavors": [...], "root": stored, "suite_version": "..."}
+    {"version": 1, "started": iso, "tool": "ace3-profile-manager", "kind": "apply", "flavors": [...], "root": stored, "suite_version": "..."}
     {"action": "edited", "flavor": "_retail_", "path": stored, "rel": "WTF/Account/...", "zip": stored, "sha_before": hex, "sha_after": hex, "size_before": n, "size_after": n, "changes": [...]}
     {"action": "rolled_back", "flavor": "_retail_", "rels": [...]}
     {"finished": iso, "entries": n}

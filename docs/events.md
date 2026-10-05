@@ -153,7 +153,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ibackup.undo_failed` | error | Undo was refused or failed on a part. |
 | `ibackup.undo_started` | info | Undo of a restore journal started. |
 
-## `ace-profiles` events
+## `ace3-profile-manager` events
 
 | Event | Level | Description |
 |---|---|---|

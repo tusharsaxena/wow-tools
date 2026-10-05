@@ -1,4 +1,4 @@
-"""Ace3 Profile Manager settings: [ace_profiles] in config/ace-profiles.cfg (spec §11)."""
+"""Ace3 Profile Manager settings: [ace3_profile_manager] in config/ace3-profile-manager.cfg (spec §11)."""
 from __future__ import annotations
 
 import tempfile
@@ -7,8 +7,8 @@ from pathlib import Path
 
 from wowtools.core.config import Config
 from wowtools.core.events import TOOL_REGISTRIES
-from wowtools.tools.ace_profiles import settings as s
-from wowtools.tools.ace_profiles.events import TOOL_NAME
+from wowtools.tools.ace3_profile_manager import settings as s
+from wowtools.tools.ace3_profile_manager.events import TOOL_NAME
 
 
 class SettingsTest(unittest.TestCase):
@@ -16,7 +16,7 @@ class SettingsTest(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.tmp = Path(tmp.name)
-        self.cfg = Config(self.tmp / "ace-profiles.cfg")
+        self.cfg = Config(self.tmp / "ace3-profile-manager.cfg")
 
     def test_defaults(self):
         loaded = s.load_settings(self.cfg)
@@ -27,7 +27,7 @@ class SettingsTest(unittest.TestCase):
         saved = s.ProfileSettings(backup_dir=self.tmp / "out", blacklist=[("_retail_", "ElvUI"), ("*", "Questie")],
                                   last_flavor_choice="", last_account="ACCT1")
         s.save_settings(self.cfg, saved)
-        self.assertEqual(s.load_settings(Config(self.tmp / "ace-profiles.cfg").load()), saved)
+        self.assertEqual(s.load_settings(Config(self.tmp / "ace3-profile-manager.cfg").load()), saved)
 
     def test_retention_is_global_and_stale_keys_go_on_save(self):
         """Feedback round 1: retention lives in [general]; the old per-tool keys are ignored, then removed."""
@@ -79,11 +79,21 @@ class SettingsTest(unittest.TestCase):
 
     def test_root_and_journal_dir(self):
         wow = self.tmp / "World of Warcraft"
-        self.assertEqual(s.resolve_root(s.ProfileSettings(), wow), wow / "wow-tools" / "ace-profiles")
+        self.assertEqual(s.resolve_root(s.ProfileSettings(), wow), wow / "wow-tools" / "ace3-profile-manager")
         self.assertEqual(s.resolve_root(s.ProfileSettings(backup_dir=self.tmp / "b"), wow),
-                         self.tmp / "b" / "ace-profiles")
+                         self.tmp / "b" / "ace3-profile-manager")
         self.assertIsNone(s.resolve_root(s.ProfileSettings(), None))
-        self.assertEqual(s.resolve_journal_dir(wow), wow / "wow-tools" / "ace-profiles" / "journal")
+        self.assertEqual(s.resolve_journal_dir(wow), wow / "wow-tools" / "ace3-profile-manager" / "journal")
+
+    def test_old_folder_in_a_chosen_backup_folder_moves_to_the_new_name(self):
+        backup = self.tmp / "b"
+        (backup / "ace-profiles" / "edited").mkdir(parents=True)
+        (backup / "ace-profiles" / "edited" / "edited-1.zip").write_bytes(b"zip")
+        s.migrate_backup_root(s.ProfileSettings(backup_dir=backup))
+        self.assertFalse((backup / "ace-profiles").exists())
+        self.assertEqual((backup / "ace3-profile-manager" / "edited" / "edited-1.zip").read_bytes(), b"zip")
+        s.migrate_backup_root(s.ProfileSettings(backup_dir=backup))  # nothing left to move
+        s.migrate_backup_root(s.ProfileSettings())  # the default folder is core/migrate.py's job
 
     def test_events_registered_with_prefix(self):
         self.assertIn(TOOL_NAME, TOOL_REGISTRIES)

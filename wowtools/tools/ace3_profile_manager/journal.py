@@ -1,6 +1,6 @@
 """The Ace3 Profile Manager's run journals: the suite format (core/journal.py) with this tool's entries.
 
-One journal per Apply, even across All flavors: <WoW>/wow-tools/ace-profiles/journal/journal-<stamp>.jsonl. Each
+One journal per Apply, even across All flavors: <WoW>/wow-tools/ace3-profile-manager/journal/journal-<stamp>.jsonl. Each
 rewritten file adds {"action": "edited", "flavor", "path", "rel", "zip", "sha_before", "sha_after", "size_before",
 "size_after", "changes"}: zip is the edited-*.zip holding the file's original bytes (as <rel>). When a run puts
 written files back after a failure it appends {"action": "rolled_back", "flavor", "rels"}; those entries are

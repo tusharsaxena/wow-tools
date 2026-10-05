@@ -8,10 +8,10 @@ from pathlib import Path
 from wowtools.core.install import FLAVOR_NAMES
 from wowtools.core.journal import Journal, friendly_stamp
 from wowtools.core.paths import to_stored
-from wowtools.tools.ace_profiles.model import DEFAULT
-from wowtools.tools.ace_profiles.multi import MultiApplyResult
-from wowtools.tools.ace_profiles.ops import CopyOf, DbState, Original, Summary
-from wowtools.tools.ace_profiles.undo import UndoResult
+from wowtools.tools.ace3_profile_manager.model import DEFAULT
+from wowtools.tools.ace3_profile_manager.multi import MultiApplyResult
+from wowtools.tools.ace3_profile_manager.ops import CopyOf, DbState, Original, Summary
+from wowtools.tools.ace3_profile_manager.undo import UndoResult
 
 STAGE_TITLES = {
     "check": "Checking the files", "lock_check": "Checking for locked files",

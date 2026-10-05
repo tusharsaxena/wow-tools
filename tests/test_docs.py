@@ -46,8 +46,8 @@ class DocsTest(unittest.TestCase):
         for gone in ("wtf-cleaner.cmd", "wtf-cleaner.sh", "--flavor", "python -m wowtools"):
             self.assertNotIn(gone, readme)
 
-    def test_ace_profiles_guide_and_readme(self):
-        guide = (REPO_ROOT / "docs" / "ace-profiles.md").read_text(encoding="utf-8")
+    def test_ace3_profile_manager_guide_and_readme(self):
+        guide = (REPO_ROOT / "docs" / "ace3-profile-manager.md").read_text(encoding="utf-8")
         for needle in ("Close WoW", "## Step by step", "## The review screen", "## Keys on the review screen",
                        "Keep only Default", "Everyone → Default", "blacklist", "unlock", "## What the tool never touches",
                        "## Dry run", "## Undo last change", "changed since", "snapshots\\snapshot-<flavor>-",
@@ -62,6 +62,6 @@ class DocsTest(unittest.TestCase):
                     "`/`", "`w`", "`y`", "`r`", "`z`", "`f`", "`t`", "`s`", "`q`"):
             self.assertIn(key, guide)
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("config\\ace-profiles.cfg", readme)
+        self.assertIn("config\\ace3-profile-manager.cfg", readme)
         claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
-        self.assertIn("Ace3 Profile Manager (`ace-profiles`, package `tools/ace_profiles`)", claude)
+        self.assertIn("Ace3 Profile Manager (`ace3-profile-manager`, package `tools/ace3_profile_manager`)", claude)

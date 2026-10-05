@@ -14,7 +14,7 @@ from textual.widgets._footer import FooterKey
 from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, build_ace_tree, build_interface_tree, build_screenshot_tree,
                             build_wow_tree, make_config, settle)
 from wowtools.tools import TOOLS as TOOL_INFO
-from wowtools.tools.ace_profiles.popups import ActionsScreen, NameScreen, TargetScreen
+from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
 from wowtools.ui.branding import BrandBar
 from wowtools.ui.dialogs import (FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_HINT, ConfirmScreen, InfoScreen,
                                  ProgressScreen)
@@ -24,12 +24,12 @@ from wowtools.ui.widgets import NavHint
 
 POPUP_MAX_WIDTH = 100  # a popup or confirm at LARGE: a readable width, never stretched edge to edge
 FORM_MAX_WIDTH = 100  # a settings form, at any size
-TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup", "ace-profiles")
+TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup", "ace3-profile-manager")
 # The action that leads to a result screen without a running-WoW popup in between (dry runs, a backup).
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
-              "ace-profiles": "dry_run"}
+              "ace3-profile-manager": "dry_run"}
 # What a review needs before its run action has something to do (the Ace3 Profile Manager runs staged changes).
-PREPARE = {"ace-profiles": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
+PREPARE = {"ace3-profile-manager": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
                                            review.refresh_view())}
 
 
@@ -53,7 +53,7 @@ class LookAndFeelTest(TuiTestCase):
 
     def make_app(self):
         options = {"wtf-cleaner": {"wow_check": list, "locker_check": list},
-                   "interface-backup": {"wow_check": list}, "ace-profiles": {"wow_check": list}}
+                   "interface-backup": {"wow_check": list}, "ace3-profile-manager": {"wow_check": list}}
         return WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list,
                            tool_options=options)
 
@@ -163,10 +163,10 @@ class LookAndFeelTest(TuiTestCase):
         least 12, with and without pending changes."""
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
-            review = await self.open_review(app, pilot, "ace-profiles")
+            review = await self.open_review(app, pilot, "ace3-profile-manager")
             for prepared in (False, True):
                 if prepared:
-                    PREPARE["ace-profiles"](review)
+                    PREPARE["ace3-profile-manager"](review)
                     await settle(app, pilot)
                     self.assertIn("pending change", str(review.query_one("#guide").render()))
                 pane = review.query_one("#tree-pane").region
@@ -193,11 +193,11 @@ class LookAndFeelTest(TuiTestCase):
         row each, and with the action bar still leaves the tree at least 12 rows at BASE."""
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
-            review = await self.open_review(app, pilot, "ace-profiles")
+            review = await self.open_review(app, pilot, "ace3-profile-manager")
             tree = review.query_one("#profiles", Tree)
             for prepared in (False, True):
                 if prepared:
-                    PREPARE["ace-profiles"](review)
+                    PREPARE["ace3-profile-manager"](review)
                     await settle(app, pilot)
                 tree.root.expand_all()
                 await settle(app, pilot)
@@ -223,10 +223,10 @@ class LookAndFeelTest(TuiTestCase):
         """At BASE, 100+ pending changes (a whole account's Everyone -> Default) and a long name ("Name - Realm")
         still show the pending line and the hint, one row each: the name is shortened with "…", not the hint
         dropped."""
-        from wowtools.tools.ace_profiles.ops import Summary
+        from wowtools.tools.ace3_profile_manager.ops import Summary
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
-            review = await self.open_review(app, pilot, "ace-profiles")
+            review = await self.open_review(app, pilot, "ace3-profile-manager")
             review.staging.summary = lambda: Summary(reassigned=150, files=12)
             long_name = "Shadowpriestess - Argent Dawn (EU)"  # 35 characters
             review._node_name = lambda data: long_name
@@ -254,10 +254,10 @@ class LookAndFeelTest(TuiTestCase):
     async def test_ace_steps_wrap_between_steps(self):
         """The guide's four steps take two rows at BASE and LARGE and break only between steps, so "→ 4" never
         ends a row with "Apply (w)" on the next."""
-        from wowtools.tools.ace_profiles.report import STEPS
+        from wowtools.tools.ace3_profile_manager.report import STEPS
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
-            review = await self.open_review(app, pilot, "ace-profiles")
+            review = await self.open_review(app, pilot, "ace3-profile-manager")
             for size in (BASE, LARGE):
                 with self.subTest(size=size):
                     await pilot.resize_terminal(*size)
@@ -276,7 +276,7 @@ class LookAndFeelTest(TuiTestCase):
         whole."""
         app = self.make_app()
         async with app.run_test(size=LARGE) as pilot:
-            review = await self.open_review(app, pilot, "ace-profiles")
+            review = await self.open_review(app, pilot, "ace3-profile-manager")
             bar = review.query_one("#tree-actions")
             buttons = list(bar.query(Button))
             self.assertLessEqual(len({b.region.y for b in buttons}), 2, [b.region for b in buttons])
@@ -290,7 +290,7 @@ class LookAndFeelTest(TuiTestCase):
         rows) still leave the whole hint in the left pane at BASE."""
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
-            review = await self.open_review(app, pilot, "ace-profiles")
+            review = await self.open_review(app, pilot, "ace3-profile-manager")
             staging = review.staging
             elv = next(k for k, s in staging.states.items() if s.file.addon == "ElvUI" and "Healer" in s.names())
             staging.delete({elv: ["Healer"]}, "Default")
@@ -431,7 +431,7 @@ class LookAndFeelTest(TuiTestCase):
         checkboxes carry short labels under them, one per row."""
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
-            review = await self.open_review(app, pilot, "ace-profiles")
+            review = await self.open_review(app, pilot, "ace3-profile-manager")
             filters = review.query_one("#filters")
             headings = [str(w.render()) for w in filters.query(".section")]
             self.assertEqual(headings[:2], ["View", "Show"])

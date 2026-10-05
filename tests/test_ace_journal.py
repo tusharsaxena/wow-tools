@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from wowtools.tools.ace_profiles import journal as j
+from wowtools.tools.ace3_profile_manager import journal as j
 
 
 class JournalTest(unittest.TestCase):

@@ -10,8 +10,8 @@ from rich.cells import cell_len
 from tests.fixtures import build_ace_tree
 from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.paths import to_stored
-from wowtools.tools.ace_profiles import editor, multi, ops, report, scanner
-from wowtools.tools.ace_profiles.undo import UndoResult
+from wowtools.tools.ace3_profile_manager import editor, multi, ops, report, scanner
+from wowtools.tools.ace3_profile_manager.undo import UndoResult
 
 
 class ReportTest(unittest.TestCase):
@@ -135,7 +135,7 @@ class ReportTest(unittest.TestCase):
         """Terminal size plan, Task S3: a whole zip path is cut off at 120 columns. The backup folder has a row of
         its own; the zips (and the journal, when it is in there) are named inside it; a file elsewhere keeps its
         whole path."""
-        root = Path("/wow/wow-tools/ace-profiles")
+        root = Path("/wow/wow-tools/ace3-profile-manager")
         flavor = Flavor("_retail_", Path("/wow/_retail_"))
         apply = editor.ApplyResult(flavor, False, snapshot=root / "snapshots" / "snapshot-retail-1.zip",
                                    backup_zip=root / "edited" / "edited-retail-all-1.zip")

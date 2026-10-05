@@ -311,16 +311,20 @@ Close WoW first: Undo refuses while it's running, just like Apply.
 ## Where your backups go
 
 Unless you change it in settings, the backup folder is `<your WoW folder>\wow-tools`. The tool's files go into its
-`ace-profiles` folder:
+`ace3-profile-manager` folder:
 
 ```
-<backup folder>\ace-profiles\
+<backup folder>\ace3-profile-manager\
   snapshots\snapshot-<flavor>-<YYYYMMDD-HHMMSS>.zip           your whole WTF folder, taken before each change and undo
   edited\edited-<flavor>-<account>-<YYYYMMDD-HHMMSS>.zip       the files a change edited, as they were before it
   edit-in-progress.json                                        only while a change is being written
-<your WoW folder>\wow-tools\ace-profiles\
+<your WoW folder>\wow-tools\ace3-profile-manager\
   journal\journal-<YYYYMMDD-HHMMSS>.jsonl                      the record Undo last change uses
 ```
+
+The tool used to be called `ace-profiles`. If you have folders or a settings file under that name, they move to
+the new name on the next start (the backup folder's when you next open the tool), and Undo still finds your
+earlier changes.
 
 `<flavor>` is the game version (`retail`, `classic_era` and so on) and `<account>` is the account you picked, or
 `all`. If two runs start in the same second, the second gets `-2` added before `.zip`, so no backup ever replaces
@@ -353,11 +357,11 @@ can't start until you've chosen, since it would lose the way back for the earlie
 
 Press `s` in the tool (you get the shared settings first: WoW folder, backups and journals to keep; then this
 tool's settings). The tool's settings are saved in
-`config\ace-profiles.cfg`.
+`config\ace3-profile-manager.cfg`.
 
 | Setting | Starts as | What it means |
 |---|---|---|
-| Backup folder | empty | Where the `WTF` backups and the zips of edited files go: they're put in its `ace-profiles` folder. Empty means `<WoW folder>\wow-tools`. It must be a full path (such as `D:\WoW backups`), and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
+| Backup folder | empty | Where the `WTF` backups and the zips of edited files go: they're put in its `ace3-profile-manager` folder. Empty means `<WoW folder>\wow-tools`. It must be a full path (such as `D:\WoW backups`), and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
 | Blacklist | none | Addons, each in one game version, that are shown but never changed. **Edit blacklist…** opens the [blacklist screen](#the-blacklist); the line above it counts them |
 
 The file itself uses these names, if you edit it by hand: `backup_dir`, `blacklist` (pairs such as
