@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import tempfile
 import threading
+import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -76,16 +78,11 @@ class ThrottledProgressTest(unittest.TestCase):
     def test_default_interval(self):
         self.assertEqual(ThrottledProgress(print).interval, PROGRESS_INTERVAL)
 
-    def test_several_threads_forward_each_stage_end_once_and_never_crash(self):
-        # The clock never moves: only first reports, stage changes and stage ends get through.
+    def test_several_threads_are_throttled_each_on_its_own(self):
+        # The clock never moves: each thread gets its first report and its stage's end through, nothing else, even
+        # with the four stages interleaving (a shared single stage slot let every report through).
         sent = []
-        lock = threading.Lock()
-
-        def forward(*args):
-            with lock:
-                sent.append(args)
-
-        progress = ThrottledProgress(forward, 3600.0, clock=lambda: 0.0)
+        progress = ThrottledProgress(lambda *a: sent.append(a), 3600.0, clock=lambda: 0.0)
 
         def work(stage):
             for i in range(1, 501):
@@ -96,9 +93,51 @@ class ThrottledProgressTest(unittest.TestCase):
             thread.start()
         for thread in threads:
             thread.join()
+        self.assertEqual(len(sent), 4 * 2)
         for n in range(4):
-            self.assertIn((f"s{n}", 500, 500, f"s{n}500"), sent)  # every stage's end got through
-        self.assertLess(len(sent), 4 * 500)
+            mine = [a for a in sent if a[0] == f"s{n}"]
+            self.assertEqual(mine, [(f"s{n}", 1, 500, f"s{n}1"), (f"s{n}", 500, 500, f"s{n}500")])
+
+    def test_interleaved_stages_from_two_threads_stay_throttled(self):
+        now = [0.0]
+        sent = []
+        progress = ThrottledProgress(lambda *a: sent.append(a[3]), 0.1, clock=lambda: now[0])
+        workers = {name: ThreadPoolExecutor(max_workers=1) for name in "ABC"}  # one thread per stage
+        self.addCleanup(lambda: [w.shutdown() for w in workers.values()])
+
+        def report(name, current, total=100):
+            workers[name].submit(progress, name, current, total, f"{name}{current}").result()
+
+        for i in range(1, 50):
+            report("A", i)
+            report("B", i)
+        now[0] = 0.15
+        report("A", 50)
+        report("B", 50)
+        report("C", 0, 0)  # a third thread: its first report goes through
+        self.assertEqual(sent, ["A1", "B1", "A50", "B50", "C0"])
+
+    def test_a_report_decided_first_is_never_forwarded_after_a_later_stage_end(self):
+        # Worker A's report is let through and its forward is slow; worker B then ends the stage. B's end must
+        # reach the UI last, not A's stale 5/10.
+        sent = []
+        in_forward = threading.Event()
+
+        def forward(*args):
+            if args[1] == 5:
+                in_forward.set()
+                time.sleep(0.2)
+            sent.append(args[:3])
+
+        progress = ThrottledProgress(forward, 3600.0, clock=lambda: 0.0)
+        a = threading.Thread(target=progress, args=("backup", 5, 10, "x"))
+        a.start()
+        self.assertTrue(in_forward.wait(5))
+        b = threading.Thread(target=progress, args=("backup", 10, 10, "y"))
+        b.start()
+        a.join()
+        b.join()
+        self.assertEqual(sent, [("backup", 5, 10), ("backup", 10, 10)])
 
 
 class MarkerTest(unittest.TestCase):
