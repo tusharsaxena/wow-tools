@@ -2,8 +2,8 @@
 
 Out-of-game WoW companion tools (Ka0s branded). Tools: WTF Cleaner (`wtf-cleaner`), Screenshot Organizer
 (`screenshot-organizer`, package `tools/screenshot_organizer`), Interface Backup (`interface-backup`, package
-`tools/interface_backup`), Ace3 Profile Manager (`ace3-profile-manager`, package `tools/ace3_profile_manager`).
-Specs and plans: `docs/superpowers/`.
+`tools/interface_backup`), Ace3 Profile Manager (`ace3-profile-manager`, package `tools/ace3_profile_manager`),
+Saved Variables Browser (`sv-browser`, package `tools/sv_browser`). Specs and plans: `docs/superpowers/`.
 
 - Tests: `python3 scripts/run_tests.py` (parallel, ~70s here on WSL `/mnt/d`; `-k TEXT` to filter, `-j N` processes).
   Serial, verbose: `python3 -m unittest discover -s tests -t . -v`
@@ -39,10 +39,13 @@ Conventions:
   `GUIDE_URL`); `tests/test_help.py` checks it names every button.
 - Shared library: `wowtools/core/` (UI-free) + `wowtools/ui/` (Textual), in-repo, not a separate package. What two
   or more tools need lives there, never copied and never imported across tools (a tool never imports another tool).
-  Core: `install`, `config`, `journal` (`ToolJournals`), `snapshot`, `svfiles`, `undo`, `marker`, `progress`
-  (`ProgressBoard`), `parallel` (`run_units`, `[general] parallelism`), `text`, `fsutil`, `backup`, `changelog`.
-  UI: `dialogs` (confirm/info/choice/progress popups, CSS, tick helpers), `review` (`ReviewBase`, `ReviewTree`,
-  `TickModel`), `tree_filter` (`TreeFilter`, `/` filter box), `result_screen` (`ResultBase`), `settings_form`
+  Core: `install`, `config`, `journal` (`ToolJournals`, `tool_root`), `snapshot`, `svfiles` (`SvFile`,
+  `walk_sv_files`), `undo`, `marker`, `progress` (`ProgressBoard`), `parallel` (`run_units`, `[general] parallelism`),
+  `text`, `fsutil`, `backup`, `changelog`, and the SavedVariables stack Ace3 and SV Browser share: `luasv` (parser,
+  `parse_at`, `iter_scalars`, encoders), `sv_events` (`SvTool`, `sv_events(prefix)`), `sv_apply` (write pipeline),
+  `sv_journal`, `sv_undo`, `sv_verify`, `sv_report`.
+  UI: `dialogs` (confirm/info/choice/progress popups, `TextPromptScreen`, `UnfinishedRunScreen`, `popup_css`, CSS,
+  tick helpers), `review` (`ReviewBase`, `ReviewTree`, `TickModel`, `RunActions`, `BarTree`/`ActionBar`), `tree_filter` (`TreeFilter`, `/` filter box), `result_screen` (`ResultBase`), `settings_form`
   (`ToolSettingsScreen`), `tool_flow` (`ToolFlow`), `widgets` (`action_button`), `branding` (`BottomBar`, version,
   terms). `tests/test_structure.py` pins single definitions, the cross-tool rule, the future import and import order.
 - Tests use `tests/fixtures.py` temp trees; never a real WoW install, never the network.

@@ -85,3 +85,32 @@ class DocsTest(unittest.TestCase):
         self.assertIn("config\\ace3-profile-manager.cfg", readme)
         claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
         self.assertIn("Ace3 Profile Manager (`ace3-profile-manager`, package `tools/ace3_profile_manager`)", claude)
+
+    def test_sv_browser_guide_readme_and_notes(self):
+        guide = (REPO_ROOT / "docs" / "sv-browser.md").read_text(encoding="utf-8")
+        self.assertTrue(guide.index("USE AT YOUR OWN RISK") < guide.index("## Step by step"))
+        for needle in ("Close WoW", "## Step by step", "## The review screen", "## Editing", "Top-level",
+                       "array entry", "already has", "## Search and replace", "Exact", "Contains", "Whole value",
+                       "Match case", "Account-wide only", "Addon file", "Find only", "10,000", "left out",
+                       "## Apply", "## Dry run", "## Undo last change", "changed since", "Put the originals back",
+                       "snapshots\\snapshot-<flavor>-", "edited\\edited-<flavor>-all-", "journal\\journal-",
+                       "edit-in-progress.json", "keep_backups", "keep_journals", "config\\sv-browser.cfg",
+                       "## Settings", "## Keys on the review screen", "## FAQ", "## Troubleshooting",
+                       "<!-- screenshots:", "I understand", "Unstage", "Back to review"):
+            self.assertIn(needle, guide)
+        self.assertNotIn("still being built", guide)
+        for key in ("`Space`", "`a`", "`n`", "`S`", "`e`", "`k`", "`d`", "`Backspace`", "`v`", "`x`", "`c`",
+                    "`/`", "`w`", "`y`", "`r`", "`z`", "`f`", "`t`", "`s`", "`h`", "`q`"):
+            self.assertIn(key, guide)
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("config\\sv-browser.cfg", readme)
+        self.assertNotIn("four tools", readme.casefold())
+        claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertIn("Saved Variables Browser (`sv-browser`, package `tools/sv_browser`)", claude)
+        for module in ("luasv", "sv_apply", "sv_journal", "sv_undo", "sv_verify", "sv_report", "sv_events"):
+            self.assertIn(f"`{module}`", claude)
+        changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertIn("- **Saved Variables Browser**", changelog)
+        architecture = (REPO_ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+        self.assertIn("## Saved Variables Browser data flow", architecture)
+        self.assertIn("| `luasv` |", architecture)

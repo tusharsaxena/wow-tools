@@ -6,7 +6,7 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 
 ## [0.1.0] - 2026-10-05
 
-The first version: four tools in one app.
+The first version: five tools in one app.
 
 ### Added
 
@@ -81,3 +81,23 @@ The first version: four tools in one app.
   - Edits only the lines that change in each settings file, after backing up the whole `WTF` folder and every file
     it edits, and refuses while WoW is running.
   - **Dry run** and **Undo last change**.
+- **Saved Variables Browser** (use at your own risk)
+  - Shows every SavedVariables file of every game version, account and character as a tree you can open down to
+    single values; a file is only read when you open it, and a big table shows its first 500 entries.
+  - Edits a value (string, number or boolean), renames a key or deletes a key (a whole table with it); a top-level
+    variable can only have its value edited, and an array entry can be deleted (the entries after it move down) but
+    not renamed.
+  - **Search** (`S`) finds values by key (Exact or Contains), by value (Whole value or Contains) or both, with
+    **Match case**, in one game version, account, character or addon file, and replaces them with a string, a number
+    or a boolean; **Find only** just shows where they are. The hits show as `path = old → new`, all ticked, up to
+    10,000.
+  - Edits and ticked results wait until you apply them; a staged edit wins over a ticked result on the same value.
+  - Changes only the bytes you edited, after backing up the whole `WTF` folder and every file it edits, checks each
+    new file before writing it, and refuses while WoW is running. **Dry run** and **Undo last change**; a change
+    cut short (a crash, a power cut) can be put back.
+  - Asks you to accept a USE AT YOUR OWN RISK warning each time you open it, and repeats it on every Apply and Undo.
+- **Shared SavedVariables library**
+  - The SavedVariables reader and the safe write pipeline (backups, journal, Undo, recovery) the Ace3 Profile
+    Manager used are now shared by both tools; the Ace3 Profile Manager works as before.
+  - Strings with a backslash before a character Lua 5.1 doesn't treat as an escape (`\x41`, `\z`) are now read the
+    way WoW reads them.

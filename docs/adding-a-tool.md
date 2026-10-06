@@ -43,8 +43,26 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      `human_size`) and `install` (`flavor_name`, `validate_backup_dir`).
      See [architecture.md](architecture.md) for each module. A tool that changes SavedVariables files takes the
      whole-`WTF` snapshot from `core/snapshot.py` (folder and name prefix are parameters), the path guard and lock
-     probe from `core/svfiles.py`, and `core.fsutil.atomic_write_bytes` for its writes, as the WTF Cleaner and the
-     Ace3 Profile Manager do.
+     probe from `core/svfiles.py`, and `core.fsutil.atomic_write_bytes` for its writes, as the WTF Cleaner does.
+   - **Reading and editing SavedVariables.** A tool that reads SavedVariables or edits values inside them builds on
+     the shared stack the Ace3 Profile Manager and the Saved Variables Browser use, never on either tool:
+     `core/luasv.py` (the byte-exact Lua reader: `parse`, `parse_at` for one table's span, the streaming
+     `iter_scalars`, `encode_value` / `encode_key` and `key_id` for writing and comparing keys),
+     `core/svfiles.py` (`SvFile`, `sha256_of`, `walk_sv_files(flavor, accept=is_sv_file | is_addon_sv_file, ...)`)
+     and the write pipeline. Make one `SV_TOOL = SvTool(TOOL_NAME, "<prefix>")` (`core/sv_events.py`) in the
+     tool's `events.py` and register `sv_events(SV_TOOL.prefix)` with its own events (the pipeline's 31 events
+     under your prefix). Then supply only the per-file parts: `compile(file, payload, bytes)` returning an edit
+     with `.data` (the new bytes, built by byte-span splices, never by re-serializing) and `.changes`, and
+     `verify(edit, old_bytes)` returning problems (the helpers in `core/sv_verify.py` check the assignments and
+     every byte outside the edited spans). `core/sv_apply.py` `apply_flavor(SV_TOOL, flavor, units, compile,
+     verify, ...)` / `apply_flavors(...)` does the rest: the SHA-256 recheck, dry run, lock probe, whole-`WTF`
+     snapshot, originals zip (`edited/`), crash marker, atomic write and read-back, roll-back and the run journal
+     (`core/sv_journal.py`); `core/sv_undo.py` has `undo_run` and `recover`, `core/sv_report.py` the progress
+     stage titles, confirm text and result rows, and `tool_root(backup_dir, wow_path, TOOL_NAME)`
+     (`core/journal.py`) the folder they live in. On the UI side, mix `RunActions` (`ui/review.py`) in before
+     `ReviewBase` for the WoW check, the backup-folder refusal and `start_run` (busy flag, progress popup,
+     worker), and use `UnfinishedRunScreen` and `TextPromptScreen` from `ui/dialogs.py`. The Saved Variables
+     Browser (`tools/sv_browser/editor.py`, `undo.py`, `journal.py`, `report.py`) is the smallest worked example.
    - `help.py` with `HELP`, the tool's help screen text (Markdown; `h` on any of its screens shows it, spec D18) and
      `GUIDE_URL` (`https://github.com/tusharsaxena/wow-tools/blob/master/docs/<tool name>.md`): what the tool does,
      the flow step by step, every button with its key, the filter and tick keys, the safety notes (backups, Dry
