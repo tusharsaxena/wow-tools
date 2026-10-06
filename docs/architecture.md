@@ -477,17 +477,17 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
     recover(marker, root, journal_dir, keep_snapshots, wow_check, progress) → UndoResult
 
 Modules in `tools/ace3_profile_manager/` (all UI-free except `app.py`, `review_screen.py`, `tree_view.py`, `popups.py`,
-`blacklist_screen.py` and `result_screen.py`): `events`, `settings`, `luasv`, `model`, `scanner`, `ops`, `verify`, `editor`, `multi`,
+`blacklist_screen.py` and `result_screen.py`): `events`, `settings`, `model`, `scanner`, `ops`, `verify`, `editor`, `multi`,
 `journal`, `undo` and `report` (labels, tags, stage titles, confirm texts, result rows).
 
 **Never re-serialize.** Every change is a byte-span splice; every byte outside the edited spans stays identical.
 Only `profileKeys` entries, `profiles` entries, `namespaces[*].profiles` entries and the LibDualSpec
 `namespaces["LibDualSpec-1.0"].char[*]` spec values may change.
 
-**Parse** (`luasv.py`). A stdlib tokenizer over the file's raw bytes (strings decode as UTF-8 with
+**Parse** (`core/luasv.py`, shared with Saved Variables Browser). A stdlib tokenizer over the file's raw bytes (strings decode as UTF-8 with
 `surrogateescape`). `parse(data, descend)` returns a `Chunk` of `Assignment`s; a table field is a `Field` with
 `entry_start`/`entry_end` (the entry and its separator), `key_span`, and `remove_span` (what removing the entry
-cuts: its whole line when nothing else is on that line); a `Table` records its braces. Values whose path `descend`
+cuts: its whole line, with a trailing line comment such as WoW's `-- [n]`, when nothing else is on that line); a `Table` records its braces. Values whose path `descend`
 rejects are skipped by a compiled-regex scanner that only finds their end (`Opaque`), so a 12 MB file parses in
 about a second. Numbers WoW writes oddly (`1.#INF`) stay text (`RawNumber`). `splice(data, edits)` applies
 non-overlapping `(start, end, bytes)` edits from the end; `encode_string`/`decode_string` round-trip Lua

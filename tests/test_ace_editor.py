@@ -10,10 +10,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.fixtures import build_ace_tree
+from wowtools.core import luasv
 from wowtools.core.events import capture_events
 from wowtools.core.fsutil import atomic_write_bytes
 from wowtools.core.install import WowInstall
-from wowtools.tools.ace3_profile_manager import editor, luasv, model, ops, scanner
+from wowtools.tools.ace3_profile_manager import editor, model, ops, scanner
 from wowtools.tools.ace3_profile_manager.journal import ProfileJournal, read_profile_journal
 
 WHEN = datetime(2026, 10, 4, 12, 0, 0)

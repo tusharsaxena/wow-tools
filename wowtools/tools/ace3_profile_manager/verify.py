@@ -1,7 +1,7 @@
 """Re-read an edited SavedVariables file and check it says exactly what was staged (spec §8.2). UI-free."""
 from __future__ import annotations
 
-from wowtools.tools.ace3_profile_manager.luasv import Chunk, LuaParseError, Table, parse
+from wowtools.core.luasv import Chunk, LuaParseError, Table, parse
 from wowtools.tools.ace3_profile_manager.model import ace_descend, find_dbs, lds_chars, namespace_profiles
 from wowtools.tools.ace3_profile_manager.ops import FileEdit
 

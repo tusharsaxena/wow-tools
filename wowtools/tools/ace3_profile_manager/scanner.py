@@ -16,7 +16,7 @@ from pathlib import Path
 from wowtools.core.events import log_event
 from wowtools.core.fsutil import is_link
 from wowtools.core.install import Account, Character, Flavor
-from wowtools.tools.ace3_profile_manager.luasv import LuaParseError, parse
+from wowtools.core.luasv import LuaParseError, parse
 from wowtools.tools.ace3_profile_manager.model import AceDb, ace_descend, find_dbs, has_profile_keys
 
 ScanProgress = Callable[[int, int, str], None]

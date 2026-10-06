@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from wowtools.core.events import log_event
-from wowtools.tools.ace3_profile_manager.luasv import Field, Table, encode_string, line_start, newline_of, splice
+from wowtools.core.luasv import Field, Table, encode_string, line_start, newline_of, splice
 from wowtools.tools.ace3_profile_manager.model import DEFAULT, AceDb
 from wowtools.tools.ace3_profile_manager.scanner import ScanResult, SvFile
 

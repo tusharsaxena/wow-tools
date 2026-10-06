@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import unittest
 
-from wowtools.tools.ace3_profile_manager import luasv, model
+from wowtools.core import luasv
+from wowtools.tools.ace3_profile_manager import model
 
 NL = b"\r\n"
 

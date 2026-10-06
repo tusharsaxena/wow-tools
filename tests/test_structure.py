@@ -111,6 +111,19 @@ class StructureTest(unittest.TestCase):
                  if isinstance(node, ast.ClassDef) and node.name in classes}
         self.assertEqual(where, {(f"wowtools/core/{module}", name) for name, module in classes.items()})
 
+    def test_saved_variables_reader_lives_in_core(self):
+        """The SavedVariables reader (SV Browser spec D20) is wowtools/core/luasv.py's: Ace3 and SV Browser import it,
+        no tool keeps a luasv module or defines its parser, codecs or parse classes."""
+        self.assertEqual([rel(p) for p in modules("wowtools") if p.name == "luasv.py"], ["wowtools/core/luasv.py"])
+        functions = {"parse", "parse_at", "iter_scalars", "decode_string", "encode_string", "encode_value",
+                     "encode_key", "key_id", "splice", "newline_of", "line_start", "is_blank_table"}
+        where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & functions}
+        self.assertEqual(where, {("wowtools/core/luasv.py", n) for n in functions})
+        classes = {"LuaParseError", "RawNumber", "Scalar", "Opaque", "Field", "Table", "Assignment", "Chunk"}
+        where = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
+                 if isinstance(node, ast.ClassDef) and node.name in classes}
+        self.assertEqual(where, {("wowtools/core/luasv.py", n) for n in classes})
+
     def test_tools_use_the_shared_helpers(self):
         """Each tool's journals, undo results and markers go through core (no copy of the bodies)."""
         from wowtools.core import journal, undo
