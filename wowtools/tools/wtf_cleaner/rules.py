@@ -106,7 +106,7 @@ def _group_reasons(group: SVGroup, scan: ScanResult, criteria: Criteria, now: fl
     reasons = []
     if criteria.not_installed and key not in scan.installed:
         reasons.append("not_installed")
-    if criteria.not_enabled and key in scan.installed and key not in scan.enabled:
+    if criteria.not_enabled and key in scan.installed and key not in scan.enabled_for(group.account):
         reasons.append("not_enabled")
     if criteria.older_than and now - group.newest_mtime > criteria.max_age_days * DAY:
         reasons.append("older_than")

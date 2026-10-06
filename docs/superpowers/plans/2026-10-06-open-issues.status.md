@@ -6,7 +6,7 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
 |---|---|---|---|---|---|
 | I1 | #1 | macOS running-WoW detection | done | ac04a74 | `ps -axo comm=` branch, shared `wow_name()` rule; 4 new tests (test_process 17), suite 1308 OK, 2 skipped |
 | I2 | #4 | keep_cleaned for cleaned zips | done | 685d44f | `[wtf_cleaner] keep_cleaned` (0 = all), `prune_cleaned_zips`, event `backup.cleaned_pruned`; 8 new tests, suite 1317 OK, 2 skipped |
-| I3 | #5 | per-account enabled addons | todo | | |
+| I3 | #5 | per-account enabled addons | done | (this commit) | `ScanResult.enabled_by_account` + `enabled_for()`, rules judge each group by its account; `build_multi_account_tree` fixture, 5 new tests (PerAccountEnabledTest); suite 1322 OK, 2 skipped |
 | I4 | #7 | keep user files when pruning update backups | todo | | |
 | I5 | #8 | native Windows checkpoint run | todo | | |
 | I6 | #9 #10 | review bundle sign-off, merged ledgers | todo | | |
@@ -36,3 +36,13 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
   is a full-height Input like max_age, the form still fitting at 120x30 because "Propose SavedVariables when:" is a
   plain Label instead of a margined .title; the stale dry-run test renamed and its comment corrected. Suite 1317 OK,
   2 skipped.
+- I3: character-level files are judged by their *account's* set too (any character of the account enabling the
+  addon keeps every file of that account), not by the character's own AddOns.txt: that keeps a single-account
+  install's verdict identical (the brief's hard requirement) and never suggests an alt's file because the alt alone
+  switched the addon off. An account with no characters, in an install where other accounts have some, now counts
+  every installed addon as enabled (with its own "no character folders" warning) instead of borrowing the other
+  accounts' union: the safe side. A flavor with no characters at all keeps its one flavor-wide warning.
+  `ScanResult.enabled` stays the union over accounts with characters (logs, `scan.completed`); `scan.addons` also
+  logs `enabled_by_account`. The shared `build_wow_tree` fixture's Chârb now enables Details, so ACCT2 keeps its
+  Details files under per-account judging and every existing count stays the same; the new behaviour is tested on
+  the separate `build_multi_account_tree`. No extra file I/O: each AddOns.txt is still read once.

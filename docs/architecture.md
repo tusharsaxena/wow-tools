@@ -108,8 +108,11 @@ start, so nothing is moved under a running copy:
                       → CleanResult(outcomes, backup_path, snapshot_path, restored, journal_path)
     undo_clean(journal_path, wow_root, progress=None) → UndoResult(outcomes[UndoOutcome])
 
-`scan(account=NAME)` is fully scoped: only that account's SavedVariables are read, and only its characters
-decide the enabled set. `account=None` is the whole flavor.
+`scan(account=NAME)` is fully scoped: only that account's SavedVariables are read. `account=None` is the whole
+flavor. Either way the enabled set is per account (`ScanResult.enabled_by_account`, `enabled_for(account)`): the
+"not enabled" rule judges a group, account-wide or character, by the addons enabled on any character of its own
+account (every installed addon for an account with no characters); `ScanResult.enabled` is the union over the
+accounts with characters, for logs. A single-account flavor gets exactly the old flavor-wide union.
 
 All flavors (`tools/wtf_cleaner/multi.py`, UI-free) runs the same per-flavor functions and changes none of them:
 

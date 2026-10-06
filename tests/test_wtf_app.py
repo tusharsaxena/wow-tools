@@ -552,6 +552,9 @@ class RecoveryDialogTest(AppTestCase):
 
 class AccountScopeFlowTest(AppTestCase):
     async def test_account_screen_scopes_the_review(self):
+        # DisabledAddon is disabled on ACCT2's only character, so its account-wide file there is proposed.
+        (self.root / "_retail_" / "WTF" / "Account" / "ACCT2" / "SavedVariables" / "DisabledAddon.lua").write_text(
+            "-- sv\n", encoding="utf-8")
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.enter_tool(app, pilot)

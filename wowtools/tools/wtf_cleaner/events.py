@@ -7,7 +7,8 @@ TOOL_NAME = "wtf-cleaner"
 
 EVENTS: dict[str, EventSpec] = {
     "scan.started": EventSpec("info", "A scan of one flavor started."),
-    "scan.addons": EventSpec("debug", "Installed and enabled addon lists found by the scan."),
+    "scan.addons": EventSpec("debug", "Installed and enabled addon lists found by the scan (enabled: per account "
+                                                   "and their union)."),
     "scan.completed": EventSpec("info", "A scan finished, with counts."),
     "scan.warning": EventSpec("warning", "Something was skipped during a scan (unreadable folder, bad AddOns.txt "
                                          "line, no characters to judge 'not enabled' by)."),

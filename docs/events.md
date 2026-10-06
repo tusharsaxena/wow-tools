@@ -92,7 +92,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `recovery.incomplete_clean` | warning | A marker from an unfinished clean was found at startup. |
 | `restore.completed` | warning | A clean stopped unexpectedly; the files it had deleted were restored. |
 | `restore.failed` | error | Restoring from the WTF backup failed; the marker was kept. |
-| `scan.addons` | debug | Installed and enabled addon lists found by the scan. |
+| `scan.addons` | debug | Installed and enabled addon lists found by the scan (enabled: per account and their union). |
 | `scan.completed` | info | A scan finished, with counts. |
 | `scan.started` | info | A scan of one flavor started. |
 | `scan.warning` | warning | Something was skipped during a scan (unreadable folder, bad AddOns.txt line, no characters to judge 'not enabled' by). |

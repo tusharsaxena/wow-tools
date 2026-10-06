@@ -10,7 +10,7 @@ from wowtools.tools.wtf_cleaner.scanner import addon_name_for
 
 CRITERION_LABELS = {
     "not_installed": "Addon is not installed",
-    "not_enabled": "Addon is installed but not enabled on any character",
+    "not_enabled": "Addon is installed but not enabled on any character of its account",
     "older_than": "SavedVariables are older than the age limit",
     "stray_copies": "Hand-made copies (anything but <Addon>.lua / <Addon>.lua.bak)",
 }

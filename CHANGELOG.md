@@ -53,6 +53,8 @@ The first version: four tools in one app.
 - **WTF Cleaner**
   - Finds settings left behind by addons you no longer use, shows them for review, backs them up and deletes them.
   - Works on one game version, one account or **All flavors**.
+  - "Not enabled" is decided per account: an addon you only use on one account no longer keeps another account's
+    settings for it (an account with no characters counts every addon as enabled).
   - **Clean** is on `w`.
   - **Dry run** and **Undo last clean**.
   - The zips of the files each clean removed are kept forever unless you set how many to keep per game version

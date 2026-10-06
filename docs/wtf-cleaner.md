@@ -51,7 +51,7 @@ colour, used in the list too:
 | Rule | Suggests | Example |
 |---|---|---|
 | **1 Not installed** (red) | Settings for addons that are no longer installed | `OldBagAddon.lua` after you removed that addon |
-| **2 Not enabled** (orange) | Settings for addons that are installed but switched off on every character | An addon you disabled everywhere but never removed |
+| **2 Not enabled** (orange) | Settings for addons that are installed but switched off on every character of that account | An addon you disabled everywhere, or that only your other account uses |
 | **3 Older than max age** (yellow) | Addons whose settings haven't changed in a long time (90 days to start with) | An addon from last expansion that you stopped using |
 | **4 Stray copies** (purple) | Copies you or another program made by hand next to the real file | `Details.lua - Copy.bak` |
 
@@ -72,17 +72,23 @@ folder it looked in) and the others carry on.
 
 ### Accounts
 
-- **All accounts** (the usual choice): an addon counts as "enabled" if *any* character on *any* account uses it.
-- **One account**: only that account's files are scanned, and only its characters count.
+- **All accounts** (the usual choice): every account's files are scanned, each judged on its own (see below).
+- **One account**: only that account's files are scanned. The verdict is the same as with All accounts.
 - **All flavors**: every game version is scanned (up to `parallelism` at once, see Settings), each with all its
   accounts.
+
+"Not enabled" is decided per account: an addon counts as enabled for an account's files (its account-wide
+settings and every one of its characters' settings) if *any* character of *that* account has it switched on. An
+addon you only use on your main account no longer keeps your second account's settings for it: those are
+suggested. With a single account nothing changes. Within one account a character's own settings are kept while
+any character of the account uses the addon, so switching an addon off on one alt never suggests that alt's file.
 
 A character that has never changed its addon list counts as having every addon enabled, because that's what WoW
 does.
 
-If there are no characters at all (an account, or a whole game version, with only account-wide settings), the
-cleaner can't tell what is switched off, so it counts every installed addon as enabled and the "Not enabled" rule
-suggests nothing there. The scan notes this in its warnings.
+If an account has no characters at all (only account-wide settings), the cleaner can't tell what is switched off
+there, so it counts every installed addon as enabled for that account and the "Not enabled" rule suggests nothing
+in it. The scan notes this in its warnings.
 
 ### Keys on the review screen
 
@@ -256,7 +262,7 @@ version that fails. The WTF backups and the dry-run zips both follow
 | Question | Answer |
 |----------|--------|
 | What is a SavedVariables file? | The file an addon keeps its settings in, such as `Details.lua`. WoW writes them to the `WTF` folder when you log out. They're safe to delete for addons you no longer use; the addon simply starts with default settings if you ever install it again. |
-| Will it delete settings for addons I still use? | Not with the usual rules. Rule 1 only suggests addons that aren't installed, and rule 2 only addons switched off on every character. Rule 3 (older than the age limit) can catch an addon you still have but rarely load, so look through the list and untick anything you want to keep. |
+| Will it delete settings for addons I still use? | Not with the usual rules. Rule 1 only suggests addons that aren't installed, and rule 2 only addons switched off on every character of that account. Rule 3 (older than the age limit) can catch an addon you still have but rarely load, so look through the list and untick anything you want to keep. |
 | Does it check whether WoW is running? | Yes, before every clean, for the game versions you're cleaning, and it warns you if WoW is open. This works on Windows, WSL, Mac and Linux. |
 | Does it touch my keybindings, macros or UI layout? | No. It only ever looks at addon settings files. Blizzard's own settings, keybindings, macros, chat setup, UI layout and your list of enabled addons are never touched. |
 | What's the difference between a Dry run and Clean? | A **Dry run** does every step except deleting, so you can see the full results first. **Clean** deletes the ticked files after backing them up. |

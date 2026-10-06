@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.fixtures import NOW, build_solo_tree, build_wow_tree
+from tests.fixtures import NOW, build_multi_account_tree, build_solo_tree, build_wow_tree
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.tools.wtf_cleaner.rules import Criteria, evaluate
@@ -69,7 +69,7 @@ class ScannerTest(unittest.TestCase):
         warnings = []
         path = self.retail.account_dir / "ACCT2" / "Realm2" / "Chârb" / "AddOns.txt"
         states = parse_addons_txt(path, warnings)
-        self.assertFalse(states["details"])
+        self.assertFalse(states["oldaddon"])
         self.assertTrue(states["auctionator"])
         self.assertEqual(len(warnings), 1)
         self.assertIn("garbage line", warnings[0].message)
@@ -132,13 +132,12 @@ class AccountScopeTest(unittest.TestCase):
         with capture_events() as records:
             result = scan(self.retail, account="ACCT2")
         self.assertEqual(result.account, "ACCT2")
-        self.assertEqual(result.enabled, {"auctionator"})
+        self.assertEqual(result.enabled, {"auctionator", "details"})
+        self.assertEqual(result.enabled_by_account, {"ACCT2": {"auctionator", "details"}})
         self.assertCountEqual([(g.account, g.owner_label, g.addon) for g in result.groups], [
             ("ACCT2", "account-wide", "Details"), ("ACCT2", "Realm2/Chârb", "Details")])
         self.assertEqual((result.accounts, result.characters), (1, 1))
-        proposal = evaluate(result, Criteria(), now=NOW)
-        self.assertCountEqual([(i.owner_label, i.addon, i.reasons) for i in proposal.items], [
-            ("account-wide", "Details", ["not_enabled"]), ("Realm2/Chârb", "Details", ["not_enabled"])])
+        self.assertEqual(evaluate(result, Criteria(), now=NOW).items, [])
         started = next(r for r in records if r["event"] == "scan.started")["data"]
         completed = next(r for r in records if r["event"] == "scan.completed")["data"]
         self.assertEqual((started["account"], completed["account"]), ("ACCT2", "ACCT2"))
@@ -184,6 +183,61 @@ class AccountScopeTest(unittest.TestCase):
         self.assertEqual((len(result.groups), result.sv_files, result.accounts, result.characters), (9, 14, 2, 2))
         started = next(r for r in records if r["event"] == "scan.started")["data"]
         self.assertIsNone(started["account"])
+
+
+class PerAccountEnabledTest(unittest.TestCase):
+    """Issue #5: "not enabled" is judged per account, not as one union across every account."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.flavor = WowInstall(build_multi_account_tree(Path(tmp.name) / "World of Warcraft")).flavor("retail")
+
+    def not_enabled(self, result):
+        proposal = evaluate(result, Criteria.from_names(["not_enabled"]), now=NOW, log=False)
+        return {(i.account, i.owner_label, i.addon) for i in proposal.items}
+
+    def test_addon_enabled_only_on_one_account_proposes_the_others_files(self):
+        with capture_events() as records:
+            result = scan(self.flavor)
+        self.assertEqual(result.enabled_by_account, {
+            "MAIN": {"details", "weakauras"}, "ALT": {"weakauras"}, "BARE": {"details", "weakauras", "plater"}})
+        self.assertEqual(result.enabled, {"details", "weakauras"})  # union of the accounts with characters
+        self.assertEqual(self.not_enabled(result), {
+            ("MAIN", "account-wide", "Plater"),
+            ("ALT", "account-wide", "Details"), ("ALT", "Realm1/Beta", "Details")})
+        addons = next(r for r in records if r["event"] == "scan.addons")["data"]
+        self.assertEqual(addons["enabled_by_account"]["ALT"], ["weakauras"])
+
+    def test_within_one_account_any_character_enabling_it_keeps_every_file(self):
+        # Gamma disables Details but Alpha (same account) enables it: neither MAIN's nor Gamma's file is proposed,
+        # exactly as before for a single-account install.
+        proposed = self.not_enabled(scan(self.flavor))
+        self.assertNotIn(("MAIN", "account-wide", "Details"), proposed)
+        self.assertNotIn(("MAIN", "Realm1/Gamma", "Details"), proposed)
+
+    def test_account_without_characters_counts_everything_enabled_and_warns(self):
+        result = scan(self.flavor)
+        self.assertFalse({p for p in self.not_enabled(result) if p[0] == "BARE"})
+        bare = [w for w in result.warnings if "no character folders" in w.message]
+        self.assertEqual([Path(w.path).name for w in bare], ["BARE"])
+
+    def test_scoped_scan_matches_the_all_accounts_verdict(self):
+        everything = self.not_enabled(scan(self.flavor))
+        for name in ("MAIN", "ALT"):
+            with self.subTest(name):
+                self.assertEqual(self.not_enabled(scan(self.flavor, account=name)),
+                                 {p for p in everything if p[0] == name})
+
+    def test_single_account_install_is_unchanged(self):
+        # The same install with only MAIN: the per-account set is the old flavor-wide union.
+        for name in ("ALT", "BARE"):
+            shutil.rmtree(self.flavor.account_dir / name)
+        result = scan(self.flavor)
+        self.assertEqual(result.enabled_by_account, {"MAIN": result.enabled})
+        self.assertEqual(result.enabled, {"details", "weakauras"})
+        self.assertEqual(self.not_enabled(result), {("MAIN", "account-wide", "Plater")})
+        self.assertFalse(result.warnings)
 
 
 class ScanProgressTest(unittest.TestCase):

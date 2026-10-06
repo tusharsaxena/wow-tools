@@ -15,12 +15,14 @@ _retail_/WTF/Account/ACCT1/config-cache.wtf
 _retail_/WTF/Account/ACCT1/Realm1/CharA: AddOns.txt (Auctionator, Details, OldAddon enabled;
                                          DisabledAddon disabled), SV: Auctionator.lua, Uninstalled.lua
 _retail_/WTF/Account/ACCT2/SavedVariables/Details.lua
-_retail_/WTF/Account/ACCT2/Realm2/Chârb: AddOns.txt (Details/DisabledAddon/OldAddon disabled,
-                                         one garbage line), SV: Details.lua
+_retail_/WTF/Account/ACCT2/Realm2/Chârb: AddOns.txt (Auctionator, Details enabled; DisabledAddon, OldAddon
+                                         disabled; one garbage line), SV: Details.lua
 _classic_era_: Questie installed; ACCT1 account SV Questie.lua; Realm1/NoTxt (no AddOns.txt)
 _anniversary_: WTF only, no Interface/AddOns (scanning it must abort)
 _notaflavor: not a flavor folder
 
+build_multi_account_tree(root) builds a separate retail install whose accounts enable different addons (see its
+docstring): the per-account "not enabled" rule.
 build_screenshot_tree(root) adds Screenshots folders (see its docstring); SHOT_BYTES maps each valid shot
 name to its bytes.
 build_interface_tree(root) adds known bytes to _retail_'s Interface and WTF and an empty _ptr_ flavor.
@@ -92,7 +94,7 @@ def build_wow_tree(root: Path) -> Path:
     _write(acct2 / "SavedVariables" / "Details.lua")
     char_b = acct2 / "Realm2" / "Chârb"
     _write(char_b / "AddOns.txt",
-           "Auctionator: enabled\nDetails: disabled\nDisabledAddon: disabled\nOldAddon: disabled\ngarbage line\n")
+           "Auctionator: enabled\nDetails: enabled\nDisabledAddon: disabled\nOldAddon: disabled\ngarbage line\n")
     _write(char_b / "SavedVariables" / "Details.lua")
 
     era = root / "_classic_era_"
@@ -102,6 +104,32 @@ def build_wow_tree(root: Path) -> Path:
 
     _write(root / "_anniversary_" / "WTF" / "Account" / "ACCT1" / "SavedVariables" / "Foo.lua")
     (root / "_notaflavor").mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def build_multi_account_tree(root: Path) -> Path:
+    """A retail install with Details, WeakAuras and Plater installed and three accounts:
+    MAIN: Alpha enables Details and WeakAuras (Plater disabled); Gamma disables Details. SV: Details.lua,
+          WeakAuras.lua, Plater.lua account-wide; Details.lua for Alpha and for Gamma.
+    ALT:  Beta enables WeakAuras only. SV: Details.lua, WeakAuras.lua account-wide; Details.lua for Beta.
+    BARE: no characters. SV: Plater.lua account-wide.
+    Every file is fresh and canonical, so only the "not enabled" rule proposes anything."""
+    retail = root / "_retail_"
+    for name in ("Details", "WeakAuras", "Plater"):
+        _addon(retail, name)
+    accounts = retail / "WTF" / "Account"
+    _write(accounts / "MAIN" / "Realm1" / "Alpha" / "AddOns.txt",
+           "Details: enabled\nWeakAuras: enabled\nPlater: disabled\n")
+    _write(accounts / "MAIN" / "Realm1" / "Gamma" / "AddOns.txt",
+           "Details: disabled\nWeakAuras: enabled\nPlater: disabled\n")
+    _write(accounts / "ALT" / "Realm1" / "Beta" / "AddOns.txt",
+           "Details: disabled\nWeakAuras: enabled\nPlater: disabled\n")
+    for path in ("MAIN/SavedVariables/Details.lua", "MAIN/SavedVariables/WeakAuras.lua",
+                 "MAIN/SavedVariables/Plater.lua", "MAIN/Realm1/Alpha/SavedVariables/Details.lua",
+                 "MAIN/Realm1/Gamma/SavedVariables/Details.lua", "ALT/SavedVariables/Details.lua",
+                 "ALT/SavedVariables/WeakAuras.lua", "ALT/Realm1/Beta/SavedVariables/Details.lua",
+                 "BARE/SavedVariables/Plater.lua"):
+        _write(accounts / path)
     return root
 
 
