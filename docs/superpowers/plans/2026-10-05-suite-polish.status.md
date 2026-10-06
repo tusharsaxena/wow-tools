@@ -238,11 +238,18 @@ task; push after every milestone. Never merge without the user's go-ahead.
   shown buttons carry (`ActionButton.shortcut`) and drops every action bound to one of them, so `n,escape` (No)
   loses Esc too. No per-screen `show=False` bookkeeping; the old `show=False` on the Ace3 bar's keys is left as is.
 - **T7.2** `/`, `x`, `c` are now listed in the footer (they have no button; spec D17's examples), bound right after
-  `a` / `n` on every review so they show together. At 120 columns a review footer is ~95 columns and the brand bar
-  still shows the whole name; there is room for T7.3's `h Help`.
+  `a` / `n` on every review so they show together. At 120 columns a review footer is 95 columns and the brand bar
+  (21) still shows the whole name. T7.3's ` h Help` makes it 102, and 102 + gap + 21 > 120: with Help the brand bar
+  drops to its shorter wording unless T7.3 frees room (a shorter description, or x/c as one entry); T7.3 decides
+  and keeps architecture.md ("the whole name on a review") true.
 - **T7.2** Keys are written as the footer writes them with a named key capitalised (`key_text`): `Esc`, `Space`,
   `⌫`, `Del`, shifted letters `D` / `E`. Hints keep navigation (`Esc back` on the result and restore screens, `Esc no`
   on a confirm) even where Esc is also a button's key; they drop every other key a button shows.
 - **T7.2** Two rows were 1 over at 120x30 with the taller buttons: the settings and setup forms' empty error line now
   takes no row until there is an error (class `-shown`), and the Ace3 popups' hint sits right under the buttons
   (their lower edge leaves the gap).
+- **T7.2** review: 5 findings, 5 fixed, 0 rejected: InfoScreen's OK (the Ace3 Notes popup) shows Esc and its hint
+  drops "Esc close" (2 findings); `assert_keys_on_buttons` also maps a button to the action its id names (`cancel`)
+  and to `SPECIAL_BUTTON_ACTIONS` (Later, OK), and now runs on each tool's settings form and on the lock, update,
+  Notes, Target, Name and both recovery popups (`test_keys_are_on_the_popup_buttons`; dropping any one key from a
+  button now fails it); architecture.md names buttons by their bare labels; the footer-width note above corrected.

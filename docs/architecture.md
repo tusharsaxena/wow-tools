@@ -450,7 +450,7 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
   The confirm shows `report.restore_confirm_alerts` (one counted line per kind);
 - `RestoreResultScreen(result)`: a `ResultBase`; `#result-summary` (`report.restore_summary_rows`: flavor, finished
   or not, zip, safety zip and journal names, the zips' folder) above `#result-table` (a row per part,
-  `report.RESTORE_RESULT_COLUMNS`); **Undo (z)** only for a restore whose journal recorded a swapped part
+  `report.RESTORE_RESULT_COLUMNS`); **Undo** (key `z`, shown on the button) only for a restore whose journal recorded a swapped part
   (`RestoreResult.swapped`: a part `restored` or `replaced_left`; a swap the journal could not record does not
   count; it rescans, then undoes if that journal is still the undoable one); `r`, `f`, `t`, `q`.
 
@@ -604,7 +604,7 @@ their original get a `rolled_back` line in the journal that holds their entries 
   (flavor, addon) pair (`settings.toggle_pair`) and saves at once; **Blacklist…** (`action_edit_blacklist`) opens
   the `BlacklistScreen` for the review's flavors and saves its answer at once.
 - `BlacklistScreen(cfg, flavors, pairs)` (`blacklist_screen.py`): `TreeFilter` and `ReviewBase`, `two_pane_css`. Left
-  pane: an explanation, the `FilterInput` and **Save** / **Select none** / **Cancel** (Esc); right: a flavor → addon tree, from its own
+  pane: an explanation, the `FilterInput` and **Save** / **Select none** / **Cancel** (keys `n` and Esc on the buttons); right: a flavor → addon tree, from its own
   scan worker (`scan_flavors`), of every addon with Ace3 data plus each blacklisted pair no longer found
   ("(not found)"; a legacy `"*"` pair is listed under every shown flavor, so a Save, or a failed scan, never drops
   it). A ticked pair is blacklisted; nothing else is ticked. `a`/`n`/`/`/`x`/`c` as on every tree (the filter
@@ -620,8 +620,8 @@ their original get a `rolled_back` line in the journal that holds their entries 
   back / Leave as is; Esc leaves the marker for the next scan).
 - `ProfileResultScreen` (`result_screen.py`): the shared `ResultScreen` built from rows; `#result-summary` (`apply_summary_rows` or
   `undo_summary_rows`: zips and the journal are named inside the backup folder, `report.in_backup_folder`, which
-  has a "Backup folder" row of its own) above `#result-detail` (`DETAIL_COLUMNS` or `UNDO_COLUMNS`); Rescan (r), Other flavor (f),
-  Tools (t), Quit (q), plus a focused **Back to review (Esc)** after a dry run. After a real Apply or Undo the
+  has a "Backup folder" row of its own) above `#result-detail` (`DETAIL_COLUMNS` or `UNDO_COLUMNS`); Rescan, Other flavor,
+  Tools, Quit (keys `r` `f` `t` `q` on the buttons), plus a focused **Back to review** (Esc) after a dry run. After a real Apply or Undo the
   staging is dropped and the review rescans when shown again.
 
 ## UI
@@ -716,14 +716,14 @@ buttons alone. Each kind also keeps its nearest Textual variant, which is what a
 
 | Kind | Colour | Variant | Buttons |
 |---|---|---|---|
-| `destructive` | red | error | Clean, Ace3 Apply, Delete (d), Only Default (D), Leftovers (o) |
+| `destructive` | red | error | Clean, Ace3 Apply, Delete, Only Default, Leftovers |
 | `overwrite` | amber | warning | Organize, Restore (restore screen), Update now, Override and continue, Assign, Rename, Everyone → Default |
-| `create` | green | success | Back up, Copy (k) (stages a new profile) |
-| `revert` | violet | warning | Undo last clean / run / restore / change, Undo (z), Put the originals back |
+| `create` | green | success | Back up, Copy (stages a new profile) |
+| `revert` | violet | warning | Undo last clean / run / restore / change, Undo, Put the originals back |
 | `simulate` | cyan | primary | Dry run |
 | `confirm` | blue | primary | Save (every form and the blacklist), OK, Remind me next time, a ConfirmScreen Yes that names no other kind (each Yes takes its caller's `kind`: red, cyan or green) |
-| `navigate` | grey | default | Rescan, Other flavor, Tools, Restore / Restore (e) (open the restore screen), Edit blacklist…, Blacklist…, More…, Select none |
-| `cancel` | dim grey | default | Cancel, No, Later, Quit, Back, Back to review, Dismiss, Leave as is, Discard (⌫) |
+| `navigate` | grey | default | Rescan, Other flavor, Tools, Restore (open the restore screen), Edit blacklist…, Blacklist…, More…, Select none |
+| `cancel` | dim grey | default | Cancel, No, Later, Quit, Back, Back to review, Dismiss, Leave as is, Discard |
 
 Staging buttons (the Ace3 action bar) take the colour of the action they stage. Text on a coloured button is the
 theme's foreground or background, whichever has the higher contrast (at least 4.5:1, pinned). The WTF review shows

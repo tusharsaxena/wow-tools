@@ -429,8 +429,8 @@ class InfoScreen(TreeKeys, ModalScreen[None]):
                 yield Static(Text(self.body_text), id="info-body")
             yield detail_tree(self.groups)
             with ButtonRow(id="info-buttons"):
-                yield action_button("OK", "confirm", id="ok")
-            yield NavHint(f"{detail_hint(self.groups)}Enter/Space OK · Esc close")
+                yield action_button("OK", "confirm", "escape", id="ok")
+            yield NavHint(f"{detail_hint(self.groups)}Enter/Space OK")
 
     def on_mount(self) -> None:
         self.query_one("#ok", Button).focus()

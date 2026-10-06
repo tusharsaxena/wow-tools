@@ -15,15 +15,21 @@ from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, assert_keys_on_butto
                             build_screenshot_tree, build_wow_tree, make_config, settle)
 from wowtools import __version__
 from wowtools.core.changelog import Changelog, parse_changelog
+from wowtools.core.lock import LockInfo
 from wowtools.core.updater import ReleaseInfo
 from wowtools.tools import TOOLS as TOOL_INFO
+from wowtools.tools.ace3_profile_manager.editor import Marker as AceMarker
 from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
+from wowtools.tools.ace3_profile_manager.review_screen import ProfileRecoveryScreen
+from wowtools.tools.wtf_cleaner.review_screen import RecoveryScreen as WtfRecoveryScreen
+from wowtools.tools.wtf_cleaner.safety import Marker as WtfMarker
+from wowtools.ui.base import UpdateScreen
 from wowtools.ui.branding import BANNER_NAME, TERMS, Banner, BrandBar, TermsText, VersionLine
 from wowtools.ui.changelog_screen import CHANGELOG_HINT, VERSIONS_WIDTH, ChangelogScreen
 from wowtools.ui.dialogs import (FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_HINT, ConfirmScreen, InfoScreen,
                                  ProgressScreen)
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
-from wowtools.ui.suite_app import MENU_HINT, WowToolsApp
+from wowtools.ui.suite_app import MENU_HINT, LockScreen, WowToolsApp
 from wowtools.ui.tree_filter import FILTER_HINT, FILTER_PLACEHOLDER, NO_MATCH_TEXT, FilterInput
 from wowtools.ui.widgets import CHECK_OFF, NavHint, action_kind
 
@@ -546,7 +552,7 @@ class LookAndFeelTest(TuiTestCase):
 
     async def test_keys_are_on_the_buttons_and_off_the_footer(self):
         """Spec D17 on every screen of every tool (review, confirm, result; the Ace3 blacklist and the Interface
-        Backup restore screen; the settings): a button whose action has a key shows that key, and the footer lists
+        Backup restore screen; the tool's and the general settings): a button whose action has a key shows that key, and the footer lists
         no key a shown button carries (nor another key of that action, Esc for No). The reviews' footers keep the
         keys no button has: Space, a, n, /, x, c, f, t, q."""
         for tool in TOOLS:
@@ -555,6 +561,12 @@ class LookAndFeelTest(TuiTestCase):
                 async with app.run_test(size=BASE) as pilot:
                     review = await self.open_review(app, pilot, tool)
                     assert_keys_on_buttons(self, review)
+                    app.push_screen(app.flow.settings_screen("settings"))  # the tool's own settings form
+                    await settle(app, pilot)
+                    assert_keys_on_buttons(self, app.screen)
+                    app.screen.dismiss(False)
+                    await settle(app, pilot)
+                    self.assertIs(app.screen, review)
                     footer = {key.key for key in review.query(FooterKey)}
                     self.assertLessEqual({"space", "a", "n", "slash", "x", "c", "f", "t", "q"}, footer, footer)
                     if tool == "ace3-profile-manager":
@@ -582,6 +594,31 @@ class LookAndFeelTest(TuiTestCase):
                     app.action_settings()
                     await settle(app, pilot)
                     assert_keys_on_buttons(self, app.screen)
+
+    async def test_keys_are_on_the_popup_buttons(self):
+        """Spec D17 on the popups no review run reaches: the lock warning, the update offer, the Notes InfoScreen,
+        the Ace3 Target and Name popups and both recovery warnings."""
+        holder = LockInfo(12345, "other-pc", "2026-10-03T10:00:00", "windows", "abc")
+        wtf_marker = WtfMarker(self.root / "backup.zip", "_retail_", self.root / "_retail_", "2026-01-01T00:00:00", 1,
+                               "0.1.0", ["WTF/x.lua"])
+        ace_marker = AceMarker("_retail_", self.root / "_retail_", self.root / "edited.zip", {"WTF/x.lua": "0"},
+                               "2026-10-04T12:00:00+00:00", 1, "0.1.0", {"WTF/x.lua": "1"})
+        popups = (lambda: LockScreen(holder, self.root / "wow-tools.lock"),
+                  lambda: UpdateScreen(ReleaseInfo.from_version("9.9.9")),
+                  lambda: InfoScreen("Notes", {"KickCD": ["Kaelys - Realm1"]}),
+                  lambda: TargetScreen("Title", "Body", ["Default", "Healer"]), lambda: NameScreen("Title", "Body"),
+                  lambda: WtfRecoveryScreen(wtf_marker, self.root), lambda: ProfileRecoveryScreen(ace_marker))
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await pilot.pause()
+            for make in popups:
+                screen = make()
+                with self.subTest(popup=type(screen).__name__):
+                    app.push_screen(screen)
+                    await settle(app, pilot)
+                    assert_keys_on_buttons(self, screen)
+                    screen.dismiss(None)
+                    await settle(app, pilot)
 
     def assert_footer_whole(self, app) -> None:
         line = app.screen._compositor.render_strips()[-1].text

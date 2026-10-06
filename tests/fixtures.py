@@ -295,6 +295,12 @@ def build_ace_tree(root: Path) -> Path:
     return root
 
 
+# The action a button with no BUTTON_ACTIONS entry or choose(id) performs (handled in on_button_pressed). A button
+# whose id is itself an action name (Cancel: "cancel") needs no entry.
+SPECIAL_BUTTON_ACTIONS = {"yes": "answer(True)", "no": "answer(False)", "back": "escape", "update-no": "later",
+                          "ok": "close"}
+
+
 def assert_keys_on_buttons(test, screen) -> None:
     """Spec D17 on one screen: a button whose action has a key shows that key (on its own line, or after the label
     on a compact one), a key shown on a button does something there, and the screen's footer lists none of the keys
@@ -303,12 +309,11 @@ def assert_keys_on_buttons(test, screen) -> None:
     for binding in screen._bindings.key_to_bindings.values():
         for b in binding:
             bound.setdefault(b.action, set()).add(b.key)
-    special = {"yes": "answer(True)", "no": "answer(False)", "back": "escape"}
     buttons = list(screen.query(ActionButton))
     test.assertTrue(buttons, screen)
     for button in buttons:
         actions = {getattr(screen, "BUTTON_ACTIONS", {}).get(button.id), f"choose('{button.id}')",
-                   special.get(button.id)}
+                   SPECIAL_BUTTON_ACTIONS.get(button.id), (button.id or "").replace("-", "_")}
         keys = set().union(*(bound.get(a, set()) for a in actions if a))
         if keys:  # its action has a key: the button shows one of them
             test.assertIn(button.shortcut, keys, (screen, button.id))
