@@ -46,3 +46,7 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
   logs `enabled_by_account`. The shared `build_wow_tree` fixture's Chârb now enables Details, so ACCT2 keeps its
   Details files under per-account judging and every existing count stays the same; the new behaviour is tested on
   the separate `build_multi_account_tree`. No extra file I/O: each AddOns.txt is still read once.
+  I3 review: 3 findings, 2 fixed, 1 kept as a decision: CHANGELOG/docs no longer describe the per-account rule as a
+  change from an unreleased behaviour; the design spec's "Enabled scope: Global" row is marked superseded (#5). Kept:
+  a characterless account in an All-accounts scan counts every addon as enabled (with its own warning) rather than
+  borrowing the union of the other accounts. This is deliberate, and the user should confirm it at the merge ask.

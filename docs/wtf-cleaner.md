@@ -79,8 +79,8 @@ folder it looked in) and the others carry on.
 
 "Not enabled" is decided per account: an addon counts as enabled for an account's files (its account-wide
 settings and every one of its characters' settings) if *any* character of *that* account has it switched on. An
-addon you only use on your main account no longer keeps your second account's settings for it: those are
-suggested. With a single account nothing changes. Within one account a character's own settings are kept while
+addon you only use on your main account does not keep your second account's settings for it: those are
+suggested. Within one account a character's own settings are kept while
 any character of the account uses the addon, so switching an addon off on one alt never suggests that alt's file.
 
 A character that has never changed its addon list counts as having every addon enabled, because that's what WoW
