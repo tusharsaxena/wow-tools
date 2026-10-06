@@ -22,7 +22,9 @@ class CleanerSettings:
     # The flavor picker's last choice: "" means All flavors, else a flavor folder such as _retail_. None means
     # never chosen (not stored); the picker then highlights [general] last_flavor.
     last_flavor_choice: str | None = None
-    # Backups and journals to keep are global: Config.keep_backups / keep_journals ([general]).
+    # Backups and journals to keep are global: Config.keep_backups / keep_journals ([general]). The one exception:
+    # the cleaned-files zips (cleaned-*.zip) kept per flavor, 0 = keep all (the default).
+    keep_cleaned: int = 0
 
 
 def load_settings(cfg: Config) -> CleanerSettings:
@@ -32,7 +34,8 @@ def load_settings(cfg: Config) -> CleanerSettings:
     return CleanerSettings(criteria, cfg.get_bool(SECTION, "backup_before_delete", True),
                            cfg.get_path(SECTION, "backup_dir"),
                            (cfg.get(SECTION, "last_account") or "").strip() or None,
-                           None if choice is None else choice.strip())
+                           None if choice is None else choice.strip(),
+                           max(0, cfg.get_int(SECTION, "keep_cleaned", 0)))
 
 
 def save_settings(cfg: Config, settings: CleanerSettings, *, source: str = "settings") -> None:
@@ -40,6 +43,7 @@ def save_settings(cfg: Config, settings: CleanerSettings, *, source: str = "sett
     for name in CRITERIA:
         cfg.set(SECTION, f"criterion_{name}", getattr(settings.criteria, name), source=source)
     cfg.set(SECTION, "backup_before_delete", settings.backup_before_delete, source=source)
+    cfg.set(SECTION, "keep_cleaned", max(0, settings.keep_cleaned), source=source)
     cfg.set_path(SECTION, "backup_dir", settings.backup_dir, source=source)
     cfg.set(SECTION, "last_account", settings.last_account or "", source=source)
     cfg.remove_retired(SECTION, source=source)

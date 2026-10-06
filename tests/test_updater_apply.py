@@ -195,6 +195,139 @@ class ZipUpdateTest(unittest.TestCase):
         apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
         self.assertEqual(sorted(p.name for p in (self.root / ".update-backup").iterdir()), ["0.1.0", "0.1.2"])
 
+    def old_backup_with_user_files(self, version="0.0.7"):
+        """An old .update-backup/<version> holding that version's program files plus files the user added."""
+        backup = self.root / ".update-backup" / version
+        make_install(backup, version)
+        (backup / "README.md").unlink()
+        (backup / "requirements.txt").unlink()
+        (backup / "wowtools" / "__pycache__").mkdir()
+        (backup / "wowtools" / "__pycache__" / "x.cpython-312.pyc").write_bytes(b"pyc")
+        (backup / "docs" / "my-guide.md").write_text("my guide\n")
+        (backup / "wowtools" / "mine").mkdir()
+        (backup / "wowtools" / "mine" / "notes.txt").write_text("notes\n")
+        for other in ("0.0.8", "0.0.9"):
+            (self.root / ".update-backup" / other).mkdir(parents=True)
+        return backup
+
+    def test_user_files_in_a_pruned_backup_survive(self):
+        # #7: pruning an old .update-backup deleted files the user had put in the app's own folders.
+        self.old_backup_with_user_files()
+        make_zipball(self.zipball, "0.2.0")
+        with capture_events() as records:
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        self.assertFalse((self.root / ".update-backup" / "0.0.7").exists())
+        leftovers = self.root / "update-leftovers" / "0.0.7"
+        self.assertEqual((leftovers / "docs" / "my-guide.md").read_text(), "my guide\n")
+        self.assertEqual((leftovers / "wowtools" / "mine" / "notes.txt").read_text(), "notes\n")
+        kept = [r for r in records if r["event"] == "update.leftovers_kept"]
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0]["data"]["version"], "0.0.7")
+
+    def test_shipped_files_are_not_carried(self):
+        # Files the live install also has (wowtools/__init__.py, vendor/lib.py) and Python's caches are program files.
+        self.old_backup_with_user_files()
+        make_zipball(self.zipball, "0.2.0")
+        apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        leftovers = self.root / "update-leftovers" / "0.0.7"
+        carried = sorted(p.relative_to(leftovers).as_posix() for p in leftovers.rglob("*") if p.is_file())
+        # docs/only-in-0.0.7.md: a doc that version had and the live one lacks counts as the user's (no manifest).
+        self.assertEqual(carried, ["docs/my-guide.md", "docs/only-in-0.0.7.md", "wowtools/mine/notes.txt"])
+
+    def test_files_of_a_bumped_vendored_library_are_not_carried(self):
+        # #7 review: a library a later release bumped left its old dist-info folder and dropped modules behind.
+        backup = self.old_backup_with_user_files()
+        info = backup / "vendor" / "pkg-1.0.dist-info"
+        info.mkdir()
+        (info / "METADATA").write_text("Name: pkg\n")
+        (info / "RECORD").write_text("pkg/__init__.py,sha256=x,1\npkg/old.py,sha256=y,2\n"
+                                     "pkg-1.0.dist-info/METADATA,,\npkg-1.0.dist-info/RECORD,,\n"
+                                     "../../bin/pkg,sha256=z,3\n")
+        (backup / "vendor" / "pkg").mkdir()
+        (backup / "vendor" / "pkg" / "__init__.py").write_text("")
+        (backup / "vendor" / "pkg" / "old.py").write_text("")
+        (backup / "vendor" / "pkg" / "my-patch.py").write_text("mine\n")
+        make_zipball(self.zipball, "0.2.0")
+        with zipfile.ZipFile(self.zipball, "a") as zf:
+            zf.writestr(f"{TOP}/vendor/pkg/__init__.py", "")
+            zf.writestr(f"{TOP}/vendor/pkg-1.1.dist-info/RECORD", "pkg/__init__.py,,\n")
+        apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        leftovers = self.root / "update-leftovers" / "0.0.7"
+        carried = sorted(p.relative_to(leftovers).as_posix() for p in leftovers.rglob("*") if p.is_file())
+        self.assertEqual(carried, ["docs/my-guide.md", "docs/only-in-0.0.7.md", "vendor/pkg/my-patch.py",
+                                   "wowtools/mine/notes.txt"])
+
+    def test_reinstall_over_an_existing_backup_keeps_user_files(self):
+        # #7 review: updating from a version that already had a backup deleted that backup without carrying.
+        make_zipball(self.zipball, "0.2.0")
+        apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        (self.root / ".update-backup" / "0.1.0" / "docs" / "my-guide.md").write_text("my guide\n")
+        make_zipball(self.zipball, "0.1.0")
+        apply_update(ReleaseInfo.from_version("0.1.0"), root=self.root, current="0.2.0", download=self.download)
+        make_zipball(self.zipball, "0.2.0")
+        apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        self.assertEqual((self.root / "update-leftovers" / "0.1.0" / "docs" / "my-guide.md").read_text(),
+                         "my guide\n")
+        self.assertFalse((self.root / "update-leftovers" / "0.1.0" / "wowtools").exists())
+
+    def test_failed_carry_from_an_existing_backup_changes_nothing(self):
+        backup = self.root / ".update-backup" / "0.1.0"
+        make_install(backup, "0.1.0")
+        (backup / "docs" / "my-guide.md").write_text("my guide\n")
+        make_zipball(self.zipball, "0.2.0")
+        with patch.object(updater.shutil, "move", side_effect=OSError("access denied")), \
+                self.assertRaises(UpdateError):
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        self.assertEqual((backup / "docs" / "my-guide.md").read_text(), "my guide\n")
+        self.assertEqual((self.root / "README.md").read_text(), "readme 0.1.0\n")
+
+    def test_backup_without_user_files_leaves_no_leftovers(self):
+        backup = self.root / ".update-backup" / "0.0.7"
+        make_install(backup, "0.2.0")
+        for other in ("0.0.8", "0.0.9"):
+            (self.root / ".update-backup" / other).mkdir(parents=True)
+        make_zipball(self.zipball, "0.2.0")
+        with capture_events() as records:
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        self.assertFalse(backup.exists())
+        self.assertFalse((self.root / "update-leftovers").exists())
+        self.assertNotIn("update.leftovers_kept", [r["event"] for r in records])
+
+    def test_taken_leftover_name_gets_a_number(self):
+        self.old_backup_with_user_files()
+        taken = self.root / "update-leftovers" / "0.0.7" / "docs" / "my-guide.md"
+        taken.parent.mkdir(parents=True)
+        taken.write_text("earlier\n")
+        make_zipball(self.zipball, "0.2.0")
+        apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        self.assertEqual(taken.read_text(), "earlier\n")
+        self.assertEqual(taken.with_name("my-guide (2).md").read_text(), "my guide\n")
+
+    def test_failed_move_keeps_the_backup(self):
+        backup = self.old_backup_with_user_files()
+        make_zipball(self.zipball, "0.2.0")
+        real_move = shutil.move
+
+        def failing_move(src, dst):
+            if src.endswith("notes.txt"):
+                raise OSError("access denied")
+            return real_move(src, dst)
+
+        with patch.object(updater.shutil, "move", failing_move), capture_events() as records:
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        self.assertEqual((backup / "wowtools" / "mine" / "notes.txt").read_text(), "notes\n")
+        self.assertTrue((backup / "wowtools" / "__init__.py").exists())
+        self.assertIn("update.backup_kept", [r["event"] for r in records])
+        # The files moved before the failure are safe in update-leftovers; nothing exists in neither place.
+        self.assertEqual((self.root / "update-leftovers" / "0.0.7" / "docs" / "my-guide.md").read_text(),
+                         "my guide\n")
+        # The next update tries again and finishes the job.
+        make_zipball(self.zipball, "0.3.0")
+        apply_update(ReleaseInfo.from_version("0.3.0"), root=self.root, current="0.2.0", download=self.download)
+        self.assertFalse(backup.exists())
+        self.assertEqual((self.root / "update-leftovers" / "0.0.7" / "wowtools" / "mine" / "notes.txt").read_text(),
+                         "notes\n")
+
     def test_failed_update_prunes_no_backups(self):
         for version in ("0.0.7", "0.0.8", "0.0.9"):
             (self.root / ".update-backup" / version).mkdir(parents=True)

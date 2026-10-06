@@ -551,7 +551,11 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             lines += [f"  {flavor.display_name}: {self._counts(items)}" for flavor, items in plan]
         alerts: list[str] = []
         if backup:
-            lines.append(f"The files to clean are zipped to: {backup_dir / CLEANED_SUBDIR if backup_dir else '?'}")
+            zipped = f"The files to clean are zipped to: {backup_dir / CLEANED_SUBDIR if backup_dir else '?'}"
+            if not dry_run and self.settings.keep_cleaned > 0:
+                zipped += (f" (the newest {self.settings.keep_cleaned} cleaned-files zips of "
+                           f"{'each' if self.multi else 'this'} flavor are kept)")
+            lines.append(zipped)
         else:
             alerts.append("The files to clean will not be zipped (turned off in settings).")
         keep = self.cfg.keep_backups
@@ -609,7 +613,8 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                                          account=self.account, keep_backups=self.cfg.keep_backups,
                                          progress=progress_screen.report, on_flavor=progress_screen.start_unit,
                                          journal_dir=self._journal_dir(),
-                                         keep_journals=self.cfg.keep_journals)
+                                         keep_journals=self.cfg.keep_journals,
+                                         keep_cleaned=self.settings.keep_cleaned)
         except Exception as exc:  # noqa: BLE001 - anything unexpected is shown and logged, never a crash
             log_exception("clean", exc)
             self.app.call_from_thread(self._clean_crashed, exc, dry_run, backup_dir if backup else None)

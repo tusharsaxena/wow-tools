@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 from wowtools.core.install import Flavor
 from wowtools.core.process import (WowProcess, names_in_tasklist, processes_for_flavor, running_wow_executables,
-                                   running_wow_processes, wow_check_for)
+                                   running_wow_processes, wow_check_for, wow_name)
 
 TASKLIST = ('"System Idle Process","0","Services","0","8 K"\n'
             '"Wow.exe","1234","Console","1","1,234,567 K"\n'
@@ -43,6 +43,15 @@ class ProcessTest(unittest.TestCase):
             self.assertEqual(running_wow_executables(use_tasklist=False, proc_root=proc), ["WowClassic.exe"])
 
 
+MAC_PS = ("/sbin/launchd\n"
+          "/Applications/World of Warcraft/_retail_/World of Warcraft.app/Contents/MacOS/World of Warcraft\n"
+          "/Applications/World of Warcraft/_classic_era_/World of Warcraft Classic.app/Contents/MacOS/"
+          "World of Warcraft Classic\n"
+          "  /Volumes/Games/WoW/_beta_/World of Warcraft Beta.app/Contents/MacOS/World of Warcraft Beta  \n"
+          "/Applications/World of Warcraft/World of Warcraft Launcher.app/Contents/MacOS/World of Warcraft Launcher\n"
+          "World of Warcraft\n"
+          "/Users/u/wine/_retail_/Wow.exe\n"
+          "/usr/bin/bash\n")
 BETA_PS = "WowB.exe|G:\\Games\\Blizzard\\World of Warcraft\\_classic_beta_\\WowB.exe\r\n"
 
 
@@ -116,8 +125,70 @@ class WowProcessTest(unittest.TestCase):
             self.assertEqual(procs, [WowProcess("Wow.exe", "Z:\\wow\\_retail_\\Wow.exe")])
             self.assertEqual(processes_for_flavor(procs, "_retail_"), (procs, []))
 
-    def test_mac_is_unknown(self):
-        self.assertIsNone(running_wow_processes(platform="mac"))
+    def test_mac_ps_listing(self):
+        calls = []
+
+        def runner(cmd, **kwargs):
+            calls.append((cmd, kwargs))
+            return ok(MAC_PS)
+        procs = running_wow_processes(platform="mac", runner=runner)
+        self.assertEqual(procs, [
+            WowProcess("World of Warcraft", "/Applications/World of Warcraft/_retail_/World of Warcraft.app"),
+            WowProcess("World of Warcraft Classic",
+                       "/Applications/World of Warcraft/_classic_era_/World of Warcraft Classic.app"),
+            WowProcess("World of Warcraft Beta", "/Volumes/Games/WoW/_beta_/World of Warcraft Beta.app"),
+            WowProcess("World of Warcraft", None),
+            WowProcess("Wow.exe", "/Users/u/wine/_retail_/Wow.exe"),
+        ])
+        cmd, kwargs = calls[0]
+        self.assertEqual(cmd, ["ps", "-axww", "-o", "comm="])
+        self.assertEqual(kwargs.get("stdin"), subprocess.DEVNULL)
+        self.assertEqual(kwargs.get("timeout"), 5)
+        self.assertNotIn("shell", kwargs)
+        self.assertEqual(processes_for_flavor(procs, "_retail_"), (
+            [procs[0], procs[4]], [procs[3]]))
+        self.assertEqual(processes_for_flavor(procs, "_classic_era_")[0], [procs[1]])
+        retail = Flavor("_retail_", Path("/Applications/World of Warcraft/_retail_"))
+        self.assertEqual(wow_check_for(retail, lister=lambda: procs)(),
+                         ["World of Warcraft", "Wow.exe", "World of Warcraft (flavor unknown)"])
+
+    def test_mac_truncated_path_is_missed_hence_ww(self):
+        # Why the command passes -ww: a path cut to ps's default 79 columns no longer names the executable.
+        path = "/Applications/World of Warcraft/_retail_/World of Warcraft.app/Contents/MacOS/World of Warcraft"
+        self.assertEqual(len(path), 95)
+        self.assertEqual(running_wow_processes(platform="mac", runner=lambda *a, **k: ok(path[:79] + "\n")), [])
+        self.assertEqual(len(running_wow_processes(platform="mac", runner=lambda *a, **k: ok(path + "\n"))), 1)
+
+    def test_mac_wine_exe_inside_wrapper_app(self):
+        path = ("/Users/u/Applications/Wineskin/WoW.app/Contents/Resources/drive_c/Program Files/World of Warcraft/"
+                "_retail_/Wow.exe")
+        procs = running_wow_processes(platform="mac", runner=lambda *a, **k: ok(path + "\n"))
+        self.assertEqual(procs, [WowProcess("Wow.exe", path)])
+        self.assertEqual(processes_for_flavor(procs, "_retail_"), (procs, []))
+
+    def test_mac_no_wow_running(self):
+        listing = "/sbin/launchd\n/Applications/Battle.net.app/Contents/MacOS/Battle.net\n"
+        self.assertEqual(running_wow_processes(platform="mac", runner=lambda *a, **k: ok(listing)), [])
+
+    def test_mac_ps_failure_is_unknown(self):
+        def missing(*a, **k):
+            raise FileNotFoundError("ps")
+
+        def timeout(*a, **k):
+            raise subprocess.TimeoutExpired("ps", 5)
+        for runner in (missing, timeout, lambda *a, **k: SimpleNamespace(returncode=1, stdout="")):
+            self.assertIsNone(running_wow_processes(platform="mac", runner=runner))
+
+    def test_one_name_rule(self):
+        self.assertEqual(wow_name("wow.exe"), "Wow.exe")
+        self.assertEqual(wow_name("World of Warcraft"), "World of Warcraft")
+        self.assertEqual(wow_name("World of Warcraft Classic PTR"), "World of Warcraft Classic PTR")
+        # an unlisted variant still counts: better a needless warning than a missed client
+        for variant in ("World of Warcraft Experimental", "World of Warcraft Anniversary"):
+            self.assertEqual(wow_name(variant), variant)
+        for other in ("World of Warcraft Launcher", "World of Warcraft Helper", "World of Warcraft Crash Reporter",
+                      "World of WarcraftX", "WowClassicHelper.exe", "Battle.net", ""):
+            self.assertIsNone(wow_name(other), other)
 
     def test_wow_check_for(self):
         retail = Flavor("_retail_", Path("/wow/_retail_"))

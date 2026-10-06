@@ -83,6 +83,8 @@ class SVGroup:
 
 @dataclass
 class ScanResult:
+    """`enabled` is the union over the scanned accounts with characters (for logs); the "not enabled" rule judges each
+    group by `enabled_for(group.account)`, the addons enabled on a character of that account."""
     flavor: Flavor
     installed: dict[str, str]
     enabled: set[str]
@@ -92,6 +94,12 @@ class ScanResult:
     warnings: list[ScanWarning]
     account: str | None = None
     account_names: tuple[str, ...] = ()  # every account scanned, including ones with nothing to clean
+    enabled_by_account: dict[str, set[str]] = field(default_factory=dict)  # account name -> its enabled set
+
+    def enabled_for(self, account: str) -> set[str]:
+        """The addons enabled on a character of `account` (every installed one when it has no characters);
+        the flavor-wide union for an account the scan did not judge on its own."""
+        return self.enabled_by_account.get(account, self.enabled)
 
     @property
     def sv_files(self) -> int:
@@ -146,7 +154,8 @@ def parse_addons_txt(path: Path, warnings: list[ScanWarning] | None = None) -> d
 
 def enabled_addons(characters: Iterable[Character], installed: dict[str, str],
                    warnings: list[ScanWarning], *, scope: str = "") -> set[str]:
-    """Global union: enabled on any character. Unlisted or no AddOns.txt means WoW's default (on).
+    """Union over `characters`: enabled on any of them (scan() passes one account's characters, so each account
+    gets its own set). Unlisted or no AddOns.txt means WoW's default (on).
     With no characters at all there is no evidence either way, so every installed addon counts as
     enabled (and a warning naming `scope` says the "not enabled" rule was not applied)."""
     characters = list(characters)
@@ -258,10 +267,22 @@ def scan(flavor: Flavor, *, account: str | None = None, progress: ScanProgress |
             raise ScanError(f"Unknown account {account!r} in {flavor.display_name}; available: {available}")
         accounts = wanted[:1]
         account = accounts[0].name
-    characters = [c for acct in accounts for c in acct.characters(on_error)]
-    scope = str(accounts[0].path) if account is not None else str(flavor.account_dir)
-    enabled = enabled_addons(characters, installed, warnings, scope=scope)
-    log_event("scan.addons", flavor=flavor.folder, installed=sorted(installed.values(), key=str.casefold), enabled=sorted(enabled))
+    by_account = [(acct, acct.characters(on_error)) for acct in accounts]
+    characters = [c for _, chars in by_account for c in chars]
+    enabled_by_account: dict[str, set[str]] = {}
+    if not characters:  # nothing to judge by anywhere: one warning for the whole scope, every addon enabled
+        scope = str(accounts[0].path) if account is not None else str(flavor.account_dir)
+        enabled = enabled_addons([], installed, warnings, scope=scope)
+        enabled_by_account = {acct.name: enabled for acct in accounts}
+    else:  # per account: an addon enabled only on account A does not keep account B's files
+        enabled = set()
+        for acct, chars in by_account:
+            enabled_by_account[acct.name] = enabled_addons(chars, installed, warnings, scope=str(acct.path))
+            if chars:
+                enabled |= enabled_by_account[acct.name]
+    log_event("scan.addons", flavor=flavor.folder, installed=sorted(installed.values(), key=str.casefold),
+              enabled=sorted(enabled),
+              enabled_by_account={name: sorted(names) for name, names in enabled_by_account.items()})
 
     total = len(accounts) + len(characters)
     done = 0
@@ -280,7 +301,7 @@ def scan(flavor: Flavor, *, account: str | None = None, progress: ScanProgress |
     for warning in warnings:
         log_event("scan.warning", flavor=flavor.folder, path=warning.path, message=warning.message)
     result = ScanResult(flavor, installed, enabled, groups, len(accounts), len(characters), warnings, account,
-                        tuple(a.name for a in accounts))
+                        tuple(a.name for a in accounts), enabled_by_account)
     log_event("scan.completed", flavor=flavor.folder, account=account, installed=len(installed),
               enabled=len(enabled), accounts=len(accounts), characters=len(characters),
               sv_files=result.sv_files, groups=len(groups), duration_s=round(time.monotonic() - started, 3))

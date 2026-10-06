@@ -267,6 +267,48 @@ class AtomicWriteBytesTest(unittest.TestCase):
             self.assertEqual(path.read_bytes(), b"old")
             self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["a.lua"])
 
+    def test_a_replace_refused_while_the_target_is_held_open_is_tried_again(self):
+        """Windows: another program holding the target open makes os.replace raise PermissionError for a moment."""
+        real_replace = os.replace
+        refusals = iter([PermissionError("in use"), PermissionError("in use")])
+
+        def replace(src, dst):
+            refusal = next(refusals, None)
+            if refusal is not None:
+                raise refusal
+            real_replace(src, dst)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "a.cfg"
+            path.write_bytes(b"old")
+            with (patch.object(fsutil, "REPLACE_RETRY_WAITS", (0.01, 0.01, 0.01)),
+                  patch("os.replace", side_effect=replace), patch("time.sleep") as sleep):
+                atomic_write_bytes(path, b"new")
+            self.assertEqual(path.read_bytes(), b"new")
+            self.assertEqual(sleep.call_count, 2)
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["a.cfg"])
+
+    def test_a_replace_refused_on_every_try_raises_and_keeps_the_original(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "a.cfg"
+            path.write_bytes(b"old")
+            with (patch.object(fsutil, "REPLACE_RETRY_WAITS", (0.01, 0.01)),
+                  patch("os.replace", side_effect=PermissionError("in use")) as replace, patch("time.sleep"),
+                  self.assertRaises(PermissionError)):
+                atomic_write_bytes(path, b"new")
+            self.assertEqual(replace.call_count, 3)
+            self.assertEqual(path.read_bytes(), b"old")
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["a.cfg"])
+
+    def test_a_replace_is_tried_once_off_windows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "a.cfg"
+            with (patch.object(fsutil, "REPLACE_RETRY_WAITS", ()),
+                  patch("os.replace", side_effect=PermissionError("denied")) as replace, patch("time.sleep") as sleep,
+                  self.assertRaises(PermissionError)):
+                atomic_write_bytes(path, b"new")
+            self.assertEqual((replace.call_count, sleep.call_count), (1, 0))
+
     def test_a_link_at_the_partial_name_is_never_followed(self):
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)

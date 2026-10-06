@@ -25,7 +25,7 @@ the age limit for rule 3 (type the days, then `Enter`).
 | Key | Rule | Suggests |
 |---|---|---|
 | `1` | Not installed | Settings of addons no longer installed |
-| `2` | Not enabled | Addons installed but switched off on every character |
+| `2` | Not enabled | Addons installed but switched off on every character of that account |
 | `3` | Older than max age | Settings unchanged for longer than the age limit (90 days to start with) |
 | `4` | Stray copies | Copies made by hand next to the real file (`Details.lua - Copy.bak`) |
 

@@ -28,7 +28,7 @@ The first tool is the **WTF Cleaner**. Over time the WTF folder collects SavedVa
 | Paths | `wow_path` is stored in Windows form and translated automatically under WSL (`G:\X` ⇄ `/mnt/g/X`) |
 | Front ends | TUI (default) **and** a non-interactive CLI, both thin layers over a UI-free core |
 | Criteria | Four, each toggleable. Default: all on, and a group is flagged if **any** criterion matches |
-| "Enabled" scope | **Global** within the flavor: enabled on any character in any account protects the addon's SV files everywhere |
+| "Enabled" scope | **Global** within the flavor: enabled on any character in any account protects the addon's SV files everywhere. *Superseded 2026-10-06 (#5): per account, see docs/wtf-cleaner.md* |
 | Tests | Stdlib `unittest`; Textual's `App.run_test()` for the TUI |
 
 ## 3. Repo layout

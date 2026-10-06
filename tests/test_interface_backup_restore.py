@@ -192,10 +192,14 @@ class OpenBackupTest(RestoreTestBase):
 
     def test_pre_1970_file_round_trips(self):
         # A zeroed Windows FILETIME (1601) or a wrong clock gives a negative st_mtime; our own backup must open.
+        # One day after the FILETIME epoch: on native Windows a FILETIME of exactly 0 means "leave the time as it
+        # is" to SetFileTime, so utime(-11644473600) changed nothing there and the test saw today's time (#8).
         cfg = self.wow / "_retail_" / "WTF" / "Config.wtf"
         try:
-            os.utime(cfg, (-11644473600, -11644473600))
+            os.utime(cfg, (-11644473600 + 86400, -11644473600 + 86400))
         except (OSError, OverflowError, ValueError):
+            self.skipTest("this filesystem cannot hold a pre-1970 time")
+        if os.stat(cfg).st_mtime >= 0:
             self.skipTest("this filesystem cannot hold a pre-1970 time")
         with capture_events():
             path = back_up(scan_flavor(self.flavor, with_stats=False), self.root, keep=10,

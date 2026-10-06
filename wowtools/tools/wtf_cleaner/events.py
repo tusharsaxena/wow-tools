@@ -7,7 +7,8 @@ TOOL_NAME = "wtf-cleaner"
 
 EVENTS: dict[str, EventSpec] = {
     "scan.started": EventSpec("info", "A scan of one flavor started."),
-    "scan.addons": EventSpec("debug", "Installed and enabled addon lists found by the scan."),
+    "scan.addons": EventSpec("debug", "Installed and enabled addon lists found by the scan (enabled: per account "
+                                                   "and their union)."),
     "scan.completed": EventSpec("info", "A scan finished, with counts."),
     "scan.warning": EventSpec("warning", "Something was skipped during a scan (unreadable folder, bad AddOns.txt "
                                          "line, no characters to judge 'not enabled' by)."),
@@ -25,6 +26,7 @@ EVENTS: dict[str, EventSpec] = {
     "clean.flavors_stopped": EventSpec("warning", "A clean of several flavors stopped at one flavor; the flavors after it were not started."),
     "snapshot.created": EventSpec("info", "The backup of the whole WTF folder (backup/backup-<flavor>-<stamp>.zip) was written and verified."),
     "backup.dry_runs_pruned": EventSpec("info", "After a dry run, older dry-run zips of the flavor were deleted to keep its newest N (keep_backups)."),
+    "backup.cleaned_pruned": EventSpec("info", "After a clean, older cleaned-files zips of the flavor were deleted to keep its newest N (keep_cleaned, the WTF Cleaner's own setting; 0 keeps all)."),
     "snapshot.pruned": EventSpec("info", "Older WTF backups of the flavor were deleted to keep its newest N (keep_backups)."),
     "locker.running_warning": EventSpec("warning", "A program known to lock WTF files (e.g. the Raider.IO client) appears to be running."),
     "clean.probe_recovered": EventSpec("warning", "A real clean renamed back a SavedVariables file left as <name>.wowtools-lockcheck by an interrupted lock check."),

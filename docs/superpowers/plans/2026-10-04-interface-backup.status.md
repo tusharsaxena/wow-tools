@@ -19,11 +19,11 @@ every task; push after each milestone. Never merge without the user's go-ahead.
 | 10 | restore and undo screens | done | ae15647, ed8ee75 | API as planned; backup list, backup load/scan and every plan built in workers; Undo on the result screen only for a restore that changed a part; 12 new TUI tests. Follow-up ed8ee75: Parts column in the backup list (spec §10), manifests read in a worker |
 | M2 | push milestone 2 | done (pushed) | 763a34b | Milestone 2 review: 20 findings fixed (see decisions, "M2 review") |
 | 11 | docs, events, final checks | done | 4e3aa0d | Full guide (no images yet: an HTML comment marks where the screenshots go); README, architecture, adding-a-tool, CLAUDE.md; events.md regenerated (22 events, unchanged); 766 tests OK (2 skipped) parallel and serial; ruff clean; reviewed, fixes in 42958c4 |
-| M3 | push milestone 3, ask for merge go-ahead | done (pushed; awaiting merge go-ahead) | 42958c4 | final review: 13 findings fixed |
+| M3 | push milestone 3, ask for merge go-ahead | done (merged to master in 397e0d8) | 42958c4 | final review: 13 findings fixed |
 | R1 | redesign: two-pane review screen with flavor ticks and Backups nodes (spec Addendum A) | done | d9d2d31 | `BackupReviewScreen` in `review_screen.py` (renamed from `summary_screen.py`); BackupListScreen removed; tests rewritten for the tree |
 | R2 | redesign: two-pane restore screen with warnings tree; result screens in the organizer's shape | done | c5c6976, 552248c | `RestoreScreen` two panes (`RestoreTree` `#effects`, `#summary`); result screens get `#result-summary` (Item/Value) above `#result-table`. Review fixes in 552248c (see decisions, "R2 review") |
 | R3 | look-and-feel parity pass across all three tools | done | 6a0b770, 7a38b4d | Every screen of the three tools rendered at 80x24 and 140x50; shared CSS and hints in `ui/dialogs.py`; drifts fixed or kept with a reason (see decisions, "R3"); `tests/test_look_and_feel.py`. Review fixes in 7a38b4d (see decisions, "R3 review") |
-| R4 | redesign review, docs (guide, architecture), push | done (pushed; awaiting merge go-ahead) | 1313340, b279dad | Review fixes in 1313340 (see decisions, "Redesign review"); docs b279dad: guide (review/restore screens, keys, restore from a Backups node), architecture (IB screens, shared `dialogs` names), WTF Cleaner guide (bottom bar), README (one look) |
+| R4 | redesign review, docs (guide, architecture), push | done (merged to master in 397e0d8) | 1313340, b279dad | Review fixes in 1313340 (see decisions, "Redesign review"); docs b279dad: guide (review/restore screens, keys, restore from a Backups node), architecture (IB screens, shared `dialogs` names), WTF Cleaner guide (bottom bar), README (one look) |
 
 ## Decisions taken during the build
 

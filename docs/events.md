@@ -56,10 +56,12 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ui.selection` | info | The user made a choice in the TUI or CLI. |
 | `update.applied` | info | The suite was updated. |
 | `update.available` | info | A newer suite release exists. |
+| `update.backup_kept` | warning | An old .update-backup folder was not pruned because a file the user had added could not be moved out of it; the next update tries again. |
 | `update.backups_pruned` | info | After a zip update, older .update-backup folders were deleted (kept: the one just made plus the newest other). |
 | `update.check_failed` | debug | The release check failed (offline, rate limited, bad data). |
 | `update.checked` | debug | The GitHub release check ran or was throttled. |
 | `update.failed` | error | Applying an update failed. |
+| `update.leftovers_kept` | info | Before an old .update-backup folder was pruned, files the user had added inside the app's own folders were moved to update-leftovers/<version>/. |
 | `update.unverified` | warning | A zip update was applied without a checksum (allow_unverified_updates = true and the release has no SHA256SUMS). |
 | `update.verified` | info | A zip update's download matched the release's published SHA-256 (SHA256SUMS). |
 | `wow.running_warning` | warning | World of Warcraft appears to be running. |
@@ -68,6 +70,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 
 | Event | Level | Description |
 |---|---|---|
+| `backup.cleaned_pruned` | info | After a clean, older cleaned-files zips of the flavor were deleted to keep its newest N (keep_cleaned, the WTF Cleaner's own setting; 0 keeps all). |
 | `backup.created` | info | The cleaned-files zip was written and verified (a dry run writes it too). |
 | `backup.dry_runs_pruned` | info | After a dry run, older dry-run zips of the flavor were deleted to keep its newest N (keep_backups). |
 | `backup.failed` | error | The cleaned-files zip failed; nothing was deleted. |
@@ -91,7 +94,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `recovery.incomplete_clean` | warning | A marker from an unfinished clean was found at startup. |
 | `restore.completed` | warning | A clean stopped unexpectedly; the files it had deleted were restored. |
 | `restore.failed` | error | Restoring from the WTF backup failed; the marker was kept. |
-| `scan.addons` | debug | Installed and enabled addon lists found by the scan. |
+| `scan.addons` | debug | Installed and enabled addon lists found by the scan (enabled: per account and their union). |
 | `scan.completed` | info | A scan finished, with counts. |
 | `scan.started` | info | A scan of one flavor started. |
 | `scan.warning` | warning | Something was skipped during a scan (unreadable folder, bad AddOns.txt line, no characters to judge 'not enabled' by). |

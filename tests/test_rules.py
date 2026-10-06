@@ -145,6 +145,20 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(load_settings(cfg).criteria.max_age_days, 90)
 
 
+    def test_keep_cleaned_round_trip_and_bad_values(self):
+        """#4: the cleaned-files zips kept per flavor; 0 (the default) keeps all, and save keeps the key."""
+        cfg = Config(self.path)
+        self.assertEqual(load_settings(cfg).keep_cleaned, 0)
+        settings = load_settings(cfg)
+        settings.keep_cleaned = 5
+        save_settings(cfg, settings)
+        reloaded = Config(self.path).load()
+        self.assertEqual(reloaded.get(SECTION, "keep_cleaned"), "5")  # remove_retired leaves it alone
+        self.assertEqual(load_settings(reloaded).keep_cleaned, 5)
+        for bad in ("-3", "lots"):
+            cfg.set(SECTION, "keep_cleaned", bad)
+            self.assertEqual(load_settings(cfg).keep_cleaned, 0)
+
     def test_resolve_backup_dir_default(self):
         self.assertEqual(DEFAULT_BACKUP_SUBDIR, Path("wow-tools") / "wtf-cleaner")
         self.assertEqual(resolve_backup_dir(load_settings(Config(self.path)), Path("/games/wow")),

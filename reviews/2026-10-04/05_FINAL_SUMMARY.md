@@ -3,6 +3,8 @@
 > Written as if every check in `03_TEST_PLAN.md` has passed and the plan in `04_EXECUTION_PLAN.md` has been
 > carried out. Fill in the commit range and PR link under "Verification evidence" when that is true.
 
+**Closed 2026-10-06.** Every check passed and the branch was merged to master in 96c3527 (2026-10-04). The evidence below is filled in from the fix ledger. Later: F-027 was fixed on the same branch after all (7ddca2d, copy mode skips already-filed copies); `keep_cleaned` (F-018) and per-account "enabled" sets follow in `fix/open-issues` (GitHub issues #4 and #5).
+
 ## Headline
 This cycle makes the two tools safer in the situations they did not yet cover. The WTF Cleaner no longer
 pre-selects the settings of installed addons when an account has no character folders. The app no longer lets
@@ -176,12 +178,12 @@ No runtime dependencies were added or removed.
 Numbers from the `03_TEST_PLAN.md` spot-checks on the maintainer's WSL checkout, which is on a Windows drive
 (drvfs):
 
-| Measure | Before | After (target) |
-|---|---|---|
-| 500 `log_event` calls on drvfs | 1378 ms | ≤ 150 ms |
-| Criterion toggle with 500 proposal items: `proposal.item` writes | 500 | 0 |
-| Clean/undo confirm: UI blocked while checking processes | up to ~20 s (PowerShell 10 s + tasklist 5 s + 5 s timeouts) | < 100 ms (check runs in a worker) |
-| In-app update: UI blocked | whole download, extract and copy | 0 (worker + progress modal) |
+| Measure | Before | After (target) | Measured after |
+|---|---|---|---|
+| 500 `log_event` calls on drvfs | 1378 ms | ≤ 150 ms | 85-88 ms (1385 ms before, same drive) |
+| Criterion toggle with 500 proposal items: `proposal.item` writes | 500 | 0 | 0 (pinned by a test) |
+| Clean/undo confirm: UI blocked while checking processes | up to ~20 s (PowerShell 10 s + tasklist 5 s + 5 s timeouts) | < 100 ms (check runs in a worker) | 86 ms with a 2 s check (2110 ms before) |
+| In-app update: UI blocked | whole download, extract and copy | 0 (worker + progress modal) | 0 (worker + `UpdateProgressScreen`, pinned by a test) |
 
 Record the measured "after" values in the sign-off table.
 
@@ -199,8 +201,8 @@ Record the measured "after" values in the sign-off table.
 
 ## Verification evidence
 - Test plan with the sign-off table filled: `reviews/2026-10-04/03_TEST_PLAN.md`.
-- Branch: `fix/review-2026-10-04`. Commit range: `master..fix/review-2026-10-04` (fill in the SHAs). PR: (link).
-- CI: `tests` workflow, all four jobs green on the PR head (link).
+- Branch: `fix/review-2026-10-04`. Commit range: `6e9ac1f..fcdb5ac` (f56d881 to fcdb5ac, 37 commits), merged to master in 96c3527. PR: none (merged locally).
+- CI: `tests` workflow, all four jobs green on the R3 push: run 37157279879 (https://github.com/tusharsaxena/wow-tools/actions/runs/37157279879), on de67379; fcdb5ac, the branch head, is a ledger-only commit.
 
 ## Suggested commit message / PR description
 

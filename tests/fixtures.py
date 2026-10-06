@@ -15,12 +15,14 @@ _retail_/WTF/Account/ACCT1/config-cache.wtf
 _retail_/WTF/Account/ACCT1/Realm1/CharA: AddOns.txt (Auctionator, Details, OldAddon enabled;
                                          DisabledAddon disabled), SV: Auctionator.lua, Uninstalled.lua
 _retail_/WTF/Account/ACCT2/SavedVariables/Details.lua
-_retail_/WTF/Account/ACCT2/Realm2/Chârb: AddOns.txt (Details/DisabledAddon/OldAddon disabled,
-                                         one garbage line), SV: Details.lua
+_retail_/WTF/Account/ACCT2/Realm2/Chârb: AddOns.txt (Auctionator, Details enabled; DisabledAddon, OldAddon
+                                         disabled; one garbage line), SV: Details.lua
 _classic_era_: Questie installed; ACCT1 account SV Questie.lua; Realm1/NoTxt (no AddOns.txt)
 _anniversary_: WTF only, no Interface/AddOns (scanning it must abort)
 _notaflavor: not a flavor folder
 
+build_multi_account_tree(root) builds a separate retail install whose accounts enable different addons (see its
+docstring): the per-account "not enabled" rule.
 build_screenshot_tree(root) adds Screenshots folders (see its docstring); SHOT_BYTES maps each valid shot
 name to its bytes.
 build_interface_tree(root) adds known bytes to _retail_'s Interface and WTF and an empty _ptr_ flavor.
@@ -36,6 +38,7 @@ import unittest
 from unittest import mock
 from pathlib import Path
 
+from textual.screen import ModalScreen
 from textual.widgets._footer import FooterKey
 
 from wowtools.core.config import Config
@@ -92,7 +95,7 @@ def build_wow_tree(root: Path) -> Path:
     _write(acct2 / "SavedVariables" / "Details.lua")
     char_b = acct2 / "Realm2" / "Chârb"
     _write(char_b / "AddOns.txt",
-           "Auctionator: enabled\nDetails: disabled\nDisabledAddon: disabled\nOldAddon: disabled\ngarbage line\n")
+           "Auctionator: enabled\nDetails: enabled\nDisabledAddon: disabled\nOldAddon: disabled\ngarbage line\n")
     _write(char_b / "SavedVariables" / "Details.lua")
 
     era = root / "_classic_era_"
@@ -102,6 +105,32 @@ def build_wow_tree(root: Path) -> Path:
 
     _write(root / "_anniversary_" / "WTF" / "Account" / "ACCT1" / "SavedVariables" / "Foo.lua")
     (root / "_notaflavor").mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def build_multi_account_tree(root: Path) -> Path:
+    """A retail install with Details, WeakAuras and Plater installed and three accounts:
+    MAIN: Alpha enables Details and WeakAuras (Plater disabled); Gamma disables Details. SV: Details.lua,
+          WeakAuras.lua, Plater.lua account-wide; Details.lua for Alpha and for Gamma.
+    ALT:  Beta enables WeakAuras only. SV: Details.lua, WeakAuras.lua account-wide; Details.lua for Beta.
+    BARE: no characters. SV: Plater.lua account-wide.
+    Every file is fresh and canonical, so only the "not enabled" rule proposes anything."""
+    retail = root / "_retail_"
+    for name in ("Details", "WeakAuras", "Plater"):
+        _addon(retail, name)
+    accounts = retail / "WTF" / "Account"
+    _write(accounts / "MAIN" / "Realm1" / "Alpha" / "AddOns.txt",
+           "Details: enabled\nWeakAuras: enabled\nPlater: disabled\n")
+    _write(accounts / "MAIN" / "Realm1" / "Gamma" / "AddOns.txt",
+           "Details: disabled\nWeakAuras: enabled\nPlater: disabled\n")
+    _write(accounts / "ALT" / "Realm1" / "Beta" / "AddOns.txt",
+           "Details: disabled\nWeakAuras: enabled\nPlater: disabled\n")
+    for path in ("MAIN/SavedVariables/Details.lua", "MAIN/SavedVariables/WeakAuras.lua",
+                 "MAIN/SavedVariables/Plater.lua", "MAIN/Realm1/Alpha/SavedVariables/Details.lua",
+                 "MAIN/Realm1/Gamma/SavedVariables/Details.lua", "ALT/SavedVariables/Details.lua",
+                 "ALT/SavedVariables/WeakAuras.lua", "ALT/Realm1/Beta/SavedVariables/Details.lua",
+                 "BARE/SavedVariables/Plater.lua"):
+        _write(accounts / path)
     return root
 
 
@@ -151,15 +180,51 @@ class TuiTestCase(unittest.IsolatedAsyncioTestCase):
 async def settle(app, pilot, timeout: float = 10.0) -> None:
     """Wait until background workers are done and the screen has drawn what they produced. One pause after
     `wait_for_complete()` is not always enough on a slow machine (CI on Windows): a worker may not have started
-    yet, or a list rebuild scheduled with `call_after_refresh` may still be pending."""
+    yet, or a list rebuild scheduled with `call_after_refresh` may still be pending. Past `timeout` it fails,
+    naming what was still busy: a state that never settles (a footer left stale) must not pass as settled."""
     deadline = time.monotonic() + timeout
+    stale_footer = False
     while True:
         await app.workers.wait_for_complete()
         await pilot.pause()
-        busy = (any(not worker.is_finished for worker in app.workers)
-                or getattr(app.screen, "_rebuild_pending", False))
-        if not busy or time.monotonic() > deadline:
+        footer = _footers_stale(app)
+        stale_footer = stale_footer or footer
+        busy = {"workers": any(not worker.is_finished for worker in app.workers),
+                "rebuild": getattr(app.screen, "_rebuild_pending", False), "footer": footer,
+                "messages": _messages_pending(app)}
+        if not any(busy.values()):
+            if stale_footer:
+                await pilot.pause()  # the footer just recomposed: let the screen draw it
             return
+        if time.monotonic() > deadline:
+            raise AssertionError(f"settle() timed out after {timeout}s on {type(app.screen).__name__}; still busy: "
+                                 + ", ".join(name for name, on in busy.items() if on))
+
+
+def _messages_pending(app) -> bool:
+    """True while the app or a widget of the top screen has messages waiting: a rebuild that expands a tree node
+    posts NodeExpanded, and under load (16 shards on native Windows) the pause above could end before the screen
+    handled it (#8)."""
+    return bool(app.message_queue_size) or any(
+        node.message_queue_size for node in app.screen.walk_children(with_self=True))
+
+
+def _footers_stale(app) -> bool:
+    """True while a KeyFooter the user sees has not composed yet, does not list its screen's footer_bindings or has
+    keys not yet mounted and laid out: the top screen's, and under popups (ModalScreens) the screen beneath them.
+    The footer recomposes through `call_after_refresh` after the bindings change; on native Windows (Python 3.14)
+    that refresh can come after the pause in settle(), and a test read an empty footer (#8). A screen hidden under
+    another full screen keeps a stale footer: not checked."""
+    for screen in reversed(app.screen_stack):
+        wanted = {binding.key for binding, _enabled, _tooltip in footer_bindings(screen)}
+        for footer in screen.query(KeyFooter):
+            keys = list(footer.query(FooterKey))
+            if (not footer._bindings_ready or {key.key for key in keys} != wanted
+                    or not all(key.is_mounted and key.region.width for key in keys)):
+                return True
+        if not isinstance(screen, ModalScreen):
+            return False
+    return False
 
 
 async def footer_keys(screen, pilot, wanted: set[str], timeout: float = 10.0) -> set[str]:

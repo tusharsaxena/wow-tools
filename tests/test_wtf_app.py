@@ -39,6 +39,7 @@ from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.widgets import ButtonRow, Ka0sCheckbox, NavHint, action_kind
 
 SIZE = (140, 50)
+REAL_ROOT = r"C:\Program Files (x86)\World of Warcraft"  # the default install's WoW folder
 
 
 class AppTestCase(TuiTestCase):
@@ -552,6 +553,9 @@ class RecoveryDialogTest(AppTestCase):
 
 class AccountScopeFlowTest(AppTestCase):
     async def test_account_screen_scopes_the_review(self):
+        # DisabledAddon is disabled on ACCT2's only character, so its account-wide file there is proposed.
+        (self.root / "_retail_" / "WTF" / "Account" / "ACCT2" / "SavedVariables" / "DisabledAddon.lua").write_text(
+            "-- sv\n", encoding="utf-8")
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             await self.enter_tool(app, pilot)
@@ -637,6 +641,25 @@ class FirstRunTest(AppTestCase):
             await pilot.pause()
             self.assertIs(app.screen, screen)
             self.assertIn("whole number", screen.error_text)
+
+    async def test_settings_keep_cleaned_validated_and_saved(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            screen = CleanerSettingsScreen(self.tool_cfg, self.root, source="settings")
+            app.push_screen(screen)
+            await pilot.pause()
+            self.assertEqual(screen.query_one("#keep_cleaned", Input).value, "0")
+            screen.query_one("#keep_cleaned", Input).value = "-1"
+            await pilot.click("#save")
+            await pilot.pause()
+            self.assertIs(app.screen, screen)
+            self.assertIn("0 or more", screen.error_text)
+            screen.query_one("#keep_cleaned", Input).value = "4"
+            screen.query_one("#save", Button).press()  # the error row moved Save below the fold
+            await pilot.pause()
+            self.assertIsNot(app.screen, screen, screen.error_text)
+        self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).keep_cleaned, 4)
 
     async def test_settings_saves_backup_folder(self):
         app = self.make_app()
@@ -823,27 +846,30 @@ class KeyboardNavigationTest(AppTestCase):
                             rows["Cleaned files zip"])
             self.assertEqual(rows["Backup folder"], to_stored(self.backup_dir))
             journal = app.screen.result.journal_path
-            # The journal is in <WoW>/wow-tools/wtf-cleaner/journal, not in this backup folder: its whole path,
-            # with the Undo note on a row of its own.
+            # The journal is in <WoW>/wow-tools/wtf-cleaner/journal, not in this backup folder: a row for its
+            # folder, then its name with the Undo note.
             self.assertFalse(journal.is_relative_to(self.backup_dir))
-            self.assertEqual(rows["Run journal"], to_stored(journal))
-            self.assertEqual(rows[""], "(Undo last clean, on the review, puts them back)")
+            self.assertEqual(rows["Journal folder"], to_stored(journal.parent))
+            self.assertEqual(rows["Run journal"], f"{journal.name} (Undo last clean, on the review, puts them back)")
             self.assertEqual(rows["Post-clean check"], "passed")
 
     def test_multi_summary_names_the_journal_by_where_it_is(self):
-        """Several flavors: the run journal's row names it inside the backup folder when it is there, else whole."""
+        """Several flavors: the run journal's row names it inside the backup folder when it is there, else a row
+        names its folder and the next its file."""
         from wowtools.core.install import Flavor
         from wowtools.tools.wtf_cleaner.multi import FlavorRun, MultiCleanResult
         from wowtools.tools.wtf_cleaner.result_screen import multi_summary_rows
         flavor = Flavor("_retail_", self.root / "_retail_")
         journal = self.root / "wow-tools" / "wtf-cleaner" / "journal" / "journal-20261004-153304.jsonl"
-        for folder, expected in ((self.backup_dir, to_stored(journal)),
-                                 (self.root / "wow-tools" / "wtf-cleaner", str(Path("journal", journal.name)))):
+        for folder, expected in (
+                (self.backup_dir, [("Journal folder", to_stored(journal.parent), False),
+                                   ("Run journal", journal.name, False)]),
+                (self.root / "wow-tools" / "wtf-cleaner", [("Run journal", str(Path("journal", journal.name)), False)])):
             clean = CleanResult(dry_run=False, backup_path=folder / "cleaned" / "cleaned-retail-x.zip",
                                 journal_path=journal)
             result = MultiCleanResult(dry_run=False, runs=[FlavorRun(flavor, [], result=clean)], journal_path=journal)
             rows = multi_summary_rows(result)
-            self.assertEqual(rows[0], ("Run journal", expected, False))  # on top, before the flavor's block
+            self.assertEqual(rows[:len(expected)], expected)  # on top, before the flavor's block
 
     async def test_real_clean_result_names_the_journal_inside_the_default_backup_folder(self):
         """With no backup folder set, the default one (<WoW>/wow-tools/wtf-cleaner) holds journal/: the journal
@@ -884,7 +910,8 @@ class KeyboardNavigationTest(AppTestCase):
             self.assert_reasons_shown_whole(app.screen.query_one("#result-files", DataTable))
 
     async def test_real_clean_result_summary_fits_at_base(self):
-        """At 120x30 a clean's summary shows every row, each value whole (no scrolling either way)."""
+        """At 120x30 a clean's summary shows every row, each value whole (no scrolling either way), with room to
+        spare for a WoW folder as long as the default install's."""
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
             await self.open_review(app, pilot)
@@ -895,8 +922,17 @@ class KeyboardNavigationTest(AppTestCase):
             await settle(app, pilot)
             self.assertIsInstance(app.screen, ResultScreen)
             summary = app.screen.query_one("#result-summary", DataTable)
-            self.assertEqual(summary.row_count, 11)  # the journal's whole path, then the Undo note
-            self.assertEqual((summary.max_scroll_x, summary.max_scroll_y), (0, 0))
+            self.assertEqual(summary.row_count, 11)  # the journal's folder, then its name with the Undo note
+            # A real install's folder: the widest value (the journal's folder) grows by how much longer it is than
+            # this temp one. Native Windows' temp root is longer (C:\Users\<name>\AppData\Local\Temp\..., #8): the
+            # widest value may pass the edge by that excess only.
+            grow = len(REAL_ROOT) - len(to_stored(self.root))
+            if grow >= 0:
+                self.assertEqual((summary.max_scroll_x, summary.max_scroll_y), (0, 0))
+                spare = summary.scrollable_content_region.width - summary.virtual_size.width
+                self.assertGreaterEqual(spare, grow, (spare, grow))
+            else:
+                self.assertLessEqual(summary.max_scroll_x, -grow)
 
     async def test_setup_and_settings_keyboard_only(self):
         cfg = Config(self.tmp / "fresh" / "wow-tools.cfg")
@@ -930,19 +966,19 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertTrue(settings.query(NavHint))
             self.assertFalse(settings.query("Switch"))
             order = [settings.focused.id]
-            for _ in range(7):
+            for _ in range(8):
                 await pilot.press("down")
                 order.append(settings.focused.id)
             self.assertEqual(order, ["max_age", "backup_dir", *[f"sw_{n}" for n in CRITERIA],
-                                     "sw_backup", "save"])
+                                     "sw_backup", "keep_cleaned", "save"])
             for name in (*[f"sw_{n}" for n in CRITERIA], "sw_backup"):
                 self.assertIsInstance(settings.query_one(f"#{name}"), Ka0sCheckbox)
-            await pilot.press("up")  # back to the backup toggle
+            await pilot.press("up", "up")  # back to the backup toggle
             self.assertEqual(settings.focused.id, "sw_backup")
             self.assertTrue(settings.focused.value)
             await pilot.press("space")
             self.assertFalse(settings.focused.value)
-            await pilot.press("down", "enter")
+            await pilot.press("down", "down", "enter")
             await pilot.pause()
             self.assertIsInstance(app.screen, FlavorScreen)
         saved = load_settings(Config(cfg.path.parent / "wtf-cleaner.cfg").load())
@@ -1667,8 +1703,9 @@ class UndoLastCleanTest(AppTestCase):
                 self.assertIsInstance(app.screen, ResultScreen)
                 rows = app.screen.summary_rows()
                 at = [item for item, _ in rows].index("Run journal")
-                # the journal is outside this backup folder: its whole path, the Undo note on the next row
-                self.assertIn("Undo last clean, on the review", rows[at + 1][1])
+                # the journal is outside this backup folder: its folder on the row before, the Undo note with it
+                self.assertEqual(rows[at - 1][0], "Journal folder")
+                self.assertIn("Undo last clean, on the review", rows[at][1])
                 review = await self.back_to_review(app, pilot)
                 self.assertFalse(review.query_one("#btn-undo", Button).disabled)
                 await pilot.press("z")

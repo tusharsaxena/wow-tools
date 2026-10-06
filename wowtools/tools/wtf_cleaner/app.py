@@ -7,7 +7,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from textual.widget import Widget
-from textual.widgets import Input, Label, Static
+from textual.widgets import Input, Label
 
 from wowtools.core.config import Config
 from wowtools.core.install import Flavor, WowInstall, validate_backup_dir
@@ -37,15 +37,17 @@ class CleanerSettingsScreen(ToolSettingsScreen):
         criteria = self.settings.criteria
         yield Label("Propose SavedVariables older than this many days")
         yield Input(str(criteria.max_age_days), type="integer", id="max_age")
-        yield Label("Backup folder: holds backup/ (whole WTF folder) and cleaned/ (the files removed). "
-                    "Leave empty to use <WoW folder>/wow-tools/wtf-cleaner")
+        # One line each: the form shows whole, Save included, at 120x30 (the default is the folder's placeholder).
+        yield Label("Backup folder for backup/ (whole WTF folder) and cleaned/ (files removed); empty = default")
         yield self.folder_input(self.settings.backup_dir, id="backup_dir",
                                 placeholder=folder_hint(resolve_backup_dir(CleanerSettings(), self.wow_path)))
-        yield Static("Propose SavedVariables when:", classes="title")
+        yield Label("Propose SavedVariables when:")  # a plain label, not a spaced .title: the form fits at 120x30
         for name in CRITERIA:
             yield Ka0sCheckbox(CRITERION_LABELS[name], getattr(criteria, name), id=f"sw_{name}", compact=True)
         yield Ka0sCheckbox("Zip the files to clean before deleting them (recommended)",
                            self.settings.backup_before_delete, id="sw_backup", compact=True)
+        yield Label("Cleaned-files zips to keep per game version (0 keeps all; they hold what Clean deleted)")
+        yield Input(str(self.settings.keep_cleaned), type="integer", id="keep_cleaned")
 
     def save(self) -> bool:
         try:
@@ -54,6 +56,13 @@ class CleanerSettingsScreen(ToolSettingsScreen):
             days = 0
         if days < 1:
             self._error("Max age must be a whole number of days, at least 1.")
+            return False
+        try:
+            keep_cleaned = int(self.query_one("#keep_cleaned", Input).value)
+        except ValueError:
+            keep_cleaned = -1
+        if keep_cleaned < 0:
+            self._error("Cleaned-files zips to keep must be a whole number, 0 or more (0 keeps all).")
             return False
         criteria = Criteria(**{name: self.query_one(f"#sw_{name}", Ka0sCheckbox).value for name in CRITERIA},
                             max_age_days=days)
@@ -66,7 +75,7 @@ class CleanerSettingsScreen(ToolSettingsScreen):
         stored = load_settings(self.tool_cfg)  # keeps the remembered flavor and account choices
         save_settings(self.tool_cfg, replace(stored, criteria=criteria,
                                              backup_before_delete=self.query_one("#sw_backup", Ka0sCheckbox).value,
-                                             backup_dir=backup_dir),
+                                             backup_dir=backup_dir, keep_cleaned=keep_cleaned),
                       source=self.source)
         return True
 

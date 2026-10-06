@@ -349,30 +349,32 @@ python3 -m compileall -q wowtools scripts  # exit 0, no output
 
 ## Sign-off
 
+Closed 2026-10-06: filled from the fix ledger (`docs/superpowers/plans/2026-10-04-review-fixes.status.md`). Branch `fix/review-2026-10-04` (`6e9ac1f..fcdb5ac`, f56d881 to fcdb5ac, 37 commits) was merged to master in 96c3527. Full suite at merge: 548 tests green (2 skipped, the Windows-only launcher tests).
+
 | ID | Tested? | Pass/Fail | Notes |
 |---|---|---|---|
-| C-01 | | | |
-| C-02 | | | |
-| C-03 | | | |
-| C-04 | | | |
-| C-05 | | | |
-| C-06 | | | |
-| C-07 | | | |
-| C-08 | | | |
-| C-09 | | | |
-| C-10 | | | |
-| C-11 | | | |
-| C-12 | | | |
-| C-13 | | | |
-| C-14 | | | |
-| C-15 | | | |
-| C-16 | | | |
-| C-17 | | | |
-| C-18 | | | update-backup pruning only; `keep_cleaned` deferred |
-| C-19 | | | |
-| C-20 | | | manual, Windows |
-| C-21 | | | |
-| C-22 | | | |
-| C-23 | | | |
-| C-24 | | | |
-| C-26 | | | |
+| C-01 | yes | Pass | 8dc6ee6 (F-001); `build_solo_tree` tests |
+| C-02 | yes | Pass | cdfd2b0 (F-002); `ui.quit_refused`, worker wait before `lock.release()` |
+| C-03 | yes | Pass | 0d76992 (F-003); return code propagated, UI crashes logged |
+| C-04 | yes | Pass | a837a00 (F-004) |
+| C-05 | yes | Pass | 74ef45f (F-005), ddfd611 (R2: selection frozen during the check); confirm latency 2110 ms before, 86 ms after |
+| C-06 | yes | Pass | 7573f8f (F-006); 500 events on drvfs 1385 ms before, 85-88 ms after; toggle writes no `proposal.item` |
+| C-07 | yes | Pass | fe6182f (F-007); 1000-save stress test (skips on Windows) |
+| C-08 | yes | Pass | 637d7cd (F-008, F-029) |
+| C-09 | yes | Pass | 0ff9693 (F-009, F-023, F-024); `tests/test_structure.py`, greps 1-4 match |
+| C-10 | yes | Pass | f387a49 (F-010); a real release publish is left to the first release |
+| C-11 | yes | Pass | 8ccd54f (F-011), ddfd611 (R2: process-tree kill on timeout, ssh settings respected) |
+| C-12 | yes | Pass | 17e2ad3, 11d9399 (F-012); final CI run 37157279879 green on all four jobs |
+| C-13 | yes | Pass | 537a704 (F-013), 91b8cd5 (R1: every SavedVariables folder in scope) |
+| C-14 | yes | Pass | 4531d88 (F-014); call sites pinned by `tests/test_no_replace_call_sites.py` (91b8cd5) |
+| C-15 | yes | Pass | fd6588c (F-015) |
+| C-16 | yes | Pass | fd6588c (F-016) |
+| C-17 | yes | Pass | fd6588c (F-017), 91b8cd5 (R1), 6e33781 (R3) |
+| C-18 | yes | Pass | update-backup pruning only; `keep_cleaned` deferred. 2254dac (F-018), ddfd611 (R2: downgrade keeps the current folder) |
+| C-19 | yes | Pass | 2254dac (F-019) |
+| C-20 | yes | Pass | manual, Windows. e105a6e (F-020); `tests/test_launcher.py` run natively through `py -3` (exit codes 0/1/10, launcher rewritten mid-run) |
+| C-21 | yes | Pass | f991fb8 (F-021) |
+| C-22 | yes | Pass | 537a704 (F-022) |
+| C-23 | yes | Pass | b45d431 (F-025) |
+| C-24 | yes | Pass | 8ccd54f (F-026) |
+| C-26 | yes | Pass | 4531d88 (F-028) |

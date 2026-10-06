@@ -138,13 +138,14 @@ def execute_flavors(plan: list[tuple[Flavor, list[ProposalItem]]], *, dry_run: b
                     backup_dir: Path | None, account: str | None = None,
                     keep_backups: int = DEFAULT_KEEP_BACKUPS, progress: CleanProgress | None = None,
                     on_flavor: Callable[[Flavor, int, int], None] | None = None, journal_dir: Path | None = None,
-                    keep_journals: int = DEFAULT_KEEP_JOURNALS) -> MultiCleanResult:
+                    keep_journals: int = DEFAULT_KEEP_JOURNALS, keep_cleaned: int = 0) -> MultiCleanResult:
     """Run execute() for each (flavor, selection) in turn (never in parallel: see the module docstring). A BackupError or CleanError stops the run before the
     next flavor starts; flavors already done keep their results. Any other exception propagates (execute() has
     already restored what it deleted).
 
     A real clean with a journal_dir writes one run journal for all the flavors (removed again if nothing was
-    deleted), then keeps the newest keep_journals journals."""
+    deleted), then keeps the newest keep_journals journals. keep_cleaned goes to execute() (cleaned-files zips kept
+    per flavor, 0 = all)."""
     result = MultiCleanResult(dry_run, [FlavorRun(flavor, items) for flavor, items in plan])
     journal = None
     if not dry_run and journal_dir is not None:
@@ -159,7 +160,7 @@ def execute_flavors(plan: list[tuple[Flavor, list[ProposalItem]]], *, dry_run: b
             try:
                 run.result = execute(run.items, run.flavor, dry_run=dry_run, backup=backup, backup_dir=backup_dir,
                                      progress=progress, account=account, keep_backups=keep_backups,
-                                     journal=journal)
+                                     journal=journal, keep_cleaned=keep_cleaned)
             except (BackupError, CleanError) as exc:
                 run.error = exc
                 if len(result.runs) > 1:

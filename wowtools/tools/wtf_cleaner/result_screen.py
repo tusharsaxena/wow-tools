@@ -43,12 +43,15 @@ def _in_backup_folder(path: Path) -> str:
     return str(Path(path.parent.name, path.name))
 
 
-def journal_text(journal: Path, folder: Path | None) -> str:
-    """The run journal's path: inside the backup folder (the default one holds journal/) relative to it, else whole.
-    The journal lives in <WoW>/wow-tools/wtf-cleaner/journal, which a backup folder set elsewhere does not hold."""
+def journal_rows(journal: Path, folder: Path | None, note: str = "") -> list[tuple[str, str]]:
+    """The run journal's rows: inside the backup folder (the default one holds journal/) one row, relative to it;
+    else a "Journal folder" row and the file's name, so each fits at 120x30 for a usual install path (a whole
+    `C:\\Program Files (x86)\\World of Warcraft\\...\\journal-<stamp>.jsonl` is 100 characters). The journal lives
+    in <WoW>/wow-tools/wtf-cleaner/journal, which a backup folder set elsewhere does not hold."""
+    suffix = f" {note}" if note else ""
     if folder is not None and journal.is_relative_to(folder):
-        return str(journal.relative_to(folder))
-    return to_stored(journal)
+        return [("Run journal", f"{journal.relative_to(folder)}{suffix}")]
+    return [("Journal folder", to_stored(journal.parent)), ("Run journal", f"{journal.name}{suffix}")]
 
 
 def _backup_folder(result: CleanResult) -> Path | None:
@@ -72,10 +75,12 @@ def summary_rows(result: CleanResult) -> list[tuple[str, str]]:
         if result.check_problems:
             check = (f"{len(result.check_problems)} problems: {result.check_problems[0]}"
                      + (" (more in the log)" if len(result.check_problems) > 1 else ""))
+    zipped = _in_backup_folder(result.backup_path) if result.backup_path else "none (turned off in settings)"
+    if result.cleaned_pruned:
+        zipped += f" ({len(result.cleaned_pruned)} older cleaned zips removed)"
     rows = [
         ("Mode", "Dry run" if result.dry_run else "Clean"),
-        ("Cleaned files zip",
-         _in_backup_folder(result.backup_path) if result.backup_path else "none (turned off in settings)"),
+        ("Cleaned files zip", zipped),
         ("WTF backup", snapshot),
     ]
     folder = _backup_folder(result)
@@ -90,11 +95,7 @@ def summary_rows(result: CleanResult) -> list[tuple[str, str]]:
     ]
     if result.journal_path is not None:
         at = rows.index(("Post-clean check", check))
-        journal = journal_text(result.journal_path, folder)
-        if folder is not None and result.journal_path.is_relative_to(folder):
-            rows.insert(at, ("Run journal", f"{journal} {UNDO_NOTE}"))
-        else:  # a whole path: the note gets a row of its own, so the journal's row fits at 120x30
-            rows[at:at] = [("Run journal", journal), ("", UNDO_NOTE)]
+        rows[at:at] = journal_rows(result.journal_path, folder, UNDO_NOTE)
     return rows
 
 
@@ -113,7 +114,8 @@ def multi_summary_rows(result: MultiCleanResult) -> list[tuple[str, str, bool]]:
             rows.append(("Not started", names(result.not_started), False))
     if result.journal_path is not None:
         folders = [_backup_folder(run.result) for run in result.done]  # type: ignore[arg-type]
-        rows.append(("Run journal", journal_text(result.journal_path, next((f for f in folders if f), None)), False))
+        rows += [(item, value, False)
+                 for item, value in journal_rows(result.journal_path, next((f for f in folders if f), None))]
     for run in result.done:
         rows.append((run.flavor.display_name, "", True))
         rows += [(item, value, False) for item, value in summary_rows(run.result)]  # type: ignore[arg-type]

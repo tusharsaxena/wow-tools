@@ -51,7 +51,7 @@ colour, used in the list too:
 | Rule | Suggests | Example |
 |---|---|---|
 | **1 Not installed** (red) | Settings for addons that are no longer installed | `OldBagAddon.lua` after you removed that addon |
-| **2 Not enabled** (orange) | Settings for addons that are installed but switched off on every character | An addon you disabled everywhere but never removed |
+| **2 Not enabled** (orange) | Settings for addons that are installed but switched off on every character of that account | An addon you disabled everywhere, or that only your other account uses |
 | **3 Older than max age** (yellow) | Addons whose settings haven't changed in a long time (90 days to start with) | An addon from last expansion that you stopped using |
 | **4 Stray copies** (purple) | Copies you or another program made by hand next to the real file | `Details.lua - Copy.bak` |
 
@@ -72,17 +72,23 @@ folder it looked in) and the others carry on.
 
 ### Accounts
 
-- **All accounts** (the usual choice): an addon counts as "enabled" if *any* character on *any* account uses it.
-- **One account**: only that account's files are scanned, and only its characters count.
+- **All accounts** (the usual choice): every account's files are scanned, each judged on its own (see below).
+- **One account**: only that account's files are scanned. The verdict is the same as with All accounts.
 - **All flavors**: every game version is scanned (up to `parallelism` at once, see Settings), each with all its
   accounts.
+
+"Not enabled" is decided per account: an addon counts as enabled for an account's files (its account-wide
+settings and every one of its characters' settings) if *any* character of *that* account has it switched on. An
+addon you only use on your main account does not keep your second account's settings for it: those are
+suggested. Within one account a character's own settings are kept while
+any character of the account uses the addon, so switching an addon off on one alt never suggests that alt's file.
 
 A character that has never changed its addon list counts as having every addon enabled, because that's what WoW
 does.
 
-If there are no characters at all (an account, or a whole game version, with only account-wide settings), the
-cleaner can't tell what is switched off, so it counts every installed addon as enabled and the "Not enabled" rule
-suggests nothing there. The scan notes this in its warnings.
+If an account has no characters at all (only account-wide settings), the cleaner can't tell what is switched off
+there, so it counts every installed addon as enabled for that account and the "Not enabled" rule suggests nothing
+in it. The scan notes this in its warnings.
 
 ### Keys on the review screen
 
@@ -195,11 +201,14 @@ wow-tools\wtf-cleaner\
 `all`. For example: `cleaned-retail-all-20261003-140311.zip`. If two cleans start in the same second, the second
 gets `-2` added before `.zip`, so no backup ever replaces another.
 
-- The **cleaned** zips are never deleted by the app.
+- The **cleaned** zips are all kept, unless you set **Cleaned-files zips to keep** in the cleaner's settings (see
+  [Settings](#settings)). Then, after each clean that deleted something, only the newest that many of the game
+  version are kept (any account, counting the one that clean just made). A dry run never removes them.
 - Only the newest 10 **backups** of each game version are kept (you can change this in the shared settings, the
   first screen `s` opens; `0` keeps them all).
 - Only the newest 10 **dry-run** zips of each game version are kept (the same setting). Dry-run zips made by
-  older versions of the app are named `cleaned-…` like real ones, so they're kept until you delete them.
+  older versions of the app are named `cleaned-…` like real ones, so they're kept unless you set **Cleaned-files
+  zips to keep**, which counts and removes them like real cleaned zips.
 - Only the newest 10 **journals** are kept (also a shared setting).
 
 ## Restoring a backup
@@ -233,10 +242,11 @@ in `config\wtf-cleaner.cfg`.
 | Max age in days | 90 | The age limit for rule 3 |
 | The four rules | all on | Which rules are on when the review screen opens |
 | Zip the files before deleting | on | Keep a zip of everything a clean removes (recommended) |
+| Cleaned-files zips to keep | 0 | How many `cleaned\cleaned-…zip` files to keep per game version; `0` keeps them all. Older ones are removed after a clean. The zip of the last clean is always kept, so **Undo last clean** is unaffected. A removed zip of an older clean can only be restored by hand from its WTF backup (`backup\backup-…zip`) while that is still kept |
 | Backup folder | empty | Where zips and backups go. Empty means `<WoW folder>\wow-tools\wtf-cleaner`. It must be a full path, and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
 
 The file itself uses these names, if you edit it by hand: `max_age_days`, `criterion_not_installed`,
-`criterion_not_enabled`, `criterion_older_than`, `criterion_stray_copies`, `backup_before_delete`, `backup_dir`,
+`criterion_not_enabled`, `criterion_older_than`, `criterion_stray_copies`, `backup_before_delete`, `keep_cleaned`, `backup_dir`,
 `last_account` and `last_flavor_choice`.
 
 Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
@@ -245,19 +255,19 @@ first screen `s` opens (the one with your WoW folder), and saved as `keep_backup
 in `config\wow-tools.cfg`. With **All flavors**, the scan reads up to `parallelism` game versions at once. A clean (and a dry run)
 still does one game version after another: they share one safety marker, and the clean stops at the first game
 version that fails. The WTF backups and the dry-run zips both follow
-`keep_backups`.
+`keep_backups`. The cleaned-files zips are the one exception: they follow the cleaner's own `keep_cleaned`.
 
 ## FAQ
 
 | Question | Answer |
 |----------|--------|
 | What is a SavedVariables file? | The file an addon keeps its settings in, such as `Details.lua`. WoW writes them to the `WTF` folder when you log out. They're safe to delete for addons you no longer use; the addon simply starts with default settings if you ever install it again. |
-| Will it delete settings for addons I still use? | Not with the usual rules. Rule 1 only suggests addons that aren't installed, and rule 2 only addons switched off on every character. Rule 3 (older than the age limit) can catch an addon you still have but rarely load, so look through the list and untick anything you want to keep. |
-| Does it check whether WoW is running? | Yes, before every clean, for the game versions you're cleaning, and it warns you if WoW is open. This works on Windows, WSL and Linux. On a Mac it can't tell, so close WoW yourself first. |
+| Will it delete settings for addons I still use? | Not with the usual rules. Rule 1 only suggests addons that aren't installed, and rule 2 only addons switched off on every character of that account. Rule 3 (older than the age limit) can catch an addon you still have but rarely load, so look through the list and untick anything you want to keep. |
+| Does it check whether WoW is running? | Yes, before every clean, for the game versions you're cleaning, and it warns you if WoW is open. This works on Windows, WSL, Mac and Linux. |
 | Does it touch my keybindings, macros or UI layout? | No. It only ever looks at addon settings files. Blizzard's own settings, keybindings, macros, chat setup, UI layout and your list of enabled addons are never touched. |
 | What's the difference between a Dry run and Clean? | A **Dry run** does every step except deleting, so you can see the full results first. **Clean** deletes the ticked files after backing them up. |
 | Can I clean one account only? | Yes. Pick a single game version; if it has more than one account, the next screen lets you pick one. |
-| How much space do the backups take? | Each WTF backup is a zip of your whole `WTF` folder, so it depends on how big that folder is (zipping shrinks these text files a lot). Only the newest 10 per game version are kept (you can change that in the shared settings; `0` keeps them all), and the same number of dry-run zips. The zips of cleaned files are kept until you delete them. |
+| How much space do the backups take? | Each WTF backup is a zip of your whole `WTF` folder, so it depends on how big that folder is (zipping shrinks these text files a lot). Only the newest 10 per game version are kept (you can change that in the shared settings; `0` keeps them all), and the same number of dry-run zips. The zips of cleaned files are kept until you delete them, unless you set **Cleaned-files zips to keep** in the cleaner's settings. |
 | Can I undo a clean from last week? | **Undo last clean** only goes back to the most recent clean. For an older one, unzip its files by hand; see [Restoring a backup](#restoring-a-backup). |
 
 ## Troubleshooting
