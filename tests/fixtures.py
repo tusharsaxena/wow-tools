@@ -162,6 +162,17 @@ async def settle(app, pilot, timeout: float = 10.0) -> None:
             return
 
 
+async def footer_keys(screen, pilot, wanted: set[str], timeout: float = 10.0) -> set[str]:
+    """The keys `screen`'s footer lists, once it lists every key in `wanted` (or the timeout passes). The footer
+    recomposes through `call_after_refresh`, so right after `settle()` it may still be empty or stale."""
+    deadline = time.monotonic() + timeout
+    while True:
+        keys = {key.key for key in screen.query(FooterKey)}
+        if wanted <= keys or time.monotonic() > deadline:
+            return keys
+        await pilot.pause()
+
+
 SHOT_BYTES = {
     "WoWScrnShot_073119_232713.jpg": b"shot-a",
     "WoWScrnShot_073119_232800.jpg": b"shot-b",

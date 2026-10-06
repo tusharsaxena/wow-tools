@@ -20,7 +20,7 @@ from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, CRITERION_SHORT
 from wowtools.tools.wtf_cleaner.undo import UndoResult
 from wowtools.ui.result_screen import ResultBase, result_bindings, status_colour, status_style
 
-UNDO_NOTE = "(Undo last clean (z) puts these files back)"
+UNDO_NOTE = "(Undo last clean, on the review, puts them back)"
 BLOCK_STYLE = "bold #5CC8FF"
 # Theme colour per file status in the result table.
 STATUS_COLOURS = {"deleted": "success", "restored": "success", "would_delete": "accent", "skipped": "warning",

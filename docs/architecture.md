@@ -712,8 +712,8 @@ screen whose "Back to review" button carries `Esc` drops "Esc back" from `RESULT
 result, blacklist, restore and settings screen: each button whose action has a key shows it, no footer lists
 a key a shown button carries, and no hint names one.
 
-**Button colours** (spec D12). Every button is built by `action_button(label, kind)` and coloured by what it
-does, the same in every tool. The colours are theme variables (`ACTION_COLOURS` in `ui/theme.py` becomes
+**Button colours** (spec D12). Every button is built by `action_button(label, kind, key)` (`key` left out for a
+button with no binding, such as Save) and coloured by what it does, the same in every tool. The colours are theme variables (`ACTION_COLOURS` in `ui/theme.py` becomes
 `$act-<kind>`, `-lighten`, `-darken` and `-text` in `KA0S_THEME.variables`, and `Ka0sApp.get_theme_variable_defaults`
 supplies them under any theme); `ACTION_CSS` in `ui/widgets.py` paints a `Button.-act-<kind>` with them, its hover
 and its pressed state, and leaves Textual's dimmed disabled buttons, bold-reverse focused label and edge-less compact

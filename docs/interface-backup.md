@@ -244,6 +244,8 @@ lost, the tree says so: "Nothing on disk would be lost".
 | `/` | Filter the tree (only what you see: the restore is the same) |
 | `x` / `c` | Expand every line of the tree / collapse them all |
 | `b` or `Esc` | Back to the review screen |
+| `s` | Settings |
+| `h` | Help: this tool's keys and steps, with a link to this guide |
 | `←` `→` | Jump between the tree and the left panel |
 | `↑` `↓` `Tab` | Move between the boxes and buttons |
 

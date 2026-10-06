@@ -827,7 +827,7 @@ class KeyboardNavigationTest(AppTestCase):
             # with the Undo note on a row of its own.
             self.assertFalse(journal.is_relative_to(self.backup_dir))
             self.assertEqual(rows["Run journal"], to_stored(journal))
-            self.assertEqual(rows[""], "(Undo last clean (z) puts these files back)")
+            self.assertEqual(rows[""], "(Undo last clean, on the review, puts them back)")
             self.assertEqual(rows["Post-clean check"], "passed")
 
     def test_multi_summary_names_the_journal_by_where_it_is(self):
@@ -864,7 +864,7 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertEqual(rows["Backup folder"], to_stored(folder))
             journal = app.screen.result.journal_path
             self.assertEqual(rows["Run journal"],
-                             f"{journal.relative_to(folder)} (Undo last clean (z) puts these files back)")
+                             f"{journal.relative_to(folder)} (Undo last clean, on the review, puts them back)")
             self.assertTrue(rows["Run journal"].startswith(str(Path("journal", ""))))
             self.assertEqual(summary.row_count, 10)
             self.assertEqual((summary.max_scroll_x, summary.max_scroll_y), (0, 0))
@@ -1668,7 +1668,7 @@ class UndoLastCleanTest(AppTestCase):
                 rows = app.screen.summary_rows()
                 at = [item for item, _ in rows].index("Run journal")
                 # the journal is outside this backup folder: its whole path, the Undo note on the next row
-                self.assertIn("Undo last clean (z)", rows[at + 1][1])
+                self.assertIn("Undo last clean, on the review", rows[at + 1][1])
                 review = await self.back_to_review(app, pilot)
                 self.assertFalse(review.query_one("#btn-undo", Button).disabled)
                 await pilot.press("z")

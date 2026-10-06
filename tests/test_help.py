@@ -13,7 +13,7 @@ from textual.widgets import Markdown
 from textual.widgets._footer import FooterKey
 
 from tests.fixtures import (BASE, TINY, TuiTestCase, build_ace_tree, build_interface_tree, build_screenshot_tree,
-                            build_wow_tree, make_config, settle)
+                            build_wow_tree, footer_keys, make_config, settle)
 from wowtools import __version__
 from wowtools.core.install import WowInstall
 from wowtools.tools import TOOLS
@@ -220,7 +220,7 @@ class HelpScreenTest(TuiTestCase):
             self.assertIsInstance(app.screen, ConfirmScreen)
             app.screen.dismiss(False)
             await settle(app, pilot)
-            self.assertIn("h", {key.key for key in review.query(FooterKey)})
+            self.assertIn("h", await footer_keys(review, pilot, {"h"}))
 
     async def test_every_footer_key_shows_at_tiny(self):
         """At 80 columns a review's keys don't fit one row: the footer wraps into two, so h Help (and s, q) stay on
@@ -232,8 +232,9 @@ class HelpScreenTest(TuiTestCase):
                     picker = await self.open_flavors(app, pilot, name)
                     picker.dismiss(ALL_FLAVORS)
                     await settle(app, pilot)
+                    listed = await footer_keys(app.screen, pilot, {"h", "s", "q"})
+                    self.assertTrue({"h", "s", "q"} <= listed, listed)
                     keys = list(app.screen.query(FooterKey))
-                    self.assertTrue({"h", "s", "q"} <= {key.key for key in keys})
                     for key in keys:
                         self.assertLessEqual(key.region.right, TINY[0], key)
                         self.assertGreater(key.region.width, 0, key)
