@@ -8,15 +8,14 @@ the snapshot. Nothing here ever restores on its own after a crash: a leftover ma
 """
 from __future__ import annotations
 
-import json
 import os
-import re
 import time
 import zipfile
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
+from wowtools.core import marker as core_marker
 from wowtools.core import snapshot as core_snapshot
 from wowtools.core.backup import BackupError
 from wowtools.core.fsutil import remove_quietly
@@ -26,7 +25,6 @@ from wowtools.core.snapshot import LIST_REPORT_EVERY, SnapshotProgress, wtf_file
 MARKER_NAME = "clean-in-progress.json"
 SNAPSHOT_SUBDIR = "backup"
 SNAPSHOT_PREFIX = "backup"
-SNAPSHOT_NAME = re.compile(r"^backup-(?P<flavor>.+?)-(?P<stamp>\d{8}-\d{6})(?:-(?P<n>\d+))?\.zip$")
 
 
 @dataclass(frozen=True)
@@ -62,22 +60,15 @@ def prune_snapshots(backup_dir: Path, flavor_short: str, keep: int) -> list[Path
 
 
 def write_marker(backup_dir: Path, marker: Marker) -> None:
-    data = asdict(marker)
-    data["snapshot"] = str(marker.snapshot)
-    data["flavor_path"] = str(marker.flavor_path)
-    target = backup_dir / MARKER_NAME
-    partial = target.with_name(target.name + ".partial")
-    backup_dir.mkdir(parents=True, exist_ok=True)
-    partial.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-    os.replace(partial, target)
+    core_marker.write_marker(backup_dir, MARKER_NAME, asdict(marker))
 
 
 def read_marker(backup_dir: Path | None) -> Marker | None:
     """The marker left by an unfinished clean, or None (missing or unreadable). Never raises."""
-    if backup_dir is None:
+    data = core_marker.read_marker(backup_dir, MARKER_NAME)
+    if data is None:
         return None
     try:
-        data = json.loads((backup_dir / MARKER_NAME).read_text(encoding="utf-8"))
         files = data["files"]
         if not isinstance(files, list) or not all(isinstance(f, str) for f in files):
             return None
@@ -92,7 +83,7 @@ def read_marker(backup_dir: Path | None) -> Marker | None:
 
 
 def clear_marker(backup_dir: Path) -> None:
-    remove_quietly(backup_dir / MARKER_NAME)
+    core_marker.clear_marker(backup_dir, MARKER_NAME)
 
 
 def restore_deleted(snapshot: Path, flavor: Flavor, rel_paths: list[str]) -> list[str]:

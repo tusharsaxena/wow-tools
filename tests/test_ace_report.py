@@ -75,7 +75,7 @@ class ReportTest(unittest.TestCase):
     def test_guidance_steps_when_nothing_is_going_on(self):
         text = report.guidance("root", "", 0, 0, 0)
         self.assertEqual(text, "1 Tick profiles or characters (Space) → 2 pick an action below → 3 check the "
-                               "pending changes in the tree → 4 Apply (w) writes them")
+                               "pending changes in the tree → 4 Apply writes them")
         self.assertEqual(report.guidance(None, "", 0, 0, 0), text)
         self.assertEqual(report.guidance("account", "ACCT1", 0, 0, 0), text)
 
@@ -107,7 +107,7 @@ class ReportTest(unittest.TestCase):
                          "3 ticked: pick an action below (Delete, Assign, …)")
 
     def test_guidance_with_pending_changes_comes_first(self):
-        pending = "3 pending changes, not written: w apply · y dry run · ⌫ discard"
+        pending = "3 pending changes, not written: Apply, Dry run or Discard them"
         self.assertEqual(report.guidance("root", "", 0, 0, 3), pending)
         self.assertEqual(report.guidance("profile", "Healer", 0, 0, 3),
                          pending + '\nProfile "Healer": Delete, Rename or Copy it')
@@ -169,10 +169,6 @@ class ReportTest(unittest.TestCase):
         self.assertTrue(any("next login" in a for a in alerts))
         self.assertTrue(any("LibDualSpec" in a for a in alerts))
         self.assertIn("Retail", body)
-
-    def test_plural(self):
-        self.assertEqual(report.plural(1, "profile"), "1 profile")
-        self.assertEqual(report.plural(2, "copy", "copies"), "2 copies")
 
     def test_removed_character_follows_a_renamed_profile(self):
         key = self.st("KickCDDB").key

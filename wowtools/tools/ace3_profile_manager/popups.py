@@ -26,8 +26,8 @@ ACTION_GROUPS = (
     ("Selection", (
         ("tick_leftovers", "Tick all leftover characters"),
         ("select_all", "Tick everything shown (a)"),
-        ("select_none", "Untick everything (n)"),
-        ("search", "Search (/)"),
+        ("select_none", "Untick everything shown (n)"),
+        ("filter", "Filter the tree (/)"),
         ("switch_view", "Switch view: by addon / by character (v)"),
     )),
     ("Modification", (
@@ -48,8 +48,8 @@ HEADING_STYLE = ACCENT  # a group heading in the quick actions menu, like a sect
 def popup_css(screen: str) -> str:
     """ConfirmScreen's look: a centred box (POPUP_WIDTH) with an accent border, a bold title and right-aligned
     buttons. At 120x30 (tests/test_look_and_feel.py) a body of 12 lines and the whole quick actions menu show without
-    scrolling, with room around the box: the list and the name field are compact and the error line takes no room
-    until there is an error. A longer body scrolls inside its share of the height; on a smaller window the box
+    scrolling, with room around the box: the list and the name field are compact, the error line takes no room
+    until there is an error and the hint sits right under the buttons (whose lower edge leaves a gap). A longer body scrolls inside its share of the height; on a smaller window the box
     scrolls."""
     return f"""
     {screen} {{ align: center middle; }}
@@ -61,6 +61,7 @@ def popup_css(screen: str) -> str:
     {screen} .popup-error {{ height: auto; display: none; }}
     {screen} .popup-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
     {screen} Button {{ margin-left: 2; }}
+    {screen} NavHint {{ margin-top: 0; }}
     {screen} OptionList {{ height: auto; max-height: {ACTIONS_ROWS + 2}; }}
     """
 
@@ -98,8 +99,8 @@ class TargetScreen(ModalScreen[str | None]):
             yield Static("", id="target-error", classes="popup-error")
             with ButtonRow(classes="popup-buttons"):
                 yield action_button("OK", "confirm", id="ok")
-                yield action_button("Cancel", "neutral", id="cancel")
-            yield NavHint("↑↓/Tab move · Enter/Space open the list · ←→ buttons · Esc cancel")
+                yield action_button("Cancel", "cancel", "escape", id="cancel")
+            yield NavHint("↑↓/Tab move · Enter/Space open the list · ←→ buttons")
 
     def on_mount(self) -> None:
         self.query_one("#target" if self.targets else "#new-name").focus()
@@ -158,8 +159,8 @@ class NameScreen(ModalScreen[str | None]):
             yield Static("", id="name-error", classes="popup-error")
             with ButtonRow(classes="popup-buttons"):
                 yield action_button("OK", "confirm", id="ok")
-                yield action_button("Cancel", "neutral", id="cancel")
-            yield NavHint("Enter OK · ↑↓/Tab move · ←→ buttons · Esc cancel")
+                yield action_button("Cancel", "cancel", "escape", id="cancel")
+            yield NavHint("Enter OK · ↑↓/Tab move · ←→ buttons")
 
     def on_mount(self) -> None:
         self.query_one("#name", Input).focus()

@@ -1,22 +1,27 @@
 """Dialogs and screen helpers shared by every tool: the yes/no confirmation, an information popup (both can list
-their details in a tree), the progress modal of a run, tick marks
+their details in a tree), a warning with a choice of buttons, the progress modal of a run, tick marks
 and relabelling for review trees, the two-pane (filters + tree) focus moves, and theme colours with the Ka0s
 colours as a fallback. A tool's screens import these; no tool imports another tool's screens."""
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Hashable, Iterable
-from typing import ClassVar
+from collections.abc import Callable, Collection, Hashable, Iterable, Sequence
+from time import monotonic
+from typing import Any, ClassVar
 
 from rich.text import Text
+from textual.actions import SkipAction
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widget import Widget
 from textual.widgets import Button, ProgressBar, Static, Tree
 
+from wowtools.core.parallel import workers_for
+from wowtools.core.progress import PROGRESS_INTERVAL, BoardView, ProgressBoard, RowView
+from wowtools.core.text import plural
 from wowtools.ui.theme import KA0S_THEME
-from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, NavHint, action_button
+from wowtools.ui.widgets import ACTION_VARIANTS, CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 PARTLY_TICKED = "◩"
 ALERT_STYLE = "bold #E5534B"
@@ -29,8 +34,16 @@ FILTERS_WIDTH = 50  # the left pane: wide enough for four action buttons in one 
 # A popup's width: readable, with room around it at 120x30, centred and never stretched when the window grows, and
 # never more than 90% of a smaller window.
 POPUP_WIDTH = "width: 90; max-width: 90%;"
+# Enter or Space on a ConfirmScreen's focused button does nothing until this long (seconds) has passed since the
+# popup opened and since the last Enter/Space it ignored. A held Enter keeps repeating, so it is ignored until the
+# key is let go; a fresh press after that answers (`y` and the mouse are not delayed).
+CONFIRM_GUARD = 0.25
 # A settings form's width: the whole window up to 100 columns, centred (never stretched edge to edge).
 FORM_WIDTH = "width: 100%; max-width: 100;"
+# The progress popup's bars (each unit's and the overall one) share one column this wide; the stage text takes
+# the rest of the row. A unit's label column is as wide as its longest label, up to PROGRESS_LABEL_WIDTH.
+PROGRESS_BAR_WIDTH = "45%"
+PROGRESS_LABEL_WIDTH = 16
 
 
 def review_hint(space: str = "tick") -> str:
@@ -39,24 +52,26 @@ def review_hint(space: str = "tick") -> str:
 
 
 REVIEW_HINT = review_hint()
-TREE_HINT = "x expand all · c collapse all · "  # every tree screen's hint names these, before r rescan
-# Every tree screen binds these (with TreeKeys' actions, which TwoPaneFocus has).
+TREE_HINT = "x expand all · c collapse all · "  # every tree screen's hint names these, after / filter
+# Every tree screen binds these (with TreeKeys' actions, which TwoPaneFocus has). The footer lists them (no button
+# has them, spec D17): a review binds them right after a / n, so they show together.
 TREE_BINDINGS = [
-    Binding("x", "expand_all", "Expand all", show=False),
-    Binding("c", "collapse_all", "Collapse all", show=False),
+    Binding("x", "expand_all", "Expand"),
+    Binding("c", "collapse_all", "Collapse"),
 ]
-RESULT_HINT = "↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · "
+RESULT_HINT = "↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back"
 
 
 def two_pane_css(screen: str, tree: str, *, width: int = FILTERS_WIDTH) -> str:
     """DEFAULT_CSS of a two-pane screen called `screen`: the left pane (#filters: .section headings, compact
-    checkboxes and inputs, the #actions button row in one line), the tree (`tree`), the scan progress that stands
+    checkboxes and inputs, the tree filter box a row apart, the #actions button row in one line), the tree (`tree`), the scan progress that stands
     in for the tree while a scan runs (#scan-box) and the bottom line (#summary)."""
     return f"""
     {screen} #body {{ height: 1fr; }}
     {screen} #filters {{ width: {width}; padding: 0 1; border-right: solid $primary; }}
     {screen} #filters .section {{ color: $accent; text-style: bold; margin: 1 0 0 0; }}
     {screen} #filters Ka0sCheckbox, {screen} #filters Input {{ margin: 0; }}
+    {screen} #filters FilterInput {{ margin-top: 1; }}
     {screen} #actions {{ margin-top: 1; height: auto; }}
     {screen} #actions Button {{ min-width: 0; width: auto; margin-right: 1; }}
     {screen} {tree} {{ width: 1fr; padding: 0 1; }}
@@ -83,7 +98,8 @@ def result_css(screen: str) -> str:
 
 def settings_css(screen: str) -> str:
     """DEFAULT_CSS of a tool's settings screen called `screen` (a FormScroll #settings with a .title, labels,
-    inputs, compact checkboxes, #settings-error and a .buttons row): a readable width (FORM_WIDTH), centred."""
+    inputs, compact checkboxes, #settings-error (shown with class -shown, while there is an error) and a .buttons
+    row): a readable width (FORM_WIDTH), centred."""
     return f"""
     {screen} {{ align-horizontal: center; }}
     {screen} #settings {{ {FORM_WIDTH} padding: 0 2; }}
@@ -91,7 +107,8 @@ def settings_css(screen: str) -> str:
     {screen} Label {{ width: 1fr; height: auto; }}
     {screen} Ka0sCheckbox {{ margin-bottom: 1; }}
     {screen} Ka0sCheckbox.-textual-compact {{ margin-bottom: 0; }}
-    {screen} #settings-error {{ color: $error; height: auto; }}
+    {screen} #settings-error {{ color: $error; height: auto; display: none; }}
+    {screen} #settings-error.-shown {{ display: block; }}
     {screen} .buttons {{ height: auto; margin-top: 1; }}
     {screen} Button {{ margin-right: 2; }}
     """
@@ -244,9 +261,38 @@ class TwoPaneFocus(TreeKeys):
             tree.focus()
 
 
-class ConfirmScreen(TreeKeys, ModalScreen[bool]):
-    """A yes/no question. `alerts` are extra lines shown in red; `default_yes` decides which button has focus (risky
-    actions start on No). `groups` ({label: items}) lists the details in a tree below the body (detail_tree)."""
+class EnterGuard:
+    """For a popup whose focused button is the one Enter would press: Enter and Space on a button do nothing for
+    CONFIRM_GUARD seconds after the popup opens, and every one ignored starts that wait again, so a held key's
+    auto-repeat never gets through (ConfirmScreen, ChoiceScreen, UpdateScreen). Bind GUARD_BINDING and call
+    start_guard() in on_mount."""
+
+    opened_at = 0.0
+
+    def start_guard(self) -> None:
+        self.opened_at = monotonic()
+
+    def action_guard_press(self) -> None:
+        """Swallow Enter/Space on a button while the popup is new or the key keeps repeating (each one swallowed
+        restarts the wait); otherwise let the key through (the button, the button row or the detail tree acts on it
+        as usual)."""
+        now = monotonic()
+        if isinstance(getattr(self, "focused", None), Button) and now - self.opened_at < CONFIRM_GUARD:
+            self.opened_at = now
+            return
+        raise SkipAction()
+
+
+GUARD_BINDING = Binding("enter,space", "guard_press", show=False, priority=True)
+
+
+class ConfirmScreen(EnterGuard, TreeKeys, ModalScreen[bool]):
+    """A yes/no question. Yes is focused at the start (Yes, No in that order), so Enter answers Yes; the safeguards
+    are Yes's colour, `kind` (an action kind of `action_button`: "destructive" for anything that deletes,
+    overwrites, puts files back or drops pending work, "simulate" for a dry run, "create" for a backup) and
+    CONFIRM_GUARD: Enter and Space are ignored for that long after the popup opens (and while a held key repeats). `y` answers Yes, `n` and Esc
+    No, at once. `alerts` are extra lines shown in red; `groups` ({label: items}) lists the details in a tree below
+    the body (detail_tree)."""
 
     DEFAULT_CSS = f"""
     ConfirmScreen {{ align: center middle; }}
@@ -258,12 +304,15 @@ class ConfirmScreen(TreeKeys, ModalScreen[bool]):
     ConfirmScreen Button {{ margin-left: 2; }}
     """
     BINDINGS: ClassVar[list[Binding]] = [Binding("y", "answer(True)", "Yes"), Binding("n,escape", "answer(False)", "No"),
+                                         GUARD_BINDING,
                                          *NAV_BINDINGS, *TREE_BINDINGS]
 
-    def __init__(self, title: str, body: str, alerts: tuple[str, ...] = (), *, default_yes: bool = False,
+    def __init__(self, title: str, body: str, alerts: tuple[str, ...] = (), *, kind: str = "confirm",
                  groups: dict[str, list[str]] | None = None) -> None:
         super().__init__()
-        self.default_yes = default_yes
+        if kind not in ACTION_VARIANTS:
+            raise ValueError(f"unknown action kind {kind!r}")
+        self.kind = kind
         self.title_text = title
         self.alerts = alerts
         self.body_text = "\n".join([body, *alerts]) if alerts else body
@@ -279,18 +328,77 @@ class ConfirmScreen(TreeKeys, ModalScreen[bool]):
             if self.groups:
                 yield detail_tree(self.groups)
             with ButtonRow(id="confirm-buttons"):
-                yield action_button("Yes (y)", "confirm", id="yes")
-                yield action_button("No (n)", "neutral", id="no")
-            yield NavHint(f"{detail_hint(self.groups)}←→ choose · Enter/Space press · y yes · n/Esc no")
+                yield action_button("Yes", self.kind, "y", id="yes")
+                yield action_button("No", "cancel", "n", id="no")
+            yield NavHint(f"{detail_hint(self.groups)}←→ choose · Enter/Space press · Esc no")
 
     def on_mount(self) -> None:
-        self.query_one("#yes" if self.default_yes else "#no", Button).focus()
+        self.start_guard()
+        self.query_one("#yes", Button).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.dismiss(event.button.id == "yes")
 
     def action_answer(self, value: bool) -> None:
         self.dismiss(value)
+
+
+class ChoiceScreen(EnterGuard, ModalScreen[str | None]):
+    """A warning to act on (an earlier run did not finish, ...): a title in the warning colour, a message and one
+    button per choice, given as (id, label, action kind) or (id, label, action kind, key): the key a binding of
+    the subclass gives that choice, shown on the button. Pressing one calls choose(id), which dismisses with the
+    id; a subclass may act first. `default` is the id focused at the start: the safe choice the user most likely
+    wants (the WTF Cleaner's Remind me next time, the Ace3 Put the originals back, the lock's Quit unless the lock
+    is stale). Like ConfirmScreen, Enter/Space do nothing for CONFIRM_GUARD seconds after it opens. With `escape`
+    Esc dismisses with None (the question comes back later); without it Esc does nothing and a button must be
+    pressed. `hint` (optional) is a NavHint line under the buttons."""
+
+    DEFAULT_CSS = f"""
+    ChoiceScreen {{ align: center middle; }}
+    ChoiceScreen #choice-box {{ {POPUP_WIDTH} height: auto; max-height: 100%; overflow-y: auto;
+                               border: thick $warning; background: $panel; padding: 1 2; }}
+    ChoiceScreen #choice-title {{ color: $warning; text-style: bold; margin-bottom: 1; }}
+    ChoiceScreen #choice-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
+    ChoiceScreen Button {{ margin-left: 2; }}
+    """
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "close", "Close", show=False), GUARD_BINDING]
+
+    def __init__(self, title: str, message: str, choices: Iterable[tuple[str, ...]], *, default: str,
+                 escape: bool = False, hint: str = "") -> None:
+        super().__init__()
+        self.title_text = title
+        self.message_text = message
+        self.choices = list(choices)
+        self.default = default
+        self.escape = escape
+        self.hint = hint
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="choice-box"):
+            yield Static(Text(self.title_text), id="choice-title")
+            yield Static(Text(self.message_text), id="choice-message")
+            with ButtonRow(id="choice-buttons"):
+                for choice_id, label, kind, *key in self.choices:
+                    yield action_button(label, kind, *key, id=choice_id)
+            if self.hint:
+                yield NavHint(self.hint)
+
+    def on_mount(self) -> None:
+        self.start_guard()
+        self.query_one(f"#{self.default}", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        self.choose(event.button.id or "")
+
+    def choose(self, choice: str) -> None:
+        self.dismiss(choice)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        return self.escape if action == "close" else True
+
+    def action_close(self) -> None:
+        self.dismiss(None)
 
 
 class InfoScreen(TreeKeys, ModalScreen[None]):
@@ -321,8 +429,8 @@ class InfoScreen(TreeKeys, ModalScreen[None]):
                 yield Static(Text(self.body_text), id="info-body")
             yield detail_tree(self.groups)
             with ButtonRow(id="info-buttons"):
-                yield action_button("OK", "confirm", id="ok")
-            yield NavHint(f"{detail_hint(self.groups)}Enter/Space OK · Esc close")
+                yield action_button("OK", "confirm", "escape", id="ok")
+            yield NavHint(f"{detail_hint(self.groups)}Enter/Space OK")
 
     def on_mount(self) -> None:
         self.query_one("#ok", Button).focus()
@@ -336,57 +444,144 @@ class InfoScreen(TreeKeys, ModalScreen[None]):
 
 
 class ProgressScreen(ModalScreen[None]):
-    """Shown while a run, dry run or undo works in a worker: the stage, a progress bar and the current file.
+    """Shown while a run, dry run or undo works in a worker. One box for every tool, the same size from open to
+    close: a title, an overall bar ("1 of 3 game versions", only when the run was opened with more than one unit:
+    a single-unit run's one row is its whole progress), one row per running unit (its label, stage and bar)
+    and the newest detail (a file), every line one line high and ellipsised. There are min(parallelism, units)
+    unit rows, chosen at open: a serial run has one, reused by each unit in turn; a parallel run gives a finished
+    unit's row to the next one.
 
-    A tool subclasses it with its own ID_PREFIX (widget ids <prefix>-box, -stage, -progress, -file), STAGE_TITLES
-    and SIMULATED_STAGE (the stage a dry run calls "Simulating"). update_progress(stage, current, total, detail)
-    is the run's progress callback (on the UI thread: workers go through call_from_thread); a total of 0 means
-    "not known" and runs the bar as indeterminate. set_flavor(label) puts "<label>: " in front of the stage title
-    while several flavors run one after another."""
+    A tool subclasses it with its own ID_PREFIX (widget ids <prefix>-box, -title, -overall-row, -overall,
+    -overall-label, -row-<i>-label, -row-<i>-stage, -row-<i>-bar, -detail), STAGE_TITLES and SIMULATED_STAGE (the
+    stage a dry run calls "Simulating").
+
+    The workers write to it directly, from any thread, and never wait for the UI: report(stage, current, total,
+    detail) is a serial run's progress callback, report_unit(unit, stage, ...) a unit-tagged one's (run_units),
+    start_unit(unit, index, total) says a unit starts (run_units' on_start, a tool's on_flavor) and
+    finish_unit(unit) that it ended; finish_all() (the worker, once its job returned) ends the units still
+    running, so the board ends at "m of m" and the last row shows Done. They land in a ProgressBoard (core/progress.py, locked), which the screen
+    draws on a timer (PROGRESS_INTERVAL), so N threads never queue on the UI loop. A total of 0 means "not known"
+    and runs that row's bar as indeterminate."""
 
     DEFAULT_CSS = f"""
     ProgressScreen {{ align: center middle; }}
-    ProgressScreen .progress-box {{ {POPUP_WIDTH} height: auto; border: thick $accent; background: $panel;
-                                   padding: 1 2; }}
-    ProgressScreen .progress-stage {{ color: $accent; text-style: bold; margin-bottom: 1; }}
-    ProgressScreen .progress-bar {{ width: 1fr; }}
-    ProgressScreen .progress-file {{ color: $text-muted; margin-top: 1; height: 2; overflow: hidden hidden; }}
+    ProgressScreen .progress-box {{ {POPUP_WIDTH} border: thick $accent; background: $panel; padding: 1 2; }}
+    ProgressScreen .progress-title {{ color: $accent; text-style: bold; height: 1; margin-bottom: 1; }}
+    ProgressScreen .progress-row {{ height: 1; width: 1fr; }}
+    ProgressScreen .progress-overall {{ margin-bottom: 1; }}
+    ProgressScreen .progress-units {{ height: auto; margin-bottom: 1; }}
+    ProgressScreen .progress-title, ProgressScreen .progress-label, ProgressScreen .progress-stage,
+    ProgressScreen .progress-detail {{ text-wrap: nowrap; text-overflow: ellipsis; overflow: hidden hidden; }}
+    ProgressScreen .progress-overall-label {{ width: 1fr; height: 1; }}
+    ProgressScreen .progress-label {{ height: 1; margin-right: 1; text-style: bold; }}
+    ProgressScreen .progress-stage {{ width: 1fr; height: 1; margin-right: 1; }}
+    ProgressScreen .progress-stage.-idle {{ color: $text-muted; }}
+    ProgressScreen .progress-bar {{ width: {PROGRESS_BAR_WIDTH}; height: 1; }}
+    ProgressScreen .progress-bar Bar {{ width: 1fr; }}
+    ProgressScreen .progress-detail {{ color: $text-muted; height: 1; }}
     """
     ID_PREFIX = "progress"
     STAGE_TITLES: ClassVar[dict[str, str]] = {}
     SIMULATED_STAGE = ""
 
-    def __init__(self, *, dry_run: bool = False, first_stage: str = "",
-                 stage_titles: dict[str, str] | None = None) -> None:
+    def __init__(self, title: str = "", *, dry_run: bool = False, first_stage: str = "",
+                 stage_titles: dict[str, str] | None = None, units: Sequence[Any] = (), parallelism: int = 1,
+                 what: str = "game version", label: Callable[[Any], str] = str) -> None:
         super().__init__()
+        self.title_text = title
         self.dry_run = dry_run
-        self.first_stage = first_stage
-        self.stage = first_stage
         self.stage_titles = self.STAGE_TITLES if stage_titles is None else stage_titles
-        self.flavor_label = ""
+        self.what = what
+        units = list(units)
+        self.rows = workers_for(parallelism, len(units)) if units else 1
+        self.show_overall = len(units) > 1  # fixed at open, as the box's height is
+        # The label column is as wide as the longest unit's label (up to PROGRESS_LABEL_WIDTH), fixed at open; a
+        # run without named units has none and a unit's label (from start_unit) goes in front of its stage.
+        self.label_width = min(max((len(label(u)) for u in units), default=0), PROGRESS_LABEL_WIDTH)
+        self.board = ProgressBoard(self.rows, max(1, len(units)), label=label, first_stage=first_stage)
+        self._shown = -1  # the board version drawn last
 
+    # --- what workers call (any thread) ------------------------------------------------------------
+    def report(self, stage: str, current: int = 0, total: int = 0, detail: str | None = None) -> None:
+        self.board.report(stage, current, total, detail)
+
+    def report_unit(self, unit: Any, stage: str, current: int = 0, total: int = 0,
+                    detail: str | None = None) -> None:
+        self.board.report_unit(unit, stage, current, total, detail)
+
+    def start_unit(self, unit: Any, index: int | None = None, total: int | None = None) -> None:
+        self.board.start(unit, index, total)
+
+    def finish_unit(self, unit: Any = None) -> None:
+        self.board.finish(unit)
+
+    def finish_all(self) -> None:
+        self.board.finish_all()
+
+    # --- drawing (UI thread) -----------------------------------------------------------------------
     def _part_id(self, part: str) -> str:
         return f"{self.ID_PREFIX}-{part}"
 
+    def box_height(self) -> int:
+        """Border 2, padding 2, title 1 + gap, overall 1 + gap (when shown), the unit rows + gap, detail 1."""
+        return self.rows + (10 if self.show_overall else 8)
+
     def compose(self) -> ComposeResult:
-        with Vertical(id=self._part_id("box"), classes="progress-box"):
-            yield Static(Text(self.stage_title(self.first_stage)), id=self._part_id("stage"), classes="progress-stage")
-            yield ProgressBar(id=self._part_id("progress"), classes="progress-bar", show_eta=False)
-            yield Static("", id=self._part_id("file"), classes="progress-file")
+        box = Vertical(id=self._part_id("box"), classes="progress-box")
+        box.styles.height = self.box_height()
+        with box:
+            yield Static(Text(self.title_text), id=self._part_id("title"), classes="progress-title")
+            overall = Horizontal(id=self._part_id("overall-row"), classes="progress-row progress-overall")
+            overall.display = self.show_overall
+            with overall:
+                yield Static("", id=self._part_id("overall-label"), classes="progress-overall-label")
+                yield ProgressBar(id=self._part_id("overall"), classes="progress-bar", show_eta=False)
+            with Vertical(classes="progress-units"):
+                for i in range(self.rows):
+                    with Horizontal(id=self._part_id(f"row-{i}"), classes="progress-row progress-unit"):
+                        unit_label = Static("", id=self._part_id(f"row-{i}-label"), classes="progress-label")
+                        unit_label.styles.width = self.label_width
+                        unit_label.display = self.label_width > 0
+                        yield unit_label
+                        yield Static("", id=self._part_id(f"row-{i}-stage"), classes="progress-stage")
+                        yield ProgressBar(id=self._part_id(f"row-{i}-bar"), classes="progress-bar", show_eta=False)
+            yield Static("", id=self._part_id("detail"), classes="progress-detail")
+
+    def on_mount(self) -> None:
+        self.refresh_progress()
+        self.set_interval(PROGRESS_INTERVAL, self.refresh_progress)
 
     def stage_title(self, stage: str) -> str:
         if self.dry_run and stage == self.SIMULATED_STAGE:
-            title = "Simulating"
-        else:
-            title = self.stage_titles.get(stage, stage)
-        return f"{self.flavor_label}: {title}" if self.flavor_label else title
+            return "Simulating"
+        return self.stage_titles.get(stage, stage)
 
-    def set_flavor(self, label: str) -> None:
-        self.flavor_label = label
+    def overall_text(self, view: BoardView) -> str:
+        return "Overall" if view.units <= 1 else f"{view.done} of {plural(view.units, self.what)}"
 
-    def update_progress(self, stage: str, current: int, total: int, detail: str = "") -> None:
-        self.stage = stage
-        self.query_one(f"#{self._part_id('stage')}", Static).update(Text(self.stage_title(stage)))
-        bar = self.query_one(f"#{self._part_id('progress')}", ProgressBar)
-        bar.update(total=total if total > 0 else None, progress=current)
-        self.query_one(f"#{self._part_id('file')}", Static).update(Text(detail))
+    def refresh_progress(self) -> None:
+        """Draw the board if it changed since the last time (the timer calls this; a test may call it at once)."""
+        version, view = self.board.snapshot()
+        if version == self._shown or not self.is_attached:
+            return
+        self._shown = version
+        self.query_one(f"#{self._part_id('overall-label')}", Static).update(Text(self.overall_text(view)))
+        self.query_one(f"#{self._part_id('overall')}", ProgressBar).update(total=view.units, progress=view.done)
+        for i, row in enumerate(view.rows):
+            self._draw_row(i, row)
+        detail = view.detail
+        if detail and view.detail_label and self.rows > 1:
+            detail = f"{view.detail_label}: {detail}"
+        self.query_one(f"#{self._part_id('detail')}", Static).update(Text(detail))
+
+    def _draw_row(self, i: int, row: RowView) -> None:
+        stage = "Done" if row.finished else self.stage_title(row.stage) if row.used else "Waiting"
+        if row.label and not self.label_width:
+            stage = f"{row.label}: {stage}"
+        self.query_one(f"#{self._part_id(f'row-{i}-label')}", Static).update(Text(row.label))
+        stage_widget = self.query_one(f"#{self._part_id(f'row-{i}-stage')}", Static)
+        stage_widget.update(Text(stage))
+        stage_widget.set_class(not row.used or row.finished, "-idle")
+        bar = self.query_one(f"#{self._part_id(f'row-{i}-bar')}", ProgressBar)
+        bar.visible = row.used
+        bar.update(total=row.total if row.total > 0 else None, progress=row.current)

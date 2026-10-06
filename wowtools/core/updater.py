@@ -115,9 +115,13 @@ def persist_check_state(cfg: Config, values: dict[str, str]) -> None:
 
 def check_for_update(cfg: Config, *, current: str = __version__, now: datetime | None = None,
                      fetch: Callable[[], ReleaseInfo | None] | None = None, force: bool = False,
-                     raise_errors: bool = False,
+                     raise_errors: bool = False, verify_cached: bool = False,
                      persist: Callable[[dict[str, str]], None] | None = None) -> ReleaseInfo | None:
     """Return the newer release, if any. Throttled to once per CHECK_INTERVAL unless force=True.
+
+    verify_cached=True asks GitHub again whenever the throttled path would offer the cached version, so a
+    release deleted since it was seen is neither announced nor installed (D16). The throttle then still saves
+    the request when no update is pending.
 
     What the check learned is stored with persist(values). The default stores it in cfg right away, which is
     right for single-threaded callers; a check running in a worker thread passes a persist that hands the values
@@ -127,12 +131,14 @@ def check_for_update(cfg: Config, *, current: str = __version__, now: datetime |
     last = cfg.last_update_check
     # A stamp in the future (clock skew, a hand edit, a config from another machine) never throttles (F-026).
     if not force and last is not None and timedelta(0) <= now - last < CHECK_INTERVAL:
-        cached = cfg.latest_seen_version
-        log_event("update.checked", current=current, latest=cached, throttled=True)
-        if cached and is_newer(cached, current):
+        # Only a cached version newer than this one is offered: an empty, hand-edited or older value is not.
+        cached = (cfg.latest_seen_version or "").strip()
+        log_event("update.checked", current=current, latest=cached or None, throttled=True)
+        if not (cached and is_newer(cached, current)):
+            return None
+        if not verify_cached:
             log_event("update.available", current=current, latest=cached)
-            return ReleaseInfo.from_version(cached)
-        return None
+            return ReleaseInfo.from_version(".".join(map(str, parse_version(cached))))  # "v1.2.3" -> "1.2.3"
     try:
         release = fetch()
     except Exception as exc:  # offline, rate limited, bad JSON: never bother the user
@@ -140,9 +146,10 @@ def check_for_update(cfg: Config, *, current: str = __version__, now: datetime |
         if raise_errors:
             raise UpdateError(f"could not reach GitHub: {exc}") from exc
         return None
-    values = {"last_update_check": now.isoformat(timespec="seconds")}
-    if release is not None:
-        values["latest_seen_version"] = release.version
+    # A check that finds no release clears the cache: a release that was deleted (or turned back into a draft)
+    # must stop being offered by the throttled checks that follow (D16).
+    values = {"last_update_check": now.isoformat(timespec="seconds"),
+              "latest_seen_version": release.version if release is not None else ""}
     if persist is None:
         persist_check_state(cfg, values)
     else:

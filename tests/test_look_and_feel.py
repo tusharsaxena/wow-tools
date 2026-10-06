@@ -8,19 +8,30 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from textual.widgets import Button, Checkbox, DataTable, Tree
+from textual.widgets import Button, Checkbox, DataTable, OptionList, Tree
 from textual.widgets._footer import FooterKey
 
-from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, build_ace_tree, build_interface_tree, build_screenshot_tree,
-                            build_wow_tree, make_config, settle)
+from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, assert_keys_on_buttons, build_ace_tree, build_interface_tree,
+                            build_screenshot_tree, build_wow_tree, make_config, settle)
+from wowtools import __version__
+from wowtools.core.changelog import Changelog, parse_changelog
+from wowtools.core.lock import LockInfo
+from wowtools.core.updater import ReleaseInfo
 from wowtools.tools import TOOLS as TOOL_INFO
+from wowtools.tools.ace3_profile_manager.editor import Marker as AceMarker
 from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
-from wowtools.ui.branding import BrandBar
+from wowtools.tools.ace3_profile_manager.review_screen import ProfileRecoveryScreen
+from wowtools.tools.wtf_cleaner.review_screen import RecoveryScreen as WtfRecoveryScreen
+from wowtools.tools.wtf_cleaner.safety import Marker as WtfMarker
+from wowtools.ui.base import UpdateScreen
+from wowtools.ui.branding import BANNER_NAME, TERMS, Banner, BottomBar, BrandBar, TermsText, VersionLine
+from wowtools.ui.changelog_screen import CHANGELOG_HINT, VERSIONS_WIDTH, ChangelogScreen
 from wowtools.ui.dialogs import (FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_HINT, ConfirmScreen, InfoScreen,
                                  ProgressScreen)
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
-from wowtools.ui.suite_app import WowToolsApp
-from wowtools.ui.widgets import NavHint
+from wowtools.ui.suite_app import MENU_HINT, LockScreen, WowToolsApp
+from wowtools.ui.tree_filter import FILTER_HINT, FILTER_PLACEHOLDER, NO_MATCH_TEXT, FilterInput
+from wowtools.ui.widgets import CHECK_OFF, NavHint, action_kind
 
 POPUP_MAX_WIDTH = 100  # a popup or confirm at LARGE: a readable width, never stretched edge to edge
 FORM_MAX_WIDTH = 100  # a settings form, at any size
@@ -61,8 +72,9 @@ class LookAndFeelTest(TuiTestCase):
         await pilot.pause()
         app.open_tool(tool)
         await settle(app, pilot)
-        app.screen._save()  # first open: the tool's settings, saved as they are
-        await settle(app, pilot)
+        if not isinstance(app.screen, FlavorScreen):
+            app.screen._save()  # first open: the tool's settings, saved as they are
+            await settle(app, pilot)
         self.assertIsInstance(app.screen, FlavorScreen)
         app.screen.dismiss(ALL_FLAVORS)
         await settle(app, pilot)
@@ -87,7 +99,12 @@ class LookAndFeelTest(TuiTestCase):
                     self.assertEqual({b.region.y for b in buttons}, {buttons[0].region.y})  # one row
                     self.assertTrue(buttons[-1].label.plain.startswith("Undo last "), buttons[-1].label)
                     self.assertEqual(buttons[-1].variant, "warning")  # revert
-                    self.assertEqual(buttons[2].label.plain, "Rescan")
+                    self.assertEqual(buttons[2].label_text, "Rescan")
+                    self.assertEqual([b.shortcut for b in buttons][1:], ["y" if tool != "interface-backup" else "e",
+                                                                          "r", "z"])
+                    for button in buttons:  # spec D17: the key on a second line, centred under the label
+                        self.assertEqual(button.label.plain, f"{button.label_text}\n({button.shortcut})")
+                        self.assertEqual(button.region.height, 4, button)
                     hint = review.query_one(NavHint)
                     pane = filters.region
                     inside = pane._replace(width=pane.width - 1)  # anything but the border: not cut off
@@ -95,7 +112,9 @@ class LookAndFeelTest(TuiTestCase):
                         self.assert_inside(widget, inside)
                     text = hint.hint
                     self.assertTrue(text.startswith(REVIEW_HINT), text)
-                    self.assertIn("r rescan · z undo · f flavors · t tools", text)
+                    self.assertIn(TREE_HINT + "f flavors · t tools", text)
+                    for key in ("r rescan", "z undo", "y dry run", "w ", "b back up"):  # on the buttons (D17)
+                        self.assertNotIn(key, text)
                     self.assertTrue(review.summary_text.startswith(("Selected: ", "Nothing to")),
                                     review.summary_text)
                     self.assertTrue(review.sub_title.startswith(f"{TOOL_INFO[tool].title} · All flavors"),
@@ -137,13 +156,127 @@ class LookAndFeelTest(TuiTestCase):
                     rows = [w.region.y for w in controls]
                     self.assertEqual(len(rows), len(set(rows)), [(w.id, w.region) for w in controls])
 
+    async def test_every_tree_screen_has_the_filter_box(self):
+        """Spec D7 at BASE and TINY: every review and the Ace3 blacklist have the tree filter in the left pane, one
+        row of its own with the same label; the hint names `/ filter` right before the tree keys; `/` reaches it,
+        and Esc in it clears it and stays on the screen (the Interface Backup restore screen: its own tests)."""
+        for size in (BASE, TINY):
+            for tool in (*TOOLS, "blacklist"):
+                with self.subTest(size=size, tool=tool):
+                    app = self.make_app()
+                    async with app.run_test(size=size) as pilot:
+                        await pilot.pause()
+                        app.open_tool("ace3-profile-manager" if tool == "blacklist" else tool)
+                        await settle(app, pilot)
+                        if not isinstance(app.screen, FlavorScreen):  # first open: the settings, saved as they are
+                            app.screen._save()
+                            await settle(app, pilot)
+                        app.screen.dismiss(ALL_FLAVORS)
+                        await settle(app, pilot)
+                        screen = app.screen
+                        if tool == "blacklist":
+                            screen.action_edit_blacklist()
+                            await settle(app, pilot)
+                            screen = app.screen
+                        field = screen.filter_input()
+                        self.assertIsInstance(field, FilterInput)
+                        self.assertEqual(field.placeholder, FILTER_PLACEHOLDER)
+                        self.assertEqual(field.outer_size.height, 1)
+                        pane = screen.query_one("#filters")
+                        self.assertIn(pane, field.ancestors)
+                        others = [w for w in pane.query("*") if w.focusable and w is not field]
+                        self.assertNotIn(field.region.y, [w.region.y for w in others])
+                        hint = screen.query_one(NavHint)
+                        self.assertIn(FILTER_HINT + TREE_HINT.removesuffix(" · "), hint.hint)
+                        if size == BASE:
+                            inside = pane.region._replace(width=pane.region.width - 1)
+                            for widget in (field, hint):
+                                self.assert_inside(widget, inside)
+                        tree = screen.query_one(screen.TREE_SELECTOR, Tree)
+                        tree.focus()
+                        await pilot.press("slash")
+                        await pilot.pause()
+                        await pilot.press("z", "z")
+                        await settle(app, pilot)
+                        self.assertIs(screen.focused, field)
+                        self.assertEqual(field.value, "zz")
+                        await pilot.press("escape")
+                        await settle(app, pilot)
+                        self.assertEqual(field.value, "")
+                        self.assertIs(app.screen, screen)
+                        self.assertIs(screen.focused, tree)
+
+    async def test_a_group_mark_counts_what_the_filter_shows(self):
+        """One rule in every tick tree: with the filter set, a group's and the root's mark count only the items the
+        filter shows (what Space on them ticks); the ticks it hides are said on the bottom line. Tick everything,
+        filter to part of it, untick what is shown: the root is unticked (✘) in every tool, not part-ticked."""
+        texts = {"wtf-cleaner": "auctionator", "screenshot-organizer": "classic", "interface-backup": "classic",
+                 "ace3-profile-manager": "kickcd", "blacklist": "elv"}
+        for tool, text in texts.items():
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    if tool == "blacklist":
+                        review = await self.open_review(app, pilot, "ace3-profile-manager")
+                        review.action_edit_blacklist()
+                        await settle(app, pilot)
+                        screen = app.screen
+                    else:
+                        screen = await self.open_review(app, pilot, tool)
+                    tree = screen.query_one(screen.TREE_SELECTOR, Tree)
+                    tree.focus()
+                    await pilot.press("a")
+                    await settle(app, pilot)
+                    screen.filter_input().value = text
+                    await settle(app, pilot)
+                    tree.focus()
+                    await pilot.press("n")
+                    await settle(app, pilot)
+                    self.assertTrue(tree.root.label.plain.startswith(CHECK_OFF), tree.root.label.plain)
+                    self.assertIn("hidden by", str(screen.query_one("#summary").render()))
+
+    async def test_a_filter_that_matches_nothing_says_so(self):
+        """Every tick tree: a filter that matches nothing leaves one dim line saying so (status rows such as a
+        flavor that was not scanned are filtered on their names too, so nothing else stays)."""
+        for tool in (*TOOLS, "blacklist"):
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    screen = await self.open_review(app, pilot, "ace3-profile-manager" if tool == "blacklist"
+                                                    else tool)
+                    if tool == "blacklist":
+                        screen.action_edit_blacklist()
+                        await settle(app, pilot)
+                        screen = app.screen
+                    tree = screen.query_one(screen.TREE_SELECTOR, Tree)
+                    screen.filter_input().value = "zzzq"
+                    await settle(app, pilot)
+                    self.assertEqual([str(n.label) for n in tree.root.children], [NO_MATCH_TEXT])
+                    screen.filter_input().value = ""
+                    await settle(app, pilot)
+                    self.assertNotIn(NO_MATCH_TEXT, [str(n.label) for n in tree.root.children])
+
+    async def test_the_filter_keeps_a_failed_scans_message(self):
+        """Typing in the filter after a failed scan leaves the failure on the bottom line (nothing to rebuild)."""
+        for tool, model in (("screenshot-organizer", "plan"), ("interface-backup", "scans")):
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    review = await self.open_review(app, pilot, tool)
+                    setattr(review, model, None)
+                    review._scan_failed("The scan failed: disk gone")
+                    await settle(app, pilot)
+                    review.filter_input().value = "re"
+                    await settle(app, pilot)
+                    self.assertIn("disk gone", str(review.query_one("#summary").render()))
+
     async def test_review_tree_expands_and_collapses_all(self):
         for tool in TOOLS:
             with self.subTest(tool=tool):
                 app = self.make_app()
                 async with app.run_test(size=BASE) as pilot:
                     review = await self.open_review(app, pilot, tool)
-                    self.assertIn(TREE_HINT + "r rescan", review.query_one(NavHint).hint)
+                    self.assertIn(TREE_HINT + "f flavors", review.query_one(NavHint).hint)
                     self.assertTrue(TREE_HINT.startswith("x expand all · c collapse all"))
                     tree = review.query_one(review.TREE_SELECTOR, Tree)
                     tree.focus()
@@ -332,12 +465,13 @@ class LookAndFeelTest(TuiTestCase):
                     self.assertEqual(len(result.query(".result-detail")), 1)
                     result.query_one(BrandBar)
                     hint = result.query_one(NavHint).hint
-                    self.assertTrue(hint.startswith(RESULT_HINT), hint)
-                    self.assertTrue(hint.endswith("f other flavor · t tools · q quit"), hint)
                     buttons = list(result.query(Button))
-                    labels = [b.label.plain for b in buttons]
-                    self.assertEqual(labels[0], "Rescan (r)")
-                    self.assertEqual(labels[-3:], ["Other flavor (f)", "Tools (t)", "Quit (q)"])
+                    # the buttons' keys are on the buttons (D17): with "Back to review (Esc)", Esc is too
+                    esc_button = any(b.shortcut == "escape" for b in buttons)
+                    self.assertEqual(hint, RESULT_HINT.removesuffix(" · Esc back") if esc_button else RESULT_HINT)
+                    labels = [(b.label_text, b.shortcut) for b in buttons]
+                    self.assertEqual(labels[0], ("Rescan", "r"))
+                    self.assertEqual(labels[-3:], [("Other flavor", "f"), ("Tools", "t"), ("Quit", "q")])
                     for button in buttons:
                         self.assert_inside(button, app.screen.region)
                     self.assertEqual({b.region.y for b in buttons}, {buttons[0].region.y})
@@ -418,6 +552,94 @@ class LookAndFeelTest(TuiTestCase):
                     self.assertIsNot(app.screen, review)
                     self.assert_footer_whole(app)
 
+    async def test_keys_are_on_the_buttons_and_off_the_footer(self):
+        """Spec D17 on every screen of every tool (review, confirm, result; the Ace3 blacklist and the Interface
+        Backup restore screen; the tool's and the general settings): a button whose action has a key shows that key, and the footer lists
+        no key a shown button carries (nor another key of that action, Esc for No). The reviews' footers keep the
+        keys no button has: Space, a, n, /, x, c, f, t, q."""
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    review = await self.open_review(app, pilot, tool)
+                    assert_keys_on_buttons(self, review)
+                    app.push_screen(app.flow.settings_screen("settings"))  # the tool's own settings form
+                    await settle(app, pilot)
+                    assert_keys_on_buttons(self, app.screen)
+                    app.screen.dismiss(False)
+                    await settle(app, pilot)
+                    self.assertIs(app.screen, review)
+                    footer = {key.key for key in review.query(FooterKey)}
+                    self.assertLessEqual({"space", "a", "n", "slash", "x", "c", "f", "t", "q"}, footer, footer)
+                    if tool == "ace3-profile-manager":
+                        review.action_edit_blacklist()
+                        await settle(app, pilot)
+                        assert_keys_on_buttons(self, app.screen)
+                        app.screen.dismiss(None)
+                        await settle(app, pilot)
+                    if tool == "interface-backup":
+                        review.action_back_up()
+                        await settle(app, pilot)
+                        assert_keys_on_buttons(self, app.screen)  # the result, with Restore (e)
+                        continue  # the restore screen: tests/test_interface_backup_app.py
+                    PREPARE.get(tool, lambda r: None)(review)
+                    getattr(review, f"action_{RUN_ACTION[tool]}")()
+                    await settle(app, pilot)
+                    self.assertIsInstance(app.screen, ConfirmScreen)
+                    assert_keys_on_buttons(self, app.screen)
+                    app.screen.dismiss(True)
+                    await settle(app, pilot)
+                    self.assertIsNot(app.screen, review)
+                    assert_keys_on_buttons(self, app.screen)
+                    app.screen.dismiss("tools")
+                    await settle(app, pilot)
+                    app.action_settings()
+                    await settle(app, pilot)
+                    assert_keys_on_buttons(self, app.screen)
+
+    async def test_no_keys_in_the_footer_under_a_popup(self):
+        """Under a popup (a confirm here) the screen's keys do nothing, so its footer lists none of them; the bar keeps
+        its two rows at 80 columns, so the screen does not move, and the keys come back when the popup closes."""
+        app = self.make_app()
+        async with app.run_test(size=TINY) as pilot:
+            review = await self.open_review(app, pilot, "wtf-cleaner")
+            before = [key.key for key in review.query(FooterKey)]
+            self.assertIn("h", before)
+            self.assertEqual(review.query_one(BottomBar).region.height, 2)
+            review.action_dry_run()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertEqual(list(review.query(FooterKey)), [])
+            self.assertEqual(review.query_one(BottomBar).region.height, 2)
+            app.screen.dismiss(False)
+            await settle(app, pilot)
+            self.assertEqual([key.key for key in review.query(FooterKey)], before)
+
+    async def test_keys_are_on_the_popup_buttons(self):
+        """Spec D17 on the popups no review run reaches: the lock warning, the update offer, the Notes InfoScreen,
+        the Ace3 Target and Name popups and both recovery warnings."""
+        holder = LockInfo(12345, "other-pc", "2026-10-03T10:00:00", "windows", "abc")
+        wtf_marker = WtfMarker(self.root / "backup.zip", "_retail_", self.root / "_retail_", "2026-01-01T00:00:00", 1,
+                               "0.1.0", ["WTF/x.lua"])
+        ace_marker = AceMarker("_retail_", self.root / "_retail_", self.root / "edited.zip", {"WTF/x.lua": "0"},
+                               "2026-10-04T12:00:00+00:00", 1, "0.1.0", {"WTF/x.lua": "1"})
+        popups = (lambda: LockScreen(holder, self.root / "wow-tools.lock"),
+                  lambda: UpdateScreen(ReleaseInfo.from_version("9.9.9")),
+                  lambda: InfoScreen("Notes", {"KickCD": ["Kaelys - Realm1"]}),
+                  lambda: TargetScreen("Title", "Body", ["Default", "Healer"]), lambda: NameScreen("Title", "Body"),
+                  lambda: WtfRecoveryScreen(wtf_marker, self.root), lambda: ProfileRecoveryScreen(ace_marker))
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await pilot.pause()
+            for make in popups:
+                screen = make()
+                with self.subTest(popup=type(screen).__name__):
+                    app.push_screen(screen)
+                    await settle(app, pilot)
+                    assert_keys_on_buttons(self, screen)
+                    screen.dismiss(None)
+                    await settle(app, pilot)
+
     def assert_footer_whole(self, app) -> None:
         line = app.screen._compositor.render_strips()[-1].text
         keys = [key for key in app.screen.query(FooterKey) if key.display]
@@ -425,6 +647,225 @@ class LookAndFeelTest(TuiTestCase):
         self.assertNotIn("palette", line)
         for key in keys:
             self.assertIn(f"{key.key_display} {key.description}", line)
+
+    def bottom_line(self, app) -> str:
+        return app.screen._compositor.render_strips()[-1].text
+
+    def assert_brand_shown(self, app, text: str) -> None:
+        """The BrandBar is on screen, on the last row next to the footer's keys (not under them), and `text` is in
+        what the terminal shows on that row."""
+        bar = app.screen.query_one(BrandBar)
+        line = self.bottom_line(app)
+        self.assertEqual(bar.region.bottom, app.screen.size.height, bar.region)
+        self.assertGreater(bar.region.width, 0, bar.region)
+        self.assertIn(text, line)
+        for key in app.screen.query(FooterKey):
+            if key.display:
+                self.assertLessEqual(key.region.right, bar.region.x, (key, bar.region))
+
+    async def test_brand_bar_shows_the_version_on_the_menu_and_every_review(self):
+        """Spec D5: the version shares the footer's row (one BottomBar), so it shows on the tool menu (whole, at
+        BASE and TINY), on every review and on a result screen (at least "v<version>" next to a compact footer),
+        while the footer still shows each of its keys at BASE."""
+        for size in (BASE, TINY):
+            with self.subTest(screen="menu", size=size):
+                app = self.make_app()
+                async with app.run_test(size=size) as pilot:
+                    await settle(app, pilot)
+                    self.assert_brand_shown(app, f"Ka0s WoW Tools v{__version__}")
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    review = await self.open_review(app, pilot, tool)
+                    self.assert_brand_shown(app, f"v{__version__}")
+                    self.assert_footer_whole(app)
+                    PREPARE.get(tool, lambda r: None)(review)
+                    getattr(review, f"action_{RUN_ACTION[tool]}")()
+                    await settle(app, pilot)
+                    app.screen.dismiss(True)
+                    await settle(app, pilot)
+                    self.assert_brand_shown(app, f"Ka0s WoW Tools v{__version__}")
+
+    def screen_lines(self, app) -> list[str]:
+        return [strip.text for strip in app.screen._compositor.render_strips()]
+
+    def assert_terms_whole(self, app, max_rows: int | None = None) -> None:
+        """The terms of use show whole, right above the bottom row, in at most max_rows rows."""
+        terms = app.screen.query_one(TermsText)
+        rows = self.screen_lines(app)[terms.region.y:terms.region.bottom]
+        self.assertEqual(terms.region.bottom, app.screen.size.height - 1, terms.region)
+        self.assertEqual(" ".join(" ".join(rows).split()), TERMS)
+        if max_rows is not None:
+            self.assertLessEqual(len(rows), max_rows, rows)
+
+    async def test_menu_shows_everything_at_base(self):
+        """Spec D4/D6 at BASE: the version line right under the banner's name, every tool, the hint, the terms (two
+        rows) and every footer key show at once, nothing scrolls; with an update found the version line says so."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await settle(app, pilot)
+            screen, lines = app.screen, self.screen_lines(app)
+            self.assertEqual(screen.max_scroll_y, 0)
+            name_row = next(i for i, line in enumerate(lines) if BANNER_NAME in line)
+            self.assertEqual(lines[name_row + 1].strip(), f"v{__version__}")
+            self.assertEqual(screen.query_one(VersionLine).region.y, name_row + 1)
+            options = screen.query_one("#tools", OptionList)
+            self.assertEqual(options.max_scroll_y, 0)
+            text = "\n".join(lines)
+            for tool in TOOL_INFO.values():
+                self.assertIn(f"{tool.title}   ", text)
+                self.assertIn(tool.description, text)
+            self.assertIn(MENU_HINT, text)
+            self.assert_terms_whole(app, max_rows=2)
+            self.assert_footer_whole(app)
+            app.release = ReleaseInfo.from_version("9.9.9")
+            await settle(app, pilot)
+            self.assertEqual(self.screen_lines(app)[name_row + 1].strip(),
+                             f"v{__version__} · v9.9.9 available, press u to update")
+
+    async def test_menu_keeps_terms_and_footer_and_reaches_every_tool_when_small(self):
+        """At TINY (and shorter) the terms and the footer stay on screen; the tool list scrolls instead, and every
+        tool can be highlighted and is then on screen. Below about 115 columns the D6 wording takes three rows (it
+        cannot fit two at 80), pinned here as accepted."""
+        for size in (TINY, (80, 18)):
+            with self.subTest(size=size):
+                app = self.make_app()
+                async with app.run_test(size=size) as pilot:
+                    await settle(app, pilot)
+                    self.assertEqual(app.screen.max_scroll_y, 0)
+                    self.assert_terms_whole(app, max_rows=3)
+                    self.assert_footer_whole(app)
+                    self.assert_hint_shown(app)
+                    self.assertIn(f"v{__version__}", "\n".join(self.screen_lines(app)))
+                    options = app.screen.query_one("#tools", OptionList)
+                    for index, tool in enumerate(TOOL_INFO.values()):
+                        if index:
+                            await pilot.press("down")
+                            await pilot.pause()
+                        self.assertEqual(options.highlighted, index)
+                        self.assertIn(tool.title, "\n".join(self.screen_lines(app)), size)
+                    self.assert_terms_whole(app, max_rows=3)
+                    await pilot.press("enter")
+                    await settle(app, pilot)
+                    self.assertIsNotNone(app.flow)
+
+    def assert_hint_shown(self, app) -> None:
+        """The menu hint shows whole, below the tool list and above the terms."""
+        screen = app.screen
+        hint = screen.query_one(NavHint)
+        options = screen.query_one("#tools", OptionList)
+        self.assertTrue(hint.display)
+        self.assertGreaterEqual(hint.region.y, options.region.bottom, (hint.region, options.region))
+        self.assertLessEqual(hint.region.bottom, screen.query_one(TermsText).region.y, hint.region)
+        self.assertIn(MENU_HINT, self.screen_lines(app)[hint.region.y])
+
+    async def test_menu_drops_the_art_before_the_tool_list_scrolls(self):
+        """A 30-row window narrower than 120 columns wraps each description onto two rows; the shield art then gives
+        way to its name line so every tool still shows without the list scrolling, and comes back at full width."""
+        app = self.make_app()
+        async with app.run_test(size=(80, 30)) as pilot:
+            await settle(app, pilot)
+            screen = app.screen
+            options = screen.query_one("#tools", OptionList)
+            self.assertEqual(options.max_scroll_y, 0)
+            self.assertFalse(screen.query_one(Banner).art)
+            self.assert_hint_shown(app)
+            await pilot.resize_terminal(*BASE)
+            await settle(app, pilot)
+            self.assertTrue(screen.query_one(Banner).art)
+            self.assertEqual(options.max_scroll_y, 0)
+
+    async def test_menu_hides_the_hint_below_tiny_rather_than_overlap(self):
+        """Below the TINY floor the list keeps one tool row: the hint is hidden on purpose, and the list, the terms
+        and the footer do not overlap."""
+        for size in ((80, 16), (80, 14)):
+            with self.subTest(size=size):
+                app = self.make_app()
+                async with app.run_test(size=size) as pilot:
+                    await settle(app, pilot)
+                    screen = app.screen
+                    options = screen.query_one("#tools", OptionList)
+                    self.assertFalse(screen.query_one(NavHint).display)
+                    self.assertGreaterEqual(options.region.height, 3)
+                    self.assertLessEqual(options.region.bottom, screen.query_one(TermsText).region.y)
+                    self.assert_terms_whole(app, max_rows=3)
+
+    async def test_changelog_screen_at_base_and_tiny(self):
+        """Spec D3: the changelog in the suite's two-pane look at BASE and still whole at TINY: the version list and
+        its hint inside the left pane (VERSIONS_WIDTH wide), one whole row per version, newest first, the current one
+        marked, the notes filling the right, the footer's keys whole and the version on the bottom row."""
+        changelog = Changelog(parse_changelog(
+            "## [Unreleased]\n- Soon.\n## [0.10.0] - 2027-01-02\n- Ten.\n## [0.2.0] - 2026-11-01\n- Two.\n"
+            "## [0.1.0] - 2026-10-05\n- One.\n"))
+        for size in (BASE, TINY):
+            with self.subTest(size=size):
+                app = self.make_app()
+                async with app.run_test(size=size) as pilot:
+                    await settle(app, pilot)
+                    app.push_screen(ChangelogScreen(changelog, current="0.2.0"))
+                    await settle(app, pilot)
+                    screen = app.screen
+                    pane = screen.query_one("#filters")
+                    self.assertEqual(pane.outer_size.width, VERSIONS_WIDTH)
+                    versions = screen.query_one("#versions", OptionList)
+                    hint = screen.query_one(NavHint)
+                    self.assertEqual(hint.hint, CHANGELOG_HINT)
+                    inside = pane.region._replace(width=pane.region.width - 1)  # anything but the border
+                    for widget in (versions, hint):
+                        self.assert_inside(widget, inside)
+                    self.assertEqual((versions.max_scroll_x, versions.max_scroll_y), (0, 0))
+                    lines = self.screen_lines(app)
+                    rows = [line for line in lines if line.startswith(" ▊ ")]
+                    self.assertEqual(len(rows), 4, rows)  # one row each
+                    for row, text in zip(rows, ("Unreleased", "v0.10.0  2027-01-02", "v0.2.0   2026-11-01  current",
+                                                "v0.1.0   2026-10-05")):
+                        self.assertIn(text, row)
+                    notes = screen.query_one("#notes")
+                    self.assertEqual((notes.region.x, notes.region.right), (pane.region.right, size[0]))
+                    self.assertIn("v0.2.0 · 2026-11-01", "\n".join(lines))
+                    self.assert_footer_whole(app)
+                    self.assertIn(f"v{__version__}", lines[-1])
+
+    async def test_every_review_still_renders_at_tiny_with_an_update(self):
+        """Pinned as accepted (T3.1): at 80x24 a review's compact footer overflows 80 columns and the brand bar
+        gets no room, but the review opens and renders with an update found."""
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=TINY) as pilot:
+                    app.release = ReleaseInfo.from_version("9.9.9")
+                    review = await self.open_review(app, pilot, tool)
+                    self.assertIs(app.screen, review)
+                    self.assertTrue(app.screen.query_one(BrandBar).text.startswith("⬆ v9.9.9"))
+
+    async def test_brand_bar_shows_the_update_notice(self):
+        """Once a release is found the bottom row says so: whole on the tool menu, in a shorter wording that still
+        names the key on every review (the footer keeps each of its keys at BASE). Spec D15: the Ace3 review binds
+        u to Unlock, so there the notice sends the user to the tool menu and never says "press u" alone."""
+        release = ReleaseInfo.from_version("9.9.9")
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await settle(app, pilot)
+            app.release = release
+            await settle(app, pilot)
+            self.assert_brand_shown(app, f"⬆ v9.9.9 available, press u to update · Ka0s WoW Tools v{__version__}")
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    app.release = release
+                    await self.open_review(app, pilot, tool)
+                    bar = app.screen.query_one(BrandBar)
+                    shown = bar.shown_text
+                    self.assert_brand_shown(app, shown)
+                    self.assert_footer_whole(app)
+                    if tool == "ace3-profile-manager":
+                        self.assertIn("v9.9.9 available, press u on the tool menu to update", bar.text)
+                        self.assertIn(shown, ("⬆ v9.9.9: menu, u", "⬆ v9.9.9 (menu)"))
+                    else:
+                        self.assertIn("v9.9.9 available, press u to update", bar.text)
+                        self.assertIn(shown, ("⬆ v9.9.9: press u", "⬆ v9.9.9 (u)"))
 
     async def test_ace_left_pane_has_view_and_show_headings(self):
         """Addendum B: at 120x30 the Ace3 left pane has room for its View and Show section headings again, and the
@@ -551,6 +992,7 @@ class LookAndFeelTest(TuiTestCase):
 
     async def tab_through(self, app, pilot, name: str) -> None:
         screen = app.screen
+        self.assert_buttons_coloured(app, screen, name)
         chain = list(screen.focus_chain)
         self.assertTrue(chain, name)
         reached = set()
@@ -560,3 +1002,13 @@ class LookAndFeelTest(TuiTestCase):
             self.assertIs(app.screen, screen, name)  # Tab never leaves the screen
             reached.add(screen.focused)
         self.assertEqual([w for w in chain if w not in reached], [], name)
+
+    def assert_buttons_coloured(self, app, screen, name: str) -> None:
+        """Every button was built by action_button and shows its kind's theme colour (ACTION_CSS applies)."""
+        variables = app.get_css_variables()
+        for button in screen.query(Button):
+            kind = action_kind(button)
+            self.assertIsNotNone(kind, f"{name}: {button.id} has no action kind")
+            if not button.disabled and not button.mouse_hover:
+                self.assertEqual(button.styles.background.hex, variables[f"act-{kind}"], f"{name}: {button.id}")
+                self.assertEqual(button.styles.color.hex, variables[f"act-{kind}-text"], f"{name}: {button.id}")

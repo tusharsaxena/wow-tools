@@ -131,6 +131,63 @@ class CheckTest(unittest.TestCase):
         self.assertIsNone(self.cfg.latest_seen_version)
         self.assertIsNone(Config(self.cfg.path).load().latest_seen_version)
 
+    def test_deleted_release_is_cleared_and_no_longer_offered(self):
+        """D16: 1.0.0 was seen and cached, then deleted. A fresh check that finds no release clears the cache, so
+        the throttled checks that follow offer nothing."""
+        self.cfg.set("general", "latest_seen_version", "1.0.0", log=False)
+        self.cfg.set("general", "last_update_check", (NOW - timedelta(hours=1)).isoformat(), log=False)
+        self.cfg.save()
+        never = Mock(side_effect=AssertionError("must not fetch while throttled"))
+        self.assertEqual(check_for_update(self.cfg, current="0.1.0", now=NOW, fetch=never).version, "1.0.0")
+        self.assertIsNone(check_for_update(self.cfg, current="0.1.0", now=NOW, fetch=lambda: None, force=True))
+        self.assertIsNone(self.cfg.latest_seen_version)
+        self.assertIsNone(Config(self.cfg.path).load().latest_seen_version)
+        self.assertIsNone(check_for_update(self.cfg, current="0.1.0", now=NOW + timedelta(hours=1), fetch=never))
+        later = Mock(return_value=None)  # un-throttled again a day later: still nothing
+        self.assertIsNone(check_for_update(self.cfg, current="0.1.0", now=NOW + timedelta(hours=25), fetch=later))
+        later.assert_called_once()
+
+    def test_verify_cached_asks_github_before_offering_the_cache(self):
+        """D16: with verify_cached, a cached 1.0.0 that was deleted is neither offered nor kept; the throttle still
+        saves the request when nothing is pending."""
+        self.cfg.set("general", "latest_seen_version", "1.0.0", log=False)
+        self.cfg.set("general", "last_update_check", (NOW - timedelta(hours=1)).isoformat(), log=False)
+        self.cfg.save()
+        gone = Mock(return_value=None)
+        self.assertIsNone(check_for_update(self.cfg, current="0.1.0", now=NOW, fetch=gone, verify_cached=True))
+        gone.assert_called_once()
+        self.assertIsNone(Config(self.cfg.path).load().latest_seen_version)
+        never = Mock(side_effect=AssertionError("must not fetch while throttled with nothing pending"))
+        self.assertIsNone(check_for_update(self.cfg, current="0.1.0", now=NOW + timedelta(hours=1), fetch=never,
+                                           verify_cached=True))
+
+    def test_verify_cached_offers_the_fresh_release(self):
+        self.cfg.set("general", "latest_seen_version", "0.2.0", log=False)
+        self.cfg.set("general", "last_update_check", NOW.isoformat(), log=False)
+        fresh = Mock(return_value=ReleaseInfo("0.3.0", "v0.3.0", "notes", "", "", {}))
+        release = check_for_update(self.cfg, current="0.1.0", now=NOW, fetch=fresh, verify_cached=True)
+        self.assertEqual((release.version, release.notes), ("0.3.0", "notes"))
+        fresh.assert_called_once()
+
+    def test_no_release_hands_an_empty_cached_version_to_persist(self):
+        handed = []
+        check_for_update(self.cfg, current="0.1.0", now=NOW, fetch=lambda: None, persist=handed.append)
+        self.assertEqual(handed, [{"last_update_check": NOW.isoformat(timespec="seconds"),
+                                   "latest_seen_version": ""}])
+
+    def test_throttled_path_ignores_an_empty_invalid_or_older_cache(self):
+        never = Mock(side_effect=AssertionError("must not fetch while throttled"))
+        for cached in ("", "  ", "garbage", "1.0", "0.0.9", "0.1.0"):
+            self.cfg.set("general", "latest_seen_version", cached, log=False)
+            self.cfg.set("general", "last_update_check", NOW.isoformat(), log=False)
+            self.assertIsNone(check_for_update(self.cfg, current="0.1.0", now=NOW, fetch=never), cached)
+
+    def test_throttled_path_normalises_a_v_prefixed_cache(self):
+        self.cfg.set("general", "latest_seen_version", "v0.2.0", log=False)
+        self.cfg.set("general", "last_update_check", NOW.isoformat(), log=False)
+        release = check_for_update(self.cfg, current="0.1.0", now=NOW, fetch=Mock(side_effect=AssertionError))
+        self.assertEqual((release.version, release.tag), ("0.2.0", "v0.2.0"))
+
     def test_future_last_check_is_ignored(self):
         self.cfg.set("general", "last_update_check", (NOW + timedelta(days=2)).isoformat(), log=False)
         self.cfg.save()

@@ -3,7 +3,7 @@
 
 Zip installs update only from these (the updater checks the zip against SHA256SUMS). See docs/releasing.md.
 Run from anywhere: python3 scripts/build_release.py [X.Y.Z] [--out DIR]   (the version defaults to the one in
-wowtools/__init__.py; the tag vX.Y.Z must exist)."""
+wowtools/__init__.py; the tag vX.Y.Z must exist, and its CHANGELOG.md must have an entry for X.Y.Z)."""
 from __future__ import annotations
 
 import argparse
@@ -15,6 +15,10 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from wowtools.core.changelog import CHANGELOG_NAME, ChangelogError, entry_for, parse_changelog  # noqa: E402
+
 SUMS_NAME = "SHA256SUMS"
 _VERSION_RE = re.compile(r'^__version__\s*=\s*["\']([^"\']+)["\']', re.MULTILINE)
 
@@ -24,12 +28,15 @@ def zip_name(version: str) -> str:
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=False)
+    # UTF-8, not the locale's code page: CHANGELOG.md is UTF-8, and cp1252 cannot decode every byte of it.
+    return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", check=False)
 
 
 def build(repo: Path, version: str, out_dir: Path) -> tuple[Path, Path]:
     """git archive the tag vX.Y.Z into out_dir/wow-tools-vX.Y.Z.zip (one top folder, like GitHub's source zip)
-    and write out_dir/SHA256SUMS for it. Exits with a message if the tag is missing or holds another version."""
+    and write out_dir/SHA256SUMS for it. Exits with a message if the tag is missing, holds another version, or its
+    CHANGELOG.md has no entry for the version (every tagged release has one; the app shows it)."""
     tag = f"v{version}"
     if _git(repo, "rev-parse", "--verify", "--quiet", f"refs/tags/{tag}").returncode != 0:
         raise SystemExit(f"tag {tag} not found. Tag the release first: git tag {tag}")
@@ -38,6 +45,7 @@ def build(repo: Path, version: str, out_dir: Path) -> tuple[Path, Path]:
     if not match or match.group(1) != version:
         found = match.group(1) if match else "no version"
         raise SystemExit(f"tag {tag} holds {found} in wowtools/__init__.py, not {version}")
+    check_changelog(repo, tag, version)
     out_dir.mkdir(parents=True, exist_ok=True)
     zip_path = out_dir / zip_name(version)
     archived = _git(repo, "archive", "--format=zip", f"--prefix=wow-tools-{tag}/", "-o", str(zip_path), tag)
@@ -50,6 +58,20 @@ def build(repo: Path, version: str, out_dir: Path) -> tuple[Path, Path]:
     sums_path = out_dir / SUMS_NAME
     sums_path.write_text(f"{digest}  {zip_path.name}\n", encoding="utf-8", newline="\n")
     return zip_path, sums_path
+
+
+def check_changelog(repo: Path, tag: str, version: str) -> None:
+    """Exit unless the tag's CHANGELOG.md parses and has a `## [X.Y.Z] - YYYY-MM-DD` entry for `version`."""
+    shown = _git(repo, "show", f"{tag}:{CHANGELOG_NAME}")
+    if shown.returncode != 0:
+        raise SystemExit(f"tag {tag} has no {CHANGELOG_NAME}: every tagged release needs its entry (docs/releasing.md)")
+    try:
+        entries = parse_changelog(shown.stdout)
+    except ChangelogError as exc:
+        raise SystemExit(f"{CHANGELOG_NAME} at tag {tag} is malformed: {exc}") from None
+    if entry_for(entries, version) is None:
+        raise SystemExit(f"{CHANGELOG_NAME} at tag {tag} has no entry for {version}: every tagged release needs "
+                         f"'## [{version}] - YYYY-MM-DD' with its notes (docs/releasing.md)")
 
 
 def _current_version() -> str:

@@ -11,8 +11,9 @@ from wowtools.core.events import REGISTRY
 from wowtools.core.install import WowInstall
 from wowtools.core.paths import to_native
 from wowtools.tools.screenshot_organizer import events
-from wowtools.tools.screenshot_organizer.settings import (SECTION, ShotSettings, load_settings, resolve_journal_dir,
-                                                          save_settings, source_dir, target_root, validate_dest)
+from wowtools.tools.screenshot_organizer.journal import resolve_journal_dir
+from wowtools.tools.screenshot_organizer.settings import (SECTION, ShotSettings, load_settings, save_settings,
+                                                          source_dir, target_root, validate_dest)
 
 
 class SettingsTest(unittest.TestCase):

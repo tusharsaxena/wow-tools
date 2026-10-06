@@ -33,9 +33,14 @@ import asyncio
 import os
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
+from textual.widgets._footer import FooterKey
+
 from wowtools.core.config import Config
+from wowtools.ui.branding import KeyFooter, footer_bindings
+from wowtools.ui.widgets import ActionButton, NavHint, button_keys, key_text, shown
 
 # Terminal sizes (docs/superpowers/specs/2026-10-04-ace-profiles-design.md, Addendum B): screens are designed for
 # Windows Terminal's default window (BASE) and grow when it is maximized (LARGE); TINY only has to keep working.
@@ -126,11 +131,21 @@ def build_solo_tree(root: Path) -> Path:
 
 class TuiTestCase(unittest.IsolatedAsyncioTestCase):
     """Base for Textual tests. IsolatedAsyncioTestCase runs its loop in asyncio debug mode, which makes Textual
-    about 15x slower (every callback is timed and logged); the tests do not need it, so it is switched off."""
+    about 15x slower (every callback is timed and logged); the tests do not need it, so it is switched off.
+    ConfirmScreen's Enter/Space guard (CONFIRM_GUARD) is off too, so a test can press Enter on a confirm at once;
+    tests of the guard turn it back on with `confirm_guard(seconds)`."""
 
     async def asyncSetUp(self):
         await super().asyncSetUp()
         asyncio.get_running_loop().set_debug(False)
+        from wowtools.ui import dialogs
+        patcher = mock.patch.object(dialogs, "CONFIRM_GUARD", 0.0)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def confirm_guard(self, seconds: float) -> None:
+        from wowtools.ui import dialogs
+        dialogs.CONFIRM_GUARD = seconds  # the asyncSetUp patcher puts the real value back
 
 
 async def settle(app, pilot, timeout: float = 10.0) -> None:
@@ -145,6 +160,17 @@ async def settle(app, pilot, timeout: float = 10.0) -> None:
                 or getattr(app.screen, "_rebuild_pending", False))
         if not busy or time.monotonic() > deadline:
             return
+
+
+async def footer_keys(screen, pilot, wanted: set[str], timeout: float = 10.0) -> set[str]:
+    """The keys `screen`'s footer lists, once it lists every key in `wanted` (or the timeout passes). The footer
+    recomposes through `call_after_refresh`, so right after `settle()` it may still be empty or stale."""
+    deadline = time.monotonic() + timeout
+    while True:
+        keys = {key.key for key in screen.query(FooterKey)}
+        if wanted <= keys or time.monotonic() > deadline:
+            return keys
+        await pilot.pause()
 
 
 SHOT_BYTES = {
@@ -278,3 +304,45 @@ def build_ace_tree(root: Path) -> Path:
     _write_lua(era / "WTF" / "Account" / "ACCT1" / "SavedVariables" / "Questie.lua", ACE_QUESTIE)
     (era / "WTF" / "Account" / "ACCT1" / "Realm1" / "Kaelys").mkdir(parents=True, exist_ok=True)
     return root
+
+
+# The action a button with no BUTTON_ACTIONS entry or choose(id) performs (handled in on_button_pressed). A button
+# whose id is itself an action name (Cancel: "cancel") needs no entry.
+SPECIAL_BUTTON_ACTIONS = {"yes": "answer(True)", "no": "answer(False)", "back": "escape", "update-no": "later",
+                          "ok": "close"}
+
+
+def assert_keys_on_buttons(test, screen) -> None:
+    """Spec D17 on one screen: a button whose action has a key shows that key (on its own line, or after the label
+    on a compact one), a key shown on a button does something there, and the screen's footer lists none of the keys
+    its shown buttons carry, nor another key of the same action (Esc for No)."""
+    bound: dict[str, set[str]] = {}  # action -> its keys
+    for binding in screen._bindings.key_to_bindings.values():
+        for b in binding:
+            bound.setdefault(b.action, set()).add(b.key)
+    buttons = list(screen.query(ActionButton))
+    test.assertTrue(buttons, screen)
+    for button in buttons:
+        actions = {getattr(screen, "BUTTON_ACTIONS", {}).get(button.id), f"choose('{button.id}')",
+                   SPECIAL_BUTTON_ACTIONS.get(button.id), (button.id or "").replace("-", "_")}
+        keys = set().union(*(bound.get(a, set()) for a in actions if a))
+        if keys:  # its action has a key: the button shows one of them
+            test.assertIn(button.shortcut, keys, (screen, button.id))
+        if button.shortcut is not None:  # and a key shown on a button does something on this screen
+            test.assertIn(button.shortcut, screen._bindings.key_to_bindings, (screen, button.id))
+            plain = button.label.plain
+            test.assertTrue(plain.endswith(f"({key_text(button.shortcut)})"), plain)
+    shortcuts = {key_text(b.shortcut) for b in buttons if b.shortcut and shown(b)}
+    for hint in screen.query(NavHint):  # nor does a hint repeat one ("Esc back" beside "Back to review (Esc)")
+        named = {item.split(" ")[0] for item in hint.hint.split(" · ")} | {
+            key for item in hint.hint.split(" · ") for key in item.split(" ")[0].split("/")}
+        test.assertFalse(named & shortcuts, (screen, hint.hint, named & shortcuts))
+    footers = list(screen.query(KeyFooter))
+    if not footers:
+        return  # a popup: the footer under it is its screen's
+    on_buttons = button_keys(screen)
+    listed = {key.key for key in screen.query(FooterKey)}
+    test.assertFalse(listed & on_buttons, (screen, listed & on_buttons))
+    covered = {screen.active_bindings[k].binding.action for k in on_buttons if k in screen.active_bindings}
+    test.assertFalse({key.action for key in screen.query(FooterKey)} & covered, screen)
+    test.assertEqual(len(listed), len(footer_bindings(screen)))

@@ -27,6 +27,13 @@ FLAVOR_NAMES = {
 }
 _FLAVOR_DIR = re.compile(r"^_[a-z0-9_]+_$")
 
+
+def flavor_name(folder: str) -> str:
+    """A flavor folder's display name (_retail_ -> Retail, an unknown _foo_bar_ -> Foo Bar): Flavor.display_name,
+    for flavors known only by their folder (journals, markers)."""
+    return FLAVOR_NAMES.get(folder) or folder.strip("_").replace("_", " ").title()
+
+
 COMMON_SUBPATHS = (
     "Program Files (x86)/World of Warcraft",
     "Program Files/World of Warcraft",
@@ -36,10 +43,6 @@ COMMON_SUBPATHS = (
     "Games/Blizzard/World of Warcraft",
     "Blizzard/World of Warcraft",
 )
-
-
-class InstallError(Exception):
-    """The configured folder is not a usable WoW install."""
 
 
 def _subdirs(path: Path, on_error: ErrorHandler | None = None) -> list[Path]:
@@ -100,7 +103,7 @@ class Flavor:
 
     @property
     def display_name(self) -> str:
-        return FLAVOR_NAMES.get(self.folder) or self.folder.strip("_").replace("_", " ").title()
+        return flavor_name(self.folder)
 
     @property
     def short_name(self) -> str:
@@ -132,6 +135,14 @@ class WowInstall:
 
     def is_valid(self) -> bool:
         return self.root.is_dir() and bool(self.flavors())
+
+    @classmethod
+    def at(cls, root: Path | None) -> WowInstall | None:
+        """The install at `root` when it is a valid one (a folder with flavor folders), else None."""
+        if root is None:
+            return None
+        install = cls(root)
+        return install if install.is_valid() else None
 
     def flavor(self, name: str) -> Flavor | None:
         wanted = name.strip().strip("_").casefold()
@@ -195,3 +206,8 @@ def validate_output_dir(path: Path | None, install: WowInstall, *, what: str = "
             if _is_within(key, _key(flavor.path / sub)):
                 return f"The {what} cannot be inside {flavor.folder}\\{sub}."
     return None
+
+
+def validate_backup_dir(path: Path | None, install: WowInstall) -> str | None:
+    """validate_output_dir for a tool's backup folder setting (None, the tool's default, is fine)."""
+    return validate_output_dir(path, install, what="backup folder", example="D:\\WoW backups")

@@ -34,7 +34,7 @@ as they are, so you can undo the restore too.
 1. On the review screen, open a game version's **Backups** line in the tree (`Enter`) and highlight a backup.
 2. Press **Restore** (`e`), or `Enter` on the backup.
 3. Tick **Interface**, **WTF** or both, and read what the restore would remove or change.
-4. Press **Restore** (`o`), read the summary, and press **Yes** (the answer starts on **No**).
+4. Press **Restore** (`o`), read the summary, and press **Yes** (selected, in red).
 5. The results screen shows what happened to each folder. If you don't like the result, press **Undo** (`z`).
 
 ## Where your backups go
@@ -110,6 +110,14 @@ or "all backups"), the buttons and the keys.
 up"). When a backup is highlighted, it names that backup in full, with its date and time; otherwise it says how
 to pick one. It also warns when a restore is blocked or the scan skipped something.
 
+**Filter**: `/` puts you in the **Filter** box on the left. Type part of a name: a game version, a link, a warning
+or a backup's date and time (`2026-10-04`); upper or lower case doesn't matter. The tree keeps the matching lines
+and the game versions they're in, and opens a **Backups** (or **Links**) line when something in it matches. A game
+version stays shown, and tickable, while anything in it matches. `Enter` goes back to the tree and keeps the filter;
+`Esc` in the box clears it. The filter only changes what you see: `a` and `n` act on the game versions shown, and a
+ticked one it hides is still backed up; the bottom bar and the confirmation say so ("1 selected flavor is hidden
+by the filter").
+
 On Windows you see file counts and sizes. From WSL, Mac or Linux the review shows file counts only: reading
 every file's size there takes a disk round trip per file, and an `Interface` folder can hold tens of thousands of
 files. The backup itself works the same, and the results screen shows the sizes.
@@ -119,16 +127,18 @@ files. The backup itself works the same, and the results screen shows the sizes.
 | Key | Does |
 |---|---|
 | `Space` | Tick or untick the highlighted game version (or the top line, for all of them) |
-| `a` / `n` | Tick every game version / untick every game version |
+| `a` / `n` | Tick / untick every game version shown |
+| `/` | Filter the tree (see below) |
 | `Enter` | Open or close the highlighted line; on a backup, **Restore** it |
-| `b` | **Back up** the ticked game versions (asks first; the answer starts on **Yes**) |
+| `b` | **Back up** the ticked game versions (asks first; **Yes** is selected, red when older backups are deleted to keep the number set, green when all are kept) |
 | `e` | **Restore** the highlighted backup |
 | `x` / `c` | Expand every line of the tree / collapse them all |
 | `r` | Scan again |
-| `z` | **Undo last restore** (asks first; the answer starts on **No**) |
+| `z` | **Undo last restore** (asks first; **Yes** is selected, in red) |
 | `f` or `Esc` | Pick another game version |
 | `t` | Back to the tool menu |
 | `s` | Settings |
+| `h` | Help: this tool's keys and steps, with a link to this guide |
 | `q` | Quit |
 | `←` `→` | Jump between the tree and the left panel |
 | `Tab` | Move to the next control |
@@ -159,8 +169,9 @@ old backups") and the file it's working on. For each game version, the app:
 3. Gives the zip its real name.
 4. Only then deletes that game version's oldest backups beyond the number you keep.
 
-If anything goes wrong, the temporary zip is deleted and that game version is marked **Failed**; the next one
-still goes ahead. A backup never changes anything in your game folders.
+If anything goes wrong, the temporary zip is deleted and that game version is marked **Failed**; the others
+still go ahead (several may be backed up at once, see Settings). An unexpected error is that game version's
+**Failed** too; it doesn't stop the rest. A backup never changes anything in your game folders.
 
 A file that disappears while it's being zipped (WoW or an addon updater deleted it) is left out, and the results
 say how many. A file that's locked by another program stops that game version's backup; close the program and
@@ -185,9 +196,9 @@ the backup's copy.
 
 ### Choosing a backup
 
-On the review screen, open the game version's **Backups** line, highlight a backup and press `e` (or `Enter`).
-The bottom bar names the highlighted backup in full ("Backup from 2026-10-04 20:15:30 · Interface, WTF · 84.2 MB:
-e restores it"). If no backup is highlighted, `e` tells you how to pick one.
+On the review screen, open the game version's **Backups** line, highlight a backup and press **Restore** (`e`, or
+`Enter` on the backup). The bottom bar names the highlighted backup in full ("Backup from 2026-10-04 20:15:30 ·
+Interface, WTF · 84.2 MB: Restore puts it back"). If no backup is highlighted, `e` tells you how to pick one.
 
 A safety backup (its line starts with **safety**) can be restored like any other backup. That's how you go back
 to the folders as they were before an older restore.
@@ -204,7 +215,9 @@ made, if that differs). Under **Restore** are two boxes, **Interface** and **WTF
 - A folder that is itself a link says "(link: restore by hand)" and can't be ticked. See
   [Links and junctions](#links-and-junctions).
 
-Below them are **Restore** (green) and **Back**.
+Below them are the **Filter** box (`/`), then **Restore** (amber: it overwrites files) and **Back**. The filter only
+narrows the tree on the right (type part of a folder or file name: `WeakAuras`); it never changes what is
+restored. `Esc` in the box clears it.
 
 **On the right** is a tree of what the restore would cost you, compared with your folders as they are now. It's
 worked out again each time you tick or untick a box ("Comparing the backup with your folders…" meanwhile):
@@ -228,8 +241,11 @@ lost, the tree says so: "Nothing on disk would be lost".
 |---|---|
 | `Space` | Tick or untick the highlighted box, or open a line of the tree |
 | `o` | **Restore** the ticked folders (asks first) |
+| `/` | Filter the tree (only what you see: the restore is the same) |
 | `x` / `c` | Expand every line of the tree / collapse them all |
 | `b` or `Esc` | Back to the review screen |
+| `s` | Settings |
+| `h` | Help: this tool's keys and steps, with a link to this guide |
 | `←` `→` | Jump between the tree and the left panel |
 | `↑` `↓` `Tab` | Move between the boxes and buttons |
 
@@ -246,7 +262,7 @@ After the running-WoW check, the app asks "Replace Interface and WTF of Retail w
 reminds you that a safety backup is taken first, and repeats the warnings, one line each, in red. One more can
 appear here: **The backup drive may be short of space for the safety backup**, when the backup folder's drive
 has less free space than the folders you ticked take now (the safety zip is usually a lot smaller). If WoW appears to
-be running, that's in red too: close it first. The answer starts on **No**.
+be running, that's in red too: close it first. **Yes** is selected, in red.
 
 ### What happens during a restore
 
@@ -285,10 +301,10 @@ screen, without `z`.
 
 ## Undo
 
-Changed your mind? **Undo last restore** (`z`, the amber button on the review screen, or **Undo** on the
+Changed your mind? **Undo last restore** (`z`, the violet button on the review screen, or **Undo** on the
 restore results) puts the folders that the most recent restore replaced back as
 they were before it, from that restore's safety backup. It asks first, naming when that restore ran, which folders
-and which game version. The answer starts on **No**.
+and which game version. **Yes** is selected, in red.
 
 - Undo works on the most recent restore that changed a folder, whichever game version you picked on the flavor
   screen. A restore that left every folder as it was is passed over, so Undo then offers the restore before it
@@ -370,9 +386,12 @@ The file itself uses these names, if you edit it by hand: `backup_dir` and `last
 you picked last time; empty means **All flavors**). The backup folder is checked again before every backup and
 restore, in case the file was edited by hand.
 
-Backups and journals to keep are shared by every tool: they're on the first screen `s` opens (the one with
-your WoW folder), and saved as `keep_backups` (10; `0` keeps all) and `keep_journals` (10) under `[general]`
-in `config\wow-tools.cfg`. Restore journals follow `keep_journals`, and each keeps its
+Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
+first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),
+`keep_journals` (10) and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]`
+in `config\wow-tools.cfg`. Backing up several game versions works on up to `parallelism` of them at once (each gets its own
+zip, and one failing never stops the others), and so does reading their folders; the progress window shows a row
+for each one being backed up. A restore is always one game version. Restore journals follow `keep_journals`, and each keeps its
 safety backup.
 
 If you move the backup folder, move the zips in its `interface-backup` folder along with it, or the app won't

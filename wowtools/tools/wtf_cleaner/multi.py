@@ -1,7 +1,11 @@
-"""Scan and clean several flavors one after another (All flavors). Each flavor goes through the unchanged
-per-flavor scan() and execute(); this module only runs them in turn and collects what happened."""
+"""Scan and clean several flavors (All flavors). Each flavor goes through the unchanged per-flavor scan() and
+execute(); this module only runs them and collects what happened. Scans run up to [general] parallelism at once
+(core/parallel.py); a clean runs the flavors one after another, never in parallel: every flavor shares the one crash
+marker in the backup folder (clean-in-progress.json, which the recovery screen reads as one pointer) and the run
+stops at the first flavor whose backup or clean fails (the others are "not started")."""
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,6 +16,7 @@ from wowtools.core.config import DEFAULT_KEEP_BACKUPS, DEFAULT_KEEP_JOURNALS
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor
 from wowtools.core.journal import new_journal_path
+from wowtools.core.parallel import run_units, workers_for
 from wowtools.core.paths import to_stored
 from wowtools.tools.wtf_cleaner.cleaner import CleanError, CleanProgress, CleanResult, FileOutcome, execute
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
@@ -30,22 +35,41 @@ class FlavorScan:
 
 
 def scan_flavors(flavors: list[Flavor], *, account: str | None = None,
-                 progress: ScanProgress | None = None) -> list[FlavorScan]:
-    """Scan each flavor in turn. A ScanError is recorded for that flavor and the others carry on. With more than
-    one flavor, the progress label starts with the flavor's name."""
+                 progress: ScanProgress | None = None, parallelism: int = 1) -> list[FlavorScan]:
+    """Scan each flavor, up to `parallelism` at once ([general] parallelism: a scan only reads, and each flavor's
+    is its own). A ScanError is recorded for that flavor and the others carry on; any other error stops the
+    flavors not started yet and is raised once the running ones ended. The scans come back in the order of
+    `flavors`. With more than one flavor, the progress label starts with the flavor's name; with more than one
+    running at once, the counts are every running flavor's added up (one bar), reported under a lock."""
     named = len(flavors) > 1
-    scans: list[FlavorScan] = []
-    for flavor in flavors:
-        def report(current: int, total: int, label: str, flavor: Flavor = flavor) -> None:
-            if progress is not None:
-                progress(current, total, f"{flavor.display_name} · {label}" if named else label)
+    combined = workers_for(parallelism, len(flavors)) > 1
+    lock = threading.Lock()
+    counts: dict[str, tuple[int, int]] = {}  # flavor folder -> (current, total), when combined
+
+    def one(flavor: Flavor, _report: Callable[..., None]) -> FlavorScan:
+        def report(current: int, total: int, label: str) -> None:
+            if progress is None:
+                return
+            text = f"{flavor.display_name} · {label}" if named else label
+            if not combined:
+                progress(current, total, text)
+                return
+            with lock:
+                counts[flavor.folder] = (current, total)
+                progress(sum(c for c, _ in counts.values()), sum(t for _, t in counts.values()), text)
 
         try:
-            scans.append(FlavorScan(flavor, scan(flavor, account=account, progress=report)))
+            return FlavorScan(flavor, scan(flavor, account=account, progress=report))
         except ScanError as exc:
             log_exception("scan", exc)
-            scans.append(FlavorScan(flavor, error=str(exc), note=exc.short))
-    return scans
+            return FlavorScan(flavor, error=str(exc), note=exc.short)
+
+    results = run_units(flavors, one, parallelism=parallelism, what="scan", label=lambda flavor: flavor.folder,
+                        stop_on_error=True)
+    for result in results:
+        if result.error is not None:
+            raise result.error
+    return [result.value for result in results if result.value is not None]
 
 
 @dataclass
@@ -115,7 +139,7 @@ def execute_flavors(plan: list[tuple[Flavor, list[ProposalItem]]], *, dry_run: b
                     keep_backups: int = DEFAULT_KEEP_BACKUPS, progress: CleanProgress | None = None,
                     on_flavor: Callable[[Flavor, int, int], None] | None = None, journal_dir: Path | None = None,
                     keep_journals: int = DEFAULT_KEEP_JOURNALS) -> MultiCleanResult:
-    """Run execute() for each (flavor, selection) in turn. A BackupError or CleanError stops the run before the
+    """Run execute() for each (flavor, selection) in turn (never in parallel: see the module docstring). A BackupError or CleanError stops the run before the
     next flavor starts; flavors already done keep their results. Any other exception propagates (execute() has
     already restored what it deleted).
 

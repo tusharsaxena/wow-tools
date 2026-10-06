@@ -7,6 +7,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from textual.app import App
 from textual.widgets import Button, DataTable, Input, OptionList, ProgressBar, Static, Tree
@@ -22,7 +23,7 @@ from wowtools.tools.wtf_cleaner import multi
 from wowtools.tools.wtf_cleaner import review_screen as review_module
 from wowtools.tools.wtf_cleaner.app import CleanerSettingsScreen
 from wowtools.tools.wtf_cleaner.cleaner import CleanError, CleanResult, FileOutcome
-from wowtools.tools.wtf_cleaner.journal import clean_journal_dir, latest_undoable
+from wowtools.tools.wtf_cleaner.journal import resolve_journal_dir, latest_undoable
 from wowtools.tools.wtf_cleaner.report import CRITERION_COLORS, RESULT_COLUMNS, result_rows
 from wowtools.tools.wtf_cleaner.review_screen import CleanProgressScreen, RecoveryScreen, ResultScreen, ReviewScreen
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, criterion_counts
@@ -35,7 +36,7 @@ from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
-from wowtools.ui.widgets import ButtonRow, Ka0sCheckbox, NavHint
+from wowtools.ui.widgets import ButtonRow, Ka0sCheckbox, NavHint, action_kind
 
 SIZE = (140, 50)
 
@@ -92,6 +93,30 @@ class AppTestCase(TuiTestCase):
 
 
 class ReviewFlowTest(AppTestCase):
+    async def test_rescan_waits_for_the_running_scan(self):
+        """r (or Rescan) during a scan starts no second one: two would race each other to the tree."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            real, release, calls = review_module.scan_flavors, threading.Event(), []
+
+            def slow(*args, **kwargs):
+                calls.append(1)
+                release.wait(10)
+                return real(*args, **kwargs)
+
+            with patch.object(review_module, "scan_flavors", slow):
+                review.action_rescan()
+                await pilot.pause()
+                review.action_rescan()
+                await pilot.press("r")
+                await pilot.pause()
+                release.set()
+                await settle(app, pilot)
+            self.assertEqual(len(calls), 1)
+            self.assertFalse(review._scanning)
+            self.assertIsNotNone(review.proposal)
+
     async def test_dry_run_flow_changes_nothing(self):
         app = self.make_app()
         with capture_events() as records:
@@ -120,7 +145,7 @@ class ReviewFlowTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
-            self.assertIn("w clean", review.query_one(NavHint).hint)
+            self.assertEqual(review.query_one("#btn-clean", Button).shortcut, "w")  # Clean shows its key (D17)
             await pilot.press("c")
             await settle(app, pilot)
             self.assertIs(app.screen, review)  # c collapses the tree, it never cleans
@@ -155,7 +180,9 @@ class ReviewFlowTest(AppTestCase):
         progress = [s for s in pushed if isinstance(s, CleanProgressScreen)]
         self.assertEqual(len(progress), 1)
         self.assertFalse(progress[0].dry_run)
-        self.assertEqual(progress[0].stage, "validate")  # the post-clean check is the last stage
+        rows = progress[0].board.snapshot()[1].rows
+        self.assertEqual([r.stage for r in rows], ["validate"])  # the post-clean check is the last stage
+        self.assertEqual(rows[0].label, "Retail")
         self.assertFalse((self.backup_dir / MARKER_NAME).exists())
         self.assertFalse((self.sv / "Uninstalled.lua").exists())
         self.assertTrue((self.sv / "Auctionator.lua").exists())
@@ -274,6 +301,26 @@ class ReviewFlowTest(AppTestCase):
             await pilot.pause()
             self.assertNotIn("Uninstalled", {i.addon for i in review.proposal.items})
             self.assertFalse(review.criteria.not_installed)
+
+    async def test_select_all_and_none_leave_files_a_rule_hides_alone(self):
+        """a / n act on the files shown: a file a switched-off rule hides keeps its tick, as under a filter."""
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            hidden = {f.path for i in review.proposal.items if i.addon == "Uninstalled" for f in i.files}
+            self.assertTrue(hidden)
+            review.unchecked.update(hidden)
+            await pilot.press("1")  # the "not installed" rule off: its files are hidden
+            await settle(app, pilot)
+            self.assertNotIn("Uninstalled", {i.addon for i in review.proposal.items})
+            review.query_one("#proposal", Tree).focus()
+            await pilot.press("a")
+            self.assertEqual(review.unchecked, hidden)
+            await pilot.press("n")
+            await pilot.press("1")  # back on: still unticked
+            await settle(app, pilot)
+            self.assertTrue(hidden <= review.unchecked)
+            self.assertNotIn("Uninstalled", {i.addon for i in review._selection()})
 
     async def test_wow_running_warning_is_shown_and_logged(self):
         app = self.make_app(running=["Wow.exe"])
@@ -463,7 +510,7 @@ class RecoveryDialogTest(AppTestCase):
         await pilot.pause()
         await settle(app, pilot)
         self.assertIsInstance(app.screen, RecoveryScreen)
-        self.assertIn(str(self.snapshot), app.screen.message)
+        self.assertIn(str(self.snapshot), app.screen.message_text)
         return app.screen
 
     async def test_recovery_dialog_dismiss_clears_marker_keeps_snapshot(self):
@@ -674,6 +721,9 @@ class KeyboardNavigationTest(AppTestCase):
             await settle(app, pilot)  # the running-programs check runs in a worker
             confirm = app.screen
             self.assertIsInstance(confirm, ConfirmScreen)
+            self.assertEqual(confirm.focused.id, "yes")  # every confirm starts on Yes, red for a clean
+            self.assertEqual(action_kind(confirm.query_one("#yes", Button)), "destructive")
+            await pilot.press("right")
             self.assertEqual(confirm.focused.id, "no")
             await pilot.press("left")
             self.assertEqual(confirm.focused.id, "yes")
@@ -689,8 +739,8 @@ class KeyboardNavigationTest(AppTestCase):
             review = await self.open_review(app, pilot)
             await pilot.press("w")
             await settle(app, pilot)
-            self.assertEqual(app.screen.focused.id, "no")
-            await pilot.press("space")  # Space on the focused No button: cancel
+            self.assertEqual(app.screen.focused.id, "yes")
+            await pilot.press("right", "space")  # Space on the focused No button: cancel
             await pilot.pause()
             self.assertIs(app.screen, review)
             await pilot.press("y")
@@ -711,7 +761,7 @@ class KeyboardNavigationTest(AppTestCase):
 
         class Probe(App):
             def on_mount(self):
-                self.push_screen(ConfirmScreen("t", "b", default_yes=True), results.append)
+                self.push_screen(ConfirmScreen("t", "b"), results.append)
 
         app = Probe()
         async with app.run_test() as pilot:
@@ -777,7 +827,7 @@ class KeyboardNavigationTest(AppTestCase):
             # with the Undo note on a row of its own.
             self.assertFalse(journal.is_relative_to(self.backup_dir))
             self.assertEqual(rows["Run journal"], to_stored(journal))
-            self.assertEqual(rows[""], "(Undo last clean (z) puts these files back)")
+            self.assertEqual(rows[""], "(Undo last clean, on the review, puts them back)")
             self.assertEqual(rows["Post-clean check"], "passed")
 
     def test_multi_summary_names_the_journal_by_where_it_is(self):
@@ -814,7 +864,7 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertEqual(rows["Backup folder"], to_stored(folder))
             journal = app.screen.result.journal_path
             self.assertEqual(rows["Run journal"],
-                             f"{journal.relative_to(folder)} (Undo last clean (z) puts these files back)")
+                             f"{journal.relative_to(folder)} (Undo last clean, on the review, puts them back)")
             self.assertTrue(rows["Run journal"].startswith(str(Path("journal", ""))))
             self.assertEqual(summary.row_count, 10)
             self.assertEqual((summary.max_scroll_x, summary.max_scroll_y), (0, 0))
@@ -868,6 +918,8 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertEqual(setup.focused.id, "keep-backups")
             await pilot.press("down")
             self.assertEqual(setup.focused.id, "keep-journals")
+            await pilot.press("down")
+            self.assertEqual(setup.focused.id, "parallelism")
             await pilot.press("down")
             self.assertEqual(setup.focused.id, "save")
             await pilot.press("enter")
@@ -1144,19 +1196,19 @@ class ProgressPopupTest(AppTestCase):
             screen = CleanProgressScreen(dry_run=False)
             await app.push_screen(screen)
             await pilot.pause()
-            self.assertEqual(str(screen.query_one("#clean-stage", Static).render()), "Checking selected files")
+            self.assertEqual(str(screen.query_one("#clean-row-0-stage", Static).render()), "Checking selected files")
+            self.assertEqual(str(screen.query_one("#clean-title", Static).render()), "Cleaning")
             for stage in ("check", "lock_check", "snapshot_list", "snapshot", "snapshot_verify", "backup",
                           "verify", "delete", "validate"):
-                screen.update_progress(stage, 1, 2, "x")
+                screen.report(stage, 1, 2, "x")
                 self.assertNotEqual(screen.stage_title(stage), stage)
-            screen.update_progress("snapshot_list", 300, 0, "300 files found")
-            self.assertIsNone(screen.query_one("#clean-progress", ProgressBar).total)
-            screen.update_progress("delete", 1, 1, "WTF/" + "a" * 300)
+            screen.report("snapshot_list", 300, 0, "300 files found")
+            screen.refresh_progress()
+            self.assertIsNone(screen.query_one("#clean-row-0-bar", ProgressBar).total)
+            screen.report("delete", 1, 1, "WTF/" + "a" * 300)
+            screen.refresh_progress()
             await pilot.pause()
-            self.assertEqual(screen.query_one("#clean-file", Static).size.height, 2)
-            screen.update_progress("delete", 1, 1, "short")
-            await pilot.pause()
-            self.assertEqual(screen.query_one("#clean-file", Static).size.height, 2)
+            self.assertEqual(screen.query_one("#clean-detail", Static).size.height, 1)  # ellipsised, never wraps
 
 
 class LockerWarningTest(AppTestCase):
@@ -1599,13 +1651,13 @@ class UndoLastCleanTest(AppTestCase):
         return app.screen
 
     async def test_undo_last_clean_puts_the_files_back(self):
-        journals = clean_journal_dir(self.root)
+        journals = resolve_journal_dir(self.root)
         app = self.make_app()
         with capture_events() as records:
             async with app.run_test(size=SIZE) as pilot:
                 review = await self.open_review(app, pilot)
                 button = review.query_one("#btn-undo", Button)
-                self.assertEqual(str(button.label), "Undo last clean")
+                self.assertEqual(str(button.label), "Undo last clean\n(z)")
                 self.assertEqual(button.variant, "warning")  # amber: puts a change back
                 self.assertTrue(button.disabled)  # nothing to undo yet
                 await pilot.press("z")
@@ -1616,7 +1668,7 @@ class UndoLastCleanTest(AppTestCase):
                 rows = app.screen.summary_rows()
                 at = [item for item, _ in rows].index("Run journal")
                 # the journal is outside this backup folder: its whole path, the Undo note on the next row
-                self.assertIn("Undo last clean (z)", rows[at + 1][1])
+                self.assertIn("Undo last clean, on the review", rows[at + 1][1])
                 review = await self.back_to_review(app, pilot)
                 self.assertFalse(review.query_one("#btn-undo", Button).disabled)
                 await pilot.press("z")
@@ -1625,7 +1677,8 @@ class UndoLastCleanTest(AppTestCase):
                 self.assertIsInstance(confirm, ConfirmScreen)
                 self.assertRegex(confirm.title_text, r"^Undo the clean from \d{4}-\d\d-\d\d \d\d:\d\d\?$")
                 self.assertIn("Put back 8 files deleted from Retail?", confirm.body_text)
-                self.assertEqual(confirm.focused.id, "no")  # starts on No
+                self.assertEqual(confirm.focused.id, "yes")  # starts on Yes, in the destructive colour
+                self.assertEqual(action_kind(confirm.query_one("#yes", Button)), "destructive")
                 await pilot.press("y")
                 await pilot.pause()
                 await settle(app, pilot)
@@ -1654,7 +1707,7 @@ class UndoLastCleanTest(AppTestCase):
             await self.run_key(app, pilot, "z", answer="n")
             self.assertIsInstance(app.screen, ReviewScreen)
         self.assertFalse((self.sv / "Uninstalled.lua").exists())
-        self.assertIsNotNone(latest_undoable(clean_journal_dir(self.root)))
+        self.assertIsNotNone(latest_undoable(resolve_journal_dir(self.root)))
 
     async def test_dry_run_offers_no_undo(self):
         app = self.make_app()
@@ -1664,7 +1717,7 @@ class UndoLastCleanTest(AppTestCase):
             self.assertNotIn("Run journal", dict(app.screen.summary_rows()))
             review = await self.back_to_review(app, pilot)
             self.assertTrue(review.query_one("#btn-undo", Button).disabled)
-        self.assertFalse(clean_journal_dir(self.root).exists())
+        self.assertFalse(resolve_journal_dir(self.root).exists())
 
     async def test_undo_is_disabled_while_scanning_or_busy(self):
         app = self.make_app()
@@ -1728,3 +1781,64 @@ class UndoLastCleanTest(AppTestCase):
                 await settle(app, pilot)
                 self.assertIsInstance(app.screen, ConfirmScreen)
                 self.assertIn(wanted, app.screen.body_text)
+
+
+class TreeFilterTest(AppTestCase):
+    """Spec D7/D8 on the WTF Cleaner review: the filter narrows the proposal (on top of the criteria), a / n act on
+    what it shows, hidden ticks stay, count and are said in the summary and the confirm; Esc clears it."""
+
+    def addons(self, review) -> set[str]:
+        return {n.data[1].addon for n in _walk(review.query_one("#proposal", Tree).root)
+                if n.data and n.data[0] == "item"}
+
+    async def test_filter_narrows_and_keeps_hidden_ticks(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            every = set(review.all_tick_keys())
+            self.assertGreater(len(self.addons(review)), 1)
+            await pilot.press("slash")
+            await pilot.pause()
+            await pilot.press(*"UNINST")
+            await settle(app, pilot)
+            self.assertEqual(self.addons(review), {"Uninstalled"})
+            shown = {f.path for i in review.proposal.items if i.addon == "Uninstalled" for f in i.files}
+            self.assertEqual(set(review.shown_tick_keys()), shown)
+            await pilot.press("enter")  # keeps the filter, back to the tree
+            await pilot.pause()
+            await pilot.press("n")
+            self.assertEqual(review.unchecked, shown)  # only what the filter shows
+            note = f"{len(every - shown)} selected files are hidden by the filter"
+            self.assertIn(note, review.summary_text)
+            self.assertTrue(review.summary_text.startswith("Selected: "))
+            await pilot.press("y")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertIn(f"{note}: they are simulated too.", app.screen.body_text)
+            app.screen.dismiss(False)
+            await settle(app, pilot)
+            await pilot.press("a")
+            self.assertEqual(review.unchecked, set())
+            await pilot.press("slash")
+            await pilot.pause()
+            await pilot.press("escape")  # clears the filter: everything again, nothing hidden
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertGreater(len(self.addons(review)), 1)
+            self.assertNotIn("hidden by the filter", review.summary_text)
+
+    async def test_filter_matches_accounts_and_files_and_opens_the_addon(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            item = review.proposal.items[0]
+            review.filter_input().value = item.files[0].name
+            await settle(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            node = next(n for n in _walk(tree.root) if n.data and n.data[0] == "item"
+                        and n.data[1].key == item.key)
+            self.assertTrue(node.is_expanded)  # a file in it matches: the addon opens
+            self.assertEqual([str(c.label).split("  ")[0][2:] for c in node.children], [item.files[0].name])
+            review.filter_input().value = item.account
+            await settle(app, pilot)
+            self.assertEqual({n.data[2] for n in tree.root.children if n.data}, {item.account})  # its account

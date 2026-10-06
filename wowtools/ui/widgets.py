@@ -1,5 +1,6 @@
-"""Small shared widgets: a checkbox with ✔/✘ marks, a button row with ←/→ focus (and one that wraps onto more rows),
-arrow-key focus bindings and a drop-down that leaves ↑/↓ to them."""
+"""Small shared widgets: the action button (coloured by its kind, its key shown on it), a checkbox with ✔/✘ marks, a
+button row with ←/→ focus (and one that wraps onto more rows), arrow-key focus bindings and a drop-down that leaves
+↑/↓ to them."""
 from __future__ import annotations
 
 from typing import ClassVar
@@ -10,6 +11,8 @@ from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
 from textual.content import Content
 from textual.events import Resize
+from textual.keys import format_key
+from textual.widget import Widget
 from textual.widgets import Button, Checkbox, Select, Static
 
 # Pick lists (tool menu, flavor picker): names in gold, in their own column, readable on the cursor row too, whose
@@ -17,20 +20,104 @@ from textual.widgets import Button, Checkbox, Select, Static
 LIST_NAME_STYLE = "bold #F2C14E"
 LIST_CURSOR_BACKGROUND = "#1C4E8F"
 
-# One colour per kind of action, the same in every tool (Textual Button variants). Pick buttons by what they do:
+# One colour per kind of action, the same in every tool (spec D12). Pick a button's kind by what it does; the colours
+# are the theme's `$act-<kind>` variables (ui/theme.py ACTION_COLOURS) and each kind also keeps the nearest Textual
+# variant, which is what a plain App (no Ka0s theme) shows.
 ACTION_VARIANTS = {
-    "delete": "error",      # removes files for good (Clean): red
-    "apply": "success",     # changes files, can be undone (Organize): green
-    "simulate": "primary",  # shows what would happen, changes nothing (Dry run): blue
-    "revert": "warning",    # puts a change back, or overrides a safeguard (Undo last run, Override): amber
-    "confirm": "primary",   # the expected next step of a dialog (Save, Yes, Update now, Remind me): blue
-    "neutral": "default",   # refresh, navigation and backing out (Rescan, Other flavor, Tools, Quit, Cancel, No)
+    "destructive": "error",   # deletes for good, or stages a delete (Clean, Ace3 Apply, Delete (d)): red
+    "overwrite": "warning",   # overwrites files, or stages a change (Organize, Restore, Update now, Assign (p)): amber
+    "create": "success",      # only adds files (Back up): green
+    "revert": "warning",      # puts a change back (Undo last run, Undo (z), Put the originals back): violet
+    "simulate": "primary",    # shows what would happen, changes nothing (Dry run): cyan
+    "confirm": "primary",     # the expected next step of a dialog (Save, OK, Yes, Remind me next time): blue
+    "navigate": "default",    # moves between screens or refreshes (Rescan, Other flavor, Tools, More…): grey
+    "cancel": "default",      # backs out or declines (Cancel, No, Later, Quit, Back, Discard): dim grey
 }
 
 
-def action_button(label: str, action: str, **kwargs) -> Button:
-    """A Button coloured by the kind of action it performs (see ACTION_VARIANTS)."""
-    return Button(label, variant=ACTION_VARIANTS[action], **kwargs)
+def action_class(kind: str) -> str:
+    return f"-act-{kind}"
+
+
+def key_text(key: str) -> str:
+    """How a key is written on a button: as the footer writes it, a named key capitalised ("Space", "Esc", "Del"),
+    a symbol as itself ("⌫", "/") and a letter as it is typed ("w", or "D" for Shift+D)."""
+    *modifiers, name = key.split("+")
+    shown = format_key(name)
+    if len(shown) > 1 and shown.isalpha():
+        shown = shown.capitalize()
+    return "+".join([*(m.capitalize() for m in modifiers), shown])
+
+
+class ActionButton(Button):
+    """A button built by action_button. `shortcut` is the key of the binding that does what the button does (None
+    for a button with no key): the label shows it, and the footer leaves that key out while the button is shown
+    (branding.KeyFooter)."""
+
+    def __init__(self, label: str, *, shortcut: str | None = None, **kwargs) -> None:
+        self.shortcut = shortcut
+        self.label_text = label  # the label without its key
+        compact = kwargs.get("compact", False)
+        if shortcut is None:
+            content = Content(label)
+        elif compact:
+            content = Content.assemble(label, " ", (f"({key_text(shortcut)})", "not bold"))  # one row: the Ace3 bar
+        else:
+            # the label, then the key centred below it, not bold: the label stays what the eye finds first
+            content = Content.assemble(label, "\n", (f"({key_text(shortcut)})", "not bold"))
+        super().__init__(content, **kwargs)
+        self.set_class(shortcut is not None and not compact, "-keyed")
+
+
+def action_button(label: str, kind: str, key: str | None = None, **kwargs) -> ActionButton:
+    """A Button coloured by the kind of action it performs (see ACTION_VARIANTS): the nearest Textual variant plus
+    the `-act-<kind>` class that ACTION_CSS colours. Every button in wowtools is built here.
+
+    `key` is the binding key (as bound: "w", "escape", "backspace", "D") of the action the button performs: a full
+    size button shows it centred on a second line, "(w)" under its label, a compact one after its label on the one
+    row ("Delete (d)"). The footer then leaves that key out (spec D17). A label never spells its key itself."""
+    if kind not in ACTION_VARIANTS:
+        raise ValueError(f"unknown action kind {kind!r}")
+    classes = " ".join(c for c in (kwargs.pop("classes", None), action_class(kind)) if c)
+    return ActionButton(label, shortcut=key, variant=ACTION_VARIANTS[kind], classes=classes, **kwargs)
+
+
+def shown(widget: Widget) -> bool:
+    """True when the widget and every container it is in are displayed and visible."""
+    return all(node.display and node.visible for node in widget.ancestors_with_self if isinstance(node, Widget))
+
+
+def button_keys(screen: Widget) -> set[str]:
+    """The keys the shown action buttons of a screen carry (the footer leaves these out)."""
+    return {b.shortcut for b in screen.query(ActionButton) if b.shortcut and shown(b)}
+
+
+def action_kind(button: Button) -> str | None:
+    """The action kind a button was built with (None for one not built by action_button)."""
+    return next((kind for kind in ACTION_VARIANTS if button.has_class(action_class(kind))), None)
+
+
+def _kind_css(kind: str) -> str:
+    v = f"$act-{kind}"
+    return f"""
+    Button.{action_class(kind)} {{ color: {v}-text; background: {v};
+                                  border-top: tall {v}-lighten; border-bottom: tall {v}-darken; }}
+    Button.{action_class(kind)}:hover {{ background: {v}-darken; border-top: tall {v}; }}
+    Button.{action_class(kind)}.-active {{ background: {v}; border-top: tall {v}-darken;
+                                          border-bottom: tall {v}-lighten; }}
+    """
+
+
+# App-level CSS (Ka0sApp.CSS) colouring each kind from the theme's `$act-<kind>` variables. It overrides the
+# variant colours; Textual's own Button CSS still dims a disabled button and marks the focused one (bold reverse
+# label). A compact button (the Ace3 action bar) keeps no edges: on its one row they would hide the label. A button
+# that shows its key has two text rows inside its edges (four rows), and so has every full-size button in a row
+# with one (ButtonRow.-keyed), so the row's buttons line up.
+ACTION_CSS = "".join(_kind_css(kind) for kind in ACTION_VARIANTS) + """
+    Button.-textual-compact { border: none !important; }
+    Button.-keyed, ButtonRow.-keyed > Button { height: 4; }
+    ButtonRow.-keyed > Button.-textual-compact { height: 1; }
+    """
 
 
 CHECK_ON = "✔"
@@ -98,6 +185,10 @@ class ButtonRow(Horizontal):
     def __init__(self, *children, wrap: bool = True, **kwargs) -> None:
         super().__init__(*children, **kwargs)
         self.wrap = wrap
+
+    def on_mount(self) -> None:
+        """A row with a button that shows its key (two rows of text) gives its other buttons the same height."""
+        self.set_class(any(b.has_class("-keyed") for b in self.query(Button)), "-keyed")
 
     def action_press_focused(self) -> None:
         """Space activates the focused button, like Enter (Textual's Button only binds Enter)."""

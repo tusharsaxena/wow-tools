@@ -15,7 +15,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from wowtools.core import journal as core
-from wowtools.core.events import log_event
 from wowtools.core.journal import Journal
 from wowtools.core.paths import to_native
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
@@ -25,10 +24,6 @@ A_ROLLED_BACK = "rolled_back"
 PATH_FIELDS = ("path", "zip", "snapshot")
 
 
-def clean_journal_dir(wow_path: Path | None) -> Path | None:
-    return core.journal_dir(wow_path, TOOL_NAME)
-
-
 class CleanJournal(core.JournalWriter):
     def __init__(self, path: Path, header: dict) -> None:
         super().__init__(path, header)
@@ -36,19 +31,21 @@ class CleanJournal(core.JournalWriter):
 
     def add_deleted(self, *, flavor: str, path: Path, rel: str, size: int, mtime: float, zip_path: Path | None,
                     snapshot: Path | None) -> None:
-        self.add_entry({"action": A_DELETED, "flavor": flavor, "path": path, "rel": rel, "size": size,
-                        "mtime": mtime, "zip": zip_path, "snapshot": snapshot})
-        self._deleted.add((flavor, rel))
+        with self.lock:
+            self.add_entry({"action": A_DELETED, "flavor": flavor, "path": path, "rel": rel, "size": size,
+                            "mtime": mtime, "zip": zip_path, "snapshot": snapshot})
+            self._deleted.add((flavor, rel))
 
     def add_rolled_back(self, *, flavor: str, rels: list[str]) -> None:
         """These deletes of this run were put back. Their entries no longer count: a journal left with none is
         discarded like one that deleted nothing."""
-        undone = {(flavor, rel) for rel in rels} & self._deleted
-        if not undone:
-            return
-        self._write({"action": A_ROLLED_BACK, "flavor": flavor, "rels": sorted(rel for _, rel in undone)})
-        self._deleted -= undone
-        self.count -= len(undone)
+        with self.lock:
+            undone = {(flavor, rel) for rel in rels} & self._deleted
+            if not undone:
+                return
+            self._write({"action": A_ROLLED_BACK, "flavor": flavor, "rels": sorted(rel for _, rel in undone)})
+            self._deleted -= undone
+            self.count -= len(undone)
 
 
 def read_journal(path: Path) -> Journal:
@@ -75,12 +72,7 @@ def read_journal(path: Path) -> Journal:
     return journal
 
 
-def latest_undoable(folder: Path | None) -> Path | None:
-    return core.latest_undoable(folder, read_journal)
-
-
-def prune_journals(folder: Path | None, keep: int) -> list[Path]:
-    removed = core.prune_journals(folder, keep)
-    if removed:
-        log_event("clean.journal_pruned", removed=[p.name for p in removed], keep=keep)
-    return removed
+JOURNALS = core.ToolJournals(TOOL_NAME, read_journal, "clean.journal_pruned")
+resolve_journal_dir = JOURNALS.dir
+latest_undoable = JOURNALS.latest_undoable
+prune_journals = JOURNALS.prune

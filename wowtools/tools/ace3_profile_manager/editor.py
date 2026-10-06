@@ -9,7 +9,6 @@ writes nothing at all.
 """
 from __future__ import annotations
 
-import json
 import os
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -17,13 +16,15 @@ from datetime import datetime
 from pathlib import Path
 
 from wowtools import __version__
+from wowtools.core import marker as core_marker
 from wowtools.core.backup import BackupEntry, BackupError, create_backup
 from wowtools.core.events import log_event
-from wowtools.core.fsutil import atomic_write_bytes, free_name, remove_quietly, safe_progress
+from wowtools.core.fsutil import atomic_write_bytes, free_name, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.core.journal import now_iso
 from wowtools.core.snapshot import prune_snapshots, take_snapshot
-from wowtools.core.svfiles import SvFileError, SvGuard, lstat_or_none, probe_lock, recover_probe_leftovers
+from wowtools.core.svfiles import (SvFileError, SvGuard, find_locked, locked_message, lstat_or_none,
+                                   recover_probe_leftovers)
 from wowtools.tools.ace3_profile_manager.events import TOOL_NAME
 from wowtools.tools.ace3_profile_manager.journal import ProfileJournal
 from wowtools.tools.ace3_profile_manager.ops import DbState, FileEdit, compile_file
@@ -106,18 +107,15 @@ class Marker:
 
 
 def write_marker(root: Path, marker: Marker) -> None:
-    data = asdict(marker)
-    data["flavor_path"] = str(marker.flavor_path)
-    data["zip"] = str(marker.zip)
-    root.mkdir(parents=True, exist_ok=True)
-    atomic_write_bytes(root / MARKER_NAME, json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8"))
+    core_marker.write_marker(root, MARKER_NAME, asdict(marker))
 
 
 def read_marker(root: Path | None) -> Marker | None:
-    if root is None:
+    """The marker left by an Apply that did not finish, or None (missing or unreadable). Never raises."""
+    data = core_marker.read_marker(root, MARKER_NAME)
+    if data is None:
         return None
     try:
-        data = json.loads((root / MARKER_NAME).read_text(encoding="utf-8"))
         files, after = data["files"], data.get("after", {})
         if not all(isinstance(d, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in d.items())
                    for d in (files, after)):
@@ -129,7 +127,7 @@ def read_marker(root: Path | None) -> Marker | None:
 
 
 def clear_marker(root: Path) -> None:
-    remove_quietly(root / MARKER_NAME)
+    core_marker.clear_marker(root, MARKER_NAME)
 
 
 def edited_zip_path(root: Path, flavor_short: str, account: str | None, now: datetime) -> Path:
@@ -177,20 +175,11 @@ def _prepare(flavor: Flavor, states: list[DbState], result: ApplyResult,
 
 
 def _refuse_locked(ready: list[tuple[SvFile, FileEdit, bytes]], flavor: Flavor, report: ApplyProgress) -> None:
-    locked = []
-    for index, (file, _, _) in enumerate(ready, 1):
-        try:
-            error = probe_lock(file.path)
-        except SvFileError as exc:
-            raise ApplyError(f"{exc} Nothing was changed.") from exc
-        if error is not None:
-            locked.append((file.rel, error))
-        report("lock_check", index, len(ready), file.rel)
+    locked = find_locked([(file.rel, file.path) for file, _, _ in ready],
+                         lambda exc: ApplyError(f"{exc} Nothing was changed."), report)
     if locked:
         log_event("ace.file_locked", flavor=flavor.folder, files=len(locked), details=[r for r, _ in locked[:20]])
-        names = "\n".join(f"  {rel} ({error})" for rel, error in locked[:10])
-        raise ApplyError(f"{len(locked)} files are locked by another program (the Raider.IO client and WeakAuras "
-                         f"Companion are known to do this). Close it and apply again.\n{names}")
+        raise ApplyError(locked_message(locked, "apply"))
 
 
 def _refuse_unfinished(root: Path, flavor: Flavor) -> None:

@@ -4,8 +4,7 @@ of a backup. The restore screens are in restore_screen.py."""
 from __future__ import annotations
 
 import shutil
-import time
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Hashable, Sequence
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -15,72 +14,41 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widget import Widget
-from textual.widgets import Button, DataTable, Footer, Header, Label, ProgressBar, Static, Tree
+from textual.widgets import Button, DataTable, Header, Label, ProgressBar, Static, Tree
 from textual.widgets.tree import TreeNode
 from textual.worker import get_current_worker
 
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
-from wowtools.core.install import Flavor, WowInstall
+from wowtools.core.install import Flavor, WowInstall, validate_backup_dir
 from wowtools.core.journal import Journal
 from wowtools.core.paths import to_stored
 from wowtools.core.process import wow_check_for
+from wowtools.core.text import plural
 from wowtools.tools.interface_backup.backup import BackupOutcome, back_up_all
 from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups, read_parts
-from wowtools.tools.interface_backup.journal import latest_undoable, read_restore_journal
-from wowtools.tools.interface_backup.report import (BACKUP_RESULT_COLUMNS, PARTS_PENDING, STAGE_TITLES,
-                                                    backup_confirm, backup_detail, backup_result_rows,
-                                                    backup_summary_rows, backup_text, backups_title, flavor_text, held_text, leftover_text, part_text,
-                                                    plural, restore_confirm, selection_text, undo_confirm,
-                                                    warnings_text)
+from wowtools.tools.interface_backup.journal import latest_undoable, read_restore_journal, resolve_journal_dir
+from wowtools.tools.interface_backup.report import (BACKUP_RESULT_COLUMNS, PARTS_PENDING, STAGE_TITLES, backup_confirm,
+                                                    backup_detail, backup_result_rows, backup_summary_rows, backup_text,
+                                                    backups_title, flavor_text, held_text, leftover_text, part_text,
+                                                    restore_confirm, selection_text, undo_confirm, warnings_text)
 from wowtools.tools.interface_backup.restore import RestoreError, RestorePlan, RestoreResult, RestoreStopped, restore
 from wowtools.tools.interface_backup.restore_screen import RestoreResultScreen, RestoreScreen
 from wowtools.tools.interface_backup.scanner import CHEAP_STATS, PARTS, FlavorScan, scan_flavors
-from wowtools.tools.interface_backup.settings import (load_settings, resolve_backup_root, resolve_journal_dir,
-                                                      validate_backup_dir)
+from wowtools.tools.interface_backup.settings import load_settings, resolve_backup_root
 from wowtools.tools.interface_backup.undo import undo_restore
-from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import (ACCENT, BUSY_STYLE, RESULT_HINT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen, TwoPaneFocus,
-                                relabel_branch, result_css, theme_colour, tick_mark, two_pane_css)
+from wowtools.ui.branding import BottomBar
+from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
+                                relabel_branch, theme_colour, two_pane_css)
+from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
+from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
+from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, ModelFilter, ModelNode, TreeFilter
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-NAV_HINT = REVIEW_HINT + "a all · n none · b back up · e restore · " + TREE_HINT + "r rescan · z undo · f flavors · t tools"
+NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
 # Tree nodes that cannot be ticked: a backup always holds a flavor's whole Interface and WTF.
 READ_ONLY = ("part", "links", "link", "leftover", "warnings", "warning", "backups", "backup")
-WowCheck = Callable[[], "list[str] | None"]
-# Seconds between two per-file progress reports sent to the UI thread. Each costs a blocking call_from_thread
-# (~0.6 ms); an Interface folder of tens of thousands of files, reported per file in several stages, spent most of
-# a backup or restore in those round trips.
-PROGRESS_INTERVAL = 0.1
-
-
-class ThrottledProgress:
-    """progress(stage, current, total, detail) for a job's worker: forwards a report when the stage changes, when
-    it has no count (total 0) or ends a stage (current >= total), or when `interval` seconds passed since the last
-    one forwarded; the others are dropped. reset() forwards the next report whatever it is (a new flavor)."""
-
-    def __init__(self, forward: Callable[..., None], interval: float, clock: Callable[[], float] = time.monotonic):
-        self.forward = forward
-        self.interval = interval
-        self.clock = clock
-        self._stage: object = None
-        self._last = 0.0
-        self._fresh = True
-
-    def reset(self) -> None:
-        self._fresh = True
-
-    def __call__(self, *args: Any) -> None:
-        stage = args[0] if args else None
-        current, total = (args[1], args[2]) if len(args) >= 3 else (0, 0)
-        now = self.clock()
-        due = (self._fresh or stage != self._stage or not total or current >= total
-               or now - self._last >= self.interval)
-        if not due:
-            return
-        self._fresh, self._stage, self._last = False, stage, now
-        self.forward(*args)
 
 
 def free_bytes(path: Path | None, disk_usage: Callable = shutil.disk_usage) -> int | None:
@@ -96,84 +64,64 @@ def free_bytes(path: Path | None, disk_usage: Callable = shutil.disk_usage) -> i
 
 
 class BackupProgressScreen(ProgressScreen):
-    """Shown while a backup, a restore or an undo runs."""
+    """Shown while a backup, a restore or an undo runs. `flavors` are the display names of the flavors the job
+    runs: the job's on_flavor starts each in its own thread, so its reports land in its row. A backup of several
+    runs up to `parallelism` of them at once (one row each); a restore or an undo is one flavor."""
 
     ID_PREFIX = "ibackup"
     STAGE_TITLES = STAGE_TITLES
 
-    def __init__(self, first_stage: str = "backup") -> None:
-        super().__init__(first_stage=first_stage)
+    def __init__(self, title: str, first_stage: str = "backup", flavors: Sequence[str] = (), *,
+                 parallelism: int = 1) -> None:
+        super().__init__(title, first_stage=first_stage, units=flavors, parallelism=parallelism)
 
 
-class BackupResultScreen(Screen[str]):
+class BackupResultScreen(ResultBase):
     """The outcome of a backup: a summary table, one row per flavor and what to do next."""
 
-    DEFAULT_CSS = result_css("BackupResultScreen")
-    BINDINGS: ClassVar[list[Binding]] = [
-        Binding("r", "choose('review')", "Rescan"), Binding("e", "choose('restore')", "Restore"),
-        Binding("f", "choose('flavors')", "Flavors"), Binding("t", "choose('tools')", "Tools"),
-        Binding("q", "choose('quit')", "Quit"), Binding("escape", "choose('review')", "Back", show=False),
-        *NAV_BINDINGS]
+    LOG_SCREEN = "ibackup_result"
+    RESCAN = "review"
+    DETAIL_ID = "result-table"
+    BINDINGS: ClassVar[list[Binding]] = result_bindings(RESCAN, after=[Binding("e", "choose('restore')", "Restore")])
+    STATUS_COLOURS: ClassVar[dict[str, str]] = {"created": "success", "failed": "error", "skipped": "warning"}
 
     def __init__(self, outcomes: list[BackupOutcome]) -> None:
         super().__init__()
         self.outcomes = outcomes
 
-    def compose(self) -> ComposeResult:
-        yield Header()
-        with Vertical(id="result"):
-            summary = DataTable(id="result-summary", cursor_type="none", zebra_stripes=True)
-            summary.can_focus = False  # read-only summary: not a focus stop
-            yield summary
-            yield DataTable(id="result-table", classes="result-detail", cursor_type="row", zebra_stripes=True)
-        with ButtonRow(classes="buttons"):
-            yield action_button("Rescan (r)", "neutral", id="review")
-            yield action_button("Restore (e)", "neutral", id="restore")
-            yield action_button("Other flavor (f)", "neutral", id="flavors")
-            yield action_button("Tools (t)", "neutral", id="tools")
-            yield action_button("Quit (q)", "neutral", id="quit")
-        yield NavHint(RESULT_HINT + "r rescan · e restore · f other flavor · t tools · q quit")
-        yield BrandBar()
-        yield Footer()
+    def result_title(self) -> str:
+        return "Interface Backup · result"
 
-    def on_mount(self) -> None:
-        self.sub_title = "Interface Backup · result"
-        summary = self.query_one("#result-summary", DataTable)
-        summary.add_columns("Item", "Value")
-        summary.add_rows((Text(item), Text(value)) for item, value in backup_summary_rows(self.outcomes))
-        table = self.query_one("#result-table", DataTable)
+    def extra_buttons(self) -> list[ResultButton]:
+        return [("Restore", "navigate", "restore", "e")]
+
+    def summary_rows(self) -> list[tuple[str, str]]:
+        return backup_summary_rows(self.outcomes)
+
+    def fill_detail(self, table: DataTable) -> None:
         table.add_columns(*BACKUP_RESULT_COLUMNS)
-        styles = {"created": "success", "failed": "error", "skipped": "warning"}
         for outcome, (flavor, kind, *rest) in zip(self.outcomes, backup_result_rows(self.outcomes)):
-            style = f"bold {theme_colour(self.app, styles[outcome.kind])}" if outcome.kind in styles else ""
+            style = status_style(self.app, status_colour(outcome.kind, self.STATUS_COLOURS), plain="")
             table.add_row(Text(flavor), Text(kind, style=style), *(Text(c) for c in rest))
-        self.query_one("#review", Button).focus()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        self.action_choose(event.button.id or "quit")
-
-    def action_choose(self, choice: str) -> None:
-        log_event("ui.selection", screen="ibackup_result", control="next", value=choice)
-        self.dismiss(choice)
 
 
-class BackupTree(Tree):
-    """The flavors tree. ← jumps to the left panel (instead of scrolling sideways)."""
-
-    BINDINGS: ClassVar[list[Binding]] = [Binding("left", "screen.focus_filters", "Filters", show=False)]
-
-
-class BackupReviewScreen(TwoPaneFocus, Screen[str]):
+class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
     """The chosen flavors as a tree (what Interface and WTF hold, links, warnings, the flavor's backups) with
     flavor ticks for Back up, a highlighted backup for Restore, and Undo. Dismisses with "flavors", "tools" or
     "quit"."""
 
     TREE_SELECTOR = "#flavors"
+    LOG_SCREEN = "ibackup_review"
+    HIDDEN_NOUN = "flavor"
+    BUTTON_ACTIONS: ClassVar[dict[str, str]] = {"btn-backup": "back_up", "btn-restore": "restore", "btn-undo": "undo",
+                                                "btn-rescan": "rescan"}
     DEFAULT_CSS = two_pane_css("BackupReviewScreen", "#flavors")
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("space", "toggle", "Tick/untick", priority=True),
         Binding("a", "select_all", "All"),
         Binding("n", "select_none", "None"),
+        *FILTER_BINDINGS,
+        *TREE_BINDINGS,
         Binding("b", "back_up", "Back up"),
         Binding("e", "restore", "Restore"),
         Binding("r", "rescan", "Rescan"),
@@ -184,7 +132,6 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
         Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
-        *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
 
@@ -210,6 +157,7 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
         self.parts: dict[Path, tuple[str, ...] | None] = {}  # a backup's parts, read per zip by a worker
         self.summary_text = ""
         self._backup_nodes: dict[Path, TreeNode] = {}
+        self._kept: ModelFilter | None = None  # what the filter keeps (links, warnings and backups load on expand)
         self._scanning = False
         self._checking = False  # the running-WoW check is in its worker
         # What a result screen asked for once its rescan is done: ("restore", None) for Restore (e), or ("undo",
@@ -227,19 +175,19 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
                 yield Static("", id="folder-label")
                 yield Label("Keep", classes="section")
                 yield Static("", id="keep-label")
+                yield FilterInput()
                 with ButtonRow(id="actions", wrap=False):
-                    yield action_button("Back up", "apply", id="btn-backup")
-                    yield action_button("Restore", "neutral", id="btn-restore")
-                    yield action_button("Rescan", "neutral", id="btn-rescan")
-                    yield action_button("Undo last restore", "revert", id="btn-undo")
+                    yield action_button("Back up", "create", "b", id="btn-backup")
+                    yield action_button("Restore", "navigate", "e", id="btn-restore")
+                    yield action_button("Rescan", "navigate", "r", id="btn-rescan")
+                    yield action_button("Undo last restore", "revert", "z", id="btn-undo")
                 yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)
                 yield Static("", id="scan-label")
-            yield BackupTree(Text(self.scope_label), id="flavors")
+            yield ReviewTree(Text(self.scope_label), id="flavors")
         yield Static("", id="summary")
-        yield BrandBar()
-        yield Footer()
+        yield BottomBar()
 
     def on_mount(self) -> None:
         self.sub_title = f"Interface Backup · {self.scope_label}"
@@ -255,7 +203,8 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
 
     # --- panes (←/→): TwoPaneFocus ------------------------------------------------------------------
     def first_filter(self) -> Widget | None:
-        return next((b for b in self.query("#actions Button").results(Button) if b.focusable), None)
+        """The left pane's first control: the filter box (then the buttons)."""
+        return self.filter_input()
 
     # --- the WoW folder ------------------------------------------------------------------------
     def wow_folder_changed(self) -> bool:
@@ -315,24 +264,23 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
         self._show_scan_progress(True)
         self._refresh_buttons()
         flavors, root, journal_dir = list(self.flavors), self._root(), self._journal_dir()
-        self.run_worker(lambda: self._scan_worker(flavors, root, journal_dir), thread=True, exclusive=True,
-                        group="scan")
+        parallelism = self.cfg.parallelism
+        self.run_worker(lambda: self._scan_worker(flavors, root, journal_dir, parallelism), thread=True,
+                        exclusive=True, group="scan")
 
     def _show_scan_progress(self, scanning: bool) -> None:
         """While scanning, the tree is replaced by a progress bar and the folder being read."""
-        self._scanning = scanning
-        if scanning:
-            self.query_one("#scan-progress", ProgressBar).update(total=None, progress=0)
-            self.query_one("#scan-label", Static).update(Text("Reading the Interface and WTF folders"))
-        self.query_one("#scan-box").display = scanning
-        self.query_one("#flavors", Tree).display = not scanning
+        self.show_scan_box(scanning, "Reading the Interface and WTF folders")
 
-    def _scan_worker(self, flavors: list[Flavor], root: Path | None, journal_dir: Path | None) -> None:
+    def _scan_worker(self, flavors: list[Flavor], root: Path | None, journal_dir: Path | None,
+                     parallelism: int = 1) -> None:
         def progress(stage: str, current: int, total: int, detail: str) -> None:
             self.app.call_from_thread(self._scan_progress, current, total, detail)
 
         try:
-            scans = scan_flavors(flavors, with_stats=CHEAP_STATS, progress=progress)
+            # Flavors are read up to `parallelism` at once; each report names its flavor (the bar has no total).
+            scans = scan_flavors(flavors, with_stats=CHEAP_STATS, progress=progress,
+                                 parallelism=parallelism)
             backups = list_backups(root, {f.short_name for f in flavors})  # never raises
             undoable = latest_undoable(journal_dir)
         except Exception as exc:  # noqa: BLE001 - shown to the user, never a crash
@@ -340,12 +288,6 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
             self.app.call_from_thread(self._scan_failed, f"The scan failed: {exc}")
             return
         self.app.call_from_thread(self._scanned, scans, backups, undoable)
-
-    def _scan_progress(self, current: int, total: int, detail: str) -> None:
-        if not self.is_attached:
-            return
-        self.query_one("#scan-progress", ProgressBar).update(total=total or None, progress=current)
-        self.query_one("#scan-label", Static).update(Text(detail))
 
     def _scan_failed(self, message: str) -> None:
         self._scanning = False
@@ -389,59 +331,132 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
     def _flavor_backups(self, scan: FlavorScan) -> list[BackupInfo]:
         return [b for b in self.backups if b.flavor_short == scan.flavor.short_name]
 
+    # The tree's nodes for the filter: what it matches each kind on (the name its label starts with) and an identity
+    # that is the same for the node an expand builds.
+    def _model(self, scans: list[FlavorScan]) -> list[ModelNode]:
+        """The flavors as model nodes, with what loads on expand (links, warnings, backups): the filter matches it."""
+        flavors = []
+        for scan in scans:
+            node = ModelNode(("flavor", scan), [ModelNode(("part", name, scan)) for name in PARTS])
+            if scan.link_count:
+                node.children.append(ModelNode(("links", scan), [ModelNode(("link", text, scan))
+                                                                 for text in self._links(scan)]))
+            if scan.leftovers:
+                node.children.append(ModelNode(("leftover", scan)))
+            if any(p.errors for p in scan.parts.values()):
+                node.children.append(ModelNode(("warnings", scan), [ModelNode(("warning", error, scan))
+                                                                    for p in scan.parts.values()
+                                                                    for error in p.errors]))
+            node.children.append(ModelNode(("backups", scan), [ModelNode(("backup", info))
+                                                               for info in self._flavor_backups(scan)]))
+            flavors.append(node)
+        return flavors
+
+    @staticmethod
+    def _links(scan: FlavorScan) -> list[str]:
+        return [f"{name}/{rel}" for name in PARTS for rel in scan.parts[name].links]
+
+    @staticmethod
+    def _ident(node: ModelNode) -> tuple:
+        data = node.data
+        kind = data[0]
+        if kind == "backup":
+            return kind, data[1].path
+        folder = data[-1].flavor.folder
+        return (kind, folder, data[1]) if kind in ("part", "link", "warning") else (kind, folder)
+
+    @staticmethod
+    def _filter_name(data) -> str:
+        kind = data[0]
+        if kind == "flavor":
+            return data[1].flavor.display_name
+        if kind in ("part", "link", "warning"):
+            return data[1]
+        if kind == "backup":
+            info = data[1]
+            return f"{'safety' if info.is_safety else 'backup'} {info.when}"
+        return {"links": "Links", "leftover": leftover_text(data[1]), "warnings": "Scan warnings",
+                "backups": "Backups"}[kind]
+
+    def _model_filter(self) -> ModelFilter:
+        return self.model_filter(self._model(self.scans or []), lambda n: n.children,
+                                 lambda n: (self._filter_name(n.data),), key=self._ident)
+
+    def _can_rebuild(self) -> bool:
+        return self.scans is not None  # before a scan, or after a failed one, the bottom line keeps what it says
+
     def _rebuild(self) -> None:
         scans = self.scans
         if scans is None:
             return
+        kept = self._kept = self._model_filter()
         tree = self.query_one("#flavors", Tree)
         tree.clear()
         self._backup_nodes = {}
         tree.root.data = ("root",)
         tree.root.set_label(self._label(tree.root.data))
-        for scan in scans:
-            data = ("flavor", scan)
-            node = tree.root.add(self._label(data), data=data, expand=True)
-            for name in PARTS:
-                part = scan.parts[name]
-                node.add_leaf(Text.assemble((name, "bold"), (f"  {part_text(part)}", "dim")), data=("part", scan))
-            if scan.link_count:
-                node.add(Text.assemble((f"Links ({scan.link_count})", "bold"),
-                                       ("  not backed up; a restore keeps them", "dim")),
-                         data=("links", scan), allow_expand=True)  # paths load on expand
-            if scan.leftovers:
-                node.add_leaf(Text(f"⚠ {leftover_text(scan)}", style=f"bold {theme_colour(self.app, 'warning')}"),
-                              data=("leftover", scan))
-            if any(p.errors for p in scan.parts.values()):
-                node.add(Text(f"⚠ {warnings_text(scan)}", style=f"bold {theme_colour(self.app, 'warning')}"),
-                         data=("warnings", scan), allow_expand=True)  # lines load on expand
-            backups = self._flavor_backups(scan)
-            if backups:
-                node.add(Text.assemble((backups_title(backups), "bold"),
-                                       ("  highlight one and press e to restore it", "dim")),
-                         data=("backups", scan), allow_expand=True)  # zips load on expand, parts in a worker
-            else:
-                node.add_leaf(Text.assemble(("Backups (0)", "bold"), ("  none yet", "dim")), data=("backups", scan))
+        warning = f"bold {theme_colour(self.app, 'warning')}"
+        for flavor in self._model(scans):
+            if not kept.shows(flavor):
+                continue
+            scan = flavor.data[1]
+            node = tree.root.add(self._label(flavor.data), data=flavor.data, expand=True)
+            for child in flavor.children:
+                if not kept.shows(child):
+                    continue
+                data, kind = child.data, child.data[0]
+                opens, added = kept.opens(child), None
+                if kind == "part":
+                    part = scan.parts[data[1]]
+                    node.add_leaf(Text.assemble((data[1], "bold"), (f"  {part_text(part)}", "dim")), data=data)
+                elif kind == "links":
+                    added = node.add(Text.assemble((f"Links ({scan.link_count})", "bold"),
+                                                   ("  not backed up; a restore keeps them", "dim")),
+                                     data=data, allow_expand=True)  # paths load on expand
+                elif kind == "leftover":
+                    node.add_leaf(Text(f"⚠ {leftover_text(scan)}", style=warning), data=data)
+                elif kind == "warnings":
+                    added = node.add(Text(f"⚠ {warnings_text(scan)}", style=warning), data=data,
+                                     allow_expand=True)  # lines load on expand
+                elif child.children:
+                    added = node.add(Text.assemble((backups_title(self._flavor_backups(scan)), "bold"),
+                                                   ("  highlight one, then Restore", "dim")),
+                                     data=data, allow_expand=True)  # zips load on expand, parts in a worker
+                else:
+                    node.add_leaf(Text.assemble(("Backups (0)", "bold"), ("  none yet", "dim")), data=data)
+                if opens and added is not None:
+                    self._load_children(added)  # the filter opens it: its matches show
+                    added.expand()
+        self.note_no_match(tree.root)
         tree.root.expand()
         self._update_summary()
 
+    def _shown(self, data) -> bool:
+        """The filter keeps this node (one an expand adds)."""
+        return self._kept is None or self._kept.shows(ModelNode(data))
+
     def on_tree_node_expanded(self, event: Tree.NodeExpanded) -> None:
-        node = event.node
+        self._load_children(event.node)
+
+    def _load_children(self, node: TreeNode) -> None:
+        """Links, warnings and backups load the first time they open (what the filter keeps of them)."""
         if node.data is None or node.children:
             return
         kind, scan = node.data[0], node.data[-1]
         if kind == "links":
-            for name in PARTS:
-                for rel in scan.parts[name].links:
-                    node.add_leaf(Text(f"{name}/{rel}", style="dim"), data=("link", scan))
+            for text in self._links(scan):
+                if self._shown(("link", text, scan)):
+                    node.add_leaf(Text(text, style="dim"), data=("link", text, scan))
         elif kind == "warnings":
             for part in scan.parts.values():
                 for error in part.errors:
-                    node.add_leaf(Text(error, style="dim"), data=("warning", scan))
+                    if self._shown(("warning", error, scan)):
+                        node.add_leaf(Text(error, style="dim"), data=("warning", error, scan))
         elif kind == "backups":
             self._add_backups(node, scan)
 
     def _add_backups(self, node: TreeNode, scan: FlavorScan) -> None:
-        backups = self._flavor_backups(scan)
+        backups = [b for b in self._flavor_backups(scan) if self._shown(("backup", b))]
         for info in backups:
             parts = self.parts.get(info.path, PARTS_PENDING)
             self._backup_nodes[info.path] = node.add_leaf(Text(backup_text(info, parts)), data=("backup", info))
@@ -470,7 +485,13 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
 
     def _show_newest_backup(self) -> None:
         """Restore (e) from a result screen: open the Backups of the flavors and put the cursor on the newest
-        backup of them all (not a safety zip): the one just made, whichever flavor it is in."""
+        backup of them all (not a safety zip): the one just made, whichever flavor it is in. A filter would hide
+        it (and maybe every Backups group), so it is cleared first."""
+        if self.filtering:
+            self.text_filter.text = ""
+            self.filter_input().value = ""  # its Changed event finds the text already empty: no second rebuild
+            log_event("ui.selection", screen=self.LOG_SCREEN, control="filter", value="")
+            self._rebuild()
         tree = self.query_one("#flavors", Tree)
         opened = False
         for flavor_node in tree.root.children:
@@ -503,7 +524,7 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
     def _mark(self, scans: list[FlavorScan]) -> tuple[str, str]:
         if not scans:
             return "  ", ""  # nothing to back up: no tick, as in the other tools
-        return tick_mark(scans, self.unchecked, lambda s: s.flavor.folder, success=theme_colour(self.app, "success"))
+        return self.shown_tick_mark(scans, lambda s: s.flavor.folder)
 
     def _scans_of(self, data) -> list[FlavorScan]:
         """The flavors a tick on this node covers: those with something to back up (the others have no tick)."""
@@ -538,9 +559,12 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
             return
         info = self.highlighted_backup()
         # The tree shows only the start of a backup's line at 80 columns: the bottom line names it in full.
-        hint = (f"{backup_detail(info, self.parts.get(info.path, PARTS_PENDING))}: e restores it" if info is not None
-                else "Highlight a backup and press e to restore it.")
+        hint = (f"{backup_detail(info, self.parts.get(info.path, PARTS_PENDING))}: Restore puts it back" if info is not None
+                else "Highlight a backup, then Restore.")
         text = f"{selection_text(self.selection())}    {hint}"
+        hidden = self.hidden_ticked_note()
+        if hidden:
+            text += f"    {hidden}"
         blocked = [s.flavor.display_name for s in self.scans if s.leftovers]
         if blocked:
             text += f"    ⚠ Restore blocked for {', '.join(blocked)} (interrupted restore)"
@@ -550,75 +574,49 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
         self.summary_text = text
         self._set_summary(text)
 
-    # --- ticks -----------------------------------------------------------------------------------
-    def action_toggle(self) -> None:
-        focused = self.focused
-        if isinstance(focused, Button):  # Space activates the focused button, never the tree
-            focused.press()
-            return
-        if not isinstance(focused, Tree):
-            return
-        node = self.query_one("#flavors", Tree).cursor_node
+    # --- ticks (Space, a, n: ReviewBase) ------------------------------------------------------------
+    def tick_model(self) -> TickModel:
+        return TickModel.of_unchecked(self.unchecked)  # every flavor starts ticked
+
+    def node_tick_keys(self, node) -> list[str]:
         if node is None or node.data is None or node.data[0] in READ_ONLY:
-            return
-        folders = [s.flavor.folder for s in self._scans_of(node.data)]
-        if not folders:
-            return
-        check = any(f in self.unchecked for f in folders)
-        if check:
-            self.unchecked.difference_update(folders)
-        else:
-            self.unchecked.update(folders)
-        log_event("ui.item_toggled", screen="ibackup_review",
-                  key="root" if node.data[0] == "root" else folders[0], checked=check)
-        self._refresh_labels(node)
+            return []
+        return [s.flavor.folder for s in self._scans_of(node.data)]
 
-    def action_select_all(self) -> None:
-        self.unchecked.clear()
-        log_event("ui.selection", screen="ibackup_review", control="select_all", value=True)
-        self._refresh_labels()
+    def all_tick_keys(self) -> list[str]:
+        """The flavors with something to back up (the others have no tick): every one before the first scan."""
+        if self.scans is None:
+            return [f.folder for f in self.flavors]
+        return [s.flavor.folder for s in self.scans if s.has_data]
 
-    def action_select_none(self) -> None:
-        self.unchecked = {f.folder for f in self.flavors}
-        log_event("ui.selection", screen="ibackup_review", control="select_none", value=True)
-        self._refresh_labels()
+    def filter_texts(self, key: str) -> tuple[str, ...]:
+        return next(((f.display_name,) for f in self.flavors if f.folder == key), ())
 
-    # --- running-WoW check (PowerShell/tasklist can take seconds: never on the UI thread) ---------------
+    def filter_keys(self, keys: Collection[Hashable]) -> list[Hashable]:
+        """The flavors the filter shows: a flavor shows when its name or anything in it matches (a backup's date,
+        a link), so its tick stays usable while the filter finds something in it."""
+        if not self.filtering or self.scans is None:
+            return super().filter_keys(keys)
+        kept = self._model_filter()
+        shown = {n.data[1].flavor.folder for n in self._model(self.scans) if kept.shows(n)}
+        return [k for k in keys if k in shown]
+
+    def tick_log_key(self, node, keys) -> str:
+        return "root" if node.data[0] == "root" else keys[0]
+
+    # --- running-WoW check (ReviewBase.run_preflight, in a worker) --------------------------------------
     def run_preflight(self, check: WowCheck, then: Callable[[list[str] | None, Any], None],
                       extra: Callable[[], Any] | None = None) -> None:
-        """Run check() (and extra(), e.g. free space) in a worker, then call then(running, extra_result) on the UI
-        thread if this screen is still the one shown. A failing check is "unknown" (None)."""
-        self._checking = True
-        self._refresh_buttons()
-        self._set_summary(Text("Checking for running programs…", style=BUSY_STYLE))
-        self.run_worker(lambda: self._preflight_worker(check, extra, then), thread=True, group="preflight")
+        """Run check() (and extra(), e.g. free space) in a worker, then then(running, extra_result) on the UI
+        thread if this screen is still the one shown; a running WoW is logged first."""
+        def logged(running: list[str] | None, result: Any) -> None:
+            if running:
+                log_event("wow.running_warning", executables=running)
+            then(running, result)
+        super().run_preflight(check, logged, extra)
 
-    def _preflight_worker(self, check: WowCheck, extra: Callable[[], Any] | None,
-                          then: Callable[[list[str] | None, Any], None]) -> None:
-        running = result = None
-        try:
-            running = check()
-        except Exception as exc:  # noqa: BLE001 - a failed check is "unknown", as when PowerShell is missing
-            log_exception("preflight", exc)
-        if extra is not None:
-            try:
-                result = extra()
-            except Exception as exc:  # noqa: BLE001 - unknown as well
-                log_exception("preflight", exc)
-        self.app.call_from_thread(self._preflight_done, running, result, then)
-
-    def _preflight_done(self, running: list[str] | None, result: Any,
-                        then: Callable[[list[str] | None, Any], None]) -> None:
-        self._checking = False
-        if not self.is_attached:
-            return
-        self._update_summary()
+    def _checking_changed(self) -> None:
         self._refresh_buttons()
-        if self.app.screen is not self:
-            return  # the user left the screen while the check ran
-        if running:
-            log_event("wow.running_warning", executables=running)
-        then(running, result)
 
     # --- back up -------------------------------------------------------------------------------
     def action_back_up(self) -> None:
@@ -649,16 +647,24 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
                         free: int | None) -> None:
         keep = self.cfg.keep_backups
         title, body, alerts = backup_confirm(scans, root, keep, running, free)
-        self.app.push_screen(ConfirmScreen(title, body, alerts, default_yes=True),
+        hidden = self.hidden_ticked_note()
+        if hidden:
+            alerts = (*alerts, f"{hidden}: they are backed up too.")
+        # D13: Yes is red when the run deletes; with a retention set, it deletes the backups beyond it
+        self.app.push_screen(ConfirmScreen(title, body, alerts, kind="destructive" if keep > 0 else "create"),
                              lambda ok: self._backup_confirmed(ok, scans, root, keep))
 
     def _backup_confirmed(self, ok: bool | None, scans: list[FlavorScan], root: Path, keep: int) -> None:
         log_event("ui.selection", screen="confirm", control="back_up_confirm", value=bool(ok))
         if not ok or not self.idle or self.wow_folder_changed():
             return
-        self.run_job(BackupProgressScreen("backup"),
-                     lambda progress, on_flavor: back_up_all(scans, root, keep=keep, progress=progress,
-                                                             on_flavor=on_flavor),
+        parallelism = self.cfg.parallelism  # read here: the config is the UI thread's
+        screen = BackupProgressScreen("Backing up", "backup", [s.flavor.display_name for s in scans],
+                                      parallelism=parallelism)
+        self.run_job(screen, lambda progress, on_flavor: back_up_all(scans, root, keep=keep, progress=progress,
+                                                                     on_flavor=on_flavor,
+                                                                     on_flavor_done=screen.finish_unit,
+                                                                     parallelism=parallelism),
                      self._backup_done)
 
     def _backup_done(self, outcomes: list[BackupOutcome]) -> None:
@@ -677,27 +683,16 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
 
     def _job_worker(self, job: Callable[[Callable, Callable], Any], screen: ProgressScreen,
                     done: Callable[[Any], None]) -> None:
-        # Runs in a worker thread: the progress screen is only ever touched on the UI thread, and per-file reports
-        # reach it throttled (ThrottledProgress).
-        progress = ThrottledProgress(lambda *args: self.app.call_from_thread(screen.update_progress, *args),
-                                     PROGRESS_INTERVAL)
-
-        def on_flavor(label: str) -> None:
-            progress.reset()
-            self.app.call_from_thread(screen.set_flavor, label)
-
+        # Runs in a worker thread: per-file reports land on the screen's board (locked), which the UI thread draws
+        # on its own timer, so a big Interface folder never waits on the UI loop.
         try:
             with activity.running():
-                result = job(progress, on_flavor)
+                result = job(screen.report, screen.start_unit)
         except Exception as exc:  # noqa: BLE001 - shown by the UI
             self.app.call_from_thread(self._job_failed, exc)
             return
+        screen.finish_all()  # the run ended: the board ends at m of m
         self.app.call_from_thread(self._job_done, done, result)
-
-    def _close_progress(self) -> None:
-        screen, self._progress_screen = self._progress_screen, None
-        if screen is not None and self.app.screen is screen:
-            self.app.pop_screen()
 
     def _job_done(self, done: Callable[[Any], None], result: Any) -> None:
         self.app.busy = False
@@ -782,7 +777,7 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
     def _confirm_restore(self, plan: RestorePlan, info: BackupInfo, running: list[str] | None,
                          backup_free: int | None) -> None:
         title, body, alerts = restore_confirm(plan, info.when, running, backup_free=backup_free)
-        self.app.push_screen(ConfirmScreen(title, body, alerts, default_yes=False),
+        self.app.push_screen(ConfirmScreen(title, body, alerts, kind="destructive"),
                              lambda ok: self._restore_confirmed(ok, plan))
 
     def _restore_confirmed(self, ok: bool | None, plan: RestorePlan) -> None:
@@ -801,7 +796,7 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
             on_flavor(plan.flavor.display_name)
             return restore(plan, root=root, journal_dir=journal_dir, keep_journals=keep, progress=progress)
 
-        self.run_job(BackupProgressScreen("verify"), job, self._restore_done)
+        self.run_job(BackupProgressScreen("Restoring", "verify", [plan.flavor.display_name]), job, self._restore_done)
 
     def _restore_done(self, result: RestoreResult) -> None:
         self.app.push_screen(RestoreResultScreen(result), lambda choice: self._after_restore_result(choice, result))
@@ -847,7 +842,7 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
         title, body = undo_confirm(journal)
         alerts = ((f"WoW appears to be running ({', '.join(running)}). Close it first: an open game can lock "
                    "Interface files and rewrites WTF when you log out."),) if running else ()
-        self.app.push_screen(ConfirmScreen(title, body, alerts, default_yes=False),
+        self.app.push_screen(ConfirmScreen(title, body, alerts, kind="destructive"),
                              lambda ok: self._undo_confirmed(ok, path))
 
     def _undo_confirmed(self, ok: bool | None, path: Path) -> None:
@@ -856,19 +851,6 @@ class BackupReviewScreen(TwoPaneFocus, Screen[str]):
         wow, root = self.cfg.wow_path, self._root()
         if not ok or not self.idle or wow is None or root is None or self.wow_folder_changed():
             return
-        self.run_job(BackupProgressScreen("verify"),
+        self.run_job(BackupProgressScreen("Undoing the last restore", "verify"),
                      lambda progress, _on_flavor: undo_restore(path, wow_root=wow, root=root, progress=progress),
                      self._restore_done)
-
-    # --- leaving -------------------------------------------------------------------------------
-    def action_leave(self, choice: str) -> None:
-        if not self.app.busy:
-            self.dismiss(choice)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        actions = {"btn-backup": self.action_back_up, "btn-restore": self.action_restore,
-                   "btn-undo": self.action_undo, "btn-rescan": self.action_rescan}
-        action = actions.get(event.button.id or "")
-        if action is not None:
-            event.stop()
-            action()

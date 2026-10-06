@@ -1,5 +1,5 @@
-"""Build the review screen's tree (By addon or By character) from a scan and the pending changes, with the filters
-and search applied. Every node is built up front (a whole install has well under a thousand), and the builder
+"""Build the review screen's tree (By addon or By character) from a scan and the pending changes, with the Show
+boxes and the tree filter (ui.tree_filter's TextFilter) applied. Every node is built up front (a whole install has well under a thousand), and the builder
 records, per node, the tick keys it covers and the text of its label (the screen adds the tick mark)."""
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from wowtools.tools.ace3_profile_manager.ops import DbKey, DbState, Staging
 from wowtools.tools.ace3_profile_manager.report import char_tags, profile_rows
 from wowtools.tools.ace3_profile_manager.scanner import AccountScan, AddonFile, FlavorScan, ScanResult, SvFile
 from wowtools.ui.dialogs import ACCENT
+from wowtools.ui.tree_filter import TextFilter
 
 READ_ONLY = ("deleted", "removed", "note", "warnings")
 LEFTOVER_TAG = "no character folder"
@@ -27,17 +28,11 @@ class Filters:
     only_unused: bool = False
     leftovers: bool = True
     blacklisted: bool = True
-    search: str = ""
 
     @property
     def narrowing(self) -> bool:
-        """Something hides items: an empty group is then left out rather than shown empty."""
-        return self.only_multi or self.only_unused or not self.leftovers or not self.blacklisted or bool(
-            self.search.strip())
-
-    def matches(self, *names: str) -> bool:
-        wanted = self.search.strip().casefold()
-        return not wanted or any(wanted in name.casefold() for name in names)
+        """A Show box hides items: an empty group is then left out rather than shown empty."""
+        return self.only_multi or self.only_unused or not self.leftovers or not self.blacklisted
 
 
 def ident(data) -> Hashable:
@@ -61,10 +56,11 @@ class TreeBuilder:
 
     def __init__(self, scan: ScanResult, staging: Staging, filters: Filters, *, scope_label: str,
                  locked: Callable[[str, str], bool], blacklisted: Callable[[str, str], bool],
-                 expanded: dict[Hashable, bool], warning_style: str) -> None:
+                 expanded: dict[Hashable, bool], warning_style: str, text_filter: TextFilter | None = None) -> None:
         self.scan = scan
         self.staging = staging
         self.filters = filters
+        self.text_filter = text_filter or TextFilter()
         self.scope_label = scope_label
         self.locked = locked
         self.blacklisted = blacklisted
@@ -73,9 +69,10 @@ class TreeBuilder:
         self.keys: dict[int, tuple] = {}
         self.bodies: dict[int, Text] = {}
         self._own: set[int] = set()  # nodes whose keys are their own (a profile), not the union of their children
-        # A search opens every group it leaves, so its matches show; what the user opens and closes then is not
-        # remembered (the tree goes back to how it was when the search is cleared).
-        self.searching = bool(filters.search.strip())
+        # The filter opens every group it leaves, so its matches show; what the user opens and closes then is not
+        # remembered (the tree goes back to how it was when the filter is cleared).
+        self.searching = self.text_filter.active
+        self._path: tuple[str, ...] = ()  # the labels above the node being built (flavor, account): the filter's
 
     # --- nodes -----------------------------------------------------------------------------------
     def _add(self, parent: TreeNode, data, body: Text, keys: tuple | None = None, *, leaf: bool = False) -> TreeNode:
@@ -92,7 +89,7 @@ class TreeBuilder:
         return parent.add(Text(""), data=data, expand=expand)
 
     def _drop_if_empty(self, node: TreeNode) -> None:
-        if not node.children and self.filters.narrowing:
+        if not node.children and (self.filters.narrowing or self.searching):
             node.remove()
 
     def build(self, tree: Tree) -> None:
@@ -104,10 +101,13 @@ class TreeBuilder:
         for flavor_scan in self.scan.flavors:
             self._flavor(root, flavor_scan, multi)
         warnings = self.scan.warnings
-        if warnings:
-            node = self._add(root, ("warnings", warnings),
-                             Text(f"⚠ Scan warnings ({len(warnings)})", style=f"bold {self.warning_style}"))
-            for warning in warnings:
+        title = f"⚠ Scan warnings ({len(warnings)})"
+        # The filter keeps the group when its title matches (all of it) or the warnings that match, as any group
+        shown = warnings if self.text_filter.matches(title) else \
+            [w for w in warnings if self.text_filter.matches(w.message)]
+        if shown:
+            node = self._add(root, ("warnings", warnings), Text(title, style=f"bold {self.warning_style}"))
+            for warning in shown:
                 self._add(node, ("note", warning.message), Text(warning.message, style="dim"), leaf=True)
         root.expand()
         self._gather(root)
@@ -126,11 +126,14 @@ class TreeBuilder:
         name = flavor_scan.flavor.display_name
         data = ("flavor", flavor_scan)
         if flavor_scan.error:
+            if not self.text_filter.matches(name, flavor_scan.error):
+                return  # filtered on its name and its error, like any other row
             self._add(root, data, Text.assemble((name, ACCENT), (f"  {flavor_scan.error}", self.warning_style)),
                       (), leaf=True)
             return
         parent = self._add(root, data, Text(name, style=ACCENT)) if multi else root
         for account in flavor_scan.accounts:
+            self._path = (name, account.account) if multi else (account.account,)
             self._account(parent, account)
         if multi:
             self._drop_if_empty(parent)
@@ -188,10 +191,10 @@ class TreeBuilder:
         for row in profile_rows(state):
             if self.filters.only_unused and (row.deleted or "unused" not in row.tags):
                 continue
-            context = (addon, key.sv_name, row.name)
+            context = (*self._path, addon, key.sv_name, row.name)
             chars = [c for c in row.chars if (self.filters.leftovers or c.char not in state.leftovers)
-                     and self.filters.matches(*context, c.char)]
-            if not chars and not self.filters.matches(*context):
+                     and self.text_filter.matches(*context, c.char)]
+            if not chars and not self.text_filter.matches(*context):
                 continue
             if row.deleted:
                 node = self._add(parent, ("deleted", key, row.name), Text(row.label, style="dim"))
@@ -235,7 +238,7 @@ class TreeBuilder:
         profile = state.keys.get(char)
         removed = profile is None
         shown = profile if profile is not None else state.db.profile_keys.get(char, "")
-        if not self.filters.matches(addon, key.sv_name, shown, char):
+        if not self.text_filter.matches(*self._path, char, addon, key.sv_name, shown):
             return
         name = f"{addon} ({key.sv_name})" if len(addon_file.dbs) > 1 else addon
         locked = self.locked(addon_file.file.flavor.folder, addon)

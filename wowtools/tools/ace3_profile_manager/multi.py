@@ -1,4 +1,8 @@
-"""Apply over one or several flavors with one journal for the whole run (spec §9). UI-free."""
+"""Apply over one or several flavors with one journal for the whole run (spec §9). UI-free.
+
+The flavors are applied one after another, never in parallel ([general] parallelism does not apply): they share the
+one crash marker (edit-in-progress.json under the tool's folder, which the recovery screen reads as one pointer), and
+the run stops at the first flavor that fails, the rest "not started"."""
 from __future__ import annotations
 
 import re

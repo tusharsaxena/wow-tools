@@ -7,13 +7,13 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.widgets import Footer, Header, OptionList, Static
+from textual.widgets import Header, OptionList, Static
 from textual.widgets.option_list import Option
 
 from wowtools.core.config import Config
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor
-from wowtools.ui.branding import Banner, BrandBar
+from wowtools.ui.branding import Banner, BottomBar
 from wowtools.ui.widgets import NAV_BINDINGS, NavHint
 
 ALL_ID = "__all__"
@@ -43,8 +43,7 @@ class AccountScreen(Screen[str | None]):
         yield OptionList(Option(Text("All accounts"), id=ALL_ID),
                          *[Option(Text(name), id=name) for name in self.accounts], id="accounts")
         yield NavHint("↑↓ choose · Enter select · Esc back")
-        yield BrandBar()
-        yield Footer()
+        yield BottomBar()
 
     def on_mount(self) -> None:
         self.sub_title = f"{self.flavor.display_name} · choose account"

@@ -8,13 +8,13 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.widgets import Footer, Header, OptionList, Static
+from textual.widgets import Header, OptionList, Static
 from textual.widgets.option_list import Option
 
 from wowtools.core.config import GENERAL, Config
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor, WowInstall
-from wowtools.ui.branding import Banner, BrandBar
+from wowtools.ui.branding import Banner, BottomBar
 from wowtools.ui.widgets import LIST_CURSOR_BACKGROUND, LIST_NAME_STYLE, NAV_BINDINGS, NavHint
 
 ALL_FLAVORS = "__all__"  # dismiss value for the "All flavors" entry (include_all=True only)
@@ -85,8 +85,7 @@ class FlavorScreen(Screen[Flavor | str | None]):
         yield Static("Choose a WoW flavor", classes="title")
         yield OptionList(*options, id="flavors")
         yield NavHint("↑↓ choose · Enter select · Esc back to tools")
-        yield BrandBar()
-        yield Footer()
+        yield BottomBar()
 
     def on_mount(self) -> None:
         self.sub_title = "Choose flavor"

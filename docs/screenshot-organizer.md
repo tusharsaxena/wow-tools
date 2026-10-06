@@ -63,22 +63,32 @@ Open a day to see its screenshots. A game version with nothing to do says why: "
 **At the bottom** a bar totals what's ticked, plus possible duplicates, conflicts and skipped files (all
 explained below).
 
+**Filter**: `/` puts you in the **Filter** box on the left. Type part of a name: a game version, a year, a date
+such as `2024-01-02`, or a file name (upper or lower case doesn't matter). The tree keeps the matching lines and
+the groups they're in, and opens a day when one of its screenshots matches. `Enter` goes back to the tree and keeps
+the filter; `Esc` in the box clears it. The filter only changes what you see: `a` and `n` act on what it shows, and a
+screenshot it hides keeps its tick and is still sorted. The bottom bar and the confirmation say how many ("3 selected
+shots are hidden by the filter").
+
 ### Keys on the review screen
 
 | Key | Does |
 |---|---|
 | `Space` | Tick or untick the highlighted line |
-| `a` / `n` | Tick everything to sort / untick everything |
-| `o` | **Organize** the ticked screenshots (asks first; the answer starts on **No**) |
-| `y` | **Dry run** (asks first; the answer starts on **Yes**) |
+| `a` / `n` | Tick everything shown to sort / untick everything shown |
+| `/` | Filter the tree: type part of a game version, a date (`2024-01`) or a file name; `Esc` in the box clears it |
+| `o` | **Organize** the ticked screenshots (asks first; **Yes** is selected, in red) |
+| `y` | **Dry run** (asks first; **Yes** is selected) |
 | `x` / `c` | Expand every line of the tree / collapse them all |
 | `r` | Scan again |
-| `z` | **Undo last run** (asks first; the answer starts on **No**) |
+| `z` | **Undo last run** (asks first; **Yes** is selected, in red) |
 | `f` or `Esc` | Pick another game version |
 | `t` | Back to the tool menu |
 | `s` | Settings |
+| `h` | Help: this tool's keys and steps, with a link to this guide |
 | `q` | Quit |
 | `←` `→` | Jump between the list and the left panel |
+| `Tab` | Move to the next control |
 
 If you change the settings, press `r` to scan again with them.
 
@@ -138,7 +148,7 @@ alone); the run then compares the two files and says "Already filed" or "Conflic
 
 ## Undo last run
 
-Changed your mind? **Undo last run** (`z`, the amber button) reverses the most recent run:
+Changed your mind? **Undo last run** (`z`, the violet button) reverses the most recent run:
 
 - Moved screenshots go back to their `Screenshots` folder.
 - Copies are removed (only if the original is still there). A copy you already deleted yourself counts as
@@ -171,9 +181,11 @@ saved in `config\screenshot-organizer.cfg`.
 
 The file itself uses these names, if you edit it by hand: `dest_dir`, `copy_mode` and `last_flavor_choice`.
 
-Backups and journals to keep are shared by every tool: they're on the first screen `s` opens (the one with
-your WoW folder), and saved as `keep_backups` (10; `0` keeps all) and `keep_journals` (10) under `[general]`
-in `config\wow-tools.cfg`.
+Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
+first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),
+`keep_journals` (10) and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]`
+in `config\wow-tools.cfg`. The flavor picker counts the screenshots waiting in up to `parallelism` game versions at once; filing
+them is one run with one journal.
 
 > Older versions called this tool `screenshots`. The app renames its old settings file, log folder and
 > `wow-tools\screenshots` folder to the new `screenshot-organizer` names automatically, and never overwrites

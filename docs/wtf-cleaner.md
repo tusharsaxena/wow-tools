@@ -74,7 +74,8 @@ folder it looked in) and the others carry on.
 
 - **All accounts** (the usual choice): an addon counts as "enabled" if *any* character on *any* account uses it.
 - **One account**: only that account's files are scanned, and only its characters count.
-- **All flavors**: every game version is scanned in turn, each with all its accounts.
+- **All flavors**: every game version is scanned (up to `parallelism` at once, see Settings), each with all its
+  accounts.
 
 A character that has never changed its addon list counts as having every addon enabled, because that's what WoW
 does.
@@ -88,19 +89,33 @@ suggests nothing there. The scan notes this in its warnings.
 | Key | Does |
 |---|---|
 | `Space` | Tick or untick the highlighted line |
-| `a` / `n` | Tick everything / untick everything |
+| `a` / `n` | Tick / untick every file shown (a file a rule or the filter hides keeps its tick) |
+| `/` | Filter the tree (see below) |
 | `1` `2` `3` `4` | Switch a rule on or off |
-| `w` | **Clean** the ticked files (asks first; the answer starts on **No**) |
-| `y` | **Dry run** (asks first; the answer starts on **Yes**) |
+| `w` | **Clean** the ticked files (asks first; **Yes** is selected, in red) |
+| `y` | **Dry run** (asks first; **Yes** is selected) |
 | `x` / `c` | Expand every line of the tree / collapse them all |
 | `r` | Scan again |
-| `z` | **Undo last clean** (asks first; the answer starts on **No**) |
+| `z` | **Undo last clean** (asks first; **Yes** is selected, in red) |
 | `f` or `Esc` | Pick another game version |
 | `t` | Back to the tool menu |
 | `s` | Settings |
+| `h` | Help: this tool's keys and steps, with a link to this guide |
 | `q` | Quit |
 | `←` `→` | Jump between the list and the left panel |
 | `Tab` | Move to the next control |
+
+### Filtering the tree
+
+`/` puts you in the **Filter** box on the left. Type part of a name: an account, a character, an addon or a file
+(upper or lower case doesn't matter). The tree keeps the matching lines and the groups they're in, and opens an
+addon when one of its files matches; a matching account or addon keeps everything in it. The filter works on top
+of the rules. A game version that wasn't scanned stays only while its name matches, and a filter that matches
+nothing says so in the tree. `Enter` goes back to the tree and keeps the filter; `Esc` in the box clears it.
+
+The filter only changes what you see. `a` and `n` tick and untick what it shows; a file it hides keeps its tick and
+is still cleaned. When that's the case, the bottom bar and the confirmation say so ("12 selected files are hidden
+by the filter").
 
 ## Cleaning
 
@@ -153,7 +168,7 @@ game version are kept (the same number as WTF backups, 5 unless you change it).
 
 ## Undo last clean
 
-Changed your mind? **Undo last clean** (`z`, the amber button) puts back every file the most recent clean
+Changed your mind? **Undo last clean** (`z`, the violet button) puts back every file the most recent clean
 deleted. It asks first and tells you when that clean ran and how many files it removed.
 
 - Files come back from the zip the cleaner made before deleting, or from the backup of your whole `WTF` folder.
@@ -224,9 +239,12 @@ The file itself uses these names, if you edit it by hand: `max_age_days`, `crite
 `criterion_not_enabled`, `criterion_older_than`, `criterion_stray_copies`, `backup_before_delete`, `backup_dir`,
 `last_account` and `last_flavor_choice`.
 
-Backups and journals to keep are shared by every tool: they're on the first screen `s` opens (the one with
-your WoW folder), and saved as `keep_backups` (10; `0` keeps all) and `keep_journals` (10) under `[general]`
-in `config\wow-tools.cfg`. The WTF backups and the dry-run zips both follow
+Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
+first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),
+`keep_journals` (10) and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]`
+in `config\wow-tools.cfg`. With **All flavors**, the scan reads up to `parallelism` game versions at once. A clean (and a dry run)
+still does one game version after another: they share one safety marker, and the clean stops at the first game
+version that fails. The WTF backups and the dry-run zips both follow
 `keep_backups`.
 
 ## FAQ

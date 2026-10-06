@@ -1,10 +1,10 @@
 """Labels, colours and table rows for the WTF Cleaner screens."""
 from __future__ import annotations
 
-from pathlib import Path
 
-from wowtools.core.install import ACCOUNT_WIDE, Flavor
+from wowtools.core.install import ACCOUNT_WIDE, Flavor, flavor_name
 from wowtools.core.journal import friendly_stamp
+from wowtools.core.text import human_size
 from wowtools.tools.wtf_cleaner.rules import DAY
 from wowtools.tools.wtf_cleaner.scanner import addon_name_for
 
@@ -27,19 +27,6 @@ CRITERION_COLORS = {
     "older_than": "#E8C547",
     "stray_copies": "#B07CFF",
 }
-
-
-def plural(n: int, word: str) -> str:
-    return f"{n} {word}{'' if n == 1 else 's'}"
-
-
-def format_size(n: int) -> str:
-    size = float(n)
-    for unit in ("B", "KB", "MB", "GB"):
-        if size < 1024 or unit == "GB":
-            return f"{int(size)} {unit}" if unit == "B" else f"{size:.1f} {unit}"
-        size /= 1024
-    return f"{size:.1f} GB"
 
 
 def age_days(mtime: float, now: float) -> int:
@@ -91,7 +78,7 @@ def outcome_row(outcome, flavor: Flavor) -> tuple[str, ...]:
         status = f"{status}: {outcome.detail}"
     account, character = _owner(outcome.path, flavor)
     return (status, account, character, addon_name_for(outcome.path.name) or "", ", ".join(outcome.reasons),
-            format_size(outcome.size), outcome.path.name)
+            human_size(outcome.size), outcome.path.name)
 
 
 def result_rows(result, flavor: Flavor) -> list[tuple[str, ...]]:
@@ -108,11 +95,6 @@ def multi_result_rows(result) -> list[tuple[str, ...]]:
     return rows
 
 
-def flavor_name(folder: str) -> str:
-    """A flavor folder's display name (e.g. _retail_ -> Retail), for flavors known only by folder (journals)."""
-    return Flavor(folder, Path(folder)).display_name
-
-
 UNDO_COLUMNS = ("Status", "Flavor", "Account", "Character", "Addon", "File", "Size", "Restored from")
 UNDO_STATUS_LABELS = {"restored": "Restored", "skipped": "Skipped", "failed": "Failed"}
 UNDO_SOURCES = {"zip": "cleaned-files zip", "backup": "WTF backup", "": ""}
@@ -127,8 +109,8 @@ def undo_row(outcome) -> tuple[str, ...]:
     account = parts[2] if len(parts) > 3 and parts[1] == "Account" else ""
     character = f"{parts[3]}/{parts[4]}" if account and len(parts) >= 7 else (ACCOUNT_WIDE if account else "")
     name = parts[-1]
-    return (status, flavor_name(outcome.flavor), account, character, addon_name_for(name) or "", name, format_size(max(0, outcome.size)),
-            UNDO_SOURCES.get(outcome.source, outcome.source))
+    return (status, flavor_name(outcome.flavor), account, character, addon_name_for(name) or "", name,
+            human_size(max(0, outcome.size)), UNDO_SOURCES.get(outcome.source, outcome.source))
 
 
 def undo_summary_rows(result) -> list[tuple[str, str]]:

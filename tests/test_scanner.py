@@ -99,6 +99,8 @@ class ScannerTest(unittest.TestCase):
         self.assertEqual(names[0], "scan.started")
         self.assertIn("scan.addons", names)
         self.assertIn("scan.warning", names)
+        for name in ("scan.addons", "scan.warning"):  # flavor-tagged: several flavors can be scanned at once
+            self.assertEqual(next(r for r in records if r["event"] == name)["data"]["flavor"], self.retail.folder)
         completed = next(r for r in records if r["event"] == "scan.completed")["data"]
         self.assertEqual((completed["groups"], completed["sv_files"], completed["installed"]), (9, 14, 4))
 

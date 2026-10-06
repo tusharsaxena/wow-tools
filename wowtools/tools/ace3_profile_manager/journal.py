@@ -12,8 +12,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from wowtools.core import journal as core
-from wowtools.core.events import log_event
 from wowtools.core.journal import Journal
+from wowtools.tools.ace3_profile_manager.events import TOOL_NAME
 
 A_EDITED = "edited"
 A_ROLLED_BACK = "rolled_back"
@@ -27,18 +27,20 @@ class ProfileJournal(core.JournalWriter):
 
     def add_edited(self, *, flavor: str, path: Path, rel: str, zip_path: Path, sha_before: str, sha_after: str,
                    size_before: int, size_after: int, changes: list[str]) -> None:
-        self.add_entry({"action": A_EDITED, "flavor": flavor, "path": path, "rel": rel, "zip": zip_path,
-                        "sha_before": sha_before, "sha_after": sha_after, "size_before": size_before,
-                        "size_after": size_after, "changes": list(changes)})
-        self._edited.add((flavor, rel))
+        with self.lock:
+            self.add_entry({"action": A_EDITED, "flavor": flavor, "path": path, "rel": rel, "zip": zip_path,
+                            "sha_before": sha_before, "sha_after": sha_after, "size_before": size_before,
+                            "size_after": size_after, "changes": list(changes)})
+            self._edited.add((flavor, rel))
 
     def add_rolled_back(self, *, flavor: str, rels: list[str]) -> None:
-        undone = {(flavor, rel) for rel in rels} & self._edited
-        if not undone:
-            return
-        self._write({"action": A_ROLLED_BACK, "flavor": flavor, "rels": sorted(rel for _, rel in undone)})
-        self._edited -= undone
-        self.count -= len(undone)
+        with self.lock:
+            undone = {(flavor, rel) for rel in rels} & self._edited
+            if not undone:
+                return
+            self._write({"action": A_ROLLED_BACK, "flavor": flavor, "rels": sorted(rel for _, rel in undone)})
+            self._edited -= undone
+            self.count -= len(undone)
 
 
 def read_profile_journal(path: Path) -> Journal:
@@ -82,17 +84,6 @@ def record_recovered(folder: Path | None, flavor: str, zip_name: str, rels: list
     return changed
 
 
-def latest_undoable(folder: Path | None) -> Path | None:
-    return core.latest_undoable(folder, read_profile_journal)
-
-
-def prune_journals(folder: Path | None, keep: int) -> list[Path]:
-    removed = core.prune_journals(folder, keep)
-    if removed:
-        log_event("ace.journal_pruned", removed=[p.name for p in removed], keep=keep)
-    return removed
-
-
 def referenced_zips(folder: Path | None) -> set[str] | None:
     """The edited-*.zip names the journals in folder use; None when a journal could not be read (a reader such as
     a virus scanner or OneDrive may hold it for a moment): its zips are unknown, so none may be deleted."""
@@ -104,3 +95,9 @@ def referenced_zips(folder: Path | None) -> set[str] | None:
             return None
         names.update(entry["zip"].name for entry in journal.entries)
     return names
+
+
+JOURNALS = core.ToolJournals(TOOL_NAME, read_profile_journal, "ace.journal_pruned")
+resolve_journal_dir = JOURNALS.dir
+latest_undoable = JOURNALS.latest_undoable
+prune_journals = JOURNALS.prune

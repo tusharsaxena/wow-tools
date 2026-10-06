@@ -5,9 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from wowtools.core.install import FLAVOR_NAMES
+from wowtools.core.install import flavor_name
 from wowtools.core.journal import Journal, friendly_stamp
 from wowtools.core.paths import to_stored
+from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager.model import DEFAULT
 from wowtools.tools.ace3_profile_manager.multi import MultiApplyResult
 from wowtools.tools.ace3_profile_manager.ops import CopyOf, DbState, Original, Summary
@@ -28,18 +29,10 @@ NO_PENDING = "No pending changes"
 # two rows; the pending line (up to 99999 changes) and each hint (with a name of up to 16 characters) one row each,
 # so both show together. A longer name is shortened with "…" by the screen to keep the hint on its row.
 STEPS = ("1 Tick profiles or characters (Space) → 2 pick an action below → 3 check the pending changes in the tree "
-         "→ 4 Apply (w) writes them")
+         "→ 4 Apply writes them")
 CHARACTER_KINDS = ("char", "pair", "character")  # tree nodes that are one character
 RESULT_TEXT = {"edited": "changed", "would_edit": "would change", "skipped": "skipped", "failed": "failed",
                "rolled_back": "put back"}
-
-
-def plural(n: int, word: str, words: str | None = None) -> str:
-    return f"{n} {word if n == 1 else (words or word + 's')}"
-
-
-def flavor_name(folder: str) -> str:
-    return FLAVOR_NAMES.get(folder) or folder.strip("_").replace("_", " ").title()
 
 
 @dataclass
@@ -113,6 +106,11 @@ def profile_rows(state: DbState) -> list[ProfileRow]:
     return list(rows.values())
 
 
+def scan_label(name: str) -> str:
+    """The scan box's line while SavedVariables are read: the file being read, once there is one."""
+    return f"Reading SavedVariables: {name}" if name else "Reading SavedVariables"
+
+
 def pending_text(summary: Summary) -> str:
     parts = [(summary.deleted, "delete"), (summary.renamed, "rename"), (summary.copied, "copy", "copies"),
              (summary.reassigned, "reassign"), (summary.removed, "removed character"),
@@ -163,7 +161,7 @@ def guidance(node_kind: str | None, node_name: str, ticked_profiles: int, ticked
     rows even with the name shortened)."""
     lines = []
     if pending_total:
-        lines.append(f"{plural(pending_total, 'pending change')}, not written: w apply · y dry run · ⌫ discard")
+        lines.append(f"{plural(pending_total, 'pending change')}, not written: Apply, Dry run or Discard them")
     text = node_hint(node_kind, node_name, ticked_profiles + ticked_chars, locked) if hint else ""
     if text:
         lines.append(text)

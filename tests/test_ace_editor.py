@@ -120,7 +120,7 @@ class EditorTest(unittest.TestCase):
 
     def test_locked_file_refuses_before_snapshot(self):
         self.stage_two_files()
-        with patch("wowtools.tools.ace3_profile_manager.editor.probe_lock", return_value="in use"), \
+        with patch("wowtools.core.svfiles.probe_lock", return_value="in use"), \
                 self.assertRaises(editor.ApplyError) as caught:
             self.apply()
         self.assertIn("locked", str(caught.exception))

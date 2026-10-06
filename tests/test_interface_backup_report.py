@@ -35,17 +35,6 @@ def info(stamp: str, kind: str = "backup", size: int = 2048) -> BackupInfo:
 
 
 class ReportTest(unittest.TestCase):
-    def test_human_size(self):
-        self.assertEqual(report.human_size(None), "—")
-        self.assertEqual(report.human_size(512), "512 B")
-        self.assertEqual(report.human_size(1536), "1.5 KB")
-        self.assertEqual(report.human_size(3 * 1024 ** 3), "3.0 GB")
-        self.assertEqual(report.human_size(5 * 1024 ** 5), "5120.0 TB")
-
-    def test_plural(self):
-        self.assertEqual(report.plural(1, "file"), "1 file")
-        self.assertEqual(report.plural(0, "file"), "0 files")
-
     def test_tree_texts(self):
         retail = scan()
         backups = [info("20261005-101010", "pre-restore"), info("20261004-153012")]

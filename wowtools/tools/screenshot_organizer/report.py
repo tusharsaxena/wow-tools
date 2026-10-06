@@ -4,8 +4,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from wowtools.core.install import Flavor
+from wowtools.core.install import flavor_name
 from wowtools.core.paths import to_stored
+from wowtools.core.text import plural
 from wowtools.tools.screenshot_organizer.organizer import (ALREADY_FILED, CONFLICT_KEPT, COPIED, COPY_REMOVED,
                                                            DUPLICATE_REMOVED, FAILED, MOVED, REFUSED, RESTORED, SKIPPED,
                                                            SOURCE_LEFT, UNDO_SKIPPED, WOULD_COPY, WOULD_MOVE,
@@ -51,10 +52,6 @@ def kind_class(kind: str) -> str:
     return ""
 
 
-def plural(n: int, word: str) -> str:
-    return f"{n} {word}" + ("" if n == 1 else "s")
-
-
 def destination_label(dest_dir: Path | None) -> str:
     if dest_dir is None:
         return "in place (<flavor>\\Screenshots\\YYYY\\MM\\DD)"
@@ -66,11 +63,6 @@ def mode_label(result: OrganizeResult) -> str:
         return "Undo"
     verb = "copy" if result.copy else "move"
     return f"Dry run ({verb})" if result.dry_run else verb.capitalize()
-
-
-def flavor_name(folder: str) -> str:
-    """A flavor folder's display name (_retail_ -> Retail), as the other tools' result tables show it."""
-    return Flavor(folder, Path(folder)).display_name
 
 
 DATE_PARTS = 3  # YYYY/MM/DD: what the Target column always keeps of a filed shot's folder

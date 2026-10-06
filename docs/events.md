@@ -36,6 +36,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 
 | Event | Level | Description |
 |---|---|---|
+| `changelog.unreadable` | warning | CHANGELOG.md was missing, unreadable or malformed, so the changelog screen showed nothing (the reason is in `reason`). |
 | `config.changed` | info | A config value changed or was removed, or was overridden for one run. |
 | `config.created` | info | A config file in config/ was written for the first time. |
 | `config.migrated` | info | The old shared wow-tools.cfg was split into config/ (one file per tool). |
@@ -44,6 +45,9 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `folder.renamed` | info | A renamed tool's folder (logs/<tool>/ or <WoW>/wow-tools/<tool>/) was moved to its new name; logged as a warning when entries clashed or failed to move. |
 | `lock.conflict` | warning | Another copy of Ka0s WoW Tools appears to be running (its lock file exists). |
 | `lock.overridden` | warning | The user took over an existing lock file and carried on. |
+| `parallel.finished` | debug | A run over several units ended: how many, how many failed, how many never started (an earlier unit failed and the run stops on one), seconds. |
+| `parallel.started` | debug | A run over several units (game versions) started (core/parallel.py): what, the units, and the threads it uses (1 = one after another). |
+| `parallel.unit_failed` | error | One unit of a run over several raised an unexpected error; the units already running carried on (what, unit, type, message, traceback). |
 | `session.end` | info | The process is exiting (waited_for_worker is set when it first waited for a running clean, organize or undo to finish). |
 | `session.start` | info | The launcher or a tool started. |
 | `session.waiting_for_worker` | warning | The app closed while a clean, organize or undo was still running; the lock is kept until it finishes. |
@@ -183,6 +187,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ace.rolled_back` | warning | After a failure, the files this run had already written were put back. |
 | `ace.scan_completed` | info | A scan finished, with counts (files, databases, profiles, characters, leftover characters, seconds). |
 | `ace.scan_started` | info | A scan of one flavor's SavedVariables for AceDB databases started. |
+| `ace.snapshot_discarded` | info | A whole-WTF snapshot taken before an Undo whose other snapshot failed was deleted: nothing was changed, so it protected nothing. |
 | `ace.snapshot_failed` | error | The whole-WTF snapshot failed; nothing was changed. |
 | `ace.snapshot_taken` | info | The whole-WTF snapshot was written and verified. |
 | `ace.snapshots_pruned` | info | Older whole-WTF snapshots of the flavor were deleted to keep the newest N (keep_backups). |

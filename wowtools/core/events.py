@@ -48,6 +48,8 @@ CORE_EVENTS: dict[str, EventSpec] = {
                                      "running clean, organize or undo to finish)."),
     "session.waiting_for_worker": EventSpec("warning", "The app closed while a clean, organize or undo was still "
                                                        "running; the lock is kept until it finishes."),
+    "changelog.unreadable": EventSpec("warning", "CHANGELOG.md was missing, unreadable or malformed, so the changelog "
+                                                 "screen showed nothing (the reason is in `reason`)."),
     "config.created": EventSpec("info", "A config file in config/ was written for the first time."),
     "config.changed": EventSpec("info", "A config value changed or was removed, or was overridden for one run."),
     "config.migrated": EventSpec("info", "The old shared wow-tools.cfg was split into config/ (one file per tool)."),
@@ -57,6 +59,12 @@ CORE_EVENTS: dict[str, EventSpec] = {
                                         "to its new name; logged as a warning when entries clashed or failed to move."),
     "lock.conflict": EventSpec("warning", "Another copy of Ka0s WoW Tools appears to be running (its lock file exists)."),
     "lock.overridden": EventSpec("warning", "The user took over an existing lock file and carried on."),
+    "parallel.started": EventSpec("debug", "A run over several units (game versions) started (core/parallel.py): "
+                                  "what, the units, and the threads it uses (1 = one after another)."),
+    "parallel.finished": EventSpec("debug", "A run over several units ended: how many, how many failed, how "
+                                   "many never started (an earlier unit failed and the run stops on one), seconds."),
+    "parallel.unit_failed": EventSpec("error", "One unit of a run over several raised an unexpected error; the "
+                                      "units already running carried on (what, unit, type, message, traceback)."),
     "ui.selection": EventSpec("info", "The user made a choice in the TUI or CLI."),
     "ui.quit_refused": EventSpec("info", "Ctrl+Q was pressed while a run was in progress and was refused."),
     "ui.item_toggled": EventSpec("debug", "The user ticked or unticked a single item."),
@@ -185,7 +193,7 @@ class EventLog:
         self._on_sink_error = on_sink_error or (lambda message: print(message, file=sys.stderr))
         self._disabled: set[str] = set()
         self._handles: dict[Path, IO[str]] = {}
-        self._lock = threading.Lock()  # workers log too
+        self._lock = threading.RLock()  # workers log too; re-entrant: emit holds it around _append
         _OPEN_LOGS.add(self)
 
     def set_context(self, *, tool: str | None = None, mode: str | None = None) -> None:
@@ -204,26 +212,29 @@ class EventLog:
         final_level = spec.level
         if level in LEVELS and LEVELS[level] > LEVELS[final_level]:
             final_level = level
-        now = self._clock()
-        record = {
-            "v": SCHEMA_VERSION,
-            "ts": now.isoformat(timespec="milliseconds"),
-            "session": self.session,
-            "suite_version": __version__,
-            "tool": self.tool,
-            "mode": self.mode,
-            "event": name,
-            "level": final_level,
-            "dry_run": dry_run,
-            "data": data,
-        }
-        if self.records is not None:
-            self.records.append(record)
-        if self.log_dir is not None:
-            events_path, text_path = log_paths(self.log_dir, self.tool, now.strftime("%Y-%m-%d"))
-            self._append("events", events_path, json.dumps(record, default=_json_default, ensure_ascii=False))
-            if LEVELS[final_level] >= LEVELS[self.text_level]:
-                self._append("text", text_path, format_text(record))
+        # One lock around the time stamp and both sinks: parallel workers log too (core/parallel.py), and each
+        # file then gets its lines in time order, in the same order in the events and the text file.
+        with self._lock:
+            now = self._clock()
+            record = {
+                "v": SCHEMA_VERSION,
+                "ts": now.isoformat(timespec="milliseconds"),
+                "session": self.session,
+                "suite_version": __version__,
+                "tool": self.tool,
+                "mode": self.mode,
+                "event": name,
+                "level": final_level,
+                "dry_run": dry_run,
+                "data": data,
+            }
+            if self.records is not None:
+                self.records.append(record)
+            if self.log_dir is not None:
+                events_path, text_path = log_paths(self.log_dir, self.tool, now.strftime("%Y-%m-%d"))
+                self._append("events", events_path, json.dumps(record, default=_json_default, ensure_ascii=False))
+                if LEVELS[final_level] >= LEVELS[self.text_level]:
+                    self._append("text", text_path, format_text(record))
         return record
 
     def _append(self, sink: str, path: Path, line: str) -> None:

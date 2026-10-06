@@ -261,7 +261,7 @@ def scan(flavor: Flavor, *, account: str | None = None, progress: ScanProgress |
     characters = [c for acct in accounts for c in acct.characters(on_error)]
     scope = str(accounts[0].path) if account is not None else str(flavor.account_dir)
     enabled = enabled_addons(characters, installed, warnings, scope=scope)
-    log_event("scan.addons", installed=sorted(installed.values(), key=str.casefold), enabled=sorted(enabled))
+    log_event("scan.addons", flavor=flavor.folder, installed=sorted(installed.values(), key=str.casefold), enabled=sorted(enabled))
 
     total = len(accounts) + len(characters)
     done = 0
@@ -278,7 +278,7 @@ def scan(flavor: Flavor, *, account: str | None = None, progress: ScanProgress |
             _report(progress, done, total, f"{acct.name} · {character.label}")
 
     for warning in warnings:
-        log_event("scan.warning", path=warning.path, message=warning.message)
+        log_event("scan.warning", flavor=flavor.folder, path=warning.path, message=warning.message)
     result = ScanResult(flavor, installed, enabled, groups, len(accounts), len(characters), warnings, account,
                         tuple(a.name for a in accounts))
     log_event("scan.completed", flavor=flavor.folder, account=account, installed=len(installed),

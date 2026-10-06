@@ -8,11 +8,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from wowtools.core import journal as core
-from wowtools.core.events import log_event
 from wowtools.core.journal import Journal, list_journals, mark_undone, new_journal_path
+from wowtools.tools.screenshot_organizer.events import TOOL_NAME
 
-__all__ = ["A_COPIED", "A_DUPLICATE", "A_MOVED", "A_SOURCE_LEFT", "Journal", "JournalWriter", "latest_undoable",
-           "list_journals", "mark_undone", "new_journal_path", "prune_journals", "read_journal"]
+__all__ = ["A_COPIED", "A_DUPLICATE", "A_MOVED", "A_SOURCE_LEFT", "JOURNALS", "Journal", "JournalWriter",
+           "latest_undoable", "list_journals", "mark_undone", "new_journal_path", "prune_journals", "read_journal",
+           "resolve_journal_dir"]
 
 A_MOVED = "moved"
 A_COPIED = "copied"
@@ -42,13 +43,8 @@ def read_journal(path: Path) -> Journal:
     return journal
 
 
-def latest_undoable(journal_dir: Path | None) -> Path | None:
-    """The newest journal that has entries and was not undone. Only that journal is ever offered."""
-    return core.latest_undoable(journal_dir, read_journal)
-
-
-def prune_journals(journal_dir: Path | None, keep: int) -> list[Path]:
-    removed = core.prune_journals(journal_dir, keep)
-    if removed:
-        log_event("shots.journal_pruned", removed=[p.name for p in removed], keep=keep)
-    return removed
+# Always under the WoW folder (resolve_journal_dir): never inside the screenshot archive.
+JOURNALS = core.ToolJournals(TOOL_NAME, read_journal, "shots.journal_pruned")
+resolve_journal_dir = JOURNALS.dir
+latest_undoable = JOURNALS.latest_undoable
+prune_journals = JOURNALS.prune

@@ -12,24 +12,28 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widget import Widget
-from textual.widgets import Button, Checkbox, DataTable, Footer, Header, Label, Static, Tree
+from textual.widgets import Button, Checkbox, DataTable, Header, Label, Static, Tree
 
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor
 from wowtools.core.paths import to_stored
+from wowtools.core.text import human_size, plural
 from wowtools.tools.interface_backup.catalog import BackupInfo
 from wowtools.tools.interface_backup.report import (RESTORE_RESULT_COLUMNS, friendly_created, group_items,
-                                                    human_size, ordered_parts, plural, restore_lost_nothing,
-                                                    restore_result_rows, restore_summary, restore_summary_rows)
+                                                    ordered_parts, restore_lost_nothing, restore_result_rows,
+                                                    restore_summary, restore_summary_rows)
 from wowtools.tools.interface_backup.restore import (BackupContents, RestoreError, RestorePlan, RestoreResult,
                                                      case_key, open_backup, plan_restore)
 from wowtools.tools.interface_backup.scanner import PARTS, FlavorScan, scan_flavor
-from wowtools.ui.branding import BrandBar
-from wowtools.ui.dialogs import ACCENT, RESULT_HINT, TREE_BINDINGS, TREE_HINT, TwoPaneFocus, result_css, review_hint, theme_colour, two_pane_css
+from wowtools.ui.branding import BottomBar
+from wowtools.ui.dialogs import ACCENT, TREE_BINDINGS, TREE_HINT, TwoPaneFocus, review_hint, theme_colour, two_pane_css
+from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
+from wowtools.ui.review import ButtonActions, ReviewTree
+from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBox, FilterInput, ModelFilter, ModelNode
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
 # The review's hint shape, then the keys of this screen. Space here ticks a part or opens a node of the effects tree.
-NAV_HINT = review_hint("tick or open") + TREE_HINT + "o restore · b/Esc back"
+NAV_HINT = review_hint("tick or open") + FILTER_HINT + TREE_HINT + "Esc back"
 # The tree's top nodes: (kind, title, note). Their children are loaded on expand (groups of files, links, lines).
 EFFECTS = (
     ("removed", "Will be removed", "on disk now, not in the backup"),
@@ -54,18 +58,15 @@ def group_label(name: str, files: int | None) -> Text:
                          (f" · {plural(files, 'file')}" if files is not None else "", "dim"))
 
 
-class RestoreTree(Tree):
-    """What the restore changes. ← jumps to the left panel (instead of scrolling sideways)."""
-
-    BINDINGS: ClassVar[list[Binding]] = [Binding("left", "screen.focus_filters", "Filters", show=False)]
-
-
-class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
-    """Two panes, like the review: on the left the backup's details, a box per part and Restore / Back; on the
-    right a tree of what the restore changes (worked out in a worker each time a box changes); a summary line
-    below. Dismisses with the plan to restore, or None."""
+class RestoreScreen(FilterBox, ButtonActions, TwoPaneFocus, Screen[RestorePlan | None]):
+    """Two panes, like the review: on the left the backup's details, a box per part, the tree filter (nothing to
+    tick in the tree: the filter only narrows it) and Restore / Back; on the right a tree of what the restore
+    changes (worked out in a worker each time a box changes); a summary line below. Dismisses with the plan to
+    restore, or None."""
 
     TREE_SELECTOR = "#effects"
+    LOG_SCREEN = "ibackup_restore"
+    BUTTON_ACTIONS: ClassVar[dict[str, str]] = {"btn-restore": "restore", "btn-back": "cancel"}
     # Narrower than the review (FILTERS_WIDTH): two buttons only, and at 80 columns the tree must show its root
     # and the effect titles ("Newer now than in the backup (N files)") without clipping.
     DEFAULT_CSS = two_pane_css("RestoreScreen", "#effects", width=46)
@@ -75,6 +76,7 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
         Binding("escape", "cancel", "Back", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
+        *FILTER_BINDINGS,
         *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
@@ -90,6 +92,7 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
         self.problem = ""
         self.summary_text = ""
         self._generation = 0  # bumped per replan: a plan worked out for older boxes is dropped
+        self._kept: ModelFilter | None = None  # what the filter keeps of the plan (files load on expand)
         self._last_filter: Widget | None = None
 
     @property
@@ -106,15 +109,15 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
                 yield Label("Restore", classes="section")
                 for part in PARTS:
                     yield Ka0sCheckbox(part, True, id=f"part-{part}", disabled=True, compact=True)
+                yield FilterInput()
                 with ButtonRow(id="actions", wrap=False):
-                    yield action_button("Restore", "apply", id="btn-restore", disabled=True)
-                    yield action_button("Back", "neutral", id="btn-back")
+                    yield action_button("Restore", "overwrite", "o", id="btn-restore", disabled=True)
+                    yield action_button("Back", "cancel", "b", id="btn-back")
                 yield NavHint(NAV_HINT)
             # Short: the tree is narrow at 80 columns; the left pane has the kind and the zip.
-            yield RestoreTree(Text(f"{self.flavor.display_name} · {self.info.when}", style=ACCENT), id="effects")
+            yield ReviewTree(Text(f"{self.flavor.display_name} · {self.info.when}", style=ACCENT), id="effects")
         yield Static("", id="summary")
-        yield BrandBar()
-        yield Footer()
+        yield BottomBar()
 
     def on_mount(self) -> None:
         self.sub_title = "Interface Backup · restore"
@@ -140,7 +143,7 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
     def first_filter(self) -> Widget | None:
         boxes = [b for b in self.query(Ka0sCheckbox).results(Ka0sCheckbox) if b.focusable]
         buttons = [b for b in self.query("#actions Button").results(Button) if b.focusable]
-        return next(iter(boxes + buttons), None)
+        return next(iter([*boxes, self.filter_input(), *buttons]), None)
 
     # --- loading the backup and the folders (worker) ---------------------------------------------
     def _load_worker(self, info: BackupInfo, flavor: Flavor) -> None:
@@ -262,28 +265,77 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
         plan = self.plan
         return list(getattr(plan, kind)) if plan is not None else []
 
+    def _model(self, plan: RestorePlan) -> list[ModelNode]:
+        """The effects as model nodes, with the files a group or an effect loads on expand (the filter matches
+        them)."""
+        effects = []
+        for kind, _title, _note in EFFECTS:
+            items = list(getattr(plan, kind))
+            if not items:
+                continue
+            node = ModelNode(("effect", kind))
+            if kind in GROUPED:
+                for name, members in group_items(items):
+                    if len(members) == 1 and "/".join(members[0]) == name:
+                        node.children.append(ModelNode(("file", kind, name)))  # a group that is one file
+                    else:
+                        node.children.append(ModelNode(("group", kind, name),
+                                                       [ModelNode(("file", kind, f"{part}/{rel}"[len(name) + 1:],
+                                                                   name)) for part, rel in members]))
+            else:
+                node.children = [ModelNode(("file", kind, item if isinstance(item, str) else "/".join(item)))
+                                 for item in items]
+            effects.append(node)
+        return effects
+
+    @staticmethod
+    def _filter_name(data) -> str:
+        if data[0] == "effect":
+            return next(title for kind, title, _ in EFFECTS if kind == data[1])
+        return data[2]
+
+    def _model_filter(self, effects: list[ModelNode]) -> ModelFilter:
+        # A file's identity is its effect and text (and, in a group, the group's name: two groups may hold the same
+        # embeds.xml), a group's its effect and name: the same for what an expand adds.
+        return self.model_filter(effects, lambda n: n.children, lambda n: (self._filter_name(n.data),),
+                                 key=lambda n: n.data)
+
+    def filter_changed(self) -> None:
+        """The filter text changed: show the plan through it (nothing to rebuild before a plan is worked out)."""
+        if self.plan is not None:
+            self._show_plan(self.plan)
+
     def _show_plan(self, plan: RestorePlan) -> None:
         tree = self.query_one("#effects", Tree)
         tree.clear()
         warning = f"bold {theme_colour(self.app, 'warning')}"
-        for kind, title, note in EFFECTS:
-            items = self._effect_items(kind)
-            if not items:
+        effects = self._model(plan)
+        kept = self._kept = self._model_filter(effects)
+        for effect in effects:
+            if not kept.shows(effect):
                 continue
+            kind = effect.data[1]
+            title, note = next((t, n) for k, t, n in EFFECTS if k == kind)
+            items = self._effect_items(kind)
             count = plural(len(items), "file") if kind in GROUPED else str(len(items))
             label = Text.assemble((f"{title} ({count})", warning if kind in WARN else "bold"), (f"  {note}", "dim"))
             if kind in GROUPED:
-                node = tree.root.add(label, data=("effect", kind), expand=True)
-                for name, members in group_items(items):
-                    single = len(members) == 1 and "/".join(members[0]) == name
-                    text = group_label(name, None if single else len(members))
-                    if single:
-                        node.add_leaf(text, data=("file",))
+                node = tree.root.add(label, data=effect.data, expand=True)
+                for child in effect.children:
+                    if not kept.shows(child):
+                        continue
+                    name = child.data[2]
+                    if child.data[0] == "file":
+                        node.add_leaf(group_label(name, None), data=child.data)
                     else:
-                        node.add(text, data=("group", kind, name), allow_expand=True)  # files load on expand
+                        group = node.add(group_label(name, len(child.children)), data=child.data,
+                                         allow_expand=True)  # files load on expand
+                        self._open_if(group, kept.opens(child))
             else:
-                tree.root.add(label, data=("effect", kind), allow_expand=True)  # lines load on expand
-        if plan.low_space:
+                lines = tree.root.add(label, data=effect.data, allow_expand=True)  # lines load on expand
+                self._open_if(lines, kept.opens(effect))
+        self.note_no_match(tree.root)  # before the notes, which are not items: the filter never hides them
+        if plan.low_space:  # the notes are not items: the filter never hides them
             tree.root.add_leaf(Text(f"⚠ Low disk space on the WoW drive: {human_size(plan.free_bytes)} free, "
                                     f"~{human_size(plan.bytes_needed)} needed", style=warning), data=("note",))
         if restore_lost_nothing(plan):
@@ -292,18 +344,27 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
                                              ("  everything is in the backup", "dim")), data=("note",))
         tree.root.expand()
 
+    def _open_if(self, node, opens: bool) -> None:
+        """Open a node whose files load on expand when the filter opens it (its matches show)."""
+        if opens:
+            self._load_files(node)
+            node.expand()
+
     def on_tree_node_expanded(self, event: Tree.NodeExpanded) -> None:
-        node = event.node
-        if node.data is None or node.children:
+        self._load_files(event.node)
+
+    def _load_files(self, node) -> None:
+        """A group's files or an effect's lines, those the filter keeps, the first time it opens."""
+        if node.data is None or node.children or node.data[0] not in ("group", "effect"):
             return
-        if node.data[0] == "group":
-            _, kind, name = node.data
-            members = next((m for n, m in group_items(self._effect_items(kind)) if n == name), [])
-            for part, rel in members:
-                node.add_leaf(Text(f"{part}/{rel}"[len(name) + 1:], style="dim"), data=("file",))
-        elif node.data[0] == "effect" and node.data[1] not in GROUPED:
-            for item in self._effect_items(node.data[1]):
-                node.add_leaf(Text(item if isinstance(item, str) else "/".join(item), style="dim"), data=("file",))
+        if node.data[0] == "effect" and node.data[1] in GROUPED:
+            return
+        kept = self._kept
+        model = next((m for effect in self._model(self.plan) for m in (effect, *effect.children)
+                      if m.data == node.data), None) if self.plan is not None else None
+        for child in model.children if model is not None else []:
+            if kept is None or kept.shows(child):
+                node.add_leaf(Text(child.data[2], style="dim"), data=child.data)
 
     # --- actions ---------------------------------------------------------------------------------
     def action_restore(self) -> None:
@@ -316,24 +377,17 @@ class RestoreScreen(TwoPaneFocus, Screen[RestorePlan | None]):
         log_event("ui.selection", screen="ibackup_restore", control="back", value=True)
         self.dismiss(None)
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        event.stop()
-        if event.button.id == "btn-restore":
-            self.action_restore()
-        else:
-            self.action_cancel()
 
-
-class RestoreResultScreen(Screen[str]):
+class RestoreResultScreen(ResultBase):
     """The outcome of a restore or an undo, per part. Dismisses with "undo", "review", "flavors", "tools" or
     "quit"."""
 
-    DEFAULT_CSS = result_css("RestoreResultScreen")
-    BINDINGS: ClassVar[list[Binding]] = [
-        Binding("z", "choose('undo')", "Undo"), Binding("r", "choose('review')", "Rescan"),
-        Binding("f", "choose('flavors')", "Flavors"), Binding("t", "choose('tools')", "Tools"),
-        Binding("q", "choose('quit')", "Quit"), Binding("escape", "choose('review')", "Back", show=False),
-        *NAV_BINDINGS]
+    LOG_SCREEN = "ibackup_restore_result"
+    RESCAN = "review"
+    DETAIL_ID = "result-table"
+    BINDINGS: ClassVar[list[Binding]] = result_bindings(RESCAN, before=[Binding("z", "choose('undo')", "Undo")])
+    STATUS_COLOURS: ClassVar[dict[str, str]] = {"restored": "success", "replaced_left": "warning",
+                                                "rolled_back": "warning", "failed": "error"}
 
     def __init__(self, result: RestoreResult) -> None:
         super().__init__()
@@ -350,45 +404,23 @@ class RestoreResultScreen(Screen[str]):
         """z is not a key here (nor in the footer) when there is no Undo."""
         return not (action == "choose" and parameters == ("undo",) and not self.can_undo)
 
-    def compose(self) -> ComposeResult:
-        yield Header()
-        with Vertical(id="result"):
-            summary = DataTable(id="result-summary", cursor_type="none", zebra_stripes=True)
-            summary.can_focus = False  # read-only summary: not a focus stop
-            yield summary
-            yield DataTable(id="result-table", classes="result-detail", cursor_type="row", zebra_stripes=True)
-        with ButtonRow(classes="buttons"):
-            if self.can_undo:
-                yield action_button("Undo (z)", "revert", id="undo")
-            yield action_button("Rescan (r)", "neutral", id="review")
-            yield action_button("Other flavor (f)", "neutral", id="flavors")
-            yield action_button("Tools (t)", "neutral", id="tools")
-            yield action_button("Quit (q)", "neutral", id="quit")
-        hint = RESULT_HINT + ("z undo · " if self.can_undo else "")
-        yield NavHint(hint + "r rescan · f other flavor · t tools · q quit")
-        yield BrandBar()
-        yield Footer()
+    def lead_buttons(self) -> list[ResultButton]:
+        return [("Undo", "revert", "undo", "z")] if self.can_undo else []
 
-    def on_mount(self) -> None:
+    def result_title(self) -> str:
+        return "Interface Backup · undo result" if self.result.undo else "Interface Backup · restore result"
+
+    def summary_rows(self) -> list[tuple[str, str]]:
+        return restore_summary_rows(self.result)
+
+    def fill_detail(self, table: DataTable) -> None:
         r = self.result
-        self.sub_title = "Interface Backup · undo result" if r.undo else "Interface Backup · restore result"
-        summary = self.query_one("#result-summary", DataTable)
-        summary.add_columns("Item", "Value")
-        summary.add_rows((Text(item), Text(value)) for item, value in restore_summary_rows(r))
-        table = self.query_one("#result-table", DataTable)
         table.add_columns(*RESTORE_RESULT_COLUMNS)
-        styles = {"restored": "success", "replaced_left": "warning", "rolled_back": "warning", "failed": "error"}
         for outcome, (part, kind, reason) in zip(ordered_parts(r), restore_result_rows(r)):
-            style = f"bold {theme_colour(self.app, styles.get(outcome.kind, 'warning'))}"
+            style = status_style(self.app, status_colour(outcome.kind, self.STATUS_COLOURS) or "warning")
             table.add_row(Text(part), Text(kind, style=style), Text(reason))
-        self.query_one("#review", Button).focus()
 
     def action_choose(self, choice: str) -> None:
         if choice == "undo" and not self.can_undo:
             return
-        log_event("ui.selection", screen="ibackup_restore_result", control="next", value=choice)
-        self.dismiss(choice)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        event.stop()
-        self.action_choose(event.button.id or "quit")
+        super().action_choose(choice)

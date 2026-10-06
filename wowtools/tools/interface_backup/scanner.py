@@ -12,6 +12,7 @@ from wowtools.core.backup import walk_files
 from wowtools.core.events import log_event
 from wowtools.core.fsutil import is_link, safe_progress
 from wowtools.core.install import Flavor
+from wowtools.core.parallel import run_units
 from wowtools.core.paths import to_stored
 
 PARTS = ("Interface", "WTF")
@@ -141,24 +142,33 @@ def scan_flavor(flavor: Flavor, *, with_stats: bool = CHEAP_STATS, parts: tuple[
     return FlavorScan(flavor, scans, leftover_folders(flavor))
 
 
-def scan_flavors(flavors: list[Flavor], *, with_stats: bool = CHEAP_STATS,
-                 progress: Progress | None = None) -> list[FlavorScan]:
-    """Scan each flavor and log what was found."""
+def scan_flavors(flavors: list[Flavor], *, with_stats: bool = CHEAP_STATS, progress: Progress | None = None,
+                 parallelism: int = 1) -> list[FlavorScan]:
+    """Scan each flavor, up to `parallelism` at once (read-only and independent), and log what was found. The scans
+    come back in the order of `flavors`. progress may be called from several threads at once (each report names
+    its flavor). An unexpected error stops the flavors not started yet and is raised once the others ended."""
     log_event("ibackup.scan_started", flavors=[f.folder for f in flavors], with_stats=with_stats)
-    scans = []
-    for flavor in flavors:
-        scan = scan_flavor(flavor, with_stats=with_stats, progress=progress)
-        for part in scan.parts.values():
-            for error in part.errors[:SAMPLE]:
-                log_event("ibackup.scan_warning", flavor=flavor.folder, part=part.name, error=error)
-            if len(part.errors) > SAMPLE:
-                log_event("ibackup.scan_warning", flavor=flavor.folder, part=part.name,
-                          error=f"{len(part.errors) - SAMPLE} more not logged")
-        for path in scan.leftovers:
-            log_event("ibackup.leftover_found", flavor=flavor.folder, path=to_stored(path))
-        log_event("ibackup.scan_completed", flavor=flavor.folder,
-                  parts={p.name: {"exists": p.exists, "linked": p.linked, "files": len(p.files), "bytes": p.size,
-                                  "links": len(p.links)}
-                         for p in scan.parts.values()})
-        scans.append(scan)
-    return scans
+    results = run_units(flavors, lambda flavor, _report: _scan_and_log(flavor, with_stats, progress),
+                        parallelism=parallelism, what="ibackup.scan", label=lambda flavor: flavor.folder,
+                        stop_on_error=True)
+    for result in results:
+        if result.error is not None:
+            raise result.error
+    return [result.value for result in results if result.value is not None]
+
+
+def _scan_and_log(flavor: Flavor, with_stats: bool, progress: Progress | None) -> FlavorScan:
+    scan = scan_flavor(flavor, with_stats=with_stats, progress=progress)
+    for part in scan.parts.values():
+        for error in part.errors[:SAMPLE]:
+            log_event("ibackup.scan_warning", flavor=flavor.folder, part=part.name, error=error)
+        if len(part.errors) > SAMPLE:
+            log_event("ibackup.scan_warning", flavor=flavor.folder, part=part.name,
+                      error=f"{len(part.errors) - SAMPLE} more not logged")
+    for path in scan.leftovers:
+        log_event("ibackup.leftover_found", flavor=flavor.folder, path=to_stored(path))
+    log_event("ibackup.scan_completed", flavor=flavor.folder,
+              parts={p.name: {"exists": p.exists, "linked": p.linked, "files": len(p.files), "bytes": p.size,
+                              "links": len(p.links)}
+                     for p in scan.parts.values()})
+    return scan

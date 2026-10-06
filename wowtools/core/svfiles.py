@@ -2,14 +2,14 @@
 
 UI-free. A guard that refuses any path outside <flavor>/WTF/Account or not directly inside a SavedVariables
 folder; a lock probe (rename aside and straight back, which Windows refuses exactly when another program holds
-the file open); recovery of probe leftovers a crash left behind; and the list of SavedVariables folders in a scope.
+the file open) and the refusal every tool gives before it changes a locked file (find_locked, locked_message); recovery of probe leftovers a crash left behind; and the list of SavedVariables folders in a scope.
 """
 from __future__ import annotations
 
 import os
 import stat
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
 from wowtools.core.fsutil import rename_no_replace
@@ -83,6 +83,39 @@ def probe_lock(path: Path) -> str | None:
                                   f"rename it back to {path.name}.") from exc
             time.sleep(0.1)
     return None
+
+
+# Programs known to hold SavedVariables files open while WoW is closed: every lock refusal names them.
+KNOWN_LOCKERS = "the Raider.IO client and WeakAuras Companion are known to do this"
+LOCKED_LISTED = 10  # files a refusal lists by name; the rest are counted
+
+
+def find_locked(files: Sequence[tuple[str, Path]], fail: Callable[[SvFileError], Exception],
+                report: Callable[[str, int, int, str], None] | None = None) -> list[tuple[str, str]]:
+    """probe_lock every (rel, path), in order: the (rel, error) of each locked one. report("lock_check", index,
+    total, rel) follows each probe. A file the probe cannot put back raises fail(error), the tool's own error
+    (which says what was not changed): nothing must go on then."""
+    locked: list[tuple[str, str]] = []
+    for index, (rel, path) in enumerate(files, 1):
+        try:
+            error = probe_lock(path)
+        except SvFileError as exc:
+            raise fail(exc) from exc
+        if error is not None:
+            locked.append((rel, error))
+        if report is not None:
+            report("lock_check", index, len(files), rel)
+    return locked
+
+
+def locked_message(locked: Iterable[tuple[str, str]], verb: str) -> str:
+    """The refusal a tool raises when find_locked found files: how many, who is known to do it, "Close it and
+    <verb> again", then the first LOCKED_LISTED files with their errors and how many more there are."""
+    locked = list(locked)
+    names = "\n".join(f"  {rel} ({error})" for rel, error in locked[:LOCKED_LISTED])
+    more = f"\n  …and {len(locked) - LOCKED_LISTED} more" if len(locked) > LOCKED_LISTED else ""
+    return (f"{len(locked)} files are locked by another program ({KNOWN_LOCKERS}). Close it and {verb} again.\n"
+            f"{names}{more}")
 
 
 def recover_probe_leftovers(folders: list[Path], on_recovered: Callable[[Path], None] | None = None) -> list[Path]:

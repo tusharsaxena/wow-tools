@@ -10,7 +10,7 @@ from pathlib import Path
 from tests.fixtures import build_wow_tree
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
-from wowtools.tools.wtf_cleaner.journal import clean_journal_dir, latest_undoable, read_journal
+from wowtools.tools.wtf_cleaner.journal import resolve_journal_dir, latest_undoable, read_journal
 from wowtools.tools.wtf_cleaner.multi import execute_flavors, scan_flavors
 from wowtools.tools.wtf_cleaner.rules import Criteria, evaluate
 from wowtools.tools.wtf_cleaner.undo import undo_clean
@@ -31,7 +31,7 @@ class UndoCleanTest(unittest.TestCase):
         self.retail_sv = self.root / "_retail_" / "WTF" / "Account" / "ACCT1" / "SavedVariables"
         self.install = WowInstall(self.root)
         self.backup_dir = self.tmp / "bk"
-        self.journals = clean_journal_dir(self.root)
+        self.journals = resolve_journal_dir(self.root)
         self.before = {f: contents(self.root / f / "WTF") for f in ("_classic_era_", "_retail_")}
 
     def clean(self, backup=True):

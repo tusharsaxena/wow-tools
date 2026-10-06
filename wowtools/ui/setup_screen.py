@@ -1,4 +1,5 @@
-"""First-run and general settings: the WoW folder and retention, shared by every tool ([general] in wow-tools.cfg)."""
+"""First-run and general settings: the WoW folder, retention and parallelism, shared by every tool ([general] in
+wow-tools.cfg)."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -9,13 +10,13 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Input, Label, Static
+from textual.widgets import Button, Header, Input, Label, Static
 
-from wowtools.core.config import GENERAL, Config
+from wowtools.core.config import GENERAL, MAX_PARALLELISM, MIN_PARALLELISM, Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import WowInstall, detect_installs
 from wowtools.core.paths import to_native, to_stored
-from wowtools.ui.branding import BrandBar
+from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import FORM_WIDTH
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, FormScroll, NavHint, action_button
 
@@ -29,7 +30,8 @@ class SetupScreen(Screen[bool]):
     SetupScreen .title {{ color: $accent; text-style: bold; margin: 1 0; }}
     SetupScreen Label {{ width: 1fr; height: auto; }}
     SetupScreen .hint {{ color: $text-muted; margin-bottom: 1; }}
-    SetupScreen #setup-error {{ color: $error; height: auto; }}
+    SetupScreen #setup-error {{ color: $error; height: auto; display: none; }}
+    SetupScreen #setup-error.-shown {{ display: block; }}
     SetupScreen .buttons {{ height: auto; margin-top: 1; }}
     SetupScreen Button {{ margin-right: 2; }}
     """
@@ -58,13 +60,15 @@ class SetupScreen(Screen[bool]):
             yield Input(str(self.cfg.keep_backups), type="integer", id="keep-backups")
             yield Label("Journals to keep per tool (Undo uses the newest)")
             yield Input(str(self.cfg.keep_journals), type="integer", id="keep-journals")
+            yield Label(f"Game versions to work on at once ({MIN_PARALLELISM}-{MAX_PARALLELISM}; "
+                        "use 1 on a slow disk: a hard drive or WSL /mnt)")
+            yield Input(str(self.cfg.parallelism), type="integer", id="parallelism")
             yield Static("", id="setup-error")
             with ButtonRow(classes="buttons"):
                 yield action_button("Save", "confirm", id="save")
-                yield action_button("Cancel", "neutral", id="cancel")
-            yield NavHint("↑↓/Tab move · ←→ buttons · Enter save/press · Esc cancel")
-        yield BrandBar()
-        yield Footer()
+                yield action_button("Cancel", "cancel", "escape", id="cancel")
+            yield NavHint("↑↓/Tab move · ←→ buttons · Enter save/press")
+        yield BottomBar()
 
     def on_mount(self) -> None:
         self.sub_title = "Setup"
@@ -119,14 +123,16 @@ class SetupScreen(Screen[bool]):
 
     def _error(self, text: str) -> None:
         self.error_text = text
-        self.query_one("#setup-error", Static).update(Text(text))
+        line = self.query_one("#setup-error", Static)
+        line.update(Text(text))
+        line.set_class(bool(text), "-shown")  # no empty row above the buttons until there is an error
 
-    def _count(self, widget_id: str, least: int) -> int | None:
+    def _count(self, widget_id: str, least: int, most: int | None = None) -> int | None:
         try:
             value = int(self.query_one(f"#{widget_id}", Input).value.strip())
         except ValueError:
             return None
-        return value if value >= least else None
+        return value if value >= least and (most is None or value <= most) else None
 
     def _save(self) -> None:
         raw = self.query_one("#wow_path", Input).value.strip()
@@ -143,9 +149,14 @@ class SetupScreen(Screen[bool]):
         if keep_journals is None:
             self._error("Journals to keep must be a whole number, at least 1.")
             return
+        parallelism = self._count("parallelism", MIN_PARALLELISM, MAX_PARALLELISM)
+        if parallelism is None:
+            self._error(f"Game versions at once must be a whole number from {MIN_PARALLELISM} to {MAX_PARALLELISM}.")
+            return
         source = "wizard" if self.first_run else "settings"
         self.cfg.set_path(GENERAL, "wow_path", wow, source=source)
         self.cfg.set(GENERAL, "keep_backups", keep_backups, source=source)
         self.cfg.set(GENERAL, "keep_journals", keep_journals, source=source)
+        self.cfg.set(GENERAL, "parallelism", parallelism, source=source)
         self.cfg.save()
         self.dismiss(True)

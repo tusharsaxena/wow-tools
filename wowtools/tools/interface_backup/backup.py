@@ -20,6 +20,7 @@ from wowtools.core.events import log_event
 from wowtools.core.fsutil import is_real_dir, remove_quietly, rename_no_replace, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.core.journal import now_iso
+from wowtools.core.parallel import run_units, workers_for
 from wowtools.core.paths import to_stored
 from wowtools.tools.interface_backup.catalog import BACKUP, new_backup_path, prune_backups
 from wowtools.tools.interface_backup.scanner import PARTS, SAMPLE, FlavorScan
@@ -236,12 +237,29 @@ def back_up(scan: FlavorScan, root: Path, *, keep: int, now: datetime | None = N
 
 
 def back_up_all(scans: list[FlavorScan], root: Path, *, keep: int, progress: Progress | None = None,
-                on_flavor: Callable[[str], None] | None = None) -> list[BackupOutcome]:
-    """Each flavor in turn; one failing never stops the next. on_flavor(display name) before each one."""
-    log_event("ibackup.backup_started", flavors=[s.flavor.folder for s in scans], dest=to_stored(root))
-    announce = safe_progress(on_flavor)
+                on_flavor: Callable[[str], None] | None = None, on_flavor_done: Callable[[str], None] | None = None,
+                parallelism: int = 1) -> list[BackupOutcome]:
+    """Each flavor's backup, up to `parallelism` at once ([general] parallelism, core/parallel.py): every flavor
+    writes its own zip and prunes only its own older ones, so they are independent. One failing never stops the
+    others; an unexpected error is that flavor's "failed" outcome too (before, it stopped the whole run). Outcomes come back in the order of `scans`.
+    on_flavor(display name) runs in the flavor's thread before it starts (its progress reports then come from that
+    thread, a ProgressScreen puts them in that flavor's row) and on_flavor_done(display name) once it ended."""
+    log_event("ibackup.backup_started", flavors=[s.flavor.folder for s in scans], dest=to_stored(root),
+              workers=workers_for(parallelism, len(scans)))
+    announce, ended = safe_progress(on_flavor), safe_progress(on_flavor_done)
+
+    results = run_units(scans, lambda scan, _report: back_up(scan, root, keep=keep, progress=progress),
+                        parallelism=parallelism, what="ibackup.backup", label=lambda scan: scan.flavor.folder,
+                        on_start=lambda scan, _index, _total: announce(scan.flavor.display_name),
+                        on_done=lambda result: ended(result.unit.flavor.display_name))
     outcomes = []
-    for scan in scans:
-        announce(scan.flavor.display_name)
-        outcomes.append(back_up(scan, root, keep=keep, progress=progress))
+    for result in results:
+        if result.value is not None:
+            outcomes.append(result.value)
+            continue
+        # back_up never raises BackupError; anything else (logged by run_units, with its traceback) is that
+        # flavor's failure alone
+        reason = f"stopped unexpectedly: {type(result.error).__name__}: {result.error}"
+        log_event("ibackup.backup_failed", flavor=result.unit.flavor.folder, path=None, error=reason)
+        outcomes.append(BackupOutcome(result.unit.flavor, "failed", reason=reason))
     return outcomes

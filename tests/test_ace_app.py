@@ -5,12 +5,13 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from textual.widgets import Button, DataTable, Input, Tree
+from textual.widgets import Button, DataTable, Input, Static, Tree
 
 from tests.fixtures import BASE, TuiTestCase, build_ace_tree, make_config, settle
 from wowtools.core.backup import BackupEntry, create_backup
 from wowtools.core.config import Config
 from wowtools.core.install import WowInstall
+from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager import editor
 from wowtools.tools.ace3_profile_manager import review_screen as review_module
 from wowtools.tools.ace3_profile_manager.app import ProfileSettingsScreen
@@ -23,6 +24,7 @@ from wowtools.tools.ace3_profile_manager.settings import load_settings
 from wowtools.ui.dialogs import ConfirmScreen, InfoScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
+from wowtools.ui.widgets import action_kind
 
 TOOL = "ace3-profile-manager"
 
@@ -331,6 +333,107 @@ class ReviewTest(AceAppBase):
             await settle(app, pilot)
             self.assertTrue(review.ticked)  # hidden items keep their ticks
 
+    async def test_none_unticks_only_what_the_filter_shows(self):
+        """Spec D8: `n` unticks what the filter shows; ticks it hides stay, count, and the bottom line says so."""
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await pilot.press("a")
+            await settle(app, pilot)
+            everything = set(review.ticked)
+            review.query_one("#search", Input).value = "mierin"
+            await settle(app, pilot)
+            shown = review._shown_keys()
+            self.assertTrue(shown and shown < everything)
+            await pilot.press("n")
+            await settle(app, pilot)
+            self.assertEqual(review.ticked, everything - shown)
+            hidden = len(everything - shown)
+            self.assertEqual(len(review.hidden_ticked_keys()), hidden)
+            self.assertIn(f"{hidden} selected items are hidden by the filter", review.summary_text)
+            review.query_one("#search", Input).value = ""
+            await settle(app, pilot)
+            self.assertEqual(len(review.hidden_ticked_keys()), 0)
+            self.assertNotIn("hidden by the filter", review.summary_text)
+
+    async def test_hidden_ticks_are_said_in_the_popups_that_take_them(self):
+        """A popup counts only the hidden ticks its action takes: Delete the profiles, Assign the characters."""
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await pilot.press("a")
+            review.query_one("#search", Input).value = "mierin"
+            await settle(app, pilot)
+            hidden = review.hidden_ticked_keys()
+            profiles = sum(1 for k in hidden if k[0] == "p")
+            chars = len(hidden) - profiles
+            self.assertTrue(profiles and chars)
+            await pilot.press("d")  # every ticked profile, hidden ones too
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, TargetScreen)
+            self.assertIn(f"{plural(profiles, 'selected profile')} {'is' if profiles == 1 else 'are'} hidden by the "
+                          "filter: they are included.", app.screen.body_text)
+            app.screen.dismiss(None)
+            await settle(app, pilot)
+            await pilot.press("p")  # every ticked character
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, TargetScreen)
+            self.assertIn(f"{plural(chars, 'selected character')} {'is' if chars == 1 else 'are'} hidden by the "
+                          "filter: they are included.", app.screen.body_text)
+
+    async def test_ticks_hidden_by_a_show_box_are_not_blamed_on_the_filter(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await pilot.press("a")
+            review.query_one("#only-multi").value = True
+            await settle(app, pilot)
+            self.assertFalse(review.filtering)
+            hidden = len(review.hidden_ticked_keys())
+            self.assertGreater(hidden, 0)
+            self.assertIn(f"{hidden} selected items are hidden by the Show boxes", review.summary_text)
+            self.assertNotIn("filter", review.summary_text)
+            review.query_one("#search", Input).value = "mierin"
+            await settle(app, pilot)
+            self.assertIn("hidden by the filter or the Show boxes", review.summary_text)
+
+    async def test_profile_ticks_hidden_by_the_character_view_are_named_and_unticked_by_none(self):
+        """By character has no profile rows: their ticks are hidden by the view (not the empty filter), and `n`
+        unticks them too, since the view has nowhere to untick them."""
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await pilot.press("a")
+            await settle(app, pilot)
+            profiles = sum(1 for k in review.ticked if k[0] == "p")
+            self.assertGreater(profiles, 0)
+            await pilot.press("v")
+            await settle(app, pilot)
+            self.assertEqual(review.view, "character")
+            self.assertFalse(review.filtering)
+            self.assertIn(f"{profiles} selected items are hidden by the view", review.summary_text)
+            self.assertNotIn("filter", review.summary_text)
+            await pilot.press("n")
+            await settle(app, pilot)
+            self.assertEqual(review.ticked, set())
+            self.assertNotIn("hidden by", review.summary_text)
+
+    async def test_escape_in_the_filter_clears_it_and_slash_reaches_it(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await pilot.press("slash", "m", "i", "e", "r")
+            await settle(app, pilot)
+            field = review.query_one("#search", Input)
+            self.assertIs(review.focused, field)
+            self.assertEqual(field.value, "mier")
+            self.assertTrue(review.filtering)
+            await pilot.press("escape")
+            await settle(app, pilot)
+            self.assertEqual(field.value, "")
+            self.assertIs(review.focused, review.query_one("#profiles", Tree))
+            self.assertIs(app.screen, review)
+
 
 class StagingTest(AceAppBase):
 
@@ -505,10 +608,22 @@ class RunTest(AceAppBase):
             await pilot.press("z")
             await settle(app, pilot)
             self.assertIsInstance(app.screen, ConfirmScreen)
-            app.screen.dismiss(True)
-            await settle(app, pilot)
+            self.cfg.set("general", "parallelism", "3", log=False)
+            seen = []
+            real = review_module.undo_run
+
+            def undo_run(*args, **kwargs):
+                screen = kwargs["on_flavor"].__self__
+                seen.append((kwargs["parallelism"], screen.rows, screen.title_text))
+                return real(*args, **kwargs)
+
+            with patch.object(review_module, "undo_run", undo_run):
+                app.screen.dismiss(True)
+                await settle(app, pilot)
             self.assertIsInstance(app.screen, ProfileResultScreen)
             self.assertEqual(path.read_bytes(), before)
+            # the WTF snapshots run up to [general] parallelism at once, one popup row per flavor of the journal
+            self.assertEqual(seen, [(3, 1, "Undoing the last change")])
 
     async def test_apply_refused_while_wow_runs(self):
         app = self.make_app()
@@ -540,6 +655,7 @@ class RunTest(AceAppBase):
             await pilot.press("r")
             await settle(app, pilot)
             self.assertEqual(type(app.screen).__name__, "ProfileRecoveryScreen")
+            self.assertEqual(app.screen.focused.id, "put_back")  # the expected choice is focused (spec D13)
             app.screen.dismiss("put_back")
             await settle(app, pilot)
             self.assertEqual(path.read_bytes(), original)
@@ -698,10 +814,10 @@ class ReviewFixesTest(AceAppBase):
             await self.write_torn_marker(review)
             await pilot.press("r")
             await settle(app, pilot)
-            box = app.screen.query_one("#recovery-box")
+            box = app.screen.query_one("#choice-box")
             for button in app.screen.query("Button"):
                 self.assertTrue(inside(button, box), button.id)
-            self.assertIn(str(app.screen.marker.zip), app.screen.message().splitlines())
+            self.assertIn(str(app.screen.marker.zip), app.screen.message_text.splitlines())
 
     async def test_leaving_with_staged_changes_asks_first(self):
         app = self.make_app()
@@ -711,7 +827,7 @@ class ReviewFixesTest(AceAppBase):
             await pilot.press("slash")
             await pilot.press("h", "e", "a", "d")
             await settle(app, pilot)
-            await pilot.press("escape")  # out of the search box, not out of the review
+            await pilot.press("escape")  # out of the filter box (cleared), not out of the review
             await settle(app, pilot)
             self.assertIs(app.screen, review)
             self.assertIs(review.focused, review.query_one("#profiles", Tree))
@@ -838,7 +954,7 @@ class ReviewFixesTest(AceAppBase):
     async def test_more_menu_lists_every_hidden_key(self):
         from wowtools.tools.ace3_profile_manager.popups import ACTIONS
         ids = {action for action, _ in ACTIONS}
-        for action in ("rename", "copy", "blacklist", "unlock", "switch_view", "search", "discard"):
+        for action in ("rename", "copy", "blacklist", "unlock", "switch_view", "filter", "discard"):
             self.assertIn(action, ids)
         app = self.make_app()
         async with app.run_test(size=(140, 50)) as pilot:
@@ -984,8 +1100,8 @@ class GuidanceTest(AceAppBase):
             app.screen.dismiss("Default")
             await settle(app, pilot)
             total = review.staging.summary().total
-            self.assertTrue(self.guide(review).startswith(f"{total} pending changes, not written: w apply · "
-                                                          "y dry run · ⌫ discard"), self.guide(review))
+            self.assertTrue(self.guide(review).startswith(f"{total} pending changes, not written: Apply, "
+                                                          "Dry run or Discard them"), self.guide(review))
             self.assertNotIn("staged", (self.guide(review) + review.summary_text).casefold())
 
     async def test_action_bar_buttons_have_their_kind_of_colour(self):
@@ -996,8 +1112,10 @@ class GuidanceTest(AceAppBase):
             self.assertEqual([b.label.plain for b in buttons],
                              ["Assign (p)", "Rename (e)", "Copy (k)", "Everyone → Default (E)", "Delete (d)",
                               "Only Default (D)", "Leftovers (o)", "Blacklist…", "More… (m)", "Discard (⌫)"])
-            self.assertEqual([b.variant for b in buttons],  # green first, then red, then the rest
-                             ["success"] * 4 + ["error"] * 3 + ["default"] * 3)
+            # staged changes first (amber; Copy only adds a profile: green), then staged deletes (red), the rest
+            self.assertEqual([action_kind(b) for b in buttons],
+                             ["overwrite", "overwrite", "create", "overwrite"] + ["destructive"] * 3
+                             + ["navigate"] * 2 + ["cancel"])
             self.assertFalse(any(b.disabled for b in buttons))
 
     async def press(self, app, pilot, review, button_id):
@@ -1083,6 +1201,26 @@ class BlacklistScreenTest(AceAppBase):
             await settle(app, pilot)
             self.assertEqual(results, [[("_retail_", "ElvUI")]])
 
+    async def test_the_filter_waits_for_the_scan(self):
+        """While the scan runs, typing in the filter builds nothing from the blacklist pairs alone (their spelling and
+        ticks come from the scan) and Save does nothing."""
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            with patch.object(BlacklistScreen, "_scan_worker", lambda self, flavors: None):  # never finishes
+                await pilot.pause()
+                results: list = []
+                app.push_screen(BlacklistScreen(self.cfg, WowInstall(self.root).flavors(), [("_retail_", "elvui")]),
+                                results.append)
+                await settle(app, pilot)
+                screen = app.screen
+                self.assertTrue(screen._scanning)
+                screen.filter_input().value = "elv"
+                await settle(app, pilot)
+                self.assertEqual(screen.names, {})
+                screen.action_save()
+                await settle(app, pilot)
+                self.assertEqual(results, [])
+
     async def test_cancel_and_escape_return_none(self):
         app = self.make_app()
         async with app.run_test(size=(140, 50)) as pilot:
@@ -1140,6 +1278,49 @@ class BlacklistScreenTest(AceAppBase):
             self.assertEqual(results, [[("_retail_", "Gone"), ("_classic_era_", "KickCD"), ("_retail_", "KickCD"),
                                         ("_classic_era_", "Questie")]])
 
+    async def test_filter_narrows_and_keeps_hidden_ticks(self):
+        """Spec D7/D8: the filter narrows the addons, a / n act on what it shows, a hidden tick stays, is counted on
+        the bottom line and is said before Save; Esc clears the filter."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            screen, results = await self.open_screen(app, pilot, [])
+            tree = screen.query_one("#blacklist-tree", Tree)
+            tree.focus()
+            await pilot.press("a")
+            everything = set(screen.ticked)
+            self.assertGreater(len(everything), 1)
+            await pilot.press("slash")
+            await pilot.pause()
+            await pilot.press(*"kick")
+            await settle(app, pilot)
+            addons = {n.data[2] for n in tree.root.children for n in n.children if n.data[0] == "addon"}
+            self.assertTrue(addons)
+            self.assertTrue(all("kick" in a.casefold() for a in addons), addons)
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("n")
+            kept = {k for k in everything if "kick" not in k[1]}
+            self.assertEqual(screen.ticked, kept)
+            note = f"{len(kept)} selected addons are hidden by the filter"
+            self.assertIn(note, str(screen.query_one("#summary", Static).render()))
+            screen.query_one("#save", Button).press()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertIn(f"{note}: they are saved too.", app.screen.body_text)
+            app.screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertEqual(len(results[0]), len(kept))
+
+    async def test_save_without_hidden_ticks_asks_nothing(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            screen, results = await self.open_screen(app, pilot, [])
+            screen.filter_input().value = "kick"
+            await settle(app, pilot)
+            screen.query_one("#save", Button).press()
+            await settle(app, pilot)
+            self.assertEqual(results, [[]])
+
     async def test_fits_at_base(self):
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
@@ -1147,8 +1328,8 @@ class BlacklistScreenTest(AceAppBase):
             pane = screen.query_one("#filters")
             for widget in (*screen.query("#filters Button"), screen.query_one("NavHint")):
                 self.assertTrue(inside(widget, pane), widget)
-            hint = str(screen.query_one("NavHint").render())
-            self.assertIn("x expand all · c collapse all", hint)
+            hint = screen.query_one("NavHint").hint
+            self.assertIn("/ filter · x expand all · c collapse all", hint)
 
 
 class FeedbackReviewFixesTest(AceAppBase):
@@ -1275,8 +1456,9 @@ class PopupFeedbackTest(AceAppBase):
             self.assertIn("KickCD", str(branch.label))
             self.assertTrue(branch.is_expanded)  # few lines: open
             self.assertEqual([str(c.label) for c in branch.children], ["Gone - Realm1"])
-            self.assertIs(screen.focused, screen.query_one("#no", Button))
-            await pilot.press("up", "up")  # No, Yes, then the tree
+            self.assertIs(screen.focused, screen.query_one("#yes", Button))
+            self.assertEqual(action_kind(screen.focused), "destructive")
+            await pilot.press("up")  # from Yes to the tree
             self.assertIs(screen.focused, tree)
             await pilot.press("c")
             self.assertFalse(branch.is_expanded)

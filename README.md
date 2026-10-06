@@ -1,9 +1,9 @@
 # Ka0s WoW Tools
 
-![Version](https://img.shields.io/badge/Version-1.0.0-blue)
+![Version](https://img.shields.io/badge/Version-0.1.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-yellow)
 ![Platforms](https://img.shields.io/badge/Platforms-Windows_%7C_macOS_%7C_Linux-purple)
-![Tests](https://img.shields.io/badge/Tests-1053%2F1053_passing-green)
+![Tests](https://img.shields.io/badge/Tests-1305%2F1305_passing-green)
 ![License](https://img.shields.io/badge/License-MIT-orange)
 
 Ka0s WoW Tools is a small set of World of Warcraft helpers that run ***outside*** the game and tidy up the files WoW
@@ -30,6 +30,15 @@ No tool changes anything until you say so. Each one shows you what it will do fi
 touches a file. The WTF Cleaner, the Screenshot Organizer and the Ace3 Profile Manager can also do a practice run
 (a **Dry run**) that shows what would happen without changing anything. And if you change your mind afterwards, you
 can undo the last clean, the last sort, the last restore or the last profile change.
+
+## Terms of use
+
+Terms of use: Ka0s WoW Tools is provided as is, without warranty of any kind, and you use it at your own risk. Every
+tool backs up the files it changes before changing them, but keep your own backups of anything you can't afford to
+lose.
+
+The tool menu shows these terms along its bottom. They say in plain words what the [MIT License](LICENSE) says: the
+software comes with no warranty.
 
 ## Screenshots
 
@@ -112,20 +121,40 @@ The app opens in a terminal window. You drive it with the keyboard:
 |---|---|
 | `↑` `↓` | Move up and down |
 | `Enter` | Choose |
+| `Space` | Tick or untick the highlighted line |
 | `x` `c` | Expand or collapse every line of a tree |
+| `/` | Filter a tree: type part of a name, `Enter` keeps the filter, `Esc` clears it |
+| `a` `n` | Tick or untick everything the tree shows |
+| `c` (tool menu) | What's new: the changelog |
+| `h` | Help: on the tool menu, what each tool does and the keys every tool shares; in a tool, how to use that tool, with a link to its guide |
 | `Esc` | Go back |
 | `s` | Settings |
 | `q` | Quit |
 
-Each screen lists its keys along the bottom, so you don't have to remember them. A mouse works too. While a tool is
+Every button shows its key under its name (**Clean** over `(w)`, **Dry run** over `(y)`), so pressing that key does
+the same as clicking the button. The row along the bottom lists the other keys of the screen, the ones no button
+has (`Space`, `a`, `n`, `/`, `x`, `c`, `s`, `h`, ...), so you don't have to remember them. While a window such as
+"are you sure?" is open, that row is empty: the window's own buttons say what to press. A mouse works too. While a tool is
 changing or writing files (a clean, a sort, a backup, a restore, a profile change or an undo), the app won't quit until it has
 finished.
+
+Buttons are coloured by what they do, the same in every tool: **red** deletes, **amber** overwrites or changes
+files, **green** adds something new (a backup, an Ace3 profile copy), **violet** undoes, **cyan** is a dry run
+that changes nothing, **blue** confirms (Save, OK), **grey** moves between screens or rescans, and **dim grey** backs
+out (Cancel, Back, Quit).
+
+Every "are you sure?" window opens with **Yes** selected, coloured the same way: red when it deletes, overwrites,
+undoes or throws away pending changes, cyan for a dry run. A backup's is red when older backups are deleted to
+keep the number you set, green only when every backup is kept. So read it before you press Enter.
+For a quarter of a second after it opens, Enter and Space do nothing there, and a key you are still holding is
+ignored until you let it go, so it can't answer for you (the update offer's **Update now** waits the same way). `y` answers Yes, `n` or `Esc` No.
 
 ### Terminal size
 
 The app is laid out for the window Windows Terminal (the default on Windows 11) opens: 120 columns by 30 lines.
 Maximize the window and the lists and tables grow to fill it. A smaller window still works, but it's cramped and
-you'll scroll more.
+you'll scroll more (on the tool menu the banner shrinks to one line when the tools need its room, and the tool list
+scrolls, so the terms of use and the keys at the bottom stay in view).
 
 ### The first time
 
@@ -134,8 +163,9 @@ The first time you open a tool, it asks for two things:
 1. **Your World of Warcraft folder.** This is the folder that holds `_retail_`, `_classic_` and so on, for
    example `C:\Program Files (x86)\World of Warcraft`. The app looks in the usual places and suggests what it
    finds (this can take a few seconds; you can type the folder meanwhile). You only answer this once; every tool shares it.
-   The same screen asks how many backups to keep per game version (10; 0 keeps them all) and how many journals
-   each tool keeps (10). Both apply to every tool.
+   The same screen asks how many backups to keep per game version (10; 0 keeps them all), how many journals
+   each tool keeps (10) and how many game versions to work on at once (2; use 1 on a hard drive or a WSL `/mnt`
+   folder). All three apply to every tool.
 2. **That tool's settings.** Each guide explains them. If you're not sure, keep the suggested values.
 
 Then you pick which version of the game to work on, or **All flavors** for every version at once. ("Flavor" is
@@ -155,8 +185,11 @@ Each tool has its own guide, with pictures, that walks through every screen:
 
 ## Updates
 
-The app checks for a new version once a day while it's open. If there is one, the bottom bar says so; press `u`
-to install it. A small window stays up while it downloads and installs, then the app closes so you can start the
+The app checks for a new version once a day while it's open. If there is one, the bottom bar says so (at its right
+end, next to the version you have), and so does the line under the banner on the tool menu; press `u` to install it. On the Ace3 Profile Manager's review `u` unlocks an
+addon, so there (and while a text box has focus, where `u` types the letter) the bar tells you to press `u` on the
+tool menu instead. Before it tells you about a version, and again when you press `u`, the app asks GitHub; if that version has been
+withdrawn, the app says there is no update and the notice goes away. A small window stays up while it downloads and installs, then the app closes so you can start the
 new version. You can also update from a terminal in the app's folder:
 
 - `wow-tools update --check` (on Windows `wow-tools.cmd update --check`, on Mac and Linux
@@ -184,14 +217,14 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 
 | File | Holds |
 |---|---|
-| `config\wow-tools.cfg` | Shared by every tool (`[general]`): your WoW folder, how many backups to keep per game version (`keep_backups`, 10; 0 keeps all) and journals per tool (`keep_journals`, 10), plus update and log options |
+| `config\wow-tools.cfg` | Shared by every tool (`[general]`): your WoW folder, how many backups to keep per game version (`keep_backups`, 10; 0 keeps all) and journals per tool (`keep_journals`, 10), how many game versions to work on at once (`parallelism`, 2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder, where working on several at once is slower), plus update and log options |
 | `config\wtf-cleaner.cfg` | The WTF Cleaner's settings |
 | `config\screenshot-organizer.cfg` | The Screenshot Organizer's settings |
 | `config\interface-backup.cfg` | Interface Backup's settings |
 | `config\ace3-profile-manager.cfg` | The Ace3 Profile Manager's settings (`[ace3_profile_manager]`): backup folder and the blacklist of addons (each in one game version) it never changes |
 
 The easiest way to change them is to press `s` in the app: the first screen is the shared one (WoW folder,
-backups and journals to keep), then the tool's own. You can also open the files in Notepad while the app
+backups and journals to keep, game versions to work on at once), then the tool's own. You can also open the files in Notepad while the app
 is closed. The guides list every setting.
 
 ## Undo and run journals
@@ -235,7 +268,8 @@ If you use WSL (Linux inside Windows), the same folder works from both sides. Ru
 | "No WoW flavor folders were found" | Pick the `World of Warcraft` folder itself, not `_retail_` inside it. |
 | "Ka0s WoW Tools may already be running" | See *Why does it say another copy may already be running?* in the [FAQ](#faq). |
 | The window looks garbled or too small | Make the terminal window bigger (at least 120 columns by 30 lines; see [Terminal size](#terminal-size)), or use Windows Terminal (the default on Windows 11). |
-| It's very slow on WSL | WSL (Linux inside Windows) is slow at reading files on Windows drives such as `C:` or `G:`: every file takes a moment to check, and a WoW folder has thousands of them. Start the app from Windows instead, by double-clicking `wow-tools.cmd`. It uses the same settings, so nothing needs setting up again. If you stay on WSL, give the first scan time; the progress bar shows it's still working. |
+| It's very slow on WSL | WSL (Linux inside Windows) is slow at reading files on Windows drives such as `C:` or `G:`: every file takes a moment to check, and a WoW folder has thousands of them. Start the app from Windows instead, by double-clicking `wow-tools.cmd`. It uses the same settings, so nothing needs setting up again. If you stay on WSL, give the first scan time; the progress bar shows it's still working, and set "Game versions to work on at once" to 1 in the general settings (`s` on the tool menu). |
+| The app offers an update to a version that doesn't exist | The release was withdrawn after the app saw it. Restart the app or press `u`: either checks GitHub again, finds no update and drops the notice. |
 | A tool does something unexpected | See the troubleshooting table at the end of that tool's guide. |
 | Something looks wrong and I want to report it | Follow [Reporting a bug](#reporting-a-bug) below. |
 
@@ -256,10 +290,8 @@ Please file reports there, so nothing gets lost.
 
 ## Version History
 
-| Version | Date | Highlights |
-|---------|------|------------|
-| Unreleased | — | - **Ace3 Profile Manager**, a fourth tool: shows every Ace3 addon's profiles and which characters use them; delete, rename and copy profiles, move characters between them and remove characters that no longer exist, with a blacklist (per game version, picked from a tree), **Dry run** and **Undo last change**; an action bar and a guidance line under the tree say what to do next, and changes wait as **pending changes** until you apply them<br>- Edits only the lines that change in each settings file, after backing up the whole `WTF` folder and every file it edits; refuses while WoW is running<br>- **Interface Backup**, a third tool: zips each game version's `Interface` and `WTF` folders (your addons and their settings) into one dated, checked zip; keeps the newest 10 per game version<br>- Restores a backup exactly, the `Interface` folder, the `WTF` folder or both, after listing what would be removed or changed; takes a safety backup first, and **Undo** puts the folders back<br>- Never follows linked addon folders (symlinks, junctions): they're left out of backups and kept by a restore<br>- How many backups and journals to keep is now one setting for every tool (10 each; 0 backups keeps them all), on the first settings screen<br>- `x` expands and `c` collapses every line of a tree, on every tree screen; the WTF Cleaner's **Clean** moves to `w`<br>- Every checkbox and box in a left panel has a row of its own, so `↑` / `↓` reach each one |
-| 1.0.0 | 2026-10-04 | - First release, with two tools in one app<br>- **WTF Cleaner**: finds settings left behind by addons you no longer use, shows them for review, backs them up and deletes them; works on one game version, one account or **All flavors**; **Dry run** and **Undo last clean**<br>- **Screenshot Organizer**: sorts screenshots into year, month and day folders, in place or into an archive folder; duplicate checks, copy mode, **Dry run** and **Undo last run**<br>- Works with every installed game version (Retail, Classic, Classic Era, Anniversary, PTR and Beta) on Windows, Mac, Linux and WSL<br>- Checks for updates and installs them for you |
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md), newest first. The app shows it too: press `c` on
+the tool menu for every version on the left (yours marked "current") and its notes on the right; `Esc` goes back.
 
 ## Credits
 
