@@ -4,7 +4,7 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
 
 | Task | Issue | Title | Status | Commit | Notes |
 |---|---|---|---|---|---|
-| I1 | #1 | macOS running-WoW detection | done | (this commit) | `ps -axo comm=` branch, shared `wow_name()` rule; 4 new tests (test_process 17), suite 1308 OK, 2 skipped |
+| I1 | #1 | macOS running-WoW detection | done | ac04a74 | `ps -axo comm=` branch, shared `wow_name()` rule; 4 new tests (test_process 17), suite 1308 OK, 2 skipped |
 | I2 | #4 | keep_cleaned for cleaned zips | todo | | |
 | I3 | #5 | per-account enabled addons | todo | | |
 | I4 | #7 | keep user files when pruning update backups | todo | | |
