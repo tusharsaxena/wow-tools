@@ -19,7 +19,7 @@ from wowtools.core.lock import LockInfo
 from wowtools.core.updater import ReleaseInfo
 from wowtools.tools import TOOLS as TOOL_INFO
 from wowtools.tools.ace3_profile_manager.editor import Marker as AceMarker
-from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
+from wowtools.tools.ace3_profile_manager.popups import ACTIONS_ROWS, ActionsScreen, NameScreen, TargetScreen
 from wowtools.tools.ace3_profile_manager.review_screen import ProfileRecoveryScreen
 from wowtools.tools.wtf_cleaner.review_screen import RecoveryScreen as WtfRecoveryScreen
 from wowtools.tools.wtf_cleaner.safety import Marker as WtfMarker
@@ -954,6 +954,18 @@ class LookAndFeelTest(TuiTestCase):
                     self.assert_popup_width(screen, BASE)
                     screen.dismiss(None)
                     await settle(app, pilot)
+
+    async def test_ace_target_dropdown_shows_as_many_rows_as_the_actions_menu(self):
+        """The delete/assign target dropdown (the Select's overlay, an OptionList) shows up to ACTIONS_ROWS
+        profiles without scrolling, like the quick actions menu, not Select's default of 10."""
+        app = self.make_app()
+        async with app.run_test(size=LARGE) as pilot:
+            await pilot.pause()
+            screen = TargetScreen("Delete profiles", "Body", [f"Profile{i}" for i in range(30)])
+            app.push_screen(screen)
+            await settle(app, pilot)
+            overlay = screen.query_one("SelectOverlay")
+            self.assertEqual(overlay.styles.max_height.value, ACTIONS_ROWS + 2)
 
     def assert_popup_width(self, screen, size) -> None:
         box = screen.children[0].region

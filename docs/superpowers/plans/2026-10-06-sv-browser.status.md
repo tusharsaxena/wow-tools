@@ -12,7 +12,7 @@ delete every branch, stash and worktree this run created.
 | T1.2 | SvFile/walk/tool_root to core | done | (this commit) | `SvFile`, `sha256_of`, `OWNER_ACCOUNT_WIDE`, `candidate_files`, `under_link` and a generic `walk_sv_files` (filter hook `is_sv_file`/`is_addon_sv_file`) now in `core/svfiles.py`, Ace3 scanner/editor/ops/review/tree_view import them from core, `core.journal.tool_root` adopted by Ace3 `resolve_root` and Interface Backup `resolve_backup_root` (WTF Cleaner kept), structure pin added; no Ace3 assertion changed; full suite 1365 OK (2 skipped), +8 tests |
 | T1.3 | write pipeline, journal, undo to core | done | (this commit) | Ace3's generic apply/multi/journal/undo/verify/report moved to `core/sv_apply.py`, `sv_journal.py`, `sv_undo.py`, `sv_verify.py`, `sv_report.py` and `sv_events.py` (`SvTool(name, prefix)`, `sv_events(prefix)`), Ace3 `editor`/`multi`/`journal`/`undo`/`report` are thin wrappers and `verify` uses the core helpers, one `WowRunning`, `docs/events.md` byte-identical (`gen_event_docs.py --check`), structure pin added, 4 patch targets moved, no Ace3 assertion changed; full suite 1376 OK (2 skipped), +11 tests |
 | T1.4 | shared UI helpers | done | (this commit) | `popup_css`/`show_error`, a generic `TextPromptScreen` (Ace3 `NameScreen` built on it) and `UnfinishedRunScreen` (Ace3 `ProfileRecoveryScreen` built on it, its text now `core.sv_report.recovery_text`) in `ui/dialogs.py`, and a `RunActions` mixin in `ui/review.py` (WoW check, running/backup-dir refusals, `start_run` = busy + progress popup + worker in `activity.running()` + done/failure) that Ace3's review now uses (its `_close_progress(screen)` shadow gone), structure pin added and the progress-close pin narrowed to `ui/review.py`; no Ace3 assertion changed; full suite 1390 OK (2 skipped), +14 tests |
-| M1 | push milestone 1 | todo | | |
+| M1 | push milestone 1 | todo | | review fixes: Ace3 `TargetScreen` gets `popup_css(..., list_rows=ACTIONS_ROWS)` back (its Select dropdown is an OptionList, max-height 16 again), pinned in `test_look_and_feel`; full suite 1391 OK (2 skipped) |
 | T2.1 | package skeleton, registry, fixture | todo | | |
 | T2.2 | scanner + lazy model | todo | | |
 | T2.3 | search | todo | | |
@@ -114,3 +114,7 @@ delete every branch, stash and worktree this run created.
   `ToyRunReview` (prefix `tur`, owner `test-ui-run`, skipped by gen_event_docs) in `tests/test_ui_review.py`, the
   popups in `tests/test_ui_shared_screens.py`, `recovery_text` in `tests/test_core_sv_pipeline.py`, pin
   `test_saved_variables_ui_helpers_live_in_ui`.
+- **M1 review**: 1 finding, 1 fixed, 0 rejected: T1.4 dropped the OptionList max-height rule from Ace3
+  `TargetScreen` (its NavSelect overlay is an OptionList, so the T1.4 note "Target/Name popups had that rule with no
+  OptionList" was wrong for TargetScreen); restored with `list_rows=ACTIONS_ROWS`, test
+  `test_ace_target_dropdown_shows_as_many_rows_as_the_actions_menu`.

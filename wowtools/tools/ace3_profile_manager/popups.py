@@ -51,7 +51,7 @@ class TargetScreen(ModalScreen[str | None]):
     With no profile to offer only the new name is asked for. ↑/↓ move between the list, the name and the buttons
     (Enter or Space opens the list). Dismisses with the name, or None."""
 
-    DEFAULT_CSS = popup_css("TargetScreen")
+    DEFAULT_CSS = popup_css("TargetScreen", list_rows=ACTIONS_ROWS)  # its Select's dropdown is an OptionList
     BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
 
     def __init__(self, title: str, body: str, targets: list[str], default: str = DEFAULT) -> None:
