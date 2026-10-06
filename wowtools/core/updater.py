@@ -169,6 +169,9 @@ MANAGED_FILES = ("wow-tools.cmd", "wow-tools.sh", "requirements.txt", "requireme
 RETIRED_FILES = ("wtf-cleaner.cmd", "wtf-cleaner.sh")
 BACKUP_DIR_NAME = ".update-backup"
 KEEP_UPDATE_BACKUPS = 2  # .update-backup/<version> folders kept after an update (the newest by version)
+# Before an old .update-backup/<version> is pruned, the files a user added inside its managed folders are moved here,
+# to <root>/update-leftovers/<version>/<same relative path> (#7). An update never touches this folder.
+LEFTOVERS_DIR_NAME = "update-leftovers"
 _VERSION_RE = re.compile(r'^__version__\s*=\s*["\']([^"\']+)["\']', re.MULTILINE)
 
 
@@ -371,21 +374,85 @@ def _replaced_names(root: Path, shipped: list[str]) -> list[str]:
 def prune_update_backups(backup_root: Path, keep: int = KEEP_UPDATE_BACKUPS, current: str | None = None) -> list[Path]:
     """Delete all but `keep` .update-backup/<version> folders: the one this update just made (`current`, whatever
     its version: after a downgrade it is the lowest) plus the highest other versions. Anything whose name is not a
-    version is left alone. Returns what was removed (F-018)."""
+    version is left alone. Returns what was removed (F-018).
+
+    Before a folder is deleted, the files a user added inside its managed folders are moved out to
+    <root>/update-leftovers/<version>/ (#7, `_carry_user_files`). A folder whose files could not all be moved out is
+    kept, whole, for the next update to try again: a prune never loses a file."""
     try:
         found = [(parse_version(p.name), p) for p in backup_root.iterdir()
                  if p.is_dir() and _is_version(p.name) and p.name != current]
     except OSError:
         return []
     keep_others = max(1, keep) - (1 if current is not None and (backup_root / current).is_dir() else 0)
+    root = backup_root.parent
+    live: set[str] | None = None
     removed: list[Path] = []
     for _, path in sorted(found, reverse=True)[keep_others:]:
+        if live is None:
+            live = _managed_files(root)
+        if not _carry_user_files(path, root, live):
+            continue
         try:
             shutil.rmtree(path)
             removed.append(path)
         except OSError:
             pass
     return removed
+
+
+def _managed_files(root: Path) -> set[str]:
+    """Relative posix paths of every file under the managed folders of `root` (an install or a backup), leaving out
+    __pycache__ folders and *.pyc files (Python writes those, nobody adds them). One os.walk per folder: scandir,
+    no stat per file."""
+    found: set[str] = set()
+    for name in MANAGED_DIRS:
+        top = root / name
+        for dirpath, dirnames, filenames in os.walk(top):
+            dirnames[:] = [d for d in dirnames if d != "__pycache__"]
+            rel = Path(dirpath).relative_to(root).as_posix()
+            found.update(f"{rel}/{f}" for f in filenames if not f.endswith(".pyc"))
+    return found
+
+
+def _carry_user_files(backup: Path, root: Path, live: set[str]) -> bool:
+    """Move the user's files out of an old .update-backup/<version> folder before it is pruned (#7).
+
+    A user file is one in the backup's managed folders (wowtools, vendor, scripts, docs) with no file at the same
+    path in the live install (`live`). The live install is the only list of shipped files there is (a release has no
+    manifest), so a program file that version had and a later release dropped is carried too: harmless, and it is
+    better to keep one file too many than to lose one. A file the user edited, or one whose path the live install
+    also has, is not carried. Each one goes to <root>/update-leftovers/<version>/<same path> (never back into the
+    managed folders: the next update would replace them, and a stray module there could be imported); a name already
+    taken gets " (2)", " (3)"... Returns False, after logging update.backup_kept, when a move failed: the caller
+    then keeps the folder."""
+    leftovers = sorted(_managed_files(backup) - live)
+    if not leftovers:
+        return True
+    dest_root = root / LEFTOVERS_DIR_NAME / backup.name
+    moved: list[str] = []
+    try:
+        for rel in leftovers:
+            dst = _free_path(dest_root / rel)
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(backup / rel), str(dst))
+            moved.append(dst.relative_to(dest_root).as_posix())
+    except OSError as exc:
+        if moved:
+            log_event("update.leftovers_kept", version=backup.name, folder=str(dest_root), files=moved)
+        log_event("update.backup_kept", version=backup.name, folder=str(backup), error=str(exc))
+        return False
+    log_event("update.leftovers_kept", version=backup.name, folder=str(dest_root), files=moved)
+    return True
+
+
+def _free_path(path: Path) -> Path:
+    """`path`, or `name (2).ext`, `name (3).ext`... beside it when that name is taken."""
+    candidate, n = path, 2
+    while os.path.lexists(candidate):
+        candidate = path.with_name(f"{path.stem} ({n}){path.suffix}")
+        n += 1
+    return candidate
 
 
 def _is_version(text: str) -> bool:

@@ -16,7 +16,8 @@ The first version: four tools in one app.
     Mac, Linux and WSL.
   - Notices a running WoW for the game versions you're working on, on every platform (Windows, WSL, Mac and
     Linux), and warns you or waits before touching files WoW rewrites.
-  - Checks for updates and installs them for you.
+  - Checks for updates and installs them for you. Older backups of replaced versions are deleted, but files you
+    had added inside the app's own folders are moved to `update-leftovers` first.
   - How many backups and journals to keep is one setting for every tool (10 each; 0 backups keeps them all), on
     the first settings screen.
   - `x` expands and `c` collapses every line of a tree, on every tree screen.

@@ -206,6 +206,10 @@ Updating never touches your settings, logs or backups, or files you put directly
 The app's own folders (`wowtools`, `vendor`, `scripts` and `docs`) are replaced as a whole, so don't keep your own
 files in them. If an update fails partway, the app puts the old version back. A copy of the version you replaced is
 kept in the `.update-backup` folder; only two are kept (the one this update made and the newest other one).
+Before an older copy is deleted, any files you had added inside the app's own folders are moved out of it to
+`update-leftovers\<version>\` in the app's folder, at the same path they had (a file you edited isn't). That folder
+can also get a program file the old version had and later ones dropped; look through it and delete what you don't
+need. If a file can't be moved, that copy isn't deleted, and the next update tries again.
 
 If you cloned with git, the update is a fast-forward to the new version. It stops if you've edited the app's own
 files, but files you added yourself (notes, say) don't get in its way. It never waits for a password: if git

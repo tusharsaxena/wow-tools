@@ -56,10 +56,12 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ui.selection` | info | The user made a choice in the TUI or CLI. |
 | `update.applied` | info | The suite was updated. |
 | `update.available` | info | A newer suite release exists. |
+| `update.backup_kept` | warning | An old .update-backup folder was not pruned because a file the user had added could not be moved out of it; the next update tries again. |
 | `update.backups_pruned` | info | After a zip update, older .update-backup folders were deleted (kept: the one just made plus the newest other). |
 | `update.check_failed` | debug | The release check failed (offline, rate limited, bad data). |
 | `update.checked` | debug | The GitHub release check ran or was throttled. |
 | `update.failed` | error | Applying an update failed. |
+| `update.leftovers_kept` | info | Before an old .update-backup folder was pruned, files the user had added inside the app's own folders were moved to update-leftovers/<version>/. |
 | `update.unverified` | warning | A zip update was applied without a checksum (allow_unverified_updates = true and the release has no SHA256SUMS). |
 | `update.verified` | info | A zip update's download matched the release's published SHA-256 (SHA256SUMS). |
 | `wow.running_warning` | warning | World of Warcraft appears to be running. |
