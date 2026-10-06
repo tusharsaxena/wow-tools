@@ -151,6 +151,13 @@ class WowProcessTest(unittest.TestCase):
         self.assertEqual(wow_check_for(retail, lister=lambda: procs)(),
                          ["World of Warcraft", "Wow.exe", "World of Warcraft (flavor unknown)"])
 
+    def test_mac_wine_exe_inside_wrapper_app(self):
+        path = ("/Users/u/Applications/Wineskin/WoW.app/Contents/Resources/drive_c/Program Files/World of Warcraft/"
+                "_retail_/Wow.exe")
+        procs = running_wow_processes(platform="mac", runner=lambda *a, **k: ok(path + "\n"))
+        self.assertEqual(procs, [WowProcess("Wow.exe", path)])
+        self.assertEqual(processes_for_flavor(procs, "_retail_"), (procs, []))
+
     def test_mac_no_wow_running(self):
         listing = "/sbin/launchd\n/Applications/Battle.net.app/Contents/MacOS/Battle.net\n"
         self.assertEqual(running_wow_processes(platform="mac", runner=lambda *a, **k: ok(listing)), [])
@@ -168,8 +175,11 @@ class WowProcessTest(unittest.TestCase):
         self.assertEqual(wow_name("wow.exe"), "Wow.exe")
         self.assertEqual(wow_name("World of Warcraft"), "World of Warcraft")
         self.assertEqual(wow_name("World of Warcraft Classic PTR"), "World of Warcraft Classic PTR")
-        for other in ("World of Warcraft Launcher", "World of Warcraft Helper", "WowClassicHelper.exe", "Battle.net",
-                      ""):
+        # an unlisted variant still counts: better a needless warning than a missed client
+        for variant in ("World of Warcraft Experimental", "World of Warcraft Anniversary"):
+            self.assertEqual(wow_name(variant), variant)
+        for other in ("World of Warcraft Launcher", "World of Warcraft Helper", "World of Warcraft Crash Reporter",
+                      "World of WarcraftX", "WowClassicHelper.exe", "Battle.net", ""):
             self.assertIsNone(wow_name(other), other)
 
     def test_wow_check_for(self):

@@ -66,9 +66,11 @@ class WowProcess:
 
 _SEPARATORS = re.compile(r"[\\/]")
 _CANONICAL = {exe.lower(): exe for exe in WOW_EXECUTABLES}
-# The macOS client is an app bundle: <flavor>/World of Warcraft[ Classic][ Beta|Test|PTR].app/Contents/MacOS/<same name>.
-# The Launcher (an old updater) and helper processes are not the game.
-_MAC_CLIENT = re.compile(r"world of warcraft(?: classic)?(?: (?:beta|test|ptr|public test))?")
+# The macOS client is an app bundle: <flavor>/World of Warcraft[ <variant>].app/Contents/MacOS/<same name>, where the
+# variant is Classic, Beta, PTR and so on. Any "World of Warcraft ..." name counts (an unknown variant is safer seen
+# than missed), except the known non-game processes: the Launcher (an old updater), helpers and crash reporters.
+_MAC_CLIENT = re.compile(r"world of warcraft(?: .*)?")
+_MAC_NOT_GAME = re.compile(r"\b(?:launcher|helper|crash|error|reporter|updater|agent)\b")
 # No double quotes: they do not survive Windows command-line quoting reliably. '' is a literal ' in PowerShell.
 _PS_QUERY = ("Get-CimInstance Win32_Process -Filter '" +
              " OR ".join(f"Name=''{exe}''" for exe in WOW_EXECUTABLES) +
@@ -92,7 +94,8 @@ def wow_name(basename: str) -> str | None:
     exe = _CANONICAL.get(name.lower())
     if exe is not None:
         return exe
-    return name if _MAC_CLIENT.fullmatch(name.lower()) else None
+    lower = name.lower()
+    return name if _MAC_CLIENT.fullmatch(lower) and not _MAC_NOT_GAME.search(lower) else None
 
 
 def _parse_powershell(output: str) -> list[WowProcess]:
@@ -140,11 +143,12 @@ def _linux_processes(proc_root: Path) -> list[WowProcess] | None:
 
 
 def _bundle_path(path: str) -> str:
-    """For an executable inside a macOS app bundle, the bundle's own path (so its parent is the flavor folder)."""
+    """For a bundle's own executable (<X>.app/Contents/MacOS/<name>), the bundle's path, so its parent is the flavor
+    folder. Any other path is kept whole: a Wine Wow.exe inside a wrapper .app sits in its own flavor folder."""
     parts = path.split("/")
-    for index in range(len(parts) - 1, -1, -1):
-        if parts[index].lower().endswith(".app"):
-            return "/".join(parts[:index + 1])
+    if (len(parts) >= 4 and parts[-4].lower().endswith(".app")
+            and [part.lower() for part in parts[-3:-1]] == ["contents", "macos"]):
+        return "/".join(parts[:-3])
     return path
 
 

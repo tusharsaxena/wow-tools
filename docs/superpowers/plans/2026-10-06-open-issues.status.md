@@ -16,6 +16,10 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
 
 - I1: on macOS the `WowProcess.path` is the `.app` bundle path (not the inner `Contents/MacOS/...` executable), so
   `processes_for_flavor()` keeps matching the parent folder to the flavor folder unchanged. A bare name from `ps`
-  (no path) counts as "flavor unknown". The macOS name rule is `World of Warcraft[ Classic][ Beta|Test|PTR|Public
+  (no path) counts as "flavor unknown". The macOS name rule (first version) was `World of Warcraft[ Classic][ Beta|Test|PTR|Public
   Test]`, which leaves out the Launcher and helper processes; `wow_name()` is now the one rule for PowerShell, /proc
   and ps. `running_wtf_lockers` (Windows-only lockers) is unchanged.
+- I1 review: 3 findings, 3 fixed, 0 rejected: the macOS name rule now accepts any `World of Warcraft[ <variant>]`
+  except Launcher/helper/crash/error/reporter/updater/agent (fail toward warning on an unknown variant); the path is
+  cut back to the `.app` only for a bundle's own `<X>.app/Contents/MacOS/<name>` executable, so a Wine `Wow.exe`
+  inside a wrapper `.app` keeps its flavor folder; architecture.md describes the new rule. Suite 1309 OK, 2 skipped.
