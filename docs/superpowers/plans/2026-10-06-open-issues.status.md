@@ -7,7 +7,7 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
 | I1 | #1 | macOS running-WoW detection | done | ac04a74 | `ps -axo comm=` branch, shared `wow_name()` rule; 4 new tests (test_process 17), suite 1308 OK, 2 skipped |
 | I2 | #4 | keep_cleaned for cleaned zips | done | 685d44f | `[wtf_cleaner] keep_cleaned` (0 = all), `prune_cleaned_zips`, event `backup.cleaned_pruned`; 8 new tests, suite 1317 OK, 2 skipped |
 | I3 | #5 | per-account enabled addons | done | ff55b8d | `ScanResult.enabled_by_account` + `enabled_for()`, rules judge each group by its account; `build_multi_account_tree` fixture, 5 new tests (PerAccountEnabledTest); suite 1322 OK, 2 skipped |
-| I4 | #7 | keep user files when pruning update backups | todo | | |
+| I4 | #7 | keep user files when pruning update backups | done | db8c687 | `_carry_user_files` before each prune moves user files to `<root>/update-leftovers/<version>/`; failed move keeps the folder; events `update.leftovers_kept`, `update.backup_kept`; 5 new tests (test_updater_apply 37), suite 1327 OK, 2 skipped |
 | I5 | #8 | native Windows checkpoint run | todo | | |
 | I6 | #9 #10 | review bundle sign-off, merged ledgers | todo | | |
 | I7 | all | review, push, merge, close issues | todo | | |
@@ -50,3 +50,13 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
   change from an unreleased behaviour; the design spec's "Enabled scope: Global" row is marked superseded (#5). Kept:
   a characterless account in an All-accounts scan counts every addon as enabled (with its own warning) rather than
   borrowing the union of the other accounts. This is deliberate, and the user should confirm it at the merge ask.
+- I4: a "user file" in an old `.update-backup/<version>` is a file under its managed folders (wowtools, vendor,
+  scripts, docs; `__pycache__` and `*.pyc` left out) with no file at the same relative path in the live install.
+  A release has no manifest of what it shipped, so the live install is the only reference: a program file that
+  old version had and a later release dropped is carried too (documented in the README; one file too many beats a
+  lost one). A file the user edited, or one whose path the live install also has, is not carried. Files go to
+  `<root>/update-leftovers/<version>/<same path>`, never back into the managed folders (the next update replaces
+  them, and a stray module could be imported); a taken name gets ` (2)`, ` (3)`. Any failed move keeps the whole
+  backup folder (files already moved stay in update-leftovers, so each file is in exactly one place) and the next
+  update's prune tries again. The live tree is walked once per prune, only when something is to be pruned
+  (`os.walk`, no per-file stat). `update-leftovers/` added to .gitignore.
