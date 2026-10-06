@@ -638,6 +638,25 @@ class FirstRunTest(AppTestCase):
             self.assertIs(app.screen, screen)
             self.assertIn("whole number", screen.error_text)
 
+    async def test_settings_keep_cleaned_validated_and_saved(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            screen = CleanerSettingsScreen(self.tool_cfg, self.root, source="settings")
+            app.push_screen(screen)
+            await pilot.pause()
+            self.assertEqual(screen.query_one("#keep_cleaned", Input).value, "0")
+            screen.query_one("#keep_cleaned", Input).value = "-1"
+            await pilot.click("#save")
+            await pilot.pause()
+            self.assertIs(app.screen, screen)
+            self.assertIn("0 or more", screen.error_text)
+            screen.query_one("#keep_cleaned", Input).value = "4"
+            screen.query_one("#save", Button).press()  # the error row moved Save below the fold
+            await pilot.pause()
+            self.assertIsNot(app.screen, screen, screen.error_text)
+        self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).keep_cleaned, 4)
+
     async def test_settings_saves_backup_folder(self):
         app = self.make_app()
         target = self.tmp / "my backups"
@@ -930,19 +949,19 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertTrue(settings.query(NavHint))
             self.assertFalse(settings.query("Switch"))
             order = [settings.focused.id]
-            for _ in range(7):
+            for _ in range(8):
                 await pilot.press("down")
                 order.append(settings.focused.id)
             self.assertEqual(order, ["max_age", "backup_dir", *[f"sw_{n}" for n in CRITERIA],
-                                     "sw_backup", "save"])
+                                     "sw_backup", "keep_cleaned", "save"])
             for name in (*[f"sw_{n}" for n in CRITERIA], "sw_backup"):
                 self.assertIsInstance(settings.query_one(f"#{name}"), Ka0sCheckbox)
-            await pilot.press("up")  # back to the backup toggle
+            await pilot.press("up", "up")  # back to the backup toggle
             self.assertEqual(settings.focused.id, "sw_backup")
             self.assertTrue(settings.focused.value)
             await pilot.press("space")
             self.assertFalse(settings.focused.value)
-            await pilot.press("down", "enter")
+            await pilot.press("down", "down", "enter")
             await pilot.pause()
             self.assertIsInstance(app.screen, FlavorScreen)
         saved = load_settings(Config(cfg.path.parent / "wtf-cleaner.cfg").load())

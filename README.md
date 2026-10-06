@@ -218,7 +218,7 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 | File | Holds |
 |---|---|
 | `config\wow-tools.cfg` | Shared by every tool (`[general]`): your WoW folder, how many backups to keep per game version (`keep_backups`, 10; 0 keeps all) and journals per tool (`keep_journals`, 10), how many game versions to work on at once (`parallelism`, 2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder, where working on several at once is slower), plus update and log options |
-| `config\wtf-cleaner.cfg` | The WTF Cleaner's settings |
+| `config\wtf-cleaner.cfg` | The WTF Cleaner's settings, including how many zips of cleaned files to keep per game version (`keep_cleaned`, 0 keeps all; the one retention setting a tool has of its own) |
 | `config\screenshot-organizer.cfg` | The Screenshot Organizer's settings |
 | `config\interface-backup.cfg` | Interface Backup's settings |
 | `config\ace3-profile-manager.cfg` | The Ace3 Profile Manager's settings (`[ace3_profile_manager]`): backup folder and the blacklist of addons (each in one game version) it never changes |

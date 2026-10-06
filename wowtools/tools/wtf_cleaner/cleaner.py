@@ -33,9 +33,12 @@ from wowtools.tools.wtf_cleaner.scanner import SVFile
 
 CleanProgress = Callable[[str, int, int, str], None]
 CLEANED_SUBDIR = "cleaned"
-# A dry run's zip of the files it would remove. Only these are pruned (keep_backups per flavor); a real clean's
-# cleaned-*.zip is never deleted by the app (F-018).
-DRY_RUN_ZIP_NAME = re.compile(r"^dryrun-(?P<flavor>.+?)-(?P<account>.+)-(?P<stamp>\d{8}-\d{6})(?:-(?P<n>\d+))?\.zip$")
+# The zip of the files a run removes: cleaned-<flavor>-<account>-<stamp>[-n].zip for a clean, dryrun-... for a dry
+# run. Dry-run zips are pruned after a dry run (keep_backups per flavor); cleaned zips after a real clean only when
+# the WTF Cleaner's own keep_cleaned is set (0, the default, keeps them all: they are the only copy of what a clean
+# deleted once the WTF backups holding it are pruned).
+CLEANED_PREFIX = "cleaned"
+DRY_RUN_PREFIX = "dryrun"
 ALL_ACCOUNTS_LABEL = "all"
 
 
@@ -68,6 +71,7 @@ class CleanResult:
     check_problems: list[str] = field(default_factory=list)  # what the post-clean check found ([] = passed)
     pruned: list[Path] = field(default_factory=list)  # older WTF backups removed to keep the newest N
     dry_runs_pruned: list[Path] = field(default_factory=list)  # older dry-run zips removed to keep the newest N
+    cleaned_pruned: list[Path] = field(default_factory=list)  # older cleaned-files zips removed (keep_cleaned)
     journal_path: Path | None = None  # the run journal this clean wrote to (set by execute_flavors)
 
     def _with(self, status: str) -> list[FileOutcome]:
@@ -208,9 +212,10 @@ def _restore_after(exc: BaseException, snapshot: Path, backup_dir: Path, flavor:
 def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup: bool,
             backup_dir: Path | None, now: datetime | None = None, progress: CleanProgress | None = None,
             account: str | None = None, keep_backups: int = DEFAULT_KEEP_BACKUPS,
-            journal: CleanJournal | None = None) -> CleanResult:
+            journal: CleanJournal | None = None, keep_cleaned: int = 0) -> CleanResult:
     """account is the scope of the clean (None = all accounts); it names the cleaned-files zip. journal (real
-    cleans) is the run journal: opened before anything is touched, one entry after each delete."""
+    cleans) is the run journal: opened before anything is touched, one entry after each delete. keep_cleaned > 0:
+    a real clean that deleted something then keeps the flavor's newest keep_cleaned cleaned-files zips."""
     now = now or datetime.now()
     report: CleanProgress = safe_progress(progress)
     selected = [(item, sv) for item in items for sv in item.files]
@@ -278,6 +283,8 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
         if result.pruned:
             log_event("snapshot.pruned", flavor=flavor.folder, keep=keep_backups,
                       removed=[str(p) for p in result.pruned])
+        if deleted and result.backup_path is not None:
+            _prune_cleaned_zips(result, backup_dir, flavor, keep_cleaned)
 
     log_event("clean.completed", dry_run=dry_run, flavor=flavor.folder, level="warning" if result.failed else None,
               deleted=len(result.deleted), would_delete=len(result.would_delete),
@@ -322,23 +329,31 @@ def cleaned_zip_path(backup_dir: Path, flavor_short: str, account: str | None, n
                      dry_run: bool = False) -> Path:
     """<backup folder>/cleaned/cleaned-<flavor>-<account or all>-<YYYYMMDD-HHMMSS>.zip (a dry run: dryrun-...),
     with -2, -3, ... before .zip when that name is taken (two runs in the same second)."""
-    prefix = "dryrun" if dry_run else "cleaned"
+    prefix = DRY_RUN_PREFIX if dry_run else CLEANED_PREFIX
     return free_name(backup_dir / CLEANED_SUBDIR,
                      f"{prefix}-{flavor_short}-{account or ALL_ACCOUNTS_LABEL}-{now:%Y%m%d-%H%M%S}", ".zip")
 
 
-def prune_dry_run_zips(backup_dir: Path, flavor_short: str, keep: int) -> list[Path]:
-    """Delete all but the newest `keep` dry-run zips of this flavor (any account) in <backup_dir>/cleaned; keep 0
-    (or less) keeps all. Real cleaned-files zips, other flavors' zips and other files are never touched."""
+def _prune_run_zips(backup_dir: Path, prefix: str, flavor_short: str, keep: int,
+                    spare: Path | None = None) -> list[Path]:
+    """Delete all but the newest `keep` <prefix>-<flavor>-<account>-<stamp>[-n].zip of this flavor (any account) in
+    <backup_dir>/cleaned, newest by the stamp in the name; keep 0 (or less) keeps all. `spare` (the zip this run
+    wrote) is never deleted, and counts as one of the kept. Other prefixes, other flavors and other files are never
+    touched. One directory listing; no stat per file."""
     if keep <= 0:
         return []
-    folder = backup_dir / CLEANED_SUBDIR
+    pattern = re.compile(rf"^{re.escape(prefix)}-{re.escape(flavor_short)}-(?P<account>.+)-"
+                         r"(?P<stamp>\d{8}-\d{6})(?:-(?P<n>\d+))?\.zip$")
     try:
-        matches = [(m, p) for p in folder.iterdir() if (m := DRY_RUN_ZIP_NAME.match(p.name)) and p.is_file()]
+        with os.scandir(backup_dir / CLEANED_SUBDIR) as entries:
+            matches = [(m, Path(e.path)) for e in entries
+                       if (m := pattern.match(e.name)) and e.is_file(follow_symlinks=False)]
     except OSError:
         return []
-    found = [p for m, p in sorted(matches, key=lambda mp: (mp[0]["stamp"], int(mp[0]["n"] or 1)), reverse=True)
-             if m["flavor"] == flavor_short]
+    found = [p for _, p in sorted(matches, key=lambda mp: (mp[0]["stamp"], int(mp[0]["n"] or 1)), reverse=True)]
+    if spare is not None and spare in found:
+        found.remove(spare)
+        keep -= 1
     removed: list[Path] = []
     for path in found[keep:]:
         try:
@@ -349,11 +364,31 @@ def prune_dry_run_zips(backup_dir: Path, flavor_short: str, keep: int) -> list[P
     return removed
 
 
+def prune_dry_run_zips(backup_dir: Path, flavor_short: str, keep: int) -> list[Path]:
+    """Delete all but the newest `keep` dry-run zips of this flavor (any account) in <backup_dir>/cleaned; keep 0
+    (or less) keeps all. Real cleaned-files zips, other flavors' zips and other files are never touched."""
+    return _prune_run_zips(backup_dir, DRY_RUN_PREFIX, flavor_short, keep)
+
+
+def prune_cleaned_zips(backup_dir: Path, flavor_short: str, keep: int, spare: Path | None = None) -> list[Path]:
+    """Delete all but the newest `keep` cleaned-files zips (cleaned-<flavor>-...) of this flavor (any account) in
+    <backup_dir>/cleaned; keep 0 (or less) keeps all. `spare`, the zip the clean just wrote, is always kept. Dry-run
+    zips, other flavors' zips and other files are never touched."""
+    return _prune_run_zips(backup_dir, CLEANED_PREFIX, flavor_short, keep, spare)
+
+
 def _prune_dry_run_zips(result: CleanResult, backup_dir: Path, flavor: Flavor, keep: int) -> None:
     result.dry_runs_pruned = prune_dry_run_zips(backup_dir, flavor.short_name, keep)
     if result.dry_runs_pruned:
         log_event("backup.dry_runs_pruned", flavor=flavor.folder, keep=keep,
                   removed=[str(p) for p in result.dry_runs_pruned])
+
+
+def _prune_cleaned_zips(result: CleanResult, backup_dir: Path, flavor: Flavor, keep: int) -> None:
+    result.cleaned_pruned = prune_cleaned_zips(backup_dir, flavor.short_name, keep, spare=result.backup_path)
+    if result.cleaned_pruned:
+        log_event("backup.cleaned_pruned", flavor=flavor.folder, keep=keep,
+                  removed=[str(p) for p in result.cleaned_pruned])
 
 
 def _selective_backup(result: CleanResult, ready: list[tuple[ProposalItem, SVFile]], flavor: Flavor,

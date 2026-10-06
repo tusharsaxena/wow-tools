@@ -15,7 +15,7 @@ from wowtools.core.backup import BackupError
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.tools.wtf_cleaner import cleaner as cleaner_module
-from wowtools.tools.wtf_cleaner.cleaner import CleanError, execute, prune_dry_run_zips
+from wowtools.tools.wtf_cleaner.cleaner import CleanError, execute, prune_cleaned_zips, prune_dry_run_zips
 from wowtools.tools.wtf_cleaner.rules import Criteria, ProposalItem, evaluate
 from wowtools.tools.wtf_cleaner.safety import MARKER_NAME
 from wowtools.tools.wtf_cleaner.scanner import SVFile, scan
@@ -550,6 +550,75 @@ class ZipLayoutTest(unittest.TestCase):
         pruned = [r for r in records if r["event"] == "backup.dry_runs_pruned"]
         self.assertEqual(len(pruned), 1)
         self.assertEqual(pruned[0]["data"]["keep"], 3)
+
+    def _old_cleaned_zips(self):
+        folder = self.backup_dir / "cleaned"
+        folder.mkdir(parents=True, exist_ok=True)
+        for day in range(1, 5):
+            (folder / f"cleaned-retail-all-202609{day:02d}-120000.zip").write_bytes(b"old")
+        (folder / "cleaned-retail-ACCT1-20260904-120000-2.zip").write_bytes(b"old, other account")
+        (folder / "cleaned-classic_era-all-20260901-120000.zip").write_bytes(b"other flavor")
+        (folder / "dryrun-retail-all-20260901-120000.zip").write_bytes(b"dry run")
+        (folder / "cleaned-retail-all-notes.zip").write_bytes(b"mine")
+        (folder / "notes.txt").write_text("mine")
+        return folder
+
+    def test_keep_cleaned_zero_keeps_every_cleaned_zip(self):
+        """#4: keep_cleaned 0 (the default) never prunes a cleaned-files zip."""
+        folder = self._old_cleaned_zips()
+        before = len(list(folder.iterdir()))
+        result = execute(self.proposal.items, self.retail, dry_run=False, backup=True,
+                         backup_dir=self.backup_dir, now=WHEN)
+        self.assertEqual(result.cleaned_pruned, [])
+        self.assertEqual(len(list(folder.iterdir())), before + 1)
+
+    def test_keep_cleaned_keeps_newest_per_flavor(self):
+        """#4: a real clean keeps the flavor's newest keep_cleaned cleaned zips (any account), counting its own;
+        other flavors, dry-run zips and files not named like a cleaned zip are untouched."""
+        folder = self._old_cleaned_zips()
+        with capture_events() as records:
+            result = execute(self.proposal.items, self.retail, dry_run=False, backup=True,
+                             backup_dir=self.backup_dir, now=WHEN, keep_cleaned=2)
+        self.assertEqual(sorted(p.name for p in folder.iterdir()), sorted([
+            "cleaned-classic_era-all-20260901-120000.zip", "cleaned-retail-ACCT1-20260904-120000-2.zip",
+            "cleaned-retail-all-20260927-140311.zip", "cleaned-retail-all-notes.zip",
+            "dryrun-retail-all-20260901-120000.zip", "notes.txt"]))
+        self.assertEqual(len(result.cleaned_pruned), 4)
+        pruned = [r for r in records if r["event"] == "backup.cleaned_pruned"]
+        self.assertEqual(len(pruned), 1)
+        self.assertEqual(pruned[0]["data"]["keep"], 2)
+
+    def test_keep_cleaned_never_deletes_the_zip_just_written(self):
+        # An older zip with a stamp in the future (a clock that was wrong) must not push out this run's zip.
+        folder = self._old_cleaned_zips()
+        (folder / "cleaned-retail-all-20301231-235959.zip").write_bytes(b"future")
+        result = execute(self.proposal.items, self.retail, dry_run=False, backup=True,
+                         backup_dir=self.backup_dir, now=WHEN, keep_cleaned=1)
+        self.assertTrue(result.backup_path.exists())
+        self.assertFalse((folder / "cleaned-retail-all-20301231-235959.zip").exists())
+        self.assertEqual([p.name for p in folder.iterdir() if p.name.startswith("cleaned-retail-all-2")],
+                         [result.backup_path.name])
+
+    def test_result_names_the_cleaned_zips_removed(self):
+        from wowtools.tools.wtf_cleaner.result_screen import summary_rows
+        self._old_cleaned_zips()
+        result = execute(self.proposal.items, self.retail, dry_run=False, backup=True,
+                         backup_dir=self.backup_dir, now=WHEN, keep_cleaned=2)
+        self.assertTrue(dict(summary_rows(result))["Cleaned files zip"].endswith("(4 older cleaned zips removed)"))
+
+    def test_dry_run_never_prunes_cleaned_zips(self):
+        folder = self._old_cleaned_zips()
+        result = execute(self.proposal.items, self.retail, dry_run=True, backup=True,
+                         backup_dir=self.backup_dir, now=WHEN, keep_cleaned=1)
+        self.assertEqual(result.cleaned_pruned, [])
+        self.assertEqual(len([p for p in folder.iterdir() if p.name.startswith("cleaned-retail-")]), 6)
+
+    def test_prune_cleaned_zips_keep_zero_or_missing_folder(self):
+        self.assertEqual(prune_cleaned_zips(self.backup_dir, "retail", 1), [])  # no cleaned/ folder yet
+        folder = self._old_cleaned_zips()
+        self.assertEqual(prune_cleaned_zips(self.backup_dir, "retail", 0), [])
+        self.assertEqual(len(prune_cleaned_zips(self.backup_dir, "retail", 1)), 4)
+        self.assertTrue((folder / "cleaned-retail-ACCT1-20260904-120000-2.zip").exists())
 
     def test_keep_backups_zero_prunes_no_dry_run_zips_or_backups(self):
         """Feedback round 1: the global keep_backups 0 means keep all."""

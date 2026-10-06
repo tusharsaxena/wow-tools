@@ -72,10 +72,12 @@ def summary_rows(result: CleanResult) -> list[tuple[str, str]]:
         if result.check_problems:
             check = (f"{len(result.check_problems)} problems: {result.check_problems[0]}"
                      + (" (more in the log)" if len(result.check_problems) > 1 else ""))
+    zipped = _in_backup_folder(result.backup_path) if result.backup_path else "none (turned off in settings)"
+    if result.cleaned_pruned:
+        zipped += f" ({len(result.cleaned_pruned)} older cleaned zips removed)"
     rows = [
         ("Mode", "Dry run" if result.dry_run else "Clean"),
-        ("Cleaned files zip",
-         _in_backup_folder(result.backup_path) if result.backup_path else "none (turned off in settings)"),
+        ("Cleaned files zip", zipped),
         ("WTF backup", snapshot),
     ]
     folder = _backup_folder(result)

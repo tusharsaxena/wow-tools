@@ -23,7 +23,7 @@ Conventions:
   (`[general]`, shared) plus `<tool>.cfg` per tool. One instance at a time (`wow-tools.lock`, `core/lock.py`).
 - Retention is global: `[general] keep_backups` / `keep_journals` (`Config.keep_backups`, `Config.keep_journals`,
   edited on the setup screen). A tool has no retention setting; its `save_settings` calls
-  `Config.remove_retired(section)`.
+  `Config.remove_retired(section)`. The one exception: WTF Cleaner's `keep_cleaned` (its cleaned-file zips, 0 = all).
 - Every log event is registered with a fixed level (`core/events.py` or `<tool>/events.py`); regenerate
   `docs/events.md` after changing any registry.
 - One Textual app, `WowToolsApp` (`ui/suite_app.py`): tool menu first; each tool is a `ToolFlow` (`FLOW` in its

@@ -55,6 +55,8 @@ The first version: four tools in one app.
   - Works on one game version, one account or **All flavors**.
   - **Clean** is on `w`.
   - **Dry run** and **Undo last clean**.
+  - The zips of the files each clean removed are kept forever unless you set how many to keep per game version
+    (**Cleaned-files zips to keep** in its settings; 0, the default, keeps them all).
 - **Screenshot Organizer**
   - Sorts screenshots into year, month and day folders, in place or into an archive folder.
   - Duplicate checks, copy mode, **Dry run** and **Undo last run**.

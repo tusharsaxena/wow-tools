@@ -195,7 +195,9 @@ wow-tools\wtf-cleaner\
 `all`. For example: `cleaned-retail-all-20261003-140311.zip`. If two cleans start in the same second, the second
 gets `-2` added before `.zip`, so no backup ever replaces another.
 
-- The **cleaned** zips are never deleted by the app.
+- The **cleaned** zips are all kept, unless you set **Cleaned-files zips to keep** in the cleaner's settings (see
+  [Settings](#settings)). Then, after each clean that deleted something, only the newest that many of the game
+  version are kept (any account, counting the one that clean just made). A dry run never removes them.
 - Only the newest 10 **backups** of each game version are kept (you can change this in the shared settings, the
   first screen `s` opens; `0` keeps them all).
 - Only the newest 10 **dry-run** zips of each game version are kept (the same setting). Dry-run zips made by
@@ -233,10 +235,11 @@ in `config\wtf-cleaner.cfg`.
 | Max age in days | 90 | The age limit for rule 3 |
 | The four rules | all on | Which rules are on when the review screen opens |
 | Zip the files before deleting | on | Keep a zip of everything a clean removes (recommended) |
+| Cleaned-files zips to keep | 0 | How many `cleaned\cleaned-…zip` files to keep per game version; `0` keeps them all. Older ones are removed after a clean. These zips are your only copy of what a clean deleted once the WTF backups holding it are gone, and **Undo last clean** of an older clean then needs its WTF backup |
 | Backup folder | empty | Where zips and backups go. Empty means `<WoW folder>\wow-tools\wtf-cleaner`. It must be a full path, and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
 
 The file itself uses these names, if you edit it by hand: `max_age_days`, `criterion_not_installed`,
-`criterion_not_enabled`, `criterion_older_than`, `criterion_stray_copies`, `backup_before_delete`, `backup_dir`,
+`criterion_not_enabled`, `criterion_older_than`, `criterion_stray_copies`, `backup_before_delete`, `keep_cleaned`, `backup_dir`,
 `last_account` and `last_flavor_choice`.
 
 Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
@@ -245,7 +248,7 @@ first screen `s` opens (the one with your WoW folder), and saved as `keep_backup
 in `config\wow-tools.cfg`. With **All flavors**, the scan reads up to `parallelism` game versions at once. A clean (and a dry run)
 still does one game version after another: they share one safety marker, and the clean stops at the first game
 version that fails. The WTF backups and the dry-run zips both follow
-`keep_backups`.
+`keep_backups`. The cleaned-files zips are the one exception: they follow the cleaner's own `keep_cleaned`.
 
 ## FAQ
 
@@ -257,7 +260,7 @@ version that fails. The WTF backups and the dry-run zips both follow
 | Does it touch my keybindings, macros or UI layout? | No. It only ever looks at addon settings files. Blizzard's own settings, keybindings, macros, chat setup, UI layout and your list of enabled addons are never touched. |
 | What's the difference between a Dry run and Clean? | A **Dry run** does every step except deleting, so you can see the full results first. **Clean** deletes the ticked files after backing them up. |
 | Can I clean one account only? | Yes. Pick a single game version; if it has more than one account, the next screen lets you pick one. |
-| How much space do the backups take? | Each WTF backup is a zip of your whole `WTF` folder, so it depends on how big that folder is (zipping shrinks these text files a lot). Only the newest 10 per game version are kept (you can change that in the shared settings; `0` keeps them all), and the same number of dry-run zips. The zips of cleaned files are kept until you delete them. |
+| How much space do the backups take? | Each WTF backup is a zip of your whole `WTF` folder, so it depends on how big that folder is (zipping shrinks these text files a lot). Only the newest 10 per game version are kept (you can change that in the shared settings; `0` keeps them all), and the same number of dry-run zips. The zips of cleaned files are kept until you delete them, unless you set **Cleaned-files zips to keep** in the cleaner's settings. |
 | Can I undo a clean from last week? | **Undo last clean** only goes back to the most recent clean. For an older one, unzip its files by hand; see [Restoring a backup](#restoring-a-backup). |
 
 ## Troubleshooting

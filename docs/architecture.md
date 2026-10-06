@@ -67,7 +67,8 @@ unreadable = 2; a hard drive or a WSL `/mnt` folder should use 1). All three are
 (`#keep-backups`, `#keep-journals`, `#parallelism`; Save refuses a value outside 1-8). The per-tool `keep_backups` / `keep_snapshots` / `keep_journals` they replaced
 are ignored, and each tool's `save_settings` drops them (`Config.remove_retired`).
 Each tool owns one file with one section. `config/wtf-cleaner.cfg` `[wtf_cleaner]`: `max_age_days`, `criterion_*`, `backup_before_delete`,
-`backup_dir` (empty = `<wow_path>/wow-tools/wtf-cleaner`, resolved by `settings.resolve_backup_dir()`) and
+`keep_cleaned` (cleaned-files zips kept per flavor, default 0 = keep all, negative or bad = 0; the one tool-level
+retention setting, which `remove_retired` leaves alone), `backup_dir` (empty = `<wow_path>/wow-tools/wtf-cleaner`, resolved by `settings.resolve_backup_dir()`) and
 `last_account` (empty = all accounts) and `last_flavor_choice` (empty = all flavors, else a flavor
 folder; absent until first chosen, and then the picker pre-selects `[general] last_flavor`). `config/screenshot-organizer.cfg` `[screenshot_organizer]`: `dest_dir` (empty = in place),
 `copy_mode` and `last_flavor_choice` (empty = all flavors, else a flavor folder). `config/interface-backup.cfg` `[interface_backup]`: `backup_dir` (empty = `<wow_path>/wow-tools`;
@@ -114,7 +115,7 @@ All flavors (`tools/wtf_cleaner/multi.py`, UI-free) runs the same per-flavor fun
 
     scan_flavors(flavors, account=None, progress=None, parallelism=1) → [FlavorScan(flavor, result | None, error | None)]
     execute_flavors([(flavor, items), ...], dry_run, backup, backup_dir, account, keep_backups,
-                    progress=None, on_flavor=None, journal_dir=None, keep_journals=10)
+                    progress=None, on_flavor=None, journal_dir=None, keep_journals=10, keep_cleaned=0)
                       → MultiCleanResult(dry_run, runs[FlavorRun], journal_path, journals_pruned)
 
 `scan_flavors` reads up to `parallelism` flavors at once (`core/parallel.py`, `[general] parallelism` read by the
@@ -134,7 +135,11 @@ size and mtime. For a real clean it then opens the run journal (when given one),
 writes the marker (`safety.py`), writes and verifies the selective backup, and only then deletes, journaling each
 file right after it is deleted. A dry run writes the backup (as `cleaned/dryrun-<flavor>-<account>-<stamp>.zip`) and deletes nothing; it takes
 no snapshot, writes no journal, and then prunes the flavor's dry-run zips to the newest `keep_backups`
-(`prune_dry_run_zips`). Real `cleaned-*.zip` files are never pruned.
+(`prune_dry_run_zips`). Real `cleaned-*.zip` files are pruned only when `[wtf_cleaner] keep_cleaned` is above 0: a
+real clean that deleted something then keeps the flavor's newest `keep_cleaned` (`prune_cleaned_zips`, any account,
+newest by the stamp in the name, one `os.scandir` and no stat per file; the zip this run wrote is always kept and
+counts as one; `CleanResult.cleaned_pruned`, event `backup.cleaned_pruned`, shown on the result's "Cleaned files
+zip" row). A dry run never prunes them. Undo of an older clean whose zip was pruned falls back to its WTF backup.
 
 ### Run journal and Undo last clean (`tools/wtf_cleaner/journal.py`, `undo.py`)
 
@@ -749,7 +754,7 @@ screens at 80x24 and focuses every focusable control; nothing there is hidden or
 that check a layout run at BASE (`…_at_base`).
 
 The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfCleanerFlow` (`FLOW`) and
-`CleanerSettingsScreen` (criteria, max age, backup on/off, backup folder). The flow shows `FlavorScreen` with
+`CleanerSettingsScreen` (criteria, max age, backup on/off, cleaned-files zips to keep, backup folder). The flow shows `FlavorScreen` with
 `include_all=True` and `last=last_flavor_choice`; All flavors skips the account screen. `review_screen.py` holds:
 
 - `ReviewScreen(cfg, tool_cfg, flavors, *, account, wow_check, locker_check)`: a `TreeFilter` and `ReviewBase`; tree,

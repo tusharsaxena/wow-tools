@@ -68,6 +68,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 
 | Event | Level | Description |
 |---|---|---|
+| `backup.cleaned_pruned` | info | After a clean, older cleaned-files zips of the flavor were deleted to keep its newest N (keep_cleaned, the WTF Cleaner's own setting; 0 keeps all). |
 | `backup.created` | info | The cleaned-files zip was written and verified (a dry run writes it too). |
 | `backup.dry_runs_pruned` | info | After a dry run, older dry-run zips of the flavor were deleted to keep its newest N (keep_backups). |
 | `backup.failed` | error | The cleaned-files zip failed; nothing was deleted. |
