@@ -22,6 +22,7 @@ you land back on the menu.
 | **Screenshot Organizer** | Sorts your WoW screenshots into folders by year, month and day, one set per game version. | [Screenshot Organizer guide](docs/screenshot-organizer.md) |
 | **Interface Backup** | Zips a game version's `Interface` and `WTF` folders (your addons and their settings), and puts them back from a zip. | [Interface Backup guide](docs/interface-backup.md) |
 | **Ace3 Profile Manager** | Shows the profiles of every addon built on Ace3 and which characters use them, and lets you delete, rename and copy profiles or move characters between them. | [Ace3 Profile Manager guide](docs/ace3-profile-manager.md) |
+| **Saved Variables Browser** | Shows every SavedVariables file as a tree you can browse down to single values, and lets you edit, rename and delete keys, or find and replace values in bulk. Use at your own risk. | [Saved Variables Browser guide](docs/sv-browser.md) |
 
 Every tool works with every version of the game you have installed: Retail, Classic, Classic Era, Anniversary,
 and the PTR and Beta clients. You can work on one version at a time or all of them at once.
@@ -182,6 +183,8 @@ Each tool has its own guide, with pictures, that walks through every screen:
   undo a restore.
 - [Ace3 Profile Manager guide](docs/ace3-profile-manager.md): tidy up Ace3 addon profiles, move characters between them,
   and undo a change.
+- [Saved Variables Browser guide](docs/sv-browser.md): browse every addon's saved settings, edit them, and find and
+  replace values in bulk.
 
 ## Updates
 
@@ -227,6 +230,7 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 | `config\screenshot-organizer.cfg` | The Screenshot Organizer's settings |
 | `config\interface-backup.cfg` | Interface Backup's settings |
 | `config\ace3-profile-manager.cfg` | The Ace3 Profile Manager's settings (`[ace3_profile_manager]`): backup folder and the blacklist of addons (each in one game version) it never changes |
+| `config\sv-browser.cfg` | The Saved Variables Browser's settings (`[sv_browser]`): backup folder |
 
 The easiest way to change them is to press `s` in the app: the first screen is the shared one (WoW folder,
 backups and journals to keep, game versions to work on at once), then the tool's own. You can also open the files in Notepad while the app

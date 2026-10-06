@@ -35,6 +35,8 @@ from wowtools.ui.widgets import CHECK_OFF, NavHint, action_kind
 
 POPUP_MAX_WIDTH = 100  # a popup or confirm at LARGE: a readable width, never stretched edge to edge
 FORM_MAX_WIDTH = 100  # a settings form, at any size
+# The tools whose screens are checked. The Saved Variables Browser joins with its M3 screens (plan T3.4); the menu
+# checks below cover every registered tool (TOOL_INFO).
 TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup", "ace3-profile-manager")
 # The action that leads to a result screen without a running-WoW popup in between (dry runs, a backup).
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",

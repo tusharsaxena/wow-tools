@@ -203,3 +203,48 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ace.would_edit` | info | Dry run: a file that would be rewritten, with its changes (checked, not written). |
 | `ace.wow_running` | warning | Apply or Undo was refused because WoW of that flavor is running. |
 | `ace.write_failed` | error | A SavedVariables file could not be written; the run stopped. |
+
+## `sv-browser` events
+
+| Event | Level | Description |
+|---|---|---|
+| `svb.apply_completed` | info | Apply finished (logged at warning if any file was skipped or failed). |
+| `svb.apply_started` | info | Apply (or a dry run) of the pending changes started. |
+| `svb.backup_failed` | error | The zip of the original files failed; nothing was changed. |
+| `svb.disclaimer_accepted` | info | The USE AT YOUR OWN RISK warning was accepted (I understand). |
+| `svb.disclaimer_declined` | info | The USE AT YOUR OWN RISK warning was declined (Back): nothing was scanned. |
+| `svb.dry_run_completed` | info | A dry run finished. |
+| `svb.earlier_unfinished` | error | Apply was refused: an earlier Apply did not finish (its crash marker is there); nothing was changed. |
+| `svb.file_changed` | warning | A file changed since the scan; its changes were skipped. |
+| `svb.file_edited` | info | A SavedVariables file was rewritten with the pending changes. |
+| `svb.file_locked` | error | Apply or Undo stopped before changing anything: files are locked by another program. |
+| `svb.file_restored` | info | Undo or recovery: a file was put back to its original bytes. |
+| `svb.file_skipped` | warning | Undo or recovery: a file was left alone (it changed since the run, or is outside the WTF folder). |
+| `svb.file_unreadable` | warning | A SavedVariables file or folder could not be read or is not readable Lua; it is shown in red and never changed or searched. |
+| `svb.files_backed_up` | info | The originals of the files to change were zipped and verified. |
+| `svb.flavors_stopped` | warning | An Apply over several flavors stopped at one flavor; the flavors after it were not started. |
+| `svb.journal_failed` | error | The run journal could not be written; nothing was changed. |
+| `svb.journal_pruned` | info | Older journals (and the zips only they used) were deleted to keep the newest N (keep_journals). |
+| `svb.marker_failed` | error | The crash marker could not be written; nothing was changed. |
+| `svb.probe_recovered` | warning | A SavedVariables file left as <name>.wowtools-lockcheck by an interrupted lock check was renamed back. |
+| `svb.recovery_done` | info | The user chose what to do about an unfinished Apply (put back or leave). |
+| `svb.recovery_offered` | warning | A marker from an Apply that did not finish was found by a scan (on opening or a rescan), or Apply was pressed while it is there. |
+| `svb.rollback_failed` | error | A file could not be put back after a failure; restore it from the zip the message names. |
+| `svb.rolled_back` | warning | After a failure, the files this run had already written were put back. |
+| `svb.scan_completed` | info | The SavedVariables files were listed, with counts (flavors, accounts, files, bytes, seconds). |
+| `svb.search_completed` | info | A search finished, with counts (files searched, hits, hits dropped over the cap, seconds). |
+| `svb.search_started` | info | A search started (key and value text, modes, scope, replacement, files in scope). |
+| `svb.snapshot_discarded` | info | A whole-WTF snapshot taken before an Undo whose other snapshot failed was deleted: nothing was changed, so it protected nothing. |
+| `svb.snapshot_failed` | error | The whole-WTF snapshot failed; nothing was changed. |
+| `svb.snapshot_taken` | info | The whole-WTF snapshot was written and verified. |
+| `svb.snapshots_pruned` | info | Older whole-WTF snapshots of the flavor were deleted to keep the newest N (keep_backups). |
+| `svb.staged` | debug | A pending edit was made on the review (edit value, rename key or delete key; not written until Apply). |
+| `svb.started` | info | The Saved Variables Browser opened on a flavor (or All flavors). |
+| `svb.undo_completed` | info | Undo last change finished (logged at warning if any file was skipped or failed). |
+| `svb.undo_failed` | error | Undo or recovery: a file could not be put back (its zip is missing or does not match). |
+| `svb.undo_started` | info | Undo last change started, from the newest journal. |
+| `svb.unstaged` | debug | A pending edit was dropped on the review (Backspace on its node). |
+| `svb.verify_failed` | error | An edited file did not re-read as expected; it was not written and the run stopped. |
+| `svb.would_edit` | info | Dry run: a file that would be rewritten, with its changes (checked, not written). |
+| `svb.wow_running` | warning | Apply or Undo was refused because WoW of that flavor is running. |
+| `svb.write_failed` | error | A SavedVariables file could not be written; the run stopped. |

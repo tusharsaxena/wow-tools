@@ -277,7 +277,7 @@ class StructureTest(unittest.TestCase):
         self.assertEqual(tools & {"action_focus_search", "matches"}, set())
         screens = [rel(p) for p in modules("wowtools/tools")
                    if p.name in ("review_screen.py", "restore_screen.py", "blacklist_screen.py")]
-        self.assertEqual(len(screens), 6)
+        self.assertEqual(len(screens), 7)
         self.assertEqual([p for p in screens if "on_input_changed" in defined_functions(tree(REPO / p))], [])
         from wowtools.tools.ace3_profile_manager.tree_view import Filters
         self.assertFalse({"search", "matches"} & set(dir(Filters())))

@@ -13,7 +13,7 @@ delete every branch, stash and worktree this run created.
 | T1.3 | write pipeline, journal, undo to core | done | (this commit) | Ace3's generic apply/multi/journal/undo/verify/report moved to `core/sv_apply.py`, `sv_journal.py`, `sv_undo.py`, `sv_verify.py`, `sv_report.py` and `sv_events.py` (`SvTool(name, prefix)`, `sv_events(prefix)`), Ace3 `editor`/`multi`/`journal`/`undo`/`report` are thin wrappers and `verify` uses the core helpers, one `WowRunning`, `docs/events.md` byte-identical (`gen_event_docs.py --check`), structure pin added, 4 patch targets moved, no Ace3 assertion changed; full suite 1376 OK (2 skipped), +11 tests |
 | T1.4 | shared UI helpers | done | (this commit) | `popup_css`/`show_error`, a generic `TextPromptScreen` (Ace3 `NameScreen` built on it) and `UnfinishedRunScreen` (Ace3 `ProfileRecoveryScreen` built on it, its text now `core.sv_report.recovery_text`) in `ui/dialogs.py`, and a `RunActions` mixin in `ui/review.py` (WoW check, running/backup-dir refusals, `start_run` = busy + progress popup + worker in `activity.running()` + done/failure) that Ace3's review now uses (its `_close_progress(screen)` shadow gone), structure pin added and the progress-close pin narrowed to `ui/review.py`; no Ace3 assertion changed; full suite 1390 OK (2 skipped), +14 tests |
 | M1 | push milestone 1 | done (pushed) | 0ac3786 | review fixes: Ace3 `TargetScreen` gets `popup_css(..., list_rows=ACTIONS_ROWS)` back (its Select dropdown is an OptionList, max-height 16 again), pinned in `test_look_and_feel`; full suite 1391 OK (2 skipped) |
-| T2.1 | package skeleton, registry, fixture | todo | | |
+| T2.1 | package skeleton, registry, fixture | done | (this commit) | `wowtools/tools/sv_browser/` (events with 9 own `svb.*` + `sv_events("svb")`/`SV_TOOL`, `[sv_browser]` settings + `resolve_root`, help stub, settings form, `SvBrowserFlow` flavor picker with All flavors and no account picker -> placeholder `SvReviewScreen`), registered last in `TOOLS`, `build_sv_tree` + `SVB_*` texts in fixtures, README rows + placeholder `docs/sv-browser.md`, `docs/events.md` regenerated; full suite 1402 OK (2 skipped), +11 tests |
 | T2.2 | scanner + lazy model | todo | | |
 | T2.3 | search | todo | | |
 | T2.4 | staging, compile, verify | todo | | |
@@ -118,3 +118,24 @@ delete every branch, stash and worktree this run created.
   `TargetScreen` (its NavSelect overlay is an OptionList, so the T1.4 note "Target/Name popups had that rule with no
   OptionList" was wrong for TargetScreen); restored with `list_rows=ACTIONS_ROWS`, test
   `test_ace_target_dropdown_shows_as_many_rows_as_the_actions_menu`.
+- **T2.1** Own events (spec §6, levels fixed): `svb.started`, `svb.disclaimer_accepted`, `svb.disclaimer_declined`,
+  `svb.scan_completed`, `svb.search_started`, `svb.search_completed` (info), `svb.file_unreadable` (warning; also
+  covers a file that is not readable Lua), `svb.staged`/`svb.unstaged` (debug, as `ace.staged`); the shared
+  pipeline's 31 under `svb.` via `sv_events(SV_TOOL.prefix)`. The spec's `svb.file_failed` is the shared
+  `svb.write_failed`/`svb.verify_failed` (no separate event).
+- **T2.1** `SvBrowserSettings(backup_dir, last_flavor_choice)`; `last_flavor_choice` None = never chosen (as Ace3),
+  written only when set; `resolve_root` = `tool_root(backup_dir, wow_path, "sv-browser")`. The settings form
+  (`SvBrowserSettingsScreen`, backup folder only, `validate_backup_dir`) lives in `app.py` like Ace3's.
+- **T2.1** M3 placeholders: `review_screen.SvReviewScreen(flavors, label)` names the pick and has one **Back**
+  (`cancel`, Esc) button; `f`/Esc flavors, `t` tools, `q` quit; no disclaimer yet (T3.1). `help.py` describes only
+  what this build does (T3.4 writes the full text); `docs/sv-browser.md` is a placeholder with the risk warning
+  (T4.1). README got the tools row, guide link and `config\sv-browser.cfg` row now (test_docs needs them).
+- **T2.1** Meta-tests: `test_help.PLACEHOLDER_REVIEW = {"sv-browser"}` skips the run/confirm/result leg of
+  `test_h_on_every_screen_of_a_tool_opens_its_help` and expects a one-row footer at TINY in
+  `test_every_footer_key_shows_at_tiny` (T3.4: add `RUN_ACTION["sv-browser"]` and empty the set);
+  `test_look_and_feel.TOOLS` stays at four with a comment (T3.4 adds sv-browser plus RUN_ACTION/PREPARE); its menu
+  checks already iterate the registry and pass with five tools at 120x30 and 80x24. `test_structure`'s screen-module
+  count 6 -> 7 (the new `review_screen.py`).
+- **T2.1** `build_sv_tree(root)` is a separate install (like `build_ace_tree`); `SVB_FONT = "Friz Quadrata TT"` is a
+  value in 5 files over both flavors; Bartender4.lua has it in lower case only (a case-insensitive hit);
+  `ElvVersion = nil` / `DetailsVersion = 4` are top-level scalars; Questie per-character has a table array entry.

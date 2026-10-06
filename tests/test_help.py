@@ -34,6 +34,9 @@ URL = re.compile(r"https://[^\s)\]>]+")
 # The action that leads to a result screen without a running-WoW popup in between, and what it needs first.
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
               "ace3-profile-manager": "dry_run"}
+# Tools whose review is still a placeholder (no run, a one-row footer): the Saved Variables Browser until its M3
+# screens (plan T3.4 adds its run action here and drops it from this set).
+PLACEHOLDER_REVIEW = {"sv-browser"}
 PREPARE = {"ace3-profile-manager": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
                                                    review.refresh_view())}
 
@@ -163,19 +166,20 @@ class HelpScreenTest(TuiTestCase):
                         await self.assert_help(app, pilot, text)
                         app.screen.dismiss(None)
                         await settle(app, pilot)
-                    PREPARE.get(name, lambda r: None)(review)
-                    getattr(review, f"action_{RUN_ACTION[name]}")()
-                    await settle(app, pilot)
-                    self.assertIsInstance(app.screen, ConfirmScreen)
-                    await pilot.press("h")  # never over a popup
-                    await settle(app, pilot)
-                    self.assertIsInstance(app.screen, ConfirmScreen)
-                    self.assertNotIn("h", {key.key for key in app.screen.query(FooterKey)})
-                    app.screen.dismiss(True)
-                    await settle(app, pilot)
-                    self.assertIsInstance(app.screen, ResultBase)
-                    labels |= {b.label_text for b in app.screen.query(ActionButton)}
-                    await self.assert_help(app, pilot, text)
+                    if name not in PLACEHOLDER_REVIEW:
+                        PREPARE.get(name, lambda r: None)(review)
+                        getattr(review, f"action_{RUN_ACTION[name]}")()
+                        await settle(app, pilot)
+                        self.assertIsInstance(app.screen, ConfirmScreen)
+                        await pilot.press("h")  # never over a popup
+                        await settle(app, pilot)
+                        self.assertIsInstance(app.screen, ConfirmScreen)
+                        self.assertNotIn("h", {key.key for key in app.screen.query(FooterKey)})
+                        app.screen.dismiss(True)
+                        await settle(app, pilot)
+                        self.assertIsInstance(app.screen, ResultBase)
+                        labels |= {b.label_text for b in app.screen.query(ActionButton)}
+                        await self.assert_help(app, pilot, text)
                     for label in sorted(labels - {"Save", "Cancel"}):  # the forms' own buttons
                         self.assertIn(f"**{label}**", text)
 
@@ -238,7 +242,8 @@ class HelpScreenTest(TuiTestCase):
                     for key in keys:
                         self.assertLessEqual(key.region.right, TINY[0], key)
                         self.assertGreater(key.region.width, 0, key)
-                    self.assertEqual(app.screen.query_one(BottomBar).region.height, 2)
+                    rows = 1 if name in PLACEHOLDER_REVIEW else 2
+                    self.assertEqual(app.screen.query_one(BottomBar).region.height, rows)
                     self.assertIn(f"v{__version__}", "".join(strip.text for strip in
                                                             app.screen._compositor.render_strips()))
 

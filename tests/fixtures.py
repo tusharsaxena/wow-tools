@@ -28,6 +28,10 @@ name to its bytes.
 build_interface_tree(root) adds known bytes to _retail_'s Interface and WTF and an empty _ptr_ flavor.
 build_ace_tree(root) builds a separate install with AceDB SavedVariables (CRLF, written byte-exact; see its
 docstring and the ACE_* texts); ace_lua(*lines) makes SavedVariables text the way WoW writes it.
+build_sv_tree(root) builds a separate install for the Saved Variables Browser (see its docstring and the SVB_*
+texts): two flavors, two accounts, account-wide and per-character files, nested tables, numeric/boolean keys,
+Font/font/barFont keys, SVB_FONT in several files and flavors, escapes, floats, a nil array slot with -- [n]
+comments, a Blizzard_* file, a .bak and a broken file.
 """
 from __future__ import annotations
 
@@ -368,6 +372,67 @@ def build_ace_tree(root: Path) -> Path:
     _addon(era, "Questie")
     _write_lua(era / "WTF" / "Account" / "ACCT1" / "SavedVariables" / "Questie.lua", ACE_QUESTIE)
     (era / "WTF" / "Account" / "ACCT1" / "Realm1" / "Kaelys").mkdir(parents=True, exist_ok=True)
+    return root
+
+
+SVB_FONT = "Friz Quadrata TT"
+SVB_ELVUI = ace_lua(
+    'ElvDB = {', '["profiles"] = {', '["Default"] = {', '["general"] = {', f'["font"] = "{SVB_FONT}",',
+    '["fontSize"] = 12,', '["scale"] = 0.6000000000000001,', '["autoRepair"] = true,', '},',
+    '["unitframe"] = {', f'["Font"] = "{SVB_FONT}",', '["barFont"] = "Expressway",', '[1] = "first",',
+    '[2] = 2.5,', '[true] = "yes",', '[false] = 0,', '},', '},', '},', '}',
+    'ElvPrivateDB = {', '["install_complete"] = 13.52,', '}',
+    'ElvVersion = nil')
+SVB_DETAILS = ace_lua(
+    '_detalhes_global = {', '["font_face"] = "Arial Narrow",', '["tooltip"] = {', f'["fontface"] = "{SVB_FONT}",',
+    '["text"] = "a\\"b\\\\c\\n\\226\\128\\148",', '},', '["bars"] = {', '"one", -- [1]', 'nil, -- [2]',
+    '"three", -- [3]', '},', '}',
+    'DetailsVersion = 4')
+SVB_PERCHAR = ace_lua('ElvCharacterDB = {', '["font"] = "Expressway",', '["nested"] = {', '["deeper"] = {',
+                      f'["barFont"] = "{SVB_FONT}",', '["size"] = -3,', '},', '},', '}')
+SVB_QUESTIE = ace_lua('QuestieConfig = {', '["global"] = {', f'["font"] = "{SVB_FONT}",', '["enabled"] = false,',
+                      '},', '}')
+SVB_QUESTIE_CHAR = ace_lua('QuestieConfigCharacter = {', '["journey"] = {', '{', '["Event"] = "Quest",', '}, -- [1]',
+                           '},', '}')
+SVB_BLIZZARD = ace_lua('Blizzard_Console_SavedVars = {', '["fontHeight"] = 14,', '}')
+SVB_BARTENDER = ace_lua('Bartender4DB = {', '["font"] = "friz quadrata tt",', '}')
+SVB_BROKEN = ace_lua('BrokenDB = {', '["font"] = "Friz')
+
+
+def build_sv_tree(root: Path) -> Path:
+    """A WoW install for the Saved Variables Browser (spec §7; texts are the SVB_* constants above, CRLF):
+
+    _retail_/WTF/Account/ACCT1
+      SavedVariables: ElvUI.lua (ElvDB nested profiles: font/Font/barFont/fontSize keys, a float, booleans,
+      numeric keys [1]/[2], boolean keys [true]/[false]; ElvPrivateDB; top-level ElvVersion = nil),
+      ElvUI.lua.bak (never listed), Details.lua (_detalhes_global: escapes \\" \\\\ \\n \\226\\128\\148, an
+      array with a nil slot and -- [n] comments; DetailsVersion = 4), Blizzard_Console.lua, Broken.lua (unparsable)
+      Realm1/Kaelys/SavedVariables/ElvUI.lua (per character, nested barFont)
+    _retail_/WTF/Account/ACCT2: SavedVariables/Details.lua; Realm2/Chârb/SavedVariables/Bartender4.lua (font in
+      lower case, only a case-insensitive match)
+    _classic_era_/WTF/Account/ACCT1: SavedVariables/Questie.lua; Realm1/Kaelys/SavedVariables/Questie.lua (an
+      array entry that is a table)
+    SVB_FONT ("Friz Quadrata TT") is a value in ElvUI.lua (twice), Details.lua (both accounts), the per-character
+    ElvUI.lua and Questie.lua.
+    """
+    retail = root / "_retail_"
+    _addon(retail, "ElvUI")
+    acct1 = retail / "WTF" / "Account" / "ACCT1"
+    sv = acct1 / "SavedVariables"
+    _write_lua(sv / "ElvUI.lua", SVB_ELVUI)
+    _write_lua(sv / "ElvUI.lua.bak", SVB_ELVUI)
+    _write_lua(sv / "Details.lua", SVB_DETAILS)
+    _write_lua(sv / "Blizzard_Console.lua", SVB_BLIZZARD)
+    _write_lua(sv / "Broken.lua", SVB_BROKEN)
+    _write_lua(acct1 / "Realm1" / "Kaelys" / "SavedVariables" / "ElvUI.lua", SVB_PERCHAR)
+    acct2 = retail / "WTF" / "Account" / "ACCT2"
+    _write_lua(acct2 / "SavedVariables" / "Details.lua", SVB_DETAILS)
+    _write_lua(acct2 / "Realm2" / "Chârb" / "SavedVariables" / "Bartender4.lua", SVB_BARTENDER)
+    era = root / "_classic_era_"
+    _addon(era, "Questie")
+    era_acct = era / "WTF" / "Account" / "ACCT1"
+    _write_lua(era_acct / "SavedVariables" / "Questie.lua", SVB_QUESTIE)
+    _write_lua(era_acct / "Realm1" / "Kaelys" / "SavedVariables" / "Questie.lua", SVB_QUESTIE_CHAR)
     return root
 
 
