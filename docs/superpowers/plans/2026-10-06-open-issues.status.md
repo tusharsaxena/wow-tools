@@ -9,7 +9,7 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
 | I3 | #5 | per-account enabled addons | done | ff55b8d | `ScanResult.enabled_by_account` + `enabled_for()`, rules judge each group by its account; `build_multi_account_tree` fixture, 5 new tests (PerAccountEnabledTest); suite 1322 OK, 2 skipped |
 | I4 | #7 | keep user files when pruning update backups | done | db8c687 | `_carry_user_files` before each prune moves user files to `<root>/update-leftovers/<version>/`; failed move keeps the folder; events `update.leftovers_kept`, `update.backup_kept`; 5 new tests (test_updater_apply 37), suite 1327 OK, 2 skipped |
 | I5 | #8 | native Windows checkpoint run | done | 037ef36 | Windows 11 / Python 3.14.3 on NTFS: suite 1330 OK, 64 skipped (6 parallel runs + 1 serial green after 4 test-only fixes); scripted WTF Cleaner happy path on NTFS all passed; WSL suite 1330 OK, 2 skipped |
-| I6 | #9 #10 | review bundle sign-off, merged ledgers | todo | | |
+| I6 | #9 #10 | review bundle sign-off, merged ledgers | done | (this commit) | reviews/2026-10-04 sign-off table (25 rows) and evidence filled from the review-fixes ledger, "Closed 2026-10-06" lines; 7 ledgers' final rows marked merged (96c3527, 51a3155, 397e0d8, dd8d635 x3, 4c3676e), each hash checked with git log; docs only; suite 1333 OK, 2 skipped; ruff clean |
 | I7 | all | review, push, merge, close issues | todo | | |
 
 ## Decisions taken during the build
@@ -93,3 +93,9 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
   until the next screen change); (3) `atomic_write_bytes` retries `os.replace` on PermissionError on Windows for
   about a second (`REPLACE_RETRY_WAITS`), 3 tests. drvfs readers seeing ENOENT mid-replace stays reader-side and
   unfixed (recorded above).
+- I6: the review bundle stays frozen apart from the filled placeholders, a "Measured after" column in the
+  final summary's performance table (values from the review-fixes ledger: 85-88 ms log writes, 86 ms confirm), a
+  "Closed 2026-10-06" line in both files, and a note that F-027 was fixed on the same branch after all (7ddca2d)
+  and F-018 `keep_cleaned` / per-account enabled sets follow here (#4, #5). Commit range given as `6e9ac1f..fcdb5ac`
+  (first parent of 96c3527 to the branch head); CI cites run 37157279879 (the R3 push) with the Actions URL. No
+  other status ledger said "awaiting merge"; plans with no ledger were left alone.
