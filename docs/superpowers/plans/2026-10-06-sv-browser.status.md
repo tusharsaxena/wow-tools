@@ -14,7 +14,7 @@ delete every branch, stash and worktree this run created.
 | T1.4 | shared UI helpers | done | (this commit) | `popup_css`/`show_error`, a generic `TextPromptScreen` (Ace3 `NameScreen` built on it) and `UnfinishedRunScreen` (Ace3 `ProfileRecoveryScreen` built on it, its text now `core.sv_report.recovery_text`) in `ui/dialogs.py`, and a `RunActions` mixin in `ui/review.py` (WoW check, running/backup-dir refusals, `start_run` = busy + progress popup + worker in `activity.running()` + done/failure) that Ace3's review now uses (its `_close_progress(screen)` shadow gone), structure pin added and the progress-close pin narrowed to `ui/review.py`; no Ace3 assertion changed; full suite 1390 OK (2 skipped), +14 tests |
 | M1 | push milestone 1 | done (pushed) | 0ac3786 | review fixes: Ace3 `TargetScreen` gets `popup_css(..., list_rows=ACTIONS_ROWS)` back (its Select dropdown is an OptionList, max-height 16 again), pinned in `test_look_and_feel`; full suite 1391 OK (2 skipped) |
 | T2.1 | package skeleton, registry, fixture | done | (this commit) | `wowtools/tools/sv_browser/` (events with 9 own `svb.*` + `sv_events("svb")`/`SV_TOOL`, `[sv_browser]` settings + `resolve_root`, help stub, settings form, `SvBrowserFlow` flavor picker with All flavors and no account picker -> placeholder `SvReviewScreen`), registered last in `TOOLS`, `build_sv_tree` + `SVB_*` texts in fixtures, README rows + placeholder `docs/sv-browser.md`, `docs/events.md` regenerated; full suite 1402 OK (2 skipped), +11 tests |
-| T2.2 | scanner + lazy model | todo | | |
+| T2.2 | scanner + lazy model | done | (this commit) | `scanner.py` lists every flavor's SavedVariables files (`walk_sv_files` + `is_sv_file`: Blizzard_* in, .bak/.old/links out) as flavors > accounts > owners > `SvFile` (size, mtime, no read, `sha256=""`), recovers probe leftovers first and logs one `svb.scan_completed`; `model.py` `SvDocument` reads a file once (sha256 then), parses one level ahead (`parse` / `parse_at` on the table's span), `Node` with typed key, spans, path, remove span and D5 flags, 500-child cap with a `… N more` leaf, error nodes instead of raising, plus `key_text`/`scalar_text`/`table_text`/`node_text`; full suite 1430 OK (2 skipped), +28 tests |
 | T2.3 | search | todo | | |
 | T2.4 | staging, compile, verify | todo | | |
 | T2.5 | apply/undo/recovery wiring | todo | | |
@@ -139,3 +139,28 @@ delete every branch, stash and worktree this run created.
 - **T2.1** `build_sv_tree(root)` is a separate install (like `build_ace_tree`); `SVB_FONT = "Friz Quadrata TT"` is a
   value in 5 files over both flavors; Bartender4.lua has it in lower case only (a case-insensitive hit);
   `ElvVersion = nil` / `DetailsVersion = 4` are top-level scalars; Questie per-character has a table array entry.
+- **T2.2** Scanner shape: `ScanResult.flavors` -> `FlavorFiles(flavor, accounts, warnings, error)` ->
+  `AccountFiles(name, owners)` -> `OwnerFiles(character, files)` (`label` = `Account-wide` or `Realm/Name`; only owners
+  with files; every account `walk_sv_files` reports is listed, even one with none). `scan_flavors(flavors, *,
+  progress=(flavor, i, n, label))` reports per flavor; the scan never reads a file, so `SvFile.sha256` is `""` until
+  the model or the search reads it (D17's hash is `SvDocument.sha256`). Probe leftovers are recovered before the walk in
+  every SavedVariables folder not under a link, logged as the shared `svb.probe_recovered`. `svb.scan_completed`
+  fields: flavors, accounts, files, bytes, warnings, seconds; `svb.file_unreadable` for an unreadable folder/file
+  (flavor, path, error).
+- **T2.2** Lazy model parses **one level ahead** so every shown table knows its size (`key {N}`): file load =
+  `parse(data, len(path) <= 1)` (top-level tables built, their entries' tables Opaque); opening a node at path length L
+  = `parse_at(data, start, path, len(p) <= L + 1)` on its span only (the node's `value` becomes that Table). A
+  20,000-entry 5 MB file loads its top level well under the 3 s test bound (~0.1 s). Faults deeper than the parsed
+  level are found only when that table is opened (`skip_table` only matches braces): it gets one error child, the rest
+  of the file stays browsable; a file whose top level fails is one error root (`doc.error`).
+- **T2.2** `Node` (slots, identity equality): kind `value`/`more`/`error`; `typed_key` (= `luasv.key_id`; a property
+  named `key_id` broke the single-definition pin in `test_structure`), `key_span` (top-level: the name; positional:
+  None), `value` (Scalar/Table/Opaque), `path` (top-level name first), `parent`, `remove_span` (Field's), `count`.
+  D5 flags: `can_edit_value` = any scalar (top-level and nil included), `can_rename` = below top level and a written
+  key (`[1] = x` may be renamed, `x, -- [1]` not), `can_delete` = below top level; more/error nodes allow nothing.
+  The cap applies to top-level assignments too.
+- **T2.2** Display text is plain text (the UI must not render it as markup: `[5]` is a key): `key_text` = string
+  keys bare (escaped; `[""]` for empty), others `[5]`/`[true]`/`[2.5]`; `scalar_text` = strings double-quoted with
+  Lua-style escapes (`\"`, `\\`, `\n`, control/invalid-UTF-8 bytes as `\ddd`) cut to `VALUE_WIDTH` (60) characters
+  with `…`, numbers as written (raw bytes), `true`/`false`/`nil`; `table_text` = `{1,234}` or `{…}` unparsed;
+  `node_text` = `key = value`, `key {N}`, `… 1,500 more`, `can't read: …`.
