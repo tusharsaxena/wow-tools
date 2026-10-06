@@ -95,6 +95,7 @@ class Ka0sApp(App):
         self.cfg = cfg
         self.busy = False
         self._check_updates = check_updates
+        self._rechecking = False  # `u` is re-checking GitHub before it offers the update
 
     def on_mount(self) -> None:
         self.register_theme(KA0S_THEME)
@@ -152,7 +153,39 @@ class Ka0sApp(App):
         if self.busy:
             self.notify("Finish the current task before updating.", severity="warning")
             return
-        self.push_screen(UpdateScreen(self.release), self._update_answered)
+        if self._rechecking:
+            return
+        # The notice may come from the throttled check's cache, and a release can be deleted after it was seen:
+        # ask GitHub again before offering it, so `u` never tries to install a release that is gone (D16).
+        self._rechecking = True
+        self.run_worker(self._recheck_update, thread=True, group="update-recheck")
+
+    def _recheck_update(self) -> None:
+        """Worker thread: a forced update check. The config is changed and saved on the UI thread only."""
+        try:
+            release = check_for_update(self.cfg, force=True, raise_errors=True, persist=lambda values:
+                                       self.call_from_thread(self._persist_update_state, values))
+        except UpdateError as exc:
+            self.call_from_thread(self._recheck_failed, str(exc))
+            return
+        self.call_from_thread(self._recheck_done, release)
+
+    def _recheck_failed(self, message: str) -> None:
+        self._rechecking = False
+        self.notify(f"Could not check for updates: {message}", title="Update", severity="error", timeout=10)
+
+    def _recheck_done(self, release: ReleaseInfo | None) -> None:
+        self._rechecking = False
+        if release is None:
+            # The release that was offered no longer exists (or is not newer): drop the notice everywhere.
+            self.release = None
+            self.notify("No update available. You are on the latest version.", title="Update")
+            return
+        self.release = release
+        if self.busy:
+            self.notify("Finish the current task before updating.", severity="warning")
+            return
+        self.push_screen(UpdateScreen(release), self._update_answered)
 
     def _update_answered(self, accepted: bool | None) -> None:
         log_event("ui.selection", screen="update", control="update",

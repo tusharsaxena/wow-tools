@@ -52,6 +52,17 @@ class UiTestCase(TuiTestCase):
         self.tmp = Path(tmp.name)
         self.root = build_wow_tree(self.tmp / "World of Warcraft")
         self.cfg = Config(self.tmp / "wow-tools.cfg")
+        # `u` asks GitHub again before it offers an update (D16): tests answer for GitHub, never the network.
+        self.published = ReleaseInfo.from_version("9.9.9")
+        fetch = patch("wowtools.core.updater.fetch_latest", side_effect=lambda: self.published)
+        self.fetch = fetch.start()
+        self.addCleanup(fetch.stop)
+
+    async def press_update(self, app, pilot):
+        """Press `u` and wait for its fresh update check to answer."""
+        await pilot.press("u")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
 
 
 class SuiteAppBaseTest(UiTestCase):
@@ -97,8 +108,7 @@ class SuiteAppBaseTest(UiTestCase):
                 app._update_found(ReleaseInfo.from_version("9.9.9"))
                 await pilot.pause()
                 self.assertIn("v9.9.9 available", app.screen.query_one(BrandBar).text)
-                await pilot.press("u")
-                await pilot.pause()
+                await self.press_update(app, pilot)
                 self.assertIsInstance(app.screen, UpdateScreen)
                 await pilot.click("#update-yes")
                 await pilot.pause()
@@ -121,8 +131,7 @@ class SuiteAppBaseTest(UiTestCase):
             async with app.run_test(size=(120, 40)) as pilot:
                 await pilot.pause()
                 app._update_found(ReleaseInfo.from_version("9.9.9"))
-                await pilot.press("u")
-                await pilot.pause()
+                await self.press_update(app, pilot)
                 await pilot.click("#update-yes")
                 await pilot.pause()
                 self.assertTrue(app.busy)
@@ -147,8 +156,7 @@ class SuiteAppBaseTest(UiTestCase):
             async with app.run_test(size=(120, 40)) as pilot:
                 await pilot.pause()
                 app._update_found(ReleaseInfo.from_version("9.9.9"))
-                await pilot.press("u")
-                await pilot.pause()
+                await self.press_update(app, pilot)
                 await pilot.click("#update-yes")
                 await app.workers.wait_for_complete()
                 await pilot.pause()
@@ -164,7 +172,62 @@ class SuiteAppBaseTest(UiTestCase):
             await pilot.press("u")
             await pilot.pause()
             self.assertNotIsInstance(app.screen, UpdateScreen)
+            self.fetch.assert_not_called()
 
+
+    async def test_update_of_a_vanished_release_says_no_update_and_clears_the_notice(self):
+        """D16: the notice came from the cache, but the release was deleted since. `u` re-checks, installs nothing,
+        says there is no update and drops the notice from the bar and the menu."""
+        self.cfg.set("general", "latest_seen_version", "9.9.9", log=False)
+        self.cfg.save()
+        self.published = None
+        app = self.make_app()
+        with patch("wowtools.ui.base.apply_update", side_effect=AssertionError("must not install")) as apply:
+            async with app.run_test(size=(120, 40)) as pilot:
+                await pilot.pause()
+                app._update_found(ReleaseInfo.from_version("9.9.9"))
+                await pilot.pause()
+                await self.press_update(app, pilot)
+                self.assertNotIsInstance(app.screen, UpdateScreen)
+                self.assertIsNone(app.release)
+                self.assertNotIn("9.9.9", app.screen.query_one(BrandBar).text)
+                self.assertEqual(app.screen.query_one(VersionLine).text, f"v{__version__}")
+                self.assertTrue(any("No update available" in str(n.message) for n in app._notifications))
+                await pilot.press("u")  # nothing to offer now: no second check
+                await pilot.pause()
+        apply.assert_not_called()
+        self.fetch.assert_called_once()
+        self.assertIsNone(Config(self.cfg.path).load().latest_seen_version)
+
+    async def test_update_offers_what_the_fresh_check_finds(self):
+        """The cached notice said 9.9.9 but GitHub now has 9.9.10: that is the one offered and installed."""
+        self.published = ReleaseInfo.from_version("9.9.10")
+        app = self.make_app()
+        applied = []
+        with patch("wowtools.ui.base.apply_update", side_effect=lambda rel, **kw: applied.append(rel) or "Updated"):
+            async with app.run_test(size=(120, 40)) as pilot:
+                await pilot.pause()
+                app._update_found(ReleaseInfo.from_version("9.9.9"))
+                await self.press_update(app, pilot)
+                self.assertIsInstance(app.screen, UpdateScreen)
+                self.assertEqual(app.release.version, "9.9.10")
+                await pilot.click("#update-yes")
+                await pilot.pause()
+        self.assertEqual([r.version for r in applied], ["9.9.10"])
+
+    async def test_update_check_failure_on_u_keeps_the_notice(self):
+        def offline():
+            raise OSError("offline")
+        self.fetch.side_effect = offline
+        app = self.make_app()
+        with patch("wowtools.ui.base.apply_update", side_effect=AssertionError("must not install")):
+            async with app.run_test(size=(120, 40)) as pilot:
+                await pilot.pause()
+                app._update_found(ReleaseInfo.from_version("9.9.9"))
+                await self.press_update(app, pilot)
+                self.assertNotIsInstance(app.screen, UpdateScreen)
+                self.assertEqual(app.release.version, "9.9.9")
+                self.assertTrue(any("Could not check for updates" in str(n.message) for n in app._notifications))
 
 class BackgroundUpdateCheckTest(UiTestCase):
     async def test_background_check_persists_on_ui_thread(self):
