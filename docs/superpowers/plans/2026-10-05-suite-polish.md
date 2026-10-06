@@ -51,3 +51,9 @@ each milestone. Never merge, tag or release without the user's go-ahead.
   docs, CHANGELOG 0.1.0 entry complete.
 - **T6.2** Multi-lens review workflow, fixes, push; ask for merge go-ahead. After merge: delete the branch (local and
   origin), stashes and worktrees created in this run.
+
+## M7: feedback round (spec Addendum A, D16-D18)
+- **T7.1** Updater: clear the stale cached version; `u` re-checks before installing (D16).
+- **T7.2** Keys shown on buttons, footer and hints list only keys with no button (D17), every tool.
+- **T7.3** `HelpScreen` on `h`: suite help on the menu, per-tool help from every tool screen, GitHub links (D18).
+- **T7.4** Whole-M7 review, docs (README, guides, CHANGELOG, architecture), push.

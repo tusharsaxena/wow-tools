@@ -27,3 +27,11 @@ critic).
 
 ## Out of scope
 Cancelling a running job; parallel WTF Clean / Ace3 Apply; tags, releases, merge (separate approvals).
+
+## Addendum A (2026-10-06, user feedback after the first build)
+
+| # | Topic | Decision |
+|---|---|---|
+| D16 | Stale update notice | The updater cached `latest_seen_version = 1.0.0` before that release was deleted; a later check that finds no release never cleared it, so every throttled check (and the bar/toast) kept offering 1.0.0, and `u` would try to install a release that doesn't exist. Fix: a check that finds no release clears `latest_seen_version`; the throttled path ignores a cached version that is not newer; `u` re-checks (forced) before installing and says "no update" when the release is gone. |
+| D17 | Keys on buttons | Every key that a visible button performs is shown on the button itself, as a second line: the label on line 1, `(w)` centred on line 2 (full-size buttons grow to fit; compact action-bar buttons may keep `Label (k)` on one line if two lines don't fit — decide per screen, record it). The footer then lists only bindings that are NOT on a visible button of that screen (e.g. Space, a, n, /, x, c, h, s), and the left-pane hint stops repeating button keys. Same rule in every tool, the menu and shared screens; one shared helper (`action_button(label, kind, key=)`) builds the label and lets the footer filter drop button keys automatically. 120x30 designs must still fit (Ace3 tree rows etc.); 80x24 keeps working. |
+| D18 | Help screen | `h` opens a help screen everywhere: on the tool menu it explains the suite (what each tool does, settings, keys common to all tools, terms) and from any screen of a tool it explains that tool: what it does, the basic flow step by step, every core function and its key/button, safety (backups, Undo, Dry run), and a link to the tool's guide on GitHub (`https://github.com/tusharsaxena/wow-tools/blob/master/docs/<tool>.md`; the README for the menu). Shared `HelpScreen` in `ui/` (scrollable Markdown, Esc/q/h close, suite look); each tool supplies its help text (a `HELP` markdown constant in the tool package, kept short). `h` shows in the footer ("Help"). Tests: every tool has help, `h` opens it from every tool screen, link targets exist in the repo, text mentions every button label of the tool. |
