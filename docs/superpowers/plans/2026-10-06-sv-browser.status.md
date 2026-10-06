@@ -17,7 +17,7 @@ delete every branch, stash and worktree this run created.
 | T2.2 | scanner + lazy model | done | (this commit) | `scanner.py` lists every flavor's SavedVariables files (`walk_sv_files` + `is_sv_file`: Blizzard_* in, .bak/.old/links out) as flavors > accounts > owners > `SvFile` (size, mtime, no read, `sha256=""`), recovers probe leftovers first and logs one `svb.scan_completed`; `model.py` `SvDocument` reads a file once (sha256 then), parses one level ahead (`parse` / `parse_at` on the table's span), `Node` with typed key, spans, path, remove span and D5 flags, 500-child cap with a `… N more` leaf, error nodes instead of raising, plus `key_text`/`scalar_text`/`table_text`/`node_text`; full suite 1430 OK (2 skipped), +28 tests |
 | T2.3 | search | done | (this commit) | `search.py`: `SearchSpec` (+`problems()`/`check()`, `SearchScope` flavor/account/character-or-`Account-wide`/addon-contains, replacement typed or None = find only), `parse_replacement` (strict Lua decimal that reads back exactly, int within 2^53, true/false), `_Matcher` per D6-D8, byte pre-filter `may_hold`, `search_file` (streams `iter_scalars`, never raises: unreadable/not-Lua logged `svb.file_unreadable`), `run_search` over `run_units` with `progress(done, total, file)`, `HIT_CAP` 10,000 + `dropped`, `svb.search_started`/`_completed`; full suite 1490 OK (2 skipped), +60 tests |
 | T2.4 | staging, compile, verify | done | (this commit) | `ops.py` `Staging` (set/rename/delete/unstage on model nodes with every D5 refusal, duplicates by `key_id` counting staged renames/deletes and array-index shifts, delete drops the edits inside it) and `plans(hits)` -> `Plan` of one `FilePlan` per `SvFile` (sha of load/search) with D12 overlap rules (`DroppedHit` reasons), `compile.py` `compile_file` (re-locates every target by typed path in the bytes Apply read, parse limited to touched tables, value/key/remove-span splices, problems instead of raising) and `verify.py` `verify_edit` per D19 on the core helpers (touched tables found by their new keys); full suite 1540 OK (2 skipped), +50 tests |
-| T2.5 | apply/undo/recovery wiring | todo | | |
+| T2.5 | apply/undo/recovery wiring | done | (this commit) | `editor.py` (`flavor_plan` groups a `Plan` by flavor in plan order, `apply_flavor` = core `apply_flavor` with `compile_file`/`verify_edit` and `started` files+edits, `apply_plan` = core `apply_flavors` under one journal), `journal.py` (`SV_TOOL.journals` wrappers, `read_journal`), `undo.py` (`undo_run`, `recover`, `pending_recovery`, `leave`; core `UndoResult`), `report.py` (`DISCLAIMER`, `apply_confirm`/`undo_confirm` with it as alert lines, `summary_rows`, per-file `file_rows`/`FILE_COLUMNS`) with end-to-end tests on `build_sv_tree` (exact bytes over two flavors, staged+hits in one run, snapshot/originals zip members, journal, keep_journals/keep_backups pruning, dry run, WoW running, D17 skip, verify stop, roll-back, undo byte-identical and changed-since, crash -> marker -> put back / leave, new Apply refused while a marker waits), structure pins extended; no event registry changed; full suite 1566 OK (2 skipped), +26 tests |
 | M2 | push milestone 2 | todo | | |
 | T3.1 | flow, disclaimer, Browse view | todo | | |
 | T3.2 | edit/rename/delete popups, staging UI | todo | | |
@@ -218,3 +218,20 @@ delete every branch, stash and worktree this run created.
   moved down), parses old and new only down those tables, compares a set value as `(type name, value)` and every
   other entry by its old value bytes, a touched child table as "a table" (checked as its own entry). A 400-trial
   random staging run over the fixture files (scratch, not committed) compiled and verified every plan.
+- **T2.5** Module names: the apply wrapper is `editor.py` (as Ace3's) holding both the per-flavor `apply_flavor` and
+  the multi-flavor `apply_plan(plan, **options)` (no separate `multi.py`); `flavor_plan(plan)` groups `Plan.units()`
+  by flavor in plan order (staging first, then hits), so the journal header's `flavors` follow that order. Its verify
+  callback is a module-level `_verify` that looks `verify_edit` up per call, so tests patch
+  `wowtools.tools.sv_browser.editor.verify_edit`. `apply_started` carries `files` and `edits`.
+- **T2.5** Report names avoid the core-pinned `apply_summary_rows`/`apply_detail_rows` (test_structure's
+  single-definition pin): `summary_rows(result, plan=None)` = Flavors, the shared first row (Changed / Would change),
+  `Edits written`/`Edits checked`, `Ticked results left out` (from `plan.dropped`), then the shared rows (skipped, put
+  back, failed, stopped, backup folder, zips, journal); `file_rows` = one row per file per spec §5 (`FILE_COLUMNS`
+  Flavor, Account, Owner, File, Edits, Result). `apply_confirm(plan, dry_run)` names edits/files per flavor; alerts =
+  dropped-hit note, array-entry shift note, and `DISCLAIMER` (real Apply only; a dry run writes nothing);
+  `undo_confirm` = the shared one plus `DISCLAIMER`. `DISCLAIMER` is the spec D2 text, for T3.1's popup/banner too.
+- **T2.5** Recovery "Leave" is logic, not UI: `undo.leave(marker, root=)` clears the marker and logs
+  `svb.recovery_done` with `choice="leave"` (Ace3 does this in its review screen); `undo.pending_recovery(root)` =
+  `read_marker`. No new event. `test_structure.test_tools_use_the_shared_helpers` and the write-pipeline pin now
+  cover sv_browser's journal/undo/editor. A write failure in tests is injected through `editor.apply_flavor(...,
+  write=)` (core `apply_flavors` passes no `write`); the crash case also patches `wowtools.core.sv_apply.restore_original`.

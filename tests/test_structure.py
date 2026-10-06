@@ -174,6 +174,16 @@ class StructureTest(unittest.TestCase):
         self.assertIs(journal.JOURNALS, SV_TOOL.journals)
         self.assertIs(undo.UndoResult, sv_undo.UndoResult)
         self.assertEqual((SV_TOOL.name, SV_TOOL.prefix), ("ace3-profile-manager", "ace"))
+        from wowtools.tools.sv_browser import editor as svb_editor
+        from wowtools.tools.sv_browser import journal as svb_journal
+        from wowtools.tools.sv_browser import undo as svb_undo
+        from wowtools.tools.sv_browser.events import SV_TOOL as SVB_TOOL
+        self.assertIs(svb_editor.Marker, sv_apply.Marker)
+        self.assertIs(svb_editor.WowRunning, undo.WowRunning)
+        self.assertIs(svb_journal.read_journal, sv_journal.read_edit_journal)
+        self.assertIs(svb_journal.JOURNALS, SVB_TOOL.journals)
+        self.assertIs(svb_undo.UndoResult, sv_undo.UndoResult)
+        self.assertEqual((SVB_TOOL.name, SVB_TOOL.prefix), ("sv-browser", "svb"))
 
     def test_tools_use_the_shared_helpers(self):
         """Each tool's journals, undo results and markers go through core (no copy of the bodies)."""
@@ -182,13 +192,15 @@ class StructureTest(unittest.TestCase):
         from wowtools.tools.ace3_profile_manager import undo as ace_undo
         from wowtools.tools.interface_backup import journal as ib_journal
         from wowtools.tools.screenshot_organizer import journal as shots_journal
+        from wowtools.tools.sv_browser import journal as svb_journal
+        from wowtools.tools.sv_browser import undo as svb_undo
         from wowtools.tools.wtf_cleaner import journal as wtf_journal
         from wowtools.tools.wtf_cleaner import undo as wtf_undo
-        for module in (ace_journal, ib_journal, shots_journal, wtf_journal):
+        for module in (ace_journal, ib_journal, shots_journal, svb_journal, wtf_journal):
             self.assertIsInstance(module.JOURNALS, journal.ToolJournals)
             self.assertEqual(module.resolve_journal_dir, module.JOURNALS.dir)
             self.assertEqual(module.latest_undoable, module.JOURNALS.latest_undoable)
-        for module in (ace_undo, wtf_undo):
+        for module in (ace_undo, svb_undo, wtf_undo):
             self.assertTrue(issubclass(module.UndoResult, undo.UndoResultBase))
         for path in ("wowtools/tools/wtf_cleaner/safety.py", "wowtools/core/sv_apply.py"):
             self.assertIn("wowtools.core.marker", imported_modules(tree(REPO / path)) | {
