@@ -307,7 +307,9 @@ class ScopeTest(SearchTestBase):
         hits = self.scoped(addon="elv").hits
         self.assertEqual({h.file.path.name for h in hits}, {"ElvUI.lua"})
         self.assertEqual(len(hits), 3)
-        self.assertEqual(self.scoped(addon="ELVUI.lua").hits, [])  # the addon name, not the file name
+        # the file name as the tree shows it, .lua included
+        self.assertEqual({h.file.path.name for h in self.scoped(addon="ELVUI.lua").hits}, {"ElvUI.lua"})
+        self.assertEqual(len(self.scoped(addon=".lua").hits), len(self.scoped().hits))
 
     def test_files_out_of_scope_are_not_read(self):
         files = self.files()

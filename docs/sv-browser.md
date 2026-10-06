@@ -79,7 +79,8 @@ game version → account → **Account-wide**, or realm → character → the fi
 - A table with more than 500 entries shows the first 500 and a `… N more` line.
 - A file that isn't readable Lua (damaged, cut short) shows in red with "can't read" and the reason. It is never
   changed and never searched. If only one table deep inside a file is damaged, that table shows the red line and the
-  rest of the file is still there.
+  rest of the file is still there to read, but an edit staged anywhere in that file stops **Apply** before anything
+  is written ("not readable Lua").
 
 **Results**: the hits of your last search; see [Search and replace](#search-and-replace).
 
@@ -236,6 +237,8 @@ reason, the left panel counts them, and the Apply confirm says so. A result is l
 - its value has a staged edit;
 - it is staged for delete, or inside a key staged for delete;
 - the same value is ticked twice;
+- its value already is the replacement (nothing to change, so the file is not rewritten; a case-fixing replace
+  leaves the values already in the right case alone);
 - the file changed between when you opened it in Browse and the search (rescan).
 
 A result on a key you only **renamed** is not left out: the rename and the new value are both written.
@@ -442,7 +445,7 @@ Leaving with `f`, `Esc`, `t` or `q` while something is staged or ticked asks fir
 | `/` doesn't find a key I know is there | In Browse the filter only sees what has been read: open the file (and the table) first, or use **Search** (`S`). |
 | **Edit value**, **Rename key** or **Delete key** is greyed out | It can't act on the highlighted line: a top-level variable can only have its value edited, an array entry can't be renamed, a table can't be edited as a value, and a key inside a deleted table can't be changed. |
 | `Space` says there is nothing to tick | Ticks are for search results: run a search that replaces (`S`), then look at the Results view (`v`). |
-| A ticked result shows "⚠ left out" | A staged edit on the same value wins; see [When a ticked result is left out](#when-a-ticked-result-is-left-out). Unstage the edit (`Backspace` in Browse) if you want the result instead. |
+| A ticked result shows "⚠ left out" | A staged edit on the same value wins, or the value already is the replacement; see [When a ticked result is left out](#when-a-ticked-result-is-left-out). Unstage the edit (`Backspace` in Browse) if you want the result instead. |
 | "An earlier change did not finish" | See [If a change was interrupted](#if-a-change-was-interrupted). |
 | "Backup folder not allowed" | The backup folder in settings is a relative path, your WoW folder, or inside a game version's `WTF`, `Interface` or `Screenshots` folder. Press `s` and pick another folder, or leave it empty for the default. |
 | **Undo last change** is greyed out | There's nothing to undo: you haven't applied a change yet, or you already undid the last one. |

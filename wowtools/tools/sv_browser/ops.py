@@ -14,7 +14,8 @@ value, rename it, or both; or delete it. D5's rules are enforced here:
 
 plans(hits) joins the staged edits with the ticked search hits (D11, D12): a hit sets the value to its replacement
 (a whole value, or the string with the Contains text replaced). A hit on a value that has a staged edit, or on or
-under a staged delete, is dropped with its reason (the staged edit wins); a hit on a key that is only renamed
+under a staged delete, is dropped with its reason (the staged edit wins), and so is a hit whose replacement is the
+value already there (D29: nothing to change, so the file is not rewritten); a hit on a key that is only renamed
 combines with the rename. Hits from a file whose bytes differ from what its staged edits were made on are dropped.
 The result is one FilePlan per file, keyed by its SvFile carrying the SHA-256 the edits were made against (the
 shared pipeline skips a file whose bytes changed since).
@@ -54,6 +55,7 @@ HAS_STAGED_EDIT = "its value has a staged edit (the staged edit wins)"
 UNDER_DELETE = "it is staged for delete, or inside a key staged for delete"
 FILE_CHANGED = "the file changed between browsing and the search; rescan"
 DUPLICATE_HIT = "the same value is ticked twice"
+UNCHANGED = "its value already is the replacement (nothing to change)"
 
 
 def typed_path(path: Sequence) -> TypedPath:
@@ -381,7 +383,7 @@ class Staging:
             if hit.new is None:
                 continue
             file, edits = work.setdefault(hit.file.path, (hit.file, {}))
-            reason = _overlap(file, edits, hit)
+            reason = _overlap(file, edits, hit) or (UNCHANGED if _same_hit(hit) else None)
             if reason:
                 plan.dropped.append(DroppedHit(hit, reason))
                 continue
@@ -393,6 +395,13 @@ class Staging:
             if edits:
                 plan.files[file] = FilePlan(file, list(edits.values()))
         return plan
+
+
+def _same_hit(hit: Hit) -> bool:
+    """True when the hit's replacement is the value already there (D29, as for a manual edit): by Lua identity or by
+    the same Lua bytes."""
+    new_bytes = hit.new_bytes if hit.new_bytes is not None else encode_value(hit.new)
+    return _same_value(hit.new, hit.old) or new_bytes == hit.old_bytes
 
 
 def _overlap(file: SvFile, edits: dict[TypedPath, FieldEdit], hit: Hit) -> str | None:

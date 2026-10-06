@@ -15,7 +15,7 @@ from pathlib import Path
 from wowtools.core.events import log_event
 from wowtools.core.install import Account, Character, Flavor
 from wowtools.core.luasv import LuaParseError, parse
-from wowtools.core.svfiles import SvFile, is_addon_sv_file, sha256_of, walk_sv_files
+from wowtools.core.svfiles import SvFile, SvScanWarning, is_addon_sv_file, sha256_of, walk_sv_files
 from wowtools.tools.ace3_profile_manager.model import AceDb, ace_descend, find_dbs, has_profile_keys
 
 ScanProgress = Callable[[int, int, str], None]
@@ -38,17 +38,11 @@ class AccountScan:
         return char_key.casefold() not in self.characters
 
 
-@dataclass(frozen=True)
-class ScanWarning:
-    path: Path | None
-    message: str
-
-
 @dataclass
 class FlavorScan:
     flavor: Flavor
     accounts: list[AccountScan] = field(default_factory=list)
-    warnings: list[ScanWarning] = field(default_factory=list)
+    warnings: list[SvScanWarning] = field(default_factory=list)
     error: str | None = None
 
     def files(self) -> list[AddonFile]:
@@ -60,7 +54,7 @@ class ScanResult:
     flavors: list[FlavorScan]
 
     @property
-    def warnings(self) -> list[ScanWarning]:
+    def warnings(self) -> list[SvScanWarning]:
         return [w for f in self.flavors for w in f.warnings]
 
 
@@ -73,7 +67,7 @@ def scan_flavor(flavor: Flavor, *, account: str | None = None, progress: ScanPro
         return result
 
     def on_error(path: Path, exc: OSError) -> None:
-        result.warnings.append(ScanWarning(path, f"could not read {path.name}: {exc.strerror or exc}"))
+        result.warnings.append(SvScanWarning(path, f"could not read {path.name}: {exc.strerror or exc}"))
         log_event("ace.file_unreadable", path=str(path), error=str(exc))
 
     scans: dict[str, AccountScan] = {}
@@ -86,7 +80,7 @@ def scan_flavor(flavor: Flavor, *, account: str | None = None, progress: ScanPro
             scan.characters[key.casefold()] = key
 
     def on_link(sv_dir: Path) -> None:
-        result.warnings.append(ScanWarning(sv_dir, "skipped: this SavedVariables folder is under a link"))
+        result.warnings.append(SvScanWarning(sv_dir, "skipped: this SavedVariables folder is under a link"))
 
     work = [(scans[acct.name], owner, path)
             for acct, owner, path in walk_sv_files(flavor, account=account, accept=is_addon_sv_file,
@@ -112,7 +106,7 @@ def _read_one(result: FlavorScan, scan: AccountScan, owner: Character | None, pa
         data = path.read_bytes()
         info = path.stat()
     except OSError as exc:
-        result.warnings.append(ScanWarning(path, f"could not read {path.name}: {exc.strerror or exc}"))
+        result.warnings.append(SvScanWarning(path, f"could not read {path.name}: {exc.strerror or exc}"))
         log_event("ace.file_unreadable", path=str(path), error=str(exc))
         return
     if not has_profile_keys(data):
@@ -120,7 +114,7 @@ def _read_one(result: FlavorScan, scan: AccountScan, owner: Character | None, pa
     try:
         chunk = parse(data, ace_descend)
     except LuaParseError as exc:
-        result.warnings.append(ScanWarning(path, f"{path.name} is not readable Lua ({exc}); it is left alone"))
+        result.warnings.append(SvScanWarning(path, f"{path.name} is not readable Lua ({exc}); it is left alone"))
         log_event("ace.parse_failed", path=str(path), offset=exc.offset, error=str(exc))
         return
     dbs, notes = find_dbs(chunk, data)

@@ -222,6 +222,19 @@ class ApplyTest(ApplyTestBase):
         self.assertIn("broken", result.stopped.error)
         self.assertEqual(self.snapshot_tree(), self.before)
 
+    def test_a_file_with_a_parse_fault_deep_inside_is_never_written(self):
+        """Spec D4: browsable around the fault (D27) but never changed, like search, which calls it unreadable."""
+        bad = self.retail.account_dir / "ACCT1" / "SavedVariables" / "X.lua"
+        bad.write_bytes(b'XDB = {\n["good"] = "a",\n["deep"] = {\n["inner"] = {\n["bad"] = @@@,\n},\n},\n}\n')
+        self.files = scan_flavors([self.retail, self.era]).files()
+        before = self.snapshot_tree()
+        self.stage(self.file(self.retail, "X.lua"), "set_value", ("XDB", "good"), "b")
+        result = self.apply()
+        self.assertEqual(result.runs[0].status, "stopped")
+        self.assertIn("not readable Lua", result.stopped.error)
+        self.assertEqual(result.edited, [])
+        self.assertEqual(self.snapshot_tree(), before)
+
     def test_a_write_failure_rolls_back_the_files_already_written(self):
         sv = self.retail.account_dir / "ACCT1" / "SavedVariables"
         elvui, details = self.file(self.retail, "ElvUI.lua"), self.file(self.retail, "Details.lua")

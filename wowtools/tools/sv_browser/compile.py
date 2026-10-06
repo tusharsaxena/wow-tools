@@ -2,7 +2,8 @@
 
 compile_file(file, plan, data) is the shared pipeline's compile callback (core/sv_apply.py): data is the file as
 Apply read it, already checked against the SHA-256 the edits were made on, and every target is found again from its
-path in those bytes (never from spans remembered earlier). The file is parsed only down the tables that hold an
+path in those bytes (never from spans remembered earlier). The whole file must be readable Lua (D4: a fault in a
+table no edit touches still refuses the file, as search does); it is then parsed only down the tables that hold an
 edited key. Each edit becomes byte splices: a value's span replaced with luasv.encode_value (strings double-quoted
 with Lua escapes; numbers as Python writes them), a key's span with luasv.encode_key (always bracket form), a deleted
 key's whole entry taken out by its remove span (its line and `-- [n]` comment when it has the line to itself). Every
@@ -11,11 +12,12 @@ leave a key twice, an edit inside a deleted key) is not spliced: the edit carrie
 """
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 
 from wowtools.core.luasv import (Assignment, Chunk, Field, LuaParseError, Scalar, Table, encode_key, encode_value,
-                                 key_id, parse, splice)
+                                 iter_scalars, key_id, parse, splice)
 from wowtools.core.svfiles import SvFile
 from wowtools.tools.sv_browser.model import key_text, scalar_text
 from wowtools.tools.sv_browser.ops import (ARRAY_RENAME, TOP_LEVEL, FieldEdit, FilePlan, TypedPath, new_duplicates,
@@ -138,6 +140,7 @@ def compile_file(file: SvFile, plan: FilePlan, data: bytes) -> SvEdit:
     """The edit of one file: plan's edits spliced into data (the bytes Apply read), or the problems."""
     edit = SvEdit(file, data, [], plan)
     try:
+        deque(iter_scalars(data), maxlen=0)  # the whole file must be readable Lua (D4), not just the edited tables
         chunk = parse(data, descend_into(table_paths(item.path for item in plan.edits)))
     except LuaParseError as exc:
         edit.problems.append(f"{file.path.name} is not readable Lua ({exc})")

@@ -16,7 +16,7 @@ from wowtools.tools.sv_browser import ops
 from wowtools.tools.sv_browser.model import SvDocument
 from wowtools.tools.sv_browser.ops import FieldEdit, Staging, new_keys, path_text, typed_path
 from wowtools.tools.sv_browser.scanner import scan_flavors
-from wowtools.tools.sv_browser.search import SearchSpec, run_search
+from wowtools.tools.sv_browser.search import SearchScope, SearchSpec, run_search
 
 
 def by_key(nodes, key):
@@ -364,6 +364,27 @@ class PlanTest(StagingTestBase):
         hits = [h for h in self.search(value=SVB_FONT, replacement="Arial") if h.file.path.name == "Questie.lua"]
         plan = self.staging.plans(hits + hits)
         self.assertEqual([d.reason for d in plan.dropped], [ops.DUPLICATE_HIT] * len(hits))
+
+    def test_a_hit_whose_replacement_is_the_value_already_there_is_left_out(self):
+        """A ticked hit that changes nothing (D29, as a manual edit to the same value) never rewrites its value:
+        a case-normalising replace leaves the values already in that case alone."""
+        hits = self.search(value=SVB_FONT, replacement=SVB_FONT)
+        same = [h for h in hits if h.old == SVB_FONT]
+        self.assertTrue(same and len(same) < len(hits))
+        plan = self.staging.plans(hits)
+        self.assertEqual([d.hit for d in plan.dropped], same)
+        self.assertEqual({d.reason for d in plan.dropped}, {ops.UNCHANGED})
+        self.assertEqual(plan.hits, len(hits) - len(same))
+        edited = {e.path for p in plan.files.values() for e in p.edits}
+        self.assertFalse(edited & {h.path for h in same})
+
+    def test_a_hit_written_with_other_escapes_but_the_same_value_is_left_out(self):
+        hits = self.search(value="b", value_mode="contains", match_case=True, replacement="b",
+                           scope=SearchScope(addon="details"))
+        self.assertTrue(hits)
+        plan = self.staging.plans(hits)
+        self.assertEqual(plan.files, {})
+        self.assertEqual([d.reason for d in plan.dropped], [ops.UNCHANGED] * len(hits))
 
     def test_counts(self):
         doc, node = self.elv("general", "font")

@@ -213,7 +213,7 @@ SEARCH_LABEL_WIDTH = 13
 class SearchScreen(ModalScreen[SearchSpec | None]):
     """Search (D6-D10, spec §5), one control per row, each after its label: the key text and Exact / Contains, the
     value text and Whole value / Contains, Match case, the scope (Flavor, only when there are several; Account;
-    Character, with Account-wide only; Addon file, text the name contains) and the replacement (String, Number,
+    Character, with Account-wide only; Addon file, text the file name contains) and the replacement (String, Number,
     Boolean or Find only, then the new value: a text field, or a checkbox for a boolean). It starts with `last`
     (the previous search) or the defaults. Find (or Enter in a text field) builds the SearchSpec, checking the new
     value (search.parse_replacement) and the spec (SearchSpec.problems); a problem shows under the fields until one
@@ -279,7 +279,7 @@ class SearchScreen(ModalScreen[SearchSpec | None]):
             yield self._row("Character", self._select(
                 [("Every character and account-wide", EVERY), ("Account-wide only", OWNER_ACCOUNT_WIDE),
                  *((c, c) for c in self.characters)], scope.character or EVERY, "scope-character"))
-            yield self._row("Addon file", Input(scope.addon, placeholder="any (the name contains)",
+            yield self._row("Addon file", Input(scope.addon, placeholder="any (the file name contains)",
                                                 id="scope-addon", compact=True))
             yield self._row("Replace with", self._select([(label, v) for v, label in NEW_TYPES], new_type,
                                                          "new-type"), gap=True)

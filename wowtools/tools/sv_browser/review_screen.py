@@ -35,8 +35,8 @@ from wowtools.tools.sv_browser.editor import ApplyError, MultiApplyResult, apply
 from wowtools.tools.sv_browser.events import SV_TOOL
 from wowtools.tools.sv_browser.journal import latest_undoable, read_journal, resolve_journal_dir
 from wowtools.tools.sv_browser.model import ERROR, MORE, Node, SvDocument, key_text, node_text, scalar_text
-from wowtools.tools.sv_browser.ops import (HAS_STAGED_EDIT, UNDER_DELETE, FieldEdit, Plan, Staging, key_input,
-                                           parse_key, path_text, typed_path)
+from wowtools.tools.sv_browser.ops import (HAS_STAGED_EDIT, UNCHANGED, UNDER_DELETE, FieldEdit, Plan, Staging,
+                                           key_input, parse_key, path_text, typed_path)
 from wowtools.tools.sv_browser.popups import (NOT_TYPABLE, EditValueScreen, RenameKeyScreen, SearchScreen,
                                               delete_confirm)
 from wowtools.tools.sv_browser.report import (FILE_COLUMNS, STAGE_TITLES, UNDO_COLUMNS, apply_confirm, apply_groups,
@@ -791,8 +791,9 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         if result.unreadable:
             lines += ["\n", (f"{plural(len(result.unreadable), 'file')} can't be read.", warning)]
         if self._left_out:
-            staged = all(reason in (HAS_STAGED_EDIT, UNDER_DELETE) for reason in self._left_out.values())
-            why = "a staged edit wins" if staged else "see the marked results"
+            reasons = set(self._left_out.values())
+            why = ("a staged edit wins" if reasons <= {HAS_STAGED_EDIT, UNDER_DELETE}
+                   else "nothing to change" if reasons == {UNCHANGED} else "see the marked results")
             lines += ["\n", (f"{plural(len(self._left_out), 'ticked result')} left out: {why}", warning)]
         return Text.assemble(*lines)
 

@@ -245,6 +245,21 @@ class CompileProblemTest(CompileTestBase):
                             file.path.read_bytes())
         self.assertIn("not readable Lua", edit.problems[0])
 
+    def test_a_parse_fault_deep_in_another_table_refuses_the_whole_file(self):
+        """Spec D4: a file that isn't readable Lua is never changed, even when the fault is in a table no edit
+        touches (the lazy tree and a parse limited to the edited tables never reach it)."""
+        doc = self.doc(ace_lua("XDB = {", '["good"] = "a",', '["deep"] = {', '["inner"] = {', '["bad"] = @@@,',
+                               "},", "},", "}"))
+        self.stage(doc, "set_value", ("XDB", "good"), "b")
+        plan = self.staging.plans()
+        (file, file_plan), = plan.files.items()
+        data = file.path.read_bytes()
+        edit = compile_file(file, file_plan, data)
+        self.assertEqual(edit.data, data)
+        self.assertEqual(len(edit.problems), 1)
+        self.assertIn("not readable Lua", edit.problems[0])
+        self.assertEqual(verify_edit(edit, data), edit.problems)
+
 
 class ManyEditsTest(CompileTestBase):
     def test_thousands_of_edits_in_one_file_compile_and_verify_quickly(self):

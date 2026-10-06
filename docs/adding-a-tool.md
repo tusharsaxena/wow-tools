@@ -147,5 +147,5 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
    (Interface Backup's `<backup folder>/interface-backup`, when the backup folder is set) needs that subfolder
    moved too, which migrate does not do. Without it the tool lists no backups and Undo refuses the moved journals.
    The Ace3 Profile Manager's rename from `ace-profiles` is the worked example: `settings.migrate_backup_root()`
-   moves `<backup_dir>/ace-profiles` with `merge_folder_logged()` when the tool opens, and `undo._moved_zip()`
-   finds a journal's `edited-*.zip` by name in the new folder.
+   moves `<backup_dir>/ace-profiles` with `merge_folder_logged()` when the tool opens, and the shared
+   `core/sv_undo._moved_zip()` (Undo and recovery of every tool on the SavedVariables pipeline) finds a journal's `edited-*.zip` by name in the new folder.

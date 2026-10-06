@@ -27,6 +27,13 @@ PROTECTED_PREFIX = "blizzard_"  # Blizzard's own SavedVariables (Blizzard_*.lua)
 LOCK_PROBE_SUFFIX = ".wowtools-lockcheck"
 
 
+@dataclass(frozen=True)
+class SvScanWarning:
+    """Something a SavedVariables scan could not read or skipped: the path (None when there is none) and why."""
+    path: Path | None
+    message: str
+
+
 def sha256_of(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 

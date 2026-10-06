@@ -15,17 +15,11 @@ from pathlib import Path
 
 from wowtools.core.events import log_event
 from wowtools.core.install import Account, Character, Flavor
-from wowtools.core.svfiles import (OWNER_ACCOUNT_WIDE, SvFile, is_sv_file, lstat_or_none, recover_probe_leftovers,
-                                   under_link, walk_sv_files)
+from wowtools.core.svfiles import (OWNER_ACCOUNT_WIDE, SvFile, SvScanWarning, is_sv_file, lstat_or_none,
+                                   recover_probe_leftovers, under_link, walk_sv_files)
 from wowtools.tools.sv_browser.events import SV_TOOL
 
 ScanProgress = Callable[[Flavor, int, int, str], None]
-
-
-@dataclass(frozen=True)
-class ScanWarning:
-    path: Path | None
-    message: str
 
 
 @dataclass
@@ -52,7 +46,7 @@ class AccountFiles:
 class FlavorFiles:
     flavor: Flavor
     accounts: list[AccountFiles] = field(default_factory=list)
-    warnings: list[ScanWarning] = field(default_factory=list)
+    warnings: list[SvScanWarning] = field(default_factory=list)
     error: str | None = None
 
     def files(self) -> list[SvFile]:
@@ -67,7 +61,7 @@ class ScanResult:
         return [f for flavor in self.flavors for f in flavor.files()]
 
     @property
-    def warnings(self) -> list[ScanWarning]:
+    def warnings(self) -> list[SvScanWarning]:
         return [w for f in self.flavors for w in f.warnings]
 
 
@@ -89,11 +83,11 @@ def scan_flavor(flavor: Flavor) -> FlavorFiles:
         SV_TOOL.event("probe_recovered"), flavor=flavor.folder, path=p.relative_to(flavor.path).as_posix()))
 
     def unreadable(path: Path, exc: OSError) -> None:
-        result.warnings.append(ScanWarning(path, f"could not read {path.name}: {exc.strerror or exc}"))
+        result.warnings.append(SvScanWarning(path, f"could not read {path.name}: {exc.strerror or exc}"))
         log_event("svb.file_unreadable", flavor=flavor.folder, path=str(path), error=str(exc))
 
     def on_link(sv_dir: Path) -> None:
-        result.warnings.append(ScanWarning(sv_dir, "skipped: this SavedVariables folder is under a link"))
+        result.warnings.append(SvScanWarning(sv_dir, "skipped: this SavedVariables folder is under a link"))
 
     accounts: dict[str, AccountFiles] = {}
 

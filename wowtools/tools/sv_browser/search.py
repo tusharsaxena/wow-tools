@@ -71,7 +71,8 @@ Progress = Callable[[int, int, SvFile], None]
 @dataclass(frozen=True)
 class SearchScope:
     """Which files a search reads (D9). None / "" = every one. character: an owner label (`Realm/Name`), or
-    svfiles.OWNER_ACCOUNT_WIDE for account-wide files only. addon: text the addon name contains, any case."""
+    svfiles.OWNER_ACCOUNT_WIDE for account-wide files only. addon: text the file name (`ElvUI.lua`, as the tree shows
+    it) contains, any case."""
     flavor: str | None = None  # flavor folder
     account: str | None = None
     character: str | None = None
@@ -81,7 +82,7 @@ class SearchScope:
         return ((self.flavor is None or file.flavor.folder == self.flavor)
                 and (self.account is None or file.account == self.account)
                 and (self.character is None or file.owner == self.character)
-                and self.addon.casefold() in file.addon.casefold())
+                and self.addon.casefold() in file.path.name.casefold())
 
     def files(self, files: Sequence[SvFile]) -> list[SvFile]:
         return [f for f in files if self.accepts(f)]
