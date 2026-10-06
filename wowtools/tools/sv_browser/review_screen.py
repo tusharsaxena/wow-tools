@@ -4,11 +4,13 @@ lists the files, a file is read and parsed when it is opened and a table when it
 The left pane has the USE AT YOUR OWN RISK banner, the filter, the staged/ticked summary and the run buttons; the
 bar under the tree acts on the highlighted key. Search (S) opens the search popup and runs the search in a worker
 with the shared progress popup; its hits fill the Results view (v switches views): flavor › account › owner › file ›
-one leaf per hit, `path = old → new`, all ticked. Dismisses with "flavors", "tools" or "quit"
-(ToolFlow._after_review)."""
+one leaf per hit, `path = old → new`, all ticked. Apply (w), Dry run (y) and Undo last change (z) run the shared
+SavedVariables pipeline (RunActions: WoW check, confirm with the USE AT YOUR OWN RISK disclaimer, progress popup,
+result screen), then the files are read again; a scan that finds an Apply that did not finish offers to put the
+originals back. Dismisses with "flavors", "tools" or "quit" (ToolFlow._after_review)."""
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Hashable, Iterator
+from collections.abc import Callable, Collection, Hashable, Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import ClassVar
 
@@ -22,33 +24,37 @@ from textual.widgets import Button, Header, ProgressBar, Static, Tree
 from textual.widgets.tree import TreeNode
 
 from wowtools.core.config import Config
-from wowtools.core.events import log_exception
+from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor
 from wowtools.core.process import wow_check_for
 from wowtools.core.sv_apply import Marker
 from wowtools.core.svfiles import SvFile
 from wowtools.core.text import human_size, plural
+from wowtools.tools.sv_browser.editor import ApplyError, MultiApplyResult, apply_plan
 from wowtools.tools.sv_browser.events import SV_TOOL
-from wowtools.tools.sv_browser.journal import latest_undoable, resolve_journal_dir
+from wowtools.tools.sv_browser.journal import latest_undoable, read_journal, resolve_journal_dir
 from wowtools.tools.sv_browser.model import ERROR, MORE, Node, SvDocument, key_text, node_text, scalar_text
-from wowtools.tools.sv_browser.ops import (HAS_STAGED_EDIT, UNDER_DELETE, FieldEdit, Staging, key_input, parse_key,
-                                           path_text, typed_path)
+from wowtools.tools.sv_browser.ops import (HAS_STAGED_EDIT, UNDER_DELETE, FieldEdit, Plan, Staging, key_input,
+                                           parse_key, path_text, typed_path)
 from wowtools.tools.sv_browser.popups import (NOT_TYPABLE, EditValueScreen, RenameKeyScreen, SearchScreen,
                                               delete_confirm)
+from wowtools.tools.sv_browser.report import (FILE_COLUMNS, STAGE_TITLES, UNDO_COLUMNS, apply_confirm, apply_groups,
+                                              file_rows, recovery_text, summary_rows, undo_confirm, undo_detail_rows,
+                                              undo_summary_rows)
+from wowtools.tools.sv_browser.result_screen import TITLE, SvResultScreen
 from wowtools.tools.sv_browser.scanner import FlavorFiles, ScanResult, scan_flavors
 from wowtools.tools.sv_browser.search import (REPLACE_BOOLEAN, REPLACE_NUMBER, REPLACE_STRING, Hit, SearchResult,
                                               SearchSpec, run_search)
 from wowtools.tools.sv_browser.settings import load_settings, resolve_root
-from wowtools.tools.sv_browser.undo import pending_recovery
+from wowtools.tools.sv_browser.undo import UndoError, UndoResult, leave, pending_recovery, recover, undo_run
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, ALERT_STYLE, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
-                                 ProgressScreen, relabel_branch, theme_colour, two_pane_css)
+                                 ProgressScreen, UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
 from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, TickModel, WowCheck
 from wowtools.ui.tree_filter import (FILTER_BINDINGS, FILTER_HINT, FilterInput, ModelFilter, ModelNode, TextFilter,
                                      TreeFilter)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-TITLE = "Saved Variables Browser"
 BROWSE, RESULTS = "Browse", "Results"  # the tree's two views (v): the files, and the hits of the last search
 RISK_BANNER = "⚠ USE AT YOUR OWN RISK: you change addon data"
 READING = "Reading…"
@@ -67,7 +73,6 @@ TREE_ACTIONS = (
     ("act-unstage", "Unstage", "cancel", "unstage", "backspace"),
     ("act-view", "View", "navigate", "switch_view", "v"),
 )
-LATER = "{} comes in the next build of this tool."  # an action not wired yet (plan T3.4)
 # The marks of a staged key (D12), after its label: its new name, its new value, or deleted.
 RENAME_MARK, VALUE_MARK, DELETE_MARK = "→", "✎", "✗ deleted"
 
@@ -77,6 +82,21 @@ class SearchProgressScreen(ProgressScreen):
 
     ID_PREFIX = "svb-search"
     STAGE_TITLES: ClassVar[dict[str, str]] = {"search": "Searching"}
+
+
+class RunProgressScreen(ProgressScreen):
+    """Shown while an Apply, a dry run, an Undo or a recovery runs. An Apply has one row per flavor in turn (its
+    reports name the flavor: report_unit); an Undo of several flavors backs them up up to `parallelism` at once,
+    one row each."""
+
+    ID_PREFIX = "svb"
+    STAGE_TITLES: ClassVar[dict[str, str]] = STAGE_TITLES
+    SIMULATED_STAGE = "check"
+
+    def __init__(self, title: str, *, dry_run: bool = False, first_stage: str = "",
+                 flavors: Sequence[Flavor] = (), parallelism: int = 1) -> None:
+        super().__init__(title, dry_run=dry_run, first_stage=first_stage, units=flavors, parallelism=parallelism,
+                         label=lambda flavor: flavor.display_name)
 
 
 def ident(data) -> Hashable:
@@ -114,7 +134,7 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
     """The SavedVariables files of the chosen flavors. `wow_check` (tests inject one) stands for the running-WoW
     check of every flavor."""
 
-    SV_TOOL = SV_TOOL  # RunActions: the svb.search error context (svb.apply, svb.undo with plan T3.4)
+    SV_TOOL = SV_TOOL  # RunActions: svb.wow_running, the svb.search / apply / undo / recover error contexts
     TREE_SELECTOR = "#browse"
     LOG_SCREEN = "svb_review"
     HIDDEN_NOUN = "result"
@@ -164,6 +184,7 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         self.tool_cfg = tool_cfg  # config/sv-browser.cfg
         self.flavors = list(flavors)
         self.scope_label = scope_label
+        self._injected_check = wow_check
         self.wow_check = wow_check if wow_check is not None else wow_check_for([f.folder for f in self.flavors])
         self.wow_root = cfg.wow_path  # the WoW folder these flavors were read from (see wow_folder_changed)
         self._leaving_for_new_folder = False
@@ -186,6 +207,7 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         self._generation = 0  # a rescan drops what a load still running would add
         self._scanning = False
         self._checking = False
+        self._stale = False  # an Apply or Undo changed the files: read them again when the review is shown
 
     # --- layout ------------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -241,7 +263,11 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         return True
 
     def on_screen_resume(self) -> None:
-        if not self.wow_folder_changed():
+        if self.wow_folder_changed():
+            return
+        if self._stale and self.idle and self.app.screen is self:
+            self._scan()
+        else:
             self.settings = load_settings(self.tool_cfg)
 
     # --- state ---------------------------------------------------------------------------------
@@ -276,6 +302,14 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
     def ticks_frozen(self) -> bool:
         return not self.idle
 
+    def _checking_changed(self) -> None:
+        self._refresh_buttons()
+
+    def check_for(self, folders: Iterable[str]) -> WowCheck:
+        """The running-WoW check of these flavor folders (an Undo or a recovery may touch a flavor that is not
+        being reviewed)."""
+        return self._injected_check if self._injected_check is not None else wow_check_for(sorted(set(folders)))
+
     # --- scan ----------------------------------------------------------------------------------
     def action_rescan(self) -> None:
         if not self.idle or self.wow_folder_changed():
@@ -293,6 +327,7 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
             return
         self.settings = load_settings(self.tool_cfg)
         self._scanning = True
+        self._stale = False
         self._generation += 1
         self.show_scan_box(True, "Listing the SavedVariables files")
         self._refresh_buttons()
@@ -341,6 +376,8 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         self._rebuild()
         self._refresh_buttons()
         self.query_one("#browse", Tree).focus()
+        if marker is not None:
+            self.offer_recovery(marker)
 
     # --- the model the tree shows ------------------------------------------------------------------
     def document(self, file: SvFile) -> SvDocument:
@@ -798,10 +835,7 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         index = {id(self.hits[i]): i for i in self.ticked}
         self._left_out = {index[id(d.hit)]: d.reason for d in self.staging.plans(self.ticked_hits()).dropped}
 
-    # --- actions (wired in plan T3.2-T3.4) -----------------------------------------------------------
-    def _later(self, what: str) -> None:
-        self.notify(LATER.format(what))
-
+    # --- actions ----------------------------------------------------------------------------------
     def action_search(self) -> None:
         """S: the search popup; over ticked results, after asking (a new search replaces them)."""
         if not self.idle or self.scan is None or self.wow_folder_changed():
@@ -855,18 +889,6 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         found = plural(len(result.hits), "hit")
         self.notify(f"{found} in {plural(result.files_with_hits, 'file')} ({result.seconds:g} s)."
                     if result.hits else NOTHING_FOUND, title="Search")
-
-    def action_apply(self) -> None:
-        if self.idle and self.pending:
-            self._later("Apply")
-
-    def action_dry_run(self) -> None:
-        if self.idle and self.pending:
-            self._later("Dry run")
-
-    def action_undo(self) -> None:
-        if self.idle and self.undoable is not None:
-            self._later("Undo")
 
     def _key_target(self, problem: Callable[[SvDocument, Node], str | None]) -> tuple[SvDocument, Node] | None:
         """The highlighted key, when the action may act on it; else None, saying why when the staging refuses it
@@ -964,16 +986,207 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         self._refresh_buttons()
         self.query_one("#browse", Tree).focus()
 
-    # --- RunActions -----------------------------------------------------------------------------
+    # --- runs: apply, dry run, undo (RunActions) -------------------------------------------------------
     def run_backup_dir(self) -> Path | None:
         return load_settings(self.tool_cfg).backup_dir
 
-    def _mark_stale(self) -> None:
-        """The files may have changed under the scan (a run that stopped half way): drop what is pending and
-        rescan."""
+    def _drop_pending(self) -> None:
+        """Drop the staged edits, the ticks and the results (the files changed under them, or are about to)."""
         self.staging.clear()
         self.ticked.clear()
-        self._scan()
+        self._left_out = {}
+
+    def _set_stale(self) -> None:
+        """The files changed under this scan: drop what is pending; they are read again when the review is shown
+        (after the result screen: on_screen_resume, _after_result)."""
+        self._drop_pending()
+        self._stale = True
+
+    def _mark_stale(self) -> None:
+        """RunActions: a run stopped half way, or put files back; read the files again now (the review is shown)."""
+        self._set_stale()
+        if self.idle and self.is_attached and self.app.screen is self:
+            self._scan()
+
+    def action_apply(self) -> None:
+        self._start(dry_run=False)
+
+    def action_dry_run(self) -> None:
+        self._start(dry_run=True)
+
+    def _start(self, dry_run: bool) -> None:
+        """Apply / Dry run: what is staged plus the ticked results, one plan (D12). A dry run writes nothing, so it
+        needs no WoW check, backup folder or settled unfinished run."""
+        if not self.idle or not self.pending or self.wow_folder_changed():
+            return
+        log_event("ui.selection", screen=self.LOG_SCREEN, control="dry_run" if dry_run else "apply", value=True)
+        plan = self.staging.plans(self.ticked_hits())
+        if dry_run:
+            self._show_apply_confirm(plan, True, [])
+            return
+        if self.marker is not None:  # an earlier Apply did not finish: settle that first (Apply would refuse)
+            self.offer_recovery(self.marker)
+            return
+        if self._backup_dir_refused():
+            return
+        check = self.check_for(file.flavor.folder for file in plan.files)
+        self._check_wow(check, lambda running: self._after_apply_preflight(plan, check, running))
+
+    def _after_apply_preflight(self, plan: Plan, check: WowCheck, running: list[str] | None) -> None:
+        alerts: list[str] = []
+        if not self._refused_while_running(running, alerts):
+            self._show_apply_confirm(plan, False, alerts, check)
+
+    def _show_apply_confirm(self, plan: Plan, dry_run: bool, extra: list[str], check: WowCheck | None = None) -> None:
+        """The confirm (D13): the edits per flavor, one line per file in its detail tree, and as red alert lines the
+        results left out, array entries that move, the WoW check that could not run and (Apply) the disclaimer."""
+        title, body, alerts = apply_confirm(plan, dry_run=dry_run)
+        self.app.push_screen(ConfirmScreen(title, body, (*extra, *alerts), kind="simulate" if dry_run else "destructive",
+                                           groups=apply_groups(plan)),
+                             lambda ok: self._apply_confirmed(ok, plan, dry_run, check))
+
+    def _apply_confirmed(self, ok: bool | None, plan: Plan, dry_run: bool, check: WowCheck | None) -> None:
+        log_event("ui.selection", screen="confirm", control="apply_confirm", value=bool(ok), dry_run=dry_run)
+        wow_root = self.cfg.wow_path
+        if not ok or wow_root is None or not self.idle:
+            return
+        root, journal_dir = resolve_root(load_settings(self.tool_cfg), wow_root), resolve_journal_dir(wow_root)
+        if root is None or journal_dir is None:
+            return
+        flavors = list(dict.fromkeys(file.flavor for file in plan.files))
+        screen = RunProgressScreen("Simulating the changes" if dry_run else "Applying the changes", dry_run=dry_run,
+                                   flavors=flavors)
+        keep_snapshots, keep_journals = self.cfg.keep_backups, self.cfg.keep_journals
+        self.start_run(screen, lambda: apply_plan(plan, root=root, journal_dir=journal_dir, keep_journals=keep_journals,
+                                                  keep_snapshots=keep_snapshots, dry_run=dry_run, wow_check=check,
+                                                  progress=screen.report_unit),
+                       lambda result: self._applied(result, plan), name="apply",
+                       failure="The run stopped unexpectedly", stale_on_crash=not dry_run, expected=(ApplyError,))
+
+    def _applied(self, result: MultiApplyResult, plan: Plan) -> None:
+        if not result.dry_run:
+            self._set_stale()  # the files changed: read again after the result
+        self._refresh_buttons()
+        if result.stopped is not None:
+            self.notify(f"{result.stopped.flavor.display_name}: {result.stopped.error}", title="Apply stopped",
+                        severity="error", timeout=20)
+        self.app.push_screen(SvResultScreen("Dry run" if result.dry_run else "Apply", summary_rows(result, plan),
+                                            FILE_COLUMNS, file_rows(result), self.scope_label, back=result.dry_run),
+                             self._after_result)
+
+    def _after_result(self, choice: str | None) -> None:
+        if choice in ("flavors", "tools", "quit"):
+            self.action_leave(choice)
+        elif choice == "back":  # after a dry run: back to the review, the staged edits and ticks kept
+            return
+        elif self._stale:
+            self._scan()
+        else:
+            self.action_rescan()
+
+    def action_undo(self) -> None:
+        """z: put back the files the newest Apply changed (D15), after the WoW check and a confirm that carries the
+        disclaimer and says what staged work it drops."""
+        if not self.idle or self.wow_folder_changed():
+            return
+        log_event("ui.selection", screen=self.LOG_SCREEN, control="undo", value=True)
+        path = self.undoable
+        if path is None:
+            self.notify("Nothing to undo")
+            return
+        if self._backup_dir_refused():
+            return
+        try:
+            journal = read_journal(path)
+        except (OSError, ValueError) as exc:
+            self.notify(f"The journal could not be read: {exc}", severity="error")
+            return
+        # the journal may be another flavor's (the newest of the whole tool): check the flavors it changed
+        check = self.check_for(e["flavor"] for e in journal.entries)
+        self._check_wow(check, lambda running: self._after_undo_preflight(path, journal, check, running))
+
+    def _after_undo_preflight(self, path: Path, journal, check: WowCheck, running: list[str] | None) -> None:
+        extra: list[str] = []
+        if self._refused_while_running(running, extra):
+            return
+        if self.pending:
+            extra.append(f"The {self._pending_words()} not applied yet will be dropped.")
+        title, body, alerts = undo_confirm(journal)
+        self.app.push_screen(ConfirmScreen(title, body, (*extra, *alerts), kind="destructive"),
+                             lambda ok: self._undo_confirmed(ok, path, check, journal))
+
+    def _undo_confirmed(self, ok: bool | None, path: Path, check: WowCheck, journal) -> None:
+        log_event("ui.selection", screen="confirm", control="undo_confirm", value=bool(ok))
+        wow_root = self.cfg.wow_path
+        if not ok or wow_root is None or not self.idle:
+            return
+        root = resolve_root(load_settings(self.tool_cfg), wow_root)
+        if root is None:
+            return
+        self._drop_pending()  # the files change under them (said in the confirm)
+        # One row per flavor whose WTF folder is backed up first (up to [general] parallelism at once), as undo_run
+        # names them; the files are then put back in one more row.
+        folders = sorted({e["flavor"] for e in journal.entries})
+        parallelism = self.cfg.parallelism
+        screen = RunProgressScreen("Undoing the last change", first_stage="undo",
+                                   flavors=[Flavor(folder, wow_root / folder) for folder in folders],
+                                   parallelism=parallelism)
+        keep_snapshots = self.cfg.keep_backups
+        self.start_run(screen, lambda: undo_run(path, wow_root=wow_root, root=root, keep_snapshots=keep_snapshots,
+                                                wow_check=check, progress=screen.report, parallelism=parallelism,
+                                                on_flavor=screen.start_unit, on_flavor_done=screen.finish_unit),
+                       self._undone, name="undo", failure="Undo stopped unexpectedly", stale_on_crash=True,
+                       expected=(UndoError,))  # WoW running, locked files, the backup failed: nothing was changed
+
+    def _undone(self, result: UndoResult) -> None:
+        self._set_stale()
+        self._refresh_buttons()
+        self.app.push_screen(SvResultScreen("Undo", undo_summary_rows(result), UNDO_COLUMNS,
+                                            undo_detail_rows(result), self.scope_label), self._after_result)
+
+    # --- recovery ----------------------------------------------------------------------------------
+    def offer_recovery(self, marker: Marker) -> None:
+        """An Apply did not finish (its marker was found by the scan): put the originals back, or leave the files."""
+        log_event(SV_TOOL.event("recovery_offered"), flavor=marker.flavor, files=len(marker.files),
+                  started=marker.started)
+        self.app.push_screen(UnfinishedRunScreen(recovery_text(marker), marker),
+                             lambda choice: self._recovery_chosen(marker, choice))
+
+    def _recovery_chosen(self, marker: Marker, choice: str | None) -> None:
+        root = resolve_root(load_settings(self.tool_cfg), self.cfg.wow_path)
+        if root is None or choice not in ("put_back", "leave"):
+            return  # closed without a choice: offered again at the next scan or Apply
+        if choice == "leave":
+            leave(marker, root=root)
+            self.marker = None
+            return
+        if self._backup_dir_refused():
+            return  # the marker stays: offered again
+        check = self.check_for([marker.flavor])  # the marker's flavor, which may not be one reviewed
+        self._check_wow(check, lambda running: self._after_recover_preflight(marker, root, check, running))
+
+    def _after_recover_preflight(self, marker: Marker, root: Path, check: WowCheck,
+                                 running: list[str] | None) -> None:
+        if self._refused_while_running(running, []):
+            return  # the marker stays: offered again
+        screen = RunProgressScreen("Putting the originals back", first_stage="undo")
+        keep_snapshots = self.cfg.keep_backups
+        journal_dir = resolve_journal_dir(self.cfg.wow_path)
+        self.start_run(screen, lambda: recover(marker, root=root, journal_dir=journal_dir,
+                                               keep_snapshots=keep_snapshots, wow_check=check,
+                                               progress=screen.report),
+                       self._recovered, name="recover", failure="Putting the originals back stopped",
+                       stale_on_crash=True, expected=(UndoError,))
+
+    def _recovered(self, result: UndoResult) -> None:
+        self.marker = None
+        message = (f"Put back {plural(len(result.restored), 'file')}; left {plural(len(result.skipped), 'file')} "
+                   f"as they are")
+        if result.failed:
+            message += f"; {plural(len(result.failed), 'file')} could not be put back (see the log)"
+        self.notify(message + ".", title="Unfinished change", severity="error" if result.failed else "information",
+                    timeout=15)
+        self._mark_stale()
 
     # --- leaving -------------------------------------------------------------------------------
     def action_leave(self, choice: str) -> None:

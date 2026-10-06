@@ -62,6 +62,16 @@ def apply_confirm(plan: Plan, *, dry_run: bool) -> tuple[str, str, list[str]]:
     return title, "\n".join(lines), alerts
 
 
+def apply_groups(plan: Plan) -> dict[str, list[str]]:
+    """The confirm's detail tree: per flavor, one line per file with its edits (`ACCT1 › Account-wide › ElvUI.lua:
+    2 edits`), in plan order."""
+    groups: dict[str, list[str]] = {}
+    for file, file_plan in plan.files.items():
+        line = f"{file.account} › {file.owner} › {file.path.name}: {plural(len(file_plan.edits), 'edit')}"
+        groups.setdefault(flavor_name(file.flavor.folder), []).append(line)
+    return groups
+
+
 def undo_confirm(journal: Journal) -> tuple[str, str, list[str]]:
     """The shared Undo confirm with the disclaimer as its alert line (D21)."""
     title, body, alerts = sv_report.undo_confirm(journal)

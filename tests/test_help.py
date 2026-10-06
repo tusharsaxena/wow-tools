@@ -13,7 +13,7 @@ from textual.widgets import Markdown
 from textual.widgets._footer import FooterKey
 
 from tests.fixtures import (BASE, TINY, TuiTestCase, accept_disclaimer, build_ace_tree, build_interface_tree,
-                            build_screenshot_tree, build_wow_tree, footer_keys, make_config, settle)
+                            build_screenshot_tree, build_wow_tree, footer_keys, make_config, settle, stage_sv_edit)
 from wowtools import __version__
 from wowtools.core.install import WowInstall
 from wowtools.tools import TOOLS
@@ -33,12 +33,10 @@ GITHUB = "https://github.com/tusharsaxena/wow-tools"
 URL = re.compile(r"https://[^\s)\]>]+")
 # The action that leads to a result screen without a running-WoW popup in between, and what it needs first.
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
-              "ace3-profile-manager": "dry_run"}
-# Tools with no run to reach a confirm and a result yet: the Saved Variables Browser until its runs (plan T3.4 adds
-# its run action here and empties this set).
-NO_RUN = {"sv-browser"}
+              "ace3-profile-manager": "dry_run", "sv-browser": "dry_run"}
 PREPARE = {"ace3-profile-manager": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
-                                                   review.refresh_view())}
+                                                   review.refresh_view()),
+           "sv-browser": stage_sv_edit}
 
 
 def url_target(url: str) -> Path:
@@ -168,20 +166,19 @@ class HelpScreenTest(TuiTestCase):
                         await self.assert_help(app, pilot, text)
                         app.screen.dismiss(None)
                         await settle(app, pilot)
-                    if name not in NO_RUN:
-                        PREPARE.get(name, lambda r: None)(review)
-                        getattr(review, f"action_{RUN_ACTION[name]}")()
-                        await settle(app, pilot)
-                        self.assertIsInstance(app.screen, ConfirmScreen)
-                        await pilot.press("h")  # never over a popup
-                        await settle(app, pilot)
-                        self.assertIsInstance(app.screen, ConfirmScreen)
-                        self.assertNotIn("h", {key.key for key in app.screen.query(FooterKey)})
-                        app.screen.dismiss(True)
-                        await settle(app, pilot)
-                        self.assertIsInstance(app.screen, ResultBase)
-                        labels |= {b.label_text for b in app.screen.query(ActionButton)}
-                        await self.assert_help(app, pilot, text)
+                    PREPARE.get(name, lambda r: None)(review)
+                    getattr(review, f"action_{RUN_ACTION[name]}")()
+                    await settle(app, pilot)
+                    self.assertIsInstance(app.screen, ConfirmScreen)
+                    await pilot.press("h")  # never over a popup
+                    await settle(app, pilot)
+                    self.assertIsInstance(app.screen, ConfirmScreen)
+                    self.assertNotIn("h", {key.key for key in app.screen.query(FooterKey)})
+                    app.screen.dismiss(True)
+                    await settle(app, pilot)
+                    self.assertIsInstance(app.screen, ResultBase)
+                    labels |= {b.label_text for b in app.screen.query(ActionButton)}
+                    await self.assert_help(app, pilot, text)
                     for label in sorted(labels - {"Save", "Cancel"}):  # the forms' own buttons
                         self.assertIn(f"**{label}**", text)
 

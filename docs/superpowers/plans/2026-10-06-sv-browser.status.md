@@ -22,7 +22,7 @@ delete every branch, stash and worktree this run created.
 | T3.1 | flow, disclaimer, Browse view | done | (this commit) | `popups.DisclaimerScreen` (warning `ChoiceScreen`, I understand/Back, Esc = Back) once per opening of the tool, `svb.disclaimer_*`/`svb.started` logged, real two-pane `SvReviewScreen` (banner, filter, pending line, Search row + Apply/Dry run/Rescan/Undo row, NavHint; lazy Browse tree loaded in workers with the child cap, red unreadable rows, x to file level, `/` on loaded labels, bar Edit value/Rename key/Delete key/View enabled per D5 flags, leave/rescan with staged edits confirm), `BarTree`/`ActionBar` moved from Ace3 to `ui/review.py`, sv-browser in `test_look_and_feel.TOOLS` with `NO_RUN` (and `test_help.NO_RUN`), `fixtures.accept_disclaimer`; full suite 1586 OK (2 skipped), +12 tests |
 | T3.2 | edit/rename/delete popups, staging UI | done | (this commit) | `popups.py` `EditValueScreen` (type NavSelect string/number/boolean, Input or `Ka0sCheckbox`, `parse_replacement` + staging check inline), `RenameKeyScreen` (shared `TextPromptScreen`, keys typed as the tree shows them via `ops.parse_key`/`key_input`) and `delete_confirm` (destructive, entry count, dropped inner edits, `SHIFT_WARNING` alert) wired to e/k/d; marks `→ name`, `✎ value`, `✗ deleted` (dim strike below a delete), an **Unstage** (Backspace) button on the bar, `ops.Staging.set_problem`/`rename_problem`/`delete_problem`/`staged_inside` and equal-value no-ops; full suite 1607 OK (2 skipped), +21 tests |
 | T3.3 | search popup, Results view | done | (this commit) | `popups.SearchScreen` (one labelled control per row: key + Exact/Contains, value + Whole value/Contains, Match case, Flavor (only with several flavors scanned)/Account/Character incl. Account-wide only/Addon file, Replace with String/Number/Boolean/Find only + text or checkbox; Find = `parse_replacement` + `SearchSpec.problems()` inline, prefilled with the last search, box scrolls at 80x24), `S` runs `run_search` through `RunActions.start_run(writes=False)` with `SearchProgressScreen` (`[general] parallelism`), Results view flavor › account › owner › file › `path = old → new` leaves all ticked (space/a/n, `/` on every hit, hidden-ticked note), `v` rebuilds the view (sub-title), new search over ticks asks (destructive), pending line adds Results/cap/unreadable/left-out lines and leaves show `⚠ left out: <reason>` from `Staging.plans(ticked)`, help text; full suite 1624 OK (2 skipped), +17 tests |
-| T3.4 | apply/dry run/undo/recovery UI, result, help, look-and-feel | todo | | |
+| T3.4 | apply/dry run/undo/recovery UI, result, help, look-and-feel | done | (this commit) | w/y/z wired on `RunActions` (`_start` → `staging.plans(ticked)`, WoW check per plan flavor via `check_for`, destructive/simulate confirm from `report.apply_confirm` + new `apply_groups` detail tree per flavor/file, disclaimer and the WoW-unknown alert as red lines; Undo confirm with the disclaimer and the dropped staged work), `RunProgressScreen`, `result_screen.SvResultScreen` (Back to review after a dry run), rescan after Apply/Undo (`_stale`), the shared `UnfinishedRunScreen` offered by every scan that finds a marker and by Apply (put back / leave), full `help.py`, `STATUS_COLOURS` moved to `core/sv_report.py`, sv-browser in `test_help`/`test_look_and_feel` RUN_ACTION/PREPARE (`fixtures.stage_sv_edit`) and `NO_RUN` gone, new `tests/test_sv_browser_run_ui.py` (search → apply → files, snapshots, originals zips, journal → undo byte-identical); full suite 1632 OK (2 skipped), +8 tests |
 | M3 | push milestone 3 | todo | | |
 | T4.1 | docs | todo | | |
 | T4.2 | review, fixes, push, ask for merge | todo | | |
@@ -333,3 +333,33 @@ delete every branch, stash and worktree this run created.
   delete). The pending Static is multi-line after a search: `Results: N hits in F files[ (find only)]`, the cap
   (`N more hits left out (the results stop at 10,000): narrow the search.`) and `N files can't be read.`. `Ticked:
   M results in F files` counts files across staged edits and ticked hits.
+- **T3.4** Runs follow Ace3's review: Apply = marker waiting → recovery popup first; `_backup_dir_refused`; the WoW
+  check (`ReviewBase.run_preflight`) over the plan's flavor folders (`check_for`: the injected `wow_check` in tests,
+  else `wow_check_for(folders)`; Undo checks the journal's flavors, recovery the marker's); confirm; `start_run` with
+  `editor.apply_plan(..., progress=screen.report_unit)` / `undo.undo_run` / `undo.recover`. A dry run skips the WoW
+  check, backup folder and marker (it writes nothing). The plan is built once at `_start` (`staging.plans(
+  ticked_hits())`) and handed through the confirm (nothing can change while the check or a popup is up).
+- **T3.4** Confirm: `ConfirmScreen(title, body, (*extra, *alerts), kind=simulate|destructive, groups=apply_groups(plan))`
+  where `report.apply_groups` (new) lists per flavor display name one line per file `ACCT › owner › File.lua: N edits`
+  (the spec's "counts per flavor and file"); `extra` holds the "Could not check whether WoW is running" alert, the
+  plan's alerts end with `DISCLAIMER` (Apply only). Undo's confirm is destructive (as every tool's), with
+  `The N staged edits and M ticked results not applied yet will be dropped.` when something is pending; the staging
+  is dropped when the Undo starts.
+- **T3.4** Stale handling split: `_set_stale()` (drop staging, ticks and left-out, `_stale = True`) after a real
+  Apply / an Undo, so the rescan happens when the result screen is left (`_after_result`: Rescan/Esc → `_scan()`;
+  f/t/q → `action_leave`, nothing pending any more; `on_screen_resume` rescans a stale review too), never under the
+  result screen; `_mark_stale()` (RunActions' failure hook, and after a recovery) = `_set_stale()` + scan now when the
+  review is shown. A dry run keeps everything (Back to review).
+- **T3.4** Recovery: `_scanned` offers `ui.dialogs.UnfinishedRunScreen(report.recovery_text(marker), marker)` (no
+  tool subclass) on every scan that finds a marker, logging the shared `svb.recovery_offered`; Leave = `undo.leave`
+  (logs `svb.recovery_done` leave), Put back runs `undo.recover` with the progress popup and rescans; Esc keeps the
+  marker (offered again by the next scan or Apply). No event registry changed.
+- **T3.4** `RunProgressScreen` (ID prefix `svb`, core `STAGE_TITLES`, simulated stage `check`, one row per flavor) lives
+  in `review_screen.py` next to `SearchProgressScreen`; `SvResultScreen` in the new `result_screen.py` (spec §4; not
+  counted by test_structure's review-screen pin), sub-title `Saved Variables Browser · <scope> · <Apply|Dry run|Undo>
+  result`, `LOG_SCREEN = "svb_result"`. `TITLE` now lives in `result_screen.py` (review_screen imports it). Ace3's
+  `STATUS_COLOURS` moved to `core/sv_report.py` (both result screens use it; no Ace3 assertion changed).
+- **T3.4** Meta-tests: `NO_RUN` removed from `test_help` and `test_look_and_feel` (not just emptied), `RUN_ACTION
+  ["sv-browser"] = "dry_run"`, `PREPARE["sv-browser"] = tests.fixtures.stage_sv_edit` (stages " (edited)" on the
+  first string value, Retail first, read synchronously in the test thread; look-and-feel wants "Retail" in the
+  confirm). The help names every review, settings and result button (incl. **Back to review**).

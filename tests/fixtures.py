@@ -214,6 +214,23 @@ async def accept_disclaimer(app, pilot) -> None:
         await settle(app, pilot)
 
 
+def stage_sv_edit(review) -> None:
+    """Stage one value edit on a Saved Variables Browser review (what its Apply / Dry run needs): the first string
+    value found in the scanned files (Retail's first), read here in the test's thread, gets " (edited)" added."""
+    for file in sorted(review.scan.files(), key=lambda f: f.flavor.folder != "_retail_"):
+        doc = review.document(file)
+        nodes = list(doc.roots())
+        while nodes:
+            node = nodes.pop(0)
+            if node.is_table:
+                nodes.extend(doc.children(node))
+            elif (node.is_scalar and isinstance(node.value.value, str)
+                  and review.staging.set_value(doc, node, node.value.value + " (edited)").ok):
+                review._refresh_labels()
+                return
+    raise AssertionError("no string value to stage an edit on")
+
+
 def _messages_pending(app) -> bool:
     """True while the app or a widget of the top screen has messages waiting: a rebuild that expands a tree node
     posts NodeExpanded, and under load (16 shards on native Windows) the pause above could end before the screen

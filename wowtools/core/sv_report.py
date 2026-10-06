@@ -19,6 +19,10 @@ STAGE_TITLES = {
 }
 DETAIL_COLUMNS = ("Flavor", "Account", "Addon", "Change", "Result")
 UNDO_COLUMNS = ("Flavor", "File", "Result")
+# Theme colour of a result's detail row (its last cell), by the status's first words (RESULT_TEXT and the undo
+# statuses): ui.result_screen.ResultScreen.STATUS_COLOURS of every tool on this pipeline.
+STATUS_COLOURS = (("would change", "accent"), ("changed", "success"), ("restored", "success"),
+                  ("put back", "warning"), ("skipped", "warning"), ("failed", "error"))
 RESULT_TEXT = {"edited": "changed", "would_edit": "would change", "skipped": "skipped", "failed": "failed",
                "rolled_back": "put back"}
 
