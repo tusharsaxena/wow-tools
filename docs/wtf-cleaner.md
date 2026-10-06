@@ -201,7 +201,8 @@ gets `-2` added before `.zip`, so no backup ever replaces another.
 - Only the newest 10 **backups** of each game version are kept (you can change this in the shared settings, the
   first screen `s` opens; `0` keeps them all).
 - Only the newest 10 **dry-run** zips of each game version are kept (the same setting). Dry-run zips made by
-  older versions of the app are named `cleaned-…` like real ones, so they're kept until you delete them.
+  older versions of the app are named `cleaned-…` like real ones, so they're kept unless you set **Cleaned-files
+  zips to keep**, which counts and removes them like real cleaned zips.
 - Only the newest 10 **journals** are kept (also a shared setting).
 
 ## Restoring a backup
@@ -235,7 +236,7 @@ in `config\wtf-cleaner.cfg`.
 | Max age in days | 90 | The age limit for rule 3 |
 | The four rules | all on | Which rules are on when the review screen opens |
 | Zip the files before deleting | on | Keep a zip of everything a clean removes (recommended) |
-| Cleaned-files zips to keep | 0 | How many `cleaned\cleaned-…zip` files to keep per game version; `0` keeps them all. Older ones are removed after a clean. These zips are your only copy of what a clean deleted once the WTF backups holding it are gone, and **Undo last clean** of an older clean then needs its WTF backup |
+| Cleaned-files zips to keep | 0 | How many `cleaned\cleaned-…zip` files to keep per game version; `0` keeps them all. Older ones are removed after a clean. The zip of the last clean is always kept, so **Undo last clean** is unaffected. A removed zip of an older clean can only be restored by hand from its WTF backup (`backup\backup-…zip`) while that is still kept |
 | Backup folder | empty | Where zips and backups go. Empty means `<WoW folder>\wow-tools\wtf-cleaner`. It must be a full path, and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
 
 The file itself uses these names, if you edit it by hand: `max_age_days`, `criterion_not_installed`,

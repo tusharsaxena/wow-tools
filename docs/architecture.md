@@ -139,7 +139,8 @@ no snapshot, writes no journal, and then prunes the flavor's dry-run zips to the
 real clean that deleted something then keeps the flavor's newest `keep_cleaned` (`prune_cleaned_zips`, any account,
 newest by the stamp in the name, one `os.scandir` and no stat per file; the zip this run wrote is always kept and
 counts as one; `CleanResult.cleaned_pruned`, event `backup.cleaned_pruned`, shown on the result's "Cleaned files
-zip" row). A dry run never prunes them. Undo of an older clean whose zip was pruned falls back to its WTF backup.
+zip" row). A dry run never prunes them. Undo (always the latest clean) is unaffected, since that clean's zip is
+always kept; a pruned older clean can only be restored by hand from its WTF backup while one is kept.
 
 ### Run journal and Undo last clean (`tools/wtf_cleaner/journal.py`, `undo.py`)
 

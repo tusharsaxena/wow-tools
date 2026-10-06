@@ -7,7 +7,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from textual.widget import Widget
-from textual.widgets import Input, Label, Static
+from textual.widgets import Input, Label
 
 from wowtools.core.config import Config
 from wowtools.core.install import Flavor, WowInstall, validate_backup_dir
@@ -41,13 +41,13 @@ class CleanerSettingsScreen(ToolSettingsScreen):
         yield Label("Backup folder for backup/ (whole WTF folder) and cleaned/ (files removed); empty = default")
         yield self.folder_input(self.settings.backup_dir, id="backup_dir",
                                 placeholder=folder_hint(resolve_backup_dir(CleanerSettings(), self.wow_path)))
-        yield Static("Propose SavedVariables when:", classes="title")
+        yield Label("Propose SavedVariables when:")  # a plain label, not a spaced .title: the form fits at 120x30
         for name in CRITERIA:
             yield Ka0sCheckbox(CRITERION_LABELS[name], getattr(criteria, name), id=f"sw_{name}", compact=True)
         yield Ka0sCheckbox("Zip the files to clean before deleting them (recommended)",
                            self.settings.backup_before_delete, id="sw_backup", compact=True)
         yield Label("Cleaned-files zips to keep per game version (0 keeps all; they hold what Clean deleted)")
-        yield Input(str(self.settings.keep_cleaned), type="integer", id="keep_cleaned", compact=True)
+        yield Input(str(self.settings.keep_cleaned), type="integer", id="keep_cleaned")
 
     def save(self) -> bool:
         try:

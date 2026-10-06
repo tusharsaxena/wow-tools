@@ -526,9 +526,10 @@ class ZipLayoutTest(unittest.TestCase):
                          now=WHEN, account="ACCT1")
         self.assertEqual(result.backup_path, self.backup_dir / "cleaned" / "dryrun-retail-ACCT1-20260927-140311.zip")
 
-    def test_dry_run_zips_are_pruned_per_flavor_and_cleaned_zips_never(self):
-        # F-018: dry runs are repeated often; keep the newest keep_backups dry-run zips of the flavor. Real
-        # cleaned-files zips stay forever (a documented promise), as do other flavors' and the user's files.
+    def test_dry_run_zips_are_pruned_per_flavor_and_cleaned_zips_untouched_by_dry_run(self):
+        # F-018: dry runs are repeated often; keep the newest keep_backups dry-run zips of the flavor. A dry run
+        # never prunes real cleaned-files zips (only a real clean does, when keep_cleaned > 0), nor other flavors'
+        # or the user's files.
         folder = self.backup_dir / "cleaned"
         folder.mkdir(parents=True)
         for day in range(1, 6):

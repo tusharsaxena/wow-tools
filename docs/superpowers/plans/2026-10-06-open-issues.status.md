@@ -30,3 +30,9 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
   `os.scandir` without following links (was `iterdir` + `is_file()` per file). Settings form fit at 120x30: the new
   field uses a compact Input and both the new label and the backup-folder label are one line (the default folder is
   already the placeholder). Bad or negative values in the file read as 0 (keep all, the safe side).
+- I2 review: 4 findings, 4 fixed, 0 rejected: wtf-cleaner.md's legacy `cleaned-…` dry-run sentence now says
+  keep_cleaned counts and removes them; wtf-cleaner.md and architecture.md no longer claim Undo can lose its zip
+  (the last clean's zip is always kept; a pruned older clean is restored by hand from its WTF backup); keep_cleaned
+  is a full-height Input like max_age, the form still fitting at 120x30 because "Propose SavedVariables when:" is a
+  plain Label instead of a margined .title; the stale dry-run test renamed and its comment corrected. Suite 1317 OK,
+  2 skipped.
