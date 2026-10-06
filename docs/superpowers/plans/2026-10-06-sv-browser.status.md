@@ -19,7 +19,7 @@ delete every branch, stash and worktree this run created.
 | T2.4 | staging, compile, verify | done | (this commit) | `ops.py` `Staging` (set/rename/delete/unstage on model nodes with every D5 refusal, duplicates by `key_id` counting staged renames/deletes and array-index shifts, delete drops the edits inside it) and `plans(hits)` -> `Plan` of one `FilePlan` per `SvFile` (sha of load/search) with D12 overlap rules (`DroppedHit` reasons), `compile.py` `compile_file` (re-locates every target by typed path in the bytes Apply read, parse limited to touched tables, value/key/remove-span splices, problems instead of raising) and `verify.py` `verify_edit` per D19 on the core helpers (touched tables found by their new keys); full suite 1540 OK (2 skipped), +50 tests |
 | T2.5 | apply/undo/recovery wiring | done | (this commit) | `editor.py` (`flavor_plan` groups a `Plan` by flavor in plan order, `apply_flavor` = core `apply_flavor` with `compile_file`/`verify_edit` and `started` files+edits, `apply_plan` = core `apply_flavors` under one journal), `journal.py` (`SV_TOOL.journals` wrappers, `read_journal`), `undo.py` (`undo_run`, `recover`, `pending_recovery`, `leave`; core `UndoResult`), `report.py` (`DISCLAIMER`, `apply_confirm`/`undo_confirm` with it as alert lines, `summary_rows`, per-file `file_rows`/`FILE_COLUMNS`) with end-to-end tests on `build_sv_tree` (exact bytes over two flavors, staged+hits in one run, snapshot/originals zip members, journal, keep_journals/keep_backups pruning, dry run, WoW running, D17 skip, verify stop, roll-back, undo byte-identical and changed-since, crash -> marker -> put back / leave, new Apply refused while a marker waits), structure pins extended; no event registry changed; full suite 1566 OK (2 skipped), +26 tests |
 | M2 | push milestone 2 | done (pushed) | 8f642d0 | review fixes: a value of blanks is a needle (`has_value` = non-empty), `luasv.decode_string` reads Lua 5.1 escapes (`\x41` = "x41", `\z` = "z"), the pre-filter takes `\\` pairs out before looking for a hiding escape, `compile.FieldIndex` (dict per table) + verify edits grouped per table (4000 edits: 12 s -> 0.5 s), search keeps about `HIT_CAP` hits at a time (`_Room`: per-file room + trim of searched files), opening a table builds only its shown child tables; full suite 1574 OK (2 skipped) |
-| T3.1 | flow, disclaimer, Browse view | todo | | |
+| T3.1 | flow, disclaimer, Browse view | done | (this commit) | `popups.DisclaimerScreen` (warning `ChoiceScreen`, I understand/Back, Esc = Back) once per opening of the tool, `svb.disclaimer_*`/`svb.started` logged, real two-pane `SvReviewScreen` (banner, filter, pending line, Search row + Apply/Dry run/Rescan/Undo row, NavHint; lazy Browse tree loaded in workers with the child cap, red unreadable rows, x to file level, `/` on loaded labels, bar Edit value/Rename key/Delete key/View enabled per D5 flags, leave/rescan with staged edits confirm), `BarTree`/`ActionBar` moved from Ace3 to `ui/review.py`, sv-browser in `test_look_and_feel.TOOLS` with `NO_RUN` (and `test_help.NO_RUN`), `fixtures.accept_disclaimer`; full suite 1586 OK (2 skipped), +12 tests |
 | T3.2 | edit/rename/delete popups, staging UI | todo | | |
 | T3.3 | search popup, Results view | todo | | |
 | T3.4 | apply/dry run/undo/recovery UI, result, help, look-and-feel | todo | | |
@@ -246,3 +246,40 @@ delete every branch, stash and worktree this run created.
   trims every searched file to that bound, so kept hits add up to about HIT_CAP (plus in-flight files) and the result
   is the same first HIT_CAP in file order; (6) `SvDocument.children` parses the table with its children Opaque, then
   `parse_at` on each shown (first CHILD_CAP) child table; a fault in a shown child still makes the one error child.
+- **T3.1** Disclaimer: shown after the flavor pick until accepted; `SvBrowserFlow.accepted` lives on the flow, so it
+  is asked again each time the tool is opened from the menu but not when the user goes back to the flavor picker and
+  picks again, nor on a rescan. Back, and Esc (`ChoiceScreen(escape=True)` dismisses None), both go back to the
+  picker and log `svb.disclaimer_declined`; accept logs `svb.disclaimer_accepted` then `svb.started` (flavors,
+  label) as the review is pushed. Back carries `escape` as its key (D17); I understand has no key (Enter on it, the
+  default). `DisclaimerScreen` lives in a new `popups.py` (spec §4).
+- **T3.1** Search key is **`S`** (Shift+S), not `s`: `s` is the suite's settings key on every screen (app binding,
+  `test_help` needs `s` in every review's footer). Search sits on its own `ButtonRow#search-row` above
+  `#actions` (deviation from spec §5): five keyed buttons do not fit the 50-column left pane in one row, and this
+  keeps `#actions` the same four-button row as every other tool (`test_review_left_pane_is_the_same_in_every_tool`).
+  The hint leaves out `v view` (the View button carries `v`, D17).
+- **T3.1** Scan: the shared scan box (`ReviewBase.show_scan_box`, as every review) stands in for the tree while
+  `scan_flavors` + `latest_undoable` + `pending_recovery` run in a worker, not a popup (the scan reads no file and
+  is quick). `marker`/`undoable` are kept for T3.4 (no recovery offer yet). `RunActions` is not mixed in yet (T3.4).
+- **T3.1** Tree: data tuples `("flavor", FlavorFiles)`, `("problem", FlavorFiles, text)` (flavor error and scan
+  warnings, red, under the flavor), `("account", ff, AccountFiles)`, `("realm", ff, acct, realm)`, `("owner", ff,
+  acct, OwnerFiles)` (Account-wide directly under the account, characters under their realm), `("file", SvFile)`,
+  `("node", SvFile, model.Node)`; `review_screen.ident(data)` keys expansion/cursor (typed path for keys). Open at
+  first: root, flavors, accounts, owners (realms and files closed). Opening a file or table runs `doc.roots()` /
+  `doc.children(node)` in a thread worker (group `load`) with a dim "Reading…" leaf; when done the node's children
+  are added in place (no rebuild), or the tree is rebuilt while the filter is set (new labels may match). A rescan
+  bumps `_generation` so a late load is dropped. The `/` filter is a `ModelFilter` over the scan plus what has been
+  read (`_model()`), matched on the label text. `x` overrides `action_expand_all` to open group kinds only.
+- **T3.1** Bottom line: `Selected: <place>    N files in M flavors[ · K scan warnings]`, the place being names
+  down to the highlighted node (`Retail › ACCT1 › Account-wide › ElvUI.lua › ElvDB › font = "…"`). Pending line:
+  `Staged: N edits · Ticked: M results in F files`. Apply/Dry run disabled until something is staged or ticked,
+  Undo until a journal is undoable, View until a search ran (T3.3); Search, Apply, Dry run, Undo and the bar's
+  actions notify "… comes in the next build" until T3.2-T3.4. The Browse view has no ticks (`all_tick_keys` empty).
+- **T3.1** Shared UI: Ace3's `ProfileTree` (↓ on the last line to the bar) and `ActionBar` moved to `ui/review.py`
+  as `BarTree` (`BAR_SELECTOR`, focuses the bar's first *focusable* button: SV Browser's may be disabled) and
+  `ActionBar`; Ace3 uses them (no Ace3 test changed). A screen attribute named `_nodes` or `_name` breaks Textual
+  (Widget internals): the review uses `_tree_nodes` and `_place_name`.
+- **T3.1** Tests: `tests.fixtures.accept_disclaimer(app, pilot)` clicks through the warning when it is shown; used
+  after every `dismiss(ALL_FLAVORS)` in `test_help` and `test_look_and_feel`. `test_look_and_feel.TOOLS` now has
+  sv-browser, with `NO_RUN = {"sv-browser"}` skipping the run/confirm/result legs; `test_help.PLACEHOLDER_REVIEW`
+  became `NO_RUN` and the TINY footer is two rows for every tool. T3.4: add `RUN_ACTION`/`PREPARE` and empty both
+  `NO_RUN` sets. `help.py` names every review button now (test_help); T3.4 writes the full text.

@@ -20,9 +20,10 @@ from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import WowInstall, validate_backup_dir
 from wowtools.core.sv_events import SvTool
 from wowtools.ui.dialogs import BUSY_STYLE, ProgressScreen, TwoPaneFocus
+from wowtools.ui.widgets import WrapButtonRow
 
-__all__ = ["ButtonActions", "NotTicked", "Preflight", "ReviewBase", "ReviewTree", "RunActions", "ScheduledRebuild",
-           "TickActions", "TickModel"]
+__all__ = ["ActionBar", "BarTree", "ButtonActions", "NotTicked", "Preflight", "ReviewBase", "ReviewTree", "RunActions",
+           "ScheduledRebuild", "TickActions", "TickModel"]
 
 WowCheck = Callable[[], "list[str] | None"]
 
@@ -31,6 +32,29 @@ class ReviewTree(Tree):
     """A review screen's tree. ← jumps to the left pane (`screen.focus_filters`) instead of scrolling sideways."""
 
     BINDINGS: ClassVar[list[Binding]] = [Binding("left", "screen.focus_filters", "Filters", show=False)]
+
+
+class BarTree(ReviewTree):
+    """A review tree with an action bar under it (#tree-actions, an ActionBar: the Ace3 review, the SV Browser): ↓
+    on the last line goes on to the bar's first button that can take focus."""
+
+    BAR_SELECTOR: ClassVar[str] = "#tree-actions"
+    BINDINGS: ClassVar[list[Binding]] = [Binding("down", "down_or_bar", "Down", show=False)]
+
+    def action_down_or_bar(self) -> None:
+        if self.cursor_line >= self.last_line:
+            button = next((b for b in self.screen.query(f"{self.BAR_SELECTOR} Button").results(Button)
+                           if b.focusable), None)
+            if button is not None:
+                button.focus()
+        else:
+            self.action_cursor_down()
+
+
+class ActionBar(WrapButtonRow):
+    """The action bar under a review's tree (BarTree). ↑ goes back to the tree, from any of its rows."""
+
+    BINDINGS: ClassVar[list[Binding]] = [Binding("up", "screen.focus_tree", "Tree", show=False)]
 
 
 class NotTicked:

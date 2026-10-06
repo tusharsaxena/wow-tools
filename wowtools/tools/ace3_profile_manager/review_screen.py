@@ -47,9 +47,9 @@ from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult, reco
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, InfoScreen, ProgressScreen,
                                 UnfinishedRunScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
-from wowtools.ui.review import ReviewBase, ReviewTree, RunActions, TickModel, WowCheck
+from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, TickModel, WowCheck
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, TreeFilter, hidden_by_filter
-from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, WrapButtonRow, action_button,
+from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button,
                                  key_text, wrap_items)
 
 NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
@@ -100,25 +100,6 @@ class ProfileRecoveryScreen(UnfinishedRunScreen):
 
     def __init__(self, marker: Marker) -> None:
         super().__init__(recovery_text(marker), marker)
-
-
-class ProfileTree(ReviewTree):
-    """The profiles tree. ← jumps to the left panel (ReviewTree); ↓ on the last line goes on to the action bar
-    under it."""
-
-    BINDINGS: ClassVar[list[Binding]] = [Binding("down", "down_or_bar", "Down", show=False)]
-
-    def action_down_or_bar(self) -> None:
-        if self.cursor_line >= self.last_line:
-            self.screen.query_one("#tree-actions Button", Button).focus()
-        else:
-            self.action_cursor_down()
-
-
-class ActionBar(WrapButtonRow):
-    """The action bar under the tree. ↑ goes back to the tree, from either row."""
-
-    BINDINGS: ClassVar[list[Binding]] = [Binding("up", "screen.focus_tree", "Tree", show=False)]
 
 
 class ActionTip(Static):
@@ -250,7 +231,7 @@ class ProfileReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
                 with Vertical(id="scan-box"):
                     yield ProgressBar(id="scan-progress", show_eta=False)
                     yield Static("", id="scan-label")
-                yield ProfileTree(Text(self.scope_label), id="profiles")
+                yield BarTree(Text(self.scope_label), id="profiles")
                 yield Static(Text(self.guide_text), id="guide")
                 with ActionBar(id="tree-actions"):
                     for button_id, label, kind, _, key in TREE_ACTIONS:

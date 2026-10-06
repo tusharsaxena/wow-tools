@@ -11,8 +11,8 @@ from pathlib import Path
 from textual.widgets import Button, Checkbox, DataTable, OptionList, Tree
 from textual.widgets._footer import FooterKey
 
-from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, assert_keys_on_buttons, build_ace_tree, build_interface_tree,
-                            build_screenshot_tree, build_wow_tree, make_config, settle)
+from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, accept_disclaimer, assert_keys_on_buttons, build_ace_tree,
+                            build_interface_tree, build_screenshot_tree, build_wow_tree, make_config, settle)
 from wowtools import __version__
 from wowtools.core.changelog import Changelog, parse_changelog
 from wowtools.core.lock import LockInfo
@@ -35,9 +35,11 @@ from wowtools.ui.widgets import CHECK_OFF, NavHint, action_kind
 
 POPUP_MAX_WIDTH = 100  # a popup or confirm at LARGE: a readable width, never stretched edge to edge
 FORM_MAX_WIDTH = 100  # a settings form, at any size
-# The tools whose screens are checked. The Saved Variables Browser joins with its M3 screens (plan T3.4); the menu
-# checks below cover every registered tool (TOOL_INFO).
-TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup", "ace3-profile-manager")
+# The tools whose screens are checked (the menu checks below cover every registered tool, TOOL_INFO).
+TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup", "ace3-profile-manager", "sv-browser")
+# Tools with no run to reach a confirm and a result yet: the Saved Variables Browser until its runs (plan T3.4 adds
+# its RUN_ACTION and PREPARE and empties this set).
+NO_RUN = {"sv-browser"}
 # The action that leads to a result screen without a running-WoW popup in between (dry runs, a backup).
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
               "ace3-profile-manager": "dry_run"}
@@ -66,7 +68,8 @@ class LookAndFeelTest(TuiTestCase):
 
     def make_app(self):
         options = {"wtf-cleaner": {"wow_check": list, "locker_check": list},
-                   "interface-backup": {"wow_check": list}, "ace3-profile-manager": {"wow_check": list}}
+                   "interface-backup": {"wow_check": list}, "ace3-profile-manager": {"wow_check": list},
+                   "sv-browser": {"wow_check": list}}
         return WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list,
                            tool_options=options)
 
@@ -80,6 +83,7 @@ class LookAndFeelTest(TuiTestCase):
         self.assertIsInstance(app.screen, FlavorScreen)
         app.screen.dismiss(ALL_FLAVORS)
         await settle(app, pilot)
+        await accept_disclaimer(app, pilot)
         return app.screen
 
     def assert_inside(self, widget, box):
@@ -175,6 +179,7 @@ class LookAndFeelTest(TuiTestCase):
                             await settle(app, pilot)
                         app.screen.dismiss(ALL_FLAVORS)
                         await settle(app, pilot)
+                        await accept_disclaimer(app, pilot)
                         screen = app.screen
                         if tool == "blacklist":
                             screen.action_edit_blacklist()
@@ -450,6 +455,8 @@ class LookAndFeelTest(TuiTestCase):
                 app = self.make_app()
                 async with app.run_test(size=BASE) as pilot:
                     review = await self.open_review(app, pilot, tool)
+                    if tool in NO_RUN:
+                        continue
                     PREPARE.get(tool, lambda r: None)(review)
                     getattr(review, f"action_{RUN_ACTION[tool]}")()
                     await settle(app, pilot)
@@ -546,6 +553,8 @@ class LookAndFeelTest(TuiTestCase):
                 async with app.run_test(size=BASE) as pilot:
                     review = await self.open_review(app, pilot, tool)
                     self.assert_footer_whole(app)
+                    if tool in NO_RUN:
+                        continue
                     PREPARE.get(tool, lambda r: None)(review)
                     getattr(review, f"action_{RUN_ACTION[tool]}")()
                     await settle(app, pilot)
@@ -584,6 +593,8 @@ class LookAndFeelTest(TuiTestCase):
                         await settle(app, pilot)
                         assert_keys_on_buttons(self, app.screen)  # the result, with Restore (e)
                         continue  # the restore screen: tests/test_interface_backup_app.py
+                    if tool in NO_RUN:
+                        continue
                     PREPARE.get(tool, lambda r: None)(review)
                     getattr(review, f"action_{RUN_ACTION[tool]}")()
                     await settle(app, pilot)
@@ -682,6 +693,8 @@ class LookAndFeelTest(TuiTestCase):
                     review = await self.open_review(app, pilot, tool)
                     self.assert_brand_shown(app, f"v{__version__}")
                     self.assert_footer_whole(app)
+                    if tool in NO_RUN:
+                        continue
                     PREPARE.get(tool, lambda r: None)(review)
                     getattr(review, f"action_{RUN_ACTION[tool]}")()
                     await settle(app, pilot)
@@ -926,6 +939,8 @@ class LookAndFeelTest(TuiTestCase):
                 app = self.make_app()
                 async with app.run_test(size=LARGE) as pilot:
                     review = await self.open_review(app, pilot, tool)
+                    if tool in NO_RUN:
+                        continue
                     PREPARE.get(tool, lambda r: None)(review)
                     getattr(review, f"action_{RUN_ACTION[tool]}")()
                     await settle(app, pilot)
@@ -992,8 +1007,11 @@ class LookAndFeelTest(TuiTestCase):
                     await settle(app, pilot)
                     app.screen.dismiss(ALL_FLAVORS)
                     await settle(app, pilot)
+                    await accept_disclaimer(app, pilot)
                     review = app.screen
                     await self.tab_through(app, pilot, "review")
+                    if tool in NO_RUN:
+                        continue
                     PREPARE.get(tool, lambda r: None)(review)
                     getattr(review, f"action_{RUN_ACTION[tool]}")()
                     await settle(app, pilot)

@@ -1,8 +1,8 @@
-"""The Saved Variables Browser inside the suite app: (first run: settings) → flavor (or All flavors) → review. The
-disclaimer, the review's browse/search/edit and the runs come with the M3 screens (plan T3.1-T3.4)."""
+"""The Saved Variables Browser inside the suite app: (first run: settings) → flavor (or All flavors) → the USE AT YOUR
+OWN RISK warning (once per opening of the tool) → review."""
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -10,7 +10,9 @@ from textual.widget import Widget
 from textual.widgets import Label
 
 from wowtools.core.config import Config
+from wowtools.core.events import log_event
 from wowtools.core.install import Flavor, WowInstall, validate_backup_dir
+from wowtools.tools.sv_browser.popups import ACCEPT, DisclaimerScreen
 from wowtools.tools.sv_browser.review_screen import TITLE, SvReviewScreen
 from wowtools.tools.sv_browser.settings import (SECTION, SvBrowserSettings, load_settings, resolve_root,
                                                 save_settings)
@@ -49,14 +51,19 @@ class SvBrowserSettingsScreen(ToolSettingsScreen):
 
 class SvBrowserFlow(ToolFlow):
     """The browser's workflow. Its settings live in config/sv-browser.cfg; the WoW folder is shared. No account
-    picker (spec D3): the review shows every account."""
+    picker (spec D3): the review shows every account. The USE AT YOUR OWN RISK warning (D2) comes after the flavor
+    pick until it is accepted; `accepted` lives on the flow, so it is asked again each time the tool is opened from
+    the menu, but not when the user goes back to the flavor picker and picks again (nor on a rescan)."""
 
     SECTION = SECTION
     SETTINGS_SCREEN = SvBrowserSettingsScreen
 
-    def __init__(self, app: WowToolsApp, tool_cfg: Config) -> None:
+    def __init__(self, app: WowToolsApp, tool_cfg: Config, *,
+                 wow_check: Callable[[], list[str] | None] | None = None) -> None:
         super().__init__(app, tool_cfg)
+        self._wow_check = wow_check  # tests inject it; None: the review builds one for its flavors
         self.flavors: list[Flavor] = []
+        self.accepted = False
 
     def _pick_flavor(self) -> None:
         install = self.install()
@@ -74,13 +81,29 @@ class SvBrowserFlow(ToolFlow):
             return
         self.remember_flavor(choice)
         if choice == ALL_FLAVORS:
-            self._review(list(self.flavors), "All flavors")
+            flavors, label = list(self.flavors), "All flavors"
+        else:
+            assert isinstance(choice, Flavor)
+            flavors, label = [choice], choice.display_name
+        if self.accepted:
+            self._review(flavors, label)
             return
-        assert isinstance(choice, Flavor)
-        self._review([choice], choice.display_name)
+        self.app.push_screen(DisclaimerScreen(), lambda answer: self._after_disclaimer(answer, flavors, label))
+
+    def _after_disclaimer(self, answer: str | None, flavors: list[Flavor], label: str) -> None:
+        folders = [f.folder for f in flavors]
+        if answer != ACCEPT:  # Back or Esc: nothing is read
+            log_event("svb.disclaimer_declined", flavors=folders)
+            self._pick_flavor()
+            return
+        self.accepted = True
+        log_event("svb.disclaimer_accepted", flavors=folders)
+        self._review(flavors, label)
 
     def _review(self, flavors: list[Flavor], label: str) -> None:
-        self.app.push_screen(SvReviewScreen(flavors, label), self._after_review)
+        log_event("svb.started", flavors=[f.folder for f in flavors], label=label)
+        self.app.push_screen(SvReviewScreen(self.cfg, self.tool_cfg, flavors, label, wow_check=self._wow_check),
+                             self._after_review)
 
 
 FLOW = SvBrowserFlow

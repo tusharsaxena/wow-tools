@@ -12,8 +12,8 @@ from pathlib import Path
 from textual.widgets import Markdown
 from textual.widgets._footer import FooterKey
 
-from tests.fixtures import (BASE, TINY, TuiTestCase, build_ace_tree, build_interface_tree, build_screenshot_tree,
-                            build_wow_tree, footer_keys, make_config, settle)
+from tests.fixtures import (BASE, TINY, TuiTestCase, accept_disclaimer, build_ace_tree, build_interface_tree,
+                            build_screenshot_tree, build_wow_tree, footer_keys, make_config, settle)
 from wowtools import __version__
 from wowtools.core.install import WowInstall
 from wowtools.tools import TOOLS
@@ -34,9 +34,9 @@ URL = re.compile(r"https://[^\s)\]>]+")
 # The action that leads to a result screen without a running-WoW popup in between, and what it needs first.
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
               "ace3-profile-manager": "dry_run"}
-# Tools whose review is still a placeholder (no run, a one-row footer): the Saved Variables Browser until its M3
-# screens (plan T3.4 adds its run action here and drops it from this set).
-PLACEHOLDER_REVIEW = {"sv-browser"}
+# Tools with no run to reach a confirm and a result yet: the Saved Variables Browser until its runs (plan T3.4 adds
+# its run action here and empties this set).
+NO_RUN = {"sv-browser"}
 PREPARE = {"ace3-profile-manager": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
                                                    review.refresh_view())}
 
@@ -90,7 +90,8 @@ class HelpScreenTest(TuiTestCase):
 
     def make_app(self):
         options = {"wtf-cleaner": {"wow_check": list, "locker_check": list},
-                   "interface-backup": {"wow_check": list}, "ace3-profile-manager": {"wow_check": list}}
+                   "interface-backup": {"wow_check": list}, "ace3-profile-manager": {"wow_check": list},
+                   "sv-browser": {"wow_check": list}}
         return WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list,
                            tool_options=options)
 
@@ -146,6 +147,7 @@ class HelpScreenTest(TuiTestCase):
                     await self.assert_help(app, pilot, text)
                     picker.dismiss(ALL_FLAVORS)
                     await settle(app, pilot)
+                    await accept_disclaimer(app, pilot)
                     review = app.screen
                     labels = {b.label_text for b in review.query(ActionButton)}
                     self.assertTrue(labels)
@@ -166,7 +168,7 @@ class HelpScreenTest(TuiTestCase):
                         await self.assert_help(app, pilot, text)
                         app.screen.dismiss(None)
                         await settle(app, pilot)
-                    if name not in PLACEHOLDER_REVIEW:
+                    if name not in NO_RUN:
                         PREPARE.get(name, lambda r: None)(review)
                         getattr(review, f"action_{RUN_ACTION[name]}")()
                         await settle(app, pilot)
@@ -210,6 +212,7 @@ class HelpScreenTest(TuiTestCase):
             picker = await self.open_flavors(app, pilot, "wtf-cleaner")
             picker.dismiss(ALL_FLAVORS)
             await settle(app, pilot)
+            await accept_disclaimer(app, pilot)
             review = app.screen
             review.action_clean()
             await pilot.pause()
@@ -236,14 +239,14 @@ class HelpScreenTest(TuiTestCase):
                     picker = await self.open_flavors(app, pilot, name)
                     picker.dismiss(ALL_FLAVORS)
                     await settle(app, pilot)
+                    await accept_disclaimer(app, pilot)
                     listed = await footer_keys(app.screen, pilot, {"h", "s", "q"})
                     self.assertTrue({"h", "s", "q"} <= listed, listed)
                     keys = list(app.screen.query(FooterKey))
                     for key in keys:
                         self.assertLessEqual(key.region.right, TINY[0], key)
                         self.assertGreater(key.region.width, 0, key)
-                    rows = 1 if name in PLACEHOLDER_REVIEW else 2
-                    self.assertEqual(app.screen.query_one(BottomBar).region.height, rows)
+                    self.assertEqual(app.screen.query_one(BottomBar).region.height, 2)
                     self.assertIn(f"v{__version__}", "".join(strip.text for strip in
                                                             app.screen._compositor.render_strips()))
 
@@ -254,6 +257,7 @@ class HelpScreenTest(TuiTestCase):
             picker = await self.open_flavors(app, pilot, "wtf-cleaner")
             picker.dismiss(ALL_FLAVORS)
             await settle(app, pilot)
+            await accept_disclaimer(app, pilot)
             review = app.screen
             await pilot.press("slash", "h")
             await settle(app, pilot)

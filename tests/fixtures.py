@@ -205,6 +205,15 @@ async def settle(app, pilot, timeout: float = 10.0) -> None:
                                  + ", ".join(name for name, on in busy.items() if on))
 
 
+async def accept_disclaimer(app, pilot) -> None:
+    """The Saved Variables Browser's USE AT YOUR OWN RISK warning (spec D2) comes after its flavor pick: accept it
+    when it is the screen shown (any other tool, or the browser opened before in this tool session: nothing to do)."""
+    from wowtools.tools.sv_browser.popups import ACCEPT, DisclaimerScreen
+    if isinstance(app.screen, DisclaimerScreen):
+        app.screen.choose(ACCEPT)
+        await settle(app, pilot)
+
+
 def _messages_pending(app) -> bool:
     """True while the app or a widget of the top screen has messages waiting: a rebuild that expands a tree node
     posts NodeExpanded, and under load (16 shards on native Windows) the pause above could end before the screen

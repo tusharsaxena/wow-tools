@@ -16,14 +16,23 @@ edit a value, rename a key, delete a key, or find and replace values in bulk.
 ## Step by step
 
 1. **Pick a game version**, or **All flavors**.
-2. The **review** shows what you picked.
+2. Read the warning: **I understand** goes on, **Back** returns to the game versions. It is asked each time you open
+   the tool from the menu.
+3. The **review** lists every SavedVariables file: game version, account, **Account-wide** or realm and character,
+   then the file and its size. Nothing is read until you open a file; opening a file shows its SavedVariables, and
+   opening a table shows its keys (a table with more than 500 shows the first 500 and how many more). A file that is
+   not readable Lua shows in red and is never changed.
+4. The buttons under the tree act on the highlighted key: **Edit value** (a string, number or boolean),
+   **Rename key**, **Delete key**, and **View** switches between browsing and the search results. In the left pane:
+   **Search** (find and replace in bulk), **Apply** writes what is staged, **Dry run** checks it without writing,
+   **Rescan** reads the files again and **Undo last change** puts back the last Apply.
 
-This build of the tool stops at the review: **Back** returns to the game versions. Browsing, search and editing
-come in the next build.
+This build of the tool browses only: editing, search and the runs come in the next build.
 
 ## Keys
 
-`f` or `Esc` picks another game version, `t` goes back to the tool menu, `s` opens the settings, `q` quits.
+`/` filters what has been opened, `x` opens everything down to the files and `c` closes it all, `f` or `Esc` picks
+another game version, `t` goes back to the tool menu, `s` opens the settings, `q` quits.
 
 ## Settings (`s`)
 
