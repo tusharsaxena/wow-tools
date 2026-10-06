@@ -141,7 +141,8 @@ class WowProcessTest(unittest.TestCase):
             WowProcess("Wow.exe", "/Users/u/wine/_retail_/Wow.exe"),
         ])
         cmd, kwargs = calls[0]
-        self.assertEqual(cmd, ["ps", "-axo", "comm="])
+        self.assertEqual(cmd, ["ps", "-axww", "-o", "comm="])
+        self.assertEqual(kwargs.get("stdin"), subprocess.DEVNULL)
         self.assertEqual(kwargs.get("timeout"), 5)
         self.assertNotIn("shell", kwargs)
         self.assertEqual(processes_for_flavor(procs, "_retail_"), (
@@ -150,6 +151,13 @@ class WowProcessTest(unittest.TestCase):
         retail = Flavor("_retail_", Path("/Applications/World of Warcraft/_retail_"))
         self.assertEqual(wow_check_for(retail, lister=lambda: procs)(),
                          ["World of Warcraft", "Wow.exe", "World of Warcraft (flavor unknown)"])
+
+    def test_mac_truncated_path_is_missed_hence_ww(self):
+        # Why the command passes -ww: a path cut to ps's default 79 columns no longer names the executable.
+        path = "/Applications/World of Warcraft/_retail_/World of Warcraft.app/Contents/MacOS/World of Warcraft"
+        self.assertEqual(len(path), 95)
+        self.assertEqual(running_wow_processes(platform="mac", runner=lambda *a, **k: ok(path[:79] + "\n")), [])
+        self.assertEqual(len(running_wow_processes(platform="mac", runner=lambda *a, **k: ok(path + "\n"))), 1)
 
     def test_mac_wine_exe_inside_wrapper_app(self):
         path = ("/Users/u/Applications/Wineskin/WoW.app/Contents/Resources/drive_c/Program Files/World of Warcraft/"

@@ -102,3 +102,8 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
   I6 review: 2 findings, 2 fixed, 0 rejected: the test plan's range now reads `6e9ac1f..fcdb5ac` (the old
   `f56d881..fcdb5ac` dropped f56d881); the CI line links run 37157279879 itself (checked with `gh run view`: success,
   head de67379).
+- I7 final review: 2 confirmed, 2 fixed, 0 skipped: (medium, #1 gap) macOS ps cut the last column to the
+  terminal width (79 with no tty), so a long bundle path lost the executable name and a running WoW read as "not
+  running"; the check now runs `ps -axww -o comm=` with stdin DEVNULL (test pins the command and shows a path cut
+  at 79 is missed; architecture.md updated; the I1 row's `ps -axo comm=` is history); (low) the review-fixes
+  ledger's R2 row still read "Not done ... carrying user files" and now points to I4 (#7, db8c687).

@@ -153,7 +153,7 @@ def _bundle_path(path: str) -> str:
 
 
 def _parse_ps(output: str) -> list[WowProcess]:
-    """Parse `ps -axo comm=`: one executable per line, a full path for apps on macOS, sometimes a bare name."""
+    """Parse `ps -axww -o comm=`: one executable per line, a full path for apps on macOS, sometimes a bare name."""
     result = []
     for line in output.splitlines():
         command = line.strip()
@@ -167,7 +167,10 @@ def _parse_ps(output: str) -> list[WowProcess]:
 
 def _mac_processes(runner) -> list[WowProcess] | None:
     try:
-        proc = runner(["ps", "-axo", "comm="], capture_output=True, text=True, timeout=5, check=False)
+        # -ww: without it macOS ps cuts the last column to the terminal width (79 with no tty), so a long bundle
+        # path loses its executable name and a running WoW reads as "not running".
+        proc = runner(["ps", "-axww", "-o", "comm="], capture_output=True, text=True, timeout=5, check=False,
+                      stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
         return None
     if proc.returncode != 0:
