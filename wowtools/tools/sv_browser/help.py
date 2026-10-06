@@ -31,7 +31,19 @@ edit a value, rename a key, delete a key, or find and replace values in bulk.
    without writing, **Rescan** reads the files again and **Undo last change** puts back the last Apply. Leaving or
    rescanning with something staged asks first.
 
-Search, Apply, Dry run and Undo come in the next build of the tool.
+## Search and replace (`S`)
+
+**Search** finds values in every file in scope, by **key** (Exact or Contains), by **value** (Whole value, or
+Contains for text inside strings), or both (a hit then matches both), with **Match case** off by default. Narrow it
+to one game version, account, character (or **Account-wide only**) or addon file. **Replace with** a string, a
+number or a boolean (Contains puts the new text in place of the found text), or **Find only**. **Find** checks what
+you typed and searches; each hit shows as `path = old → new` in the **Results** view (flavor, account, owner, file),
+all ticked: `Space` ticks one or a group, `a` and `n` tick or untick what the filter shows. **View** switches back
+to browsing. The results stop at 10,000 hits (narrow the search for more). A ticked result on a key with a staged
+edit is left out when you apply: the staged edit wins. A new search replaces the results (it asks first when some
+are ticked).
+
+Apply, Dry run and Undo come in the next build of the tool.
 
 ## Keys
 

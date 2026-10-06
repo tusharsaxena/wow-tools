@@ -7,6 +7,7 @@ apply / undo / recover plumbing."""
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Hashable, Iterable, Iterator
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -418,24 +419,24 @@ class RunActions:
     # --- the run -------------------------------------------------------------------------------
     def start_run(self, progress: ProgressScreen, work: Callable[[], Any], done: Callable[[Any], None], *,
                   name: str, failure: str, stale_on_crash: bool,
-                  expected: tuple[type[BaseException], ...] = ()) -> None:
-        """Run `work()` (apply, undo, recover) in a worker with `progress` open over the review. An `expected`
-        error (refused before anything was written) is shown as its message; any other is shown as
-        "<failure>: <type>: <message>" and, with `stale_on_crash`, marks the scan stale. Both are logged as errors
-        at <prefix>.<name>."""
+                  expected: tuple[type[BaseException], ...] = (), writes: bool = True) -> None:
+        """Run `work()` (apply, undo, recover; a search with `writes=False`) in a worker with `progress` open over
+        the review. An `expected` error (refused before anything was written) is shown as its message; any other is
+        shown as "<failure>: <type>: <message>" and, with `stale_on_crash`, marks the scan stale. Both are logged as
+        errors at <prefix>.<name>. Work that `writes` runs inside activity.running() (file-changing work)."""
         self.app.busy = True
         self._refresh_buttons()
         self._progress_screen = progress
         self.app.push_screen(progress)
-        self.run_worker(lambda: self._run_worker(progress, work, done, name, failure, stale_on_crash, expected),
-                        thread=True, exclusive=True, group="run")
+        self.run_worker(lambda: self._run_worker(progress, work, done, name, failure, stale_on_crash, expected,
+                                                 writes), thread=True, exclusive=True, group="run")
 
     def _run_worker(self, progress: ProgressScreen, work: Callable[[], Any], done: Callable[[Any], None],
                     name: str, failure: str, stale_on_crash: bool,
-                    expected: tuple[type[BaseException], ...]) -> None:
+                    expected: tuple[type[BaseException], ...], writes: bool = True) -> None:
         where = self.SV_TOOL.event(name)
         try:
-            with activity.running():
+            with activity.running() if writes else nullcontext():
                 result = work()
         except expected as exc:  # WowRunning included: refused before anything was written
             log_exception(where, exc)

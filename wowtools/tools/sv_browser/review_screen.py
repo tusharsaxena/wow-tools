@@ -2,7 +2,9 @@
 tree, flavor › account › Account-wide / Realm › Character › Addon.lua (size) › keys, loaded lazily: the scan only
 lists the files, a file is read and parsed when it is opened and a table when it is opened (in a worker, model.py).
 The left pane has the USE AT YOUR OWN RISK banner, the filter, the staged/ticked summary and the run buttons; the
-bar under the tree acts on the highlighted key. Dismisses with "flavors", "tools" or "quit"
+bar under the tree acts on the highlighted key. Search (S) opens the search popup and runs the search in a worker
+with the shared progress popup; its hits fill the Results view (v switches views): flavor › account › owner › file ›
+one leaf per hit, `path = old → new`, all ticked. Dismisses with "flavors", "tools" or "quit"
 (ToolFlow._after_review)."""
 from __future__ import annotations
 
@@ -26,29 +28,37 @@ from wowtools.core.process import wow_check_for
 from wowtools.core.sv_apply import Marker
 from wowtools.core.svfiles import SvFile
 from wowtools.core.text import human_size, plural
+from wowtools.tools.sv_browser.events import SV_TOOL
 from wowtools.tools.sv_browser.journal import latest_undoable, resolve_journal_dir
 from wowtools.tools.sv_browser.model import ERROR, MORE, Node, SvDocument, key_text, node_text, scalar_text
-from wowtools.tools.sv_browser.ops import FieldEdit, Staging, key_input, parse_key, path_text, typed_path
-from wowtools.tools.sv_browser.popups import NOT_TYPABLE, EditValueScreen, RenameKeyScreen, delete_confirm
+from wowtools.tools.sv_browser.ops import (HAS_STAGED_EDIT, UNDER_DELETE, FieldEdit, Staging, key_input, parse_key,
+                                           path_text, typed_path)
+from wowtools.tools.sv_browser.popups import (NOT_TYPABLE, EditValueScreen, RenameKeyScreen, SearchScreen,
+                                              delete_confirm)
 from wowtools.tools.sv_browser.scanner import FlavorFiles, ScanResult, scan_flavors
-from wowtools.tools.sv_browser.search import REPLACE_BOOLEAN, REPLACE_NUMBER, REPLACE_STRING
+from wowtools.tools.sv_browser.search import (REPLACE_BOOLEAN, REPLACE_NUMBER, REPLACE_STRING, Hit, SearchResult,
+                                              SearchSpec, run_search)
 from wowtools.tools.sv_browser.settings import load_settings, resolve_root
 from wowtools.tools.sv_browser.undo import pending_recovery
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, ALERT_STYLE, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
-                                 relabel_branch, theme_colour, two_pane_css)
-from wowtools.ui.review import ActionBar, BarTree, ReviewBase, TickModel, WowCheck
+                                 ProgressScreen, relabel_branch, theme_colour, two_pane_css)
+from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, TickModel, WowCheck
 from wowtools.ui.tree_filter import (FILTER_BINDINGS, FILTER_HINT, FilterInput, ModelFilter, ModelNode, TextFilter,
                                      TreeFilter)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 TITLE = "Saved Variables Browser"
-BROWSE, RESULTS = "Browse", "Results"  # the tree's two views (v); Results comes with the search (plan T3.3)
+BROWSE, RESULTS = "Browse", "Results"  # the tree's two views (v): the files, and the hits of the last search
 RISK_BANNER = "⚠ USE AT YOUR OWN RISK: you change addon data"
 READING = "Reading…"
 NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
-GROUP_KINDS = ("root", "flavor", "account", "realm", "owner")  # what x opens: everything down to the files
-OPEN_KINDS = ("root", "flavor", "account", "owner")  # open when first shown (realms and files start closed)
+# The Results view's groups (flavor › account › owner › file, each with the hits under it) and its leaves ("hit").
+RESULT_GROUPS = ("r-flavor", "r-account", "r-owner", "r-file")
+GROUP_KINDS = ("root", "flavor", "account", "realm", "owner", *RESULT_GROUPS)  # what x opens (no file is read)
+OPEN_KINDS = ("root", "flavor", "account", "owner", *RESULT_GROUPS)  # open when first shown (realms, files closed)
+NOTHING_FOUND = "Nothing found."
+LEFT_OUT_MARK = "⚠ left out:"  # a ticked hit Apply would leave out (D12), with the reason
 # The bar under the tree, acting on the highlighted key: (id, label, kind of action, action, key).
 TREE_ACTIONS = (
     ("act-edit", "Edit value", "overwrite", "edit_value", "e"),
@@ -57,9 +67,16 @@ TREE_ACTIONS = (
     ("act-unstage", "Unstage", "cancel", "unstage", "backspace"),
     ("act-view", "View", "navigate", "switch_view", "v"),
 )
-LATER = "{} comes in the next build of this tool."  # an action not wired yet (plan T3.3-T3.4)
+LATER = "{} comes in the next build of this tool."  # an action not wired yet (plan T3.4)
 # The marks of a staged key (D12), after its label: its new name, its new value, or deleted.
 RENAME_MARK, VALUE_MARK, DELETE_MARK = "→", "✎", "✗ deleted"
+
+
+class SearchProgressScreen(ProgressScreen):
+    """Shown while a search runs: one row, the files searched of those in scope, and the file last searched."""
+
+    ID_PREFIX = "svb-search"
+    STAGE_TITLES: ClassVar[dict[str, str]] = {"search": "Searching"}
 
 
 def ident(data) -> Hashable:
@@ -67,6 +84,12 @@ def ident(data) -> Hashable:
     kind = data[0]
     if kind == "root":
         return ("root",)
+    if kind == "hit":
+        return kind, data[1]
+    if kind == "r-file":
+        return kind, data[1].path
+    if kind in RESULT_GROUPS:
+        return kind, data[1].folder, *data[2:-1]
     if kind == "file":
         return kind, data[1].path
     if kind == "node":
@@ -87,10 +110,11 @@ def ident(data) -> Hashable:
     return kind, folder, account, data[3].label  # owner
 
 
-class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
+class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
     """The SavedVariables files of the chosen flavors. `wow_check` (tests inject one) stands for the running-WoW
     check of every flavor."""
 
+    SV_TOOL = SV_TOOL  # RunActions: the svb.search error context (svb.apply, svb.undo with plan T3.4)
     TREE_SELECTOR = "#browse"
     LOG_SCREEN = "svb_review"
     HIDDEN_NOUN = "result"
@@ -147,8 +171,11 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         self.scan: ScanResult | None = None
         self.docs: dict[Path, SvDocument] = {}  # the files opened since the scan
         self.staging = Staging()
-        self.hits: list | None = None  # the search results (plan T3.3); None: no search yet
-        self.ticked: set = set()  # the ticked results
+        self.hits: list[Hit] | None = None  # the last search's hits; None: no search since the scan
+        self.search_result: SearchResult | None = None
+        self.last_spec: SearchSpec | None = None  # the search popup starts with it
+        self.ticked: set[int] = set()  # the ticked results (indexes into hits)
+        self._left_out: dict[int, str] = {}  # ticked hits Apply would leave out (D12), with why: _recount()
         self.view = BROWSE
         self.undoable: Path | None = None  # the newest undoable journal, found by the scan worker
         self.marker: Marker | None = None  # an Apply that did not finish, found by the scan worker
@@ -303,9 +330,11 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         self.scan, self.undoable, self.marker = scan, undoable, marker
         self.docs = {}
         self.staging.clear()
-        self.hits = None
+        self.hits, self.search_result, self.view = None, None, BROWSE
         self.ticked.clear()
+        self._left_out = {}
         self._loading.clear()
+        self._set_sub_title()
         if not self.is_attached:
             return
         self.show_scan_box(False)
@@ -321,7 +350,10 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         return doc
 
     def _model(self) -> list[ModelNode]:
-        """The tree as model nodes: the files, and what has been read of them (the filter matches only that)."""
+        """The tree as model nodes: in Browse the files and what has been read of them (the filter matches only
+        that); in Results the hits."""
+        if self.view == RESULTS:
+            return self._results_model()
         flavors = []
         for flavor in self.scan.flavors if self.scan is not None else ():
             node = ModelNode(("flavor", flavor))
@@ -346,6 +378,30 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             flavors.append(node)
         return flavors
 
+    def _results_model(self) -> list[ModelNode]:
+        """The Results view: flavor › account › owner › file › one leaf per hit, in the order the search found them.
+        A group's data ends with the indexes of the hits under it (its tick keys)."""
+        tree: dict = {}
+        for index, hit in enumerate(self.hits or ()):
+            file = hit.file
+            accounts = tree.setdefault(file.flavor.folder, (file.flavor, {}))[1]
+            owners = accounts.setdefault(file.account, {})
+            files = owners.setdefault(file.owner, {})
+            files.setdefault(file.path, (file, []))[1].append(index)
+        flavors = []
+        for flavor, accounts in tree.values():
+            account_nodes = []
+            for account, owners in accounts.items():
+                owner_nodes = []
+                for owner, files in owners.items():
+                    file_nodes = [ModelNode(("r-file", file, tuple(hits)), [ModelNode(("hit", i)) for i in hits])
+                                  for file, hits in files.values()]
+                    owner_nodes.append(ModelNode(("r-owner", flavor, account, owner, _under(file_nodes)),
+                                                 file_nodes))
+                account_nodes.append(ModelNode(("r-account", flavor, account, _under(owner_nodes)), owner_nodes))
+            flavors.append(ModelNode(("r-flavor", flavor, _under(account_nodes)), account_nodes))
+        return flavors
+
     def _file_model(self, file: SvFile) -> ModelNode:
         doc = self.docs.get(file.path)
         roots = doc.roots() if doc is not None and doc.loaded else []
@@ -361,7 +417,9 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         return self._key_model(data[1], data[2]).children
 
     def _filter_text(self, data) -> str:
-        """The label a node is matched on by the filter."""
+        """The label a node is matched on by the filter (in Results: names and the hit, no ticks or counts)."""
+        if data[0] == "hit" or data[0] in RESULT_GROUPS:
+            return self._result_name(data)
         return self._body(data).plain
 
     def _model_filter(self) -> ModelFilter:
@@ -396,9 +454,12 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         tree.root.data = ("root",)
         tree.root.set_label(self._label(tree.root.data))
         self._tree_nodes = {}
+        self._recount()
         for flavor in self._model():
             self._add(tree.root, flavor, kept)
         self.note_no_match(tree.root)
+        if self.view == RESULTS and not self.hits and not self.filtering:
+            tree.root.add_leaf(Text(NOTHING_FOUND, style="dim"))
         tree.root.expand()
         tree.get_node_at_line(0)  # lay the lines out now, so move_cursor finds the new nodes
         target = self._tree_nodes.get(cursor_id) if cursor_id is not None else None
@@ -503,12 +564,42 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
     def _files_text(self, files: int) -> tuple[str, str]:
         return f"  {plural(files, 'file')}", "dim"
 
+    def _result_name(self, data) -> str:
+        """A Results node's name: the flavor, account, owner or file; a hit's `path = old → new`."""
+        kind = data[0]
+        if kind == "hit":
+            hit = self.hits[data[1]]
+            text = f"{path_text(hit.path)} = {scalar_text(hit.old, hit.old_bytes)}"
+            return text if hit.new is None else f"{text} → {scalar_text(hit.new, hit.new_bytes)}"
+        if kind == "r-flavor":
+            return data[1].display_name
+        if kind == "r-file":
+            return data[1].path.name
+        return data[-2]  # an account's or owner's name
+
+    def _result_body(self, data) -> Text:
+        """A Results node's label: its tick mark (none for a find only), its name, how many hits a group holds, and
+        why Apply would leave a ticked hit out (D12)."""
+        kind, keys = data[0], self.node_tick_keys_of(data)
+        mark = self.shown_tick_mark(keys) if keys else ("", "")
+        name = self._result_name(data)
+        if kind == "hit":
+            reason = self._left_out.get(data[1])
+            note = (f"  {LEFT_OUT_MARK} {reason}", f"bold {theme_colour(self.app, 'warning')}") if reason else ""
+            return Text.assemble(mark, name, note)
+        count = (f"  {plural(len(data[-1]), 'result')}", "dim")
+        if kind == "r-flavor":
+            return Text.assemble(mark, (name, ACCENT), count)
+        return Text.assemble(mark, (name, "" if kind == "r-file" else "bold"), count)
+
     def _body(self, data) -> Text:
-        """A node's label (the tree has no ticks in the Browse view)."""
+        """A node's label (ticks only in the Results view)."""
         kind = data[0]
         error = f"bold {theme_colour(self.app, 'error')}"
         if kind == "root":
             return Text(self.scope_label)
+        if kind == "hit" or kind in RESULT_GROUPS:
+            return self._result_body(data)
         if kind == "flavor":
             flavor: FlavorFiles = data[1]
             return Text.assemble((flavor.flavor.display_name, ACCENT), self._files_text(len(flavor.files())))
@@ -557,7 +648,11 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         return self._body(data)
 
     def _refresh_labels(self, node: TreeNode | None = None) -> None:
-        relabel_branch(self.query_one("#browse", Tree), node, self._label)
+        """After a tick or a staging change: what Apply would leave out may change anywhere, so a node's branch is
+        not enough then."""
+        before = self._left_out
+        self._recount()
+        relabel_branch(self.query_one("#browse", Tree), node if self._left_out == before else None, self._label)
         self._update_summary()
 
     # --- the highlighted node ------------------------------------------------------------------------
@@ -595,6 +690,8 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             return data[1].path.name
         if kind == "node" and data[2].kind not in (MORE, ERROR):
             return key_text(data[2].key)
+        if kind == "hit" or kind in RESULT_GROUPS:
+            return self._result_name(data)
         return self._body(data).plain
 
     def _where(self, node: TreeNode | None) -> str:
@@ -618,9 +715,28 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         return f"{plural(self.staging.count, 'staged edit')} and {plural(len(self.ticked), 'ticked result')}"
 
     def _pending_line(self) -> Text:
-        files = {f.path for f in self.staging.files()}
-        return Text.assemble(("Staged: ", "bold"), plural(self.staging.count, "edit"), " · ", ("Ticked: ", "bold"),
+        """`Staged: N edits · Ticked: M results in F files`, then after a search what it found, how many hits the
+        cap dropped, the files it could not read and the ticked results Apply would leave out (D11, D12)."""
+        files = {f.path for f in self.staging.files()} | {self.hits[i].file.path for i in self.ticked}
+        line = Text.assemble(("Staged: ", "bold"), plural(self.staging.count, "edit"), " · ", ("Ticked: ", "bold"),
                              f"{plural(len(self.ticked), 'result')} in {plural(len(files), 'file')}")
+        result = self.search_result
+        if result is None:
+            return line
+        warning = f"bold {theme_colour(self.app, 'warning')}"
+        found = f"{plural(len(result.hits), 'hit')} in {plural(result.files_with_hits, 'file')}"
+        lines: list = [line, "\n", ("Results: ", "bold"), found, " (find only)" if not result.spec.replaces else ""]
+        if result.dropped:
+            cap = (f"{plural(result.dropped, 'more hit')} left out (the results stop at {len(result.hits):,}): "
+                   "narrow the search.")
+            lines += ["\n", (cap, warning)]
+        if result.unreadable:
+            lines += ["\n", (f"{plural(len(result.unreadable), 'file')} can't be read.", warning)]
+        if self._left_out:
+            staged = all(reason in (HAS_STAGED_EDIT, UNDER_DELETE) for reason in self._left_out.values())
+            why = "a staged edit wins" if staged else "see the marked results"
+            lines += ["\n", (f"{plural(len(self._left_out), 'ticked result')} left out: {why}", warning)]
+        return Text.assemble(*lines)
 
     def _update_summary(self) -> None:
         if self.scan is None or not self.is_attached:
@@ -638,29 +754,107 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         self.query_one("#pending", Static).update(self._pending_line())
         self._refresh_buttons()
 
-    # --- ticks (the Results view, plan T3.3; the Browse view has none) ---------------------------------
+    # --- ticks (the Results view; Browse has none) ----------------------------------------------------
+    @property
+    def replaces(self) -> bool:
+        """The last search replaces (its hits can be ticked); a find only can't."""
+        return self.search_result is not None and self.search_result.spec.replaces
+
     def tick_model(self) -> TickModel:
         return TickModel.of_ticked(self.ticked)
 
-    def node_tick_keys(self, node) -> tuple:
-        return ()
+    def node_tick_keys_of(self, data) -> tuple[int, ...]:
+        """The hits a tick on a node with this data covers (none in Browse or for a find only)."""
+        if data is None or not self.replaces:
+            return ()
+        if data[0] == "hit":
+            return (data[1],)
+        return data[-1] if data[0] in RESULT_GROUPS else ()
+
+    def node_tick_keys(self, node) -> tuple[int, ...]:
+        return self.node_tick_keys_of(node.data) if self.view == RESULTS else ()
 
     def tick_log_key(self, node, keys) -> str:
         return str(ident(node.data))
 
     def all_tick_keys(self) -> Collection[Hashable]:
-        return set()
+        return range(len(self.hits)) if self.view == RESULTS and self.replaces and self.hits else ()
 
     def filter_texts(self, key) -> tuple[str, ...]:
-        return ()
+        """A hit is matched on its groups' names and its own `path = old → new`, as the Results tree is."""
+        file = self.hits[key].file
+        return (file.flavor.display_name, file.account, file.owner, file.path.name, self._result_name(("hit", key)))
+
+    def ticked_hits(self) -> list[Hit]:
+        """The ticked hits, in the order the search found them (what Apply takes with the staged edits)."""
+        return [self.hits[i] for i in sorted(self.ticked)] if self.hits else []
+
+    def _recount(self) -> None:
+        """Which ticked hits Apply would leave out (D12: a staged edit wins, the file changed since it was read):
+        the staging's own plan over them."""
+        if not self.ticked or not self.hits:
+            self._left_out = {}
+            return
+        index = {id(self.hits[i]): i for i in self.ticked}
+        self._left_out = {index[id(d.hit)]: d.reason for d in self.staging.plans(self.ticked_hits()).dropped}
 
     # --- actions (wired in plan T3.2-T3.4) -----------------------------------------------------------
     def _later(self, what: str) -> None:
         self.notify(LATER.format(what))
 
     def action_search(self) -> None:
-        if self.idle and self.scan is not None:
-            self._later("Search")
+        """S: the search popup; over ticked results, after asking (a new search replaces them)."""
+        if not self.idle or self.scan is None or self.wow_folder_changed():
+            return
+        if self.ticked:
+            self.app.push_screen(ConfirmScreen("Replace the results?",
+                                               f"A new search replaces the results: the "
+                                               f"{plural(len(self.ticked), 'ticked result')} are dropped; nothing "
+                                               "has been written.", kind="destructive"),
+                                 lambda ok: self._open_search() if ok else None)
+            return
+        self._open_search()
+
+    def _open_search(self) -> None:
+        scan = self.scan
+        if scan is None:
+            return
+        accounts = [a for f in scan.flavors for a in f.accounts]
+        popup = SearchScreen(flavors=[(f.flavor.folder, f.flavor.display_name) for f in scan.flavors],
+                             accounts=[a.name for a in accounts],
+                             characters=[o.label for a in accounts for o in a.owners if o.character is not None],
+                             last=self.last_spec)
+        self.app.push_screen(popup, self._search_chosen)
+
+    def _search_chosen(self, spec: SearchSpec | None) -> None:
+        """Find in the popup: search every file in scope in a worker (parallel per file, [general] parallelism),
+        with the progress popup."""
+        if spec is None or self.scan is None or not self.idle:
+            return
+        self.last_spec = spec
+        files = self.scan.files()
+        progress = SearchProgressScreen("Searching the SavedVariables files", first_stage="search")
+        parallelism = self.cfg.parallelism
+
+        def report(done: int, total: int, file: SvFile) -> None:
+            progress.report("search", done, total, f"{file.flavor.display_name}: {file.rel}")
+        self.start_run(progress, lambda: run_search(files, spec, parallelism=parallelism, progress=report),
+                       self._searched, name="search", failure="The search stopped", stale_on_crash=False,
+                       expected=(ValueError,), writes=False)
+
+    def _searched(self, result: SearchResult) -> None:
+        """The search ended: its hits replace the results, all ticked (none for a find only), in the Results
+        view."""
+        self.search_result, self.hits = result, list(result.hits)
+        self.ticked.clear()
+        if result.spec.replaces:
+            self.ticked.update(range(len(self.hits)))
+        if not self.is_attached:
+            return
+        self._show_view(RESULTS)
+        found = plural(len(result.hits), "hit")
+        self.notify(f"{found} in {plural(result.files_with_hits, 'file')} ({result.seconds:g} s)."
+                    if result.hits else NOTHING_FOUND, title="Search")
 
     def action_apply(self) -> None:
         if self.idle and self.pending:
@@ -758,11 +952,28 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         self._staged(self.staging.unstage(doc, node), "Unstage")
 
     def action_switch_view(self) -> None:
-        """v: Browse and Results (the Results view comes with the search, plan T3.3)."""
-        if self.hits is None:
+        """v: Browse and Results (once a search has run)."""
+        if self.hits is None or self.app.busy:
             return
-        self.view = RESULTS if self.view == BROWSE else BROWSE
+        self._show_view(RESULTS if self.view == BROWSE else BROWSE)
+
+    def _show_view(self, view: str) -> None:
+        self.view = view
         self._set_sub_title()
+        self._rebuild()
+        self._refresh_buttons()
+        self.query_one("#browse", Tree).focus()
+
+    # --- RunActions -----------------------------------------------------------------------------
+    def run_backup_dir(self) -> Path | None:
+        return load_settings(self.tool_cfg).backup_dir
+
+    def _mark_stale(self) -> None:
+        """The files may have changed under the scan (a run that stopped half way): drop what is pending and
+        rescan."""
+        self.staging.clear()
+        self.ticked.clear()
+        self._scan()
 
     # --- leaving -------------------------------------------------------------------------------
     def action_leave(self, choice: str) -> None:
@@ -776,3 +987,8 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                                            f"{self._pending_words().capitalize()} not applied yet will be dropped; "
                                            "nothing has been written.", kind="destructive"),
                              lambda ok: self.dismiss(choice) if ok else None)
+
+
+def _under(nodes: list[ModelNode]) -> tuple[int, ...]:
+    """The hit indexes under these Results groups (each group's data ends with its own)."""
+    return tuple(i for node in nodes for i in node.data[-1])

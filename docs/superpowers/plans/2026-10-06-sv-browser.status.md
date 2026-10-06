@@ -21,7 +21,7 @@ delete every branch, stash and worktree this run created.
 | M2 | push milestone 2 | done (pushed) | 8f642d0 | review fixes: a value of blanks is a needle (`has_value` = non-empty), `luasv.decode_string` reads Lua 5.1 escapes (`\x41` = "x41", `\z` = "z"), the pre-filter takes `\\` pairs out before looking for a hiding escape, `compile.FieldIndex` (dict per table) + verify edits grouped per table (4000 edits: 12 s -> 0.5 s), search keeps about `HIT_CAP` hits at a time (`_Room`: per-file room + trim of searched files), opening a table builds only its shown child tables; full suite 1574 OK (2 skipped) |
 | T3.1 | flow, disclaimer, Browse view | done | (this commit) | `popups.DisclaimerScreen` (warning `ChoiceScreen`, I understand/Back, Esc = Back) once per opening of the tool, `svb.disclaimer_*`/`svb.started` logged, real two-pane `SvReviewScreen` (banner, filter, pending line, Search row + Apply/Dry run/Rescan/Undo row, NavHint; lazy Browse tree loaded in workers with the child cap, red unreadable rows, x to file level, `/` on loaded labels, bar Edit value/Rename key/Delete key/View enabled per D5 flags, leave/rescan with staged edits confirm), `BarTree`/`ActionBar` moved from Ace3 to `ui/review.py`, sv-browser in `test_look_and_feel.TOOLS` with `NO_RUN` (and `test_help.NO_RUN`), `fixtures.accept_disclaimer`; full suite 1586 OK (2 skipped), +12 tests |
 | T3.2 | edit/rename/delete popups, staging UI | done | (this commit) | `popups.py` `EditValueScreen` (type NavSelect string/number/boolean, Input or `Ka0sCheckbox`, `parse_replacement` + staging check inline), `RenameKeyScreen` (shared `TextPromptScreen`, keys typed as the tree shows them via `ops.parse_key`/`key_input`) and `delete_confirm` (destructive, entry count, dropped inner edits, `SHIFT_WARNING` alert) wired to e/k/d; marks `→ name`, `✎ value`, `✗ deleted` (dim strike below a delete), an **Unstage** (Backspace) button on the bar, `ops.Staging.set_problem`/`rename_problem`/`delete_problem`/`staged_inside` and equal-value no-ops; full suite 1607 OK (2 skipped), +21 tests |
-| T3.3 | search popup, Results view | todo | | |
+| T3.3 | search popup, Results view | done | (this commit) | `popups.SearchScreen` (one labelled control per row: key + Exact/Contains, value + Whole value/Contains, Match case, Flavor (only with several flavors scanned)/Account/Character incl. Account-wide only/Addon file, Replace with String/Number/Boolean/Find only + text or checkbox; Find = `parse_replacement` + `SearchSpec.problems()` inline, prefilled with the last search, box scrolls at 80x24), `S` runs `run_search` through `RunActions.start_run(writes=False)` with `SearchProgressScreen` (`[general] parallelism`), Results view flavor › account › owner › file › `path = old → new` leaves all ticked (space/a/n, `/` on every hit, hidden-ticked note), `v` rebuilds the view (sub-title), new search over ticks asks (destructive), pending line adds Results/cap/unreadable/left-out lines and leaves show `⚠ left out: <reason>` from `Staging.plans(ticked)`, help text; full suite 1624 OK (2 skipped), +17 tests |
 | T3.4 | apply/dry run/undo/recovery UI, result, help, look-and-feel | todo | | |
 | M3 | push milestone 3 | todo | | |
 | T4.1 | docs | todo | | |
@@ -304,3 +304,32 @@ delete every branch, stash and worktree this run created.
   tree (`_refresh_labels`) and updates the pending line and buttons.
 - **T3.2** Tests: `tests/test_sv_browser_edit.py` (pilot): two clicks on one button in a row within a test are read
   as a double click and the second press is lost, so the error-loop cases submit with Enter in the field.
+- **T3.3** Search popup: one row per control, a dim label column (13) then the control (compact Input/NavSelect/
+  Ka0sCheckbox), the scope and replacement groups a blank line apart; the `.popup-box` scrolls (popup_css) and ↑/↓
+  move focus, each field scrolled into view, so it works at 80x24 without a FormScroll. The replacement select has a
+  fourth choice, **Find only** (`popups.FIND_ONLY`, spec `replacement=None`, T2.3's find-only search): its hits show
+  `path = old` with no tick and count nothing for Apply. A Contains value search with a Number/Boolean replacement is
+  refused by `SearchSpec.problems()` (shown in the popup) rather than the select being locked to String. The popup
+  starts with the previous search (`SvReviewScreen.last_spec`, kept across rescans); with no previous search, the
+  replacement type starts as String (D10). Scope selects use `""` for "every" (`popups.EVERY`).
+- **T3.3** The search runs through `RunActions` (now mixed in: `SV_TOOL`, `run_backup_dir`, a `_mark_stale` that
+  drops what is pending and rescans; T3.4 may refine it). `RunActions.start_run` gained `writes=True`; a search
+  passes `writes=False` so it does not run inside `activity.running()` (it changes no file). Failures log at
+  `svb.search` (log_exception, no new event; `svb.search_started`/`_completed` come from `run_search`). Progress is
+  one row (`SearchProgressScreen`, stage "Searching", detail `<flavor>: <rel path>`) fed by `run_search`'s
+  `progress(done, total, file)`; parallelism is `cfg.parallelism`. Patch targets: `review_screen.run_search`,
+  `review_screen.SearchProgressScreen`.
+- **T3.3** Results tree data: `("r-flavor", Flavor, idx)`, `("r-account", Flavor, account, idx)`, `("r-owner",
+  Flavor, account, owner_label, idx)`, `("r-file", SvFile, idx)`, `("hit", i)`; `idx` = the hit indexes under the
+  group (its tick keys), `i` indexes `SvReviewScreen.hits`, `ticked` holds indexes. Owners show as
+  `Account-wide` or `Realm/Name` (the owner label, one level, not Browse's realm › character). Groups show
+  `N results`; the filter matches names and the hit text only (no marks or counts), and `filter_texts(i)` = flavor,
+  account, owner, file, hit text. `x` opens every Results group; all start open. Nothing found = a dim
+  `Nothing found.` line. Ticks (space/a/n) act only in the Results view and only when the search replaces; `v`
+  keeps them. A rescan drops the results and goes back to Browse.
+- **T3.3** D12 report: `_recount()` runs `Staging.plans(ticked_hits())` after every tick/staging change and rebuild
+  and keeps `{index: reason}` for the dropped ones; their leaves show `⚠ left out: <reason>` and the pending line adds
+  `N ticked results left out: a staged edit wins` (or `see the marked results` when a reason is not a staged edit /
+  delete). The pending Static is multi-line after a search: `Results: N hits in F files[ (find only)]`, the cap
+  (`N more hits left out (the results stop at 10,000): narrow the search.`) and `N files can't be read.`. `Ticked:
+  M results in F files` counts files across staged edits and ticked hits.
