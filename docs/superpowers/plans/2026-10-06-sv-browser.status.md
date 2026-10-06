@@ -16,7 +16,7 @@ delete every branch, stash and worktree this run created.
 | T2.1 | package skeleton, registry, fixture | done | (this commit) | `wowtools/tools/sv_browser/` (events with 9 own `svb.*` + `sv_events("svb")`/`SV_TOOL`, `[sv_browser]` settings + `resolve_root`, help stub, settings form, `SvBrowserFlow` flavor picker with All flavors and no account picker -> placeholder `SvReviewScreen`), registered last in `TOOLS`, `build_sv_tree` + `SVB_*` texts in fixtures, README rows + placeholder `docs/sv-browser.md`, `docs/events.md` regenerated; full suite 1402 OK (2 skipped), +11 tests |
 | T2.2 | scanner + lazy model | done | (this commit) | `scanner.py` lists every flavor's SavedVariables files (`walk_sv_files` + `is_sv_file`: Blizzard_* in, .bak/.old/links out) as flavors > accounts > owners > `SvFile` (size, mtime, no read, `sha256=""`), recovers probe leftovers first and logs one `svb.scan_completed`; `model.py` `SvDocument` reads a file once (sha256 then), parses one level ahead (`parse` / `parse_at` on the table's span), `Node` with typed key, spans, path, remove span and D5 flags, 500-child cap with a `… N more` leaf, error nodes instead of raising, plus `key_text`/`scalar_text`/`table_text`/`node_text`; full suite 1430 OK (2 skipped), +28 tests |
 | T2.3 | search | done | (this commit) | `search.py`: `SearchSpec` (+`problems()`/`check()`, `SearchScope` flavor/account/character-or-`Account-wide`/addon-contains, replacement typed or None = find only), `parse_replacement` (strict Lua decimal that reads back exactly, int within 2^53, true/false), `_Matcher` per D6-D8, byte pre-filter `may_hold`, `search_file` (streams `iter_scalars`, never raises: unreadable/not-Lua logged `svb.file_unreadable`), `run_search` over `run_units` with `progress(done, total, file)`, `HIT_CAP` 10,000 + `dropped`, `svb.search_started`/`_completed`; full suite 1490 OK (2 skipped), +60 tests |
-| T2.4 | staging, compile, verify | todo | | |
+| T2.4 | staging, compile, verify | done | (this commit) | `ops.py` `Staging` (set/rename/delete/unstage on model nodes with every D5 refusal, duplicates by `key_id` counting staged renames/deletes and array-index shifts, delete drops the edits inside it) and `plans(hits)` -> `Plan` of one `FilePlan` per `SvFile` (sha of load/search) with D12 overlap rules (`DroppedHit` reasons), `compile.py` `compile_file` (re-locates every target by typed path in the bytes Apply read, parse limited to touched tables, value/key/remove-span splices, problems instead of raising) and `verify.py` `verify_edit` per D19 on the core helpers (touched tables found by their new keys); full suite 1540 OK (2 skipped), +50 tests |
 | T2.5 | apply/undo/recovery wiring | todo | | |
 | M2 | push milestone 2 | todo | | |
 | T3.1 | flow, disclaimer, Browse view | todo | | |
@@ -188,3 +188,33 @@ delete every branch, stash and worktree this run created.
   when its bytes could hold the needle. Per-file hits are capped at `HIT_CAP` too (extra counted), so one huge file
   never holds more than the cap in memory. The streaming guard is a 6 MB, 20,000-entry generated file (time bound
   15 s; ~0.5 s here); no memory measurement (tracemalloc slows the parse several-fold).
+- **T2.4** Staging API takes the model's `(SvDocument, Node)`: `set_value`, `rename`, `delete`, `unstage` return an
+  `OpResult(ok, message, warning, dropped)` (`warning` = `SHIFT_WARNING` for an array entry, `dropped` = staged edits
+  inside a deleted table); `edit_for`/`deleted_above` for the T3.2 marks; `count`, `files()`, `clear()`. One
+  `FieldEdit(path, set_value, value, rename, new_key, delete, positional, hit)` per key (flags, since `False` is a
+  valid key/value), keyed by typed path in the old file's coordinates; `svb.staged` (operation, flavor, path, key) /
+  `svb.unstaged` logged.
+- **T2.4** Edits under a staged delete are dropped **when the delete is staged** (not at plan time) and new ones
+  there are refused, so a plan never holds both; a delete replaces a set/rename on the same key. Setting the bytes
+  already written (`encode_value(v) == old bytes`) or renaming to the same key drops that part (no no-op edits). A
+  rename is refused when the table would then hold a key twice that it does not now (`ops.new_duplicates` over
+  `new_keys`: staged renames, deletes and array-index shifts counted); `unstage` is refused for the same reason
+  (unstaging a rename's victim). Empty string keys are refused (spec §5 rename popup); a number key must pass
+  `search.number_problem`.
+- **T2.4** `plans(hits)`: find-only hits are ignored; a hit on a key with a staged set (or another hit) is dropped
+  (`HAS_STAGED_EDIT` / `DUPLICATE_HIT`), on or under a staged delete `UNDER_DELETE`; a hit on a key that is only
+  renamed **combines** (rename + the hit's value, `hit=True`), the staging itself unchanged; a hit whose sha differs
+  from the file's staged sha is dropped `FILE_CHANGED` (the staged edits win). `Plan.files` is keyed by
+  `replace(file, sha256=<sha of load/search>)`; `Plan.units()` feeds `sv_apply.apply_flavor` (checked by a dry-run
+  test).
+- **T2.4** `compile_file` returns `SvEdit(file, data, changes, plan, spans, problems)`: a plan that does not fit the
+  bytes (key missing or there twice, top-level rename/delete, array rename, set on a table, edit inside a deleted key,
+  a rename leaving a duplicate, overlapping splices) is not spliced and its problems are what `verify_edit` returns,
+  so the shared `_prepare` stops with "the change did not check out" instead of a crash. `spans` pairs each old span
+  with its new span for `same_outside`. Change lines: `ElvDB › profiles › font: "a" → "b"`, `…: renamed to Font`,
+  `…: renamed to Font, "a" → "b"`, `…: deleted (later entries move down)` (key path via `ops.path_text` with
+  `model.key_text`, values via `model.scalar_text`).
+- **T2.4** Verify finds each touched table in the new file by its **new** typed path (renamed ancestor, array entry
+  moved down), parses old and new only down those tables, compares a set value as `(type name, value)` and every
+  other entry by its old value bytes, a touched child table as "a table" (checked as its own entry). A 400-trial
+  random staging run over the fixture files (scratch, not committed) compiled and verified every plan.
