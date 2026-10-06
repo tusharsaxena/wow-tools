@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -419,14 +421,16 @@ def _carry_user_files(backup: Path, root: Path, live: set[str]) -> bool:
     """Move the user's files out of an old .update-backup/<version> folder before it is pruned (#7).
 
     A user file is one in the backup's managed folders (wowtools, vendor, scripts, docs) with no file at the same
-    path in the live install (`live`). The live install is the only list of shipped files there is (a release has no
-    manifest), so a program file that version had and a later release dropped is carried too: harmless, and it is
-    better to keep one file too many than to lose one. A file the user edited, or one whose path the live install
-    also has, is not carried. Each one goes to <root>/update-leftovers/<version>/<same path> (never back into the
+    path in the live install (`live`) and not listed as installed by one of the backup's own vendored libraries
+    (`_vendored_files`: every vendor/*.dist-info folder and the files its RECORD lists, so a library a later release
+    bumped, renamed or trimmed leaves nothing behind). The app's own folders have no manifest, so a wowtools, scripts
+    or docs file that version had and a later release dropped is carried too: harmless, and it is better to keep one
+    file too many than to lose one. A file the user edited, or one whose path the live install also has, is not
+    carried. Each one goes to <root>/update-leftovers/<version>/<same path> (never back into the
     managed folders: the next update would replace them, and a stray module there could be imported); a name already
     taken gets " (2)", " (3)"... Returns False, after logging update.backup_kept, when a move failed: the caller
     then keeps the folder."""
-    leftovers = sorted(_managed_files(backup) - live)
+    leftovers = sorted(_managed_files(backup) - live - _vendored_files(backup))
     if not leftovers:
         return True
     dest_root = root / LEFTOVERS_DIR_NAME / backup.name
@@ -444,6 +448,35 @@ def _carry_user_files(backup: Path, root: Path, live: set[str]) -> bool:
         return False
     log_event("update.leftovers_kept", version=backup.name, folder=str(dest_root), files=moved)
     return True
+
+
+def _vendored_files(root: Path) -> set[str]:
+    """Relative posix paths (vendor/...) of what the vendored libraries in `root` installed: each
+    vendor/<pkg>-X.Y.Z.dist-info folder's own files, plus every path its RECORD lists (relative to vendor/; a path
+    leading outside vendor/ is ignored). An unreadable RECORD adds only its folder's files."""
+    vendor = root / "vendor"
+    found: set[str] = set()
+    try:
+        infos = [e for e in os.scandir(vendor) if e.name.endswith(".dist-info") and e.is_dir()]
+    except OSError:
+        return found
+    for info in infos:
+        for dirpath, _dirnames, filenames in os.walk(info.path):
+            rel = Path(dirpath).relative_to(root).as_posix()
+            found.update(f"{rel}/{f}" for f in filenames)
+        try:
+            with open(os.path.join(info.path, "RECORD"), encoding="utf-8", newline="") as fh:
+                rows = list(csv.reader(fh))
+        except (OSError, UnicodeDecodeError, csv.Error):
+            continue
+        for row in rows:
+            if not row or not row[0]:
+                continue
+            path = posixpath.normpath(row[0].replace("\\", "/"))
+            if path.startswith("../") or path == ".." or posixpath.isabs(path):
+                continue
+            found.add(f"vendor/{path}")
+    return found
 
 
 def _free_path(path: Path) -> Path:
@@ -510,6 +543,11 @@ def _apply_zip(root: Path, release: ReleaseInfo, current: str, download: Callabl
 
         backup = root / BACKUP_DIR_NAME / current
         if backup.exists():
+            # A backup of this version from an earlier update (an older version was reinstalled since): save the
+            # user's files from it first, as a prune does (#7). The live install is this same version, so its files
+            # are the program files; a failed move stops the update before anything is changed.
+            if not _carry_user_files(backup, root, _managed_files(root)):
+                raise UpdateError(f"could not move your files out of the old backup {backup}; nothing was changed")
             shutil.rmtree(backup)
         backup.mkdir(parents=True)
         shipped = _shipped_names(staging)

@@ -60,3 +60,9 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
   backup folder (files already moved stay in update-leftovers, so each file is in exactly one place) and the next
   update's prune tries again. The live tree is walked once per prune, only when something is to be pruned
   (`os.walk`, no per-file stat). `update-leftovers/` added to .gitignore.
+  I4 review: 2 findings, 2 fixed, 0 rejected: (1) a bumped vendored library no longer lands its old
+  `vendor/*.dist-info` folder and dropped modules in update-leftovers: the backup's own dist-info files and the
+  paths each RECORD lists are program files (`_vendored_files`; a release manifest was not added, since the
+  dist-info RECORDs cover the frequent case and wowtools/scripts/docs drops stay rare); (2) `_apply_zip` now
+  carries user files out of an existing `.update-backup/<current>` (left by reinstalling an older version) before
+  deleting it, and stops with UpdateError before touching anything if a move fails. 3 new tests.
