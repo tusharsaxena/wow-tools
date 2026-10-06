@@ -84,8 +84,8 @@ class ResultScreenTest(TuiTestCase):
                 self.assertEqual([b.id for b in screen.query(Button)], ["rescan", "flavors", "tools", "quit"])
                 self.assertIs(screen.focused, screen.query_one("#rescan"))
                 hint = str(screen.query_one(NavHint).render())
-                self.assertIn(RESULT_HINT.strip(), hint)
-                self.assertIn("r rescan · f other flavor · t tools · q quit", hint)
+                self.assertEqual(hint, RESULT_HINT)  # the keys are on the buttons (D17)
+                self.assertEqual([b.shortcut for b in screen.query(Button)], ["r", "f", "t", "q"])
                 detail = screen.query_one("#result-detail", DataTable)
                 styles = [detail.get_row_at(i)[1].style for i in range(3)]
                 self.assertTrue(styles[0].startswith("bold #") and styles[1].startswith("bold #"))
@@ -124,7 +124,7 @@ class ResultScreenTest(TuiTestCase):
                 return "Own"
 
             def lead_buttons(self):
-                return [("Undo (z)", "revert", "undo", "z undo")]
+                return [("Undo", "revert", "undo", "z")]
 
             def fill_detail(self, detail: DataTable) -> None:
                 detail.add_columns("File")
@@ -135,7 +135,7 @@ class ResultScreenTest(TuiTestCase):
         async with app.run_test(size=BASE) as pilot:
             await pilot.pause()
             self.assertEqual([b.id for b in screen.query(Button)], ["undo", "review", "flavors", "tools", "quit"])
-            self.assertIn("z undo · r rescan", str(screen.query_one(NavHint).render()))
+            self.assertEqual([b.label.plain for b in screen.query(Button)][:2], ["Undo\n(z)", "Rescan\n(r)"])
             self.assertEqual(screen.query_one("#result-files", DataTable).row_count, 1)
             await pilot.click("#undo")
             await pilot.pause()

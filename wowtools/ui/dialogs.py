@@ -52,13 +52,14 @@ def review_hint(space: str = "tick") -> str:
 
 
 REVIEW_HINT = review_hint()
-TREE_HINT = "x expand all · c collapse all · "  # every tree screen's hint names these, before r rescan
-# Every tree screen binds these (with TreeKeys' actions, which TwoPaneFocus has).
+TREE_HINT = "x expand all · c collapse all · "  # every tree screen's hint names these, after / filter
+# Every tree screen binds these (with TreeKeys' actions, which TwoPaneFocus has). The footer lists them (no button
+# has them, spec D17): a review binds them right after a / n, so they show together.
 TREE_BINDINGS = [
-    Binding("x", "expand_all", "Expand all", show=False),
-    Binding("c", "collapse_all", "Collapse all", show=False),
+    Binding("x", "expand_all", "Expand"),
+    Binding("c", "collapse_all", "Collapse"),
 ]
-RESULT_HINT = "↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back · "
+RESULT_HINT = "↑↓/Tab move · ←→ buttons · Enter/Space press · Esc back"
 
 
 def two_pane_css(screen: str, tree: str, *, width: int = FILTERS_WIDTH) -> str:
@@ -97,7 +98,8 @@ def result_css(screen: str) -> str:
 
 def settings_css(screen: str) -> str:
     """DEFAULT_CSS of a tool's settings screen called `screen` (a FormScroll #settings with a .title, labels,
-    inputs, compact checkboxes, #settings-error and a .buttons row): a readable width (FORM_WIDTH), centred."""
+    inputs, compact checkboxes, #settings-error (shown with class -shown, while there is an error) and a .buttons
+    row): a readable width (FORM_WIDTH), centred."""
     return f"""
     {screen} {{ align-horizontal: center; }}
     {screen} #settings {{ {FORM_WIDTH} padding: 0 2; }}
@@ -105,7 +107,8 @@ def settings_css(screen: str) -> str:
     {screen} Label {{ width: 1fr; height: auto; }}
     {screen} Ka0sCheckbox {{ margin-bottom: 1; }}
     {screen} Ka0sCheckbox.-textual-compact {{ margin-bottom: 0; }}
-    {screen} #settings-error {{ color: $error; height: auto; }}
+    {screen} #settings-error {{ color: $error; height: auto; display: none; }}
+    {screen} #settings-error.-shown {{ display: block; }}
     {screen} .buttons {{ height: auto; margin-top: 1; }}
     {screen} Button {{ margin-right: 2; }}
     """
@@ -325,9 +328,9 @@ class ConfirmScreen(EnterGuard, TreeKeys, ModalScreen[bool]):
             if self.groups:
                 yield detail_tree(self.groups)
             with ButtonRow(id="confirm-buttons"):
-                yield action_button("Yes (y)", self.kind, id="yes")
-                yield action_button("No (n)", "cancel", id="no")
-            yield NavHint(f"{detail_hint(self.groups)}←→ choose · Enter/Space press · y yes · n/Esc no")
+                yield action_button("Yes", self.kind, "y", id="yes")
+                yield action_button("No", "cancel", "n", id="no")
+            yield NavHint(f"{detail_hint(self.groups)}←→ choose · Enter/Space press · Esc no")
 
     def on_mount(self) -> None:
         self.start_guard()
@@ -342,7 +345,8 @@ class ConfirmScreen(EnterGuard, TreeKeys, ModalScreen[bool]):
 
 class ChoiceScreen(EnterGuard, ModalScreen[str | None]):
     """A warning to act on (an earlier run did not finish, ...): a title in the warning colour, a message and one
-    button per choice, given as (id, label, action kind). Pressing one calls choose(id), which dismisses with the
+    button per choice, given as (id, label, action kind) or (id, label, action kind, key): the key a binding of
+    the subclass gives that choice, shown on the button. Pressing one calls choose(id), which dismisses with the
     id; a subclass may act first. `default` is the id focused at the start: the safe choice the user most likely
     wants (the WTF Cleaner's Remind me next time, the Ace3 Put the originals back, the lock's Quit unless the lock
     is stale). Like ConfirmScreen, Enter/Space do nothing for CONFIRM_GUARD seconds after it opens. With `escape`
@@ -359,7 +363,7 @@ class ChoiceScreen(EnterGuard, ModalScreen[str | None]):
     """
     BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "close", "Close", show=False), GUARD_BINDING]
 
-    def __init__(self, title: str, message: str, choices: Iterable[tuple[str, str, str]], *, default: str,
+    def __init__(self, title: str, message: str, choices: Iterable[tuple[str, ...]], *, default: str,
                  escape: bool = False, hint: str = "") -> None:
         super().__init__()
         self.title_text = title
@@ -374,8 +378,8 @@ class ChoiceScreen(EnterGuard, ModalScreen[str | None]):
             yield Static(Text(self.title_text), id="choice-title")
             yield Static(Text(self.message_text), id="choice-message")
             with ButtonRow(id="choice-buttons"):
-                for choice_id, label, kind in self.choices:
-                    yield action_button(label, kind, id=choice_id)
+                for choice_id, label, kind, *key in self.choices:
+                    yield action_button(label, kind, *key, id=choice_id)
             if self.hint:
                 yield NavHint(self.hint)
 

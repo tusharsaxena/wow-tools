@@ -30,7 +30,7 @@ from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, T
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 EXPLANATION = "Ticked addons are blacklisted: their profiles are shown but never changed."
-NAV_HINT = review_hint() + "a all · n none · " + FILTER_HINT + TREE_HINT + "Esc cancel"
+NAV_HINT = review_hint() + "a all · " + FILTER_HINT + TREE_HINT.removesuffix(" · ")
 Key = tuple[str, str]  # (flavor folder, addon), casefolded
 
 
@@ -57,11 +57,11 @@ class BlacklistScreen(TreeFilter, ReviewBase, Screen["list[Pair] | None"]):
         Binding("space", "toggle", "Tick/untick", priority=True),
         Binding("a", "select_all", "All"),
         Binding("n", "select_none", "None"),
+        *FILTER_BINDINGS,
+        *TREE_BINDINGS,
         Binding("escape", "cancel", "Cancel"),
         Binding("left", "focus_filters", "Buttons", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
-        *FILTER_BINDINGS,
-        *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
 
@@ -86,8 +86,8 @@ class BlacklistScreen(TreeFilter, ReviewBase, Screen["list[Pair] | None"]):
                 yield FilterInput()
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Save", "confirm", id="save")
-                    yield action_button("Select none", "navigate", id="select-none")
-                    yield action_button("Cancel", "cancel", id="cancel")
+                    yield action_button("Select none", "navigate", "n", id="select-none")
+                    yield action_button("Cancel", "cancel", "escape", id="cancel")
                 yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)

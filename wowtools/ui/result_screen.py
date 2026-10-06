@@ -1,5 +1,6 @@
 """The result screen every tool shows after a run, a dry run or an undo: an Item/Value summary table above one
-detail table, a row of buttons (Rescan first, then Other flavor, Tools and Quit) and the result hint. Spec D9.
+detail table, a row of buttons (Rescan first, then Other flavor, Tools and Quit), each showing its key, and the result
+hint. Spec D9.
 
 ResultBase holds the layout, the keys and the logging; a tool screen fills the two tables (fill_summary,
 fill_detail). ResultScreen is the generic one, built from rows, whose last detail cell is a status coloured by
@@ -21,11 +22,11 @@ from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import RESULT_HINT, result_css, theme_colour
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-# (label, action kind, id = dismiss value, hint words) of the buttons after a result screen's own ones.
-NAV_BUTTONS = (("Other flavor (f)", "navigate", "flavors", "f other flavor"),
-               ("Tools (t)", "navigate", "tools", "t tools"),
-               ("Quit (q)", "cancel", "quit", "q quit"))
-ResultButton = tuple[str, str, str, str]
+# (label, action kind, id = dismiss value, key shown on the button) of the buttons after a result screen's own ones.
+NAV_BUTTONS = (("Other flavor", "navigate", "flavors", "f"),
+               ("Tools", "navigate", "tools", "t"),
+               ("Quit", "cancel", "quit", "q"))
+ResultButton = tuple[str, str, str, "str | None"]
 
 
 def result_bindings(rescan: str, *, before: Sequence[Binding] = (), after: Sequence[Binding] = ()) -> list[Binding]:
@@ -58,7 +59,8 @@ class ResultBase(Screen[str]):
     """A result screen's layout and keys. Subclasses set BINDINGS = result_bindings(RESCAN, ...), and may set
     LOG_SCREEN (the ui.selection event's screen), DETAIL_ID (the detail table's id) and RESCAN (the Rescan
     button's id and dismiss value). They fill the tables in fill_summary / fill_detail and set result_title()
-    (the sub-title). lead_buttons() go before Rescan, extra_buttons() after it."""
+    (the sub-title). lead_buttons() go before Rescan, extra_buttons() after it: (label, kind, id, key) each, the key shown on the
+    button (and left out of the footer)."""
 
     DEFAULT_CSS = result_css("ResultBase")
     LOG_SCREEN = "result"
@@ -88,7 +90,7 @@ class ResultBase(Screen[str]):
         return []
 
     def buttons(self) -> list[ResultButton]:
-        return [*self.lead_buttons(), ("Rescan (r)", "navigate", self.RESCAN, "r rescan"), *self.extra_buttons(),
+        return [*self.lead_buttons(), ("Rescan", "navigate", self.RESCAN, "r"), *self.extra_buttons(),
                 *NAV_BUTTONS]
 
     def focus_id(self) -> str:
@@ -103,9 +105,9 @@ class ResultBase(Screen[str]):
             yield DataTable(id=self.DETAIL_ID, classes="result-detail", cursor_type="row", zebra_stripes=True)
         buttons = self.buttons()
         with ButtonRow(classes="buttons"):
-            for label, kind, button_id, _ in buttons:
-                yield action_button(label, kind, id=button_id)
-        yield NavHint(RESULT_HINT + " · ".join(words for *_, words in buttons if words))
+            for label, kind, button_id, key in buttons:
+                yield action_button(label, kind, key, id=button_id)
+        yield NavHint(RESULT_HINT)
         yield BottomBar()
 
     def on_mount(self) -> None:
@@ -154,7 +156,7 @@ class ResultScreen(ResultBase):
         return self.rows
 
     def extra_buttons(self) -> list[ResultButton]:
-        return [("Back to review (Esc)", "cancel", "back", "")] if self.back else []
+        return [("Back to review", "cancel", "back", "escape")] if self.back else []
 
     def focus_id(self) -> str:
         return "back" if self.back else self.RESCAN

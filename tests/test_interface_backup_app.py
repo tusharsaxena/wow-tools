@@ -12,7 +12,8 @@ from unittest.mock import patch
 
 from textual.widgets import Button, Checkbox, DataTable, Input, OptionList, Static, Tree
 
-from tests.fixtures import BASE, TINY, TuiTestCase, build_interface_tree, build_wow_tree, make_config, settle
+from tests.fixtures import (BASE, TINY, TuiTestCase, assert_keys_on_buttons, build_interface_tree, build_wow_tree,
+                            make_config, settle)
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
@@ -285,9 +286,9 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertFalse(review.query_one("#btn-backup", Button).disabled)
             self.assertTrue(review.query_one("#btn-undo", Button).disabled)  # nothing restored yet
             for screen_hint in review.query(NavHint):
-                self.assertIn("b back up", screen_hint.hint)
-            labels = [str(b.label) for b in review.query_one("#actions").query(Button)]
-            self.assertEqual(labels, ["Back up", "Restore", "Rescan", "Undo last restore"])
+                self.assertNotIn("b back up", screen_hint.hint)  # on the button (D17)
+            labels = [(b.label_text, b.shortcut) for b in review.query_one("#actions").query(Button)]
+            self.assertEqual(labels, [("Back up", "b"), ("Restore", "e"), ("Rescan", "r"), ("Undo last restore", "z")])
             kinds = {i: action_kind(review.query_one(f"#{i}", Button))
                      for i in ("btn-backup", "btn-restore", "btn-undo", "btn-rescan")}
         self.assertEqual(kinds, {"btn-backup": "create", "btn-restore": "navigate", "btn-undo": "revert",
@@ -774,6 +775,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             extra.write_text("wa", encoding="utf-8")
             screen = await self.open_restore(app, pilot)
             self.assertIn("x expand all · c collapse all", screen.query_one(NavHint).hint)
+            assert_keys_on_buttons(self, screen)  # Restore (o), Back (b): not in the footer (D17)
             tree = screen.query_one("#effects", Tree)
             tree.focus()
             await pilot.press("x")
@@ -893,6 +895,8 @@ class InterfaceBackupAppTest(TuiTestCase):
             await settle(app, pilot)
             self.assertIsInstance(app.screen, RestoreResultScreen)
             self.assertEqual([p.part for p in app.screen.result.parts], ["WTF"])
+            assert_keys_on_buttons(self, app.screen)  # Undo (z) first, then Rescan (r), ...
+            self.assertEqual(app.screen.query_one("#undo", Button).shortcut, "z")
         self.assertTrue((retail / "Interface" / "keep.txt").exists())
         self.assertEqual((retail / "WTF" / "Config.wtf").read_bytes(), b"SET a 1\n")
 

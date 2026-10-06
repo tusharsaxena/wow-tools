@@ -31,7 +31,7 @@ NO_MATCH_TEXT = "Nothing matches the filter (Esc in the box clears it)"
 FILTER_HINT = "/ filter · "  # a screen's hint names it right before TREE_HINT
 # Every tree screen with a filter binds this (FilterBox's action). Priority, so `/` leaves another control that
 # would take the key first (an integer box would ring the bell); the action skips it to a text box.
-FILTER_BINDINGS = [Binding("slash", "focus_filter", "Filter", show=False, priority=True)]
+FILTER_BINDINGS = [Binding("slash", "focus_filter", "Filter", priority=True)]
 
 Node = TypeVar("Node")
 

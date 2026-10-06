@@ -1,6 +1,6 @@
 """Ka0s branding widgets: the shield banner (with the version line and the terms of use on the tool menu), and the
 bottom bar every screen ends with (the footer's keys on the left, the brand bar's version and update notice on the
-right, in one row)."""
+right, in one row). The footer lists only the keys that no shown button carries (spec D17)."""
 from __future__ import annotations
 
 from rich.cells import cell_len
@@ -9,8 +9,10 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Footer, Input, Static, TextArea
+from textual.widgets._footer import FooterKey
 
 from wowtools import __version__
+from wowtools.ui.widgets import button_keys
 
 BANNER_NAME = "K a 0 s   ·   W o W   T o o l s"
 BANNER = "\n".join([  # noqa: FLY002 - one row of the art per line
@@ -165,6 +167,34 @@ class BrandBar(Static):
         return Text(self.shown_text)
 
 
+def footer_bindings(screen: Screen) -> list:
+    """The (binding, enabled, tooltip) the footer lists for a screen: its shown bindings, one per action, less every
+    action whose key a shown button carries (any of its keys: "n,escape" goes with a "(n)" button). The button
+    says that key itself (action_button's `key`), so the footer keeps its room for the keys no button has."""
+    active = screen.active_bindings
+    on_buttons = button_keys(screen)
+    covered = {active_binding.binding.action for key, active_binding in active.items() if key in on_buttons}
+    listed: dict[str, tuple] = {}
+    for _node, binding, enabled, tooltip in active.values():
+        if binding.show and binding.action not in covered and binding.action not in listed:
+            listed[binding.action] = (binding, enabled, tooltip)
+    return list(listed.values())
+
+
+class KeyFooter(Footer):
+    """The compact Footer of every screen, listing footer_bindings: a key a shown button carries is on that button
+    instead. (Textual's Footer lists every shown binding; this one has no key groups and no command palette key.)"""
+
+    def compose(self) -> ComposeResult:
+        if not self._bindings_ready:
+            return
+        bindings = footer_bindings(self.screen)
+        self.styles.grid_size_columns = len(bindings)
+        for binding, enabled, tooltip in bindings:
+            yield FooterKey(binding.key, self.app.get_key_display(binding), binding.description, binding.action,
+                            disabled=not enabled, tooltip=tooltip).data_bind(compact=Footer.compact)
+
+
 class BottomBar(Horizontal):
     """The last row of every screen: the Footer's keys (compact) from the left, the BrandBar in what is left on
     the right. One docked container holding both, so neither hides the other and no screen loses a row to it."""
@@ -175,5 +205,5 @@ class BottomBar(Horizontal):
     """
 
     def compose(self) -> ComposeResult:
-        yield Footer(compact=True)
+        yield KeyFooter(compact=True)
         yield BrandBar()

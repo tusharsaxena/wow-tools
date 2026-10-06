@@ -82,12 +82,16 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      settings form on `ToolSettingsScreen` (`settings_css`), and hints that start with
      `REVIEW_HINT` (or `review_hint("tick or open")` when Space does more in your tree) and `RESULT_HINT`.
      Every tree screen binds `TREE_BINDINGS` (`x` expand all, `c` collapse all) and puts `TREE_HINT` in its hint
-     before `r rescan`; each focusable control of the left pane gets a row of its own. Every tree screen also gets
+     (before `f flavors`); each focusable control of the left pane gets a row of its own. Every tree screen also gets
      the `/` filter from `wowtools/ui/tree_filter.py`: a `FilterInput` in the left pane and `FILTER_HINT` right
      before `TREE_HINT`, through `TreeFilter` on a tick screen (placed before `ReviewBase`; supply `all_tick_keys()`
      and `filter_texts(key)`, and a `HIDDEN_NOUN` for the "N selected … are hidden by the filter" line) or
      `FilterBox` on a read-only tree.
-     Build every button with `action_button(label, kind)` (`wowtools/ui/widgets.py`), never `Button(...)`, and pick
+     Build every button with `action_button(label, kind, key)` (`wowtools/ui/widgets.py`), never `Button(...)`.
+     `key` is the binding key of what the button does (`"w"`, `"escape"`): the button shows it on a second line and
+     the footer leaves it out (spec D17), so never write the key into the label ("Clean (w)") and leave button keys
+     out of the left-pane hint (it names navigation and the keys with no button: `a all · n none · / filter · ...`).
+     A result screen's `lead_buttons()` / `extra_buttons()` give `(label, kind, id, key)`. Pick
      its kind by what it does, as the other tools do: `destructive` (deletes), `overwrite` (overwrites or changes
      files), `create` (only adds files), `revert` (undo), `simulate` (dry run), `confirm` (Save, OK), `navigate`
      (Rescan, Other flavor, a button that opens a screen) or `cancel` (Cancel, Back, Quit). A button that stages a

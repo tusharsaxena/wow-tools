@@ -3,7 +3,7 @@
 ![Version](https://img.shields.io/badge/Version-0.1.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-yellow)
 ![Platforms](https://img.shields.io/badge/Platforms-Windows_%7C_macOS_%7C_Linux-purple)
-![Tests](https://img.shields.io/badge/Tests-1284%2F1284_passing-green)
+![Tests](https://img.shields.io/badge/Tests-1292%2F1292_passing-green)
 ![License](https://img.shields.io/badge/License-MIT-orange)
 
 Ka0s WoW Tools is a small set of World of Warcraft helpers that run ***outside*** the game and tidy up the files WoW
@@ -129,7 +129,9 @@ The app opens in a terminal window. You drive it with the keyboard:
 | `s` | Settings |
 | `q` | Quit |
 
-Each screen lists its keys along the bottom, so you don't have to remember them. A mouse works too. While a tool is
+Every button shows its key under its name (**Clean** over `(w)`, **Dry run** over `(y)`), so pressing that key does
+the same as clicking the button. The row along the bottom lists the other keys of the screen, the ones no button
+has (`Space`, `a`, `n`, `/`, `x`, `c`, `s`, ...), so you don't have to remember them. A mouse works too. While a tool is
 changing or writing files (a clean, a sort, a backup, a restore, a profile change or an undo), the app won't quit until it has
 finished.
 

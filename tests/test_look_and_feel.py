@@ -11,8 +11,8 @@ from pathlib import Path
 from textual.widgets import Button, Checkbox, DataTable, OptionList, Tree
 from textual.widgets._footer import FooterKey
 
-from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, build_ace_tree, build_interface_tree, build_screenshot_tree,
-                            build_wow_tree, make_config, settle)
+from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, assert_keys_on_buttons, build_ace_tree, build_interface_tree,
+                            build_screenshot_tree, build_wow_tree, make_config, settle)
 from wowtools import __version__
 from wowtools.core.changelog import Changelog, parse_changelog
 from wowtools.core.updater import ReleaseInfo
@@ -93,7 +93,12 @@ class LookAndFeelTest(TuiTestCase):
                     self.assertEqual({b.region.y for b in buttons}, {buttons[0].region.y})  # one row
                     self.assertTrue(buttons[-1].label.plain.startswith("Undo last "), buttons[-1].label)
                     self.assertEqual(buttons[-1].variant, "warning")  # revert
-                    self.assertEqual(buttons[2].label.plain, "Rescan")
+                    self.assertEqual(buttons[2].label_text, "Rescan")
+                    self.assertEqual([b.shortcut for b in buttons][1:], ["y" if tool != "interface-backup" else "e",
+                                                                          "r", "z"])
+                    for button in buttons:  # spec D17: the key on a second line, centred under the label
+                        self.assertEqual(button.label.plain, f"{button.label_text}\n({button.shortcut})")
+                        self.assertEqual(button.region.height, 4, button)
                     hint = review.query_one(NavHint)
                     pane = filters.region
                     inside = pane._replace(width=pane.width - 1)  # anything but the border: not cut off
@@ -101,7 +106,9 @@ class LookAndFeelTest(TuiTestCase):
                         self.assert_inside(widget, inside)
                     text = hint.hint
                     self.assertTrue(text.startswith(REVIEW_HINT), text)
-                    self.assertIn("r rescan · z undo · f flavors · t tools", text)
+                    self.assertIn(TREE_HINT + "f flavors · t tools", text)
+                    for key in ("r rescan", "z undo", "y dry run", "w ", "b back up"):  # on the buttons (D17)
+                        self.assertNotIn(key, text)
                     self.assertTrue(review.summary_text.startswith(("Selected: ", "Nothing to")),
                                     review.summary_text)
                     self.assertTrue(review.sub_title.startswith(f"{TOOL_INFO[tool].title} · All flavors"),
@@ -174,7 +181,7 @@ class LookAndFeelTest(TuiTestCase):
                         others = [w for w in pane.query("*") if w.focusable and w is not field]
                         self.assertNotIn(field.region.y, [w.region.y for w in others])
                         hint = screen.query_one(NavHint)
-                        self.assertIn(FILTER_HINT + TREE_HINT, hint.hint)
+                        self.assertIn(FILTER_HINT + TREE_HINT.removesuffix(" · "), hint.hint)
                         if size == BASE:
                             inside = pane.region._replace(width=pane.region.width - 1)
                             for widget in (field, hint):
@@ -263,7 +270,7 @@ class LookAndFeelTest(TuiTestCase):
                 app = self.make_app()
                 async with app.run_test(size=BASE) as pilot:
                     review = await self.open_review(app, pilot, tool)
-                    self.assertIn(TREE_HINT + "r rescan", review.query_one(NavHint).hint)
+                    self.assertIn(TREE_HINT + "f flavors", review.query_one(NavHint).hint)
                     self.assertTrue(TREE_HINT.startswith("x expand all · c collapse all"))
                     tree = review.query_one(review.TREE_SELECTOR, Tree)
                     tree.focus()
@@ -452,12 +459,11 @@ class LookAndFeelTest(TuiTestCase):
                     self.assertEqual(len(result.query(".result-detail")), 1)
                     result.query_one(BrandBar)
                     hint = result.query_one(NavHint).hint
-                    self.assertTrue(hint.startswith(RESULT_HINT), hint)
-                    self.assertTrue(hint.endswith("f other flavor · t tools · q quit"), hint)
+                    self.assertEqual(hint, RESULT_HINT)  # the buttons' keys are on the buttons (D17)
                     buttons = list(result.query(Button))
-                    labels = [b.label.plain for b in buttons]
-                    self.assertEqual(labels[0], "Rescan (r)")
-                    self.assertEqual(labels[-3:], ["Other flavor (f)", "Tools (t)", "Quit (q)"])
+                    labels = [(b.label_text, b.shortcut) for b in buttons]
+                    self.assertEqual(labels[0], ("Rescan", "r"))
+                    self.assertEqual(labels[-3:], [("Other flavor", "f"), ("Tools", "t"), ("Quit", "q")])
                     for button in buttons:
                         self.assert_inside(button, app.screen.region)
                     self.assertEqual({b.region.y for b in buttons}, {buttons[0].region.y})
@@ -537,6 +543,45 @@ class LookAndFeelTest(TuiTestCase):
                     await settle(app, pilot)
                     self.assertIsNot(app.screen, review)
                     self.assert_footer_whole(app)
+
+    async def test_keys_are_on_the_buttons_and_off_the_footer(self):
+        """Spec D17 on every screen of every tool (review, confirm, result; the Ace3 blacklist and the Interface
+        Backup restore screen; the settings): a button whose action has a key shows that key, and the footer lists
+        no key a shown button carries (nor another key of that action, Esc for No). The reviews' footers keep the
+        keys no button has: Space, a, n, /, x, c, f, t, q."""
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    review = await self.open_review(app, pilot, tool)
+                    assert_keys_on_buttons(self, review)
+                    footer = {key.key for key in review.query(FooterKey)}
+                    self.assertLessEqual({"space", "a", "n", "slash", "x", "c", "f", "t", "q"}, footer, footer)
+                    if tool == "ace3-profile-manager":
+                        review.action_edit_blacklist()
+                        await settle(app, pilot)
+                        assert_keys_on_buttons(self, app.screen)
+                        app.screen.dismiss(None)
+                        await settle(app, pilot)
+                    if tool == "interface-backup":
+                        review.action_back_up()
+                        await settle(app, pilot)
+                        assert_keys_on_buttons(self, app.screen)  # the result, with Restore (e)
+                        continue  # the restore screen: tests/test_interface_backup_app.py
+                    PREPARE.get(tool, lambda r: None)(review)
+                    getattr(review, f"action_{RUN_ACTION[tool]}")()
+                    await settle(app, pilot)
+                    self.assertIsInstance(app.screen, ConfirmScreen)
+                    assert_keys_on_buttons(self, app.screen)
+                    app.screen.dismiss(True)
+                    await settle(app, pilot)
+                    self.assertIsNot(app.screen, review)
+                    assert_keys_on_buttons(self, app.screen)
+                    app.screen.dismiss("tools")
+                    await settle(app, pilot)
+                    app.action_settings()
+                    await settle(app, pilot)
+                    assert_keys_on_buttons(self, app.screen)
 
     def assert_footer_whole(self, app) -> None:
         line = app.screen._compositor.render_strips()[-1].text

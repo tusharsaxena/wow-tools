@@ -30,7 +30,8 @@ class SetupScreen(Screen[bool]):
     SetupScreen .title {{ color: $accent; text-style: bold; margin: 1 0; }}
     SetupScreen Label {{ width: 1fr; height: auto; }}
     SetupScreen .hint {{ color: $text-muted; margin-bottom: 1; }}
-    SetupScreen #setup-error {{ color: $error; height: auto; }}
+    SetupScreen #setup-error {{ color: $error; height: auto; display: none; }}
+    SetupScreen #setup-error.-shown {{ display: block; }}
     SetupScreen .buttons {{ height: auto; margin-top: 1; }}
     SetupScreen Button {{ margin-right: 2; }}
     """
@@ -65,8 +66,8 @@ class SetupScreen(Screen[bool]):
             yield Static("", id="setup-error")
             with ButtonRow(classes="buttons"):
                 yield action_button("Save", "confirm", id="save")
-                yield action_button("Cancel", "cancel", id="cancel")
-            yield NavHint("↑↓/Tab move · ←→ buttons · Enter save/press · Esc cancel")
+                yield action_button("Cancel", "cancel", "escape", id="cancel")
+            yield NavHint("↑↓/Tab move · ←→ buttons · Enter save/press")
         yield BottomBar()
 
     def on_mount(self) -> None:
@@ -122,7 +123,9 @@ class SetupScreen(Screen[bool]):
 
     def _error(self, text: str) -> None:
         self.error_text = text
-        self.query_one("#setup-error", Static).update(Text(text))
+        line = self.query_one("#setup-error", Static)
+        line.update(Text(text))
+        line.set_class(bool(text), "-shown")  # no empty row above the buttons until there is an error
 
     def _count(self, widget_id: str, least: int, most: int | None = None) -> int | None:
         try:

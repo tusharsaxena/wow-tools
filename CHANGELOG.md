@@ -25,6 +25,8 @@ The first version: four tools in one app.
   - Every checkbox and box in a left panel has a row of its own, so `↑` / `↓` reach each one.
   - Buttons are coloured by what they do, the same in every tool: red deletes, amber overwrites, green adds
     something new, violet undoes, cyan is a dry run, blue confirms, grey moves between screens, dim grey backs out.
+  - Every button shows its key under its name (**Clean** over `(w)`), and the row of keys along the bottom lists
+    only the keys no button has, so it stays short.
   - Every "are you sure?" window opens on **Yes**, coloured by what it does (red when it deletes, overwrites, undoes
     or drops pending changes, a backup that deletes older ones included); Enter and Space wait a quarter of a
     second after it opens and are ignored while a held key repeats, `y` / `n` / `Esc` answer at once. The update offer's "Update now" waits the same way.

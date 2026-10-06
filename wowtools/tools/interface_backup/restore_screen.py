@@ -33,7 +33,7 @@ from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBox, Fil
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
 # The review's hint shape, then the keys of this screen. Space here ticks a part or opens a node of the effects tree.
-NAV_HINT = review_hint("tick or open") + FILTER_HINT + TREE_HINT + "o restore · b/Esc back"
+NAV_HINT = review_hint("tick or open") + FILTER_HINT + TREE_HINT + "Esc back"
 # The tree's top nodes: (kind, title, note). Their children are loaded on expand (groups of files, links, lines).
 EFFECTS = (
     ("removed", "Will be removed", "on disk now, not in the backup"),
@@ -111,8 +111,8 @@ class RestoreScreen(FilterBox, ButtonActions, TwoPaneFocus, Screen[RestorePlan |
                     yield Ka0sCheckbox(part, True, id=f"part-{part}", disabled=True, compact=True)
                 yield FilterInput()
                 with ButtonRow(id="actions", wrap=False):
-                    yield action_button("Restore", "overwrite", id="btn-restore", disabled=True)
-                    yield action_button("Back", "cancel", id="btn-back")
+                    yield action_button("Restore", "overwrite", "o", id="btn-restore", disabled=True)
+                    yield action_button("Back", "cancel", "b", id="btn-back")
                 yield NavHint(NAV_HINT)
             # Short: the tree is narrow at 80 columns; the left pane has the kind and the zip.
             yield ReviewTree(Text(f"{self.flavor.display_name} · {self.info.when}", style=ACCENT), id="effects")
@@ -405,7 +405,7 @@ class RestoreResultScreen(ResultBase):
         return not (action == "choose" and parameters == ("undo",) and not self.can_undo)
 
     def lead_buttons(self) -> list[ResultButton]:
-        return [("Undo (z)", "revert", "undo", "z undo")] if self.can_undo else []
+        return [("Undo", "revert", "undo", "z")] if self.can_undo else []
 
     def result_title(self) -> str:
         return "Interface Backup · undo result" if self.result.undo else "Interface Backup · restore result"

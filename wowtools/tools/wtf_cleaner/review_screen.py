@@ -43,8 +43,7 @@ from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, 
 WARNING_STYLE = "#E8B04B"
 ALL_FLAVORS_LABEL = "All flavors"
 __all__ = ["CleanProgressScreen", "RecoveryScreen", "ResultScreen", "ReviewScreen"]
-NAV_HINT = REVIEW_HINT + ("a all · n none · w clean · y dry run · " + FILTER_HINT + TREE_HINT +
-                          "r rescan · z undo · f flavors · t tools · 1-4 criteria")
+NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools · 1-4 criteria"
 
 
 class CleanProgressScreen(ProgressScreen):
@@ -92,6 +91,8 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         Binding("space", "toggle", "Tick/untick", priority=True),
         Binding("a", "select_all", "All"),
         Binding("n", "select_none", "None"),
+        *FILTER_BINDINGS,
+        *TREE_BINDINGS,
         Binding("w", "clean", "Clean"),
         Binding("y", "dry_run", "Dry run"),
         Binding("r", "rescan", "Rescan"),
@@ -106,8 +107,6 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         Binding("4", "criterion(3)", CRITERION_SHORT["stray_copies"], show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
-        *FILTER_BINDINGS,
-        *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
 
@@ -152,10 +151,10 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                 yield Input(str(self.criteria.max_age_days), type="integer", id="max_age", compact=True)
                 yield FilterInput()
                 with ButtonRow(id="actions", wrap=False):
-                    yield action_button("Clean", "destructive", id="btn-clean")
-                    yield action_button("Dry run", "simulate", id="btn-dry")
-                    yield action_button("Rescan", "navigate", id="btn-rescan")
-                    yield action_button("Undo last clean", "revert", id="btn-undo")
+                    yield action_button("Clean", "destructive", "w", id="btn-clean")
+                    yield action_button("Dry run", "simulate", "y", id="btn-dry")
+                    yield action_button("Rescan", "navigate", "r", id="btn-rescan")
+                    yield action_button("Undo last clean", "revert", "z", id="btn-undo")
                 yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)

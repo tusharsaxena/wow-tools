@@ -26,7 +26,7 @@ from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, FormScroll, NavHint, ac
 
 def settings_hint(ticks: bool) -> str:
     """A settings form's hint; `ticks` when it has checkboxes."""
-    return "↑↓/Tab move · ←→ buttons · " + ("Space/Enter tick · " if ticks else "") + "Enter/Space press · Esc cancel"
+    return "↑↓/Tab move · ←→ buttons · " + ("Space/Enter tick · " if ticks else "") + "Enter/Space press"
 
 
 def folder_hint(path: Path | None) -> str:
@@ -78,7 +78,7 @@ class ToolSettingsScreen(Screen[bool]):
             yield Static("", id="settings-error")
             with ButtonRow(classes="buttons"):
                 yield action_button("Save", "confirm", id="save")
-                yield action_button("Cancel", "cancel", id="cancel")
+                yield action_button("Cancel", "cancel", "escape", id="cancel")
             yield NavHint(settings_hint(self.TICKS))
         yield BottomBar()
 
@@ -103,7 +103,9 @@ class ToolSettingsScreen(Screen[bool]):
 
     def _error(self, text: str) -> None:
         self.error_text = text
-        self.query_one("#settings-error", Static).update(Text(text))
+        line = self.query_one("#settings-error", Static)
+        line.update(Text(text))
+        line.set_class(bool(text), "-shown")  # no empty row above the buttons until there is an error
 
     @staticmethod
     def folder_input(value: Path | None, *, placeholder: str, id: str) -> Input:

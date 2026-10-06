@@ -46,8 +46,7 @@ from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, ModelFilter, ModelNode, TreeFilter
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-NAV_HINT = (REVIEW_HINT + "a all · n none · b back up · e restore · " + FILTER_HINT + TREE_HINT +
-            "r rescan · z undo · f flavors · t tools")
+NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
 # Tree nodes that cannot be ticked: a backup always holds a flavor's whole Interface and WTF.
 READ_ONLY = ("part", "links", "link", "leftover", "warnings", "warning", "backups", "backup")
 
@@ -94,7 +93,7 @@ class BackupResultScreen(ResultBase):
         return "Interface Backup · result"
 
     def extra_buttons(self) -> list[ResultButton]:
-        return [("Restore (e)", "navigate", "restore", "e restore")]
+        return [("Restore", "navigate", "restore", "e")]
 
     def summary_rows(self) -> list[tuple[str, str]]:
         return backup_summary_rows(self.outcomes)
@@ -121,6 +120,8 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         Binding("space", "toggle", "Tick/untick", priority=True),
         Binding("a", "select_all", "All"),
         Binding("n", "select_none", "None"),
+        *FILTER_BINDINGS,
+        *TREE_BINDINGS,
         Binding("b", "back_up", "Back up"),
         Binding("e", "restore", "Restore"),
         Binding("r", "rescan", "Rescan"),
@@ -131,8 +132,6 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
-        *FILTER_BINDINGS,
-        *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
 
@@ -178,10 +177,10 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                 yield Static("", id="keep-label")
                 yield FilterInput()
                 with ButtonRow(id="actions", wrap=False):
-                    yield action_button("Back up", "create", id="btn-backup")
-                    yield action_button("Restore", "navigate", id="btn-restore")
-                    yield action_button("Rescan", "navigate", id="btn-rescan")
-                    yield action_button("Undo last restore", "revert", id="btn-undo")
+                    yield action_button("Back up", "create", "b", id="btn-backup")
+                    yield action_button("Restore", "navigate", "e", id="btn-restore")
+                    yield action_button("Rescan", "navigate", "r", id="btn-rescan")
+                    yield action_button("Undo last restore", "revert", "z", id="btn-undo")
                 yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)

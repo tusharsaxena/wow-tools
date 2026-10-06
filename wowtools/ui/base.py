@@ -47,8 +47,8 @@ class UpdateScreen(EnterGuard, ModalScreen[bool]):
                 yield Markdown(self.release.notes or "_No release notes._")
             with ButtonRow(id="update-buttons"):
                 yield action_button("Update now", "overwrite", id="update-yes")
-                yield action_button("Later", "cancel", id="update-no")
-            yield NavHint("←→ buttons · ↑↓/Tab move · Enter/Space press · Esc later")
+                yield action_button("Later", "cancel", "escape", id="update-no")
+            yield NavHint("←→ buttons · ↑↓/Tab move · Enter/Space press")
 
     def on_mount(self) -> None:
         self.start_guard()

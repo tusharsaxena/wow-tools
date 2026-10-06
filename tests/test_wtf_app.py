@@ -145,7 +145,7 @@ class ReviewFlowTest(AppTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
-            self.assertIn("w clean", review.query_one(NavHint).hint)
+            self.assertEqual(review.query_one("#btn-clean", Button).shortcut, "w")  # Clean shows its key (D17)
             await pilot.press("c")
             await settle(app, pilot)
             self.assertIs(app.screen, review)  # c collapses the tree, it never cleans
@@ -1657,7 +1657,7 @@ class UndoLastCleanTest(AppTestCase):
             async with app.run_test(size=SIZE) as pilot:
                 review = await self.open_review(app, pilot)
                 button = review.query_one("#btn-undo", Button)
-                self.assertEqual(str(button.label), "Undo last clean")
+                self.assertEqual(str(button.label), "Undo last clean\n(z)")
                 self.assertEqual(button.variant, "warning")  # amber: puts a change back
                 self.assertTrue(button.disabled)  # nothing to undo yet
                 await pilot.press("z")

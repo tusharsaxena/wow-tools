@@ -298,18 +298,40 @@ class StructureTest(unittest.TestCase):
         self.assertEqual({label: k for label, k in kinds.items() if len(k) > 1},
                          {"Restore": {"navigate", "overwrite"}})
         expected = {
-            "Clean": "destructive", "Apply": "destructive", "Delete (d)": "destructive", "Leftovers (o)": "destructive",
-            "Organize": "overwrite", "Update now": "overwrite", "Assign (p)": "overwrite",
-            "Override and continue (o)": "overwrite", "Back up": "create",
+            "Clean": "destructive", "Apply": "destructive", "Delete": "destructive", "Leftovers": "destructive",
+            "Organize": "overwrite", "Update now": "overwrite", "Assign": "overwrite",
+            "Override and continue": "overwrite", "Back up": "create",
             "Undo last clean": "revert", "Undo last run": "revert", "Undo last restore": "revert",
-            "Undo last change": "revert", "Undo (z)": "revert", "Put the originals back": "revert",
+            "Undo last change": "revert", "Undo": "revert", "Put the originals back": "revert",
             "Dry run": "simulate", "Save": "confirm", "OK": "confirm",
-            "Rescan": "navigate", "Rescan (r)": "navigate", "Restore (e)": "navigate", "Other flavor (f)": "navigate",
-            "Tools (t)": "navigate", "More… (m)": "navigate", "Edit blacklist…": "navigate",
-            "Cancel": "cancel", "No (n)": "cancel", "Later": "cancel", "Quit (q)": "cancel", "Back": "cancel",
-            "Discard (⌫)": "cancel",
+            "Rescan": "navigate", "Other flavor": "navigate",
+            "Tools": "navigate", "More…": "navigate", "Edit blacklist…": "navigate",
+            "Cancel": "cancel", "No": "cancel", "Later": "cancel", "Quit": "cancel", "Back": "cancel",
+            "Discard": "cancel", "Back to review": "cancel",
         }
         self.assertEqual({label: next(iter(kinds.get(label, {"missing"}))) for label in expected}, expected)
+
+    def test_button_labels_never_spell_their_key(self):
+        """Spec D17: a button's key is given to action_button (`key=`), which shows it on the button and drops it from
+        the footer; a label never carries it by hand ("Assign (p)", "Back to review (Esc)"). Labels are found as in
+        test_same_label_same_colour."""
+        import re
+        from wowtools.ui.widgets import ACTION_VARIANTS
+        keyed = re.compile(r"\((?:[^()\s]{1,6}|Esc|Space)\)\s*$")
+        offenders = []
+        for path in modules("wowtools"):
+            for node in ast.walk(tree(path)):
+                pairs = []
+                if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "action_button":
+                    pairs = [node.args[:2]]
+                elif isinstance(node, ast.Tuple):
+                    pairs = list(zip(node.elts, node.elts[1:]))
+                for label, kind in pairs:
+                    if (isinstance(label, ast.Constant) and isinstance(label.value, str)
+                            and isinstance(kind, ast.Constant) and kind.value in ACTION_VARIANTS
+                            and keyed.search(label.value)):
+                        offenders.append(f"{rel(path)}:{node.lineno}: {label.value}")
+        self.assertEqual(offenders, [])
 
     def test_every_confirm_names_its_kind(self):
         """Every ConfirmScreen says what its Yes does (spec D13): Yes is focused at the start, so its colour is the

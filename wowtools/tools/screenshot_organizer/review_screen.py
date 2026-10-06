@@ -36,8 +36,7 @@ from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, ModelFilter, ModelNode, TreeFilter
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-NAV_HINT = (REVIEW_HINT + "a all · n none · o organize · y dry run · " + FILTER_HINT + TREE_HINT +
-            "r rescan · z undo · f flavors · t tools")
+NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
 READ_ONLY = ("conflicts", "skipped", "conflict", "skip")  # tree nodes that cannot be ticked
 FILED_TITLE = "Already filed"
 
@@ -96,6 +95,8 @@ class ShotReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         Binding("space", "toggle", "Tick/untick", priority=True),
         Binding("a", "select_all", "All"),
         Binding("n", "select_none", "None"),
+        *FILTER_BINDINGS,
+        *TREE_BINDINGS,
         Binding("o", "organize", "Organize"),
         Binding("y", "dry_run", "Dry run"),
         Binding("r", "rescan", "Rescan"),
@@ -106,8 +107,6 @@ class ShotReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
-        *FILTER_BINDINGS,
-        *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
 
@@ -139,10 +138,10 @@ class ShotReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                 yield Static(Text(self._mode_text()), id="mode-label")
                 yield FilterInput()
                 with ButtonRow(id="actions", wrap=False):
-                    yield action_button("Organize", "overwrite", id="btn-organize")
-                    yield action_button("Dry run", "simulate", id="btn-dry")
-                    yield action_button("Rescan", "navigate", id="btn-rescan")
-                    yield action_button("Undo last run", "revert", id="btn-undo")
+                    yield action_button("Organize", "overwrite", "o", id="btn-organize")
+                    yield action_button("Dry run", "simulate", "y", id="btn-dry")
+                    yield action_button("Rescan", "navigate", "r", id="btn-rescan")
+                    yield action_button("Undo last run", "revert", "z", id="btn-undo")
                 yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)

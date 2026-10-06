@@ -44,10 +44,10 @@ class LockScreen(ChoiceScreen):
         self.lock_path = lock_path
         self.stale = holder.stale
         super().__init__("Ka0s WoW Tools may already be running", self.body(),
-                         [("lock-override", "Override and continue (o)", "overwrite"),
-                          ("lock-quit", "Quit (q)", "cancel")],
+                         [("lock-override", "Override and continue", "overwrite", "o"),
+                          ("lock-quit", "Quit", "cancel", "q")],
                          default="lock-override" if self.stale else "lock-quit",
-                         hint="←→ choose · Enter/Space press · o override · q/Esc quit")
+                         hint="←→ choose · Enter/Space press · Esc quit")
 
     def body(self) -> str:
         lines = [f"The lock file {self.lock_path} says Ka0s WoW Tools is already open:",

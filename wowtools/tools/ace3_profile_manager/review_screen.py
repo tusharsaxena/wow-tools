@@ -49,32 +49,31 @@ from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceSc
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, TreeFilter, hidden_by_filter
 from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, WrapButtonRow, action_button,
-                                 wrap_items)
+                                 key_text, wrap_items)
 
-NAV_HINT = (REVIEW_HINT + "a all · n none · d delete · p assign · m more · w apply · y dry run · " + FILTER_HINT +
-            TREE_HINT +
-            "r rescan · z undo · f flavors · t tools")
+NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
 SHOW_FILTERS = {"only-multi": "only_multi", "only-unused": "only_unused", "show-leftovers": "leftovers",
                 "show-blacklisted": "blacklisted"}
 GUIDE_MAX_ROWS = 2  # the guidance line leaves its per-node hint out rather than take more rows than this
 GROUP_KINDS = ("root", "flavor", "account")  # nodes too broad to stand for a selection when nothing is ticked
-# The action bar under the tree: (id, label, kind of action, action), staged changes first (amber; Copy is green: it
+# The action bar under the tree: (id, label, kind of action, action, key), staged changes first (amber; Copy is green: it
 # only adds a profile), then staged deletes (red), then the rest; a staging button takes the colour of the action it
 # stages (spec D12).
 # Each button does what its key does; one with nothing to act on stays enabled and says what to tick or highlight.
-# The focused button's tip (action_tip) says what it would do now. The labels are short enough for two rows at
-# 160x45 (and three at 120x30): tests/test_look_and_feel.py.
+# The focused button's tip (action_tip) says what it would do now. The bar's buttons are compact: each shows its key
+# after its label on its one row ("Delete (d)"); two rows per button would take the tree two or three rows at 120x30
+# (D17). The labels are short enough for two rows at 160x45 (and three at 120x30): tests/test_look_and_feel.py.
 TREE_ACTIONS = (
-    ("act-assign", "Assign (p)", "overwrite", "assign"),
-    ("act-rename", "Rename (e)", "overwrite", "rename"),
-    ("act-copy", "Copy (k)", "create", "copy"),
-    ("act-everyone-default", "Everyone → Default (E)", "overwrite", "everyone_default"),
-    ("act-delete", "Delete (d)", "destructive", "delete"),
-    ("act-keep-default", "Only Default (D)", "destructive", "keep_default"),
-    ("act-leftovers", "Leftovers (o)", "destructive", "remove_leftovers"),
-    ("act-blacklist", "Blacklist…", "navigate", "edit_blacklist"),
-    ("act-more", "More… (m)", "navigate", "more"),
-    ("act-discard", "Discard (⌫)", "cancel", "discard"),
+    ("act-assign", "Assign", "overwrite", "assign", "p"),
+    ("act-rename", "Rename", "overwrite", "rename", "e"),
+    ("act-copy", "Copy", "create", "copy", "k"),
+    ("act-everyone-default", "Everyone → Default", "overwrite", "everyone_default", "E"),
+    ("act-delete", "Delete", "destructive", "delete", "d"),
+    ("act-keep-default", "Only Default", "destructive", "keep_default", "D"),
+    ("act-leftovers", "Leftovers", "destructive", "remove_leftovers", "o"),
+    ("act-blacklist", "Blacklist…", "navigate", "edit_blacklist", None),
+    ("act-more", "More…", "navigate", "more", "m"),
+    ("act-discard", "Discard", "cancel", "discard", "backspace"),
 )
 
 
@@ -157,7 +156,7 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
     PREFLIGHT_TEXT = "Checking whether WoW is running…"
     BUTTON_ACTIONS: ClassVar[dict[str, str]] = {
         "btn-apply": "apply", "btn-dry-run": "dry_run", "btn-rescan": "rescan", "btn-undo": "undo",
-        **{button_id: name for button_id, _, _, name in TREE_ACTIONS}}
+        **{button_id: name for button_id, _, _, name, _ in TREE_ACTIONS}}
     # Designed for 120x30 (tests/test_look_and_feel.py): the left pane has one control per row under its View and
     # Show headings, and still fits its hint when the pending line takes three rows (every kind of change) and the
     # bottom line two (scan warnings). The tree pane holds the tree, the guidance line and the action bar (at most
@@ -177,8 +176,10 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         Binding("space", "toggle", "Tick/untick", priority=True),
         Binding("a", "select_all", "All"),
         Binding("n", "select_none", "None"),
-        # d, p and m are on the action bar's buttons (with their keys): the footer leaves them out, so the rest
-        # fits at 120 columns
+        *FILTER_BINDINGS,
+        *TREE_BINDINGS,
+        # the action bar's keys are on its buttons (the footer leaves them out anyway, KeyFooter); b, u and v are
+        # in the quick actions menu (m)
         Binding("d", "delete", "Delete", show=False),
         Binding("p", "assign", "Assign", show=False),
         Binding("e", "rename", "Rename", show=False),
@@ -201,8 +202,6 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
-        *FILTER_BINDINGS,
-        *TREE_BINDINGS,
         *NAV_BINDINGS,
     ]
 
@@ -254,10 +253,10 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                 yield FilterInput(id="search")
                 yield Static(self._pending_line(NO_PENDING), id="pending")
                 with ButtonRow(id="actions", wrap=False):
-                    yield action_button("Apply", "destructive", id="btn-apply")
-                    yield action_button("Dry run", "simulate", id="btn-dry-run")
-                    yield action_button("Rescan", "navigate", id="btn-rescan")
-                    yield action_button("Undo last change", "revert", id="btn-undo")
+                    yield action_button("Apply", "destructive", "w", id="btn-apply")
+                    yield action_button("Dry run", "simulate", "y", id="btn-dry-run")
+                    yield action_button("Rescan", "navigate", "r", id="btn-rescan")
+                    yield action_button("Undo last change", "revert", "z", id="btn-undo")
                 yield NavHint(NAV_HINT)
             with Vertical(id="tree-pane"):
                 with Vertical(id="scan-box"):
@@ -266,8 +265,8 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                 yield ProfileTree(Text(self.scope_label), id="profiles")
                 yield Static(Text(self.guide_text), id="guide")
                 with ActionBar(id="tree-actions"):
-                    for button_id, label, kind, _ in TREE_ACTIONS:
-                        yield action_button(label, kind, id=button_id, compact=True)
+                    for button_id, label, kind, _, key in TREE_ACTIONS:
+                        yield action_button(label, kind, key, id=button_id, compact=True)
         with Vertical(id="tip-rack"):
             yield ActionTip("", id="action-tip")
         yield Static(Text(self.summary_text), id="summary")
@@ -551,7 +550,7 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         focused = self.focused
         if not isinstance(focused, Button) or focused.parent is None or focused.parent.id != "tree-actions":
             return None
-        return next((name for button_id, _, _, name in TREE_ACTIONS if button_id == focused.id), None)
+        return next((name for button_id, _, _, name, _ in TREE_ACTIONS if button_id == focused.id), None)
 
     def _update_tip(self) -> None:
         """Show what the focused action bar button would do now (or hide the tip), then place it and the toasts."""
@@ -561,7 +560,9 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         rack = self.query_one("#tip-rack")
         rack.display = action is not None and self.staging is not None
         if rack.display and action is not None:
-            label = next(label for _, label, _, name in TREE_ACTIONS if name == action)
+            label, key = next((label, key) for _, label, _, name, key in TREE_ACTIONS if name == action)
+            if key is not None:
+                label = f"{label} ({key_text(key)})"
             self.query_one("#action-tip", Static).update(Text.assemble((label, "bold"), "\n",
                                                                        self.action_tip(action)))
         self.call_after_refresh(self._place_overlays)
