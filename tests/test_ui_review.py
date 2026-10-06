@@ -3,8 +3,10 @@ toy review screen driving Space, select all / none over the shown keys, buttons 
 the debounced rebuild, leaving and the scan box. The tools' own TUI tests drive the same code on real screens."""
 from __future__ import annotations
 
+import tempfile
 import threading
 import unittest
+from pathlib import Path
 from typing import ClassVar
 
 from rich.text import Text
@@ -14,13 +16,17 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, Input, ProgressBar, Static, Tree
 
-from tests.fixtures import TuiTestCase, settle
-from wowtools.core.events import capture_events
-from wowtools.ui.dialogs import relabel_branch, tick_mark, two_pane_css
-from wowtools.ui.review import NotTicked, ReviewBase, ReviewTree, TickModel
+from tests.fixtures import TuiTestCase, build_wow_tree, settle
+from wowtools.core import activity
+from wowtools.core.events import capture_events, register_events
+from wowtools.core.sv_events import SvTool, sv_events
+from wowtools.ui.dialogs import ProgressScreen, relabel_branch, tick_mark, two_pane_css
+from wowtools.ui.review import NotTicked, ReviewBase, ReviewTree, RunActions, TickModel
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, action_button
 
 KEYS = ("a1", "a2", "b1")  # two groups: a (a1, a2) and b (b1)
+RUN_TOOL = SvTool("test-ui-run", "tur")
+register_events(RUN_TOOL.name, sv_events(RUN_TOOL.prefix))
 
 
 class TickModelTest(unittest.TestCase):
@@ -358,3 +364,152 @@ class ReviewBaseTest(TuiTestCase):
             self.assertTrue(tree.display)
             self.assertFalse(review.query_one("#scan-box").display)
         await self.run_toy(True, test)
+
+
+class ToyProgress(ProgressScreen):
+    ID_PREFIX = "toy"
+    finished = 0
+
+    def finish_all(self) -> None:
+        self.finished += 1
+        super().finish_all()
+
+
+class ToyCfg:
+    def __init__(self, wow_path: Path | None) -> None:
+        self.wow_path = wow_path
+
+
+class ToyRunReview(RunActions, ToyReview):
+    """ToyReview with the apply / undo / recover plumbing: records refreshes, stale marks and notifications."""
+
+    SV_TOOL = RUN_TOOL
+
+    def __init__(self, wow_path: Path | None = None, backup_dir: Path | None = None) -> None:
+        super().__init__(stores_ticked=True)
+        self.cfg = ToyCfg(wow_path)
+        self.backup_dir = backup_dir
+        self.refreshes = 0
+        self.stale_marks = 0
+        self.notes: list[tuple[str, str]] = []
+
+    def run_backup_dir(self) -> Path | None:
+        return self.backup_dir
+
+    def _refresh_buttons(self) -> None:
+        self.refreshes += 1
+
+    def _mark_stale(self) -> None:
+        self.stale_marks += 1
+
+    def notify(self, message, *, title="", severity="information", timeout=None, markup=True) -> None:
+        self.notes.append((str(message), severity))
+
+
+class RunActionsTest(TuiTestCase):
+    async def run_toy(self, test, review: ToyRunReview | None = None) -> None:
+        app = Host(review or ToyRunReview())
+        async with app.run_test(size=(120, 30)) as pilot:
+            await pilot.pause()
+            await test(app, app.review, pilot)
+
+    async def test_a_run_opens_the_progress_works_in_a_worker_and_closes(self):
+        async def test(app, review, pilot):
+            release = threading.Event()
+            self.addCleanup(release.set)
+            seen, done = [], []
+
+            def work():
+                seen.append((activity.wait_idle(0), threading.current_thread() is threading.main_thread()))
+                release.wait(5)
+                return "result"
+
+            progress = ToyProgress("Working")
+            review.start_run(progress, work, lambda result: done.append((result, app.busy, app.screen)),
+                             name="apply", failure="The run stopped unexpectedly", stale_on_crash=True)
+            await pilot.pause()
+            self.assertTrue(app.busy)
+            self.assertIs(app.screen, progress)
+            self.assertIs(review._progress_screen, progress)
+            release.set()
+            await settle(app, pilot)
+            self.assertEqual(seen, [(False, False)])  # inside activity.running(), off the UI thread
+            self.assertEqual(done, [("result", False, review)])  # the popup is closed before `done`
+            self.assertIsNone(review._progress_screen)
+            self.assertFalse(app.busy)
+            self.assertEqual(review.notes, [])
+            self.assertEqual(progress.finished, 1)  # finish_all: the board ends at m of m
+        await self.run_toy(test)
+
+    async def test_an_expected_error_is_its_message_and_leaves_the_scan(self):
+        async def test(app, review, pilot):
+            def work():
+                raise ValueError("WoW is running")
+
+            done = []
+            with capture_events() as records:
+                review.start_run(ToyProgress("Working"), work, done.append, name="undo",
+                                 failure="Undo stopped unexpectedly", stale_on_crash=True, expected=(ValueError,))
+                await settle(app, pilot)
+            self.assertEqual(done, [])
+            self.assertEqual(review.notes, [("WoW is running", "error")])
+            self.assertEqual(review.stale_marks, 0)
+            self.assertFalse(app.busy)
+            self.assertIs(app.screen, review)
+            errors = [r["data"] for r in records if r["event"] == "error"]
+            self.assertEqual([(e["where"], e["type"]) for e in errors], [("tur.undo", "ValueError")])
+        await self.run_toy(test)
+
+    async def test_a_crash_is_shown_and_marks_the_scan_stale_when_asked(self):
+        for stale in (True, False):
+            with self.subTest(stale=stale):
+                async def test(app, review, pilot, stale=stale):
+                    def work():
+                        raise RuntimeError("boom")
+
+                    review.start_run(ToyProgress("Working"), work, lambda result: None, name="recover",
+                                     failure="Putting the originals back stopped", stale_on_crash=stale,
+                                     expected=(ValueError,))
+                    await settle(app, pilot)
+                    self.assertEqual(review.notes,
+                                     [("Putting the originals back stopped: RuntimeError: boom", "error")])
+                    self.assertEqual(review.stale_marks, int(stale))
+                    self.assertFalse(app.busy)
+                await self.run_toy(test)
+
+    async def test_refused_while_running(self):
+        async def test(app, review, pilot):
+            alerts: list[str] = []
+            with capture_events() as records:
+                self.assertTrue(review._refused_while_running(["Wow.exe"], alerts))
+            self.assertEqual([r["event"] for r in records], ["tur.wow_running"])
+            self.assertEqual(records[0]["data"]["running"], ["Wow.exe"])
+            self.assertIn("WoW is running (Wow.exe)", review.notes[0][0])
+            self.assertEqual(alerts, [])
+            self.assertFalse(review._refused_while_running([], alerts))
+            self.assertEqual(alerts, [])
+            self.assertFalse(review._refused_while_running(None, alerts))
+            self.assertEqual(alerts, ["Could not check whether WoW is running; close it before you go on."])
+        await self.run_toy(test)
+
+    async def test_check_wow_answers_on_the_ui_thread(self):
+        async def test(app, review, pilot):
+            answers = []
+            review._check_wow(lambda: ["Wow.exe"], answers.append)
+            await settle(app, pilot)
+            self.assertEqual(answers, [["Wow.exe"]])
+        await self.run_toy(test)
+
+    async def test_backup_dir_refused(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        wow = build_wow_tree(Path(tmp.name) / "wow")
+        for wow_path, backup_dir, refused in ((None, wow, False), (wow, None, False),
+                                              (wow, Path(tmp.name) / "backups", False), (wow, wow, True)):
+            with self.subTest(wow_path=wow_path, backup_dir=backup_dir):
+                async def test(app, review, pilot, refused=refused):
+                    self.assertEqual(review._backup_dir_refused(), refused)
+                    self.assertEqual(len(review.notes), int(refused))
+                    if refused:
+                        self.assertIn("Fix the folder in settings (s).", review.notes[0][0])
+                await self.run_toy(test, ToyRunReview(wow_path, backup_dir))

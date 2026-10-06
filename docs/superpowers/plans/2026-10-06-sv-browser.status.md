@@ -11,7 +11,7 @@ delete every branch, stash and worktree this run created.
 | T1.1 | luasv to core + parser surface | done | (this commit) | `luasv.py` git-mv'd to `wowtools/core/` (Ace3 modules + tests switched, `tests/test_ace_luasv.py` -> `tests/test_luasv.py`), added `parse_at`, streaming `iter_scalars`, `encode_value`/`encode_key`/`key_id`, the `-- [n]` remove-span fix and slotted dataclasses; no Ace3 assertion changed; full suite 1357 OK (2 skipped), +23 tests |
 | T1.2 | SvFile/walk/tool_root to core | done | (this commit) | `SvFile`, `sha256_of`, `OWNER_ACCOUNT_WIDE`, `candidate_files`, `under_link` and a generic `walk_sv_files` (filter hook `is_sv_file`/`is_addon_sv_file`) now in `core/svfiles.py`, Ace3 scanner/editor/ops/review/tree_view import them from core, `core.journal.tool_root` adopted by Ace3 `resolve_root` and Interface Backup `resolve_backup_root` (WTF Cleaner kept), structure pin added; no Ace3 assertion changed; full suite 1365 OK (2 skipped), +8 tests |
 | T1.3 | write pipeline, journal, undo to core | done | (this commit) | Ace3's generic apply/multi/journal/undo/verify/report moved to `core/sv_apply.py`, `sv_journal.py`, `sv_undo.py`, `sv_verify.py`, `sv_report.py` and `sv_events.py` (`SvTool(name, prefix)`, `sv_events(prefix)`), Ace3 `editor`/`multi`/`journal`/`undo`/`report` are thin wrappers and `verify` uses the core helpers, one `WowRunning`, `docs/events.md` byte-identical (`gen_event_docs.py --check`), structure pin added, 4 patch targets moved, no Ace3 assertion changed; full suite 1376 OK (2 skipped), +11 tests |
-| T1.4 | shared UI helpers | todo | | |
+| T1.4 | shared UI helpers | done | (this commit) | `popup_css`/`show_error`, a generic `TextPromptScreen` (Ace3 `NameScreen` built on it) and `UnfinishedRunScreen` (Ace3 `ProfileRecoveryScreen` built on it, its text now `core.sv_report.recovery_text`) in `ui/dialogs.py`, and a `RunActions` mixin in `ui/review.py` (WoW check, running/backup-dir refusals, `start_run` = busy + progress popup + worker in `activity.running()` + done/failure) that Ace3's review now uses (its `_close_progress(screen)` shadow gone), structure pin added and the progress-close pin narrowed to `ui/review.py`; no Ace3 assertion changed; full suite 1390 OK (2 skipped), +14 tests |
 | M1 | push milestone 1 | todo | | |
 | T2.1 | package skeleton, registry, fixture | todo | | |
 | T2.2 | scanner + lazy model | todo | | |
@@ -94,3 +94,23 @@ delete every branch, stash and worktree this run created.
   `test_saved_variables_write_pipeline_lives_in_core` pins the definitions; the marker-importer pin now names
   `core/sv_apply.py` instead of Ace3's editor. A made-up tool (`tests/test_core_sv_pipeline.py`, prefix `tsv`, owner
   `test-sv-pipeline`, skipped by gen_event_docs) drives apply, dry run, verify stop, undo, recovery and WowRunning.
+- **T1.4** `RunActions` (ui/review.py) is a separate mixin, not part of `ReviewBase`: only the SavedVariables reviews
+  use it (mixed in before `ReviewBase`). The screen supplies `SV_TOOL` (the event prefix: `<prefix>.wow_running`, and
+  `<prefix>.apply`/`.undo`/`.recover` as the `log_exception` context, so Ace3's log is unchanged), `cfg`,
+  `run_backup_dir()`, `_refresh_buttons()` and `_mark_stale()`. `start_run(progress, work, done, *, name, failure,
+  stale_on_crash, expected)`: `work` is a closure (the tool's own core call with its progress callbacks), `expected`
+  errors (ApplyError/UndoError) show their message and never mark stale; others show `<failure>: <type>: <msg>`.
+  `done(result)` runs after the popup is closed and `app.busy` is off (as Ace3 did).
+- **T1.4** Ace3's `_close_progress(screen)` shadow is gone: the run's popup is `ReviewBase._progress_screen`, set by
+  `start_run`; `RunActions._end_run()` = busy off + `_close_progress()`. `_applied`/`_undone`/`_recovered` now take
+  only the result; Ace3's `_apply_worker`/`_undo_worker`/`_recover_worker`, `_check_wow`, `_refused_while_running`,
+  `_backup_dir_refused` and `_run_failed` are gone (no test called them).
+- **T1.4** `popup_css(screen, *, list_rows=None)`: the OptionList max-height rule is only emitted with `list_rows`
+  (Ace3's `ActionsScreen` passes `ACTIONS_ROWS`); Target/Name popups had that rule with no OptionList. `NameScreen`
+  inherits `TextPromptScreen`'s CSS (Textual type selectors match subclasses); its field and error ids changed from
+  `#name`/`#name-error` to `#prompt`/`#prompt-error` (no test queried them).
+- **T1.4** The unfinished-run body moved to `core/sv_report.recovery_text(marker)` (UI-free, re-exported by Ace3's
+  `report`); `UnfinishedRunScreen(message, marker=None)` keeps `.marker` and the title `TITLE`. Tests: toy
+  `ToyRunReview` (prefix `tur`, owner `test-ui-run`, skipped by gen_event_docs) in `tests/test_ui_review.py`, the
+  popups in `tests/test_ui_shared_screens.py`, `recovery_text` in `tests/test_core_sv_pipeline.py`, pin
+  `test_saved_variables_ui_helpers_live_in_ui`.

@@ -217,14 +217,42 @@ class StructureTest(unittest.TestCase):
 
     def test_lock_refusal_and_progress_close_are_shared(self):
         """Functionality two tools need lives in the shared library: the lock refusal (core/svfiles.py: the probe
-        loop and its message) and closing a review's progress popup (ui/review.py; Ace3's takes the popup)."""
+        loop and its message) and closing a review's progress popup (ui/review.py, Ace3's included)."""
         where = {(rel(p), n) for p in modules("wowtools")
                  for n in defined_functions(tree(p)) & {"find_locked", "locked_message"}}
         self.assertEqual(where, {("wowtools/core/svfiles.py", n) for n in ("find_locked", "locked_message")})
         texts = [rel(p) for p in modules("wowtools") if "Close it and" in p.read_text(encoding="utf-8")]
         self.assertEqual(texts, ["wowtools/core/svfiles.py"])
         closes = {rel(p) for p in modules("wowtools") if "_close_progress" in defined_functions(tree(p))}
-        self.assertEqual(closes, {"wowtools/ui/review.py", "wowtools/tools/ace3_profile_manager/review_screen.py"})
+        self.assertEqual(closes, {"wowtools/ui/review.py"})
+
+    def test_saved_variables_ui_helpers_live_in_ui(self):
+        """The UI a SavedVariables tool shares (SV Browser spec D20): the form popup look and error line, the text
+        prompt and the unfinished-run warning are ui/dialogs.py's; the apply / undo / recover plumbing (WoW check,
+        refusals, the progress popup, the worker, its result or failure) is ui/review.py's RunActions. Ace3's name
+        popup, recovery warning and review are built on them."""
+        functions = {"popup_css": "dialogs.py", "show_error": "dialogs.py", "recovery_text": None,
+                     "_check_wow": "review.py", "_refused_while_running": "review.py",
+                     "_backup_dir_refused": "review.py", "start_run": "review.py", "_run_worker": "review.py",
+                     "_run_done": "review.py", "_run_failed": "review.py", "_end_run": "review.py"}
+        where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & set(functions)}
+        self.assertEqual(where, {(f"wowtools/ui/{module}", name) for name, module in functions.items() if module}
+                         | {("wowtools/core/sv_report.py", "recovery_text")})
+        classes = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
+                   if isinstance(node, ast.ClassDef) and node.name in ("TextPromptScreen", "UnfinishedRunScreen",
+                                                                       "RunActions")}
+        self.assertEqual(classes, {("wowtools/ui/dialogs.py", "TextPromptScreen"),
+                                   ("wowtools/ui/dialogs.py", "UnfinishedRunScreen"),
+                                   ("wowtools/ui/review.py", "RunActions")})
+        from wowtools.tools.ace3_profile_manager import popups, review_screen
+        from wowtools.ui.dialogs import TextPromptScreen, UnfinishedRunScreen
+        from wowtools.ui.review import RunActions
+        self.assertTrue(issubclass(popups.NameScreen, TextPromptScreen))
+        self.assertTrue(issubclass(review_screen.ProfileRecoveryScreen, UnfinishedRunScreen))
+        self.assertTrue(issubclass(review_screen.ProfileReviewScreen, RunActions))
+        # Ace3's screen runs nothing in a worker of its own: no activity.running() outside RunActions.
+        self.assertNotIn("activity", (REPO / "wowtools/tools/ace3_profile_manager/review_screen.py").read_text(
+            encoding="utf-8"))
 
     def test_tree_filter_lives_in_ui(self):
         """The tree filter (spec D7) is wowtools/ui/tree_filter.py's: no tool defines its own match, model filter,

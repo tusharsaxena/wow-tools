@@ -1,5 +1,6 @@
 """Dialogs and screen helpers shared by every tool: the yes/no confirmation, an information popup (both can list
-their details in a tree), a warning with a choice of buttons, the progress modal of a run, tick marks
+their details in a tree), a warning with a choice of buttons (and the unfinished-run one built on it), a text
+prompt (with popup_css and show_error, the look of a tool's own form popups), the progress modal of a run, tick marks
 and relabelling for review trees, the two-pane (filters + tree) focus moves, and theme colours with the Ka0s
 colours as a fallback. A tool's screens import these; no tool imports another tool's screens."""
 from __future__ import annotations
@@ -15,7 +16,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widget import Widget
-from textual.widgets import Button, ProgressBar, Static, Tree
+from textual.widgets import Button, Input, ProgressBar, Static, Tree
 
 from wowtools.core.parallel import workers_for
 from wowtools.core.progress import PROGRESS_INTERVAL, BoardView, ProgressBoard, RowView
@@ -398,6 +399,108 @@ class ChoiceScreen(EnterGuard, ModalScreen[str | None]):
         return self.escape if action == "close" else True
 
     def action_close(self) -> None:
+        self.dismiss(None)
+
+
+class UnfinishedRunScreen(ChoiceScreen):
+    """An earlier run did not finish (its crash marker is there): put the originals back from its zip, or leave the
+    files as they are. `message` says which run and what each choice does (core.sv_report.recovery_text); `marker`
+    is kept for the caller. Dismisses with "put_back" or "leave" (None when closed with Esc: offered again at the
+    next scan)."""
+
+    TITLE = "An earlier change did not finish"
+
+    def __init__(self, message: str, marker: Any = None) -> None:
+        super().__init__(self.TITLE, message,
+                         [("leave", "Leave as is", "cancel"), ("put_back", "Put the originals back", "revert")],
+                         default="put_back", escape=True)
+        self.marker = marker
+
+
+def popup_css(screen: str, *, list_rows: int | None = None) -> str:
+    """ConfirmScreen's look for a tool's own form popup called `screen`: a centred box (POPUP_WIDTH, .popup-box)
+    with an accent border, a bold .title, a .popup-body, compact inputs and selects, a .popup-error line and
+    right-aligned .popup-buttons. At 120x30 (tests/test_look_and_feel.py) a body of 12 lines shows without
+    scrolling, with room around the box: the fields are compact, the error line takes no room until there is an
+    error and the hint sits right under the buttons. A longer body scrolls inside its share of the height; on a
+    smaller window the box scrolls. `list_rows`: an OptionList shows that many rows without scrolling."""
+    option_list = "" if list_rows is None else f"{screen} OptionList {{ height: auto; max-height: {list_rows + 2}; }}"
+    return f"""
+    {screen} {{ align: center middle; }}
+    {screen} .popup-box {{ {POPUP_WIDTH} height: auto; max-height: 100%; overflow-y: auto;
+                          border: thick $accent; background: $panel; padding: 1 2; }}
+    {screen} .title {{ color: $accent; text-style: bold; margin-bottom: 1; }}
+    {screen} .popup-body {{ height: auto; max-height: 40vh; overflow-y: auto; }}
+    {screen} Select, {screen} Input {{ margin-top: 1; }}
+    {screen} .popup-error {{ height: auto; display: none; }}
+    {screen} .popup-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
+    {screen} Button {{ margin-left: 2; }}
+    {screen} NavHint {{ margin-top: 0; }}
+    {option_list}
+    """
+
+
+def show_error(line: Static, problem: str | None) -> None:
+    """A popup's .popup-error line: the problem in the alert colour, or hidden (no room taken) when None."""
+    line.update(Text(problem, style=ALERT_STYLE) if problem else "")
+    line.display = bool(problem)
+
+
+class TextPromptScreen(ModalScreen[str | None]):
+    """Type one line of text (a new name, ...): a title, a body, the field (#prompt, filled with `initial`) and
+    OK / Cancel. `check` returns a problem with the text, shown under the field (#prompt-error) until the text
+    changes, or None. Enter or OK dismisses with the text once `check` passes; Cancel or Esc with None. ↑/↓ move
+    between the field and the buttons."""
+
+    DEFAULT_CSS = popup_css("TextPromptScreen")
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
+
+    def __init__(self, title: str, body: str, initial: str = "",
+                 check: Callable[[str], str | None] | None = None, *, placeholder: str = "") -> None:
+        super().__init__()
+        self.title_text = title
+        self.body_text = body
+        self.initial = initial
+        self.check = check or (lambda text: None)
+        self.placeholder = placeholder
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="popup-box"):
+            yield Static(Text(self.title_text), classes="title")
+            yield Static(Text(self.body_text), classes="popup-body")
+            yield Input(self.initial, placeholder=self.placeholder, id="prompt", compact=True)
+            yield Static("", id="prompt-error", classes="popup-error")
+            with ButtonRow(classes="popup-buttons"):
+                yield action_button("OK", "confirm", id="ok")
+                yield action_button("Cancel", "cancel", "escape", id="cancel")
+            yield NavHint("Enter OK · ↑↓/Tab move · ←→ buttons")
+
+    def on_mount(self) -> None:
+        self.query_one("#prompt", Input).focus()
+
+    def _ok(self) -> None:
+        text = self.query_one("#prompt", Input).value
+        problem = self.check(text)
+        if problem is not None:
+            show_error(self.query_one("#prompt-error", Static), problem)
+            return
+        self.dismiss(text)
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        show_error(self.query_one("#prompt-error", Static), None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()
+        self._ok()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        if event.button.id == "ok":
+            self._ok()
+        else:
+            self.dismiss(None)
+
+    def action_cancel(self) -> None:
         self.dismiss(None)
 
 

@@ -16,7 +16,7 @@ from wowtools.core.fsutil import atomic_write_bytes
 from wowtools.core.install import WowInstall
 from wowtools.core.luasv import parse
 from wowtools.core.sv_events import SvTool, sv_events
-from wowtools.core.sv_report import apply_summary_rows, undo_detail_rows, undo_summary_rows
+from wowtools.core.sv_report import apply_summary_rows, recovery_text, undo_detail_rows, undo_summary_rows
 from wowtools.core.sv_verify import check_assignments, gaps, rest_outside, same_outside
 from wowtools.core.svfiles import SvFile, sha256_of
 
@@ -165,6 +165,15 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual({p: p.read_bytes() for p in self.paths}, self.originals)
         self.assertIsNone(sv_apply.read_marker(self.root))
         self.assertIsNone(TOOL.journals.latest_undoable(self.journals))
+
+    def test_recovery_text_names_the_run_and_its_zip(self):
+        marker = sv_apply.Marker("_retail_", self.flavor.path, self.root / "edited.zip", {"a": "0", "b": "1"},
+                                 "2026-10-07T12:00:00", 1, "0.1.0")
+        lines = recovery_text(marker).splitlines()
+        self.assertIn("did not finish (2 files)", lines[0])
+        self.assertIn(str(self.root / "edited.zip"), lines)
+        self.assertTrue(lines[-2].startswith("Put the originals back:"))
+        self.assertTrue(lines[-1].startswith("Leave as is:"))
 
     def test_referenced_zips_none_when_a_journal_cannot_be_read(self):
         self.run_apply()

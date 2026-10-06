@@ -1,5 +1,5 @@
-"""The Ace3 Profile Manager's popups, styled like ConfirmScreen: the target of a delete or an assignment, a new
-profile name (rename and copy), and the quick actions menu."""
+"""The Ace3 Profile Manager's popups, styled like ConfirmScreen (ui.dialogs.popup_css): the target of a delete or an
+assignment, a new profile name (rename and copy, on the shared text prompt), and the quick actions menu."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -16,7 +16,7 @@ from textual.widgets.option_list import Option
 from wowtools.core.events import log_event
 from wowtools.tools.ace3_profile_manager.model import DEFAULT
 from wowtools.tools.ace3_profile_manager.ops import valid_name
-from wowtools.ui.dialogs import ACCENT, ALERT_STYLE, POPUP_WIDTH
+from wowtools.ui.dialogs import ACCENT, TextPromptScreen, popup_css, show_error
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, NavSelect, action_button
 
 # The quick actions, and every review key the footer and the action bar have no room for (each label names its key),
@@ -43,32 +43,6 @@ ACTIONS = tuple(action for _, actions in ACTION_GROUPS for action in actions)
 ACTIONS_ROWS = len(ACTIONS) + 2 * len(ACTION_GROUPS) - 1  # every action, a heading per group, a gap between groups
 
 HEADING_STYLE = ACCENT  # a group heading in the quick actions menu, like a section heading in the left pane
-
-
-def popup_css(screen: str) -> str:
-    """ConfirmScreen's look: a centred box (POPUP_WIDTH) with an accent border, a bold title and right-aligned
-    buttons. At 120x30 (tests/test_look_and_feel.py) a body of 12 lines and the whole quick actions menu show without
-    scrolling, with room around the box: the list and the name field are compact, the error line takes no room
-    until there is an error and the hint sits right under the buttons (whose lower edge leaves a gap). A longer body scrolls inside its share of the height; on a smaller window the box
-    scrolls."""
-    return f"""
-    {screen} {{ align: center middle; }}
-    {screen} .popup-box {{ {POPUP_WIDTH} height: auto; max-height: 100%; overflow-y: auto;
-                          border: thick $accent; background: $panel; padding: 1 2; }}
-    {screen} .title {{ color: $accent; text-style: bold; margin-bottom: 1; }}
-    {screen} .popup-body {{ height: auto; max-height: 40vh; overflow-y: auto; }}
-    {screen} Select, {screen} Input {{ margin-top: 1; }}
-    {screen} .popup-error {{ height: auto; display: none; }}
-    {screen} .popup-buttons {{ height: auto; align-horizontal: right; margin-top: 1; }}
-    {screen} Button {{ margin-left: 2; }}
-    {screen} NavHint {{ margin-top: 0; }}
-    {screen} OptionList {{ height: auto; max-height: {ACTIONS_ROWS + 2}; }}
-    """
-
-
-def show_error(line: Static, problem: str | None) -> None:
-    line.update(Text(problem, style=ALERT_STYLE) if problem else "")
-    line.display = bool(problem)
 
 
 class TargetScreen(ModalScreen[str | None]):
@@ -136,66 +110,20 @@ class TargetScreen(ModalScreen[str | None]):
         self.dismiss(None)
 
 
-class NameScreen(ModalScreen[str | None]):
-    """Type a profile name (rename, copy). `check` returns a problem with the name, or None. Dismisses with the
-    name, or None. ↑/↓ move between the name and the buttons."""
-
-    DEFAULT_CSS = popup_css("NameScreen")
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
+class NameScreen(TextPromptScreen):
+    """Type a profile name (rename, copy): the shared text prompt, checked with valid_name unless `check` (a
+    problem with the name, or None) is given. Dismisses with the name, or None."""
 
     def __init__(self, title: str, body: str, initial: str = "",
                  check: Callable[[str], str | None] = valid_name) -> None:
-        super().__init__()
-        self.title_text = title
-        self.body_text = body
-        self.initial = initial
-        self.check = check
-
-    def compose(self) -> ComposeResult:
-        with Vertical(classes="popup-box"):
-            yield Static(Text(self.title_text), classes="title")
-            yield Static(Text(self.body_text), classes="popup-body")
-            yield Input(self.initial, placeholder="profile name", id="name", compact=True)
-            yield Static("", id="name-error", classes="popup-error")
-            with ButtonRow(classes="popup-buttons"):
-                yield action_button("OK", "confirm", id="ok")
-                yield action_button("Cancel", "cancel", "escape", id="cancel")
-            yield NavHint("Enter OK · ↑↓/Tab move · ←→ buttons")
-
-    def on_mount(self) -> None:
-        self.query_one("#name", Input).focus()
-
-    def _ok(self) -> None:
-        name = self.query_one("#name", Input).value
-        problem = self.check(name)
-        if problem is not None:
-            show_error(self.query_one("#name-error", Static), problem)
-            return
-        self.dismiss(name)
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        show_error(self.query_one("#name-error", Static), None)
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        event.stop()
-        self._ok()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        event.stop()
-        if event.button.id == "ok":
-            self._ok()
-        else:
-            self.dismiss(None)
-
-    def action_cancel(self) -> None:
-        self.dismiss(None)
+        super().__init__(title, body, initial, check, placeholder="profile name")
 
 
 class ActionsScreen(ModalScreen[str | None]):
     """The quick actions menu (m), its actions under their group's heading (ACTION_GROUPS). Dismisses with the
     chosen action's id, or None."""
 
-    DEFAULT_CSS = popup_css("ActionsScreen")
+    DEFAULT_CSS = popup_css("ActionsScreen", list_rows=ACTIONS_ROWS)
     BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel")]
 
     def compose(self) -> ComposeResult:

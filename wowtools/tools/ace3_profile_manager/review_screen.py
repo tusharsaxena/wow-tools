@@ -12,32 +12,32 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.screen import ModalScreen, Screen
+from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Button, Checkbox, Header, Label, ProgressBar, Static, Tree
 from textual.widgets.tree import TreeNode
 
-from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
-from wowtools.core.install import Flavor, WowInstall, flavor_name, validate_backup_dir
-from wowtools.core.journal import Journal, friendly_stamp
+from wowtools.core.install import Flavor, WowInstall, flavor_name
+from wowtools.core.journal import Journal
 from wowtools.core.process import wow_check_for
 from wowtools.core.progress import ThrottledProgress
 from wowtools.core.svfiles import SvFile
 from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager.blacklist_screen import BlacklistScreen
 from wowtools.tools.ace3_profile_manager.editor import ApplyError, Marker, clear_marker, read_marker
+from wowtools.tools.ace3_profile_manager.events import SV_TOOL
 from wowtools.tools.ace3_profile_manager.journal import latest_undoable, read_profile_journal, resolve_journal_dir
 from wowtools.tools.ace3_profile_manager.model import DEFAULT
 from wowtools.tools.ace3_profile_manager.multi import MultiApplyResult, apply_flavors
-from wowtools.tools.ace3_profile_manager.ops import DbKey, DbState, OpResult, Staging, valid_name
+from wowtools.tools.ace3_profile_manager.ops import DbKey, OpResult, Staging, valid_name
 from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
 from wowtools.tools.ace3_profile_manager.report import (CHARACTER_KINDS, DETAIL_COLUMNS, NO_PENDING, STAGE_TITLES,
                                                         STEPS, UNDO_COLUMNS, apply_confirm, apply_detail_rows,
-                                                        apply_summary_rows, guidance, pending_text, scan_label,
-                                                        selection_text, shorten, undo_confirm, undo_detail_rows,
-                                                        undo_summary_rows)
+                                                        apply_summary_rows, guidance, pending_text, recovery_text,
+                                                        scan_label, selection_text, shorten, undo_confirm,
+                                                        undo_detail_rows, undo_summary_rows)
 from wowtools.tools.ace3_profile_manager.result_screen import ProfileResultScreen
 from wowtools.tools.ace3_profile_manager.scanner import ScanResult, scan_flavors
 from wowtools.tools.ace3_profile_manager.settings import (Pair, format_blacklist, is_blacklisted, load_settings,
@@ -45,9 +45,9 @@ from wowtools.tools.ace3_profile_manager.settings import (Pair, format_blacklist
 from wowtools.tools.ace3_profile_manager.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
 from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult, recover, undo_run
 from wowtools.ui.branding import BottomBar
-from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceScreen, ConfirmScreen, InfoScreen,
-                                ProgressScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
-from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
+from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, InfoScreen, ProgressScreen,
+                                UnfinishedRunScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
+from wowtools.ui.review import ReviewBase, ReviewTree, RunActions, TickModel, WowCheck
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, TreeFilter, hidden_by_filter
 from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, WrapButtonRow, action_button,
                                  key_text, wrap_items)
@@ -93,27 +93,13 @@ class ProfileProgressScreen(ProgressScreen):
                          label=lambda flavor: flavor.display_name)
 
 
-class ProfileRecoveryScreen(ChoiceScreen):
-    """An earlier Apply did not finish: put the originals back from its zip, or leave the files as they are.
-    Dismisses with "put_back" or "leave" (None when closed with Esc: offered again at the next scan)."""
+class ProfileRecoveryScreen(UnfinishedRunScreen):
+    """An earlier Apply did not finish: put the originals back from its zip, or leave the files as they are
+    (ui.dialogs.UnfinishedRunScreen). Dismisses with "put_back" or "leave" (None when closed with Esc: offered
+    again at the next scan)."""
 
     def __init__(self, marker: Marker) -> None:
-        super().__init__("An earlier change did not finish", recovery_text(marker),
-                         [("leave", "Leave as is", "cancel"), ("put_back", "Put the originals back", "revert")],
-                         default="put_back", escape=True)
-        self.marker = marker
-
-
-def recovery_text(marker: Marker) -> str:
-    return "\n".join([
-        (f"A change to {flavor_name(marker.flavor)} started {friendly_stamp(marker.started)} did not finish "
-         f"({plural(len(marker.files), 'file')})."),
-        "The original files are in:",
-        str(marker.zip),
-        ("Put the originals back: each file the change wrote is restored from that zip; a file saved since "
-         "(by WoW) is left as it is."),
-        "Leave as is: the files stay as they are now; the zip and the WTF backup are kept.",
-    ])
+        super().__init__(recovery_text(marker), marker)
 
 
 class ProfileTree(ReviewTree):
@@ -146,13 +132,14 @@ class ActionTip(Static):
             place()  # its height is known now: the toasts go above it
 
 
-class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
+class ProfileReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
     """The AceDB databases of the chosen flavors (and account) as a tree. Dismisses with "flavors", "tools" or
     "quit". `unlocked` is the flow's set of casefolded blacklisted (flavor folder, addon) pairs unlocked this
     session (shared, not copied)."""
 
     TREE_SELECTOR = "#profiles"
     LOG_SCREEN = "ace_review"
+    SV_TOOL = SV_TOOL  # RunActions: ace.wow_running, the ace.apply / ace.undo / ace.recover error contexts
     FILTER_SELECTOR = "#search"  # the shared tree filter, in the box the search had
     PREFLIGHT_TEXT = "Checking whether WoW is running…"
     BUTTON_ACTIONS: ClassVar[dict[str, str]] = {
@@ -1111,24 +1098,8 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                                            "they are.", kind="destructive"), done)
 
     # --- runs: apply, dry run, undo ---------------------------------------------------------------------
-    def _check_wow(self, check: WowCheck, then: Callable[[list[str] | None], None]) -> None:
-        """The running-WoW check (ReviewBase.run_preflight, in a worker: it can take seconds), then `then` with its
-        answer on the UI thread: process names, [] when none run, None when it could not run."""
-        self.run_preflight(check, lambda running, _extra: then(running))
-
     def _checking_changed(self) -> None:
         self._refresh_buttons()
-
-    def _refused_while_running(self, running: list[str] | None, alerts: list[str]) -> bool:
-        """True (and say so) when WoW runs; adds an alert when the check could not run."""
-        if running:
-            log_event("ace.wow_running", action="preflight", running=running)
-            self.notify(f"WoW is running ({', '.join(running)}). Close it first: it would overwrite the changes.",
-                        title="WoW is running", severity="error", timeout=15)
-            return True
-        if running is None:
-            alerts.append("Could not check whether WoW is running; close it before you go on.")
-        return False
 
     def action_apply(self) -> None:
         self._start(dry_run=False)
@@ -1136,17 +1107,8 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
     def action_dry_run(self) -> None:
         self._start(dry_run=True)
 
-    def _backup_dir_refused(self) -> bool:
-        """True (and say so) when the backup folder in the settings is not allowed (it may have been edited by
-        hand in the cfg): checked before anything is written to it, as on save."""
-        wow_path = self.cfg.wow_path
-        if wow_path is None:
-            return False
-        problem = validate_backup_dir(load_settings(self.tool_cfg).backup_dir, WowInstall(wow_path))
-        if problem:
-            self.notify(f"{problem} Fix the folder in settings (s).", title="Backup folder not allowed",
-                        severity="error", timeout=15)
-        return bool(problem)
+    def run_backup_dir(self) -> Path | None:
+        return load_settings(self.tool_cfg).backup_dir
 
     def apply_check(self) -> WowCheck:
         """The running-WoW check of the flavors with pending changes (only their files are written)."""
@@ -1200,50 +1162,16 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         changed = self.staging.changed()
         plan = [(flavor, [s for s in changed if s.file.flavor == flavor]) for flavor in self.flavors]
         plan = [(flavor, states) for flavor, states in plan if states]
-        self.app.busy = True
-        self._refresh_buttons()
         screen = ProfileProgressScreen("Simulating the changes" if dry_run else "Applying the changes",
                                        dry_run=dry_run, flavors=[flavor for flavor, _ in plan])
-        self.app.push_screen(screen)
-        keep = (self.cfg.keep_backups, self.cfg.keep_journals)
+        keep_snapshots, keep_journals = self.cfg.keep_backups, self.cfg.keep_journals
         check = None if dry_run else self.apply_check()
-        self.run_worker(lambda: self._apply_worker(plan, root, journal_dir, keep, dry_run, screen, check),
-                        thread=True, exclusive=True, group="run")
-
-    def _apply_worker(self, plan: list[tuple[Flavor, list[DbState]]], root: Path, journal_dir: Path,
-                      keep: tuple[int, int], dry_run: bool, screen: ProfileProgressScreen,
-                      check: WowCheck | None = None) -> None:
-        """keep: (backups, journals) to keep, from [general]."""
-        try:
-            with activity.running():
-                result = apply_flavors(plan, root=root, journal_dir=journal_dir,
-                                       keep_journals=keep[1], keep_snapshots=keep[0],
-                                       dry_run=dry_run, account=self.account,
-                                       wow_check=check,
-                                       progress=screen.report_unit)
-        except ApplyError as exc:  # WowRunning included: refused before anything was written
-            log_exception("ace.apply", exc)
-            self.app.call_from_thread(self._run_failed, screen, str(exc), False)
-            return
-        except Exception as exc:  # noqa: BLE001 - shown and logged, never a crash
-            log_exception("ace.apply", exc)
-            self.app.call_from_thread(self._run_failed, screen, f"The run stopped unexpectedly: "
-                                      f"{type(exc).__name__}: {exc}", not dry_run)
-            return
-        screen.finish_all()  # the run ended: the board ends at m of m
-        self.app.call_from_thread(self._applied, screen, result)
-
-    def _close_progress(self, screen: ModalScreen) -> None:
-        self.app.busy = False
-        if self.app.screen is screen:
-            self.app.pop_screen()
-
-    def _run_failed(self, screen: ModalScreen, message: str, stale: bool) -> None:
-        self._close_progress(screen)
-        if stale:  # files may have changed: the scan no longer matches them
-            self._mark_stale()
-        self._refresh_buttons()
-        self.notify(message, severity="error", timeout=15)
+        self.start_run(screen, lambda: apply_flavors(plan, root=root, journal_dir=journal_dir,
+                                                     keep_journals=keep_journals, keep_snapshots=keep_snapshots,
+                                                     dry_run=dry_run, account=self.account, wow_check=check,
+                                                     progress=screen.report_unit),
+                       self._applied, name="apply", failure="The run stopped unexpectedly",
+                       stale_on_crash=not dry_run, expected=(ApplyError,))
 
     def _mark_stale(self) -> None:
         """The files changed under this scan: drop the staging and rescan when the review is shown again."""
@@ -1252,8 +1180,7 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         if self.staging is not None:
             self.staging.discard()
 
-    def _applied(self, screen: ModalScreen, result: MultiApplyResult) -> None:
-        self._close_progress(screen)
+    def _applied(self, result: MultiApplyResult) -> None:
         if not result.dry_run:
             self._mark_stale()
         self._refresh_buttons()
@@ -1316,8 +1243,6 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         root = resolve_root(self.settings, wow_root)
         if root is None:
             return
-        self.app.busy = True
-        self._refresh_buttons()
         # One row per flavor whose WTF folder is backed up first (up to [general] parallelism at once), as undo_run
         # names them; the files are then put back in one more row.
         folders = sorted({e["flavor"] for e in journal.entries}) if journal is not None else []
@@ -1325,32 +1250,14 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         screen = ProfileProgressScreen("Undoing the last change", first_stage="undo",
                                        flavors=[Flavor(folder, wow_root / folder) for folder in folders],
                                        parallelism=parallelism)
-        self.app.push_screen(screen)
-        keep = self.cfg.keep_backups
-        self.run_worker(lambda: self._undo_worker(path, wow_root, root, keep, check, screen, parallelism),
-                        thread=True, exclusive=True, group="run")
+        keep_snapshots = self.cfg.keep_backups
+        self.start_run(screen, lambda: undo_run(path, wow_root=wow_root, root=root, keep_snapshots=keep_snapshots,
+                                                wow_check=check, progress=screen.report, parallelism=parallelism,
+                                                on_flavor=screen.start_unit, on_flavor_done=screen.finish_unit),
+                       self._undone, name="undo", failure="Undo stopped unexpectedly", stale_on_crash=True,
+                       expected=(UndoError,))  # WoW running, locked files, the backup failed: nothing was changed
 
-    def _undo_worker(self, path: Path, wow_root: Path, root: Path, keep_snapshots: int, check: WowCheck,
-                     screen: ProfileProgressScreen, parallelism: int = 1) -> None:
-        try:
-            with activity.running():
-                result = undo_run(path, wow_root=wow_root, root=root, keep_snapshots=keep_snapshots,
-                                  wow_check=check, progress=screen.report, parallelism=parallelism,
-                                  on_flavor=screen.start_unit, on_flavor_done=screen.finish_unit)
-        except UndoError as exc:  # WoW running, locked files, the backup failed: nothing was changed
-            log_exception("ace.undo", exc)
-            self.app.call_from_thread(self._run_failed, screen, str(exc), False)
-            return
-        except Exception as exc:  # noqa: BLE001 - e.g. an unreadable journal: shown, never a crash
-            log_exception("ace.undo", exc)
-            self.app.call_from_thread(self._run_failed, screen, f"Undo stopped unexpectedly: "
-                                      f"{type(exc).__name__}: {exc}", True)
-            return
-        screen.finish_all()
-        self.app.call_from_thread(self._undone, screen, result)
-
-    def _undone(self, screen: ModalScreen, result: UndoResult) -> None:
-        self._close_progress(screen)
+    def _undone(self, result: UndoResult) -> None:
         self._mark_stale()
         self._refresh_buttons()
         self.app.push_screen(ProfileResultScreen("Undo", undo_summary_rows(result), UNDO_COLUMNS,
@@ -1380,34 +1287,16 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                                  running: list[str] | None) -> None:
         if self._refused_while_running(running, []):
             return  # the marker stays: offered again at the next scan
-        self.app.busy = True
-        self._refresh_buttons()
         screen = ProfileProgressScreen("Putting the originals back", first_stage="undo")
-        self.app.push_screen(screen)
-        keep = self.cfg.keep_backups
-        self.run_worker(lambda: self._recover_worker(marker, root, check, screen, keep), thread=True,
-                        exclusive=True, group="run")
+        keep_snapshots = self.cfg.keep_backups
+        journal_dir = resolve_journal_dir(self.cfg.wow_path)
+        self.start_run(screen, lambda: recover(marker, root=root, journal_dir=journal_dir,
+                                               keep_snapshots=keep_snapshots, wow_check=check,
+                                               progress=screen.report),
+                       self._recovered, name="recover", failure="Putting the originals back stopped",
+                       stale_on_crash=True, expected=(UndoError,))
 
-    def _recover_worker(self, marker: Marker, root: Path, check: WowCheck, screen: ProfileProgressScreen,
-                        keep_snapshots: int | None = None) -> None:
-        try:
-            with activity.running():
-                result = recover(marker, root=root, journal_dir=resolve_journal_dir(self.cfg.wow_path),
-                                 keep_snapshots=keep_snapshots, wow_check=check, progress=screen.report)
-        except UndoError as exc:  # WoW running, locked files, the backup failed: nothing was changed
-            log_exception("ace.recover", exc)
-            self.app.call_from_thread(self._run_failed, screen, str(exc), False)
-            return
-        except Exception as exc:  # noqa: BLE001 - shown and logged, never a crash
-            log_exception("ace.recover", exc)
-            self.app.call_from_thread(self._run_failed, screen, f"Putting the originals back stopped: "
-                                      f"{type(exc).__name__}: {exc}", True)
-            return
-        screen.finish_all()
-        self.app.call_from_thread(self._recovered, screen, result)
-
-    def _recovered(self, screen: ModalScreen, result: UndoResult) -> None:
-        self._close_progress(screen)
+    def _recovered(self, result: UndoResult) -> None:
         self.marker = None
         message = (f"Put back {plural(len(result.restored), 'file')}; left {plural(len(result.skipped), 'file')} "
                    f"as they are")

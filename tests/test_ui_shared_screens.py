@@ -23,7 +23,8 @@ from wowtools.core.events import capture_events
 from wowtools.core.install import Flavor, WowInstall
 from wowtools.ui import dialogs
 from wowtools.ui.account_screen import AccountScreen
-from wowtools.ui.dialogs import CONFIRM_GUARD, RESULT_HINT, ChoiceScreen, ConfirmScreen
+from wowtools.ui.dialogs import (CONFIRM_GUARD, RESULT_HINT, ChoiceScreen, ConfirmScreen, TextPromptScreen,
+                                UnfinishedRunScreen, popup_css, show_error)
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.result_screen import (ResultBase, ResultScreen, result_bindings, status_colour,
                                        status_style)
@@ -295,6 +296,93 @@ class ChoiceScreenTest(TuiTestCase):
             await pilot.press("escape")
             await pilot.pause()
         self.assertEqual(app.results, [None])
+
+
+class PopupHelpersTest(TuiTestCase):
+    def test_popup_css_names_the_screen_and_the_list_rows(self):
+        css = popup_css("MyPopup")
+        self.assertIn("MyPopup .popup-box", css)
+        self.assertNotIn("OptionList", css)
+        self.assertIn("max-height: 9;", popup_css("MyPopup", list_rows=7))
+
+    async def test_show_error_shows_and_hides_the_line(self):
+        line = Static("")
+        app = Host(Screen())
+        async with app.run_test(size=TINY) as pilot:
+            await app.screen.mount(line)
+            show_error(line, "Bad name")
+            await pilot.pause()
+            self.assertTrue(line.display)
+            self.assertEqual(str(line.render()), "Bad name")
+            show_error(line, None)
+            self.assertFalse(line.display)
+
+
+class TextPromptScreenTest(TuiTestCase):
+    def make(self) -> TextPromptScreen:
+        return TextPromptScreen("Rename a key", "Type the new name.", "old",
+                                check=lambda text: "Empty" if not text.strip() else None, placeholder="key name")
+
+    async def test_check_blocks_then_enter_answers(self):
+        screen = self.make()
+        app = Host(screen)
+        async with app.run_test(size=TINY) as pilot:
+            await pilot.pause()
+            field = screen.query_one("#prompt", Input)
+            self.assertIs(screen.focused, field)
+            self.assertEqual((field.value, field.placeholder), ("old", "key name"))
+            field.value = ""
+            await pilot.press("enter")
+            await pilot.pause()
+            error = screen.query_one("#prompt-error", Static)
+            self.assertIs(app.screen, screen)
+            self.assertTrue(error.display)
+            self.assertEqual(str(error.render()), "Empty")
+            await pilot.press("x")  # typing clears the error
+            await pilot.pause()
+            self.assertFalse(error.display)
+            await pilot.press("enter")
+            await pilot.pause()
+        self.assertEqual(app.results, ["x"])
+
+    async def test_cancel_and_escape_answer_none(self):
+        for how in ("escape", "#cancel"):
+            with self.subTest(how=how):
+                screen = self.make()
+                app = Host(screen)
+                async with app.run_test(size=TINY) as pilot:
+                    await pilot.pause()
+                    await (pilot.press(how) if how == "escape" else pilot.click(how))
+                    await pilot.pause()
+                self.assertEqual(app.results, [None])
+
+    async def test_ok_button_answers_with_no_check(self):
+        screen = TextPromptScreen("Title", "Body")
+        app = Host(screen)
+        async with app.run_test(size=TINY) as pilot:
+            await pilot.pause()
+            await pilot.click("#ok")
+            await pilot.pause()
+        self.assertEqual(app.results, [""])
+
+
+class UnfinishedRunScreenTest(TuiTestCase):
+    async def test_put_back_is_the_default_and_esc_asks_later(self):
+        for key, answer in (("escape", None), ("enter", "put_back")):
+            with self.subTest(key=key):
+                self.confirm_guard(0)
+                screen = UnfinishedRunScreen("What happened", marker="M")
+                app = Host(screen)
+                async with app.run_test(size=TINY) as pilot:
+                    await pilot.pause()
+                    self.assertEqual(screen.marker, "M")
+                    self.assertEqual(str(screen.query_one("#choice-title", Static).render()),
+                                     "An earlier change did not finish")
+                    self.assertIs(screen.focused, screen.query_one("#put_back"))
+                    self.assertEqual({b.id for b in screen.query(Button)}, {"leave", "put_back"})
+                    await pilot.press(key)
+                    await pilot.pause()
+                self.assertEqual(app.results, [answer])
 
 
 class ToySettings(ToolSettingsScreen):

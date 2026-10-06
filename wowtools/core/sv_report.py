@@ -1,5 +1,5 @@
 """Text for the screens of a tool on the SavedVariables write pipeline (core/sv_apply.py, sv_undo.py): progress
-stage titles, the Undo confirm and the apply / undo result rows. UI-free."""
+stage titles, the Undo confirm, the unfinished-run warning and the apply / undo result rows. UI-free."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,7 +7,7 @@ from pathlib import Path
 from wowtools.core.install import flavor_name
 from wowtools.core.journal import Journal, friendly_stamp
 from wowtools.core.paths import to_stored
-from wowtools.core.sv_apply import MultiApplyResult
+from wowtools.core.sv_apply import Marker, MultiApplyResult
 from wowtools.core.sv_undo import UndoResult
 from wowtools.core.text import plural
 
@@ -30,6 +30,19 @@ def undo_confirm(journal: Journal) -> tuple[str, str, list[str]]:
     body = (f"Put back {plural(files, 'file')} changed{where} {friendly_stamp(journal.started)}. A file saved "
             f"since (by WoW) is left as it is.")
     return "Undo the last change?", body, []
+
+
+def recovery_text(marker: Marker) -> str:
+    """The body of the unfinished-run warning (ui.dialogs.UnfinishedRunScreen): which run, its zip, both choices."""
+    return "\n".join([
+        (f"A change to {flavor_name(marker.flavor)} started {friendly_stamp(marker.started)} did not finish "
+         f"({plural(len(marker.files), 'file')})."),
+        "The original files are in:",
+        str(marker.zip),
+        ("Put the originals back: each file the change wrote is restored from that zip; a file saved since "
+         "(by WoW) is left as it is."),
+        "Leave as is: the files stay as they are now; the zip and the WTF backup are kept.",
+    ])
 
 
 def apply_summary_rows(result: MultiApplyResult) -> list[tuple[str, str]]:
