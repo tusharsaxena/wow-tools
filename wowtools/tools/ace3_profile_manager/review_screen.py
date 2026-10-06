@@ -510,7 +510,7 @@ class ProfileReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         if summary.total and not self._guide_fits(text):  # a long name: the hint would wrap
             text = self._shortened_guidance(kind, name, profiles, chars, summary.total, locked)
         guide = self.query_one("#guide", Static)
-        # The steps wrap between steps only ("→ 4" never ends a row with "Apply (w)" on the next).
+        # The steps wrap between steps only ("→ 4" never ends a row with "Apply writes them" on the next).
         shown = wrap_items(text, guide.content_size.width, " → ") if text == STEPS else text
         if text != self.guide_text or shown != self._guide_shown:
             self.guide_text, self._guide_shown = text, shown

@@ -88,6 +88,7 @@ shots are hidden by the filter").
 | `h` | Help: this tool's keys and steps, with a link to this guide |
 | `q` | Quit |
 | `←` `→` | Jump between the list and the left panel |
+| `Tab` | Move to the next control |
 
 If you change the settings, press `r` to scan again with them.
 

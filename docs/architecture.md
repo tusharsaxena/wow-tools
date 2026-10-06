@@ -659,7 +659,7 @@ Shared screens and widgets in `wowtools/ui/` (the Textual half of the shared lib
 |---|---|
 | `base` | `Ka0sApp`: registers the theme, the background update check, `u` (`UpdateScreen`, focused on "Update now" behind the dialogs `EnterGuard`; `UpdateProgressScreen`), `after_mount()` |
 | `theme` | `KA0S_THEME`, the Ka0s colours; `ACTION_COLOURS` (one button colour per action kind) and `action_variables()`, the `$act-<kind>` theme variables (`-lighten`, `-darken`, `-text`: whichever of the theme's foreground and background contrasts more, `contrast()`) |
-| `branding` | `Banner` (the shield art on the tool menu and the flavor and account pickers), `VersionLine` and `TermsText` (`TERMS`) on the tool menu, `BrandBar` and `BottomBar` (the footer and the brand bar in one row, on every screen; two rows when the keys and the shortest version text don't fit one, as on a review at 80 columns: `KeyFooter.wanted_rows`, re-checked on resize), `KeyFooter` / `footer_bindings(screen)` (the footer lists a screen's shown bindings less every action whose key a shown button carries, any of its keys: `n,escape` goes with a `(n)` button), `update_key_free` / `update_notice` / `brand_texts` |
+| `branding` | `Banner` (the shield art on the tool menu and the flavor and account pickers), `VersionLine` and `TermsText` (`TERMS`) on the tool menu, `BrandBar` and `BottomBar` (the footer and the brand bar in one row, on every screen; two rows when the keys and the shortest version text don't fit one, as on a review at 80 columns: `KeyFooter.wanted_rows`, re-checked on resize), `KeyFooter` / `footer_bindings(screen)` (the footer lists a screen's shown bindings less every action whose key a shown button carries, any of its keys: `n,escape` goes with a `(n)` button; nothing while `under_popup(screen)`), `update_key_free` / `update_notice` / `brand_texts` |
 | `suite_app` | `WowToolsApp`, `ToolMenuScreen` (the first screen; `ToolArea` holds its list and hint; `c` opens the changelog; with no tool open, `s` works on the menu only: `settings_allowed`, also hidden from the footer elsewhere through `check_action`; `h` (`action_help`, spec D18) opens a `HelpScreen`: the open tool's (`flow_name`, `Tool.help()`) or, with none open, `suite_help()`; `help_allowed` refuses it over a popup (any `ModalScreen`) and over the help itself, and hides it from the footer there; not a priority binding, so a focused text box types the letter), `LockScreen` (a `ChoiceScreen`: another copy may be running: Quit, or Override and continue) |
 | `changelog_screen` | `ChangelogScreen` (spec D3; `c` on the tool menu): the two-pane look (`two_pane_css`, `TwoPaneFocus`) with an `OptionList` of versions on the left (`VERSIONS_WIDTH` 36; newest first, one row each with its date, the running version marked "current" and highlighted first) and the highlighted version's notes as `Markdown` in a `NotesScroll` on the right (→/Tab/Enter go there, ↑/↓/PgUp/PgDn scroll it, ← back); Esc/q back to the menu. No changelog: the right pane says why |
 | `help_screen` | `HelpScreen(title, text)` (spec D18): the title over one scrollable `Markdown` pane (`#help-body`, focused, so ↑/↓/PgUp/PgDn scroll it), `HELP_HINT`, `BottomBar`; Esc, q or h dismisses it, back to the screen it covered as it was. `suite_help()` is the tool menu's text: every tool in `TOOLS` (title and description), the common flow, the keys, settings and parallelism, the button colours, the words and the terms, and `README_URL`. A tool's text is `HELP` in its own `help.py` (with `GUIDE_URL`, its guide on GitHub), read by `Tool.help()`; `tests/test_help.py` checks that each names every button of its screens and that every link points at a file in the repo |
@@ -702,11 +702,15 @@ and so is every button of a `ButtonRow` holding one, so a row lines up), or afte
 button (the Ace3 action bar keeps `Delete (d)` on one row: two rows a button would take the tree two or three rows
 at 120x30). A label never spells its key itself (`tests/test_structure.py`). The footer (`KeyFooter`) then leaves
 out every key a shown button carries, and the other keys of the same action (`Esc` for No), so it lists only the
-keys no button has: on a review `Space`, `a`, `n`, `/`, `x`, `c`, `f`, `t`, `q` and `s`; on a result screen only
-`s`. The left-pane hints name navigation and the keys with no button, never a button's key.
+keys no button has: on a review `Space`, `a`, `n`, `/`, `x`, `c`, `f`, `t`, `q`, `s` and `h`; on a result screen
+`s` and `h`. Under a popup (any `ModalScreen`) the footer of the screen beneath lists nothing, since none of its
+keys work until the popup closes, and keeps its height so that screen does not move (`under_popup`). The hints
+name navigation and the keys with no button, never a button's key; neither do the guide and status lines (the
+Ace3 pending line says "Apply, Dry run or Discard them", the Interface Backup one "then Restore"), and a result
+screen whose "Back to review" button carries `Esc` drops "Esc back" from `RESULT_HINT`.
 `tests/test_look_and_feel.py` (`assert_keys_on_buttons` in `tests/fixtures.py`) checks every review, confirm,
-result, blacklist, restore and settings screen: each button whose action has a key shows it, and no footer lists
-a key a shown button carries.
+result, blacklist, restore and settings screen: each button whose action has a key shows it, no footer lists
+a key a shown button carries, and no hint names one.
 
 **Button colours** (spec D12). Every button is built by `action_button(label, kind)` and coloured by what it
 does, the same in every tool. The colours are theme variables (`ACTION_COLOURS` in `ui/theme.py` becomes

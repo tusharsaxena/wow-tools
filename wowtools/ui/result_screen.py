@@ -107,7 +107,9 @@ class ResultBase(Screen[str]):
         with ButtonRow(classes="buttons"):
             for label, kind, button_id, key in buttons:
                 yield action_button(label, kind, key, id=button_id)
-        yield NavHint(RESULT_HINT)
+        # A button that Esc presses ("Back to review") says so itself: the hint does not repeat it (spec D17).
+        on_button = any(key == "escape" for _label, _kind, _id, key in buttons)
+        yield NavHint(RESULT_HINT.removesuffix(" · Esc back") if on_button else RESULT_HINT)
         yield BottomBar()
 
     def on_mount(self) -> None:

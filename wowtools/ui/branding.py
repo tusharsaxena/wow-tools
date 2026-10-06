@@ -168,10 +168,20 @@ class BrandBar(Static):
         return Text(self.shown_text)
 
 
+def under_popup(screen: Screen) -> bool:
+    """A popup (a ModalScreen: a confirm, a progress window) is open over `screen`: none of its keys work until the
+    popup closes, and the popup says what to press itself."""
+    top = screen.app.screen
+    return top is not screen and isinstance(top, ModalScreen)
+
+
 def footer_bindings(screen: Screen) -> list:
     """The (binding, enabled, tooltip) the footer lists for a screen: its shown bindings, one per action, less every
     action whose key a shown button carries (any of its keys: "n,escape" goes with a "(n)" button). The button
-    says that key itself (action_button's `key`), so the footer keeps its room for the keys no button has."""
+    says that key itself (action_button's `key`), so the footer keeps its room for the keys no button has. Under a
+    popup the footer lists nothing: the screen's keys wait for the popup to close."""
+    if under_popup(screen):
+        return []
     active = screen.active_bindings
     on_buttons = button_keys(screen)
     covered = {active_binding.binding.action for key, active_binding in active.items() if key in on_buttons}
@@ -200,7 +210,8 @@ class KeyFooter(Footer):
         if not self._bindings_ready:
             return
         bindings = footer_bindings(self.screen)
-        self.rows = self.wanted_rows(bindings, self.app.size.width)
+        if not under_popup(self.screen):  # under a popup the bar keeps its height: the screen does not move
+            self.rows = self.wanted_rows(bindings, self.app.size.width)
         self.styles.layout = "vertical" if self.rows > 1 else "horizontal"
         self.styles.height = self.rows
         if isinstance(self.parent, BottomBar):
@@ -233,7 +244,7 @@ class BottomBar(Horizontal):
     def on_resize(self) -> None:
         """A narrower or wider window can change whether the keys need a second row (KeyFooter)."""
         footer = self.query_one(KeyFooter)
-        if not footer._bindings_ready:
+        if not footer._bindings_ready or under_popup(self.screen):
             return
         if footer.wanted_rows(footer_bindings(self.screen), self.app.size.width) != footer.rows:
             footer.refresh(recompose=True)

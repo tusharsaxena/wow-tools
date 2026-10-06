@@ -283,7 +283,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertIn("none yet", str(self.child(retail, "backups").label))
             summary = str(review.query_one("#summary", Static).render())
             self.assertIn("Selected: 3 flavors", summary)  # Retail PTR is not counted
-            self.assertIn("press e to restore", summary)
+            self.assertIn("Highlight a backup, then Restore", summary)
             self.assertFalse(review.query_one("#btn-backup", Button).disabled)
             self.assertTrue(review.query_one("#btn-undo", Button).disabled)  # nothing restored yet
             for screen_hint in review.query(NavHint):
@@ -1701,7 +1701,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertIs(info, group.children[-1].data[1])
             kind = "Safety backup (before a restore)" if info.is_safety else "Backup"
             self.assertIn(f"{kind} from {info.when} · ", review.summary_text)
-            self.assertIn(": e restores it", review.summary_text)
+            self.assertIn(": Restore puts it back", review.summary_text)
             summary = review.query_one("#summary", Static)
             self.assert_on_screen(summary)
             text = " ".join(row[summary.region.x:summary.region.right].strip()

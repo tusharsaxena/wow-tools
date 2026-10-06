@@ -24,7 +24,7 @@ from wowtools.tools.ace3_profile_manager.review_screen import ProfileRecoveryScr
 from wowtools.tools.wtf_cleaner.review_screen import RecoveryScreen as WtfRecoveryScreen
 from wowtools.tools.wtf_cleaner.safety import Marker as WtfMarker
 from wowtools.ui.base import UpdateScreen
-from wowtools.ui.branding import BANNER_NAME, TERMS, Banner, BrandBar, TermsText, VersionLine
+from wowtools.ui.branding import BANNER_NAME, TERMS, Banner, BottomBar, BrandBar, TermsText, VersionLine
 from wowtools.ui.changelog_screen import CHANGELOG_HINT, VERSIONS_WIDTH, ChangelogScreen
 from wowtools.ui.dialogs import (FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_HINT, ConfirmScreen, InfoScreen,
                                  ProgressScreen)
@@ -465,8 +465,10 @@ class LookAndFeelTest(TuiTestCase):
                     self.assertEqual(len(result.query(".result-detail")), 1)
                     result.query_one(BrandBar)
                     hint = result.query_one(NavHint).hint
-                    self.assertEqual(hint, RESULT_HINT)  # the buttons' keys are on the buttons (D17)
                     buttons = list(result.query(Button))
+                    # the buttons' keys are on the buttons (D17): with "Back to review (Esc)", Esc is too
+                    esc_button = any(b.shortcut == "escape" for b in buttons)
+                    self.assertEqual(hint, RESULT_HINT.removesuffix(" · Esc back") if esc_button else RESULT_HINT)
                     labels = [(b.label_text, b.shortcut) for b in buttons]
                     self.assertEqual(labels[0], ("Rescan", "r"))
                     self.assertEqual(labels[-3:], [("Other flavor", "f"), ("Tools", "t"), ("Quit", "q")])
@@ -594,6 +596,24 @@ class LookAndFeelTest(TuiTestCase):
                     app.action_settings()
                     await settle(app, pilot)
                     assert_keys_on_buttons(self, app.screen)
+
+    async def test_no_keys_in_the_footer_under_a_popup(self):
+        """Under a popup (a confirm here) the screen's keys do nothing, so its footer lists none of them; the bar keeps
+        its two rows at 80 columns, so the screen does not move, and the keys come back when the popup closes."""
+        app = self.make_app()
+        async with app.run_test(size=TINY) as pilot:
+            review = await self.open_review(app, pilot, "wtf-cleaner")
+            before = [key.key for key in review.query(FooterKey)]
+            self.assertIn("h", before)
+            self.assertEqual(review.query_one(BottomBar).region.height, 2)
+            review.action_dry_run()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertEqual(list(review.query(FooterKey)), [])
+            self.assertEqual(review.query_one(BottomBar).region.height, 2)
+            app.screen.dismiss(False)
+            await settle(app, pilot)
+            self.assertEqual([key.key for key in review.query(FooterKey)], before)
 
     async def test_keys_are_on_the_popup_buttons(self):
         """Spec D17 on the popups no review run reaches: the lock warning, the update offer, the Notes InfoScreen,

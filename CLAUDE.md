@@ -31,8 +31,12 @@ Conventions:
 - One look and feel (`tests/test_look_and_feel.py`): one focusable control per row in a left pane (only a
   `ButtonRow` uses ←/→); every tree screen binds `TREE_BINDINGS` (`x` expand all, `c` collapse all) and puts
   `TREE_HINT` in its hint, plus the `/` filter (`TreeFilter`/`FilterBox`, `FILTER_HINT` right before `TREE_HINT`;
-  `a`/`n` act on what it shows). Every button is `action_button(label, kind)` (kind = what it does, colours in
+  `a`/`n` act on what it shows). Every button is `action_button(label, kind, key)` (kind = what it does, colours in
   `ui/theme.py`); every `ConfirmScreen` names its `kind` (Yes is focused and coloured by it).
+- Keys on buttons (spec D17): a button shows its key under its label; the footer (`KeyFooter`) lists only keys no
+  shown button carries (none under a popup); labels, hints and guide lines never repeat a button's key.
+- Help (D18): `h` opens help on every full screen: the suite's on the menu, else the tool's `help.py` (`HELP`,
+  `GUIDE_URL`); `tests/test_help.py` checks it names every button.
 - Shared library: `wowtools/core/` (UI-free) + `wowtools/ui/` (Textual), in-repo, not a separate package. What two
   or more tools need lives there, never copied and never imported across tools (a tool never imports another tool).
   Core: `install`, `config`, `journal` (`ToolJournals`), `snapshot`, `svfiles`, `undo`, `marker`, `progress`

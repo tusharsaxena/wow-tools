@@ -196,9 +196,9 @@ the backup's copy.
 
 ### Choosing a backup
 
-On the review screen, open the game version's **Backups** line, highlight a backup and press `e` (or `Enter`).
-The bottom bar names the highlighted backup in full ("Backup from 2026-10-04 20:15:30 · Interface, WTF · 84.2 MB:
-e restores it"). If no backup is highlighted, `e` tells you how to pick one.
+On the review screen, open the game version's **Backups** line, highlight a backup and press **Restore** (`e`, or
+`Enter` on the backup). The bottom bar names the highlighted backup in full ("Backup from 2026-10-04 20:15:30 ·
+Interface, WTF · 84.2 MB: Restore puts it back"). If no backup is highlighted, `e` tells you how to pick one.
 
 A safety backup (its line starts with **safety**) can be restored like any other backup. That's how you go back
 to the folders as they were before an older restore.

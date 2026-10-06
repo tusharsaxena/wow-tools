@@ -29,7 +29,7 @@ NO_PENDING = "No pending changes"
 # two rows; the pending line (up to 99999 changes) and each hint (with a name of up to 16 characters) one row each,
 # so both show together. A longer name is shortened with "…" by the screen to keep the hint on its row.
 STEPS = ("1 Tick profiles or characters (Space) → 2 pick an action below → 3 check the pending changes in the tree "
-         "→ 4 Apply (w) writes them")
+         "→ 4 Apply writes them")
 CHARACTER_KINDS = ("char", "pair", "character")  # tree nodes that are one character
 RESULT_TEXT = {"edited": "changed", "would_edit": "would change", "skipped": "skipped", "failed": "failed",
                "rolled_back": "put back"}
@@ -161,7 +161,7 @@ def guidance(node_kind: str | None, node_name: str, ticked_profiles: int, ticked
     rows even with the name shortened)."""
     lines = []
     if pending_total:
-        lines.append(f"{plural(pending_total, 'pending change')}, not written: w apply · y dry run · ⌫ discard")
+        lines.append(f"{plural(pending_total, 'pending change')}, not written: Apply, Dry run or Discard them")
     text = node_hint(node_kind, node_name, ticked_profiles + ticked_chars, locked) if hint else ""
     if text:
         lines.append(text)

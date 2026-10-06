@@ -95,7 +95,9 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      Build every button with `action_button(label, kind, key)` (`wowtools/ui/widgets.py`), never `Button(...)`.
      `key` is the binding key of what the button does (`"w"`, `"escape"`): the button shows it on a second line and
      the footer leaves it out (spec D17), so never write the key into the label ("Clean (w)") and leave button keys
-     out of the left-pane hint (it names navigation and the keys with no button: `a all · n none · / filter · ...`).
+     out of the left-pane hint (it names navigation and the keys with no button: `a all · n none · / filter · ...`)
+     and out of any guide or status line (write "then Restore", not "press e"). Under a popup the footer lists
+     no keys: the popup's buttons and hint say what to press.
      A result screen's `lead_buttons()` / `extra_buttons()` give `(label, kind, id, key)`. Pick
      its kind by what it does, as the other tools do: `destructive` (deletes), `overwrite` (overwrites or changes
      files), `create` (only adds files), `revert` (undo), `simulate` (dry run), `confirm` (Save, OK), `navigate`

@@ -29,7 +29,8 @@ The first version: four tools in one app.
     tool shares, settings, button colours); in a tool it explains that tool, step by step, with every button and
     its key, the safety nets and a link to the tool's guide. `Esc`, `q` or `h` closes it.
   - Every button shows its key under its name (**Clean** over `(w)`), and the row of keys along the bottom lists
-    only the keys no button has, so it stays short.
+    only the keys no button has, so it stays short; while a popup is open it is empty, since the popup's buttons
+    say what to press.
   - Every "are you sure?" window opens on **Yes**, coloured by what it does (red when it deletes, overwrites, undoes
     or drops pending changes, a backup that deletes older ones included); Enter and Space wait a quarter of a
     second after it opens and are ignored while a held key repeats, `y` / `n` / `Esc` answer at once. The update offer's "Update now" waits the same way.

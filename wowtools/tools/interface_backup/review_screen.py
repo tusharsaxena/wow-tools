@@ -420,7 +420,7 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                                      allow_expand=True)  # lines load on expand
                 elif child.children:
                     added = node.add(Text.assemble((backups_title(self._flavor_backups(scan)), "bold"),
-                                                   ("  highlight one and press e to restore it", "dim")),
+                                                   ("  highlight one, then Restore", "dim")),
                                      data=data, allow_expand=True)  # zips load on expand, parts in a worker
                 else:
                     node.add_leaf(Text.assemble(("Backups (0)", "bold"), ("  none yet", "dim")), data=data)
@@ -559,8 +559,8 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             return
         info = self.highlighted_backup()
         # The tree shows only the start of a backup's line at 80 columns: the bottom line names it in full.
-        hint = (f"{backup_detail(info, self.parts.get(info.path, PARTS_PENDING))}: e restores it" if info is not None
-                else "Highlight a backup and press e to restore it.")
+        hint = (f"{backup_detail(info, self.parts.get(info.path, PARTS_PENDING))}: Restore puts it back" if info is not None
+                else "Highlight a backup, then Restore.")
         text = f"{selection_text(self.selection())}    {hint}"
         hidden = self.hidden_ticked_note()
         if hidden:

@@ -250,6 +250,7 @@ version until you next save the blacklist.
 | `h` | Help: this tool's keys and steps, with a link to this guide |
 | `q` | Quit |
 | `←` `→` | Jump between the tree and the left panel |
+| `Tab` | Move to the next control |
 
 Leaving with `f`, `Esc`, `t` or `q` while changes are pending asks first: they haven't been written, and leaving
 throws them away.

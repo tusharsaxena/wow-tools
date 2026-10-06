@@ -40,7 +40,7 @@ from textual.widgets._footer import FooterKey
 
 from wowtools.core.config import Config
 from wowtools.ui.branding import KeyFooter, footer_bindings
-from wowtools.ui.widgets import ActionButton, button_keys, key_text
+from wowtools.ui.widgets import ActionButton, NavHint, button_keys, key_text, shown
 
 # Terminal sizes (docs/superpowers/specs/2026-10-04-ace-profiles-design.md, Addendum B): screens are designed for
 # Windows Terminal's default window (BASE) and grow when it is maximized (LARGE); TINY only has to keep working.
@@ -321,6 +321,11 @@ def assert_keys_on_buttons(test, screen) -> None:
             test.assertIn(button.shortcut, screen._bindings.key_to_bindings, (screen, button.id))
             plain = button.label.plain
             test.assertTrue(plain.endswith(f"({key_text(button.shortcut)})"), plain)
+    shortcuts = {key_text(b.shortcut) for b in buttons if b.shortcut and shown(b)}
+    for hint in screen.query(NavHint):  # nor does a hint repeat one ("Esc back" beside "Back to review (Esc)")
+        named = {item.split(" ")[0] for item in hint.hint.split(" · ")} | {
+            key for item in hint.hint.split(" · ") for key in item.split(" ")[0].split("/")}
+        test.assertFalse(named & shortcuts, (screen, hint.hint, named & shortcuts))
     footers = list(screen.query(KeyFooter))
     if not footers:
         return  # a popup: the footer under it is its screen's

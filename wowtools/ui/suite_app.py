@@ -72,7 +72,7 @@ def tool_label(title: str, description: str, width: int) -> Text:
     return Text.assemble((title.ljust(width), TOOL_NAME_STYLE), description)
 
 
-MENU_HINT = "↑↓ choose · Enter open · c changelog · s settings · q/Esc quit"
+MENU_HINT = "↑↓ choose · Enter open · c changelog · s settings · h help · q/Esc quit"
 
 
 class ToolArea(Vertical):
