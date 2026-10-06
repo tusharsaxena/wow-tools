@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from wowtools.core.luasv import Assignment, LuaParseError, Opaque, Scalar, Table, key_id, parse
 from wowtools.core.sv_verify import NOT_THE_SAME, check_assignments, same_outside
-from wowtools.tools.sv_browser.compile import SvEdit, descend_into, locate, table_paths
+from wowtools.tools.sv_browser.compile import FieldIndex, SvEdit, descend_into, locate, table_paths
 from wowtools.tools.sv_browser.ops import FieldEdit, TypedPath, new_keys, path_text
 
 TABLE = ("table",)  # an entry that is itself a touched table (checked as one of its own)
@@ -24,10 +24,10 @@ def _typed_value(value: object) -> tuple:
     return ("value", type(value).__name__, value)
 
 
-def _expected(old: bytes, table: Table, prefix: TypedPath, edits: dict[TypedPath, FieldEdit],
+def _expected(old: bytes, table: Table, prefix: TypedPath, local: dict[tuple, FieldEdit],
               tables: set[TypedPath], moved: dict[TypedPath, TypedPath]) -> list[tuple]:
-    """The (typed key, value) list table must read back as; records where each touched child table moves to."""
-    local = {typed[-1]: item for typed, item in edits.items() if typed[:-1] == prefix}
+    """The (typed key, value) list table must read back as, local being the edits of its own keys (by typed key);
+    records where each touched child table moves to."""
     rows = []
     for item, key in zip(table.fields, new_keys(table.fields, local)):
         if key is None:
@@ -58,6 +58,9 @@ def verify_edit(edit: SvEdit, old: bytes) -> list[str]:
         return list(edit.problems)
     new = edit.data
     edits = {item.typed: item for item in edit.plan.edits}
+    by_table: dict[TypedPath, dict[tuple, FieldEdit]] = {}  # the edits of each table's own keys
+    for typed, item in edits.items():
+        by_table.setdefault(typed[:-1], {})[typed[-1]] = item
     tables = table_paths(item.path for item in edit.plan.edits)
     labels = {item.typed[:n]: item.path[:n] for item in edit.plan.edits for n in range(1, len(item.path) + 1)}
     try:
@@ -66,13 +69,14 @@ def verify_edit(edit: SvEdit, old: bytes) -> list[str]:
         return [f"the file is not readable Lua ({exc})"]
     moved = {prefix: prefix for prefix in tables if len(prefix) == 1}
     expected: dict[TypedPath, list[tuple]] = {}
+    old_index = FieldIndex(old_chunk)
     for prefix in sorted(tables, key=len):
-        target, _, problem = locate(old_chunk, prefix, labels[prefix])
+        target, _, problem = locate(old_index, prefix, labels[prefix])
         if problem is None and not isinstance(target.value, Table):
             problem = f"{path_text(labels[prefix])} is not a table"
         if problem:
             return [problem]
-        expected[prefix] = _expected(old, target.value, prefix, edits, tables, moved)
+        expected[prefix] = _expected(old, target.value, prefix, by_table.get(prefix, {}), tables, moved)
     try:
         new_chunk = parse(new, descend_into(set(moved.values())))
     except LuaParseError as exc:
@@ -90,9 +94,10 @@ def verify_edit(edit: SvEdit, old: bytes) -> list[str]:
     problems = check_assignments(old, old_chunk, new, new_chunk, names, on_planned=top_level)
     if problems[:1] == [NOT_THE_SAME]:
         return problems
+    new_index = FieldIndex(new_chunk)
     for prefix, rows in expected.items():
         label = path_text(labels[prefix])
-        target, _, problem = locate(new_chunk, moved[prefix], labels[prefix])
+        target, _, problem = locate(new_index, moved[prefix], labels[prefix])
         if problem is None and not isinstance(target.value, Table):
             problem = f"{label} is not a table"
         if problem:

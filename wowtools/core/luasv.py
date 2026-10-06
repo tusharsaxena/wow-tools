@@ -27,7 +27,9 @@ _NUMBER = re.compile(rb"-?(?:0[xX][0-9a-fA-F]+|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d
                      rb"|-?(?:inf|nan)(?:\([a-z]*\))?", re.IGNORECASE)
 _INT = re.compile(rb"-?\d+")
 _SKIP = re.compile(rb'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|--\[(=*)\[.*?\]\1\]|--[^\n]*|[{}]', re.DOTALL)
-_ESCAPE = re.compile(rb"\\(?:(\d{1,3})|x([0-9a-fA-F]{2})|(\r\n|\n\r|\n|\r)|z\s*|(.))", re.DOTALL)
+# Lua 5.1 (WoW's) escapes: \ddd, a backslash-newline, the letter escapes; any other escaped byte stands for itself
+# (5.2's `\x41` and `\z` are not escapes there: they read "x41" and "z").
+_ESCAPE = re.compile(rb"\\(?:(\d{1,3})|(\r\n|\n\r|\n|\r)|(.))", re.DOTALL)
 _SIMPLE_ESCAPES = {b"n": b"\n", b"r": b"\r", b"t": b"\t", b"a": b"\a", b"b": b"\b", b"f": b"\f", b"v": b"\v",
                    b"\\": b"\\", b'"': b'"', b"'": b"'"}
 # The rest of an entry's line: blanks, then maybe a line comment (WoW's `-- [n]` after an array entry, never the
@@ -116,19 +118,16 @@ class Chunk:
 
 
 def decode_string(raw: bytes) -> str:
-    """The text of a Lua string literal (quotes included). Bytes that aren't UTF-8 survive as surrogates."""
+    """The text of a Lua string literal (quotes included), read as Lua 5.1 reads it. Bytes that aren't UTF-8 survive
+    as surrogates."""
     body = raw[1:-1]
 
     def one(match: re.Match) -> bytes:
-        decimal, hexa, newline, other = match.groups()
+        decimal, newline, other = match.groups()
         if decimal is not None:
             return bytes([int(decimal) & 0xFF])
-        if hexa is not None:
-            return bytes([int(hexa, 16)])
         if newline is not None:
             return b"\n"
-        if other is None:  # \z: skips the following whitespace
-            return b""
         return _SIMPLE_ESCAPES.get(other, other)
 
     return _ESCAPE.sub(one, body).decode("utf-8", "surrogateescape")

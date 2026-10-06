@@ -52,12 +52,32 @@ def descend_into(tables: set[TypedPath]) -> Callable[[tuple], bool]:
     return lambda path: typed_path(path) in tables
 
 
-def locate(chunk: Chunk, typed: TypedPath, path: Sequence) -> tuple[Assignment | Field | None, Table | None,
-                                                                    str | None]:
+class FieldIndex:
+    """A chunk's assignments by name and each table's fields by typed key, built once per table on first use, so
+    finding thousands of edits in one file is a dict lookup per key, not a scan of the table (never quadratic)."""
+
+    def __init__(self, chunk: Chunk) -> None:
+        self.tops: dict[str, list[Assignment]] = {}
+        for item in chunk.assignments:
+            self.tops.setdefault(item.name, []).append(item)
+        self._tables: dict[int, tuple[Table, dict[tuple, list[Field]]]] = {}  # id -> (table kept alive, index)
+
+    def fields(self, table: Table, key: tuple) -> list[Field]:
+        known = self._tables.get(id(table))
+        if known is None:
+            index: dict[tuple, list[Field]] = {}
+            for item in table.fields:
+                index.setdefault(key_id(item.key), []).append(item)
+            known = self._tables[id(table)] = (table, index)
+        return known[1].get(key, [])
+
+
+def locate(chunk: Chunk | FieldIndex, typed: TypedPath, path: Sequence,
+           ) -> tuple[Assignment | Field | None, Table | None, str | None]:
     """The assignment or field at typed (path: the same keys, for messages), its table (None at the top level), or
-    why it can't be found: (target, table, problem)."""
-    name = typed[0][1]
-    tops = [a for a in chunk.assignments if a.name == name]
+    why it can't be found: (target, table, problem). Pass a FieldIndex of the chunk to look up many paths."""
+    index = chunk if isinstance(chunk, FieldIndex) else FieldIndex(chunk)
+    tops = index.tops.get(typed[0][1], [])
     if len(tops) != 1:
         return None, None, f"{path_text(path[:1])} is {'not in the file' if not tops else 'in the file twice'}"
     target: Assignment | Field = tops[0]
@@ -66,7 +86,7 @@ def locate(chunk: Chunk, typed: TypedPath, path: Sequence) -> tuple[Assignment |
         table = target.value
         if not isinstance(table, Table):
             return None, None, f"{path_text(path[:depth])} is not a table"
-        found = [f for f in table.fields if key_id(f.key) == typed[depth]]
+        found = index.fields(table, typed[depth])
         if len(found) != 1:
             where = "not in the file" if not found else "in the file twice"
             return None, None, f"{path_text(path[:depth + 1])} is {where}"
@@ -122,6 +142,7 @@ def compile_file(file: SvFile, plan: FilePlan, data: bytes) -> SvEdit:
     except LuaParseError as exc:
         edit.problems.append(f"{file.path.name} is not readable Lua ({exc})")
         return edit
+    index = FieldIndex(chunk)
     deleted = {item.typed for item in plan.edits if item.delete}
     splices: list[Splice] = []
     lines: list[tuple[int, str]] = []
@@ -131,7 +152,7 @@ def compile_file(file: SvFile, plan: FilePlan, data: bytes) -> SvEdit:
         if any(typed[:n] in deleted for n in range(1, len(typed))):
             edit.problems.append(f"{label} is inside a deleted key")
             continue
-        target, table, problem = locate(chunk, typed, item.path)
+        target, table, problem = locate(index, typed, item.path)
         if problem:
             edit.problems.append(problem)
             continue

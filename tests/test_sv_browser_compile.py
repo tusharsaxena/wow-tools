@@ -6,6 +6,7 @@ changed outside the edits. Plus the plans fed through the shared pipeline's dry 
 from __future__ import annotations
 
 import tempfile
+import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -243,6 +244,27 @@ class CompileProblemTest(CompileTestBase):
         edit = compile_file(file, FilePlan(file, [FieldEdit(("Db", "a"), set_value=True, value=1)]),
                             file.path.read_bytes())
         self.assertIn("not readable Lua", edit.problems[0])
+
+
+class ManyEditsTest(CompileTestBase):
+    def test_thousands_of_edits_in_one_file_compile_and_verify_quickly(self):
+        # M2 review: locate and the expected rows were linear per edit (quadratic per file)
+        count = 4000
+        lines = ["WeakAurasSaved = {", '["displays"] = {']
+        for i in range(count):
+            lines += [f'["aura{i}"] = {{', '["text"] = {', f'["font"] = "{SVB_FONT}",', "},", "},"]
+        lines += ["},", "}"]
+        doc = self.doc(ace_lua(*lines), "WeakAuras.lua")
+        doc.roots()
+        file = replace(doc.file, sha256=doc.sha256)
+        edits = [FieldEdit(("WeakAurasSaved", "displays", f"aura{i}", "text", "font"), set_value=True,
+                           value="Expressway") for i in range(count)]
+        started = time.monotonic()
+        edit = compile_file(file, FilePlan(file, edits), doc.data)
+        self.assertEqual(edit.problems, [])
+        self.assertEqual(verify_edit(edit, doc.data), [])
+        self.assertLess(time.monotonic() - started, 4.0)
+        self.assertEqual(edit.data.count(b'"Expressway"'), count)
 
 
 class VerifyTest(CompileTestBase):

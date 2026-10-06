@@ -22,8 +22,10 @@ parse_replacement() turns what the user typed into that value.
 Byte pre-filter: a file is only parsed when its bytes can hold every needle. That is checked with bytes.find (on
 lowered bytes when match case is off), and only when it is safe: the needle has no quote, backslash or control
 character (escapes write those differently), is not a run of digits for a key (an array index is never written), and
-is ASCII when match case is off; and the file has no escape that could hide a plain character (`\\070`, `\\x46`,
-`\\F`) nor, when match case is off, a character that folds into ASCII (FOLDS_TO_ASCII: `K` (Kelvin) matches "k").
+is ASCII when match case is off; and the file has no escape that could hide a plain character (`\\070`, `\\x`, `\\F`:
+Lua 5.1 reads an unknown escape letter as the letter; an escaped backslash `\\\\` is one escape, so WoW's
+`Interface\\\\Icons` paths never count) nor, when match case is off, a character that folds into ASCII
+(FOLDS_TO_ASCII: `K` (Kelvin) matches "k").
 """
 from __future__ import annotations
 
@@ -54,8 +56,9 @@ NEED_TEXT = "Enter a key, a value or both."
 FOLDS_TO_ASCII = ("ßİıŉſǰẖẗẘẙẚẞK"
                   "ﬀﬁﬂﬃﬄﬅﬆ")
 _FOLDS = re.compile(b"|".join(re.escape(c.encode("utf-8")) for c in FOLDS_TO_ASCII))
-# An escape that could write a plain character another way (`\070`, `\x46`, `\z`, `\F`): only `\\`, `\"`, `\'`,
-# a newline and the letter escapes of control characters are not.
+# An escape that could write a plain character another way (`\070`, `\x`, `\z`, `\F`): only `\\`, `\"`, `\'`,
+# a newline and the letter escapes of control characters are not. Searched with every `\\` pair taken out first
+# (escape pairs read left to right), so the `\\I` of WoW's "Interface\\Icons" paths is not one.
 _HIDING_ESCAPE = re.compile(rb"\\[^\\\"'abfnrtv\r\n]")
 _UNSAFE_NEEDLE = re.compile(r"[\"'\\\x00-\x1f\x7f]")
 _LUA_NUMBER = re.compile(r"-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
@@ -144,7 +147,9 @@ class SearchSpec:
 
     @property
     def has_value(self) -> bool:
-        return bool(self.value.strip())
+        """Any value text is a needle, blanks too (a value of spaces is never "no value": that would make a key-only
+        search, whose replacement overwrites every value under the key)."""
+        return self.value != ""
 
     @property
     def contains_value(self) -> bool:
@@ -310,7 +315,7 @@ def _needles(spec: SearchSpec) -> list[str]:
 def may_hold(data: bytes, spec: SearchSpec) -> bool:
     """False only when the file's bytes can't hold a hit (the byte pre-filter)."""
     needles = _needles(spec)
-    if not needles or _HIDING_ESCAPE.search(data):
+    if not needles or (b"\\" in data and _HIDING_ESCAPE.search(data.replace(b"\\\\", b""))):
         return True
     if spec.match_case:
         return all(n.encode("utf-8") in data for n in needles)
@@ -320,9 +325,12 @@ def may_hold(data: bytes, spec: SearchSpec) -> bool:
     return all(n.lower().encode("ascii") in lowered for n in needles)
 
 
-def search_file(file: SvFile, spec: SearchSpec, matcher: _Matcher | None = None) -> FileSearch:
-    """Search one file; never raises for a file that can't be read or parsed (FileSearch.error, logged)."""
+def search_file(file: SvFile, spec: SearchSpec, matcher: _Matcher | None = None,
+                room: int = HIT_CAP) -> FileSearch:
+    """Search one file; never raises for a file that can't be read or parsed (FileSearch.error, logged). It keeps at
+    most `room` hits (HIT_CAP at most) and counts the rest in `extra`."""
     matcher = matcher or _Matcher(spec)
+    room = max(0, min(room, HIT_CAP))
     found = FileSearch(file)
     try:
         data = file.path.read_bytes()
@@ -338,7 +346,7 @@ def search_file(file: SvFile, spec: SearchSpec, matcher: _Matcher | None = None)
             ok, new, new_bytes = matcher.value_hit(data, scalar)
             if not ok:
                 continue
-            if len(hits) >= HIT_CAP:
+            if len(hits) >= room:
                 found.extra += 1
                 continue
             hits.append((path + (key,), key_span, scalar, new, new_bytes))
@@ -357,6 +365,35 @@ def _unreadable(found: FileSearch, message: str, error: object) -> FileSearch:
     return found
 
 
+class _Room:
+    """The hits a search may still keep, per file, so a search holds about HIT_CAP hits at a time (not HIT_CAP per
+    file). run_search keeps the first HIT_CAP in file-list order, so file i can use at most HIT_CAP less the matches
+    of the files before it that have been searched: room(i) before its search; done(i, found) trims every searched
+    file to that bound (their kept hits then add up to HIT_CAP at most), the rest moving to `extra`."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.found: dict[int, FileSearch] = {}
+
+    def room(self, index: int) -> int:
+        with self.lock:
+            before = sum(len(f.hits) + f.extra for i, f in self.found.items() if i < index)
+        return max(0, HIT_CAP - before)
+
+    def done(self, index: int, found: FileSearch) -> FileSearch:
+        with self.lock:
+            self.found[index] = found
+            matches = 0
+            for i in sorted(self.found):
+                one = self.found[i]
+                room = max(0, HIT_CAP - matches)
+                if len(one.hits) > room:
+                    one.extra += len(one.hits) - room
+                    del one.hits[room:]
+                matches += len(one.hits) + one.extra
+        return found
+
+
 def run_search(files: Sequence[SvFile], spec: SearchSpec, *, parallelism: int = 1,
                progress: Progress | None = None) -> SearchResult:
     """Search every file in the spec's scope, `parallelism` files at once. progress(done, total, file) follows each
@@ -369,29 +406,35 @@ def run_search(files: Sequence[SvFile], spec: SearchSpec, *, parallelism: int = 
     lock = threading.Lock()
     done = [0]
 
+    room = _Room()
+
     def finished(_result) -> None:
         if progress is None:
             return
         with lock:
             done[0] += 1
             count = done[0]
-        progress(count, len(in_scope), _result.unit)
+        progress(count, len(in_scope), _result.unit[1])
 
-    results = run_units(in_scope, lambda f, _report: search_file(f, spec, matcher), parallelism=parallelism,
-                        what="sv-browser search", label=lambda f: f.rel, on_done=finished)
+    def one_file(unit: tuple[int, SvFile], _report) -> FileSearch:
+        index, file = unit
+        return room.done(index, search_file(file, spec, matcher, room.room(index)))
+
+    results = run_units(list(enumerate(in_scope)), one_file, parallelism=parallelism, what="sv-browser search",
+                        label=lambda u: u[1].rel, on_done=finished)
     hits: list[Hit] = []
     dropped = 0
     unreadable: list[tuple[SvFile, str]] = []
     for unit in results:
         if unit.error is not None:  # not expected: search_file reports what it can't read
-            unreadable.append((unit.unit, f"{type(unit.error).__name__}: {unit.error}"))
+            unreadable.append((unit.unit[1], f"{type(unit.error).__name__}: {unit.error}"))
             continue
         one = unit.value
         if one.error is not None:
             unreadable.append((one.file, one.error))
-        room = HIT_CAP - len(hits)
-        hits += one.hits[:room]
-        dropped += max(0, len(one.hits) - room) + one.extra
+        left = HIT_CAP - len(hits)
+        hits += one.hits[:left]
+        dropped += max(0, len(one.hits) - left) + one.extra
     seconds = round(time.monotonic() - started, 2)
     log_event("svb.search_completed", files=len(in_scope), hits=len(hits), dropped=dropped,
               unreadable=len(unreadable), seconds=seconds)

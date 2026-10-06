@@ -21,7 +21,7 @@ from wowtools.tools.sv_browser import search
 from wowtools.tools.sv_browser.scanner import scan_flavors
 from wowtools.tools.sv_browser.search import (KEY_CONTAINS, KEY_EXACT, REPLACE_BOOLEAN, REPLACE_NUMBER,
                                               REPLACE_STRING, VALUE_CONTAINS, VALUE_WHOLE, SearchScope, SearchSpec,
-                                              parse_replacement, run_search)
+                                              parse_replacement, run_search, search_file)
 
 
 def where(hit):
@@ -257,6 +257,20 @@ class ValueSearchTest(SearchTestBase):
         self.assertEqual(self.paths(result), [("Details.lua", ("_detalhes_global", "tooltip", "text"))] * 2)
 
 
+    def test_a_needle_of_blanks_is_a_needle(self):
+        # M2 review: a value of spaces is text to find, never "no value" (a key-only overwrite of every value)
+        self.add_file("Sp.lua", "SpDB = {", '["name"] = "Foo  Bar",', '["x"] = {', '["name"] = 12,', "},",
+                      '["y"] = {', '["name"] = "Baz",', "},", '["z"] = {', '["name"] = " ",', "},", "}")
+        self.assertEqual(SearchSpec(key="name", value="  ", value_mode=VALUE_CONTAINS, replacement=5).problems()[:1],
+                         ["A Contains value search puts text inside strings: the replacement must be text."])
+        hits = self.find(key="name", value="  ", value_mode=VALUE_CONTAINS, replacement=" ",
+                         scope=SearchScope(addon="sp")).hits
+        self.assertEqual([(h.path, h.new) for h in hits], [(("SpDB", "name"), "Foo Bar")])
+        hits = self.find(key="name", value=" ", replacement="-", scope=SearchScope(addon="sp")).hits
+        self.assertEqual([(h.path, h.old, h.new) for h in hits], [(("SpDB", "z", "name"), " ", "-")])
+        self.assertEqual(SearchSpec(value=" ").problems(), [])
+
+
 class KeyAndValueTest(SearchTestBase):
     def test_both_must_hold(self):
         result = self.find(key="font", value="Friz", value_mode=VALUE_CONTAINS)
@@ -369,6 +383,18 @@ class PrefilterTest(SearchTestBase):
         self.assertEqual(result.hits, [])
         self.assertEqual(walk.call_count, 2)  # the two Details.lua only (escapes)
 
+    def test_escaped_backslashes_do_not_turn_the_pre_filter_off(self):
+        # M2 review: WoW writes paths with escaped backslashes; such a pair is one escape, never a hiding one
+        data = b'X = {["icon"] = "Interface\\\\Icons\\\\INV",}'
+        self.assertFalse(search.may_hold(data, SearchSpec(value="Expressway")))
+        self.assertFalse(search.may_hold(data, SearchSpec(value="Expressway", match_case=True)))
+        self.assertTrue(search.may_hold(data.replace(b"INV", b"Expressway"), SearchSpec(value="Expressway")))
+        self.assertTrue(search.may_hold(b'X = {"a\\\\\\070",}', SearchSpec(value="F")))  # a pair, then a \\070
+        self.add_file("Path.lua", "PathDB = {", '["icon"] = "Interface\\\\Icons\\\\INV_Misc",', "}")
+        with mock.patch.object(search, "iter_scalars", wraps=luasv.iter_scalars) as walk:
+            self.find(value="Expressway", scope=SearchScope(addon="path"))
+        self.assertEqual(walk.call_count, 0)
+
     def test_digits_key_never_skips_a_file(self):
         with mock.patch.object(search, "iter_scalars", wraps=luasv.iter_scalars) as walk:
             self.find(key="7")
@@ -378,9 +404,17 @@ class PrefilterTest(SearchTestBase):
     def test_needle_only_in_a_decimal_escape_is_found(self):
         self.add_file("Esc.lua", 'EscDB = {', '["name"] = "\\070riz",', '["k"] = "\\x46oo",', "}")
         self.assertEqual(self.paths(self.find(value="Friz", match_case=True)), [("Esc.lua", ("EscDB", "name"))])
-        self.assertEqual(self.paths(self.find(value="Foo", match_case=True)), [("Esc.lua", ("EscDB", "k"))])
+        # WoW runs Lua 5.1: `\\x46oo` reads "x46oo" (5.2's hex escape is not one)
+        self.assertEqual(self.find(value="Foo", match_case=True, scope=SearchScope(addon="esc")).hits, [])
+        self.assertEqual(self.paths(self.find(value="x46oo", match_case=True)), [("Esc.lua", ("EscDB", "k"))])
         self.assertEqual(self.paths(self.find(key="name", value="F", value_mode=VALUE_CONTAINS, match_case=True)),
                          [("Esc.lua", ("EscDB", "name"))])
+
+    def test_a_contains_replace_keeps_what_lua_5_1_reads(self):
+        # M2 review: `\\x41BC` is "x41BC" in WoW, so replacing BC must give "x41ZZ", never "AZZ"
+        self.add_file("Hex.lua", 'HexDB = {', '["a"] = "\\x41BC",', "}")
+        hit, = self.find(value="BC", value_mode=VALUE_CONTAINS, replacement="ZZ", scope=SearchScope(addon="hex")).hits
+        self.assertEqual((hit.old, hit.new, hit.new_bytes), ("x41BC", "x41ZZ", b'"x41ZZ"'))
 
     def test_escaped_keys_are_found(self):
         self.add_file("Esc.lua", 'EscDB = {', '["\\102ont"] = 1,', "}")
@@ -459,6 +493,33 @@ class RunTest(SearchTestBase):
         self.assertTrue(result.capped)
         self.assertFalse(full.capped)
         self.assertEqual(full.dropped, 0)
+
+    def test_hits_past_the_cap_are_counted_not_kept(self):
+        # M2 review: the cap bounds what a search holds, not just what it returns
+        for parallelism in (1, 4):
+            kept = []
+
+            def recording(*args, _kept=kept):
+                found = search_file(*args)
+                _kept.append(found)
+                return found
+
+            full = run_search(self.files(), SearchSpec(key="font", key_mode=KEY_CONTAINS), parallelism=parallelism)
+            with mock.patch.object(search, "HIT_CAP", 3), \
+                    mock.patch.object(search, "search_file", side_effect=recording):
+                result = run_search(self.files(), SearchSpec(key="font", key_mode=KEY_CONTAINS),
+                                    parallelism=parallelism)
+            self.assertEqual([where(h) for h in result.hits], [where(h) for h in full.hits[:3]])
+            self.assertEqual(result.dropped, len(full.hits) - 3)
+            self.assertLessEqual(sum(len(f.hits) for f in kept), 3, parallelism)
+
+    def test_a_file_with_no_room_builds_no_hit(self):
+        file = next(f for f in self.files() if f.path.name == "ElvUI.lua")
+        found = search_file(file, SearchSpec(key="font", key_mode=KEY_CONTAINS), room=0)
+        self.assertEqual(found.hits, [])
+        self.assertGreater(found.extra, 0)
+        some = search_file(file, SearchSpec(key="font", key_mode=KEY_CONTAINS), room=1)
+        self.assertEqual((len(some.hits), some.extra), (1, found.extra - 1))
 
     def test_progress_follows_every_file(self):
         calls = []

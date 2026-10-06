@@ -72,7 +72,13 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(x.get("d").value.value, luasv.RawNumber("1.#INF"))
 
     def test_decimal_and_hex_escapes_and_utf8(self):
-        self.assertEqual(luasv.decode_string(b'"\\104\\x69 \\195\\162"'), "hi â")
+        self.assertEqual(luasv.decode_string(b'"\\104\\105 \\195\\162"'), "hi â")
+
+    def test_escapes_are_read_as_lua_5_1_reads_them(self):
+        # WoW runs Lua 5.1: `\\x41` and `\\z` are not escapes there, an unknown escape letter stands for itself
+        self.assertEqual(luasv.decode_string(b'"\\x41BC"'), "x41BC")
+        self.assertEqual(luasv.decode_string(b'"\\z   a"'), "z   a")
+        self.assertEqual(luasv.decode_string(b'"\\q\\?"'), "q?")
         self.assertEqual(luasv.decode_string(b'"Tr\xc3\xa2xex"'), "Trâxex")
 
     def test_invalid_utf8_round_trips(self):

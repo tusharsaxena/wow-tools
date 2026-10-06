@@ -84,12 +84,14 @@ class ModelTest(unittest.TestCase):
         elv = doc.roots()[0]
         self.assertIsNone(elv.children)
         self.assertIsInstance(elv.value.fields[0].value, Opaque)  # its children's contents are not parsed yet
+        tables = sum(isinstance(f.value, Opaque) for f in elv.value.fields)
         with mock.patch.object(model, "parse_at", wraps=luasv.parse_at) as parse_at:
             profiles = by_key(doc.children(elv), "profiles")
             doc.children(elv)  # cached: no second parse
-        self.assertEqual(parse_at.call_count, 1)
-        self.assertEqual(parse_at.call_args.args[1], elv.value.start)
-        self.assertEqual(parse_at.call_args.args[2], ("ElvDB",))
+        # the table's span, then each child table's span (for its size)
+        self.assertEqual(parse_at.call_count, 1 + tables)
+        self.assertEqual(parse_at.call_args_list[0].args[1:3], (elv.value.start, ("ElvDB",)))
+        self.assertEqual(parse_at.call_args_list[1].args[2], ("ElvDB", "profiles"))
         self.assertEqual((profiles.path, profiles.count, profiles.children), (("ElvDB", "profiles"), 1, None))
         self.assertIs(profiles.parent, elv)
 
@@ -197,6 +199,21 @@ class CapAndSizeTest(unittest.TestCase):
         self.assertEqual((more.kind, more.more), ("more", 1500))
         self.assertEqual(node_text(more, doc.data), "… 1,500 more")
         self.assertEqual((more.can_edit_value, more.can_rename, more.can_delete, more.is_table), (False,) * 4)
+
+    def test_only_the_shown_children_tables_are_built(self):
+        # M2 review: opening a table builds the tables of the CHILD_CAP children it shows, never the rest
+        lines = [b"Big = {"] + [b'["k%d"] = {"a", {"b"}},' % i for i in range(1, 11)] + [b"}"]
+        doc = self.write("Kids.lua", b"\r\n".join(lines) + b"\r\n")
+        big = doc.roots()[0]
+        with mock.patch.object(model, "CHILD_CAP", 3):
+            kids = doc.children(big)
+        self.assertEqual([n.kind for n in kids], ["value"] * 3 + ["more"])
+        self.assertEqual(kids[-1].more, 7)
+        self.assertEqual([n.count for n in kids[:3]], [2, 2, 2])
+        self.assertTrue(all(isinstance(n.value.fields[1].value, Opaque) for n in kids[:3]))
+        self.assertEqual(big.count, 10)
+        self.assertTrue(all(isinstance(f.value, Opaque) for f in big.value.fields[3:]))
+        self.assertEqual([n.count for n in doc.children(kids[0])], [None, 1])
 
     def test_huge_file_loads_its_top_level_fast(self):
         entry = (b'[%d] = {\r\n["name"] = "Aura number %d",\r\n["load"] = {\r\n["class"] = {\r\n["WARRIOR"] = true,'

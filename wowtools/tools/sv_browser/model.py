@@ -3,8 +3,9 @@
 A file is read once, when its roots are first asked for (its SHA-256 is recorded then, for D17), and parsed one level
 ahead of what is shown: the file's top-level assignments are built with their own tables' entries (so a table node
 knows its size, `{N}`), and every table below stays an Opaque span until its parent is opened. Opening a table node
-parses just that table's span (luasv.parse_at), again one level ahead. A table shows its first CHILD_CAP children and
-a "… N more" leaf. A file that can't be read, or a table whose span is not readable Lua, becomes an error node: the
+parses just that table's span (luasv.parse_at) and then the span of each child table it shows, so a table shows
+its first CHILD_CAP children (each table among them with its size) and a "… N more" leaf, and the tables of the
+children it does not show stay Opaque. A file that can't be read, or a table whose span is not readable Lua, becomes an error node: the
 model never raises.
 
 Each node carries its key (typed; typed_key = luasv.key_id, its identity), the key's span (a top-level
@@ -131,16 +132,24 @@ class SvDocument:
             return node.children
         if not node.is_table or self.data is None:
             return []
+        depth = len(node.path)
+        shown = CHILD_CAP
         try:
-            table, _ = parse_at(self.data, node.value.start, node.path, _one_level_ahead(len(node.path)))
+            table, _ = parse_at(self.data, node.value.start, node.path, lambda path: len(path) <= depth)
+            assert isinstance(table, Table)
+            for item in table.fields[:shown]:  # the shown child tables, one level (their size)
+                if isinstance(item.value, Opaque):
+                    item.value, _ = parse_at(self.data, item.value.start, node.path + (item.key,),
+                                             _one_level_ahead(depth))
         except LuaParseError as exc:
             node.children = [self._unreadable(f"this table is not readable Lua ({exc})", exc)]
             return node.children
-        assert isinstance(table, Table)
         node.value = table
-        node.children = _capped([Node(VALUE, f.key, f.key_span, f.value, node.path + (f.key,), node,
-                                      positional=f.key_span is None, remove_span=f.remove_span)
-                                 for f in table.fields], node)
+        node.children = [Node(VALUE, f.key, f.key_span, f.value, node.path + (f.key,), node,
+                              positional=f.key_span is None, remove_span=f.remove_span)
+                         for f in table.fields[:shown]]
+        if len(table.fields) > shown:
+            node.children.append(Node(MORE, parent=node, more=len(table.fields) - shown))
         return node.children
 
 
