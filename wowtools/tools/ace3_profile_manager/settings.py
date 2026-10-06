@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from wowtools.core.config import Config
-from wowtools.core.journal import TOOLS_SUBDIR
+from wowtools.core.journal import tool_root
 from wowtools.core.migrate import merge_folder_logged
 from wowtools.tools.ace3_profile_manager.events import TOOL_NAME
 
@@ -107,9 +107,7 @@ def save_settings(cfg: Config, settings: ProfileSettings, *, source: str = "sett
 
 def resolve_root(settings: ProfileSettings, wow_path: Path | None) -> Path | None:
     """Where snapshots/, edited/ and the crash marker live."""
-    if settings.backup_dir is not None:
-        return settings.backup_dir / ROOT_NAME
-    return wow_path / TOOLS_SUBDIR / ROOT_NAME if wow_path is not None else None
+    return tool_root(settings.backup_dir, wow_path, ROOT_NAME)
 
 
 def migrate_backup_root(settings: ProfileSettings) -> None:

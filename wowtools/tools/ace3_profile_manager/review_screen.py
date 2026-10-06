@@ -24,6 +24,7 @@ from wowtools.core.install import Flavor, WowInstall, flavor_name, validate_back
 from wowtools.core.journal import Journal, friendly_stamp
 from wowtools.core.process import wow_check_for
 from wowtools.core.progress import ThrottledProgress
+from wowtools.core.svfiles import SvFile
 from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager.blacklist_screen import BlacklistScreen
 from wowtools.tools.ace3_profile_manager.editor import ApplyError, Marker, clear_marker, read_marker
@@ -38,7 +39,7 @@ from wowtools.tools.ace3_profile_manager.report import (CHARACTER_KINDS, DETAIL_
                                                         selection_text, shorten, undo_confirm, undo_detail_rows,
                                                         undo_summary_rows)
 from wowtools.tools.ace3_profile_manager.result_screen import ProfileResultScreen
-from wowtools.tools.ace3_profile_manager.scanner import ScanResult, SvFile, scan_flavors
+from wowtools.tools.ace3_profile_manager.scanner import ScanResult, scan_flavors
 from wowtools.tools.ace3_profile_manager.settings import (Pair, format_blacklist, is_blacklisted, load_settings,
                                                           resolve_root, save_settings, toggle_pair)
 from wowtools.tools.ace3_profile_manager.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident

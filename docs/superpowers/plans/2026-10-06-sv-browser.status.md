@@ -9,7 +9,7 @@ delete every branch, stash and worktree this run created.
 |---|---|---|---|---|
 | T0.1 | branch, spec, plan, ledger | done | (this commit) | user answers 2026-10-06: per-search key toggles, whole/contains value match, values+rename+delete, scope filters + ticked results; same backup/journal/undo set as every tool; name `sv-browser`, display "Saved Variables Browser" |
 | T1.1 | luasv to core + parser surface | done | (this commit) | `luasv.py` git-mv'd to `wowtools/core/` (Ace3 modules + tests switched, `tests/test_ace_luasv.py` -> `tests/test_luasv.py`), added `parse_at`, streaming `iter_scalars`, `encode_value`/`encode_key`/`key_id`, the `-- [n]` remove-span fix and slotted dataclasses; no Ace3 assertion changed; full suite 1357 OK (2 skipped), +23 tests |
-| T1.2 | SvFile/walk/tool_root to core | todo | | |
+| T1.2 | SvFile/walk/tool_root to core | done | (this commit) | `SvFile`, `sha256_of`, `OWNER_ACCOUNT_WIDE`, `candidate_files`, `under_link` and a generic `walk_sv_files` (filter hook `is_sv_file`/`is_addon_sv_file`) now in `core/svfiles.py`, Ace3 scanner/editor/ops/review/tree_view import them from core, `core.journal.tool_root` adopted by Ace3 `resolve_root` and Interface Backup `resolve_backup_root` (WTF Cleaner kept), structure pin added; no Ace3 assertion changed; full suite 1365 OK (2 skipped), +8 tests |
 | T1.3 | write pipeline, journal, undo to core | todo | | |
 | T1.4 | shared UI helpers | todo | | |
 | M1 | push milestone 1 | todo | | |
@@ -47,3 +47,21 @@ delete every branch, stash and worktree this run created.
   attributes on them); `RawNumber` stays frozen without slots (frozen+slots pickling bug on early 3.10).
 - **T1.1** `tests/test_structure.py::test_saved_variables_reader_lives_in_core` pins the one `luasv.py` and every
   parser function/class to core; `docs/architecture.md` paths updated now (the rest of the docs is T4.1).
+- **T1.2** `walk_sv_files(flavor, *, account, accept, on_error, on_account, on_link)` is a generator of
+  `(Account, Character | None, path)` (the `Account` object, not just its name, so a caller has `.name` and `.path`);
+  `on_account(acct, characters)` fires before an account's files, so Ace3 still gets an `AccountScan` (with its
+  character keys) for an account with no files; the "no WTF/Account folder" error stays in Ace3's `scan_flavor`.
+- **T1.2** Filters: `is_sv_file` (exactly `.lua` with a name before it; never `.lua.bak`/`.old`; the default, for SV
+  Browser) and `is_addon_sv_file` (also not `Blizzard_*`; Ace3). `candidate_files(sv_dir, accept)` never takes a link
+  or a folder.
+- **T1.2** The owner constant is `svfiles.OWNER_ACCOUNT_WIDE = "Account-wide"`, not `ACCOUNT_WIDE`, because
+  `core/install.ACCOUNT_WIDE = "account-wide"` (WTF Cleaner) already exists with another value. Ace3's
+  `scanner.SvFile`/`scanner.sha256_of` stay importable (the scanner imports them), so the Ace3 tests that use
+  `scanner.SvFile` / `scanner.sha256_of` are untouched; Ace3 production modules import them from core.
+- **T1.2** `tool_root(backup_dir, wow_path, tool)` lives in `core/journal.py` next to `TOOLS_SUBDIR` and
+  `journal_dir` (`core/paths.py` would import journal, which imports paths: a cycle). Ace3 `resolve_root` and
+  Interface Backup `resolve_backup_root` are now one-line wrappers (callers and tests unchanged). The WTF Cleaner's
+  `resolve_backup_dir` is left alone: a set `backup_dir` is used as-is, with no `wtf-cleaner` subfolder, so it is not
+  the same behaviour. `test_saved_variables_files_and_tool_root_live_in_core` pins the definitions and that only
+  `wtf_cleaner/settings.py` among tools still uses `TOOLS_SUBDIR`.
+- **T1.2** `ruff check .` panicked on a stale cache (`wrong package cache for file`); `ruff check --no-cache .` passes.

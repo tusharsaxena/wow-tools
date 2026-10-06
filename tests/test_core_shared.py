@@ -15,7 +15,7 @@ from tests.fixtures import build_wow_tree
 from wowtools.core import marker
 from wowtools.core.events import capture_events
 from wowtools.core.install import Flavor, WowInstall, flavor_name, validate_backup_dir
-from wowtools.core.journal import ToolJournals, read_journal
+from wowtools.core.journal import ToolJournals, read_journal, tool_root
 from wowtools.core.progress import PROGRESS_INTERVAL, ThrottledProgress
 from wowtools.core.text import MISSING, human_size, plural
 from wowtools.core.undo import FAILED, RESTORED, SKIPPED, UndoResultBase, safe_destination
@@ -209,6 +209,12 @@ class ToolJournalsTest(unittest.TestCase):
         folder.mkdir(parents=True, exist_ok=True)
         (folder / name).write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
         return folder / name
+
+    def test_tool_root(self):
+        self.assertEqual(tool_root(None, self.wow, CLEANER), self.wow / "wow-tools" / CLEANER)
+        self.assertEqual(tool_root(self.wow / "b", self.wow, CLEANER), self.wow / "b" / CLEANER)
+        self.assertEqual(tool_root(self.wow / "b", None, CLEANER), self.wow / "b" / CLEANER)
+        self.assertIsNone(tool_root(None, None, CLEANER))
 
     def test_dir_latest_and_prune_with_event(self):
         journals = ToolJournals(CLEANER, read_journal, "clean.journal_pruned")

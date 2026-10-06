@@ -124,6 +124,23 @@ class StructureTest(unittest.TestCase):
                  if isinstance(node, ast.ClassDef) and node.name in classes}
         self.assertEqual(where, {("wowtools/core/luasv.py", n) for n in classes})
 
+    def test_saved_variables_files_and_tool_root_live_in_core(self):
+        """The SavedVariables file model and walk (SV Browser spec D20) are core/svfiles.py's, tool_root is
+        core/journal.py's; only the WTF Cleaner, whose backup folder holds no tool subfolder, builds its own root
+        from TOOLS_SUBDIR."""
+        functions = {"sha256_of", "is_sv_file", "is_addon_sv_file", "candidate_files", "under_link", "_under_link",
+                     "walk_sv_files"}
+        where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & functions}
+        self.assertEqual(where, {("wowtools/core/svfiles.py", n) for n in functions - {"_under_link"}})
+        where = {rel(p) for p in modules("wowtools") for node in ast.walk(tree(p))
+                 if isinstance(node, ast.ClassDef) and node.name == "SvFile"}
+        self.assertEqual(where, {"wowtools/core/svfiles.py"})
+        where = {rel(p) for p in modules("wowtools") if "tool_root" in defined_functions(tree(p))}
+        self.assertEqual(where, {"wowtools/core/journal.py"})
+        users = {rel(p) for p in modules("wowtools/tools") for node in ast.walk(tree(p))
+                 if isinstance(node, ast.Name) and node.id == "TOOLS_SUBDIR"}
+        self.assertEqual(users, {"wowtools/tools/wtf_cleaner/settings.py"})
+
     def test_tools_use_the_shared_helpers(self):
         """Each tool's journals, undo results and markers go through core (no copy of the bodies)."""
         from wowtools.core import journal, undo
