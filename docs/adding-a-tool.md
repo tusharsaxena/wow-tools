@@ -45,6 +45,11 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      whole-`WTF` snapshot from `core/snapshot.py` (folder and name prefix are parameters), the path guard and lock
      probe from `core/svfiles.py`, and `core.fsutil.atomic_write_bytes` for its writes, as the WTF Cleaner and the
      Ace3 Profile Manager do.
+   - `help.py` with `HELP`, the tool's help screen text (Markdown; `h` on any of its screens shows it, spec D18) and
+     `GUIDE_URL` (`https://github.com/tusharsaxena/wow-tools/blob/master/docs/<tool name>.md`): what the tool does,
+     the flow step by step, every button with its key, the filter and tick keys, the safety notes (backups, Dry
+     run, Undo) and the link to the guide. Keep it to about two screens. `tests/test_help.py` checks that it names
+     every button of the tool's screens (add the tool to its `RUN_ACTION`) and that its links exist in the repo.
    - `settings.py` for the tool's own settings: the `[screenshot_organizer]` section of `config/screenshot-organizer.cfg`.
      Follow `wtf_cleaner/settings.py`; it takes the tool's `Config`, never the suite one.
    - `app.py` with `class ScreenshotsFlow(ToolFlow)` and `FLOW = ScreenshotsFlow`. Set `SECTION` (the tool's

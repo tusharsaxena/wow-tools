@@ -14,7 +14,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.events import Resize
-from textual.screen import Screen
+from textual.screen import ModalScreen, Screen
 from textual.widgets import Header, OptionList, Static
 from textual.widgets.option_list import Option
 
@@ -27,6 +27,7 @@ from wowtools.ui.base import Ka0sApp
 from wowtools.ui.branding import Banner, BottomBar, TermsText, VersionLine
 from wowtools.ui.changelog_screen import ChangelogScreen
 from wowtools.ui.dialogs import ChoiceScreen
+from wowtools.ui.help_screen import HelpScreen, suite_help
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.tool_flow import ToolFlow
 from wowtools.ui.widgets import LIST_CURSOR_BACKGROUND, LIST_NAME_STYLE, NAV_BINDINGS, NavHint, wrap_items
@@ -159,7 +160,7 @@ class ToolMenuScreen(Screen[None]):
 
 class WowToolsApp(Ka0sApp):
     SUB_TITLE = "Choose a tool"
-    BINDINGS: ClassVar[list[Binding]] = [Binding("s", "settings", "Settings")]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("s", "settings", "Settings"), Binding("h", "help", "Help")]
 
     def __init__(self, cfg: Config, *, config_dir: Path = CONFIG_DIR, check_updates: bool = True,
                  detect: Callable[[], list[Path]] = detect_installs, lock: InstanceLock | None = None,
@@ -171,6 +172,7 @@ class WowToolsApp(Ka0sApp):
         self.conflict = conflict
         self.tool_options = tool_options or {}
         self.flow: ToolFlow | None = None
+        self.flow_name = ""  # the open tool's name in TOOLS
         self.menu = ToolMenuScreen()
 
     def after_mount(self) -> None:
@@ -201,6 +203,7 @@ class WowToolsApp(Ka0sApp):
             return
         get_event_log().set_context(tool=name)
         self.flow = tool.flow()(self, tool_cfg, **self.tool_options.get(name, {}))
+        self.flow_name = name
         self.sub_title = tool.title
         self.flow.start()
 
@@ -217,13 +220,20 @@ class WowToolsApp(Ka0sApp):
     def settings_allowed(self) -> bool:
         """`s` opens the open tool's settings, or with no tool open the general settings from the tool menu only:
         not over the changelog, an update offer or the setup and lock screens (critic b6)."""
-        if self.busy or isinstance(self.screen, (SetupScreen, LockScreen)):
+        if self.busy or isinstance(self.screen, (SetupScreen, LockScreen, HelpScreen)):
             return False
         return self.flow is not None or self.screen is self.menu
+
+    def help_allowed(self) -> bool:
+        """`h` opens the help on every full screen (the menu, the changelog, any screen of a tool), never over a
+        popup (a confirm, a progress window, the lock warning) nor over the help itself (spec D18)."""
+        return not isinstance(self.screen, (ModalScreen, HelpScreen))
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         if action == "settings" and not self.settings_allowed():
             return False  # hidden from the footer, and the key does nothing
+        if action == "help" and not self.help_allowed():
+            return False
         return super().check_action(action, parameters)
 
     def action_settings(self) -> None:
@@ -233,6 +243,20 @@ class WowToolsApp(Ka0sApp):
             self.flow.open_settings()
         else:
             self.open_general_settings()
+
+    # --- help ---------------------------------------------------------------------------------------
+    def action_help(self) -> None:
+        """`h`: the open tool's help, or the suite's with no tool open (spec D18). A text box keeps the letter:
+        this is not a priority binding, so typing h in a filter or a settings field types it."""
+        if not self.help_allowed():
+            return
+        tool = TOOLS.get(self.flow_name) if self.flow is not None else None
+        if tool is None:
+            log_event("ui.selection", screen="help", control="help", value="suite")
+            self.push_screen(HelpScreen("Ka0s WoW Tools help", suite_help()))
+        else:
+            log_event("ui.selection", screen="help", control="help", value=tool.name)
+            self.push_screen(HelpScreen(f"{tool.title} help", tool.help()))
 
     def open_general_settings(self, then: Callable[[bool | None], None] | None = None) -> None:
         self.push_screen(SetupScreen(self.cfg, first_run=False, detect=self.detect), then)

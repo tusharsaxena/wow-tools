@@ -247,6 +247,7 @@ version until you next save the blacklist.
 | `f` or `Esc` | Pick another game version (in the filter box, `Esc` clears the filter and goes back to the tree) |
 | `t` | Back to the tool menu |
 | `s` | Settings |
+| `h` | Help: this tool's keys and steps, with a link to this guide |
 | `q` | Quit |
 | `←` `→` | Jump between the tree and the left panel |
 

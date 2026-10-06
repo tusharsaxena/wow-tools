@@ -19,6 +19,10 @@ class Tool:
         """The tool's ToolFlow subclass, imported on demand."""
         return importlib.import_module(self.module).FLOW
 
+    def help(self) -> str:
+        """The tool's help screen text (Markdown, spec D18): HELP in the help module of the tool's package."""
+        return importlib.import_module(self.module.rpartition(".")[0] + ".help").HELP
+
 
 TOOLS: dict[str, Tool] = {tool.name: tool for tool in (
     Tool("wtf-cleaner", "WTF Cleaner",

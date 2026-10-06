@@ -85,6 +85,7 @@ shots are hidden by the filter").
 | `f` or `Esc` | Pick another game version |
 | `t` | Back to the tool menu |
 | `s` | Settings |
+| `h` | Help: this tool's keys and steps, with a link to this guide |
 | `q` | Quit |
 | `←` `→` | Jump between the list and the left panel |
 

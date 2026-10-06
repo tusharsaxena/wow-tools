@@ -30,10 +30,11 @@ from wowtools.tools.interface_backup.review_screen import (BackupProgressScreen,
 from wowtools.tools.interface_backup.settings import load_settings
 from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import FlavorScreen
+from wowtools.ui.help_screen import HelpScreen
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.tree_filter import FILTER_HINT, FilterInput
-from wowtools.ui.widgets import NavHint, action_kind
+from wowtools.ui.widgets import ActionButton, NavHint, action_kind
 
 SIZE = (140, 50)
 
@@ -793,6 +794,29 @@ class InterfaceBackupAppTest(TuiTestCase):
                     expanded.append(node)
                 stack.extend(node.children)
             self.assertEqual(expanded, [tree.root])
+
+    async def test_h_on_the_restore_screen_opens_the_tool_help(self):
+        """Spec D18: h on the restore screen opens Interface Backup's help, which names its buttons; Esc comes back
+        to the restore screen as it was."""
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            screen = await self.open_restore(app, pilot)
+            focused = screen.focused
+            await pilot.press("h")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, HelpScreen)
+            self.assertEqual(app.screen.text, TOOLS["interface-backup"].help())
+            for button in screen.query(ActionButton):
+                self.assertIn(f"**{button.label_text}**", app.screen.text)
+            await pilot.press("escape")
+            await settle(app, pilot)
+            self.assertIs(app.screen, screen)
+            self.assertIs(screen.focused, focused)
 
     async def test_restore_with_warnings_then_undo(self):
         self.save_tool_cfg(backup_dir=str(self.bk))

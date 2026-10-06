@@ -25,6 +25,9 @@ The first version: four tools in one app.
   - Every checkbox and box in a left panel has a row of its own, so `↑` / `↓` reach each one.
   - Buttons are coloured by what they do, the same in every tool: red deletes, amber overwrites, green adds
     something new, violet undoes, cyan is a dry run, blue confirms, grey moves between screens, dim grey backs out.
+  - `h` opens a help screen everywhere: on the tool menu it explains the app (what each tool does, the keys every
+    tool shares, settings, button colours); in a tool it explains that tool, step by step, with every button and
+    its key, the safety nets and a link to the tool's guide. `Esc`, `q` or `h` closes it.
   - Every button shows its key under its name (**Clean** over `(w)`), and the row of keys along the bottom lists
     only the keys no button has, so it stays short.
   - Every "are you sure?" window opens on **Yes**, coloured by what it does (red when it deletes, overwrites, undoes
