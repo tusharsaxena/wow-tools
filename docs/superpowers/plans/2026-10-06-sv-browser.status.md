@@ -15,7 +15,7 @@ delete every branch, stash and worktree this run created.
 | M1 | push milestone 1 | done (pushed) | 0ac3786 | review fixes: Ace3 `TargetScreen` gets `popup_css(..., list_rows=ACTIONS_ROWS)` back (its Select dropdown is an OptionList, max-height 16 again), pinned in `test_look_and_feel`; full suite 1391 OK (2 skipped) |
 | T2.1 | package skeleton, registry, fixture | done | (this commit) | `wowtools/tools/sv_browser/` (events with 9 own `svb.*` + `sv_events("svb")`/`SV_TOOL`, `[sv_browser]` settings + `resolve_root`, help stub, settings form, `SvBrowserFlow` flavor picker with All flavors and no account picker -> placeholder `SvReviewScreen`), registered last in `TOOLS`, `build_sv_tree` + `SVB_*` texts in fixtures, README rows + placeholder `docs/sv-browser.md`, `docs/events.md` regenerated; full suite 1402 OK (2 skipped), +11 tests |
 | T2.2 | scanner + lazy model | done | (this commit) | `scanner.py` lists every flavor's SavedVariables files (`walk_sv_files` + `is_sv_file`: Blizzard_* in, .bak/.old/links out) as flavors > accounts > owners > `SvFile` (size, mtime, no read, `sha256=""`), recovers probe leftovers first and logs one `svb.scan_completed`; `model.py` `SvDocument` reads a file once (sha256 then), parses one level ahead (`parse` / `parse_at` on the table's span), `Node` with typed key, spans, path, remove span and D5 flags, 500-child cap with a `… N more` leaf, error nodes instead of raising, plus `key_text`/`scalar_text`/`table_text`/`node_text`; full suite 1430 OK (2 skipped), +28 tests |
-| T2.3 | search | todo | | |
+| T2.3 | search | done | (this commit) | `search.py`: `SearchSpec` (+`problems()`/`check()`, `SearchScope` flavor/account/character-or-`Account-wide`/addon-contains, replacement typed or None = find only), `parse_replacement` (strict Lua decimal that reads back exactly, int within 2^53, true/false), `_Matcher` per D6-D8, byte pre-filter `may_hold`, `search_file` (streams `iter_scalars`, never raises: unreadable/not-Lua logged `svb.file_unreadable`), `run_search` over `run_units` with `progress(done, total, file)`, `HIT_CAP` 10,000 + `dropped`, `svb.search_started`/`_completed`; full suite 1490 OK (2 skipped), +60 tests |
 | T2.4 | staging, compile, verify | todo | | |
 | T2.5 | apply/undo/recovery wiring | todo | | |
 | M2 | push milestone 2 | todo | | |
@@ -164,3 +164,27 @@ delete every branch, stash and worktree this run created.
   Lua-style escapes (`\"`, `\\`, `\n`, control/invalid-UTF-8 bytes as `\ddd`) cut to `VALUE_WIDTH` (60) characters
   with `…`, numbers as written (raw bytes), `true`/`false`/`nil`; `table_text` = `{1,234}` or `{…}` unparsed;
   `node_text` = `key = value`, `key {N}`, `… 1,500 more`, `can't read: …`.
+- **T2.3** `Hit(file, path, key_span, value_span, old, old_bytes, new, new_bytes)`: `file` is the scanned `SvFile`
+  `dataclasses.replace`d with the SHA-256 of the bytes searched (one object per file, shared by its hits; hashed only
+  when the file has hits), `path` = top-level name then raw typed keys ending in the hit's key (same tuple as
+  `model.Node.path`), `typed_path` = `key_id` per key; `key_span` None for a positional entry. Hits come in
+  file-list order, then file order, whatever the parallelism.
+- **T2.3** `replacement=None` is a **find only** search (`spec.replaces` False; hits have `new`/`new_bytes` None),
+  so the UI may search without a replacement; T2.4 staging must ignore such hits. A Contains hit whose replacement
+  equals the needle is still a hit (no-op splice).
+- **T2.3** Matching details: key text of a number key = its written text inside the brackets (`[2.50]` "2.50",
+  `[0x10]` "0x10"), positional entries by `str(index)`; value Whole for numbers/booleans = written bytes; nil is a key
+  hit (top-level `ElvVersion = nil`, array nil slots) but never a value hit; case off = `casefold()` for Exact/Whole
+  (so "STRASSE" whole-matches "Straße") and `re.IGNORECASE` for Contains; the Contains replacement goes through a
+  function (never a `re` template). Key/value "given" = not blank after strip; the text itself is matched unstripped.
+- **T2.3** Pre-filter (`may_hold`) is stricter than the brief: besides unsafe needles (quote, apostrophe, backslash,
+  control char; a digits-only **key** needle, since array indexes are never written; non-ASCII with case off), it is
+  skipped for any file holding an escape that could write a plain char another way (`\ddd`, `\x`, `\z`, `\F`;
+  regex `\\[^\\"'abfnrtv\r\n]`), and with case off for any file holding a non-ASCII char that folds into ASCII
+  (`FOLDS_TO_ASCII`, 20 chars such as U+212A Kelvin and U+017F long s, pinned by a test that recomputes it). So the
+  fixture's Details.lua (`\226\128\148`) is always parsed.
+- **T2.3** A file with a parse fault is reported in `SearchResult.unreadable` and its earlier hits are dropped (D4:
+  a broken file is never edited); a file skipped by the pre-filter is not parsed, so a broken one is only reported
+  when its bytes could hold the needle. Per-file hits are capped at `HIT_CAP` too (extra counted), so one huge file
+  never holds more than the cap in memory. The streaming guard is a 6 MB, 20,000-entry generated file (time bound
+  15 s; ~0.5 s here); no memory measurement (tracemalloc slows the parse several-fold).
