@@ -5,7 +5,7 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
 | Task | Issue | Title | Status | Commit | Notes |
 |---|---|---|---|---|---|
 | I1 | #1 | macOS running-WoW detection | done | ac04a74 | `ps -axo comm=` branch, shared `wow_name()` rule; 4 new tests (test_process 17), suite 1308 OK, 2 skipped |
-| I2 | #4 | keep_cleaned for cleaned zips | todo | | |
+| I2 | #4 | keep_cleaned for cleaned zips | done | 685d44f | `[wtf_cleaner] keep_cleaned` (0 = all), `prune_cleaned_zips`, event `backup.cleaned_pruned`; 8 new tests, suite 1317 OK, 2 skipped |
 | I3 | #5 | per-account enabled addons | todo | | |
 | I4 | #7 | keep user files when pruning update backups | todo | | |
 | I5 | #8 | native Windows checkpoint run | todo | | |
@@ -23,3 +23,10 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
   except Launcher/helper/crash/error/reporter/updater/agent (fail toward warning on an unknown variant); the path is
   cut back to the `.app` only for a bundle's own `<X>.app/Contents/MacOS/<name>` executable, so a Wine `Wow.exe`
   inside a wrapper `.app` keeps its flavor folder; architecture.md describes the new rule. Suite 1309 OK, 2 skipped.
+- I2: `keep_cleaned` counts the zip the clean just wrote as one of the kept and never deletes it, even when an older
+  zip carries a later stamp (a wrong clock). Pruning runs only after a real clean that deleted something and wrote a
+  zip (mirrors the WTF backup pruning); per flavor, any account, like the dry-run zips. `prune_dry_run_zips` and
+  `prune_cleaned_zips` share `_prune_run_zips`, now matching the flavor literally in the name and using one
+  `os.scandir` without following links (was `iterdir` + `is_file()` per file). Settings form fit at 120x30: the new
+  field uses a compact Input and both the new label and the backup-folder label are one line (the default folder is
+  already the placeholder). Bad or negative values in the file read as 0 (keep all, the safe side).
