@@ -12,6 +12,8 @@ from textual.containers import VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Header, Markdown, Static
 
+from wowtools.core.config import (DEFAULT_KEEP_BACKUPS, DEFAULT_KEEP_JOURNALS, DEFAULT_PARALLELISM, MAX_PARALLELISM,
+                                   MIN_PARALLELISM)
 from wowtools.tools import TOOLS
 from wowtools.ui.branding import TERMS, BottomBar
 from wowtools.ui.widgets import NavHint
@@ -63,8 +65,10 @@ A button shows its own key under its name (**Clean** over `(w)`); the bottom row
 ## Settings
 
 `s` opens the shared settings first, then the open tool's own. Shared by every tool: your **WoW folder**, the
-**backups to keep** per game version (10; `0` keeps them all), the **journals** (undo records) each tool keeps (10)
-and how many **game versions to work on at once** (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder).
+**backups to keep** per game version ({DEFAULT_KEEP_BACKUPS} by default; `0` keeps them all), the **journals** (undo
+records) each tool keeps ({DEFAULT_KEEP_JOURNALS} by default) and how many **game versions to work on at once**
+({DEFAULT_PARALLELISM} by default, from {MIN_PARALLELISM} to {MAX_PARALLELISM}; use 1 on a hard drive or a WSL `/mnt`
+folder).
 Everything is saved in the `config` folder.
 
 ## Button colours

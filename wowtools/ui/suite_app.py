@@ -219,15 +219,21 @@ class WowToolsApp(Ka0sApp):
     # --- settings ---------------------------------------------------------------------------------
     def settings_allowed(self) -> bool:
         """`s` opens the open tool's settings, or with no tool open the general settings from the tool menu only:
-        not over the changelog, an update offer or the setup and lock screens (critic b6)."""
-        if self.busy or isinstance(self.screen, (SetupScreen, LockScreen, HelpScreen)):
+        not over the changelog, an update offer or the setup and lock screens (critic b6), nor while a review's
+        running-programs check runs (leaving the screen then would drop the confirm it leads to)."""
+        if self.busy or self.screen_checking() or isinstance(self.screen, (SetupScreen, LockScreen, HelpScreen)):
             return False
         return self.flow is not None or self.screen is self.menu
 
     def help_allowed(self) -> bool:
         """`h` opens the help on every full screen (the menu, the changelog, any screen of a tool), never over a
-        popup (a confirm, a progress window, the lock warning) nor over the help itself (spec D18)."""
-        return not isinstance(self.screen, (ModalScreen, HelpScreen))
+        popup (a confirm, a progress window, the lock warning) nor over the help itself (spec D18), nor while a
+        review's running-programs check runs: the confirm it leads to opens only on the screen that asked."""
+        return not (self.screen_checking() or isinstance(self.screen, (ModalScreen, HelpScreen)))
+
+    def screen_checking(self) -> bool:
+        """The shown screen runs its running-programs check (ui/review.py Preflight._checking)."""
+        return bool(getattr(self.screen, "_checking", False))
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         if action == "settings" and not self.settings_allowed():

@@ -254,3 +254,12 @@ task; push after every milestone. Never merge without the user's go-ahead.
   Notes, Target, Name and both recovery popups (`test_keys_are_on_the_popup_buttons`; dropping any one key from a
   button now fails it); architecture.md names buttons by their bare labels; the footer-width note above corrected.
 - **T7.3** `h` is an app binding on `WowToolsApp` (like `s`), not one per screen: one place covers every full screen of every tool, and `check_action` hides it on popups. Over a popup it does nothing rather than opening help above the popup (a confirm's Yes would sit under the help). On a settings form the first field has focus, so `h` types there; the help opens once focus is on a checkbox or button (same rule as `s`, which the analysis called priority-safe). The help is a single Markdown pane rather than the two-pane look: there is nothing to pick on the left. The tool's help is found by the open tool's name (`flow_name`, set in `open_tool`), not by matching the flow class.
+- **T7.3** review: 4 findings, 4 fixed, 0 rejected: `help_allowed` and `settings_allowed` refuse while the shown
+  screen's running-programs check runs (`screen_checking`; `_set_checking` refreshes the bindings, so h/s leave the
+  footer meanwhile), so the confirm it leads to is never dropped; the footer wraps into two rows when its keys and
+  the shortest version text don't fit (`KeyFooter.wanted_rows`, two `HorizontalGroup` rows, BottomBar height 2,
+  re-checked on resize): at 80x24 a review shows every key including s and h, plus the version; the Ace3 help names
+  **Edit blacklist…** and **Select none** in a new Settings section with the backup folder, and the test collects
+  the settings screens' buttons (only Save/Cancel excluded); retention/parallelism numbers are worded as defaults,
+  built from the `core/config.py` constants in `suite_help()`. Tests: account-picker h, h/s during a slow preflight
+  then the confirm opens, every footer key on screen at TINY for all four tools.

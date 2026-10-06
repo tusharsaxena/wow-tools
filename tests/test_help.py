@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import re
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -13,7 +14,11 @@ from textual.widgets._footer import FooterKey
 
 from tests.fixtures import (BASE, TINY, TuiTestCase, build_ace_tree, build_interface_tree, build_screenshot_tree,
                             build_wow_tree, make_config, settle)
+from wowtools import __version__
+from wowtools.core.install import WowInstall
 from wowtools.tools import TOOLS
+from wowtools.ui.account_screen import AccountScreen
+from wowtools.ui.branding import BottomBar
 from wowtools.ui.changelog_screen import ChangelogScreen
 from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
@@ -144,6 +149,7 @@ class HelpScreenTest(TuiTestCase):
                     await self.assert_help(app, pilot, text)
                     app.push_screen(app.flow.settings_screen("settings"))
                     await settle(app, pilot)
+                    labels |= {b.label_text for b in app.screen.query(ActionButton)}
                     app.screen.query_one("#save").focus()  # the first field has focus: h would type there
                     await pilot.pause()
                     await self.assert_help(app, pilot, text)
@@ -170,8 +176,70 @@ class HelpScreenTest(TuiTestCase):
                     self.assertIsInstance(app.screen, ResultBase)
                     labels |= {b.label_text for b in app.screen.query(ActionButton)}
                     await self.assert_help(app, pilot, text)
-                    for label in sorted(labels - {"Save", "Cancel", "Select none"}):  # the forms' own buttons
+                    for label in sorted(labels - {"Save", "Cancel"}):  # the forms' own buttons
                         self.assertIn(f"**{label}**", text)
+
+    async def test_h_on_the_account_picker_opens_the_tool_help(self):
+        """The account picker (a game version with two accounts) is a tool screen too."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_flavors(app, pilot, "ace3-profile-manager")
+            retail = next(f for f in WowInstall(self.root).flavors() if f.folder == "_retail_")
+            self.assertGreater(len(retail.accounts()), 1)
+            app.flow.pick_account(retail, lambda _account: None)
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, AccountScreen)
+            await self.assert_help(app, pilot, TOOLS["ace3-profile-manager"].help())
+
+    async def test_h_and_s_wait_for_the_running_programs_check(self):
+        """While a review's running-programs check runs, h and s do nothing (and leave the footer): leaving the
+        screen then would drop the confirm the check leads to. Once it is done the confirm opens."""
+        release = threading.Event()
+
+        def slow_check():
+            release.wait(10)
+            return []
+
+        app = self.make_app()
+        app.tool_options["wtf-cleaner"] = {"wow_check": slow_check, "locker_check": list}
+        async with app.run_test(size=BASE) as pilot:
+            picker = await self.open_flavors(app, pilot, "wtf-cleaner")
+            picker.dismiss(ALL_FLAVORS)
+            await settle(app, pilot)
+            review = app.screen
+            review.action_clean()
+            await pilot.pause()
+            self.assertTrue(review._checking)
+            await pilot.press("h", "s")
+            await pilot.pause()
+            self.assertIs(app.screen, review)
+            footer = {key.key for key in review.query(FooterKey)}
+            self.assertFalse(footer & {"h", "s"}, footer)
+            release.set()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            app.screen.dismiss(False)
+            await settle(app, pilot)
+            self.assertIn("h", {key.key for key in review.query(FooterKey)})
+
+    async def test_every_footer_key_shows_at_tiny(self):
+        """At 80 columns a review's keys don't fit one row: the footer wraps into two, so h Help (and s, q) stay on
+        screen, with the version still beside them."""
+        for name in TOOLS:
+            with self.subTest(tool=name):
+                app = self.make_app()
+                async with app.run_test(size=TINY) as pilot:
+                    picker = await self.open_flavors(app, pilot, name)
+                    picker.dismiss(ALL_FLAVORS)
+                    await settle(app, pilot)
+                    keys = list(app.screen.query(FooterKey))
+                    self.assertTrue({"h", "s", "q"} <= {key.key for key in keys})
+                    for key in keys:
+                        self.assertLessEqual(key.region.right, TINY[0], key)
+                        self.assertGreater(key.region.width, 0, key)
+                    self.assertEqual(app.screen.query_one(BottomBar).region.height, 2)
+                    self.assertIn(f"v{__version__}", "".join(strip.text for strip in
+                                                            app.screen._compositor.render_strips()))
 
     async def test_h_types_in_a_text_box(self):
         """h is not a priority key: in the filter box it is a letter of the filter."""

@@ -58,5 +58,13 @@ quits (leaving with pending changes asks first). On the results: **Rescan** (`r`
 - It never touches the settings inside a profile, other addon data, or Blizzard's files.
 - **Undo last change** goes back one Apply, and leaves alone a file saved again since.
 
+## Settings (`s`)
+
+- **Backup folder**: where the zips go (`snapshots` for the whole `WTF` folder, `edited` for each changed file as it
+  was). Empty means `<WoW folder>\\wow-tools\\ace3-profile-manager`. How many are kept is a shared setting.
+- **Edit blacklist…** (or **Blacklist…** on the review) opens the blacklist: tick the addons to leave alone, in
+  every game version. **Select none** (`n`) unticks them all, **Save** keeps the list, **Cancel** (`Esc`) drops
+  the edits.
+
 **Full guide:** [{GUIDE_URL}]({GUIDE_URL})
 """

@@ -41,8 +41,8 @@ On the results: **Rescan** (`r`), **Restore** (`e`), **Other flavor** (`f`), **T
 
 ## Safety
 
-- Every zip is checked after it is written. Only the newest backups per game version are kept (10, a shared
-  setting; `0` keeps them all), and old ones go only after the new zip checks out.
+- Every zip is checked after it is written. Only the newest backups per game version are kept (as many as
+  the shared settings say, 10 by default; `0` keeps them all), and old ones go only after the new zip checks out.
 - Before every restore, a **safety backup** of the folders as they are now is taken, so you can undo the restore.
   A safety backup is listed under **Backups** and can be restored too.
 - A folder is swapped in one rename once the new copy is complete: never left half-copied. Links are kept.

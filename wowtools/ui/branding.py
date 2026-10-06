@@ -1,12 +1,13 @@
 """Ka0s branding widgets: the shield banner (with the version line and the terms of use on the tool menu), and the
 bottom bar every screen ends with (the footer's keys on the left, the brand bar's version and update notice on the
-right, in one row). The footer lists only the keys that no shown button carries (spec D17)."""
+right, in one row, or two when a narrow window can't fit the keys in one). The footer lists only the keys that
+no shown button carries (spec D17)."""
 from __future__ import annotations
 
 from rich.cells import cell_len
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.containers import Horizontal
+from textual.containers import Horizontal, HorizontalGroup
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Footer, Input, Static, TextArea
 from textual.widgets._footer import FooterKey
@@ -183,16 +184,36 @@ def footer_bindings(screen: Screen) -> list:
 
 class KeyFooter(Footer):
     """The compact Footer of every screen, listing footer_bindings: a key a shown button carries is on that button
-    instead. (Textual's Footer lists every shown binding; this one has no key groups and no command palette key.)"""
+    instead. (Textual's Footer lists every shown binding; this one has no key groups and no command palette key.)
+    When the keys and the shortest version text don't fit one row (a review at 80 columns), the keys wrap into two
+    rows, in columns, and the bottom bar grows to two rows: every key stays on screen."""
+
+    rows = 1
+
+    def wanted_rows(self, bindings: list, width: int) -> int:
+        """1 if the keys (each "key description" and a space) and the shortest brand text fit `width`, else 2."""
+        keys = sum(cell_len(self.app.get_key_display(binding)) + cell_len(binding.description) + 2
+                   for binding, _enabled, _tooltip in bindings)
+        return 1 if keys + cell_len(f"v{__version__}") + 1 <= width else 2
 
     def compose(self) -> ComposeResult:
         if not self._bindings_ready:
             return
         bindings = footer_bindings(self.screen)
-        self.styles.grid_size_columns = len(bindings)
-        for binding, enabled, tooltip in bindings:
-            yield FooterKey(binding.key, self.app.get_key_display(binding), binding.description, binding.action,
-                            disabled=not enabled, tooltip=tooltip).data_bind(compact=Footer.compact)
+        self.rows = self.wanted_rows(bindings, self.app.size.width)
+        self.styles.layout = "vertical" if self.rows > 1 else "horizontal"
+        self.styles.height = self.rows
+        if isinstance(self.parent, BottomBar):
+            self.parent.styles.height = self.rows
+        keys = [FooterKey(binding.key, self.app.get_key_display(binding), binding.description, binding.action,
+                          disabled=not enabled, tooltip=tooltip).data_bind(compact=Footer.compact)
+                for binding, enabled, tooltip in bindings]
+        if self.rows == 1:
+            yield from keys
+            return
+        half = -(-len(keys) // 2)  # the first row takes the odd one
+        for row in (keys[:half], keys[half:]):
+            yield HorizontalGroup(*row, classes="key-row")
 
 
 class BottomBar(Horizontal):
@@ -202,8 +223,17 @@ class BottomBar(Horizontal):
     DEFAULT_CSS = """
     BottomBar { dock: bottom; height: 1; width: 100%; background: $footer-background; }
     BottomBar > Footer { dock: none; width: auto; max-width: 100%; }
+    BottomBar > Footer > .key-row { width: auto; height: 1; }
     """
 
     def compose(self) -> ComposeResult:
         yield KeyFooter(compact=True)
         yield BrandBar()
+
+    def on_resize(self) -> None:
+        """A narrower or wider window can change whether the keys need a second row (KeyFooter)."""
+        footer = self.query_one(KeyFooter)
+        if not footer._bindings_ready:
+            return
+        if footer.wanted_rows(footer_bindings(self.screen), self.app.size.width) != footer.rows:
+            footer.refresh(recompose=True)

@@ -221,6 +221,7 @@ class Preflight:
         self._checking = checking
         if self.is_attached:
             self._checking_changed()
+            self.app.refresh_bindings()  # s and h are off while the check runs (WowToolsApp.help_allowed)
 
     def run_preflight(self, check: WowCheck, then: Callable[[list[str] | None, Any], None],
                       extra: Callable[[], Any] | None = None) -> None:
