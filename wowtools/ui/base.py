@@ -93,9 +93,23 @@ class Ka0sApp(App):
     def __init__(self, cfg: Config, *, check_updates: bool = True) -> None:
         super().__init__()
         self.cfg = cfg
-        self.busy = False
+        self._busy = False
         self._check_updates = check_updates
         self._rechecking = False  # `u` is re-checking GitHub before it offers the update
+
+    @property
+    def busy(self) -> bool:
+        """A long job runs (a clean, an undo, an update): quitting and settings wait for it."""
+        return self._busy
+
+    @busy.setter
+    def busy(self, value: bool) -> None:
+        # The footer lists `s` only when settings are allowed (WowToolsApp.check_action): refresh it on a change,
+        # not only at the next screen change.
+        changed = value != self._busy
+        self._busy = value
+        if changed and self.is_running:
+            self.refresh_bindings()
 
     def on_mount(self) -> None:
         self.register_theme(KA0S_THEME)

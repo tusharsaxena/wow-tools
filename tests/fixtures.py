@@ -180,7 +180,8 @@ class TuiTestCase(unittest.IsolatedAsyncioTestCase):
 async def settle(app, pilot, timeout: float = 10.0) -> None:
     """Wait until background workers are done and the screen has drawn what they produced. One pause after
     `wait_for_complete()` is not always enough on a slow machine (CI on Windows): a worker may not have started
-    yet, or a list rebuild scheduled with `call_after_refresh` may still be pending."""
+    yet, or a list rebuild scheduled with `call_after_refresh` may still be pending. Past `timeout` it fails,
+    naming what was still busy: a state that never settles (a footer left stale) must not pass as settled."""
     deadline = time.monotonic() + timeout
     stale_footer = False
     while True:
@@ -188,12 +189,16 @@ async def settle(app, pilot, timeout: float = 10.0) -> None:
         await pilot.pause()
         footer = _footers_stale(app)
         stale_footer = stale_footer or footer
-        busy = (any(not worker.is_finished for worker in app.workers)
-                or getattr(app.screen, "_rebuild_pending", False) or footer or _messages_pending(app))
-        if not busy or time.monotonic() > deadline:
+        busy = {"workers": any(not worker.is_finished for worker in app.workers),
+                "rebuild": getattr(app.screen, "_rebuild_pending", False), "footer": footer,
+                "messages": _messages_pending(app)}
+        if not any(busy.values()):
             if stale_footer:
                 await pilot.pause()  # the footer just recomposed: let the screen draw it
             return
+        if time.monotonic() > deadline:
+            raise AssertionError(f"settle() timed out after {timeout}s on {type(app.screen).__name__}; still busy: "
+                                 + ", ".join(name for name, on in busy.items() if on))
 
 
 def _messages_pending(app) -> bool:

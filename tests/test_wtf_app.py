@@ -39,6 +39,7 @@ from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.widgets import ButtonRow, Ka0sCheckbox, NavHint, action_kind
 
 SIZE = (140, 50)
+REAL_ROOT = r"C:\Program Files (x86)\World of Warcraft"  # the default install's WoW folder
 
 
 class AppTestCase(TuiTestCase):
@@ -845,27 +846,30 @@ class KeyboardNavigationTest(AppTestCase):
                             rows["Cleaned files zip"])
             self.assertEqual(rows["Backup folder"], to_stored(self.backup_dir))
             journal = app.screen.result.journal_path
-            # The journal is in <WoW>/wow-tools/wtf-cleaner/journal, not in this backup folder: its whole path,
-            # with the Undo note on a row of its own.
+            # The journal is in <WoW>/wow-tools/wtf-cleaner/journal, not in this backup folder: a row for its
+            # folder, then its name with the Undo note.
             self.assertFalse(journal.is_relative_to(self.backup_dir))
-            self.assertEqual(rows["Run journal"], to_stored(journal))
-            self.assertEqual(rows[""], "(Undo last clean, on the review, puts them back)")
+            self.assertEqual(rows["Journal folder"], to_stored(journal.parent))
+            self.assertEqual(rows["Run journal"], f"{journal.name} (Undo last clean, on the review, puts them back)")
             self.assertEqual(rows["Post-clean check"], "passed")
 
     def test_multi_summary_names_the_journal_by_where_it_is(self):
-        """Several flavors: the run journal's row names it inside the backup folder when it is there, else whole."""
+        """Several flavors: the run journal's row names it inside the backup folder when it is there, else a row
+        names its folder and the next its file."""
         from wowtools.core.install import Flavor
         from wowtools.tools.wtf_cleaner.multi import FlavorRun, MultiCleanResult
         from wowtools.tools.wtf_cleaner.result_screen import multi_summary_rows
         flavor = Flavor("_retail_", self.root / "_retail_")
         journal = self.root / "wow-tools" / "wtf-cleaner" / "journal" / "journal-20261004-153304.jsonl"
-        for folder, expected in ((self.backup_dir, to_stored(journal)),
-                                 (self.root / "wow-tools" / "wtf-cleaner", str(Path("journal", journal.name)))):
+        for folder, expected in (
+                (self.backup_dir, [("Journal folder", to_stored(journal.parent), False),
+                                   ("Run journal", journal.name, False)]),
+                (self.root / "wow-tools" / "wtf-cleaner", [("Run journal", str(Path("journal", journal.name)), False)])):
             clean = CleanResult(dry_run=False, backup_path=folder / "cleaned" / "cleaned-retail-x.zip",
                                 journal_path=journal)
             result = MultiCleanResult(dry_run=False, runs=[FlavorRun(flavor, [], result=clean)], journal_path=journal)
             rows = multi_summary_rows(result)
-            self.assertEqual(rows[0], ("Run journal", expected, False))  # on top, before the flavor's block
+            self.assertEqual(rows[:len(expected)], expected)  # on top, before the flavor's block
 
     async def test_real_clean_result_names_the_journal_inside_the_default_backup_folder(self):
         """With no backup folder set, the default one (<WoW>/wow-tools/wtf-cleaner) holds journal/: the journal
@@ -906,8 +910,8 @@ class KeyboardNavigationTest(AppTestCase):
             self.assert_reasons_shown_whole(app.screen.query_one("#result-files", DataTable))
 
     async def test_real_clean_result_summary_fits_at_base(self):
-        """At 120x30 a clean's summary shows every row, each value whole (no scrolling either way; a long temp
-        path may push the journal's path past the edge)."""
+        """At 120x30 a clean's summary shows every row, each value whole (no scrolling either way), with room to
+        spare for a WoW folder as long as the default install's."""
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
             await self.open_review(app, pilot)
@@ -918,14 +922,17 @@ class KeyboardNavigationTest(AppTestCase):
             await settle(app, pilot)
             self.assertIsInstance(app.screen, ResultScreen)
             summary = app.screen.query_one("#result-summary", DataTable)
-            self.assertEqual(summary.row_count, 11)  # the journal's whole path, then the Undo note
-            # Only the journal's path may be wider than the screen, by its temp folder's length (native Windows:
-            # C:\Users\<name>\AppData\Local\Temp\tmpXXXX\World of Warcraft\..., #8); every other value fits whole.
-            values = [summary.get_row_at(row)[1].plain for row in range(summary.row_count)]
-            journal = next(value for value in values if value.endswith(".jsonl"))
-            others = max(len(value) for value in values if value != journal)
-            self.assertLessEqual(summary.max_scroll_x, max(0, len(journal) - others))
-            self.assertEqual(summary.max_scroll_y, 1 if summary.max_scroll_x else 0)  # the scrollbar's row
+            self.assertEqual(summary.row_count, 11)  # the journal's folder, then its name with the Undo note
+            # A real install's folder: the widest value (the journal's folder) grows by how much longer it is than
+            # this temp one. Native Windows' temp root is longer (C:\Users\<name>\AppData\Local\Temp\..., #8): the
+            # widest value may pass the edge by that excess only.
+            grow = len(REAL_ROOT) - len(to_stored(self.root))
+            if grow >= 0:
+                self.assertEqual((summary.max_scroll_x, summary.max_scroll_y), (0, 0))
+                spare = summary.scrollable_content_region.width - summary.virtual_size.width
+                self.assertGreaterEqual(spare, grow, (spare, grow))
+            else:
+                self.assertLessEqual(summary.max_scroll_x, -grow)
 
     async def test_setup_and_settings_keyboard_only(self):
         cfg = Config(self.tmp / "fresh" / "wow-tools.cfg")
@@ -1696,8 +1703,9 @@ class UndoLastCleanTest(AppTestCase):
                 self.assertIsInstance(app.screen, ResultScreen)
                 rows = app.screen.summary_rows()
                 at = [item for item, _ in rows].index("Run journal")
-                # the journal is outside this backup folder: its whole path, the Undo note on the next row
-                self.assertIn("Undo last clean, on the review", rows[at + 1][1])
+                # the journal is outside this backup folder: its folder on the row before, the Undo note with it
+                self.assertEqual(rows[at - 1][0], "Journal folder")
+                self.assertIn("Undo last clean, on the review", rows[at][1])
                 review = await self.back_to_review(app, pilot)
                 self.assertFalse(review.query_one("#btn-undo", Button).disabled)
                 await pilot.press("z")

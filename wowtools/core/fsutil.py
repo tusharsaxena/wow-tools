@@ -5,6 +5,7 @@ import errno
 import os
 import stat
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -15,10 +16,27 @@ _NO_HARDLINK = {errno.EPERM, errno.EACCES, errno.ENOTSUP, errno.EOPNOTSUPP, errn
 _LINK_TAGS = (0xA000000C, 0xA0000003)
 
 
+# Waits (seconds) between tries of the replace while another program holds the target open: on Windows os.replace
+# then raises PermissionError (an antivirus scan, an editor or a sync client reading the file; #8's stress run hit
+# it). Elsewhere a held file is replaced at once, so it is tried once.
+REPLACE_RETRY_WAITS = (0.02, 0.05, 0.1, 0.2, 0.4) if os.name == "nt" else ()
+
+
+def _replace_retrying(partial: Path, path: Path) -> None:
+    for wait in REPLACE_RETRY_WAITS:
+        try:
+            os.replace(partial, path)
+            return
+        except PermissionError:
+            time.sleep(wait)
+    os.replace(partial, path)
+
+
 def atomic_write_bytes(path: Path, data: bytes) -> None:
     """Write data to path so a reader (or the next start, after a crash) sees either the old file or the new one,
     never a truncated mix: write <name>.partial next to it, then os.replace it over the target. If the write or
-    the replace fails, the original file is untouched and the partial is removed.
+    the replace fails, the original file is untouched and the partial is removed. On Windows a replace refused
+    because another program holds the target open is tried again for about a second (REPLACE_RETRY_WAITS).
 
     Whatever already sits at <name>.partial (a stale partial, or a symlink or junction) is removed first, never
     followed, and the partial is then created exclusively, so the bytes can never land outside the folder."""
@@ -32,7 +50,7 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
         with os.fdopen(os.open(partial, flags, 0o666), "wb") as handle:
             handle.write(data)
-        os.replace(partial, path)
+        _replace_retrying(partial, path)
     except BaseException:
         try:
             partial.unlink()

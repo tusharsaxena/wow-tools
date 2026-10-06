@@ -83,3 +83,13 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
   NTFS-native and ext4 showed none). Not fixed: the app never reads its config while saving it; recorded here.
   On native Windows a replace while a reader holds the file open raises PermissionError (253/500 in the stress),
   as the M2 skip note already says. Temp copy removed afterwards.
+  I5 review: 5 findings, 5 fixed, 0 rejected: (1+4, one defect) the journal row overflowed at 120x30 for a real
+  install too (the default `C:\Program Files (x86)\World of Warcraft\...\journal-<stamp>.jsonl` is 100 chars):
+  a journal outside the backup folder now gets a "Journal folder" row plus a "Run journal" row with its name and
+  the Undo note (one-flavor and multi-flavor summaries); the test is strict (0, 0) again and also requires spare
+  width for a root as long as the default install's, allowing overflow only by a longer temp root's excess over it;
+  (2+5) `settle()` now fails at its deadline naming what was still busy, and the stale footer it found was a real
+  glitch: `Ka0sApp.busy` is now a property whose change refreshes the bindings (the footer showed `s` while busy
+  until the next screen change); (3) `atomic_write_bytes` retries `os.replace` on PermissionError on Windows for
+  about a second (`REPLACE_RETRY_WAITS`), 3 tests. drvfs readers seeing ENOENT mid-replace stays reader-side and
+  unfixed (recorded above).
