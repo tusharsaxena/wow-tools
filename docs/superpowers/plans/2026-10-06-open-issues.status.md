@@ -10,7 +10,7 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
 | I4 | #7 | keep user files when pruning update backups | done | db8c687 | `_carry_user_files` before each prune moves user files to `<root>/update-leftovers/<version>/`; failed move keeps the folder; events `update.leftovers_kept`, `update.backup_kept`; 5 new tests (test_updater_apply 37), suite 1327 OK, 2 skipped |
 | I5 | #8 | native Windows checkpoint run | done | 037ef36 | Windows 11 / Python 3.14.3 on NTFS: suite 1330 OK, 64 skipped (6 parallel runs + 1 serial green after 4 test-only fixes); scripted WTF Cleaner happy path on NTFS all passed; WSL suite 1330 OK, 2 skipped |
 | I6 | #9 #10 | review bundle sign-off, merged ledgers | done | 9bdfd07 | reviews/2026-10-04 sign-off table (25 rows) and evidence filled from the review-fixes ledger, "Closed 2026-10-06" lines; 7 ledgers' final rows marked merged (96c3527, 51a3155, 397e0d8, dd8d635 x3, 4c3676e), each hash checked with git log; docs only; suite 1333 OK, 2 skipped; ruff clean |
-| I7 | all | review, push, merge, close issues | done (pushed; awaiting merge go-ahead) | 3ca4c02 | final review fixes 3ca4c02; final gate: suite 1334 OK, 2 skipped; ruff clean; gen_event_docs --check clean; branch pushed to origin/fix/open-issues |
+| I7 | all | review, push, merge, close issues | merged (147b9f1) | 3ca4c02 | final review fixes 3ca4c02; final gate: suite 1334 OK, 2 skipped; ruff clean; gen_event_docs --check clean; branch pushed to origin/fix/open-issues |
 
 ## Decisions taken during the build
 
