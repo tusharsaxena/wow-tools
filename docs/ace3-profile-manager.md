@@ -408,7 +408,7 @@ marker, and Apply stops at the first game version that fails. The WTF backups (`
 | Can I copy a profile to another addon, account or game version? | No. Profiles belong to one addon on one account; copying works within the same addon only. |
 | What's the difference between Dry run and Apply? | A **Dry run** checks every pending change and shows the results without writing anything. **Apply** writes them, after backing everything up. |
 | Can I undo a change from last week? | **Undo last change** only goes back to the most recent change. For an older one, unzip its `edited` zip by hand; see [Where your backups go](#where-your-backups-go). |
-| Does it work on a Mac? | Yes, but the "WoW is running" check can't tell on a Mac, so close WoW yourself first. |
+| Does it work on a Mac? | Yes. The "WoW is running" check works there too, so Apply and Undo wait until you close WoW. |
 
 ## Troubleshooting
 

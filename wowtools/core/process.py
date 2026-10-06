@@ -66,6 +66,9 @@ class WowProcess:
 
 _SEPARATORS = re.compile(r"[\\/]")
 _CANONICAL = {exe.lower(): exe for exe in WOW_EXECUTABLES}
+# The macOS client is an app bundle: <flavor>/World of Warcraft[ Classic][ Beta|Test|PTR].app/Contents/MacOS/<same name>.
+# The Launcher (an old updater) and helper processes are not the game.
+_MAC_CLIENT = re.compile(r"world of warcraft(?: classic)?(?: (?:beta|test|ptr|public test))?")
 # No double quotes: they do not survive Windows command-line quoting reliably. '' is a literal ' in PowerShell.
 _PS_QUERY = ("Get-CimInstance Win32_Process -Filter '" +
              " OR ".join(f"Name=''{exe}''" for exe in WOW_EXECUTABLES) +
@@ -82,6 +85,16 @@ def _detect_platform() -> str:
     return "linux"
 
 
+def wow_name(basename: str) -> str | None:
+    """The one name rule for every platform: the WoW client's display name for an executable's base name, or None.
+    Matches the Windows executables (also under Wine) and the macOS bundle executables, ignoring case."""
+    name = basename.strip()
+    exe = _CANONICAL.get(name.lower())
+    if exe is not None:
+        return exe
+    return name if _MAC_CLIENT.fullmatch(name.lower()) else None
+
+
 def _parse_powershell(output: str) -> list[WowProcess]:
     result = []
     for line in output.splitlines():
@@ -89,7 +102,7 @@ def _parse_powershell(output: str) -> list[WowProcess]:
         if not line:
             continue
         name, _, path = line.partition("|")
-        exe = _CANONICAL.get(name.strip().lower())
+        exe = wow_name(name)
         if exe is not None:
             result.append(WowProcess(exe, path.strip() or None))
     return result
@@ -120,10 +133,42 @@ def _linux_processes(proc_root: Path) -> list[WowProcess] | None:
         except OSError:
             continue
         first = raw.split(b"\0", 1)[0].decode("utf-8", errors="replace")
-        exe = _CANONICAL.get(_SEPARATORS.split(first)[-1].lower()) if first else None
+        exe = wow_name(_SEPARATORS.split(first)[-1]) if first else None
         if exe is not None:
             result.append(WowProcess(exe, first))
     return result
+
+
+def _bundle_path(path: str) -> str:
+    """For an executable inside a macOS app bundle, the bundle's own path (so its parent is the flavor folder)."""
+    parts = path.split("/")
+    for index in range(len(parts) - 1, -1, -1):
+        if parts[index].lower().endswith(".app"):
+            return "/".join(parts[:index + 1])
+    return path
+
+
+def _parse_ps(output: str) -> list[WowProcess]:
+    """Parse `ps -axo comm=`: one executable per line, a full path for apps on macOS, sometimes a bare name."""
+    result = []
+    for line in output.splitlines():
+        command = line.strip()
+        if not command:
+            continue
+        exe = wow_name(_SEPARATORS.split(command)[-1])
+        if exe is not None:
+            result.append(WowProcess(exe, _bundle_path(command) if _SEPARATORS.search(command) else None))
+    return result
+
+
+def _mac_processes(runner) -> list[WowProcess] | None:
+    try:
+        proc = runner(["ps", "-axo", "comm="], capture_output=True, text=True, timeout=5, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return _parse_ps(proc.stdout or "")
 
 
 def running_wow_processes(*, platform: str | None = None, runner=subprocess.run,
@@ -134,6 +179,8 @@ def running_wow_processes(*, platform: str | None = None, runner=subprocess.run,
         return _windows_processes(platform, runner)
     if platform == "linux":
         return _linux_processes(proc_root)
+    if platform == "mac":
+        return _mac_processes(runner)
     return None
 
 

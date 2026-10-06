@@ -14,6 +14,8 @@ The first version: four tools in one app.
   - One app with a tool menu: pick a tool, use it, and come back to the menu when you're done.
   - Works with every installed game version (Retail, Classic, Classic Era, Anniversary, PTR and Beta) on Windows,
     Mac, Linux and WSL.
+  - Notices a running WoW for the game versions you're working on, on every platform (Windows, WSL, Mac and
+    Linux), and warns you or waits before touching files WoW rewrites.
   - Checks for updates and installs them for you.
   - How many backups and journals to keep is one setting for every tool (10 each; 0 backups keeps them all), on
     the first settings screen.

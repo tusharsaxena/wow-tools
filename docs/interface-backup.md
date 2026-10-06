@@ -401,7 +401,7 @@ find them. Undo needs the safety backup in the folder the settings name.
 
 | Question | Answer |
 |----------|--------|
-| Do I need to close WoW first? | For a restore or an undo, yes: WoW rewrites `WTF` when you log out and can lock `Interface` files. For a backup it's better to, since the backup could miss your latest settings, but it's not required. The app warns you either way. On a Mac it can't tell whether WoW is running, so close it yourself. |
+| Do I need to close WoW first? | For a restore or an undo, yes: WoW rewrites `WTF` when you log out and can lock `Interface` files. For a backup it's better to, since the backup could miss your latest settings, but it's not required. The app warns you either way, on Windows, WSL, Mac and Linux. |
 | What exactly is in a backup? | Everything in the game version's `Interface` and `WTF` folders: your addons, their settings, and your own keybindings, macros, chat and UI layout. Links (see [Links and junctions](#links-and-junctions)) are left out. Nothing else from the WoW folder is included. |
 | Is there a Dry run? | No need: a backup only reads your folders. Before a restore, the restore screen lists everything it would remove or change, and nothing happens until you confirm. |
 | How much space do backups take? | It depends on your addons. Addon files and settings are text, so a zip is often a fraction of the folders' size. The backup results show both. The newest 10 per game version are kept, plus a safety backup for each of the last 10 restores; both numbers can be changed in the shared settings. |
