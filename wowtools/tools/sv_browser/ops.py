@@ -22,6 +22,7 @@ shared pipeline skips a file whose bytes changed since).
 from __future__ import annotations
 
 import math
+import re
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -31,7 +32,7 @@ from wowtools.core.events import log_event
 from wowtools.core.luasv import Field, Table, encode_value, key_id
 from wowtools.core.svfiles import SvFile
 from wowtools.tools.sv_browser.model import VALUE, Node, SvDocument, key_text
-from wowtools.tools.sv_browser.search import Hit, Replacement, number_problem
+from wowtools.tools.sv_browser.search import REPLACE_NUMBER, Hit, Replacement, number_problem, parse_replacement
 
 TypedPath = tuple  # luasv.key_id of each key, the top-level name first
 
@@ -46,6 +47,7 @@ NOT_LOADED = "The file is not loaded."
 CHANGED = "The file changed since its edits were staged; rescan."
 NOTHING_STAGED = "Nothing is staged on it."
 EMPTY_KEY = "A key can't be empty."
+_NUMBER_START = re.compile(r"[-.\d]")
 
 # Why a ticked hit is left out of a plan (DroppedHit.reason).
 HAS_STAGED_EDIT = "its value has a staged edit (the staged edit wins)"
@@ -138,6 +140,38 @@ def value_problem(value: object) -> str | None:
         problem = number_problem(value)
         return f"Can't use {value!r}: {problem}." if problem else None
     return "A value must be a string, a number or a boolean."
+
+
+def _same_value(value: object, old: object) -> bool:
+    """True when value is the value already there, by Lua identity (12.0 is 12; "12", 12 and true differ), however
+    it is written."""
+    if old is None or not isinstance(old, (str, int, float)) or not isinstance(value, (str, int, float)):
+        return False  # nil, or a raw number (1.#INF) Python can't hold
+    return key_id(value) == key_id(old) and (not isinstance(value, float) or value == old)
+
+
+def parse_key(text: str) -> object:
+    """A key typed as the tree shows it (model.key_text): `[5]`, `[2.5]`, `[true]`, `[false]` are a number or a
+    boolean key; `["…"]` is the string between the quotes, as typed (no escapes); anything else is a string key, as
+    typed. A number must read back as itself (search.parse_replacement). Raises ValueError for the user."""
+    if len(text) >= 4 and text.startswith('["') and text.endswith('"]'):
+        return text[2:-2]
+    if text == '[""]':
+        return ""
+    if len(text) >= 2 and text.startswith("[") and text.endswith("]"):
+        inner = text[1:-1].strip()
+        if inner in ("true", "false"):
+            return inner == "true"
+        if inner and _NUMBER_START.match(inner):
+            return parse_replacement(REPLACE_NUMBER, inner)
+    return text
+
+
+def key_input(key: object) -> str:
+    """A key as parse_key reads it back (the rename popup's starting text)."""
+    if isinstance(key, str):
+        return f'["{key}"]' if key == "" or parse_key(key) != key or type(parse_key(key)) is not str else key
+    return key_text(key)
 
 
 @dataclass
@@ -256,39 +290,61 @@ class Staging:
             edits[own] = edit
         return new_duplicates(parent.value.fields, edits)
 
-    def set_value(self, doc: SvDocument, node: Node, value: Replacement) -> OpResult:
-        problem = self._refused(doc, node) or (None if node.can_edit_value else NOT_A_VALUE) \
+    def set_problem(self, doc: SvDocument, node: Node, value: object) -> str | None:
+        """Why set_value would refuse value on node, or None (stages nothing)."""
+        return self._refused(doc, node) or (None if node.can_edit_value else NOT_A_VALUE) \
             or value_problem(value) or (INSIDE_DELETE if self.deleted_above(doc, node) else None)
+
+    def set_value(self, doc: SvDocument, node: Node, value: Replacement) -> OpResult:
+        problem = self.set_problem(doc, node, value)
         if problem:
             return OpResult(False, problem)
         current = self._current(doc, node)
-        same = encode_value(value) == doc.data[node.value.start:node.value.end]
+        same = _same_value(value, node.value.value) or encode_value(value) == doc.data[node.value.start:node.value.end]
         edit = replace(current, set_value=not same, value=None if same else value)
         self._put(doc, node, edit, "set")
         return OpResult(True, "unchanged" if same else "")
 
-    def rename(self, doc: SvDocument, node: Node, new_key: object) -> OpResult:
+    def rename_problem(self, doc: SvDocument, node: Node, new_key: object) -> str | None:
+        """Why rename would refuse new_key on node, or None (stages nothing)."""
         problem = self._refused(doc, node)
         if problem is None and not node.can_rename:
             problem = TOP_LEVEL if node.top_level else ARRAY_RENAME
         problem = problem or key_problem(new_key) or (INSIDE_DELETE if self.deleted_above(doc, node) else None)
         if problem:
-            return OpResult(False, problem)
-        current = self._current(doc, node)
-        same = key_id(new_key) == key_id(node.key)
-        edit = replace(current, rename=not same, new_key=None if same else new_key)
-        clash = self._clash(doc, node, edit)
-        if clash:
-            return OpResult(False, f"The table already has the key {key_text(clash[0][1])}.")
-        self._put(doc, node, edit, "rename")
-        return OpResult(True, "unchanged" if same else "")
+            return problem
+        clash = self._clash(doc, node, self._renamed(doc, node, new_key))
+        return f"The table already has the key {key_text(clash[0][1])}." if clash else None
 
-    def delete(self, doc: SvDocument, node: Node) -> OpResult:
+    def _renamed(self, doc: SvDocument, node: Node, new_key: object) -> FieldEdit:
+        same = key_id(new_key) == key_id(node.key)
+        return replace(self._current(doc, node), rename=not same, new_key=None if same else new_key)
+
+    def rename(self, doc: SvDocument, node: Node, new_key: object) -> OpResult:
+        problem = self.rename_problem(doc, node, new_key)
+        if problem:
+            return OpResult(False, problem)
+        edit = self._renamed(doc, node, new_key)
+        self._put(doc, node, edit, "rename")
+        return OpResult(True, "" if edit.rename else "unchanged")
+
+    def delete_problem(self, doc: SvDocument, node: Node) -> str | None:
+        """Why delete would refuse node, or None (stages nothing)."""
         problem = self._refused(doc, node)
         if problem is None and not node.can_delete:
             problem = TOP_LEVEL
         if problem is None and node.parent is not None and self.deleted_above(doc, node.parent):
             problem = INSIDE_DELETE
+        return problem
+
+    def staged_inside(self, doc: SvDocument, node: Node) -> int:
+        """Edits staged below node (a delete of node drops them)."""
+        stage = self._stage(doc)
+        typed = typed_path(node.path)
+        return sum(1 for t in (stage.edits if stage else ()) if len(t) > len(typed) and t[:len(typed)] == typed)
+
+    def delete(self, doc: SvDocument, node: Node) -> OpResult:
+        problem = self.delete_problem(doc, node)
         if problem:
             return OpResult(False, problem)
         stage = self._stage(doc, create=True)

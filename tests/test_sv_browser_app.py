@@ -210,7 +210,8 @@ class SvBrowseViewTest(SvBrowserTestBase):
             self.assertEqual([(b.label_text, b.shortcut, action_kind(b))
                               for b in review.query_one("#tree-actions").query(Button)],
                              [("Edit value", "e", "overwrite"), ("Rename key", "k", "overwrite"),
-                              ("Delete key", "d", "destructive"), ("View", "v", "navigate")])
+                              ("Delete key", "d", "destructive"), ("Unstage", "backspace", "cancel"),
+                              ("View", "v", "navigate")])
             controls = [w for w in pane.query("*") if w.focusable and review.query_one("#actions") not in w.ancestors]
             rows = [w.region.y for w in controls]
             self.assertEqual(len(rows), len(set(rows)))

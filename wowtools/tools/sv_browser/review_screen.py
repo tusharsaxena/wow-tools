@@ -27,9 +27,11 @@ from wowtools.core.sv_apply import Marker
 from wowtools.core.svfiles import SvFile
 from wowtools.core.text import human_size, plural
 from wowtools.tools.sv_browser.journal import latest_undoable, resolve_journal_dir
-from wowtools.tools.sv_browser.model import ERROR, MORE, Node, SvDocument, key_text, node_text
-from wowtools.tools.sv_browser.ops import Staging, typed_path
+from wowtools.tools.sv_browser.model import ERROR, MORE, Node, SvDocument, key_text, node_text, scalar_text
+from wowtools.tools.sv_browser.ops import FieldEdit, Staging, key_input, parse_key, path_text, typed_path
+from wowtools.tools.sv_browser.popups import NOT_TYPABLE, EditValueScreen, RenameKeyScreen, delete_confirm
 from wowtools.tools.sv_browser.scanner import FlavorFiles, ScanResult, scan_flavors
+from wowtools.tools.sv_browser.search import REPLACE_BOOLEAN, REPLACE_NUMBER, REPLACE_STRING
 from wowtools.tools.sv_browser.settings import load_settings, resolve_root
 from wowtools.tools.sv_browser.undo import pending_recovery
 from wowtools.ui.branding import BottomBar
@@ -52,9 +54,12 @@ TREE_ACTIONS = (
     ("act-edit", "Edit value", "overwrite", "edit_value", "e"),
     ("act-rename", "Rename key", "overwrite", "rename_key", "k"),
     ("act-delete", "Delete key", "destructive", "delete_key", "d"),
+    ("act-unstage", "Unstage", "cancel", "unstage", "backspace"),
     ("act-view", "View", "navigate", "switch_view", "v"),
 )
-LATER = "{} comes in the next build of this tool."  # an action not wired yet (plan T3.2-T3.4)
+LATER = "{} comes in the next build of this tool."  # an action not wired yet (plan T3.3-T3.4)
+# The marks of a staged key (D12), after its label: its new name, its new value, or deleted.
+RENAME_MARK, VALUE_MARK, DELETE_MARK = "→", "✎", "✗ deleted"
 
 
 def ident(data) -> Hashable:
@@ -117,6 +122,7 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         Binding("e", "edit_value", "Edit value", show=False),
         Binding("k", "rename_key", "Rename key", show=False),
         Binding("d", "delete_key", "Delete key", show=False),
+        Binding("backspace", "unstage", "Unstage", show=False),
         Binding("v", "switch_view", "View", show=False),
         Binding("f", "leave('flavors')", "Flavors"),
         Binding("t", "leave('tools')", "Tools"),
@@ -231,10 +237,13 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         self.query_one("#btn-dry-run", Button).disabled = not idle or not self.pending
         self.query_one("#btn-rescan", Button).disabled = not idle
         self.query_one("#btn-undo", Button).disabled = not idle or self.undoable is None
-        node = self.highlighted_key()
-        self.query_one("#act-edit", Button).disabled = not idle or node is None or not node.can_edit_value
-        self.query_one("#act-rename", Button).disabled = not idle or node is None or not node.can_rename
-        self.query_one("#act-delete", Button).disabled = not idle or node is None or not node.can_delete
+        doc, node = self.highlighted()
+        off = not idle or node is None
+        self.query_one("#act-edit", Button).disabled = off or self.staging.set_problem(doc, node, "") is not None
+        self.query_one("#act-rename", Button).disabled = off or \
+            self.staging.rename_problem(doc, node, node.key) is not None
+        self.query_one("#act-delete", Button).disabled = off or self.staging.delete_problem(doc, node) is not None
+        self.query_one("#act-unstage", Button).disabled = off or self.staging.edit_for(doc, node) is None
         self.query_one("#act-view", Button).disabled = self.hits is None
 
     def ticks_frozen(self) -> bool:
@@ -523,7 +532,24 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         text = node_text(node, doc.data if doc is not None else None)
         if node.kind == ERROR:
             return Text(text, style=error)
-        return Text(text, style="dim" if node.kind == MORE else "")
+        if node.kind == MORE:
+            return Text(text, style="dim")
+        edit = self.staging.edit_for(doc, node) if doc is not None else None
+        if edit is None:
+            return Text(text, style="dim strike" if doc is not None and self.staging.deleted_above(doc, node) else "")
+        return Text.assemble(text, *self._marks(edit))
+
+    def _marks(self, edit: FieldEdit) -> list[tuple[str, str]]:
+        """What is staged on a key, after its label (D12): `→ new name`, `✎ new value`, `✗ deleted`."""
+        if edit.delete:
+            return [(f"  {DELETE_MARK}", f"bold {theme_colour(self.app, 'error')}")]
+        style = f"bold {theme_colour(self.app, 'warning')}"
+        marks = []
+        if edit.rename:
+            marks.append((f"  {RENAME_MARK} {key_text(edit.new_key)}", style))
+        if edit.set_value:
+            marks.append((f"  {VALUE_MARK} {scalar_text(edit.value)}", style))
+        return marks
 
     def _label(self, data) -> Text:
         if data is None:
@@ -535,6 +561,16 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         self._update_summary()
 
     # --- the highlighted node ------------------------------------------------------------------------
+    def highlighted(self) -> tuple[SvDocument | None, Node | None]:
+        """The document and model node of the highlighted key ((None, None) on a group, a file or nothing)."""
+        if not self.is_attached:
+            return None, None
+        node = self.query_one("#browse", Tree).cursor_node
+        data = node.data if node is not None else None
+        if data is None or data[0] != "node" or data[1].path not in self.docs:
+            return None, None
+        return self.docs[data[1].path], data[2]
+
     def highlighted_key(self) -> Node | None:
         """The model node of the highlighted key (None on a group, a file or nothing)."""
         if not self.is_attached:
@@ -638,20 +674,88 @@ class SvReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         if self.idle and self.undoable is not None:
             self._later("Undo")
 
-    def _key_action(self, allowed: Callable[[Node], bool], what: str) -> None:
-        node = self.highlighted_key()
-        if not self.idle or node is None or not allowed(node):
+    def _key_target(self, problem: Callable[[SvDocument, Node], str | None]) -> tuple[SvDocument, Node] | None:
+        """The highlighted key, when the action may act on it; else None, saying why when the staging refuses it
+        (inside a deleted table, ...)."""
+        doc, node = self.highlighted()
+        if not self.idle or doc is None or node is None:
+            return None
+        why = problem(doc, node)
+        if why is not None:
+            self.notify(why, severity="warning")
+            return None
+        return doc, node
+
+    def _where_key(self, doc: SvDocument, node: Node) -> str:
+        return f"{doc.file.path.name} › {path_text(node.path)}"
+
+    def _staged(self, result, what: str) -> None:
+        """After a staging call: the marks and the pending line, or the refusal."""
+        if not result.ok:
+            self.notify(result.message, title=f"{what} refused", severity="error")
             return
-        self._later(what)
+        if result.dropped:
+            self.notify(f"{plural(result.dropped, 'edit')} staged inside it dropped.")
+        self._refresh_labels()
 
     def action_edit_value(self) -> None:
-        self._key_action(lambda node: node.can_edit_value, "Edit value")
+        target = self._key_target(lambda doc, node: self.staging.set_problem(doc, node, ""))
+        if target is None:
+            return
+        doc, node = target
+        old = node.value.value
+        raw = doc.data[node.value.start:node.value.end]
+        kind, text, note = REPLACE_STRING, "", ""
+        if isinstance(old, bool):
+            kind = REPLACE_BOOLEAN
+        elif isinstance(old, str):
+            if any(c < " " or c == "\x7f" or "\udc80" <= c <= "\udcff" for c in old):
+                note = NOT_TYPABLE
+            else:
+                text = old
+        elif old is not None:
+            kind, text = REPLACE_NUMBER, raw.decode("ascii", "replace")
+        popup = EditValueScreen(self._where_key(doc, node), scalar_text(old, raw), kind, text, old is True,
+                                check=lambda value: self.staging.set_problem(doc, node, value), note=note)
+
+        def done(value) -> None:
+            if value is not None:
+                self._staged(self.staging.set_value(doc, node, value), "Edit value")
+        self.app.push_screen(popup, done)
 
     def action_rename_key(self) -> None:
-        self._key_action(lambda node: node.can_rename, "Rename key")
+        target = self._key_target(lambda doc, node: self.staging.rename_problem(doc, node, node.key))
+        if target is None:
+            return
+        doc, node = target
+        edit = self.staging.edit_for(doc, node)
+        current = edit.new_key if edit is not None and edit.rename else node.key
+
+        def done(text) -> None:
+            if text is not None:
+                self._staged(self.staging.rename(doc, node, parse_key(text)), "Rename key")
+        self.app.push_screen(RenameKeyScreen(self._where_key(doc, node), key_input(current),
+                                             lambda key: self.staging.rename_problem(doc, node, key)), done)
 
     def action_delete_key(self) -> None:
-        self._key_action(lambda node: node.can_delete, "Delete key")
+        target = self._key_target(self.staging.delete_problem)
+        if target is None:
+            return
+        doc, node = target
+        popup = delete_confirm(self._where_key(doc, node), count=node.count, table=node.is_table,
+                               positional=node.positional, staged_inside=self.staging.staged_inside(doc, node))
+
+        def done(ok: bool | None) -> None:
+            if ok:
+                self._staged(self.staging.delete(doc, node), "Delete key")
+        self.app.push_screen(popup, done)
+
+    def action_unstage(self) -> None:
+        """Backspace: drop what is staged on the highlighted key."""
+        doc, node = self.highlighted()
+        if not self.idle or doc is None or node is None or self.staging.edit_for(doc, node) is None:
+            return
+        self._staged(self.staging.unstage(doc, node), "Unstage")
 
     def action_switch_view(self) -> None:
         """v: Browse and Results (the Results view comes with the search, plan T3.3)."""

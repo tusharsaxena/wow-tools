@@ -23,11 +23,15 @@ edit a value, rename a key, delete a key, or find and replace values in bulk.
    opening a table shows its keys (a table with more than 500 shows the first 500 and how many more). A file that is
    not readable Lua shows in red and is never changed.
 4. The buttons under the tree act on the highlighted key: **Edit value** (a string, number or boolean),
-   **Rename key**, **Delete key**, and **View** switches between browsing and the search results. In the left pane:
-   **Search** (find and replace in bulk), **Apply** writes what is staged, **Dry run** checks it without writing,
-   **Rescan** reads the files again and **Undo last change** puts back the last Apply.
+   **Rename key** (`[5]` or `[true]` makes a number or boolean key), **Delete key** (a whole table goes with its
+   key; deleting an array entry moves the entries after it down), **Unstage** drops what is staged on the key, and
+   **View** switches between browsing and the search results. Nothing is written yet: a staged key shows its new
+   value (✎), its new name (→) or ✗ deleted, and the left pane counts what is staged.
+5. In the left pane: **Search** (find and replace in bulk), **Apply** writes what is staged, **Dry run** checks it
+   without writing, **Rescan** reads the files again and **Undo last change** puts back the last Apply. Leaving or
+   rescanning with something staged asks first.
 
-This build of the tool browses only: editing, search and the runs come in the next build.
+Search, Apply, Dry run and Undo come in the next build of the tool.
 
 ## Keys
 

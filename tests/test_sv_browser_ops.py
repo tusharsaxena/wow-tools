@@ -118,6 +118,66 @@ class SetValueTest(StagingTestBase):
         self.assertEqual(events[0]["data"]["key"], "ElvDB › profiles › Default › general › font")
 
 
+    def test_an_equal_value_written_differently_stages_nothing(self):
+        doc = self.doc("Details.lua")
+        node = self.node(doc, "_detalhes_global", "tooltip", "text")  # written with \\226\\128\\148
+        self.assertNotEqual(ops.encode_value(node.value.value), doc.data[node.value.start:node.value.end])
+        result = self.staging.set_value(doc, node, node.value.value)
+        self.assertEqual((result.ok, result.message), (True, "unchanged"))
+        self.assertIsNone(self.staging.edit_for(doc, node))
+        _, scale = self.elv("general", "fontSize")
+        self.assertTrue(self.staging.set_value(doc, scale, 12.0).ok)  # 12.0 is the number 12 in Lua
+        self.assertIsNone(self.staging.edit_for(doc, scale))
+        self.assertTrue(self.staging.set_value(doc, scale, "12").ok)  # a string is not the number
+        self.assertIsNotNone(self.staging.edit_for(doc, scale))
+
+
+class ProblemTest(StagingTestBase):
+    """set_problem / rename_problem / delete_problem say what set_value / rename / delete would refuse, staging
+    nothing (the popups check with them)."""
+
+    def test_problems_match_the_refusals_and_stage_nothing(self):
+        doc, font = self.elv("unitframe", "Font")
+        self.assertIsNone(self.staging.set_problem(doc, font, "Arial"))
+        self.assertIn("delete", self.staging.set_problem(doc, font, None))
+        self.assertIsNone(self.staging.rename_problem(doc, font, "font"))
+        self.assertIn("already", self.staging.rename_problem(doc, font, "barFont"))
+        self.assertEqual(self.staging.rename_problem(doc, font, ""), ops.EMPTY_KEY)
+        self.assertIsNone(self.staging.delete_problem(doc, font))
+        self.assertEqual(self.staging.count, 0)
+        details = self.doc("Details.lua")
+        self.assertEqual(self.staging.rename_problem(details, self.node(details, "DetailsVersion"), "x"),
+                         ops.TOP_LEVEL)
+        self.assertEqual(self.staging.rename_problem(details, self.node(details, "_detalhes_global", "bars", 1),
+                                                     "x"), ops.ARRAY_RENAME)
+        self.assertEqual(self.staging.delete_problem(details, self.node(details, "DetailsVersion")), ops.TOP_LEVEL)
+        _, unit = self.elv("unitframe")
+        self.staging.delete(doc, unit)
+        self.assertEqual(self.staging.set_problem(doc, font, "x"), ops.INSIDE_DELETE)
+        self.assertEqual(self.staging.rename_problem(doc, font, "x"), ops.INSIDE_DELETE)
+        self.assertEqual(self.staging.delete_problem(doc, font), ops.INSIDE_DELETE)
+
+
+class ParseKeyTest(unittest.TestCase):
+    def test_keys_are_read_as_the_tree_shows_them(self):
+        for text, key in (("font", "font"), ("[5]", 5), ("[-2]", -2), ("[2.5]", 2.5), ("[true]", True),
+                          ("[false]", False), ('["[5]"]', "[5]"), ('[""]', ""), ("[x]", "[x]"), (" a ", " a "),
+                          ("[ 7 ]", 7)):
+            parsed = ops.parse_key(text)
+            self.assertEqual(parsed, key, text)
+            self.assertIs(type(parsed), type(key), text)
+
+    def test_a_bad_number_key_is_refused(self):
+        for text in ("[1e999]", "[0.1000000000000000055511151231257827]"):
+            with self.assertRaises(ValueError):
+                ops.parse_key(text)
+
+    def test_key_input_is_the_inverse_of_parse_key(self):
+        for key in ("font", 5, 2.5, True, False, "[5]", ""):
+            self.assertEqual(ops.parse_key(ops.key_input(key)), key)
+            self.assertIs(type(ops.parse_key(ops.key_input(key))), type(key))
+
+
 class RenameTest(StagingTestBase):
     def test_a_rename_is_staged(self):
         doc, node = self.elv("general", "font")

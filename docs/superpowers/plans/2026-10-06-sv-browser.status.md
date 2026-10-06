@@ -20,7 +20,7 @@ delete every branch, stash and worktree this run created.
 | T2.5 | apply/undo/recovery wiring | done | (this commit) | `editor.py` (`flavor_plan` groups a `Plan` by flavor in plan order, `apply_flavor` = core `apply_flavor` with `compile_file`/`verify_edit` and `started` files+edits, `apply_plan` = core `apply_flavors` under one journal), `journal.py` (`SV_TOOL.journals` wrappers, `read_journal`), `undo.py` (`undo_run`, `recover`, `pending_recovery`, `leave`; core `UndoResult`), `report.py` (`DISCLAIMER`, `apply_confirm`/`undo_confirm` with it as alert lines, `summary_rows`, per-file `file_rows`/`FILE_COLUMNS`) with end-to-end tests on `build_sv_tree` (exact bytes over two flavors, staged+hits in one run, snapshot/originals zip members, journal, keep_journals/keep_backups pruning, dry run, WoW running, D17 skip, verify stop, roll-back, undo byte-identical and changed-since, crash -> marker -> put back / leave, new Apply refused while a marker waits), structure pins extended; no event registry changed; full suite 1566 OK (2 skipped), +26 tests |
 | M2 | push milestone 2 | done (pushed) | 8f642d0 | review fixes: a value of blanks is a needle (`has_value` = non-empty), `luasv.decode_string` reads Lua 5.1 escapes (`\x41` = "x41", `\z` = "z"), the pre-filter takes `\\` pairs out before looking for a hiding escape, `compile.FieldIndex` (dict per table) + verify edits grouped per table (4000 edits: 12 s -> 0.5 s), search keeps about `HIT_CAP` hits at a time (`_Room`: per-file room + trim of searched files), opening a table builds only its shown child tables; full suite 1574 OK (2 skipped) |
 | T3.1 | flow, disclaimer, Browse view | done | (this commit) | `popups.DisclaimerScreen` (warning `ChoiceScreen`, I understand/Back, Esc = Back) once per opening of the tool, `svb.disclaimer_*`/`svb.started` logged, real two-pane `SvReviewScreen` (banner, filter, pending line, Search row + Apply/Dry run/Rescan/Undo row, NavHint; lazy Browse tree loaded in workers with the child cap, red unreadable rows, x to file level, `/` on loaded labels, bar Edit value/Rename key/Delete key/View enabled per D5 flags, leave/rescan with staged edits confirm), `BarTree`/`ActionBar` moved from Ace3 to `ui/review.py`, sv-browser in `test_look_and_feel.TOOLS` with `NO_RUN` (and `test_help.NO_RUN`), `fixtures.accept_disclaimer`; full suite 1586 OK (2 skipped), +12 tests |
-| T3.2 | edit/rename/delete popups, staging UI | todo | | |
+| T3.2 | edit/rename/delete popups, staging UI | done | (this commit) | `popups.py` `EditValueScreen` (type NavSelect string/number/boolean, Input or `Ka0sCheckbox`, `parse_replacement` + staging check inline), `RenameKeyScreen` (shared `TextPromptScreen`, keys typed as the tree shows them via `ops.parse_key`/`key_input`) and `delete_confirm` (destructive, entry count, dropped inner edits, `SHIFT_WARNING` alert) wired to e/k/d; marks `→ name`, `✎ value`, `✗ deleted` (dim strike below a delete), an **Unstage** (Backspace) button on the bar, `ops.Staging.set_problem`/`rename_problem`/`delete_problem`/`staged_inside` and equal-value no-ops; full suite 1607 OK (2 skipped), +21 tests |
 | T3.3 | search popup, Results view | todo | | |
 | T3.4 | apply/dry run/undo/recovery UI, result, help, look-and-feel | todo | | |
 | M3 | push milestone 3 | todo | | |
@@ -283,3 +283,24 @@ delete every branch, stash and worktree this run created.
   sv-browser, with `NO_RUN = {"sv-browser"}` skipping the run/confirm/result legs; `test_help.PLACEHOLDER_REVIEW`
   became `NO_RUN` and the TINY footer is two rows for every tool. T3.4: add `RUN_ACTION`/`PREPARE` and empty both
   `NO_RUN` sets. `help.py` names every review button now (test_help); T3.4 writes the full text.
+- **T3.2** `ops.Staging` gained non-mutating checks `set_problem`, `rename_problem`, `delete_problem` (what
+  `set_value`/`rename`/`delete` would refuse; those now call them) and `staged_inside(doc, node)`. The popups take
+  them as their `check`, so a duplicate key (by `key_id`), an empty key or an inside-a-delete refusal shows inline
+  under the field; the bar's Edit/Rename/Delete enable state uses them too (a key under a staged delete has them off,
+  and e/k/d there notify why). `set_value` also treats a value equal by Lua identity to the one there (`12.0` for
+  `12`, the same string written with other escapes) as "unchanged" (`_same_value`), so OK on an unchanged popup
+  never stages a rewrite.
+- **T3.2** Rename text is read like the tree writes keys (`ops.parse_key`): `[5]`, `[2.5]`, `[true]`/`[false]` are a
+  number or boolean key, `["…"]` the literal string inside (no escapes, so `["[5]"]` is the text `[5]`), anything
+  else a string key as typed; a number key must pass `parse_replacement` (reads back as itself). `ops.key_input`
+  is the inverse (the prompt's starting text; a staged rename starts from the new key).
+- **T3.2** Edit value starts on the current type (nil starts as an empty string): a number shows its written text,
+  a string its text, a boolean the checkbox; a string with control characters or bytes that aren't UTF-8 starts
+  empty with a note (`NOT_TYPABLE`), since an Input can't hold them.
+- **T3.2** Deviation (spec §5 bar): the bar has a fifth button, **Unstage** (`cancel`, key `backspace`, as Ace3's
+  Discard), enabled only on a key with a staged edit (D17: Backspace on a button rather than in the footer/hint).
+  Marks follow the label: `  → new key`, `  ✎ new value` (warning colour, both when renamed and set), `  ✗ deleted`
+  (error colour); keys below a staged delete are dim and struck through. Every staging change relabels the whole
+  tree (`_refresh_labels`) and updates the pending line and buttons.
+- **T3.2** Tests: `tests/test_sv_browser_edit.py` (pilot): two clicks on one button in a row within a test are read
+  as a double click and the second press is lost, so the error-loop cases submit with Enter in the field.
