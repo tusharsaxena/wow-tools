@@ -122,7 +122,8 @@ def _auto_update(cfg: Config) -> bool:
     """Apply an update before the menu opens when auto_update = true. True means 'exit now'."""
     if not (cfg.exists and cfg.check_for_updates and cfg.auto_update):
         return False
-    release = check_for_update(cfg)
+    # Never install from the throttled cache alone: a release deleted since it was seen must not be installed (D16).
+    release = check_for_update(cfg, verify_cached=True)
     if release is None:
         return False
     try:

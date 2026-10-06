@@ -133,13 +133,19 @@ class Ka0sApp(App):
 
     def _check_update(self) -> None:
         """Worker thread. The config is changed and saved on the UI thread only (see _persist_update_state)."""
-        release = check_for_update(self.cfg, persist=lambda values: self.call_from_thread(
+        # verify_cached: a cached version is confirmed with GitHub before it is announced (one request, only
+        # while an update is pending), so a deleted release stops showing at once (D16).
+        release = check_for_update(self.cfg, verify_cached=True, persist=lambda values: self.call_from_thread(
             self._persist_update_state, values))
         if release is not None:
             self.call_from_thread(self._update_found, release)
 
     def _persist_update_state(self, values: dict[str, str]) -> None:
-        persist_check_state(self.cfg, values)
+        # A config file briefly locked (antivirus, an editor) or read-only must not end the app from a check.
+        try:
+            persist_check_state(self.cfg, values)
+        except OSError as exc:
+            log_exception("update", exc)
 
     def _update_found(self, release: ReleaseInfo) -> None:
         self.release = release

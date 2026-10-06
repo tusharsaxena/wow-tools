@@ -147,6 +147,28 @@ class CheckTest(unittest.TestCase):
         self.assertIsNone(check_for_update(self.cfg, current="0.1.0", now=NOW + timedelta(hours=25), fetch=later))
         later.assert_called_once()
 
+    def test_verify_cached_asks_github_before_offering_the_cache(self):
+        """D16: with verify_cached, a cached 1.0.0 that was deleted is neither offered nor kept; the throttle still
+        saves the request when nothing is pending."""
+        self.cfg.set("general", "latest_seen_version", "1.0.0", log=False)
+        self.cfg.set("general", "last_update_check", (NOW - timedelta(hours=1)).isoformat(), log=False)
+        self.cfg.save()
+        gone = Mock(return_value=None)
+        self.assertIsNone(check_for_update(self.cfg, current="0.1.0", now=NOW, fetch=gone, verify_cached=True))
+        gone.assert_called_once()
+        self.assertIsNone(Config(self.cfg.path).load().latest_seen_version)
+        never = Mock(side_effect=AssertionError("must not fetch while throttled with nothing pending"))
+        self.assertIsNone(check_for_update(self.cfg, current="0.1.0", now=NOW + timedelta(hours=1), fetch=never,
+                                           verify_cached=True))
+
+    def test_verify_cached_offers_the_fresh_release(self):
+        self.cfg.set("general", "latest_seen_version", "0.2.0", log=False)
+        self.cfg.set("general", "last_update_check", NOW.isoformat(), log=False)
+        fresh = Mock(return_value=ReleaseInfo("0.3.0", "v0.3.0", "notes", "", "", {}))
+        release = check_for_update(self.cfg, current="0.1.0", now=NOW, fetch=fresh, verify_cached=True)
+        self.assertEqual((release.version, release.notes), ("0.3.0", "notes"))
+        fresh.assert_called_once()
+
     def test_no_release_hands_an_empty_cached_version_to_persist(self):
         handed = []
         check_for_update(self.cfg, current="0.1.0", now=NOW, fetch=lambda: None, persist=handed.append)

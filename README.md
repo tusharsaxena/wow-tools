@@ -3,7 +3,7 @@
 ![Version](https://img.shields.io/badge/Version-0.1.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-yellow)
 ![Platforms](https://img.shields.io/badge/Platforms-Windows_%7C_macOS_%7C_Linux-purple)
-![Tests](https://img.shields.io/badge/Tests-1279%2F1279_passing-green)
+![Tests](https://img.shields.io/badge/Tests-1284%2F1284_passing-green)
 ![License](https://img.shields.io/badge/License-MIT-orange)
 
 Ka0s WoW Tools is a small set of World of Warcraft helpers that run ***outside*** the game and tidy up the files WoW
@@ -183,8 +183,8 @@ Each tool has its own guide, with pictures, that walks through every screen:
 The app checks for a new version once a day while it's open. If there is one, the bottom bar says so (at its right
 end, next to the version you have), and so does the line under the banner on the tool menu; press `u` to install it. On the Ace3 Profile Manager's review `u` unlocks an
 addon, so there (and while a text box has focus, where `u` types the letter) the bar tells you to press `u` on the
-tool menu instead. Pressing `u` asks GitHub again first; if that version has been withdrawn since, the app says
-there is no update and the notice goes away. A small window stays up while it downloads and installs, then the app closes so you can start the
+tool menu instead. Before it tells you about a version, and again when you press `u`, the app asks GitHub; if that version has been
+withdrawn, the app says there is no update and the notice goes away. A small window stays up while it downloads and installs, then the app closes so you can start the
 new version. You can also update from a terminal in the app's folder:
 
 - `wow-tools update --check` (on Windows `wow-tools.cmd update --check`, on Mac and Linux
@@ -264,7 +264,7 @@ If you use WSL (Linux inside Windows), the same folder works from both sides. Ru
 | "Ka0s WoW Tools may already be running" | See *Why does it say another copy may already be running?* in the [FAQ](#faq). |
 | The window looks garbled or too small | Make the terminal window bigger (at least 120 columns by 30 lines; see [Terminal size](#terminal-size)), or use Windows Terminal (the default on Windows 11). |
 | It's very slow on WSL | WSL (Linux inside Windows) is slow at reading files on Windows drives such as `C:` or `G:`: every file takes a moment to check, and a WoW folder has thousands of them. Start the app from Windows instead, by double-clicking `wow-tools.cmd`. It uses the same settings, so nothing needs setting up again. If you stay on WSL, give the first scan time; the progress bar shows it's still working, and set "Game versions to work on at once" to 1 in the general settings (`s` on the tool menu). |
-| The app offers an update to a version that doesn't exist | The release was withdrawn after the app saw it. Press `u`: the app checks again, says there is no update and drops the notice. |
+| The app offers an update to a version that doesn't exist | The release was withdrawn after the app saw it. Restart the app or press `u`: either checks GitHub again, finds no update and drops the notice. |
 | A tool does something unexpected | See the troubleshooting table at the end of that tool's guide. |
 | Something looks wrong and I want to report it | Follow [Reporting a bug](#reporting-a-bug) below. |
 

@@ -8,16 +8,21 @@ import time
 import unittest
 import unittest.mock
 from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import ClassVar
 
 from tests.fixtures import build_wow_tree, make_config
 from wowtools import __version__
 from wowtools.core import activity, events
 from wowtools.core.config import Config
+from wowtools.core.events import capture_events
 from wowtools.core.lock import InstanceLock
-from wowtools.suite import run
+from wowtools.core.updater import ReleaseInfo
+from wowtools.suite import _auto_update, run
 from wowtools.tools import TOOLS
+from wowtools.ui.base import Ka0sApp
 
 
 class FakeApp:
@@ -281,3 +286,42 @@ class SuiteTest(unittest.TestCase):
 def _write_file(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+class AutoUpdateTest(unittest.TestCase):
+    """D16: auto_update never installs from the throttled cache alone."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+        self.cfg = make_config(self.tmp / "config", build_wow_tree(self.tmp / "World of Warcraft"),
+                               check_for_updates="true", auto_update="true", latest_seen_version="9.9.9")
+        recent = datetime.now(timezone.utc) - timedelta(hours=1)
+        self.cfg.set("general", "last_update_check", recent.isoformat(timespec="seconds"), log=False)
+        self.cfg.save()
+
+    def test_deleted_cached_release_is_not_installed_and_is_cleared(self):
+        with unittest.mock.patch("wowtools.core.updater.fetch_latest", return_value=None) as fetch, \
+                unittest.mock.patch("wowtools.suite.apply_update") as apply, capture_events():
+            self.assertFalse(_auto_update(self.cfg))
+        fetch.assert_called_once()
+        apply.assert_not_called()
+        self.assertIsNone(Config(self.cfg.path).load().latest_seen_version)
+
+    def test_a_release_confirmed_by_github_is_installed(self):
+        fresh = ReleaseInfo.from_version("9.9.9")
+        with unittest.mock.patch("wowtools.core.updater.fetch_latest", return_value=fresh), \
+                unittest.mock.patch("wowtools.suite.apply_update", return_value="updated") as apply, \
+                capture_events(), redirect_stdout(io.StringIO()):
+            self.assertTrue(_auto_update(self.cfg))
+        apply.assert_called_once_with(fresh, allow_unverified=False)
+
+
+class PersistUpdateStateTest(unittest.TestCase):
+    def test_a_config_that_cannot_be_saved_is_logged_not_raised(self):
+        app = SimpleNamespace(cfg=unittest.mock.Mock())
+        with unittest.mock.patch("wowtools.ui.base.persist_check_state", side_effect=PermissionError("locked")), \
+                capture_events() as records:
+            Ka0sApp._persist_update_state(app, {"latest_seen_version": ""})
+        self.assertEqual([r["event"] for r in records], ["error"])
