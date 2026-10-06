@@ -8,7 +8,7 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
 | I2 | #4 | keep_cleaned for cleaned zips | done | 685d44f | `[wtf_cleaner] keep_cleaned` (0 = all), `prune_cleaned_zips`, event `backup.cleaned_pruned`; 8 new tests, suite 1317 OK, 2 skipped |
 | I3 | #5 | per-account enabled addons | done | ff55b8d | `ScanResult.enabled_by_account` + `enabled_for()`, rules judge each group by its account; `build_multi_account_tree` fixture, 5 new tests (PerAccountEnabledTest); suite 1322 OK, 2 skipped |
 | I4 | #7 | keep user files when pruning update backups | done | db8c687 | `_carry_user_files` before each prune moves user files to `<root>/update-leftovers/<version>/`; failed move keeps the folder; events `update.leftovers_kept`, `update.backup_kept`; 5 new tests (test_updater_apply 37), suite 1327 OK, 2 skipped |
-| I5 | #8 | native Windows checkpoint run | todo | | |
+| I5 | #8 | native Windows checkpoint run | done | (this commit) | Windows 11 / Python 3.14.3 on NTFS: suite 1330 OK, 64 skipped (6 parallel runs + 1 serial green after 4 test-only fixes); scripted WTF Cleaner happy path on NTFS all passed; WSL suite 1330 OK, 2 skipped |
 | I6 | #9 #10 | review bundle sign-off, merged ledgers | todo | | |
 | I7 | all | review, push, merge, close issues | todo | | |
 
@@ -66,3 +66,20 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
   dist-info RECORDs cover the frequent case and wowtools/scripts/docs drops stay rare); (2) `_apply_zip` now
   carries user files out of an existing `.update-backup/<current>` (left by reinstalling an older version) before
   deleting it, and stops with UpdateError before touching anything if a move fails. 3 new tests.
+- I5: Windows Python 3.14.3 (`cmd.exe /c py -3`) ran the suite on a `git archive HEAD` copy under
+  `%TEMP%\wow-tools-check-<stamp>` (no config/ or logs). First run: 6 failures, all test faults, none in the
+  product: (1) `settle()` returned before the KeyFooter recomposed (`call_after_refresh`), so tests read an empty
+  footer or laid out the menu before the footer's row count changed: `settle` now also waits while a visible
+  KeyFooter (top screen, and the screen under popups) has not composed, lists other keys than `footer_bindings`,
+  or has keys not mounted and laid out; (2) it now also waits while the app or a widget of the top screen has
+  queued messages (a rebuild's NodeExpanded was handled after the check under 16-shard load); (3) the pre-1970
+  backup test used FILETIME 0, which SetFileTime takes as "leave unchanged": it now uses one day later and skips
+  if the stat does not show a negative time; (4) the 120x30 result-summary check now lets only the journal's path
+  overflow, by no more than its excess over the other values (a long Windows temp path). Linux suite time
+  unchanged (~55 s on drvfs). The happy-path script stayed a scratch file (CI's windows jobs already run the same
+  core paths through test_wtf_undo/test_cleaner); it ran against a `build_wow_tree` fixture, not a real WTF copy.
+  Observed on drvfs (WSL Python, /mnt/c): `atomic_write_text` never exposed partial content to a concurrent reader,
+  but a reader saw ENOENT 71 times in ~1000 reads during `os.replace` (drvfs replace is not atomic to readers;
+  NTFS-native and ext4 showed none). Not fixed: the app never reads its config while saving it; recorded here.
+  On native Windows a replace while a reader holds the file open raises PermissionError (253/500 in the stress),
+  as the M2 skip note already says. Temp copy removed afterwards.

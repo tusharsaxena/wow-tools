@@ -38,6 +38,7 @@ import unittest
 from unittest import mock
 from pathlib import Path
 
+from textual.screen import ModalScreen
 from textual.widgets._footer import FooterKey
 
 from wowtools.core.config import Config
@@ -181,13 +182,44 @@ async def settle(app, pilot, timeout: float = 10.0) -> None:
     `wait_for_complete()` is not always enough on a slow machine (CI on Windows): a worker may not have started
     yet, or a list rebuild scheduled with `call_after_refresh` may still be pending."""
     deadline = time.monotonic() + timeout
+    stale_footer = False
     while True:
         await app.workers.wait_for_complete()
         await pilot.pause()
+        footer = _footers_stale(app)
+        stale_footer = stale_footer or footer
         busy = (any(not worker.is_finished for worker in app.workers)
-                or getattr(app.screen, "_rebuild_pending", False))
+                or getattr(app.screen, "_rebuild_pending", False) or footer or _messages_pending(app))
         if not busy or time.monotonic() > deadline:
+            if stale_footer:
+                await pilot.pause()  # the footer just recomposed: let the screen draw it
             return
+
+
+def _messages_pending(app) -> bool:
+    """True while the app or a widget of the top screen has messages waiting: a rebuild that expands a tree node
+    posts NodeExpanded, and under load (16 shards on native Windows) the pause above could end before the screen
+    handled it (#8)."""
+    return bool(app.message_queue_size) or any(
+        node.message_queue_size for node in app.screen.walk_children(with_self=True))
+
+
+def _footers_stale(app) -> bool:
+    """True while a KeyFooter the user sees has not composed yet, does not list its screen's footer_bindings or has
+    keys not yet mounted and laid out: the top screen's, and under popups (ModalScreens) the screen beneath them.
+    The footer recomposes through `call_after_refresh` after the bindings change; on native Windows (Python 3.14)
+    that refresh can come after the pause in settle(), and a test read an empty footer (#8). A screen hidden under
+    another full screen keeps a stale footer: not checked."""
+    for screen in reversed(app.screen_stack):
+        wanted = {binding.key for binding, _enabled, _tooltip in footer_bindings(screen)}
+        for footer in screen.query(KeyFooter):
+            keys = list(footer.query(FooterKey))
+            if (not footer._bindings_ready or {key.key for key in keys} != wanted
+                    or not all(key.is_mounted and key.region.width for key in keys)):
+                return True
+        if not isinstance(screen, ModalScreen):
+            return False
+    return False
 
 
 async def footer_keys(screen, pilot, wanted: set[str], timeout: float = 10.0) -> set[str]:

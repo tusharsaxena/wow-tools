@@ -906,7 +906,8 @@ class KeyboardNavigationTest(AppTestCase):
             self.assert_reasons_shown_whole(app.screen.query_one("#result-files", DataTable))
 
     async def test_real_clean_result_summary_fits_at_base(self):
-        """At 120x30 a clean's summary shows every row, each value whole (no scrolling either way)."""
+        """At 120x30 a clean's summary shows every row, each value whole (no scrolling either way; a long temp
+        path may push the journal's path past the edge)."""
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
             await self.open_review(app, pilot)
@@ -918,7 +919,13 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertIsInstance(app.screen, ResultScreen)
             summary = app.screen.query_one("#result-summary", DataTable)
             self.assertEqual(summary.row_count, 11)  # the journal's whole path, then the Undo note
-            self.assertEqual((summary.max_scroll_x, summary.max_scroll_y), (0, 0))
+            # Only the journal's path may be wider than the screen, by its temp folder's length (native Windows:
+            # C:\Users\<name>\AppData\Local\Temp\tmpXXXX\World of Warcraft\..., #8); every other value fits whole.
+            values = [summary.get_row_at(row)[1].plain for row in range(summary.row_count)]
+            journal = next(value for value in values if value.endswith(".jsonl"))
+            others = max(len(value) for value in values if value != journal)
+            self.assertLessEqual(summary.max_scroll_x, max(0, len(journal) - others))
+            self.assertEqual(summary.max_scroll_y, 1 if summary.max_scroll_x else 0)  # the scrollbar's row
 
     async def test_setup_and_settings_keyboard_only(self):
         cfg = Config(self.tmp / "fresh" / "wow-tools.cfg")
