@@ -137,7 +137,7 @@ class EditorTest(unittest.TestCase):
                 atomic_write_bytes(path, data)
                 return
             raise OSError("gone wrong")
-        with patch("wowtools.tools.ace3_profile_manager.editor.restore_original", side_effect=OSError("no")), \
+        with patch("wowtools.core.sv_apply.restore_original", side_effect=OSError("no")), \
                 self.assertRaises(editor.ApplyError) as caught:
             self.apply(write=broken)
         self.assertTrue(caught.exception.files_left)
@@ -149,7 +149,7 @@ class EditorTest(unittest.TestCase):
     def test_marker_write_failure_changes_nothing(self):
         self.stage_two_files()
         before = {p: p.read_bytes() for p in self.flavor.wtf_dir.rglob("*.lua")}
-        with patch("wowtools.tools.ace3_profile_manager.editor.write_marker", side_effect=OSError("no space")), \
+        with patch("wowtools.core.sv_apply.write_marker", side_effect=OSError("no space")), \
                 capture_events() as events, self.assertRaises(editor.ApplyError) as caught:
             self.apply()
         self.assertIn("Nothing was changed", str(caught.exception))
@@ -165,7 +165,7 @@ class EditorTest(unittest.TestCase):
         def spy(root, marker):
             seen.append(marker)
             real(root, marker)
-        with patch("wowtools.tools.ace3_profile_manager.editor.write_marker", spy):
+        with patch("wowtools.core.sv_apply.write_marker", spy):
             self.apply()
         elv = self.key("ElvDB").path
         rel = "WTF/Account/ACCT1/SavedVariables/ElvUI.lua"

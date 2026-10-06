@@ -10,7 +10,7 @@ delete every branch, stash and worktree this run created.
 | T0.1 | branch, spec, plan, ledger | done | (this commit) | user answers 2026-10-06: per-search key toggles, whole/contains value match, values+rename+delete, scope filters + ticked results; same backup/journal/undo set as every tool; name `sv-browser`, display "Saved Variables Browser" |
 | T1.1 | luasv to core + parser surface | done | (this commit) | `luasv.py` git-mv'd to `wowtools/core/` (Ace3 modules + tests switched, `tests/test_ace_luasv.py` -> `tests/test_luasv.py`), added `parse_at`, streaming `iter_scalars`, `encode_value`/`encode_key`/`key_id`, the `-- [n]` remove-span fix and slotted dataclasses; no Ace3 assertion changed; full suite 1357 OK (2 skipped), +23 tests |
 | T1.2 | SvFile/walk/tool_root to core | done | (this commit) | `SvFile`, `sha256_of`, `OWNER_ACCOUNT_WIDE`, `candidate_files`, `under_link` and a generic `walk_sv_files` (filter hook `is_sv_file`/`is_addon_sv_file`) now in `core/svfiles.py`, Ace3 scanner/editor/ops/review/tree_view import them from core, `core.journal.tool_root` adopted by Ace3 `resolve_root` and Interface Backup `resolve_backup_root` (WTF Cleaner kept), structure pin added; no Ace3 assertion changed; full suite 1365 OK (2 skipped), +8 tests |
-| T1.3 | write pipeline, journal, undo to core | todo | | |
+| T1.3 | write pipeline, journal, undo to core | done | (this commit) | Ace3's generic apply/multi/journal/undo/verify/report moved to `core/sv_apply.py`, `sv_journal.py`, `sv_undo.py`, `sv_verify.py`, `sv_report.py` and `sv_events.py` (`SvTool(name, prefix)`, `sv_events(prefix)`), Ace3 `editor`/`multi`/`journal`/`undo`/`report` are thin wrappers and `verify` uses the core helpers, one `WowRunning`, `docs/events.md` byte-identical (`gen_event_docs.py --check`), structure pin added, 4 patch targets moved, no Ace3 assertion changed; full suite 1376 OK (2 skipped), +11 tests |
 | T1.4 | shared UI helpers | todo | | |
 | M1 | push milestone 1 | todo | | |
 | T2.1 | package skeleton, registry, fixture | todo | | |
@@ -65,3 +65,32 @@ delete every branch, stash and worktree this run created.
   the same behaviour. `test_saved_variables_files_and_tool_root_live_in_core` pins the definitions and that only
   `wtf_cleaner/settings.py` among tools still uses `TOOLS_SUBDIR`.
 - **T1.2** `ruff check .` panicked on a stale cache (`wrong package cache for file`); `ruff check --no-cache .` passes.
+- **T1.3** Module split: `core/sv_events.py` (`SvTool(name, prefix)` with `.event(short)` and `.journals` = its
+  `ToolJournals` over `read_edit_journal` and `<prefix>.journal_pruned`; `sv_events(prefix)` = the 31 shared event
+  specs, texts and levels exactly Ace3's), `core/sv_journal.py` (`EditJournal`, `read_edit_journal`,
+  `record_recovered`, `referenced_zips`), `core/sv_apply.py` (per-flavor `apply_flavor` + multi-flavor
+  `apply_flavors` + `prune_edited_zips`, marker, results, errors), `core/sv_undo.py` (`undo_run`, `recover`,
+  `destination`), `core/sv_verify.py` (`gaps`, `check_assignments`, `rest_outside`, `same_outside`), `core/sv_report.py`
+  (stage titles, `undo_confirm`, apply/undo summary and detail rows, `in_backup_folder`). Ace3's events.py registers
+  its 8 own events plus `sv_events("ace")` and exports `SV_TOOL`.
+- **T1.3** Core API: `apply_flavor(tool, flavor, units, compile, verify, *, ..., started=)` takes `(SvFile, payload)`
+  units, one per file; `compile(file, payload, bytes)` returns an edit with `.data` and `.changes`; `verify(edit,
+  bytes)` returns problems. `started` holds the `apply_started` fields (Ace3 passes `databases=len(states)` so its
+  log is unchanged; the default is `files=`). `apply_flavors(tool, plan, apply_one, ...)`: the tool passes its own
+  per-flavor function (Ace3 a lambda that looks `multi.apply_flavor` up per call, so tests can still patch it there).
+  `undo_run(tool, journal_path, ...)` / `recover(tool, marker, ...)`; Ace3's are `**options` wrappers.
+- **T1.3** One `WowRunning(ApplyError, UndoError)` in `core/sv_apply.py` (`UndoError` lives there too to avoid a
+  cycle; `sv_undo` re-exports both). Its text keeps each side's wording through `what` ("changes" for Apply, "files"
+  for Undo/recovery); `refuse_running(tool, wow_check, action, what)` logs `<prefix>.wow_running`.
+- **T1.3** Moved patch targets (patch strings only, no assertion changed): `ace3_profile_manager.editor.restore_original`
+  and `.editor.write_marker` -> `wowtools.core.sv_apply.*` (test_ace_editor, test_ace_undo);
+  `ace3_profile_manager.journal.read_profile_journal` -> `wowtools.core.sv_journal.read_edit_journal`
+  (test_ace_multi); `patch.object(undo, "take_snapshot")` and `undo.BackupError` / `undo.SNAPSHOT_SUBDIR` ->
+  `sv_undo.*` (test_parallel_runs). `editor.verify_edit` and `multi.apply_flavor` stay patchable where they were.
+- **T1.3** Ace3 wrappers re-export the moved names (`__all__` in editor/journal/multi/undo, a `noqa: F401` import in
+  report) so review_screen and the tests import them unchanged. Ace3 `verify.verify_edit` keeps its AceDB checks and
+  uses `check_assignments(..., on_planned=)` + `rest_outside`, problem order unchanged. `apply_detail_rows` /
+  `DETAIL_COLUMNS` (Flavor, Account, Addon, Change, Result) moved to core as generic (SvFile fields only).
+  `test_saved_variables_write_pipeline_lives_in_core` pins the definitions; the marker-importer pin now names
+  `core/sv_apply.py` instead of Ace3's editor. A made-up tool (`tests/test_core_sv_pipeline.py`, prefix `tsv`, owner
+  `test-sv-pipeline`, skipped by gen_event_docs) drives apply, dry run, verify stop, undo, recovery and WowRunning.

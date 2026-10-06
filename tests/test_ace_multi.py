@@ -81,7 +81,7 @@ class MultiTest(unittest.TestCase):
         edited = self.tmp / "out" / "edited"
         zips = sorted(edited.iterdir())
         self.assertTrue(zips)
-        with patch("wowtools.tools.ace3_profile_manager.journal.read_profile_journal",
+        with patch("wowtools.core.sv_journal.read_edit_journal",
                    side_effect=PermissionError("held")):
             removed = multi.prune_edited_zips(self.tmp / "out", self.tmp / "journal")
         self.assertEqual(removed, [])

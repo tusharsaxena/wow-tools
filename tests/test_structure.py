@@ -141,6 +141,40 @@ class StructureTest(unittest.TestCase):
                  if isinstance(node, ast.Name) and node.id == "TOOLS_SUBDIR"}
         self.assertEqual(users, {"wowtools/tools/wtf_cleaner/settings.py"})
 
+    def test_saved_variables_write_pipeline_lives_in_core(self):
+        """The SavedVariables write pipeline (SV Browser spec D20) is core's: apply, the edit journal, undo and
+        recovery, the verify helpers, the result rows and the one WowRunning. A tool keeps only thin wrappers that
+        pass its SvTool (name, event prefix) and its compile / verify callbacks."""
+        functions = {"_prepare": "sv_apply.py", "_roll_back": "sv_apply.py", "restore_original": "sv_apply.py",
+                     "edited_zip_path": "sv_apply.py", "prune_edited_zips": "sv_apply.py",
+                     "refuse_running": "sv_apply.py", "read_edit_journal": "sv_journal.py",
+                     "record_recovered": "sv_journal.py", "referenced_zips": "sv_journal.py",
+                     "destination": "sv_undo.py", "_put_back": "sv_undo.py", "_moved_zip": "sv_undo.py",
+                     "_snapshots": "sv_undo.py", "gaps": "sv_verify.py", "_gaps": "sv_verify.py",
+                     "check_assignments": "sv_verify.py", "rest_outside": "sv_verify.py",
+                     "same_outside": "sv_verify.py", "in_backup_folder": "sv_report.py",
+                     "apply_summary_rows": "sv_report.py", "apply_detail_rows": "sv_report.py",
+                     "undo_detail_rows": "sv_report.py", "sv_events": "sv_events.py"}
+        where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & set(functions)
+                 if not (n == "_roll_back" and rel(p) == "wowtools/tools/interface_backup/restore.py")}
+        self.assertEqual(where, {(f"wowtools/core/{module}", name) for name, module in functions.items()
+                                 if name != "_gaps"})
+        classes = {"ApplyResult": "sv_apply.py", "MultiApplyResult": "sv_apply.py", "ApplyError": "sv_apply.py",
+                   "UndoError": "sv_apply.py", "WowRunning": "sv_apply.py", "EditJournal": "sv_journal.py",
+                   "ProfileJournal": None, "SvTool": "sv_events.py"}
+        where = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
+                 if isinstance(node, ast.ClassDef) and node.name in classes}
+        self.assertEqual(where, {(f"wowtools/core/{module}", name) for name, module in classes.items() if module})
+        from wowtools.core import sv_apply, sv_journal, sv_undo
+        from wowtools.tools.ace3_profile_manager import editor, journal, multi, undo
+        from wowtools.tools.ace3_profile_manager.events import SV_TOOL
+        self.assertIs(editor.Marker, sv_apply.Marker)
+        self.assertIs(multi.WowRunning, undo.WowRunning)
+        self.assertIs(journal.read_profile_journal, sv_journal.read_edit_journal)
+        self.assertIs(journal.JOURNALS, SV_TOOL.journals)
+        self.assertIs(undo.UndoResult, sv_undo.UndoResult)
+        self.assertEqual((SV_TOOL.name, SV_TOOL.prefix), ("ace3-profile-manager", "ace"))
+
     def test_tools_use_the_shared_helpers(self):
         """Each tool's journals, undo results and markers go through core (no copy of the bodies)."""
         from wowtools.core import journal, undo
@@ -156,7 +190,7 @@ class StructureTest(unittest.TestCase):
             self.assertEqual(module.latest_undoable, module.JOURNALS.latest_undoable)
         for module in (ace_undo, wtf_undo):
             self.assertTrue(issubclass(module.UndoResult, undo.UndoResultBase))
-        for path in ("wowtools/tools/wtf_cleaner/safety.py", "wowtools/tools/ace3_profile_manager/editor.py"):
+        for path in ("wowtools/tools/wtf_cleaner/safety.py", "wowtools/core/sv_apply.py"):
             self.assertIn("wowtools.core.marker", imported_modules(tree(REPO / path)) | {
                 f"{n.module}.{a.name}" for n in ast.walk(tree(REPO / path))
                 if isinstance(n, ast.ImportFrom) and n.module for a in n.names})

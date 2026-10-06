@@ -1,21 +1,12 @@
 """Re-read an edited SavedVariables file and check it says exactly what was staged (spec §8.2). UI-free."""
 from __future__ import annotations
 
-from wowtools.core.luasv import Chunk, LuaParseError, Table, parse
+from wowtools.core.luasv import Assignment, LuaParseError, Table, parse
+from wowtools.core.sv_verify import NOT_THE_SAME, check_assignments, rest_outside
 from wowtools.tools.ace3_profile_manager.model import ace_descend, find_dbs, lds_chars, namespace_profiles
 from wowtools.tools.ace3_profile_manager.ops import FileEdit
 
 PROFILE_SECTIONS = ("profileKeys", "profiles", "namespaces")
-
-
-def _gaps(data: bytes, chunk: Chunk) -> list[bytes]:
-    """The bytes between and around the top-level assignments (blank lines, comments)."""
-    out, pos = [], 0
-    for item in chunk.assignments:
-        out.append(data[pos:item.start])
-        pos = item.end
-    out.append(data[pos:])
-    return out
 
 
 def _namespaces_rest(data: bytes, table: Table) -> bytes | None:
@@ -27,12 +18,7 @@ def _namespaces_rest(data: bytes, table: Table) -> bytes | None:
         return None
     cuts = [(ns.table.start + 1, ns.table.close) for ns in namespace_profiles(table).values()]
     cuts += [(f.value.start, f.value.end) for entry in lds_chars(table).values() for f in entry.specs.values()]
-    out, pos = [], holder.value.start
-    for start, end in sorted(cuts):
-        out.append(data[pos:start])
-        pos = end
-    out.append(data[pos:holder.value.end])
-    return b"\0".join(out)
+    return rest_outside(data, holder.value.start, holder.value.end, cuts)
 
 
 def _other_sections(data: bytes, table: Table) -> dict:
@@ -47,21 +33,17 @@ def verify_edit(edit: FileEdit, old: bytes) -> list[str]:
     except LuaParseError as exc:
         return [f"the edited file does not read back: {exc}"]
     old_chunk = parse(old, ace_descend)
-    problems: list[str] = []
-    if [a.name for a in new_chunk.assignments] != [a.name for a in old_chunk.assignments]:
-        return ["the edited file does not hold the same SavedVariables"]
-    if _gaps(edit.data, new_chunk) != _gaps(old, old_chunk):
-        problems.append("text between the SavedVariables changed")
-    for before, after in zip(old_chunk.assignments, new_chunk.assignments):
-        if before.name in edit.expected:
-            if isinstance(before.value, Table) and isinstance(after.value, Table):
-                old_other, new_other = _other_sections(old, before.value), _other_sections(edit.data, after.value)
-                for key in sorted(set(old_other) | set(new_other), key=str):
-                    if old_other.get(key) != new_other.get(key):
-                        problems.append(f"{before.name}: section {key} changed")
-            continue
-        if old[before.start:before.end] != edit.data[after.start:after.end]:
-            problems.append(f"{before.name} changed but nothing was planned for it")
+
+    def sections(before: Assignment, after: Assignment) -> list[str]:
+        if not (isinstance(before.value, Table) and isinstance(after.value, Table)):
+            return []
+        old_other, new_other = _other_sections(old, before.value), _other_sections(edit.data, after.value)
+        return [f"{before.name}: section {key} changed" for key in sorted(set(old_other) | set(new_other), key=str)
+                if old_other.get(key) != new_other.get(key)]
+
+    problems = check_assignments(old, old_chunk, edit.data, new_chunk, edit.expected, on_planned=sections)
+    if problems[:1] == [NOT_THE_SAME]:
+        return problems
     dbs = {db.sv_name: db for db in find_dbs(new_chunk, edit.data)[0]}
     for name, expected in edit.expected.items():
         db = dbs.get(name)

@@ -149,7 +149,7 @@ class RecoverTest(unittest.TestCase):
                 raise OSError("disk full")
         journal = _journal(base)
         self.addCleanup(journal.close)
-        with patch("wowtools.tools.ace3_profile_manager.editor.restore_original", side_effect=OSError("no")), \
+        with patch("wowtools.core.sv_apply.restore_original", side_effect=OSError("no")), \
                 self.assertRaises(editor.ApplyError):
             editor.apply_flavor(flavor, staging.changed(), root=root, journal=journal, dry_run=False,
                                 keep_snapshots=2, now=WHEN, write=write)
@@ -248,7 +248,7 @@ class RecoverJournalTest(unittest.TestCase):
             else:
                 raise OSError("killed")
         journal = _journal(base)
-        with patch("wowtools.tools.ace3_profile_manager.editor.restore_original", side_effect=OSError("no")), \
+        with patch("wowtools.core.sv_apply.restore_original", side_effect=OSError("no")), \
                 self.assertRaises(editor.ApplyError):
             editor.apply_flavor(self.flavor, staging.changed(), root=self.root, journal=journal, dry_run=False,
                                 keep_snapshots=2, now=WHEN, write=write)
