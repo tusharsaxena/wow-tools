@@ -8,7 +8,7 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
 | I2 | #4 | keep_cleaned for cleaned zips | done | 685d44f | `[wtf_cleaner] keep_cleaned` (0 = all), `prune_cleaned_zips`, event `backup.cleaned_pruned`; 8 new tests, suite 1317 OK, 2 skipped |
 | I3 | #5 | per-account enabled addons | done | ff55b8d | `ScanResult.enabled_by_account` + `enabled_for()`, rules judge each group by its account; `build_multi_account_tree` fixture, 5 new tests (PerAccountEnabledTest); suite 1322 OK, 2 skipped |
 | I4 | #7 | keep user files when pruning update backups | done | db8c687 | `_carry_user_files` before each prune moves user files to `<root>/update-leftovers/<version>/`; failed move keeps the folder; events `update.leftovers_kept`, `update.backup_kept`; 5 new tests (test_updater_apply 37), suite 1327 OK, 2 skipped |
-| I5 | #8 | native Windows checkpoint run | done | (this commit) | Windows 11 / Python 3.14.3 on NTFS: suite 1330 OK, 64 skipped (6 parallel runs + 1 serial green after 4 test-only fixes); scripted WTF Cleaner happy path on NTFS all passed; WSL suite 1330 OK, 2 skipped |
+| I5 | #8 | native Windows checkpoint run | done | 037ef36 | Windows 11 / Python 3.14.3 on NTFS: suite 1330 OK, 64 skipped (6 parallel runs + 1 serial green after 4 test-only fixes); scripted WTF Cleaner happy path on NTFS all passed; WSL suite 1330 OK, 2 skipped |
 | I6 | #9 #10 | review bundle sign-off, merged ledgers | todo | | |
 | I7 | all | review, push, merge, close issues | todo | | |
 
