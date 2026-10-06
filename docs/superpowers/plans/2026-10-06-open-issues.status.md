@@ -99,3 +99,6 @@ Plan: `2026-10-06-open-issues.md`. Branch: `fix/open-issues`. Resume at the firs
   and F-018 `keep_cleaned` / per-account enabled sets follow here (#4, #5). Commit range given as `6e9ac1f..fcdb5ac`
   (first parent of 96c3527 to the branch head); CI cites run 37157279879 (the R3 push) with the Actions URL. No
   other status ledger said "awaiting merge"; plans with no ledger were left alone.
+  I6 review: 2 findings, 2 fixed, 0 rejected: the test plan's range now reads `6e9ac1f..fcdb5ac` (the old
+  `f56d881..fcdb5ac` dropped f56d881); the CI line links run 37157279879 itself (checked with `gh run view`: success,
+  head de67379).

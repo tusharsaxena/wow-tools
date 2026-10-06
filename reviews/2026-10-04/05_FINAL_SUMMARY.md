@@ -202,7 +202,7 @@ Record the measured "after" values in the sign-off table.
 ## Verification evidence
 - Test plan with the sign-off table filled: `reviews/2026-10-04/03_TEST_PLAN.md`.
 - Branch: `fix/review-2026-10-04`. Commit range: `6e9ac1f..fcdb5ac` (f56d881 to fcdb5ac, 37 commits), merged to master in 96c3527. PR: none (merged locally).
-- CI: `tests` workflow, all four jobs green on the R3 push: run 37157279879 (https://github.com/tusharsaxena/wow-tools/actions).
+- CI: `tests` workflow, all four jobs green on the R3 push: run 37157279879 (https://github.com/tusharsaxena/wow-tools/actions/runs/37157279879), on de67379; fcdb5ac, the branch head, is a ledger-only commit.
 
 ## Suggested commit message / PR description
 

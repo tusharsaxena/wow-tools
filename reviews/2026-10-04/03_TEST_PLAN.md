@@ -349,7 +349,7 @@ python3 -m compileall -q wowtools scripts  # exit 0, no output
 
 ## Sign-off
 
-Closed 2026-10-06: filled from the fix ledger (`docs/superpowers/plans/2026-10-04-review-fixes.status.md`). Branch `fix/review-2026-10-04` (f56d881..fcdb5ac) was merged to master in 96c3527. Full suite at merge: 548 tests green (2 skipped, the Windows-only launcher tests).
+Closed 2026-10-06: filled from the fix ledger (`docs/superpowers/plans/2026-10-04-review-fixes.status.md`). Branch `fix/review-2026-10-04` (`6e9ac1f..fcdb5ac`, f56d881 to fcdb5ac, 37 commits) was merged to master in 96c3527. Full suite at merge: 548 tests green (2 skipped, the Windows-only launcher tests).
 
 | ID | Tested? | Pass/Fail | Notes |
 |---|---|---|---|
