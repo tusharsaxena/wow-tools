@@ -26,6 +26,7 @@ from textual.widgets.tree import TreeNode
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor
+from wowtools.core.luasv import encode_value
 from wowtools.core.process import wow_check_for
 from wowtools.core.sv_apply import Marker
 from wowtools.core.svfiles import SvFile
@@ -59,6 +60,9 @@ BROWSE, RESULTS = "Browse", "Results"  # the tree's two views (v): the files, an
 RISK_BANNER = "⚠ USE AT YOUR OWN RISK: you change addon data"
 READING = "Reading…"
 NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
+# Space / a / n where nothing can be ticked (they stay keys, as on every review): why not.
+NO_TICKS_BROWSE = "Nothing to tick here: the results of a search that replaces are ticked (S, then v)."
+NO_TICKS_FIND_ONLY = "A find only has nothing to tick: search again with a new value to replace with (S)."
 # The Results view's groups (flavor › account › owner › file, each with the hits under it) and its leaves ("hit").
 RESULT_GROUPS = ("r-flavor", "r-account", "r-owner", "r-file")
 GROUP_KINDS = ("root", "flavor", "account", "realm", "owner", *RESULT_GROUPS)  # what x opens (no file is read)
@@ -200,6 +204,8 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         self.view = BROWSE
         self.undoable: Path | None = None  # the newest undoable journal, found by the scan worker
         self.marker: Marker | None = None  # an Apply that did not finish, found by the scan worker
+        self.marker_root: Path | None = None  # the tool folder the marker was read from (settled there)
+        self._offer_on_resume = False  # the scan found the marker while another screen was shown
         self.summary_text = ""
         self._expanded: dict[Hashable, bool] = {}  # what the user opened and closed (kept across rebuilds)
         self._tree_nodes: dict[Hashable, TreeNode] = {}  # the tree's nodes by ident, for a load that finishes
@@ -217,7 +223,7 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
                 yield Static(Text(RISK_BANNER, style=ALERT_STYLE), id="risk")
                 yield FilterInput()
                 yield Static(self._pending_line(), id="pending")
-                with ButtonRow(id="search-row"):
+                with ButtonRow(id="search-row", wrap=False):
                     yield action_button("Search", "navigate", "S", id="btn-search")
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Apply", "destructive", "w", id="btn-apply")
@@ -267,8 +273,11 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
             return
         if self._stale and self.idle and self.app.screen is self:
             self._scan()
-        else:
-            self.settings = load_settings(self.tool_cfg)
+            return
+        self.settings = load_settings(self.tool_cfg)
+        if self._offer_on_resume and self.marker is not None and self.idle and self.app.screen is self:
+            self._offer_on_resume = False
+            self.offer_recovery(self.marker)
 
     # --- state ---------------------------------------------------------------------------------
     @property
@@ -280,6 +289,11 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
     def pending(self) -> int:
         """Staged edits plus ticked results: what an Apply would write (and leaving would drop)."""
         return self.staging.count + len(self.ticked)
+
+    @property
+    def tickable(self) -> bool:
+        """The tree shows results that can be ticked: the Results view of a search that replaces."""
+        return self.view == RESULTS and self.replaces and bool(self.hits)
 
     def _refresh_buttons(self) -> None:
         if not self.is_attached:
@@ -348,7 +362,7 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
             log_exception("svb.scan", exc)
             self.app.call_from_thread(self._scan_failed, f"The scan failed: {exc}")
             return
-        self.app.call_from_thread(self._scanned, scan, undoable, marker)
+        self.app.call_from_thread(self._scanned, scan, undoable, marker, root)
 
     def _scan_failed(self, message: str) -> None:
         self._scanning = False
@@ -360,9 +374,11 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         self.notify(message, title="Scan failed", severity="error", timeout=15)
         self._refresh_buttons()
 
-    def _scanned(self, scan: ScanResult, undoable: Path | None, marker: Marker | None) -> None:
+    def _scanned(self, scan: ScanResult, undoable: Path | None, marker: Marker | None,
+                 marker_root: Path | None = None) -> None:
         self._scanning = False
-        self.scan, self.undoable, self.marker = scan, undoable, marker
+        self.scan, self.undoable, self.marker, self.marker_root = scan, undoable, marker, marker_root
+        self._offer_on_resume = False
         self.docs = {}
         self.staging.clear()
         self.hits, self.search_result, self.view = None, None, BROWSE
@@ -377,7 +393,10 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         self._refresh_buttons()
         self.query_one("#browse", Tree).focus()
         if marker is not None:
-            self.offer_recovery(marker)
+            if self.app.screen is self:
+                self.offer_recovery(marker)
+            else:  # help or the settings are shown: their answer could not run there (Preflight), offer it on return
+                self._offer_on_resume = True
 
     # --- the model the tree shows ------------------------------------------------------------------
     def document(self, file: SvFile) -> SvDocument:
@@ -568,9 +587,11 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         self.app.call_from_thread(self._loaded, key, generation)
 
     def _loaded(self, key: Hashable, generation: int) -> None:
+        if generation != self._generation:
+            return  # rescanned since: the old documents are gone (and _loading is the new scan's)
         self._loading.discard(key)
-        if generation != self._generation or not self.is_attached:
-            return  # rescanned since: the old documents are gone
+        if not self.is_attached:
+            return
         if self.filtering:  # the new labels may match: let the filter place them
             self._schedule_rebuild()
             return
@@ -822,6 +843,14 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         file = self.hits[key].file
         return (file.flavor.display_name, file.account, file.owner, file.path.name, self._result_name(("hit", key)))
 
+    def no_ticks_here(self) -> bool:
+        """TickActions: True (and say why) when Space / a / n on the tree have nothing to tick: Browse, or a find
+        only."""
+        if self.tickable:
+            return False
+        self.notify(NO_TICKS_FIND_ONLY if self.view == RESULTS and self.hits else NO_TICKS_BROWSE)
+        return True
+
     def ticked_hits(self) -> list[Hit]:
         """The ticked hits, in the order the search found them (what Apply takes with the staged edits)."""
         return [self.hits[i] for i in sorted(self.ticked)] if self.hits else []
@@ -921,17 +950,21 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         doc, node = target
         old = node.value.value
         raw = doc.data[node.value.start:node.value.end]
+        # the popup starts from the value staged on the key, if any (as Rename starts from a staged name); Now: is
+        # the file's
+        edit = self.staging.edit_for(doc, node)
+        start, start_raw = (edit.value, encode_value(edit.value)) if edit is not None and edit.set_value else (old, raw)
         kind, text, note = REPLACE_STRING, "", ""
-        if isinstance(old, bool):
+        if isinstance(start, bool):
             kind = REPLACE_BOOLEAN
-        elif isinstance(old, str):
-            if any(c < " " or c == "\x7f" or "\udc80" <= c <= "\udcff" for c in old):
+        elif isinstance(start, str):
+            if any(c < " " or c == "\x7f" or "\udc80" <= c <= "\udcff" for c in start):
                 note = NOT_TYPABLE
             else:
-                text = old
-        elif old is not None:
-            kind, text = REPLACE_NUMBER, raw.decode("ascii", "replace")
-        popup = EditValueScreen(self._where_key(doc, node), scalar_text(old, raw), kind, text, old is True,
+                text = start
+        elif start is not None:
+            kind, text = REPLACE_NUMBER, start_raw.decode("ascii", "replace")
+        popup = EditValueScreen(self._where_key(doc, node), scalar_text(old, raw), kind, text, start is True,
                                 check=lambda value: self.staging.set_problem(doc, node, value), note=note)
 
         def done(value) -> None:
@@ -1064,20 +1097,23 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
                        failure="The run stopped unexpectedly", stale_on_crash=not dry_run, expected=(ApplyError,))
 
     def _applied(self, result: MultiApplyResult, plan: Plan) -> None:
-        if not result.dry_run:
+        # A run refused before it wrote a byte (a locked file, the snapshot failed, ...: "Nothing was changed")
+        # keeps the staged edits and ticks, as a dry run does: its result goes back to the review.
+        kept = result.dry_run or not (result.edited or result.rolled_back or result.failed)
+        if not kept:
             self._set_stale()  # the files changed: read again after the result
         self._refresh_buttons()
         if result.stopped is not None:
             self.notify(f"{result.stopped.flavor.display_name}: {result.stopped.error}", title="Apply stopped",
                         severity="error", timeout=20)
         self.app.push_screen(SvResultScreen("Dry run" if result.dry_run else "Apply", summary_rows(result, plan),
-                                            FILE_COLUMNS, file_rows(result), self.scope_label, back=result.dry_run),
+                                            FILE_COLUMNS, file_rows(result), self.scope_label, back=kept),
                              self._after_result)
 
     def _after_result(self, choice: str | None) -> None:
         if choice in ("flavors", "tools", "quit"):
             self.action_leave(choice)
-        elif choice == "back":  # after a dry run: back to the review, the staged edits and ticks kept
+        elif choice == "back":  # after a dry run (or a refused Apply): the staged edits and ticks kept
             return
         elif self._stale:
             self._scan()
@@ -1123,7 +1159,8 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         root = resolve_root(load_settings(self.tool_cfg), wow_root)
         if root is None:
             return
-        self._drop_pending()  # the files change under them (said in the confirm)
+        # The staged work is dropped once Undo has changed the files (_undone, or a crash: _mark_stale), as said in
+        # the confirm; an Undo refused before it starts (WoW running, a locked file, the backup failed) keeps it.
         # One row per flavor whose WTF folder is backed up first (up to [general] parallelism at once), as undo_run
         # names them; the files are then put back in one more row.
         folders = sorted({e["flavor"] for e in journal.entries})
@@ -1149,11 +1186,17 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         """An Apply did not finish (its marker was found by the scan): put the originals back, or leave the files."""
         log_event(SV_TOOL.event("recovery_offered"), flavor=marker.flavor, files=len(marker.files),
                   started=marker.started)
-        self.app.push_screen(UnfinishedRunScreen(recovery_text(marker), marker),
+        message = recovery_text(marker)
+        if self.pending:  # putting the originals back reads the files again (_recovered)
+            message += (f"\n\nPutting the originals back reads the files again: the {self._pending_words()} not "
+                        "applied yet will be dropped.")
+        self.app.push_screen(UnfinishedRunScreen(message, marker),
                              lambda choice: self._recovery_chosen(marker, choice))
 
     def _recovery_chosen(self, marker: Marker, choice: str | None) -> None:
-        root = resolve_root(load_settings(self.tool_cfg), self.cfg.wow_path)
+        # settled where it was found (the backup folder may have been changed with s since the scan)
+        root = self.marker_root if self.marker_root is not None else \
+            resolve_root(load_settings(self.tool_cfg), self.cfg.wow_path)
         if root is None or choice not in ("put_back", "leave"):
             return  # closed without a choice: offered again at the next scan or Apply
         if choice == "leave":

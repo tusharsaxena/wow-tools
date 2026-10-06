@@ -125,11 +125,11 @@ class SetValueTest(StagingTestBase):
         result = self.staging.set_value(doc, node, node.value.value)
         self.assertEqual((result.ok, result.message), (True, "unchanged"))
         self.assertIsNone(self.staging.edit_for(doc, node))
-        _, scale = self.elv("general", "fontSize")
-        self.assertTrue(self.staging.set_value(doc, scale, 12.0).ok)  # 12.0 is the number 12 in Lua
-        self.assertIsNone(self.staging.edit_for(doc, scale))
-        self.assertTrue(self.staging.set_value(doc, scale, "12").ok)  # a string is not the number
-        self.assertIsNotNone(self.staging.edit_for(doc, scale))
+        elv, scale = self.elv("general", "fontSize")
+        self.assertTrue(self.staging.set_value(elv, scale, 12.0).ok)  # 12.0 is the number 12 in Lua
+        self.assertIsNone(self.staging.edit_for(elv, scale))
+        self.assertTrue(self.staging.set_value(elv, scale, "12").ok)  # a string is not the number
+        self.assertIsNotNone(self.staging.edit_for(elv, scale))
 
 
 class ProblemTest(StagingTestBase):
@@ -156,6 +156,7 @@ class ProblemTest(StagingTestBase):
         self.assertEqual(self.staging.set_problem(doc, font, "x"), ops.INSIDE_DELETE)
         self.assertEqual(self.staging.rename_problem(doc, font, "x"), ops.INSIDE_DELETE)
         self.assertEqual(self.staging.delete_problem(doc, font), ops.INSIDE_DELETE)
+        self.assertEqual(self.staging.delete_problem(doc, unit), ops.INSIDE_DELETE)  # the deleted key itself
 
 
 class ParseKeyTest(unittest.TestCase):

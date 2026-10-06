@@ -29,11 +29,12 @@ from wowtools.tools.sv_browser.report import DISCLAIMER
 from wowtools.tools.sv_browser.result_screen import SvResultScreen
 from wowtools.tools.sv_browser.review_screen import BROWSE, SvReviewScreen
 from wowtools.tools.sv_browser.scanner import scan_flavors
-from wowtools.tools.sv_browser.settings import SvBrowserSettings, resolve_root
+from wowtools.tools.sv_browser.settings import SvBrowserSettings, resolve_root, save_settings
 from wowtools.ui.dialogs import ConfirmScreen, UnfinishedRunScreen
+from wowtools.ui.help_screen import HelpScreen
 from wowtools.ui.suite_app import WowToolsApp
 
-NEW_FONT = "Arial Narrow"
+NEW_FONT = "Skurri Bold"  # in no fixture file: finding it after Apply proves the replace
 UNKNOWN = "Could not check whether WoW is running"
 
 
@@ -97,6 +98,20 @@ class RunTestBase(SearchTestBase):
         await pilot.press(*keys)
         await settle(app, pilot)
 
+    async def applied_review(self, app, pilot) -> SvReviewScreen:
+        """Retail with one edit applied (an Undo is offered), the review read again after the result."""
+        review = await self.open_review(app, pilot, "_retail_")
+        stage_sv_edit(review)
+        await self.press(app, pilot, "w")
+        self.assertIsInstance(app.screen, ConfirmScreen)
+        app.screen.dismiss(True)
+        await settle(app, pilot)
+        self.assertIsInstance(app.screen, SvResultScreen)
+        await self.press(app, pilot, "r")
+        self.assertIs(app.screen, review)
+        self.assertEqual(review.pending, 0)
+        return review
+
     async def open_to_recovery(self, app, pilot) -> UnfinishedRunScreen:
         """Retail, the warning accepted: the scan finds the marker and offers the unfinished run."""
         picker = await self.open_picker(app, pilot)
@@ -152,17 +167,26 @@ class ApplyConfirmTest(RunTestBase):
             await self.press(app, pilot, "n")
 
     async def test_apply_and_undo_are_refused_while_wow_runs(self):
-        before = self.tree_bytes()
-        app = self.make_app(wow_check=lambda: ["Wow.exe"])
+        running: list[str] = []
+        app = self.make_app(wow_check=lambda: list(running))
         async with app.run_test(size=BASE) as pilot:
-            review = await self.open_review(app, pilot, "_retail_")
+            review = await self.applied_review(app, pilot)
+            journal = review.undoable
+            self.assertIsNotNone(journal)
+            running.append("Wow.exe")
+            before = self.tree_bytes()
             stage_sv_edit(review)
             with capture_events() as events:
                 await self.press(app, pilot, "w")
             self.assertIs(app.screen, review)
             self.assertIn("svb.wow_running", [e["event"] for e in events])
             self.assertTrue(review.staging.count)  # kept for later
-            review.undoable = self.tool_root  # any path: the check comes before the journal is read
+            with capture_events() as events:
+                await self.press(app, pilot, "z")  # the journal is read, then WoW is checked: refused
+            self.assertIs(app.screen, review)
+            self.assertIn("svb.wow_running", [e["event"] for e in events])
+            self.assertEqual(review.undoable, journal)
+            self.assertTrue(review.staging.count)
             await self.press(app, pilot, "y")  # a dry run writes nothing: allowed
             self.assertIsInstance(app.screen, ConfirmScreen)
             self.assertEqual(app.screen.kind, "simulate")
@@ -229,6 +253,7 @@ class ApplyUndoEndToEndTest(RunTestBase):
             changed = [p for p in before if after[p] != before[p]]
             self.assertEqual(len(changed), 6)
             for path in changed:
+                self.assertNotIn(NEW_FONT.encode(), before[path])
                 self.assertIn(NEW_FONT.encode(), after[path])
                 self.assertNotIn(SVB_FONT.casefold().encode(), after[path].lower())
             self.assertEqual(len(list((self.tool_root / "snapshots").glob("*.zip"))), 2)
@@ -309,6 +334,7 @@ class RecoveryTest(RunTestBase):
             await self.press(app, pilot, "w")  # Apply would refuse: settle the unfinished run first
             popup = app.screen
             self.assertIsInstance(popup, UnfinishedRunScreen)
+            self.assertIn("1 staged edit and 0 ticked results not applied yet will be dropped", popup.message_text)
             with capture_events() as events:
                 popup.choose("leave")
                 await settle(app, pilot)
@@ -317,3 +343,98 @@ class RecoveryTest(RunTestBase):
             self.assertIn(("svb.recovery_done", "leave"), [(e["event"], e["data"].get("choice")) for e in events])
         self.assertEqual(self.tree_bytes(), written)
         self.assertIsNone(undo.pending_recovery(self.tool_root))
+
+
+class KeptPendingTest(RunTestBase):
+    """A run refused before it wrote anything keeps the staged edits and ticks, and the review still shows them."""
+
+    async def test_an_apply_refused_before_writing_keeps_the_staged_edits(self):
+        before = self.tree_bytes()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.search_friz(review, pilot)
+            stage_sv_edit(review)
+            ticked, staged = set(review.ticked), review.staging.count
+            refusal = ApplyError("ElvUI.lua is open in another program. Nothing was changed.")
+            with patch("wowtools.tools.sv_browser.editor.apply_flavor", side_effect=refusal):
+                await self.press(app, pilot, "w")
+                self.assertIsInstance(app.screen, ConfirmScreen)
+                app.screen.dismiss(True)
+                await settle(app, pilot)
+            result = app.screen
+            self.assertIsInstance(result, SvResultScreen)
+            self.assertIn("back", {b.id for b in result.query(Button)})
+            await self.press(app, pilot, "escape")
+            self.assertIs(app.screen, review)
+            self.assertEqual((review.ticked, review.staging.count), (ticked, staged))
+            self.assertFalse(review._stale)
+            self.assertFalse(review.query_one("#btn-apply", Button).disabled)
+        self.assertEqual(self.tree_bytes(), before)
+
+    async def test_an_undo_refused_before_it_starts_keeps_the_staged_edits(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.applied_review(app, pilot)
+            before = self.tree_bytes()
+            stage_sv_edit(review)
+            pending = review.query_one("#pending").render().plain
+            self.assertIn("Staged: 1 edit", pending)
+            with patch("wowtools.tools.sv_browser.review_screen.undo_run",
+                       side_effect=undo.UndoError("ElvUI.lua is locked. Nothing was changed.")):
+                await self.press(app, pilot, "z")
+                self.assertIsInstance(app.screen, ConfirmScreen)
+                app.screen.dismiss(True)
+                await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(review.staging.count, 1)  # nothing was changed: the work is kept
+            self.assertEqual(review.query_one("#pending").render().plain, pending)
+            self.assertFalse(review.query_one("#btn-apply", Button).disabled)
+        self.assertEqual(self.tree_bytes(), before)
+
+
+class RecoveryPlacesTest(RunTestBase):
+    async def test_a_recovery_found_under_help_is_offered_when_the_review_is_back(self):
+        before = self.tree_bytes()
+        crash_retail(self.root)
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_to_recovery(app, pilot)
+            await self.press(app, pilot, "escape")
+            review = app.screen
+            self.assertIsInstance(review, SvReviewScreen)
+            await self.press(app, pilot, "h")
+            help_screen = app.screen
+            self.assertIsInstance(help_screen, HelpScreen)
+            review._scanning = True  # a scan that ends while the help is shown
+            review._scanned(review.scan, review.undoable, review.marker, review.marker_root)
+            await settle(app, pilot)
+            self.assertIs(app.screen, help_screen)  # not offered over the help: Put back would do nothing there
+            await self.press(app, pilot, "escape")
+            popup = app.screen
+            self.assertIsInstance(popup, UnfinishedRunScreen)
+            popup.choose("put_back")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertIsNone(review.marker)
+        self.assertEqual(self.tree_bytes(), before)
+
+    async def test_the_marker_is_settled_in_the_folder_it_was_found_in(self):
+        crash_retail(self.root)
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_to_recovery(app, pilot)
+            await self.press(app, pilot, "escape")
+            review = app.screen
+            elsewhere = self.root.parent / "other-backups"
+            elsewhere.mkdir()
+            save_settings(review.tool_cfg, SvBrowserSettings(backup_dir=elsewhere))  # changed with s since
+            review.on_screen_resume()
+            stage_sv_edit(review)
+            await self.press(app, pilot, "w")
+            popup = app.screen
+            self.assertIsInstance(popup, UnfinishedRunScreen)
+            popup.choose("leave")
+            await settle(app, pilot)
+            self.assertIsNone(review.marker)
+        self.assertIsNone(undo.pending_recovery(self.tool_root))  # the marker that was found is gone

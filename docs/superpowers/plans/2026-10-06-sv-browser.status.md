@@ -23,7 +23,7 @@ delete every branch, stash and worktree this run created.
 | T3.2 | edit/rename/delete popups, staging UI | done | (this commit) | `popups.py` `EditValueScreen` (type NavSelect string/number/boolean, Input or `Ka0sCheckbox`, `parse_replacement` + staging check inline), `RenameKeyScreen` (shared `TextPromptScreen`, keys typed as the tree shows them via `ops.parse_key`/`key_input`) and `delete_confirm` (destructive, entry count, dropped inner edits, `SHIFT_WARNING` alert) wired to e/k/d; marks `→ name`, `✎ value`, `✗ deleted` (dim strike below a delete), an **Unstage** (Backspace) button on the bar, `ops.Staging.set_problem`/`rename_problem`/`delete_problem`/`staged_inside` and equal-value no-ops; full suite 1607 OK (2 skipped), +21 tests |
 | T3.3 | search popup, Results view | done | (this commit) | `popups.SearchScreen` (one labelled control per row: key + Exact/Contains, value + Whole value/Contains, Match case, Flavor (only with several flavors scanned)/Account/Character incl. Account-wide only/Addon file, Replace with String/Number/Boolean/Find only + text or checkbox; Find = `parse_replacement` + `SearchSpec.problems()` inline, prefilled with the last search, box scrolls at 80x24), `S` runs `run_search` through `RunActions.start_run(writes=False)` with `SearchProgressScreen` (`[general] parallelism`), Results view flavor › account › owner › file › `path = old → new` leaves all ticked (space/a/n, `/` on every hit, hidden-ticked note), `v` rebuilds the view (sub-title), new search over ticks asks (destructive), pending line adds Results/cap/unreadable/left-out lines and leaves show `⚠ left out: <reason>` from `Staging.plans(ticked)`, help text; full suite 1624 OK (2 skipped), +17 tests |
 | T3.4 | apply/dry run/undo/recovery UI, result, help, look-and-feel | done | (this commit) | w/y/z wired on `RunActions` (`_start` → `staging.plans(ticked)`, WoW check per plan flavor via `check_for`, destructive/simulate confirm from `report.apply_confirm` + new `apply_groups` detail tree per flavor/file, disclaimer and the WoW-unknown alert as red lines; Undo confirm with the disclaimer and the dropped staged work), `RunProgressScreen`, `result_screen.SvResultScreen` (Back to review after a dry run), rescan after Apply/Undo (`_stale`), the shared `UnfinishedRunScreen` offered by every scan that finds a marker and by Apply (put back / leave), full `help.py`, `STATUS_COLOURS` moved to `core/sv_report.py`, sv-browser in `test_help`/`test_look_and_feel` RUN_ACTION/PREPARE (`fixtures.stage_sv_edit`) and `NO_RUN` gone, new `tests/test_sv_browser_run_ui.py` (search → apply → files, snapshots, originals zips, journal → undo byte-identical); full suite 1632 OK (2 skipped), +8 tests |
-| M3 | push milestone 3 | todo | | |
+| M3 | push milestone 3 | todo | | review fixes: Enter on a popup checkbox presses OK / Find (Space ticks), → on Search goes to the tree, Edit value starts from a staged value, Space/a/n say why in Browse or after a find only, Delete off on a key staged for delete, an Undo or Apply refused before writing keeps the staged work (refused Apply result goes Back to review), recovery warns about the staged work it drops, is offered only on the review (deferred past Help/Settings) and settled in the folder its marker was found in, a stale load keeps the new load's guard, tests (Undo refused while WoW runs, ElvUI doc in the equal-value test, a replacement in no fixture); full suite 1642 OK (2 skipped) |
 | T4.1 | docs | todo | | |
 | T4.2 | review, fixes, push, ask for merge | todo | | |
 
@@ -363,3 +363,23 @@ delete every branch, stash and worktree this run created.
   ["sv-browser"] = "dry_run"`, `PREPARE["sv-browser"] = tests.fixtures.stage_sv_edit` (stages " (edited)" on the
   first string value, Retail first, read synchronously in the test thread; look-and-feel wants "Retail" in the
   confirm). The help names every review, settings and result button (incl. **Back to review**).
+- **M3 review**: 16 findings, 16 fixed, 0 rejected (6/11 and 7/13 were the same defects, each fixed once). (1) Edit
+  value's and Search's checkboxes are `popups.PopupCheckbox` (Space ticks; Enter raises SkipAction, so the popup's
+  own `enter` binding, action `submit`, presses OK / Find; not named `ok`/`find` so D17 does not ask the buttons to
+  show Enter, which the hint names), hints add "Space tick". (2) `ButtonRow(id="search-row", wrap=False)`. (3) Edit
+  value starts from the staged value (type, text via `encode_value`, checkbox); "Now:" stays the file's value. (4)
+  Space/a/n stay keys (look-and-feel pins Space, a, n in every review footer, so not hidden with check_action): a
+  new `TickActions.no_ticks_here()` hook (default False) lets the review notify `NO_TICKS_BROWSE` /
+  `NO_TICKS_FIND_ONLY` instead of doing nothing. (5) `Staging.delete_problem` checks `deleted_above(doc, node)` (the
+  node itself). (6/11) `_undo_confirmed` no longer drops the pending work: `_undone` (`_set_stale`) or a crash
+  (`_mark_stale`) does; an expected `UndoError` keeps it and the tree/pending line stay true. (7/13) The recovery
+  popup's message adds "Putting the originals back reads the files again: the N staged edits and M ticked results
+  not applied yet will be dropped." when anything is pending (keeping edits across the rescan was judged riskier).
+  (8) `_scanned` offers recovery only when the review is the shown screen, else sets `_offer_on_resume` and
+  `on_screen_resume` offers it. (9) `_loaded` returns on a generation mismatch before touching `_loading`. (10)
+  `_applied` keeps the staged work and ticks and opens the result with **Back to review** when nothing was written
+  (`not (edited or rolled_back or failed)`). (12) `marker_root` (the root the scan worker read the marker from) is
+  passed to `_scanned` and used by `_recovery_chosen` for leave/recover. (14) The WoW-running test applies one
+  edit first, so `z` reaches the refusal (asserts `svb.wow_running`, review shown, journal kept). (15) The
+  equal-value test uses the ElvUI document with its node. (16) `NEW_FONT = "Skurri Bold"`, asserted absent before
+  Apply. +10 tests.

@@ -190,6 +190,11 @@ class TickActions:
         """True while ticks must not change (a scan or a running-programs check)."""
         return False
 
+    def no_ticks_here(self) -> bool:
+        """True when the tree shows nothing that can be ticked (a screen with views that have none says why: Space,
+        a and n stay keys, as on every review)."""
+        return False
+
     def action_toggle(self) -> None:
         focused = self.focused
         if isinstance(focused, Checkbox):
@@ -201,7 +206,7 @@ class TickActions:
         if isinstance(focused, Input):  # Space is priority-bound: type it into the input
             focused.insert_text_at_cursor(" ")
             return
-        if not isinstance(focused, Tree) or self.ticks_frozen():
+        if not isinstance(focused, Tree) or self.ticks_frozen() or self.no_ticks_here():
             return
         node = self.query_one(self.TREE_SELECTOR, Tree).cursor_node
         if node is None or node.data is None:
@@ -220,7 +225,7 @@ class TickActions:
         self._select(False)
 
     def _select(self, tick: bool) -> None:
-        if self.ticks_frozen():
+        if self.ticks_frozen() or self.no_ticks_here():
             return
         model = self.tick_model()
         if tick:

@@ -11,6 +11,7 @@ from collections.abc import Callable
 from typing import ClassVar
 
 from rich.text import Text
+from textual.actions import SkipAction
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -40,6 +41,16 @@ KEY_HELP = ("Type the new key. [5], [2.5], [true] or [false] make a number or bo
             'string key (["[5]"] for the text [5]).')
 
 
+class PopupCheckbox(Ka0sCheckbox):
+    """A checkbox in a popup with OK or Find: Space ticks or unticks it, Enter falls through to the popup (its
+    `enter` binding presses OK / Find, as the hint says), so Enter never flips the value."""
+
+    BINDINGS: ClassVar[list[Binding]] = [Binding("enter", "pass_enter", show=False)]
+
+    def action_pass_enter(self) -> None:
+        raise SkipAction()
+
+
 class DisclaimerScreen(ChoiceScreen):
     """D2: shown each time the tool is opened from the menu, after the flavor pick and before the first scan. "I
     understand" (focused) goes on to the review; Back (or Esc, which dismisses with None) goes back to the flavor
@@ -61,7 +72,8 @@ class EditValueScreen(ModalScreen[Replacement | None]):
     DEFAULT_CSS = popup_css("EditValueScreen", list_rows=len(VALUE_TYPES)) + """
     EditValueScreen Ka0sCheckbox { margin-top: 1; }
     """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"),
+                                         Binding("enter", "submit", show=False), *NAV_BINDINGS]
 
     def __init__(self, where: str, current: str, kind: str = REPLACE_STRING, text: str = "", flag: bool = False,
                  check: Callable[[Replacement], str | None] | None = None, note: str = "") -> None:
@@ -82,12 +94,12 @@ class EditValueScreen(ModalScreen[Replacement | None]):
             yield NavSelect([(label, kind) for kind, label in VALUE_TYPES], value=self.kind, allow_blank=False,
                             id="value-type", compact=True)
             yield Input(self.text, placeholder="new value", id="value-text", compact=True)
-            yield Ka0sCheckbox("true", self.flag, id="value-bool", compact=True)
+            yield PopupCheckbox("true", self.flag, id="value-bool", compact=True)
             yield Static("", id="value-error", classes="popup-error")
             with ButtonRow(classes="popup-buttons"):
                 yield action_button("OK", "confirm", id="ok")
                 yield action_button("Cancel", "cancel", "escape", id="cancel")
-            yield NavHint("Enter OK · ↑↓/Tab move · Enter/Space open the list · ←→ buttons")
+            yield NavHint("Enter OK · ↑↓/Tab move · Enter/Space open the list · Space tick · ←→ buttons")
 
     def on_mount(self) -> None:
         self._show_fields()
@@ -111,6 +123,10 @@ class EditValueScreen(ModalScreen[Replacement | None]):
         if kind == REPLACE_BOOLEAN:
             return self.query_one("#value-bool", Ka0sCheckbox).value
         return parse_replacement(kind, self.query_one("#value-text", Input).value)
+
+    def action_submit(self) -> None:
+        """Enter where the focused control does not take it (the checkbox): OK."""
+        self._ok()
 
     def _ok(self) -> None:
         try:
@@ -211,7 +227,8 @@ class SearchScreen(ModalScreen[SearchSpec | None]):
     SearchScreen .search-gap {{ margin-top: 1; }}
     SearchScreen #search-error {{ margin-top: 1; }}
     """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"),
+                                         Binding("enter", "submit", show=False), *NAV_BINDINGS]
 
     def __init__(self, *, flavors: list[tuple[str, str]] = (), accounts: list[str] = (),
                  characters: list[str] = (), last: SearchSpec | None = None) -> None:
@@ -252,7 +269,7 @@ class SearchScreen(ModalScreen[SearchSpec | None]):
                                            compact=True))
             yield self._row("Value match", self._select([(label, v) for v, label in VALUE_MODES], last.value_mode,
                                                         "value-mode"))
-            yield self._row("", Ka0sCheckbox("Match case", last.match_case, id="match-case", compact=True))
+            yield self._row("", PopupCheckbox("Match case", last.match_case, id="match-case", compact=True))
             if len(self.flavors) > 1:
                 yield self._row("Flavor", self._select([("Every flavor", EVERY), *((n, f) for f, n in self.flavors)],
                                                        scope.flavor or EVERY, "scope-flavor"), gap=True)
@@ -268,12 +285,12 @@ class SearchScreen(ModalScreen[SearchSpec | None]):
                                                          "new-type"), gap=True)
             yield self._row("New value", Input(new_text, placeholder="new value (text for Contains)",
                                                id="new-text", compact=True))
-            yield self._row("New value", Ka0sCheckbox("true", new is True, id="new-bool", compact=True))
+            yield self._row("New value", PopupCheckbox("true", new is True, id="new-bool", compact=True))
             yield Static("", id="search-error", classes="popup-error")
             with ButtonRow(classes="popup-buttons"):
                 yield action_button("Find", "confirm", id="find")
                 yield action_button("Cancel", "cancel", "escape", id="cancel")
-            yield NavHint("Enter Find · ↑↓/Tab move · Enter/Space open a list · ←→ buttons")
+            yield NavHint("Enter Find · ↑↓/Tab move · Enter/Space open a list · Space tick · ←→ buttons")
 
     def on_mount(self) -> None:
         self._show_fields()
@@ -311,6 +328,10 @@ class SearchScreen(ModalScreen[SearchSpec | None]):
                           value=self.query_one("#search-value", Input).value, value_mode=self._value("value-mode"),
                           match_case=self.query_one("#match-case", Ka0sCheckbox).value, scope=scope,
                           replacement=replacement)
+
+    def action_submit(self) -> None:
+        """Enter where the focused control does not take it (a checkbox): Find."""
+        self.action_find()
 
     def action_find(self) -> None:
         try:

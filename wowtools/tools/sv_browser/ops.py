@@ -333,7 +333,7 @@ class Staging:
         problem = self._refused(doc, node)
         if problem is None and not node.can_delete:
             problem = TOP_LEVEL
-        if problem is None and node.parent is not None and self.deleted_above(doc, node.parent):
+        if problem is None and self.deleted_above(doc, node):  # itself (nothing left to do) or a key above it
             problem = INSIDE_DELETE
         return problem
 

@@ -15,7 +15,7 @@ from wowtools.tools.sv_browser.search import REPLACE_BOOLEAN, REPLACE_NUMBER, RE
 from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.suite_app import ToolMenuScreen
-from wowtools.ui.widgets import Ka0sCheckbox
+from wowtools.ui.widgets import Ka0sCheckbox, NavHint
 
 
 def error_text(screen, selector: str) -> str:
@@ -162,6 +162,50 @@ class EditValueTest(SvEditTestBase):
                 self.assertIs(app.screen, review, node.label.plain)
 
 
+    async def test_enter_on_the_boolean_checkbox_presses_ok_and_space_ticks(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review, general = await self.general(app, pilot)
+            popup = await self.press_on(review, pilot, child(general, "autoRepair"), "e")
+            box = popup.query_one("#value-bool", Ka0sCheckbox)
+            self.assertIs(popup.focused, box)
+            self.assertIn("Space tick", popup.query_one(NavHint).hint)
+            await pilot.press("space")  # Space ticks or unticks
+            await settle(app, pilot)
+            self.assertFalse(box.value)
+            await pilot.press("enter")  # Enter is OK, as the hint says: never a flip of the value
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(child(general, "autoRepair").label.plain, "autoRepair = true  ✎ false")
+
+    async def test_a_staged_value_is_where_the_popup_starts(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review, general = await self.general(app, pilot)
+            popup = await self.press_on(review, pilot, child(general, "fontSize"), "e")
+            popup.query_one("#value-text", Input).value = "14.5"
+            await pilot.press("enter")
+            await settle(app, pilot)
+            popup = await self.press_on(review, pilot, child(general, "fontSize"), "e")
+            self.assertEqual(popup.current, "12")  # Now: the file's value
+            self.assertEqual(popup.query_one("#value-type", Select).value, REPLACE_NUMBER)
+            self.assertEqual(popup.query_one("#value-text", Input).value, "14.5")  # the staged one to change
+            await pilot.press("escape")
+            await settle(app, pilot)
+            popup = await self.press_on(review, pilot, child(general, "font ="), "e")
+            popup.query_one("#value-type", Select).value = REPLACE_BOOLEAN
+            await settle(app, pilot)
+            popup.query_one("#value-bool", Ka0sCheckbox).value = True
+            await pilot.click("#ok")
+            await settle(app, pilot)
+            popup = await self.press_on(review, pilot, child(general, "font ="), "e")
+            self.assertEqual(popup.query_one("#value-type", Select).value, REPLACE_BOOLEAN)
+            self.assertTrue(popup.query_one("#value-bool", Ka0sCheckbox).value)
+            self.assertIs(popup.focused, popup.query_one("#value-bool"))
+            await pilot.press("escape")
+            await settle(app, pilot)
+
+
 class RenameKeyTest(SvEditTestBase):
     async def test_rename_checks_empty_and_duplicate_keys_then_stages(self):
         app = self.make_app()
@@ -258,6 +302,10 @@ class DeleteKeyTest(SvEditTestBase):
             await self.press_on(review, pilot, child(unit, "barFont"), "e")
             self.assertIs(app.screen, review)
             self.assertTrue(review.query_one("#act-edit", Button).disabled)
+            self.assertTrue(review.query_one("#act-delete", Button).disabled)
+            # the deleted key itself: nothing left to delete, so the bar is off and d asks nothing again
+            confirm = await self.press_on(review, pilot, unit, "d")
+            self.assertIs(confirm, review)
             self.assertTrue(review.query_one("#act-delete", Button).disabled)
 
     async def test_an_array_entry_carries_the_shift_warning_and_no_stages_nothing(self):

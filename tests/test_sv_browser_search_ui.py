@@ -18,9 +18,9 @@ from wowtools.tools.sv_browser.ops import HAS_STAGED_EDIT
 from wowtools.tools.sv_browser.popups import FIND_ONLY, SearchScreen
 from wowtools.tools.sv_browser.review_screen import BROWSE, RESULTS, SvReviewScreen
 from wowtools.tools.sv_browser.search import (KEY_CONTAINS, NEED_TEXT, REPLACE_BOOLEAN, REPLACE_NUMBER,
-                                              VALUE_CONTAINS)
+                                              REPLACE_STRING, VALUE_CONTAINS)
 from wowtools.ui.dialogs import ConfirmScreen
-from wowtools.ui.widgets import Ka0sCheckbox, action_kind
+from wowtools.ui.widgets import Ka0sCheckbox, NavHint, action_kind
 
 FRIZ = "Friz Quadrata TT"
 
@@ -415,3 +415,74 @@ class SearchAtTinyTest(SearchTestBase):
             self.assertIsInstance(app.screen, SvReviewScreen)
             self.assertEqual(len(review.hits), 7)
             self.assertGreater(review.query_one("#pending", Static).region.height, 1)
+
+
+class ReviewKeysTest(SearchTestBase):
+    """The M3 review's key fixes: Enter in the search popup's checkboxes, → on the Search button, Space / a / n only
+    where there is something to tick, and a load that ends after a rescan."""
+
+    async def test_enter_on_match_case_finds_and_space_ticks(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            popup = await self.open_search(review, pilot)
+            self.assertIn("Space tick", popup.query_one(NavHint).hint)
+            await self.fill(popup, pilot, search_value=FRIZ, new_text="Arial")
+            box = popup.query_one("#match-case", Ka0sCheckbox)
+            box.focus()
+            await settle(app, pilot)
+            await pilot.press("space")
+            await settle(app, pilot)
+            self.assertTrue(box.value)
+            await pilot.press("enter")  # Find, as the hint says
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertTrue(review.last_spec.match_case)
+            self.assertEqual(review.view, RESULTS)
+
+    async def test_right_on_the_search_button_goes_to_the_tree(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            review.query_one("#btn-search", Button).focus()
+            await settle(app, pilot)
+            await pilot.press("right")
+            await settle(app, pilot)
+            self.assertIs(review.focused, review.query_one("#browse", Tree))
+
+    async def test_space_a_n_say_why_where_nothing_can_be_ticked(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#browse", Tree)
+            tree.focus()
+            await settle(app, pilot)
+
+            async def said(key: str) -> list[str]:
+                with mock.patch.object(review, "notify") as notify:
+                    await pilot.press(key)
+                    await settle(app, pilot)
+                return [c.args[0] for c in notify.call_args_list]
+            for key in ("space", "a", "n"):  # Browse: nothing to tick
+                self.assertEqual(await said(key), [review_screen.NO_TICKS_BROWSE], key)
+            await self.search(review, pilot, search_value=FRIZ, new_type=FIND_ONLY)
+            tree.focus()
+            for key in ("space", "a", "n"):
+                self.assertEqual(await said(key), [review_screen.NO_TICKS_FIND_ONLY], key)
+            await self.search(review, pilot, search_value=FRIZ, new_type=REPLACE_STRING, new_text="Arial")
+            tree.focus()
+            self.assertEqual(await said("n"), [])
+            self.assertEqual(review.ticked, set())
+            self.assertEqual(await said("a"), [])
+            self.assertEqual(len(review.ticked), 7)
+
+    async def test_a_load_that_ends_after_a_rescan_keeps_the_new_loads_guard(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            key = ("file", "a file being read again")
+            review._loading.add(key)  # the new scan's load of it runs
+            review._loaded(key, review._generation - 1)  # the old scan's load ends
+            self.assertIn(key, review._loading)
+            review._loaded(key, review._generation)
+            self.assertNotIn(key, review._loading)
