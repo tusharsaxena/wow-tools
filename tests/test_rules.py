@@ -144,6 +144,36 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(built[0]["data"]["items"], 6)
         self.assertEqual(len([r for r in records if r["event"] == "proposal.item"]), 6)
 
+    def test_blacklisted_addon_is_kept_aside_never_proposed(self):
+        """Spec B2: a blacklisted (flavor, addon) is never proposed: it is held in `blacklisted` (the review shows it
+        greyed), outside the items, the totals, the per-reason counts and the proposal events. Case-insensitive."""
+        with capture_events() as records:
+            proposal = evaluate(self.scan, Criteria(), now=NOW, blacklist=[("_RETAIL_", "uninstalled")])
+        self.assertNotIn("Uninstalled", {i.addon for i in proposal.items})
+        self.assertEqual(sorted((i.owner_label, i.addon) for i in proposal.blacklisted),
+                         [("Realm1/CharA", "Uninstalled"), ("account-wide", "Uninstalled")])
+        self.assertTrue(all(i.blacklisted for i in proposal.blacklisted))
+        self.assertFalse(any(i.blacklisted for i in proposal.items))
+        self.assertEqual(proposal.total_files, 5)
+        self.assertNotIn("not_installed", proposal.by_reason())
+        self.assertEqual(len([r for r in records if r["event"] == "proposal.item"]), 4)
+        built = next(r["data"] for r in records if r["event"] == "proposal.built")
+        self.assertEqual((built["items"], built["blacklisted"]), (4, 2))
+
+    def test_blacklist_is_per_flavor_and_star_is_every_flavor(self):
+        other = evaluate(self.scan, Criteria(), now=NOW, blacklist=[("_classic_era_", "Uninstalled")], log=False)
+        self.assertIn("Uninstalled", {i.addon for i in other.items})
+        self.assertEqual(other.blacklisted, [])
+        star = evaluate(self.scan, Criteria(), now=NOW, blacklist=[("*", "OLDADDON")], log=False)
+        self.assertNotIn("OldAddon", {i.addon for i in star.items})
+        self.assertEqual([i.addon for i in star.blacklisted], ["OldAddon"])
+
+    def test_criterion_counts_leave_blacklisted_addons_out(self):
+        counts = criterion_counts(self.scan, max_age_days=90, now=NOW, blacklist=[("_retail_", "Uninstalled"),
+                                                                                  ("*", "Details")])
+        self.assertEqual(counts, {"not_installed": 0, "not_enabled": 1, "older_than": 2, "stray_copies": 1,
+                                  "orphan_backups": 0})
+
     def test_describe(self):
         self.assertEqual(Criteria().describe(),
                          "not_installed, not_enabled, older_than(90d), stray_copies, orphan_backups")
@@ -216,6 +246,20 @@ class SettingsTest(unittest.TestCase):
         cfg = Config(self.path)
         cfg.set_path(SECTION, "backup_dir", Path("/elsewhere/bk"))
         self.assertEqual(resolve_backup_dir(load_settings(cfg), Path("/games/wow")), Path("/elsewhere/bk"))
+
+    def test_blacklist_round_trip(self):
+        """Spec B2: [wtf_cleaner] blacklist, the shared `flavor:Addon` format; empty by default; a bare name is "*"."""
+        cfg = Config(self.path)
+        self.assertEqual(load_settings(cfg).blacklist, [])
+        cfg.set(SECTION, "blacklist", "_retail_:ElkBuffBars, Questie", log=False)
+        settings = load_settings(cfg)
+        self.assertEqual(settings.blacklist, [("_retail_", "ElkBuffBars"), ("*", "Questie")])
+        save_settings(cfg, settings)
+        again = Config(self.path).load()
+        self.assertEqual(again.get(SECTION, "blacklist"), "_retail_:ElkBuffBars, Questie")
+        settings.blacklist = []
+        save_settings(cfg, settings)
+        self.assertEqual(load_settings(Config(self.path).load()).blacklist, [])
 
     def test_retention_is_global_and_stale_keys_go_on_save(self):
         """Feedback round 1: retention lives in [general]; the old per-tool keys are ignored, then removed."""

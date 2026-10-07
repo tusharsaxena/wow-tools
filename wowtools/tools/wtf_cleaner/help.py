@@ -49,6 +49,13 @@ collapse it all, `←` `→` switch panes. `f` or `Esc` picks another game versi
 opens the settings, `q` quits. On the results: **Rescan** (`r`), **Other flavor** (`f`), **Tools** (`t`), **Quit**
 (`q`).
 
+## Blacklist
+
+An addon you never want cleaned goes on the **blacklist**: highlight its line (or one of its files) and press `b`.
+Its lines stay in the tree, greyed and marked *blacklisted*, but are never ticked, counted or cleaned, in that game
+version only. `b` on it again takes it off. The list is `blacklist` in `config\\wtf-cleaner.cfg`
+(`_retail_:ElkBuffBars, ...`; a name without a game version means every one).
+
 ## Warnings
 
 When the scan could not read something (a folder, a file, a line of an `AddOns.txt`), the bottom line shows

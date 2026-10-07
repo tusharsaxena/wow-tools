@@ -9,7 +9,7 @@ go-ahead.
 | K0 | spec, plan, ledger | done | (this commit) | user feedback 2026-10-07 |
 | K1 | warnings view, all tools | done | (this commit) | Shared `ui/warnings_view.py` (`SummaryBar` bottom line + compact Warnings button "⚠ N … (!)", `WarningsHost`, `WarningsScreen` grouped by flavor with filter/x/c/Back(Esc)/detail line) adopted by the WTF Cleaner, Screenshot Organizer, Interface Backup review + restore, Ace3 and SV Browser reviews, every "(see the log)/(see the tree)" count gone; full suite 1689 OK (2 skipped), +13 tests |
 | K2 | blacklist helpers to core + shared b | done | (this commit) | Pair helpers moved to UI-free `core/blacklist.py` (Ace3 settings/app/blacklist screen/review import them), shared `BlacklistAction` + `BLACKLIST_BINDING` + `blacklist_toast` in `ui/review.py` adopted by the Ace3 review (its `b`, events, `u`, blacklist screen unchanged), single definitions pinned in test_structure; full suite 1693 OK (2 skipped), +4 tests |
-| K3 | WTF Cleaner blacklist | todo | | |
+| K3 | WTF Cleaner blacklist | done | (this commit) | `[wtf_cleaner] blacklist` (core pair format, load/save, kept by the settings form, no new form row), `evaluate(blacklist=)` holds blacklisted groups in `Proposal.blacklisted` (out of items/totals/by_reason/criterion counts/summary/confirm/clean/dry run), review shows them greyed + tagged and untickable, shared `b` (`BlacklistAction`) on addon/file rows per flavor, `blacklist.changed` event, help section, hint names `b`; full suite 1705 OK (2 skipped), +12 tests |
 | K4 | docs | todo | | |
 | KR | review, fixes, push | todo | | |
 
@@ -45,3 +45,19 @@ go-ahead.
   `blacklist_changed()` (default a scheduled rebuild; Ace3 drops locked changes first). The toast
   "<Addon> (<Flavor name>) is now / no longer on the blacklist." and the no-target notice `BLACKLIST_NO_TARGET`
   ("Highlight an addon (or something inside one) first.", Ace3's existing text, also used by its `u`) are shared.
+- **K3** `evaluate()` keeps the blacklisted groups (what the criteria would propose of them) in a new
+  `Proposal.blacklisted` list, each `ProposalItem.blacklisted=True`; `Proposal.items` (and so totals, `by_reason`,
+  `criterion_counts(blacklist=)`, `proposal.item` events, the selection, confirm, clean and dry run) never hold them.
+  `proposal.built` gained a `blacklisted` count. A blacklisted addon that no criterion matches is not shown (nothing
+  to clean there); taking it off then is a hand edit of `[wtf_cleaner] blacklist`.
+- **K3** Tree: a blacklisted item/file row has no tick keys (`_paths` returns none: Space/a/n skip it) and no tick
+  mark; greyed with a "blacklisted" tag; group rows count and mark only the cleanable items. An unticked file keeps
+  its `unchecked` entry across a blacklist round trip. The flavor of a row comes from `_item_flavor` (id(item) ->
+  folder, built per rebuild), so All flavors toggles per flavor.
+- **K3** `b` is `BLACKLIST_BINDING` (`show=False`, as on the Ace3 review): a shown footer key wrapped the WTF footer
+  to two rows at 120x30 (test_look_and_feel footer/brand-bar tests). The left-pane hint names "b blacklist" instead
+  (it still fits at 120x30 and 80x24), and the help has a "## Blacklist" section. `toggle_blacklist` reloads the
+  settings, uses the shared `toggle_pair` with every flavor folder of the install (a wildcard taken off in one
+  flavor becomes explicit pairs for the others), saves (`source="review"`) and logs the new WTF event
+  `blacklist.changed` (the cleaner's unprefixed naming); `blacklist_changed()` refreshes the criterion counts, then
+  rebuilds. docs/events.md regenerated.

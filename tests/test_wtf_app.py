@@ -29,11 +29,12 @@ from wowtools.tools.wtf_cleaner.review_screen import CleanProgressScreen, Recove
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, criterion_counts
 from wowtools.tools.wtf_cleaner.safety import MARKER_NAME
 from wowtools.tools.wtf_cleaner.scanner import scan
-from wowtools.tools.wtf_cleaner.settings import load_settings
+from wowtools.tools.wtf_cleaner.settings import load_settings, save_settings
 from wowtools.tools.wtf_cleaner.undo import UndoResult
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
+from wowtools.ui.review import BLACKLIST_NO_TARGET
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.widgets import ButtonRow, Ka0sCheckbox, NavHint, action_kind
@@ -490,6 +491,153 @@ class ReviewFlowTest(AppTestCase):
             self.assertEqual(review.focused.id, "btn-clean")
             await pilot.press("left")  # no wrap round: stays in the row
             self.assertEqual(review.focused.id, "btn-clean")
+
+
+class BlacklistKeyTest(AppTestCase):
+    """Spec B2/B4: b on an addon row or one of its file rows blacklists that addon in its flavor, or takes it off.
+    A blacklisted addon stays in the tree, greyed and tagged, but is never ticked, counted or cleaned."""
+
+    @staticmethod
+    def node(review, kind, addon, owner="account-wide"):
+        tree = review.query_one("#proposal", Tree)
+        return next(n for n in _walk(tree.root)
+                    if n.data and n.data[0] == kind and n.data[1].addon == addon and n.data[1].owner_label == owner)
+
+    async def press_b_on(self, app, pilot, review, node):
+        tree = review.query_one("#proposal", Tree)
+        tree.focus()
+        parent = node.parent
+        while parent is not None:  # an addon's files show once it is open
+            parent.expand()
+            parent = parent.parent
+        await pilot.pause()
+        tree.move_cursor(node)
+        await pilot.pause()
+        self.assertIs(tree.cursor_node, node)
+        await pilot.press("b")
+        await settle(app, pilot)
+
+    def saved(self):
+        return load_settings(Config(self.tool_cfg.path).load()).blacklist
+
+    async def test_b_on_an_addon_then_on_a_file_toggles_it(self):
+        app = self.make_app()
+        with capture_events() as records:
+            async with app.run_test(size=SIZE) as pilot:
+                review = await self.open_review(app, pilot)
+                self.assertIn("6 items · 8 files", review.summary_text)
+                await self.press_b_on(app, pilot, review, self.node(review, "item", "Uninstalled"))
+                self.assertEqual(self.saved(), [("_retail_", "Uninstalled")])
+                self.assertTrue(any(n.message == "Uninstalled (Retail) is now on the blacklist."
+                                    for n in app._notifications))
+                # both owners' rows of the addon: greyed, tagged, no tick mark, out of the proposal and the counts
+                for owner in ("account-wide", "Realm1/CharA"):
+                    row = self.node(review, "item", "Uninstalled", owner)
+                    self.assertTrue(row.data[1].blacklisted)
+                    self.assertIn("blacklisted", str(row.label))
+                    self.assertFalse(str(row.label).startswith(("✔", "◩", "✘")), str(row.label))
+                self.assertNotIn("Uninstalled", {i.addon for i in review.proposal.items})
+                self.assertIn("4 items · 5 files", review.summary_text)
+                self.assertIn("(0 files)", review.query_one("#crit_not_installed", Ka0sCheckbox).label.plain)
+                # b again, on a file of the character's row: off the blacklist, back in the proposal
+                file_row = next(iter(self.node(review, "item", "Uninstalled", "Realm1/CharA").children))
+                await self.press_b_on(app, pilot, review, file_row)
+                self.assertEqual(self.saved(), [])
+                self.assertIn("Uninstalled", {i.addon for i in review.proposal.items})
+                self.assertIn("6 items · 8 files", review.summary_text)
+                self.assertTrue(any(n.message == "Uninstalled (Retail) is no longer on the blacklist."
+                                    for n in app._notifications))
+        changed = [r["data"] for r in records if r["event"] == "blacklist.changed"]
+        self.assertEqual(changed, [{"flavor": "_retail_", "addon": "Uninstalled", "blacklisted": True},
+                                   {"flavor": "_retail_", "addon": "Uninstalled", "blacklisted": False}])
+
+    async def test_blacklisted_rows_cannot_be_ticked(self):
+        self.tool_cfg.set("wtf_cleaner", "blacklist", "_retail_:uninstalled", log=False)  # any case
+        self.tool_cfg.save()
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            row = self.node(review, "item", "Uninstalled")
+            self.assertTrue(row.data[1].blacklisted)
+            paths = {f.path for f in row.data[1].files}
+            tree = review.query_one("#proposal", Tree)
+            tree.focus()
+            row.expand()
+            await pilot.pause()
+            for target in (row, next(iter(row.children))):
+                tree.move_cursor(target)
+                self.assertIs(tree.cursor_node, target)
+                await pilot.press("space")
+                await pilot.pause()
+                self.assertFalse(paths & review.unchecked)
+            await pilot.press("n")
+            self.assertFalse(paths & review.unchecked)
+            await pilot.press("a")
+            self.assertNotIn("Uninstalled", {i.addon for i in review._selection()})
+
+    async def test_blacklisted_addon_is_left_out_of_the_confirm_and_the_dry_run(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.press_b_on(app, pilot, review, self.node(review, "item", "Uninstalled"))
+            await pilot.press("y")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            self.assertIn("4 addon groups, 5 files", app.screen.body_text)
+            await pilot.press("y")
+            await pilot.pause()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ResultScreen)
+            self.assertEqual(len(app.screen.result.would_delete), 5)
+            self.assertFalse([o for o in app.screen.result.would_delete if o.path.name.startswith("Uninstalled")])
+        self.assertTrue((self.sv / "Uninstalled.lua").exists())
+
+    async def test_clean_never_deletes_a_blacklisted_addon(self):
+        self.tool_cfg.set("wtf_cleaner", "blacklist", "Uninstalled", log=False)  # a bare name: every flavor
+        self.tool_cfg.save()
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_review(app, pilot)
+            await pilot.press("w")
+            await settle(app, pilot)
+            self.assertIn("4 addon groups, 5 files", app.screen.body_text)
+            await pilot.press("y")
+            await pilot.pause()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ResultScreen)
+        self.assertTrue((self.sv / "Uninstalled.lua").exists())
+        self.assertTrue((self.sv / "Uninstalled.lua.bak").exists())
+        self.assertFalse((self.sv / "DisabledAddon.lua").exists())
+
+    async def test_b_takes_a_wildcard_off_in_this_flavor_only(self):
+        self.tool_cfg.set("wtf_cleaner", "blacklist", "Uninstalled", log=False)
+        self.tool_cfg.save()
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.press_b_on(app, pilot, review, self.node(review, "item", "Uninstalled"))
+            self.assertIn("Uninstalled", {i.addon for i in review.proposal.items})
+        saved = self.saved()
+        self.assertIn(("_classic_era_", "Uninstalled"), saved)
+        self.assertNotIn("_retail_", {flavor for flavor, _ in saved})
+
+    async def test_b_on_a_group_only_says_what_to_highlight(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            account = next(n for n in tree.root.children if n.data and n.data[0] == "group")
+            await self.press_b_on(app, pilot, review, account)
+            self.assertTrue(any(n.message == BLACKLIST_NO_TARGET for n in app._notifications))
+        self.assertEqual(self.saved(), [])
+
+    async def test_settings_form_keeps_the_blacklist(self):
+        self.tool_cfg.set("wtf_cleaner", "blacklist", "_retail_:Uninstalled", log=False)
+        self.tool_cfg.save()
+        settings = load_settings(self.tool_cfg)
+        settings.backup_before_delete = False
+        save_settings(self.tool_cfg, settings)
+        self.assertEqual(self.saved(), [("_retail_", "Uninstalled")])
 
 
 class RecoveryDialogTest(AppTestCase):
@@ -1368,6 +1516,26 @@ class AllFlavorsTest(AppTestCase):
             self.assertIn("✘", str(flavors["Retail"].label))
             await pilot.press("a")
             self.assertEqual(sum(len(i.files) for i in review._selection()), 9)
+
+    async def test_b_blacklists_an_addon_in_its_own_flavor(self):
+        """All flavors: b on Classic Era's Gone lists it for _classic_era_ only; Retail's items are untouched."""
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_all(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            gone = next(n for n in _walk(tree.root) if n.data and n.data[0] == "file" and n.data[1].addon == "Gone")
+            tree.focus()
+            gone.parent.expand()
+            await pilot.pause()
+            tree.move_cursor(gone)
+            self.assertIs(tree.cursor_node, gone)
+            await pilot.press("b")
+            await settle(app, pilot)
+            self.assertEqual({f.folder for f, _ in review._selection_by_flavor()}, {"_retail_"})
+            self.assertEqual(len(review.proposal.items), 6)
+            gone = next(n for n in _walk(tree.root) if n.data and n.data[0] == "item" and n.data[1].addon == "Gone")
+            self.assertIn("blacklisted", str(gone.label))
+        self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).blacklist, [("_classic_era_", "Gone")])
 
     async def test_flavor_with_nothing_to_clean_says_so(self):
         (self.era_sv / "Gone.lua").unlink()

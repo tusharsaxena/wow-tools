@@ -14,8 +14,10 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Button, Checkbox, Header, Input, Label, ProgressBar, Static, Tree
+from textual.widgets.tree import TreeNode
 
 from wowtools.core import activity
+from wowtools.core.blacklist import toggle_pair
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import ACCOUNT_WIDE, Flavor, WowInstall, flavor_name, validate_backup_dir
@@ -31,12 +33,12 @@ from wowtools.tools.wtf_cleaner.result_screen import ResultScreen, reasons_text
 from wowtools.tools.wtf_cleaner.rules import (CRITERIA, Proposal, ProposalItem, criterion_counts, evaluate,
                                              log_proposal_built, log_proposal_items)
 from wowtools.tools.wtf_cleaner.safety import SNAPSHOT_SUBDIR, Marker, clear_marker, read_marker, recovery_message
-from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir
+from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir, save_settings
 from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceScreen, ConfirmScreen,
                                 ProgressScreen, relabel_branch, two_pane_css)
-from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
+from wowtools.ui.review import BLACKLIST_BINDING, BLACKLIST_KEY, BlacklistAction, ReviewBase, ReviewTree, TickModel
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TreeFilter
 from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost, scan_warning_items
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button
@@ -44,7 +46,8 @@ from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, 
 WARNING_STYLE = "#E8B04B"
 ALL_FLAVORS_LABEL = "All flavors"
 __all__ = ["CleanProgressScreen", "RecoveryScreen", "ResultScreen", "ReviewScreen"]
-NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools · 1-5 criteria"
+NAV_HINT = (REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT
+            + f"f flavors · t tools · 1-5 criteria · {BLACKLIST_KEY} blacklist")
 
 
 class CleanProgressScreen(ProgressScreen):
@@ -81,7 +84,7 @@ class RecoveryScreen(ChoiceScreen):
             self.dismiss("remind")
 
 
-class ReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
+class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen[str]):
     TREE_SELECTOR = "#proposal"
     LOG_SCREEN = "review"
     HIDDEN_NOUN = "file"
@@ -92,6 +95,7 @@ class ReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         Binding("space", "toggle", "Tick/untick", priority=True),
         Binding("a", "select_all", "All"),
         Binding("n", "select_none", "None"),
+        BLACKLIST_BINDING,  # off the footer (full at 120 columns), as on the Ace3 review: the hint names it
         *FILTER_BINDINGS,
         *TREE_BINDINGS,
         Binding("w", "clean", "Clean"),
@@ -134,6 +138,7 @@ class ReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         self.proposal: Proposal | None = None  # every flavor's items together
         self.unchecked: set[Path] = set()
         self._filter_texts: dict[Path, tuple[str, ...]] = {}  # a file's labels from the top: the filter's match
+        self._item_flavor: dict[int, str] = {}  # id(proposal item, cleanable or blacklisted) -> its flavor folder
         self.summary_text = ""
         self._progress_screen: CleanProgressScreen | None = None
         self._last_filter: Widget | None = None
@@ -261,7 +266,8 @@ class ReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         counts = dict.fromkeys(CRITERIA, 0)
         for flavor_scan in self._scanned_ok():
             for name, files in criterion_counts(flavor_scan.result,  # type: ignore[arg-type]
-                                                max_age_days=self.criteria.max_age_days).items():
+                                                max_age_days=self.criteria.max_age_days,
+                                                blacklist=self.settings.blacklist).items():
                 counts[name] += files
         for index, name in enumerate(CRITERIA, start=1):
             self.query_one(f"#crit_{name}", Ka0sCheckbox).label = self._criterion_label(index, name, counts[name])
@@ -275,8 +281,11 @@ class ReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
             return
         # Interactive rebuilds (criterion toggles, max age) log nothing: proposal.built once per scan, and the
         # proposal.item events only for a run the user confirms (F-006).
-        self.proposals = [(s.flavor, evaluate(s.result, self.criteria, log=False))  # type: ignore[arg-type]
+        self.proposals = [(s.flavor, evaluate(s.result, self.criteria, log=False,  # type: ignore[arg-type]
+                                              blacklist=self.settings.blacklist))
                           for s in self._scanned_ok()]
+        self._item_flavor = {id(item): flavor.folder for flavor, proposal in self.proposals
+                             for item in (*proposal.items, *proposal.blacklisted)}
         if self._log_next_build:
             self._log_next_build = False
             for flavor, proposal in self.proposals:
@@ -301,13 +310,14 @@ class ReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
                                                 (f"  not scanned: {flavor_scan.note or flavor_scan.error}",
                                                  WARNING_STYLE))))
                 continue
-            items = by_folder[flavor_scan.flavor.folder].items
+            proposal = by_folder[flavor_scan.flavor.folder]
+            items, held = proposal.items, proposal.blacklisted
             if self.multi:
                 name = flavor_scan.flavor.display_name
                 top.append(ModelNode(("group", items, name),
-                                     self._account_nodes(flavor_scan.result.account_names, items, (name,))))
+                                     self._account_nodes(flavor_scan.result.account_names, items, (name,), held)))
             else:
-                top += self._account_nodes(flavor_scan.result.account_names, items, ())
+                top += self._account_nodes(flavor_scan.result.account_names, items, (), held)
         kept = self.model_filter([n for n in top if isinstance(n, ModelNode)], lambda n: n.children,
                                  lambda n: (self._filter_name(n.data),), key=id)
         for node in top:
@@ -321,19 +331,20 @@ class ReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         self._update_summary()
 
     def _account_nodes(self, account_names: tuple[str, ...], proposal_items: list[ProposalItem],
-                       path: tuple[str, ...]) -> list[ModelNode]:
+                       path: tuple[str, ...], held: Sequence[ProposalItem] = ()) -> list[ModelNode]:
         """account → account-wide / character → addon → files, as model nodes; `path` is the flavor's name when
-        there are several (the labels above a file, for the filter)."""
+        there are several (the labels above a file, for the filter). `held` are the blacklisted items: rows of
+        their own (greyed, never ticked), outside each group's items (its count and tick mark)."""
         owners: dict[str, dict[str, list[ProposalItem]]] = {name: {} for name in account_names}
-        for item in proposal_items:
+        for item in (*proposal_items, *held):
             owners.setdefault(item.account, {}).setdefault(item.owner_label, []).append(item)
         accounts = []
         for account in sorted(owners, key=str.casefold):
-            account_items = [i for items in owners[account].values() for i in items]
+            account_items = [i for items in owners[account].values() for i in items if not i.blacklisted]
             account_node = ModelNode(("group", account_items, account))
             for owner in sorted(owners[account], key=lambda o: (o != ACCOUNT_WIDE, o.casefold())):
                 items = sorted(owners[account][owner], key=lambda i: i.addon.casefold())
-                owner_node = ModelNode(("group", items, owner))
+                owner_node = ModelNode(("group", [i for i in items if not i.blacklisted], owner))
                 for item in items:
                     item_node = ModelNode(("item", item))
                     for sv in item.files:
@@ -367,7 +378,10 @@ class ReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
 
     @staticmethod
     def _paths(data) -> list[Path]:
+        """The tick keys of a node: none on a blacklisted addon's rows (never ticked, never cleaned)."""
         kind = data[0]
+        if kind in ("file", "item") and data[1].blacklisted:
+            return []
         if kind == "file":
             return [data[2].path]
         if kind == "item":
@@ -385,6 +399,8 @@ class ReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         now = time.time()
         mark = self._mark(self._paths(data))
         kind = data[0]
+        if kind in ("file", "item") and data[1].blacklisted:
+            return self._blacklisted_label(data, now)
         if kind == "file":
             sv = data[2]
             return Text.assemble(mark, sv.name,
@@ -398,6 +414,16 @@ class ReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         if not items and data is not self.query_one("#proposal", Tree).root.data:
             return Text.assemble("  ", (name, ACCENT), ("  nothing to clean", "dim"))  # an account or flavor
         return Text.assemble(mark, (name, ACCENT), (f"  {plural(len(items), 'item')}", "dim"))
+
+    @staticmethod
+    def _blacklisted_label(data, now: float) -> Text:
+        """A blacklisted addon's row (or one of its files): greyed, no tick mark, tagged on the addon row."""
+        if data[0] == "file":
+            sv = data[2]
+            return Text.assemble("  ", sv.name, f"  {human_size(sv.size)} · {age_days(sv.mtime, now)}d", style="dim")
+        item = data[1]
+        return Text.assemble("  ", (item.addon, "bold"), "  ", ("blacklisted", f"not dim {WARNING_STYLE}"),
+                             f"  {plural(len(item.files), 'file')} · {human_size(item.total_size)}", style="dim")
 
     def _refresh_labels(self, node=None) -> None:
         """Relabel node's branch and its ancestors (everything a tick there can change), or the whole tree."""
@@ -465,6 +491,38 @@ class ReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
     def tick_log_key(self, node, keys) -> str:
         kind = node.data[0]
         return str(keys[0]) if kind == "file" else (node.data[1].key if kind == "item" else node.data[2])
+
+    # --- b (BlacklistAction): the highlighted addon in its flavor, on or off [wtf_cleaner] blacklist ---------
+    def blacklist_ready(self) -> bool:
+        return (self.proposal is not None and not self._scanning and not self._checking
+                and not getattr(self.app, "busy", False))
+
+    def blacklist_target(self, node: TreeNode | None) -> tuple[str, str] | None:
+        """An addon row or one of its file rows (cleanable or blacklisted): its flavor and addon; None above one."""
+        if node is None or node.data is None or node.data[0] not in ("item", "file"):
+            return None
+        item = node.data[1]
+        flavor = self._item_flavor.get(id(item))
+        return None if flavor is None else (flavor, item.addon)
+
+    def _flavor_folders(self) -> list[str]:
+        """Every flavor folder of the install (a wildcard taken off in one flavor stays in the others)."""
+        try:
+            folders = [f.folder for f in WowInstall(self.cfg.wow_path).flavors()] if self.cfg.wow_path else []
+        except OSError:
+            folders = []
+        return folders or [f.folder for f in self.flavors]
+
+    def toggle_blacklist(self, flavor: str, addon: str) -> bool:
+        self.settings = load_settings(self.tool_cfg)  # as saved now (the settings form may have changed it)
+        self.settings.blacklist, listed = toggle_pair(self.settings.blacklist, flavor, addon, self._flavor_folders())
+        save_settings(self.tool_cfg, self.settings, source="review")
+        log_event("blacklist.changed", flavor=flavor, addon=addon, blacklisted=listed)
+        return listed
+
+    def blacklist_changed(self) -> None:
+        self._update_criterion_labels()
+        self._schedule_rebuild()
 
     # --- actions ---------------------------------------------------------------------------------
     def action_criterion(self, index: int) -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from wowtools.core.blacklist import Pair, format_blacklist, parse_blacklist
 from wowtools.core.config import Config
 from wowtools.core.journal import TOOLS_SUBDIR
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
@@ -25,6 +26,9 @@ class CleanerSettings:
     # Backups and journals to keep are global: Config.keep_backups / keep_journals ([general]). The one exception:
     # the cleaned-files zips (cleaned-*.zip) kept per flavor, 0 = keep all (the default).
     keep_cleaned: int = 0
+    # (flavor folder, addon) pairs never cleaned (spec B2): `flavor:Addon, ...`, a bare name = every flavor. Edited
+    # with b on the review (or by hand); the settings form has no row for it.
+    blacklist: list[Pair] = field(default_factory=list)
 
 
 def load_settings(cfg: Config) -> CleanerSettings:
@@ -35,7 +39,8 @@ def load_settings(cfg: Config) -> CleanerSettings:
                            cfg.get_path(SECTION, "backup_dir"),
                            (cfg.get(SECTION, "last_account") or "").strip() or None,
                            None if choice is None else choice.strip(),
-                           max(0, cfg.get_int(SECTION, "keep_cleaned", 0)))
+                           max(0, cfg.get_int(SECTION, "keep_cleaned", 0)),
+                           parse_blacklist(cfg.get(SECTION, "blacklist") or ""))
 
 
 def save_settings(cfg: Config, settings: CleanerSettings, *, source: str = "settings") -> None:
@@ -46,6 +51,7 @@ def save_settings(cfg: Config, settings: CleanerSettings, *, source: str = "sett
     cfg.set(SECTION, "keep_cleaned", max(0, settings.keep_cleaned), source=source)
     cfg.set_path(SECTION, "backup_dir", settings.backup_dir, source=source)
     cfg.set(SECTION, "last_account", settings.last_account or "", source=source)
+    cfg.set(SECTION, "blacklist", format_blacklist(settings.blacklist), source=source)
     cfg.remove_retired(SECTION, source=source)
     if settings.last_flavor_choice is not None:
         cfg.set(SECTION, "last_flavor_choice", settings.last_flavor_choice, source=source)
