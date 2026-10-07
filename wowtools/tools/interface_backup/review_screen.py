@@ -180,7 +180,7 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Back up", "create", "b", id="btn-backup")
                     yield action_button("Restore", "navigate", "e", id="btn-restore")
-                    yield action_button("Rescan", "navigate", "r", id="btn-rescan")
+                    yield action_button("Rescan", "refresh", "r", id="btn-rescan")
                     yield action_button("Undo last restore", "revert", "z", id="btn-undo")
                 yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):

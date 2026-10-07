@@ -26,8 +26,9 @@ The first version: five tools in one app.
     doesn't rebuild the tree, so big trees stay quick). `a` / `n` tick or untick only what the filter shows; ticks it hides
     stay, and the bottom line and the "are you sure?" window say how many. A group's tick mark counts what the
     filter shows, and a filter that matches nothing says so. `Esc` in the filter box clears it.
-  - The title bar of every screen reads **Ka0s WoW Tools** in bold gold, then the tool, game version and view in bold
-    white.
+  - **Rescan** is lime on every screen, so it stands out from the grey buttons that only move between screens.
+  - The title bar of every screen reads **Ka0s WoW Tools** in bold gold, then the tool's name in bold cyan, then the
+    game version and view in bold white.
   - The screens that can destroy data (the WTF Cleaner, Ace3 Profile Manager and Saved Variables Browser reviews and
     Interface Backup's restore screen) show a red `⚠ USE AT YOUR OWN RISK` line at the top of their left panel.
   - Every checkbox and box in a left panel has a row of its own, so `↑` / `↓` reach each one.

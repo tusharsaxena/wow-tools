@@ -27,6 +27,7 @@ BACKGROUND: str = KA0S_THEME.background or ""
 # The title bar (spec D41): "Ka0s WoW Tools" in gold, then the tool, flavor and view in near-white, all bold.
 TITLE_GOLD = "#E6B422"
 TITLE_TEXT = "#F0F0F0"
+TITLE_TOOL = KA0S_THEME.accent or "#5CC8FF"  # the tool's name in the title bar: cyan
 
 # Button colour per action kind: (background, text). A text of None takes whichever of the theme's foreground and
 # background reads better on it. The violet leans to red (an orchid), a clear hue away from the lavender the WTF
@@ -39,7 +40,8 @@ ACTION_COLOURS: dict[str, tuple[str, str | None]] = {
     "revert": ("#C060C8", None),                    # puts a change back (Undo, Put the originals back): violet
     "simulate": ("#22B8C4", None),                  # shows what would happen, changes nothing (Dry run): cyan
     "confirm": (KA0S_THEME.primary, None),          # the expected next step (Save, OK, Yes): blue
-    "navigate": ("#33425A", FOREGROUND),            # moves between screens or refreshes (Rescan, Tools): grey
+    "refresh": ("#A8D94A", None),                   # reads the files again (Rescan): lime
+    "navigate": ("#33425A", FOREGROUND),            # moves between screens (Tools, Other flavor, Search): grey
     "cancel": ("#1A2536", KA0S_THEME.secondary),    # backs out or declines (Cancel, No, Quit, Back): dim grey
 }
 SHADE = 0.15  # how much lighter / darker the top and bottom edges (and the hover background) are

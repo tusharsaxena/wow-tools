@@ -294,7 +294,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             kinds = {i: action_kind(review.query_one(f"#{i}", Button))
                      for i in ("btn-backup", "btn-restore", "btn-undo", "btn-rescan")}
         self.assertEqual(kinds, {"btn-backup": "create", "btn-restore": "navigate", "btn-undo": "revert",
-                                 "btn-rescan": "navigate"})
+                                 "btn-rescan": "refresh"})
 
     async def test_ticks_space_all_and_none(self):
         self.save_tool_cfg(backup_dir=str(self.bk))

@@ -448,7 +448,7 @@ class StructureTest(unittest.TestCase):
             "Undo last clean": "revert", "Undo last run": "revert", "Undo last restore": "revert",
             "Undo last change": "revert", "Undo": "revert", "Put the originals back": "revert",
             "Dry run": "simulate", "Save": "confirm", "OK": "confirm",
-            "Rescan": "navigate", "Other flavor": "navigate",
+            "Rescan": "refresh", "Other flavor": "navigate",
             "Tools": "navigate", "More…": "navigate", "Edit blacklist…": "navigate",
             "Cancel": "cancel", "No": "cancel", "Later": "cancel", "Quit": "cancel", "Back": "cancel",
             "Discard": "cancel", "Back to review": "cancel",

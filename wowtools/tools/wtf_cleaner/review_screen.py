@@ -164,7 +164,7 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Clean", "destructive", "w", id="btn-clean")
                     yield action_button("Dry run", "simulate", "y", id="btn-dry")
-                    yield action_button("Rescan", "navigate", "r", id="btn-rescan")
+                    yield action_button("Rescan", "refresh", "r", id="btn-rescan")
                     yield action_button("Undo last clean", "revert", "z", id="btn-undo")
                 yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):

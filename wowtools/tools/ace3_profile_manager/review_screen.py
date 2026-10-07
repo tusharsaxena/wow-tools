@@ -228,7 +228,7 @@ class ProfileReviewScreen(WarningsHost, BlacklistAction, TreeFilter, RunActions,
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Apply", "destructive", "w", id="btn-apply")
                     yield action_button("Dry run", "simulate", "y", id="btn-dry-run")
-                    yield action_button("Rescan", "navigate", "r", id="btn-rescan")
+                    yield action_button("Rescan", "refresh", "r", id="btn-rescan")
                     yield action_button("Undo last change", "revert", "z", id="btn-undo")
                 yield NavHint(NAV_HINT)
             with Vertical(id="tree-pane"):

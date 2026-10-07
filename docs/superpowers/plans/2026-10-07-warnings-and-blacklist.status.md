@@ -79,3 +79,8 @@ go-ahead.
   `CleanerSettingsScreen` (checked to fail if `save()` drops the blacklist). (3) New tests in
   `tests/test_warnings_view.py`: `!` and the button do nothing on every review while `_scanning`, `_checking` or
   `app.busy`, and during the WTF Cleaner's real running-programs check (checked to fail without `warnings_blocked()`).
+- **Follow-up** (user, 2026-10-07): Rescan gets its own action kind `refresh`, lime `#A8D94A` (dark text, variant
+  `success`), on every review and result screen; every other `navigate` button stays grey. The title bar shows the
+  tool's name (a registered tool title at the start of the sub-title) in bold cyan (`TITLE_TOOL`, the theme accent
+  `#5CC8FF`); the menu and shared screens keep the near-white sub-title. Tests that pinned Rescan as navigate now pin
+  refresh; full suite 1709 OK (2 skipped).

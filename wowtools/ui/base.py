@@ -17,9 +17,10 @@ from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.updater import (ReleaseInfo, UpdateError, apply_update, check_for_update,
                                    persist_check_state)
+from wowtools.tools import TOOLS
 from wowtools.ui.branding import update_key_free, update_notice
 from wowtools.ui.dialogs import GUARD_BINDING, EnterGuard
-from wowtools.ui.theme import KA0S_THEME, TITLE_GOLD, TITLE_TEXT, action_variables
+from wowtools.ui.theme import KA0S_THEME, TITLE_GOLD, TITLE_TEXT, TITLE_TOOL, action_variables
 from wowtools.ui.widgets import ACTION_CSS, NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 
@@ -123,11 +124,21 @@ class Ka0sApp(App):
         """Hook for subclasses."""
 
     def format_title(self, title: str, sub_title: str) -> Content:
-        """Every screen's title bar (spec D41): the suite's name in gold, then the tool, flavor and view in
-        near-white, all bold (Textual's default dims the sub-title)."""
+        """Every screen's title bar (spec D41): the suite's name in gold, then the tool's name in cyan, then the
+        flavor and view in near-white, all bold (Textual's default dims the sub-title). The menu and the shared
+        screens (no tool name first) are near-white after the suite's name."""
         if not sub_title:
             return Content.styled(title, f"bold {TITLE_GOLD}")
-        return Content.assemble((title, f"bold {TITLE_GOLD}"), (f" \u2014 {sub_title}", f"bold {TITLE_TEXT}"))
+        tool = next((t.title for t in sorted(TOOLS.values(), key=lambda t: -len(t.title))
+                     if sub_title.startswith(t.title)), "")
+        parts = [(title, f"bold {TITLE_GOLD}"), (" \u2014 ", f"bold {TITLE_TEXT}")]
+        if tool:
+            parts.append((tool, f"bold {TITLE_TOOL}"))
+        if sub_title[len(tool):]:
+            parts.append((sub_title[len(tool):], f"bold {TITLE_TEXT}"))
+        if not tool:
+            parts[1:] = [(f" \u2014 {sub_title}", f"bold {TITLE_TEXT}")]
+        return Content.assemble(*parts)
 
     def get_theme_variable_defaults(self) -> dict[str, str]:
         """The `$act-<kind>` button colours exist under every theme (ACTION_CSS is parsed before on_mount switches

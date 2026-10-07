@@ -31,7 +31,7 @@ from wowtools.ui.dialogs import CONFIRM_GUARD, InfoScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
-from wowtools.ui.theme import TITLE_GOLD, TITLE_TEXT
+from wowtools.ui.theme import TITLE_GOLD, TITLE_TEXT, TITLE_TOOL
 from wowtools.ui.widgets import ButtonRow, NavHint
 
 
@@ -91,12 +91,22 @@ class SuiteAppBaseTest(UiTestCase):
             async with app.run_test(size=size) as pilot:
                 await pilot.pause()
                 header = app.screen.query_one(HeaderTitle)
-                for sub_title in (app.screen.sub_title, "WTF Cleaner · Retail · review"):
+                content = app.format_title(app.title, app.screen.sub_title)  # the menu: no tool name
+                self.assertEqual([(content.plain[s.start:s.end], str(s.style)) for s in content.spans],
+                                 [("Ka0s WoW Tools", f"bold {TITLE_GOLD}"),
+                                  (f" — {app.screen.sub_title}", f"bold {TITLE_TEXT}")], size)
+                for tool, rest in (("WTF Cleaner", " · Retail · review"), ("Saved Variables Browser", " · Retail"),
+                                   ("Ace3 Profile Manager", "")):
+                    sub_title = tool + rest
                     content = app.format_title(app.title, sub_title)
                     self.assertEqual(content.plain, f"Ka0s WoW Tools — {sub_title}")
                     spans = [(content.plain[s.start:s.end], str(s.style)) for s in content.spans]
-                    self.assertEqual(spans, [("Ka0s WoW Tools", f"bold {TITLE_GOLD}"),
-                                             (f" — {sub_title}", f"bold {TITLE_TEXT}")], size)
+                    expected = [("Ka0s WoW Tools", f"bold {TITLE_GOLD}"), (" — ", f"bold {TITLE_TEXT}"),
+                                (tool, f"bold {TITLE_TOOL}")] + ([(rest, f"bold {TITLE_TEXT}")] if rest else [])
+                    self.assertEqual(spans, expected, size)
+                self.assertEqual([(s.plain[x.start:x.end], str(x.style)) for s in
+                                  [app.format_title(app.title, "WTF Cleaner settings")] for x in s.spans][2],
+                                 ("WTF Cleaner", f"bold {TITLE_TOOL}"))
                 strip = header.render_line(0)
                 segments = [(seg.text, seg.style) for seg in strip if seg.text.strip()]
                 gold = [seg for seg in segments if "Ka0s" in seg[0]]
@@ -635,17 +645,17 @@ class ActionColoursTest(unittest.TestCase):
         from wowtools.ui.theme import ACTION_COLOURS, KA0S_THEME, action_text, contrast
         from wowtools.ui.widgets import ACTION_CSS, ACTION_VARIANTS
         self.assertEqual(list(ACTION_COLOURS), list(ACTION_VARIANTS))
-        self.assertEqual(len(ACTION_COLOURS), 8)
+        self.assertEqual(len(ACTION_COLOURS), 9)
         for kind, (background, _) in ACTION_COLOURS.items():
             with self.subTest(kind=kind):
                 self.assertGreaterEqual(contrast(background, action_text(kind)), 4.5)
                 self.assertIn(f"-act-{kind}", ACTION_CSS)
                 self.assertEqual(KA0S_THEME.variables[f"act-{kind}"], background)
         backgrounds = [background for background, _ in ACTION_COLOURS.values()]
-        self.assertEqual(len(set(backgrounds)), 8)  # eight kinds, eight colours
+        self.assertEqual(len(set(backgrounds)), 9)  # nine kinds, nine colours
 
     def test_button_colours_keep_clear_of_the_wtf_criterion_colours(self):
-        """The WTF review shows its criteria in colour next to its Clean (red), Dry run (cyan), Rescan (grey) and
+        """The WTF review shows its criteria in colour next to its Clean (red), Dry run (cyan), Rescan (lime) and
         Undo (violet) buttons: only red is shared (not installed means deleted); the others are other hues."""
         from textual.color import Color
         from wowtools.tools.wtf_cleaner.report import CRITERION_COLORS
@@ -655,7 +665,7 @@ class ActionColoursTest(unittest.TestCase):
         def hue(colour):
             return Color.parse(colour).hsl[0] * 360
 
-        for kind in ("simulate", "revert"):
+        for kind in ("simulate", "revert", "refresh"):
             for criterion, colour in CRITERION_COLORS.items():
                 with self.subTest(kind=kind, criterion=criterion):
                     gap = abs(hue(ACTION_COLOURS[kind][0]) - hue(colour)) % 360
@@ -664,6 +674,7 @@ class ActionColoursTest(unittest.TestCase):
     def test_action_button_kinds(self):
         from wowtools.ui.widgets import action_button, action_kind
         cases = {"destructive": "error", "overwrite": "warning", "create": "success", "revert": "warning",
+                 "refresh": "success",
                  "simulate": "primary", "confirm": "primary", "navigate": "default", "cancel": "default"}
         for kind, variant in cases.items():
             button = action_button("Go", kind, id="go", classes="extra")

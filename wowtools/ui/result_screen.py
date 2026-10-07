@@ -90,7 +90,7 @@ class ResultBase(Screen[str]):
         return []
 
     def buttons(self) -> list[ResultButton]:
-        return [*self.lead_buttons(), ("Rescan", "navigate", self.RESCAN, "r"), *self.extra_buttons(),
+        return [*self.lead_buttons(), ("Rescan", "refresh", self.RESCAN, "r"), *self.extra_buttons(),
                 *NAV_BUTTONS]
 
     def focus_id(self) -> str:
