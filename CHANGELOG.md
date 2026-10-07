@@ -15,6 +15,8 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
     replace is rolled back the same way. If putting it back fails too, the message names the folder your previous
     version is saved in, and an automatic update then quits instead of opening the menu. A Ctrl+C after the new
     version is in place (while old backups are tidied up) no longer reports the update as stopped.
+  - When the app cannot start because a folder in `logs/` can't be read, it no longer leaves its lock behind, so
+    the next start doesn't warn that another copy may be running. An unreadable log folder is now skipped instead.
 - **WTF Cleaner**
   - A file WoW rewrites while a clean is backing up the WTF folder is now kept (shown as changed since the scan)
     instead of deleted, so its newer data is never lost.

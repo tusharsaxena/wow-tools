@@ -105,13 +105,19 @@ def migrate_flat_logs(log_dir: Path | None) -> list[Path]:
     Never raises: a file that cannot be moved stays where it is."""
     if log_dir is None or not log_dir.is_dir():
         return []
+    try:
+        paths = sorted(log_dir.iterdir())
+    except OSError:
+        return []
     moved: list[Path] = []
-    for path in sorted(log_dir.iterdir()):
+    for path in paths:
         match = _FLAT_LOG_NAME.match(path.name)
-        if not match or not path.is_file():
+        if not match:
             continue
         kind, day = match.group(1), match.group(2)
         try:
+            if not path.is_file():
+                continue
             by_tool: dict[str, list[str]] = {}
             for line in path.read_text(encoding="utf-8").splitlines():
                 if not line.strip():
@@ -277,12 +283,25 @@ class EventLog:
                 handle.close()
 
     def prune(self) -> list[Path]:
-        """Delete dated log files older than retention_days in every tool folder. Returns what was removed."""
+        """Delete dated log files older than retention_days in every tool folder. Returns what was removed.
+
+        Never raises: a folder that cannot be listed is skipped."""
         if self.log_dir is None or not self.log_dir.is_dir():
             return []
         cutoff = (self._clock() - timedelta(days=self.retention_days)).date()
         removed: list[Path] = []
-        files = sorted(p for folder in self.log_dir.iterdir() if folder.is_dir() for p in folder.iterdir())
+        try:
+            folders = list(self.log_dir.iterdir())
+        except OSError:
+            return []
+        files: list[Path] = []
+        for folder in folders:
+            try:
+                if folder.is_dir():
+                    files.extend(folder.iterdir())
+            except OSError:
+                continue
+        files.sort()
         for path in files:
             match = _LOG_NAME.match(path.name)
             if not match:

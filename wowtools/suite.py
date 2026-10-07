@@ -75,17 +75,29 @@ def run(argv: list[str], *, cfg: Config | None = None, log_dir: Path | None = LO
         lock.release()
         print(f"{exc}\nFix or delete the file, then run again.", file=sys.stderr)
         return 1
-    init_event_log(log_dir, tool="suite", mode="tui" if not argv else "cli",
-                   text_level=cfg.log_level, retention_days=cfg.log_retention_days)
-    if migrated:
-        log_event("config.migrated", legacy=str(legacy_config), files=[str(p) for p in migrated])
-    for m in renamed:
-        log_event("config.renamed", old=str(m.old), new=str(m.new), merged=m.merged, added=m.added,
-                  kept_old=str(m.kept_old) if m.kept_old else None)
-    if may_migrate:
-        _migrate_renamed_folders(log_dir, cfg.wow_path)
-    log_event("session.start", argv=argv, platform=platform.platform(), is_wsl=is_wsl(),
-              python=platform.python_version(), suite_version=__version__)
+    # Until the try/finally below takes over, any failure must release the lock, or the next start would see
+    # "another copy may be running" (and on Windows could not tell the lock is stale).
+    try:
+        init_event_log(log_dir, tool="suite", mode="tui" if not argv else "cli",
+                       text_level=cfg.log_level, retention_days=cfg.log_retention_days)
+        if migrated:
+            log_event("config.migrated", legacy=str(legacy_config), files=[str(p) for p in migrated])
+        for m in renamed:
+            log_event("config.renamed", old=str(m.old), new=str(m.new), merged=m.merged, added=m.added,
+                      kept_old=str(m.kept_old) if m.kept_old else None)
+        if may_migrate:
+            _migrate_renamed_folders(log_dir, cfg.wow_path)
+        log_event("session.start", argv=argv, platform=platform.platform(), is_wsl=is_wsl(),
+                  python=platform.python_version(), suite_version=__version__)
+    except OSError as exc:
+        lock.release()
+        get_event_log().close()
+        print(f"Could not start the log in {log_dir}: {exc}", file=sys.stderr)
+        return 1
+    except BaseException:
+        lock.release()
+        get_event_log().close()
+        raise
     started = time.monotonic()
     code = 1
     try:

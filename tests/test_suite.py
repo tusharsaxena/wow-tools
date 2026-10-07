@@ -261,6 +261,23 @@ class SuiteTest(unittest.TestCase):
         self.assertEqual(FakeApp.made, [])
         self.assertFalse(self.lock_path.exists())  # the lock taken first is released again
 
+    def test_lock_is_released_when_the_log_cannot_start(self):
+        with unittest.mock.patch("wowtools.suite.init_event_log",
+                                 side_effect=PermissionError(13, "Permission denied", str(self.log_dir))):
+            code, _, err = self.run_suite([])
+        self.assertEqual(code, 1)
+        self.assertIn("Could not start the log", err)
+        self.assertEqual(FakeApp.made, [])
+        self.assertFalse(self.lock_path.exists())  # the next start must not see "another copy may be running"
+
+    def test_lock_is_released_when_start_up_fails_after_the_log_started(self):
+        with unittest.mock.patch("wowtools.suite._migrate_renamed_folders", side_effect=RuntimeError("boom")), \
+                self.assertRaises(RuntimeError):
+            self.run_suite([])
+        self.assertEqual(FakeApp.made, [])
+        self.assertFalse(self.lock_path.exists())
+        self.assertEqual(events.get_event_log()._handles, {})
+
     def test_renames_wait_while_another_copy_holds_the_lock(self):
         self.lock_path.write_text(json.dumps({"pid": 1, "host": "pc", "started": "", "platform": "", "token": "x"}))
         (self.config_dir / "screenshots.cfg").write_text("[screenshots]\ncopy_mode = true\n", encoding="utf-8")
