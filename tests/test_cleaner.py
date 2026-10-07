@@ -118,6 +118,31 @@ class CleanerTest(unittest.TestCase):
         with zipfile.ZipFile(result.backup_path) as zf:
             self.assertNotIn("WTF/Account/ACCT1/SavedVariables/Uninstalled.lua", zf.namelist())
 
+    def test_a_file_changed_after_the_snapshot_is_not_deleted(self):
+        # F-004 (STD-5.7): WoW rewrites a selected file while the WTF backup is taken; the clean rechecks each
+        # file right before deleting it, so the newer data is kept (with no cleaned-files zip to catch it).
+        target = self.sv / "Uninstalled.lua"
+        newer = "written by WoW during the WTF backup, longer than before"
+        real_snapshot = cleaner_module._take_safety_snapshot
+
+        def snapshot_then_rewrite(*args, **kwargs):
+            path = real_snapshot(*args, **kwargs)
+            target.write_text(newer)
+            return path
+
+        with capture_events() as records, \
+                patch.object(cleaner_module, "_take_safety_snapshot", snapshot_then_rewrite):
+            result = execute(self.proposal.items, self.retail, dry_run=False, backup=False,
+                             backup_dir=self.backup_dir, now=WHEN)
+        self.assertEqual(target.read_text(), newer)
+        self.assertEqual([(o.path, o.detail) for o in result.skipped], [(target, "changed")])
+        self.assertEqual(len(result.deleted), 7)
+        for path in self.paths():
+            if path != target:
+                self.assertFalse(path.exists(), path)
+        self.assertEqual(result.check_problems, [])
+        self.assertIn("sv.skipped", [r["event"] for r in records])
+
     def test_backup_failure_deletes_nothing(self):
         blocker = self.tmp / "blocker"
         blocker.write_text("a file where the backup folder should be")

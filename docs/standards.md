@@ -265,6 +265,7 @@ marker, journal, atomic writes with read-back, roll-back on failure, clear marke
   *Why:* a stale plan must not overwrite newer data.
   *Enforced by:* `tests/test_ace_editor.py::test_file_changed_since_scan_is_skipped_others_applied`,
   `tests/test_cleaner.py::test_changed_and_missing_files_are_skipped`,
+  `tests/test_cleaner.py::test_a_file_changed_after_the_snapshot_is_not_deleted`,
   `tests/test_screenshot_organizer_organizer.py::test_target_appearing_after_scan_is_never_overwritten`.
 - **STD-5.8 MUST** Compile and verify every edit in memory before writing (one problem stops the run, nothing
   written), read each written file back, and check copies by hash before they replace or remove anything

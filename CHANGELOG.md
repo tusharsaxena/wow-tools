@@ -8,6 +8,9 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 
 ### Fixed
 
+- **WTF Cleaner**
+  - A file WoW rewrites while a clean is backing up the WTF folder is now kept (shown as changed since the scan)
+    instead of deleted, so its newer data is never lost.
 - **Ace3 Profile Manager and Saved Variables Browser**
   - **Put the originals back** after an unfinished change now works when you run the app from the other system
     (Windows or WSL) than the one the change was started from: the files are found in the WoW folder you set. If

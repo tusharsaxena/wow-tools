@@ -423,6 +423,13 @@ def _delete_one(result: CleanResult, item: ProposalItem, sv: SVFile, flavor: Fla
         result.outcomes.append(FileOutcome(sv.path, sv.size, "would_delete", "", tuple(item.reasons)))
         log_event("sv.would_delete", dry_run=True, **data)
         return
+    # Re-read just before deleting (STD-5.7): the WTF backup and the cleaned-files zip can take a while, and a file
+    # WoW rewrote meanwhile holds newer data than either copy may have.
+    problem = _recheck(sv, _lstat(sv.path))
+    if problem:
+        result.outcomes.append(FileOutcome(sv.path, sv.size, "skipped", problem, tuple(item.reasons)))
+        log_event("sv.skipped", dry_run=False, path=rel, reason=problem)
+        return
     # Recorded before unlinking so an interruption right after the unlink still restores it; restoring
     # skips any file that is still on disk, so a file that was not deleted is never touched.
     deleted.append(rel)
