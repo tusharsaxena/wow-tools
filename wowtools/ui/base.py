@@ -6,6 +6,7 @@ from typing import ClassVar
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical, VerticalScroll
+from textual.content import Content
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label, LoadingIndicator, Markdown
@@ -18,7 +19,7 @@ from wowtools.core.updater import (ReleaseInfo, UpdateError, apply_update, check
                                    persist_check_state)
 from wowtools.ui.branding import update_key_free, update_notice
 from wowtools.ui.dialogs import GUARD_BINDING, EnterGuard
-from wowtools.ui.theme import KA0S_THEME, action_variables
+from wowtools.ui.theme import KA0S_THEME, TITLE_GOLD, TITLE_TEXT, action_variables
 from wowtools.ui.widgets import ACTION_CSS, NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 
@@ -83,7 +84,7 @@ class UpdateProgressScreen(ModalScreen[None]):
 class Ka0sApp(App):
     """Base for every tool's TUI. Subclasses override after_mount(), not on_mount()."""
 
-    TITLE = "Ka0s · WoW Tools"
+    TITLE = "Ka0s WoW Tools"
     # The footer leaves out the command palette's key (Ctrl+P still opens it; nothing documents it): at 120x30 the
     # review screens need that room for their own keys. ACTION_CSS colours every button by its action kind.
     CSS = "Footer FooterKey.-command-palette { display: none; }" + ACTION_CSS
@@ -120,6 +121,13 @@ class Ka0sApp(App):
 
     def after_mount(self) -> None:
         """Hook for subclasses."""
+
+    def format_title(self, title: str, sub_title: str) -> Content:
+        """Every screen's title bar (spec D41): the suite's name in gold, then the tool, flavor and view in
+        near-white, all bold (Textual's default dims the sub-title)."""
+        if not sub_title:
+            return Content.styled(title, f"bold {TITLE_GOLD}")
+        return Content.assemble((title, f"bold {TITLE_GOLD}"), (f" \u2014 {sub_title}", f"bold {TITLE_TEXT}"))
 
     def get_theme_variable_defaults(self) -> dict[str, str]:
         """The `$act-<kind>` button colours exist under every theme (ACTION_CSS is parsed before on_mount switches

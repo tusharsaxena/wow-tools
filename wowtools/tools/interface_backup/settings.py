@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from wowtools.core.config import Config
-from wowtools.core.journal import TOOLS_SUBDIR
+from wowtools.core.journal import tool_root
 from wowtools.tools.interface_backup.events import TOOL_NAME
 
 SECTION = "interface_backup"
@@ -33,12 +33,6 @@ def save_settings(cfg: Config, settings: BackupSettings, *, source: str = "setti
 def resolve_backup_root(settings: BackupSettings, wow_path: Path | None) -> Path | None:
     """Where the zips go: <backup folder>/interface-backup, the backup folder defaulting to <WoW folder>/wow-tools.
     None when there is neither a backup folder nor a WoW folder."""
-    if settings.backup_dir is not None:
-        base = settings.backup_dir
-    elif wow_path is not None:
-        base = wow_path / TOOLS_SUBDIR
-    else:
-        return None
-    return base / TOOL_NAME
+    return tool_root(settings.backup_dir, wow_path, TOOL_NAME)
 
 

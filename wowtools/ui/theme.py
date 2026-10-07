@@ -24,6 +24,9 @@ KA0S_THEME = Theme(
 )
 FOREGROUND: str = KA0S_THEME.foreground or ""
 BACKGROUND: str = KA0S_THEME.background or ""
+# The title bar (spec D41): "Ka0s WoW Tools" in gold, then the tool, flavor and view in near-white, all bold.
+TITLE_GOLD = "#E6B422"
+TITLE_TEXT = "#F0F0F0"
 
 # Button colour per action kind: (background, text). A text of None takes whichever of the theme's foreground and
 # background reads better on it. The violet leans to red (an orchid), a clear hue away from the lavender the WTF

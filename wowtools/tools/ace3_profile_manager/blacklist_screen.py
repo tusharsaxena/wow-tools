@@ -26,7 +26,7 @@ from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, relabel_branch, review_hint,
                                 two_pane_css)
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
-from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, TreeFilter
+from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, TreeFilter
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 EXPLANATION = "Ticked addons are blacklisted: their profiles are shown but never changed."
@@ -83,7 +83,7 @@ class BlacklistScreen(TreeFilter, ReviewBase, Screen["list[Pair] | None"]):
         with Horizontal(id="body"):
             with Vertical(id="filters"):
                 yield Static(Text(EXPLANATION), id="explain")
-                yield FilterInput()
+                yield FilterBar()
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Save", "confirm", id="save")
                     yield action_button("Select none", "navigate", "n", id="select-none")

@@ -10,9 +10,10 @@ from rich.text import Text
 from textual.widgets import Tree
 from textual.widgets.tree import TreeNode
 
+from wowtools.core.svfiles import SvFile
 from wowtools.tools.ace3_profile_manager.ops import DbKey, DbState, Staging
 from wowtools.tools.ace3_profile_manager.report import char_tags, profile_rows
-from wowtools.tools.ace3_profile_manager.scanner import AccountScan, AddonFile, FlavorScan, ScanResult, SvFile
+from wowtools.tools.ace3_profile_manager.scanner import AccountScan, AddonFile, FlavorScan, ScanResult
 from wowtools.ui.dialogs import ACCENT
 from wowtools.ui.tree_filter import TextFilter
 

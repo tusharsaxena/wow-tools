@@ -1,23 +1,131 @@
-"""Safety checks shared by tools that change or delete SavedVariables files.
+"""SavedVariables files shared by the tools that read, change or delete them.
 
-UI-free. A guard that refuses any path outside <flavor>/WTF/Account or not directly inside a SavedVariables
+UI-free. The file model (SvFile, sha256_of) and the walk over a flavor's SavedVariables folders (walk_sv_files,
+with a file-name filter: is_sv_file or is_addon_sv_file). Then the safety checks: A guard that refuses any path outside <flavor>/WTF/Account or not directly inside a SavedVariables
 folder; a lock probe (rename aside and straight back, which Windows refuses exactly when another program holds
 the file open) and the refusal every tool gives before it changes a locked file (find_locked, locked_message); recovery of probe leftovers a crash left behind; and the list of SavedVariables folders in a scope.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import stat
 import time
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
-from wowtools.core.fsutil import rename_no_replace
-from wowtools.core.install import Flavor
+from wowtools.core.fsutil import is_link, rename_no_replace
+from wowtools.core.install import Account, Character, ErrorHandler, Flavor
+
+# SvFile.owner of an account's own SavedVariables (a character's is its "Realm/Name" label).
+OWNER_ACCOUNT_WIDE = "Account-wide"
+PROTECTED_PREFIX = "blizzard_"  # Blizzard's own SavedVariables (Blizzard_*.lua), which is_addon_sv_file leaves out
 
 # The lock check renames each file to <name><LOCK_PROBE_SUFFIX> and straight back. A file still carrying this
 # suffix was left by a crash during that check; recover_probe_leftovers() renames it back.
 LOCK_PROBE_SUFFIX = ".wowtools-lockcheck"
+
+
+@dataclass(frozen=True)
+class SvScanWarning:
+    """Something a SavedVariables scan could not read or skipped: the path (None when there is none) and why."""
+    path: Path | None
+    message: str
+
+
+def sha256_of(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+@dataclass(frozen=True)
+class SvFile:
+    """One SavedVariables file as a scan read it: where it is, whose it is, and its size, mtime and hash then."""
+    path: Path
+    flavor: Flavor
+    account: str
+    character: Character | None
+    size: int
+    mtime: float
+    sha256: str
+
+    @property
+    def addon(self) -> str:
+        return self.path.name[:-4]
+
+    @property
+    def rel(self) -> str:
+        return self.path.relative_to(self.flavor.path).as_posix()
+
+    @property
+    def owner(self) -> str:
+        return OWNER_ACCOUNT_WIDE if self.character is None else self.character.label
+
+
+def is_sv_file(name: str) -> bool:
+    """A SavedVariables file name: ends in exactly ".lua" (never .lua.bak, .lua.old) with a name before it."""
+    return name.endswith(".lua") and len(name) > 4
+
+
+def is_addon_sv_file(name: str) -> bool:
+    """is_sv_file, and not one of Blizzard's own (Blizzard_*.lua)."""
+    return is_sv_file(name) and not name.casefold().startswith(PROTECTED_PREFIX)
+
+
+def candidate_files(sv_dir: Path, accept: Callable[[str], bool] = is_sv_file) -> list[Path]:
+    """Regular files (never a link or junction) directly in sv_dir whose name `accept` takes, by name (any case).
+    Raises OSError when the folder cannot be listed."""
+    found = []
+    with os.scandir(sv_dir) as entries:
+        for entry in entries:
+            if accept(entry.name) and entry.is_file(follow_symlinks=False) and not is_link(entry):
+                found.append(Path(entry.path))
+    return sorted(found, key=lambda p: p.name.casefold())
+
+
+def under_link(sv_dir: Path, account_dir: Path) -> bool:
+    """True when sv_dir, or a folder between it and account_dir, is a symlink or junction."""
+    current = sv_dir
+    while True:
+        if is_link(current):
+            return True
+        if current == account_dir or current.parent == current:
+            return False
+        current = current.parent
+
+
+def walk_sv_files(flavor: Flavor, *, account: str | None = None, accept: Callable[[str], bool] = is_sv_file,
+                  on_error: ErrorHandler | None = None,
+                  on_account: Callable[[Account, list[Character]], None] | None = None,
+                  on_link: Callable[[Path], None] | None = None) -> Iterator[tuple[Account, Character | None, Path]]:
+    """(account, character or None for account-wide, path) of every SavedVariables file `accept` takes, account by
+    account (one account, any case, when `account` is given), each account's own folder before its characters'.
+    on_account(account, characters) comes before an account's files; a SavedVariables folder under a link is
+    skipped and passed to on_link; a folder that cannot be read goes to on_error(path, error)."""
+    accounts = flavor.accounts(on_error)
+    if account is not None:
+        accounts = [a for a in accounts if a.name.casefold() == account.casefold()]
+    for acct in accounts:
+        characters = acct.characters(on_error)
+        if on_account is not None:
+            on_account(acct, characters)
+        owners: list[tuple[Character | None, Path]] = [(None, acct.saved_variables_dir)]
+        owners += [(c, c.saved_variables_dir) for c in characters]
+        for owner, sv_dir in owners:
+            if not sv_dir.is_dir():
+                continue
+            if under_link(sv_dir, acct.path):
+                if on_link is not None:
+                    on_link(sv_dir)
+                continue
+            try:
+                paths = candidate_files(sv_dir, accept)
+            except OSError as exc:
+                if on_error is not None:
+                    on_error(sv_dir, exc)
+                continue
+            for path in paths:
+                yield acct, owner, path
 
 
 class SvFileError(Exception):

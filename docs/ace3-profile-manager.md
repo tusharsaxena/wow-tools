@@ -100,8 +100,8 @@ ticks everything shown).
 back to the tree. Messages pop up just above the hint line over the bar (and above the box that describes the
 selected button), so they never cover either.
 
-**On the left** are the view boxes, the Show boxes, the **Filter** box, a **Pending changes** line that sums them up, and
-the buttons.
+**On the left** are a red `⚠ USE AT YOUR OWN RISK` line, the view boxes, the Show boxes, the filter box with its
+**Filter** button, a **Pending changes** line that sums them up, and the buttons.
 
 **At the bottom** a bar counts what's ticked and what's pending, for example
 `Selected: 3 profiles · 8 characters · 6 pending changes in 2 files`, plus scan warnings when there are any.
@@ -146,9 +146,10 @@ the screen.
 | **Leftover characters** (on) | Characters tagged "no character folder". Untick to hide them |
 | **Blacklisted addons** (on) | Addons on your blacklist. Untick to hide them |
 
-The **Filter** box (`/`) keeps only lines whose game version (with **All flavors**), account, addon, profile or
-character name contains what you type (upper or lower case doesn't matter), and opens the groups they're in.
-`Enter` goes back to the tree and keeps the filter; `Esc` in the box clears it.
+The filter box (`/`) keeps only lines whose game version (with **All flavors**), account, addon, profile or
+character name contains what you type (upper or lower case doesn't matter), and opens the groups they're in. It
+applies when you press `Enter` or click **Filter** beside the box, not as you type. An empty box, applied, shows
+everything again; `Esc` in the box clears the filter and goes back to the tree.
 
 The filter and the Show boxes only change what you see. `a` and `n` tick and untick what's shown; a tick they
 hide stays, and **Delete**, **Assign**, **Leftovers**, **Only Default** and **Everyone → Default** still take it.

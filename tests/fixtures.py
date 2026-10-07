@@ -28,6 +28,10 @@ name to its bytes.
 build_interface_tree(root) adds known bytes to _retail_'s Interface and WTF and an empty _ptr_ flavor.
 build_ace_tree(root) builds a separate install with AceDB SavedVariables (CRLF, written byte-exact; see its
 docstring and the ACE_* texts); ace_lua(*lines) makes SavedVariables text the way WoW writes it.
+build_sv_tree(root) builds a separate install for the Saved Variables Browser (see its docstring and the SVB_*
+texts): two flavors, two accounts, account-wide and per-character files, nested tables, numeric/boolean keys,
+Font/font/barFont keys, SVB_FONT in several files and flavors, escapes, floats, a nil array slot with -- [n]
+comments, a Blizzard_* file, a .bak and a broken file.
 """
 from __future__ import annotations
 
@@ -43,6 +47,7 @@ from textual.widgets._footer import FooterKey
 
 from wowtools.core.config import Config
 from wowtools.ui.branding import KeyFooter, footer_bindings
+from wowtools.ui.tree_filter import FILTER_BUTTON_ID, FilterInput
 from wowtools.ui.widgets import ActionButton, NavHint, button_keys, key_text, shown
 
 # Terminal sizes (docs/superpowers/specs/2026-10-04-ace-profiles-design.md, Addendum B): screens are designed for
@@ -177,6 +182,13 @@ class TuiTestCase(unittest.IsolatedAsyncioTestCase):
         dialogs.CONFIRM_GUARD = seconds  # the asyncSetUp patcher puts the real value back
 
 
+def submit_filter(screen, text: str) -> None:
+    """Put `text` in a tree screen's filter box and submit it, as Enter there does (spec D40: typing alone never
+    filters). Await settle() after it."""
+    screen.filter_input().value = text
+    screen.submit_filter()
+
+
 async def settle(app, pilot, timeout: float = 10.0) -> None:
     """Wait until background workers are done and the screen has drawn what they produced. One pause after
     `wait_for_complete()` is not always enough on a slow machine (CI on Windows): a worker may not have started
@@ -199,6 +211,32 @@ async def settle(app, pilot, timeout: float = 10.0) -> None:
         if time.monotonic() > deadline:
             raise AssertionError(f"settle() timed out after {timeout}s on {type(app.screen).__name__}; still busy: "
                                  + ", ".join(name for name, on in busy.items() if on))
+
+
+async def accept_disclaimer(app, pilot) -> None:
+    """The Saved Variables Browser's USE AT YOUR OWN RISK warning (spec D2) comes after its flavor pick: accept it
+    when it is the screen shown (any other tool, or the browser opened before in this tool session: nothing to do)."""
+    from wowtools.tools.sv_browser.popups import ACCEPT, DisclaimerScreen
+    if isinstance(app.screen, DisclaimerScreen):
+        app.screen.choose(ACCEPT)
+        await settle(app, pilot)
+
+
+def stage_sv_edit(review) -> None:
+    """Stage one value edit on a Saved Variables Browser review (what its Apply / Dry run needs): the first string
+    value found in the scanned files (Retail's first), read here in the test's thread, gets " (edited)" added."""
+    for file in sorted(review.scan.files(), key=lambda f: f.flavor.folder != "_retail_"):
+        doc = review.document(file)
+        nodes = list(doc.roots())
+        while nodes:
+            node = nodes.pop(0)
+            if node.is_table:
+                nodes.extend(doc.children(node))
+            elif (node.is_scalar and isinstance(node.value.value, str)
+                  and review.staging.set_value(doc, node, node.value.value + " (edited)").ok):
+                review._refresh_labels()
+                return
+    raise AssertionError("no string value to stage an edit on")
 
 
 def _messages_pending(app) -> bool:
@@ -371,6 +409,67 @@ def build_ace_tree(root: Path) -> Path:
     return root
 
 
+SVB_FONT = "Friz Quadrata TT"
+SVB_ELVUI = ace_lua(
+    'ElvDB = {', '["profiles"] = {', '["Default"] = {', '["general"] = {', f'["font"] = "{SVB_FONT}",',
+    '["fontSize"] = 12,', '["scale"] = 0.6000000000000001,', '["autoRepair"] = true,', '},',
+    '["unitframe"] = {', f'["Font"] = "{SVB_FONT}",', '["barFont"] = "Expressway",', '[1] = "first",',
+    '[2] = 2.5,', '[true] = "yes",', '[false] = 0,', '},', '},', '},', '}',
+    'ElvPrivateDB = {', '["install_complete"] = 13.52,', '}',
+    'ElvVersion = nil')
+SVB_DETAILS = ace_lua(
+    '_detalhes_global = {', '["font_face"] = "Arial Narrow",', '["tooltip"] = {', f'["fontface"] = "{SVB_FONT}",',
+    '["text"] = "a\\"b\\\\c\\n\\226\\128\\148",', '},', '["bars"] = {', '"one", -- [1]', 'nil, -- [2]',
+    '"three", -- [3]', '},', '}',
+    'DetailsVersion = 4')
+SVB_PERCHAR = ace_lua('ElvCharacterDB = {', '["font"] = "Expressway",', '["nested"] = {', '["deeper"] = {',
+                      f'["barFont"] = "{SVB_FONT}",', '["size"] = -3,', '},', '},', '}')
+SVB_QUESTIE = ace_lua('QuestieConfig = {', '["global"] = {', f'["font"] = "{SVB_FONT}",', '["enabled"] = false,',
+                      '},', '}')
+SVB_QUESTIE_CHAR = ace_lua('QuestieConfigCharacter = {', '["journey"] = {', '{', '["Event"] = "Quest",', '}, -- [1]',
+                           '},', '}')
+SVB_BLIZZARD = ace_lua('Blizzard_Console_SavedVars = {', '["fontHeight"] = 14,', '}')
+SVB_BARTENDER = ace_lua('Bartender4DB = {', '["font"] = "friz quadrata tt",', '}')
+SVB_BROKEN = ace_lua('BrokenDB = {', '["font"] = "Friz')
+
+
+def build_sv_tree(root: Path) -> Path:
+    """A WoW install for the Saved Variables Browser (spec §7; texts are the SVB_* constants above, CRLF):
+
+    _retail_/WTF/Account/ACCT1
+      SavedVariables: ElvUI.lua (ElvDB nested profiles: font/Font/barFont/fontSize keys, a float, booleans,
+      numeric keys [1]/[2], boolean keys [true]/[false]; ElvPrivateDB; top-level ElvVersion = nil),
+      ElvUI.lua.bak (never listed), Details.lua (_detalhes_global: escapes \\" \\\\ \\n \\226\\128\\148, an
+      array with a nil slot and -- [n] comments; DetailsVersion = 4), Blizzard_Console.lua, Broken.lua (unparsable)
+      Realm1/Kaelys/SavedVariables/ElvUI.lua (per character, nested barFont)
+    _retail_/WTF/Account/ACCT2: SavedVariables/Details.lua; Realm2/Chârb/SavedVariables/Bartender4.lua (font in
+      lower case, only a case-insensitive match)
+    _classic_era_/WTF/Account/ACCT1: SavedVariables/Questie.lua; Realm1/Kaelys/SavedVariables/Questie.lua (an
+      array entry that is a table)
+    SVB_FONT ("Friz Quadrata TT") is a value in ElvUI.lua (twice), Details.lua (both accounts), the per-character
+    ElvUI.lua and Questie.lua.
+    """
+    retail = root / "_retail_"
+    _addon(retail, "ElvUI")
+    acct1 = retail / "WTF" / "Account" / "ACCT1"
+    sv = acct1 / "SavedVariables"
+    _write_lua(sv / "ElvUI.lua", SVB_ELVUI)
+    _write_lua(sv / "ElvUI.lua.bak", SVB_ELVUI)
+    _write_lua(sv / "Details.lua", SVB_DETAILS)
+    _write_lua(sv / "Blizzard_Console.lua", SVB_BLIZZARD)
+    _write_lua(sv / "Broken.lua", SVB_BROKEN)
+    _write_lua(acct1 / "Realm1" / "Kaelys" / "SavedVariables" / "ElvUI.lua", SVB_PERCHAR)
+    acct2 = retail / "WTF" / "Account" / "ACCT2"
+    _write_lua(acct2 / "SavedVariables" / "Details.lua", SVB_DETAILS)
+    _write_lua(acct2 / "Realm2" / "Chârb" / "SavedVariables" / "Bartender4.lua", SVB_BARTENDER)
+    era = root / "_classic_era_"
+    _addon(era, "Questie")
+    era_acct = era / "WTF" / "Account" / "ACCT1"
+    _write_lua(era_acct / "SavedVariables" / "Questie.lua", SVB_QUESTIE)
+    _write_lua(era_acct / "Realm1" / "Kaelys" / "SavedVariables" / "Questie.lua", SVB_QUESTIE_CHAR)
+    return root
+
+
 # The action a button with no BUTTON_ACTIONS entry or choose(id) performs (handled in on_button_pressed). A button
 # whose id is itself an action name (Cancel: "cancel") needs no entry.
 SPECIAL_BUTTON_ACTIONS = {"yes": "answer(True)", "no": "answer(False)", "back": "escape", "update-no": "later",
@@ -393,8 +492,13 @@ def assert_keys_on_buttons(test, screen) -> None:
         keys = set().union(*(bound.get(a, set()) for a in actions if a))
         if keys:  # its action has a key: the button shows one of them
             test.assertIn(button.shortcut, keys, (screen, button.id))
-        if button.shortcut is not None:  # and a key shown on a button does something on this screen
+        if button.id == FILTER_BUTTON_ID:  # the tree filter's button (D40): its key, Enter, is the filter box's
+            box = button.parent.query_one(FilterInput)
+            test.assertIn(button.shortcut, {b.key for b in box._bindings.key_to_bindings.get("enter", [])},
+                          (screen, button.id))
+        elif button.shortcut is not None:  # and a key shown on a button does something on this screen
             test.assertIn(button.shortcut, screen._bindings.key_to_bindings, (screen, button.id))
+        if button.shortcut is not None:
             plain = button.label.plain
             test.assertTrue(plain.endswith(f"({key_text(button.shortcut)})"), plain)
     shortcuts = {key_text(b.shortcut) for b in buttons if b.shortcut and shown(b)}

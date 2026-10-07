@@ -34,7 +34,7 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      there: use what is already there, and when your tool needs code another tool already has, move it into
      `core/` or `ui/` first and make both tools use it. Never copy it and never import it from the other tool
      (`tests/test_structure.py` pins the single definitions and the no-cross-tool-import rule). The main pieces:
-     `ui/review.py` (the review screen base: `ReviewBase`, `ReviewTree`, `TickModel`), `ui/tree_filter.py` (the tree filter: `TreeFilter`, `FilterInput`, `/`), `ui/result_screen.py`
+     `ui/review.py` (the review screen base: `ReviewBase`, `ReviewTree`, `TickModel`), `ui/tree_filter.py` (the tree filter: `TreeFilter`, `FilterBar`, `/`), `ui/result_screen.py`
      (`ResultBase` / `ResultScreen`), `ui/settings_form.py` (`ToolSettingsScreen`), `ui/tool_flow.py` (the
      `ToolFlow` helpers: `start`, `open_settings`, `remember_flavor`, `pick_account`, `fill_notes`),
      `ui/dialogs.py` (popups and CSS), `ui/widgets.py` (`action_button`), and in `core/` `journal.ToolJournals`,
@@ -43,8 +43,26 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      `human_size`) and `install` (`flavor_name`, `validate_backup_dir`).
      See [architecture.md](architecture.md) for each module. A tool that changes SavedVariables files takes the
      whole-`WTF` snapshot from `core/snapshot.py` (folder and name prefix are parameters), the path guard and lock
-     probe from `core/svfiles.py`, and `core.fsutil.atomic_write_bytes` for its writes, as the WTF Cleaner and the
-     Ace3 Profile Manager do.
+     probe from `core/svfiles.py`, and `core.fsutil.atomic_write_bytes` for its writes, as the WTF Cleaner does.
+   - **Reading and editing SavedVariables.** A tool that reads SavedVariables or edits values inside them builds on
+     the shared stack the Ace3 Profile Manager and the Saved Variables Browser use, never on either tool:
+     `core/luasv.py` (the byte-exact Lua reader: `parse`, `parse_at` for one table's span, the streaming
+     `iter_scalars`, `encode_value` / `encode_key` and `key_id` for writing and comparing keys),
+     `core/svfiles.py` (`SvFile`, `sha256_of`, `walk_sv_files(flavor, accept=is_sv_file | is_addon_sv_file, ...)`)
+     and the write pipeline. Make one `SV_TOOL = SvTool(TOOL_NAME, "<prefix>")` (`core/sv_events.py`) in the
+     tool's `events.py` and register `sv_events(SV_TOOL.prefix)` with its own events (the pipeline's 31 events
+     under your prefix). Then supply only the per-file parts: `compile(file, payload, bytes)` returning an edit
+     with `.data` (the new bytes, built by byte-span splices, never by re-serializing) and `.changes`, and
+     `verify(edit, old_bytes)` returning problems (the helpers in `core/sv_verify.py` check the assignments and
+     every byte outside the edited spans). `core/sv_apply.py` `apply_flavor(SV_TOOL, flavor, units, compile,
+     verify, ...)` / `apply_flavors(...)` does the rest: the SHA-256 recheck, dry run, lock probe, whole-`WTF`
+     snapshot, originals zip (`edited/`), crash marker, atomic write and read-back, roll-back and the run journal
+     (`core/sv_journal.py`); `core/sv_undo.py` has `undo_run` and `recover`, `core/sv_report.py` the progress
+     stage titles, confirm text and result rows, and `tool_root(backup_dir, wow_path, TOOL_NAME)`
+     (`core/journal.py`) the folder they live in. On the UI side, mix `RunActions` (`ui/review.py`) in before
+     `ReviewBase` for the WoW check, the backup-folder refusal and `start_run` (busy flag, progress popup,
+     worker), and use `UnfinishedRunScreen` and `TextPromptScreen` from `ui/dialogs.py`. The Saved Variables
+     Browser (`tools/sv_browser/editor.py`, `undo.py`, `journal.py`, `report.py`) is the smallest worked example.
    - `help.py` with `HELP`, the tool's help screen text (Markdown; `h` on any of its screens shows it, spec D18) and
      `GUIDE_URL` (`https://github.com/tusharsaxena/wow-tools/blob/master/docs/<tool name>.md`): what the tool does,
      the flow step by step, every button with its key, the filter and tick keys, the safety notes (backups, Dry
@@ -88,14 +106,14 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      `REVIEW_HINT` (or `review_hint("tick or open")` when Space does more in your tree) and `RESULT_HINT`.
      Every tree screen binds `TREE_BINDINGS` (`x` expand all, `c` collapse all) and puts `TREE_HINT` in its hint
      (before `f flavors`); each focusable control of the left pane gets a row of its own. Every tree screen also gets
-     the `/` filter from `wowtools/ui/tree_filter.py`: a `FilterInput` in the left pane and `FILTER_HINT` right
+     the `/` filter from `wowtools/ui/tree_filter.py`: a `FilterBar` (the box and its **Filter** button) in the left pane and `FILTER_HINT` right
      before `TREE_HINT`, through `TreeFilter` on a tick screen (placed before `ReviewBase`; supply `all_tick_keys()`
      and `filter_texts(key)`, and a `HIDDEN_NOUN` for the "N selected … are hidden by the filter" line) or
      `FilterBox` on a read-only tree.
      Build every button with `action_button(label, kind, key)` (`wowtools/ui/widgets.py`), never `Button(...)`.
      `key` is the binding key of what the button does (`"w"`, `"escape"`): the button shows it on a second line and
      the footer leaves it out (spec D17), so never write the key into the label ("Clean (w)") and leave button keys
-     out of the left-pane hint (it names navigation and the keys with no button: `a all · n none · / filter · ...`)
+     out of the left-pane hint (it names navigation and the keys with no button: `a all · n none · / filter, then Filter · ...`)
      and out of any guide or status line (write "then Restore", not "press e"). Under a popup the footer lists
      no keys: the popup's buttons and hint say what to press.
      A result screen's `lead_buttons()` / `extra_buttons()` give `(label, kind, id, key)`. Pick
@@ -129,5 +147,5 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
    (Interface Backup's `<backup folder>/interface-backup`, when the backup folder is set) needs that subfolder
    moved too, which migrate does not do. Without it the tool lists no backups and Undo refuses the moved journals.
    The Ace3 Profile Manager's rename from `ace-profiles` is the worked example: `settings.migrate_backup_root()`
-   moves `<backup_dir>/ace-profiles` with `merge_folder_logged()` when the tool opens, and `undo._moved_zip()`
-   finds a journal's `edited-*.zip` by name in the new folder.
+   moves `<backup_dir>/ace-profiles` with `merge_folder_logged()` when the tool opens, and the shared
+   `core/sv_undo._moved_zip()` (Undo and recovery of every tool on the SavedVariables pipeline) finds a journal's `edited-*.zip` by name in the new folder.

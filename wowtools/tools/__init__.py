@@ -37,6 +37,9 @@ TOOLS: dict[str, Tool] = {tool.name: tool for tool in (
     Tool("ace3-profile-manager", "Ace3 Profile Manager",
          "See and change which Ace3 profile each character uses.",
          "wowtools.tools.ace3_profile_manager.app", "ace3_profile_manager"),
+    Tool("sv-browser", "Saved Variables Browser",
+         "Browse and edit every SavedVariables file, with bulk find and replace.",
+         "wowtools.tools.sv_browser.app", "sv_browser"),
 )}
 
 # Tools that changed name. At start-up each tool's old config file, logs/<old>/ folder and

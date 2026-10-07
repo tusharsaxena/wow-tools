@@ -85,3 +85,58 @@ class DocsTest(unittest.TestCase):
         self.assertIn("config\\ace3-profile-manager.cfg", readme)
         claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
         self.assertIn("Ace3 Profile Manager (`ace3-profile-manager`, package `tools/ace3_profile_manager`)", claude)
+
+    def test_sv_browser_guide_readme_and_notes(self):
+        guide = (REPO_ROOT / "docs" / "sv-browser.md").read_text(encoding="utf-8")
+        self.assertTrue(guide.index("USE AT YOUR OWN RISK") < guide.index("## Step by step"))
+        for needle in ("Close WoW", "## Step by step", "## The review screen", "## Editing", "Top-level",
+                       "array entry", "already has", "## Search", "Exact", "Contains", "Whole value",
+                       "Match case", "Account-wide only", "Addon file", "10,000", "left out",
+                       "## Editing the results in bulk", "every ticked result", "Replace only the matched text",
+                       "Edit 37", "⚠ USE AT YOUR OWN RISK",
+                       "## Apply", "## Dry run", "## Undo last change", "changed since", "Put the originals back",
+                       "snapshots\\snapshot-<flavor>-", "edited\\edited-<flavor>-all-", "journal\\journal-",
+                       "edit-in-progress.json", "keep_backups", "keep_journals", "config\\sv-browser.cfg",
+                       "## Settings", "## Keys on the review screen", "## FAQ", "## Troubleshooting",
+                       "<!-- screenshots:", "I understand", "Unstage", "Back to review"):
+            self.assertIn(needle, guide)
+        self.assertNotIn("still being built", guide)
+        for gone in ("## Search and replace", "Replace with", "Find only", "New value", "staged and ticked",
+                     "When a ticked result is left out"):  # D38/D39: search finds only, ticks only select
+            self.assertNotIn(gone, guide)
+        for key in ("`Space`", "`a`", "`n`", "`S`", "`e`", "`k`", "`d`", "`Backspace`", "`v`", "`x`", "`c`",
+                    "`/`", "`w`", "`y`", "`r`", "`z`", "`f`", "`t`", "`s`", "`h`", "`q`"):
+            self.assertIn(key, guide)
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("config\\sv-browser.cfg", readme)
+        self.assertNotIn("four tools", readme.casefold())
+        claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertIn("Saved Variables Browser (`sv-browser`, package `tools/sv_browser`)", claude)
+        for module in ("luasv", "sv_apply", "sv_journal", "sv_undo", "sv_verify", "sv_report", "sv_events"):
+            self.assertIn(f"`{module}`", claude)
+        changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertIn("- **Saved Variables Browser**", changelog)
+        architecture = (REPO_ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+        self.assertIn("## Saved Variables Browser data flow", architecture)
+        self.assertIn("| `luasv` |", architecture)
+
+    def test_guides_filter_on_submit_and_risk_banner(self):
+        """Feedback round 1 (D37, D40, D41): every tree filter applies on Enter or its Filter button, never as you
+        type; the destructive screens' guides name the red banner; the changelog says so too."""
+        for tool in TOOLS.values():
+            guide = (REPO_ROOT / "docs" / f"{tool.name}.md").read_text(encoding="utf-8")
+            self.assertIn("**Filter**", guide, tool.name)
+            self.assertNotIn("keeps the filter", guide, tool.name)  # the old live filter's Enter
+        for name in ("wtf-cleaner", "ace3-profile-manager", "interface-backup", "sv-browser"):
+            guide = (REPO_ROOT / "docs" / f"{name}.md").read_text(encoding="utf-8")
+            self.assertIn("`⚠ USE AT YOUR OWN RISK`", guide, name)
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertNotIn("`Enter` keeps the filter", readme)
+        self.assertNotIn("find and replace", readme)
+        changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        for needle in ("**Filter**", "⚠ USE AT YOUR OWN RISK", "Ka0s WoW Tools** in bold gold"):
+            self.assertIn(needle, changelog)
+        self.assertNotIn("Find only", changelog)
+        claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertIn("`FilterBar`", claude)
+        self.assertIn("`RiskBanner`", claude)

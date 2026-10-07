@@ -51,7 +51,7 @@ tool here (`↑` `↓`, then `Enter`); leaving a tool brings you back to this me
 | `←` `→` | Switch between a screen's two panes, or move along a row of buttons |
 | `Space` | Tick or untick the highlighted line |
 | `a` / `n` | Tick / untick everything the tree shows |
-| `/` | Filter a tree (`Enter` keeps the filter, `Esc` clears it) |
+| `/` | Filter a tree: type, then `Enter` or the **Filter** button filters it (`Esc` clears it) |
 | `x` / `c` | Expand / collapse every line of a tree |
 | `Esc` | Go back |
 | `s` | Settings |
@@ -67,8 +67,8 @@ A button shows its own key under its name (**Clean** over `(w)`); the bottom row
 `s` opens the shared settings first, then the open tool's own. Shared by every tool: your **WoW folder**, the
 **backups to keep** per game version ({DEFAULT_KEEP_BACKUPS} by default; `0` keeps them all), the **journals** (undo
 records) each tool keeps ({DEFAULT_KEEP_JOURNALS} by default) and how many **game versions to work on at once**
-({DEFAULT_PARALLELISM} by default, from {MIN_PARALLELISM} to {MAX_PARALLELISM}; use 1 on a hard drive or a WSL `/mnt`
-folder).
+({DEFAULT_PARALLELISM} by default, from {MIN_PARALLELISM} to {MAX_PARALLELISM}; the Saved Variables Browser's search
+also reads that many files at once; use 1 on a hard drive or a WSL `/mnt` folder).
 Everything is saved in the `config` folder.
 
 ## Button colours

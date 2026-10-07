@@ -40,10 +40,11 @@ Never touched: Blizzard's own files, keybindings, macros, chat and UI layout, an
 | **Rescan** | `r` | Scans again (after changing settings, say) |
 | **Undo last clean** | `z` | Puts back every file the last clean deleted |
 
-`Space` ticks or unticks a line, `a` / `n` tick / untick everything shown, `/` filters the tree (a hidden file keeps
-its tick and is still cleaned), `x` / `c` expand / collapse it all, `←` `→` switch panes. `f` or `Esc` picks another
-game version, `t` goes back to the tool menu, `s` opens the settings, `q` quits. On the results: **Rescan** (`r`),
-**Other flavor** (`f`), **Tools** (`t`), **Quit** (`q`).
+`Space` ticks or unticks a line, `a` / `n` tick / untick everything shown, `/` reaches the filter box (type, then
+**Filter** or `Enter` filters the tree; a hidden file keeps its tick and is still cleaned), `x` / `c` expand /
+collapse it all, `←` `→` switch panes. `f` or `Esc` picks another game version, `t` goes back to the tool menu, `s`
+opens the settings, `q` quits. On the results: **Rescan** (`r`), **Other flavor** (`f`), **Tools** (`t`), **Quit**
+(`q`).
 
 ## Safety
 

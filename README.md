@@ -3,7 +3,7 @@
 ![Version](https://img.shields.io/badge/Version-0.1.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-yellow)
 ![Platforms](https://img.shields.io/badge/Platforms-Windows_%7C_macOS_%7C_Linux-purple)
-![Tests](https://img.shields.io/badge/Tests-1305%2F1305_passing-green)
+![Tests](https://img.shields.io/badge/Tests-1641%2F1641_passing-green)
 ![License](https://img.shields.io/badge/License-MIT-orange)
 
 Ka0s WoW Tools is a small set of World of Warcraft helpers that run ***outside*** the game and tidy up the files WoW
@@ -22,14 +22,16 @@ you land back on the menu.
 | **Screenshot Organizer** | Sorts your WoW screenshots into folders by year, month and day, one set per game version. | [Screenshot Organizer guide](docs/screenshot-organizer.md) |
 | **Interface Backup** | Zips a game version's `Interface` and `WTF` folders (your addons and their settings), and puts them back from a zip. | [Interface Backup guide](docs/interface-backup.md) |
 | **Ace3 Profile Manager** | Shows the profiles of every addon built on Ace3 and which characters use them, and lets you delete, rename and copy profiles or move characters between them. | [Ace3 Profile Manager guide](docs/ace3-profile-manager.md) |
+| **Saved Variables Browser** | Shows every SavedVariables file as a tree you can browse down to single values, and lets you edit, rename and delete keys, or find values and edit the results in bulk. Use at your own risk. | [Saved Variables Browser guide](docs/sv-browser.md) |
 
 Every tool works with every version of the game you have installed: Retail, Classic, Classic Era, Anniversary,
 and the PTR and Beta clients. You can work on one version at a time or all of them at once.
 
 No tool changes anything until you say so. Each one shows you what it will do first and asks before it
-touches a file. The WTF Cleaner, the Screenshot Organizer and the Ace3 Profile Manager can also do a practice run
-(a **Dry run**) that shows what would happen without changing anything. And if you change your mind afterwards, you
-can undo the last clean, the last sort, the last restore or the last profile change.
+touches a file. The WTF Cleaner, the Screenshot Organizer, the Ace3 Profile Manager and the Saved Variables Browser
+can also do a practice run (a **Dry run**) that shows what would happen without changing anything. And if you change
+your mind afterwards, you can undo the last clean, the last sort, the last restore, the last profile change or the
+last Saved Variables edit.
 
 ## Terms of use
 
@@ -123,7 +125,7 @@ The app opens in a terminal window. You drive it with the keyboard:
 | `Enter` | Choose |
 | `Space` | Tick or untick the highlighted line |
 | `x` `c` | Expand or collapse every line of a tree |
-| `/` | Filter a tree: type part of a name, `Enter` keeps the filter, `Esc` clears it |
+| `/` | Filter a tree: type part of a name, then `Enter` (or the **Filter** button) applies it; `Esc` clears it |
 | `a` `n` | Tick or untick everything the tree shows |
 | `c` (tool menu) | What's new: the changelog |
 | `h` | Help: on the tool menu, what each tool does and the keys every tool shares; in a tool, how to use that tool, with a link to its guide |
@@ -135,7 +137,7 @@ Every button shows its key under its name (**Clean** over `(w)`, **Dry run** ove
 the same as clicking the button. The row along the bottom lists the other keys of the screen, the ones no button
 has (`Space`, `a`, `n`, `/`, `x`, `c`, `s`, `h`, ...), so you don't have to remember them. While a window such as
 "are you sure?" is open, that row is empty: the window's own buttons say what to press. A mouse works too. While a tool is
-changing or writing files (a clean, a sort, a backup, a restore, a profile change or an undo), the app won't quit until it has
+changing or writing files (a clean, a sort, a backup, a restore, a profile change, a Saved Variables edit or an undo), the app won't quit until it has
 finished.
 
 Buttons are coloured by what they do, the same in every tool: **red** deletes, **amber** overwrites or changes
@@ -164,8 +166,8 @@ The first time you open a tool, it asks for two things:
    example `C:\Program Files (x86)\World of Warcraft`. The app looks in the usual places and suggests what it
    finds (this can take a few seconds; you can type the folder meanwhile). You only answer this once; every tool shares it.
    The same screen asks how many backups to keep per game version (10; 0 keeps them all), how many journals
-   each tool keeps (10) and how many game versions to work on at once (2; use 1 on a hard drive or a WSL `/mnt`
-   folder). All three apply to every tool.
+   each tool keeps (10) and how many game versions to work on at once (2; the Saved Variables Browser's search also reads that many
+   files at once; use 1 on a hard drive or a WSL `/mnt` folder). All three apply to every tool.
 2. **That tool's settings.** Each guide explains them. If you're not sure, keep the suggested values.
 
 Then you pick which version of the game to work on, or **All flavors** for every version at once. ("Flavor" is
@@ -182,6 +184,8 @@ Each tool has its own guide, with pictures, that walks through every screen:
   undo a restore.
 - [Ace3 Profile Manager guide](docs/ace3-profile-manager.md): tidy up Ace3 addon profiles, move characters between them,
   and undo a change.
+- [Saved Variables Browser guide](docs/sv-browser.md): browse every addon's saved settings, edit them, and find and
+  replace values in bulk.
 
 ## Updates
 
@@ -222,21 +226,22 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 
 | File | Holds |
 |---|---|
-| `config\wow-tools.cfg` | Shared by every tool (`[general]`): your WoW folder, how many backups to keep per game version (`keep_backups`, 10; 0 keeps all) and journals per tool (`keep_journals`, 10), how many game versions to work on at once (`parallelism`, 2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder, where working on several at once is slower), plus update and log options |
+| `config\wow-tools.cfg` | Shared by every tool (`[general]`): your WoW folder, how many backups to keep per game version (`keep_backups`, 10; 0 keeps all) and journals per tool (`keep_journals`, 10), how many game versions to work on at once (`parallelism`, 2, from 1 to 8; also how many files a Saved Variables Browser search reads at once; use 1 on a hard drive or a WSL `/mnt` folder, where working on several at once is slower), plus update and log options |
 | `config\wtf-cleaner.cfg` | The WTF Cleaner's settings, including how many zips of cleaned files to keep per game version (`keep_cleaned`, 0 keeps all; the one retention setting a tool has of its own) |
 | `config\screenshot-organizer.cfg` | The Screenshot Organizer's settings |
 | `config\interface-backup.cfg` | Interface Backup's settings |
 | `config\ace3-profile-manager.cfg` | The Ace3 Profile Manager's settings (`[ace3_profile_manager]`): backup folder and the blacklist of addons (each in one game version) it never changes |
+| `config\sv-browser.cfg` | The Saved Variables Browser's settings (`[sv_browser]`): backup folder |
 
 The easiest way to change them is to press `s` in the app: the first screen is the shared one (WoW folder,
-backups and journals to keep, game versions to work on at once), then the tool's own. You can also open the files in Notepad while the app
+backups and journals to keep, game versions (and search files) to work on at once), then the tool's own. You can also open the files in Notepad while the app
 is closed. The guides list every setting.
 
 ## Undo and run journals
 
 Every tool that changes files keeps a short record of what it did, called a **journal**, so it can undo its last
-run: the WTF Cleaner's last clean, the Screenshot Organizer's last sort, Interface Backup's last restore and the Ace3
-Profile Manager's last change. Journals are kept in your WoW folder, under `wow-tools\<tool name>\journal` (for
+run: the WTF Cleaner's last clean, the Screenshot Organizer's last sort, Interface Backup's last restore, the Ace3
+Profile Manager's last change and the Saved Variables Browser's last Apply. Journals are kept in your WoW folder, under `wow-tools\<tool name>\journal` (for
 example `wow-tools\ace3-profile-manager\journal`). Each tool's guide explains its undo.
 
 ## Logs
@@ -254,9 +259,9 @@ If you use WSL (Linux inside Windows), the same folder works from both sides. Ru
 
 | Question | Answer |
 |----------|--------|
-| Is it safe? Can I lose anything? | Every tool shows you what it will do and asks before it changes anything. The WTF Cleaner backs up your whole `WTF` folder and zips every file before deleting it, the Screenshot Organizer never overwrites a file, Interface Backup takes a safety backup of your folders before every restore, and the Ace3 Profile Manager backs up your whole `WTF` folder and every file it edits before changing a profile. Each can undo its last run (Interface Backup: its last restore). If you're unsure, press **Dry run** in the WTF Cleaner, the Screenshot Organizer or the Ace3 Profile Manager first: it shows what would happen without changing anything. |
-| Does it change the game itself? | No. It never touches the game program. The WTF Cleaner and the Screenshot Organizer only work on files the game leaves in your WoW folder: addon settings in `WTF` and pictures in `Screenshots`. Interface Backup only reads your `Interface` and `WTF` folders to back them up; they change only when you restore a backup (or undo a restore) and confirm it. The Ace3 Profile Manager only changes the profile lists in addon settings files in `WTF`, and only when you apply and confirm. |
-| Do I need to close WoW? | Close it before you clean with the WTF Cleaner: WoW rewrites those files when you log out and can bring deleted ones back. Close it before an Interface Backup restore or undo too; a backup works with the game open but may miss your latest settings. The WTF Cleaner and Interface Backup warn you if WoW is running. The Ace3 Profile Manager refuses to apply or undo a change while WoW is running, since the game would overwrite it. The Screenshot Organizer doesn't mind if the game is open. |
+| Is it safe? Can I lose anything? | Every tool shows you what it will do and asks before it changes anything. The WTF Cleaner backs up your whole `WTF` folder and zips every file before deleting it, the Screenshot Organizer never overwrites a file, Interface Backup takes a safety backup of your folders before every restore, and the Ace3 Profile Manager and the Saved Variables Browser back up your whole `WTF` folder and every file they edit before changing anything. Each can undo its last run (Interface Backup: its last restore). If you're unsure, press **Dry run** in the WTF Cleaner, the Screenshot Organizer, the Ace3 Profile Manager or the Saved Variables Browser first: it shows what would happen without changing anything. The Saved Variables Browser is the exception to "safe": it lets you change any value an addon saved, knows nothing about what the addon expects, and so is use at your own risk. |
+| Does it change the game itself? | No. It never touches the game program. The WTF Cleaner and the Screenshot Organizer only work on files the game leaves in your WoW folder: addon settings in `WTF` and pictures in `Screenshots`. Interface Backup only reads your `Interface` and `WTF` folders to back them up; they change only when you restore a backup (or undo a restore) and confirm it. The Ace3 Profile Manager only changes the profile lists in addon settings files in `WTF`, and the Saved Variables Browser only the values and keys you edit in them, each only when you apply and confirm. |
+| Do I need to close WoW? | Close it before you clean with the WTF Cleaner: WoW rewrites those files when you log out and can bring deleted ones back. Close it before an Interface Backup restore or undo too; a backup works with the game open but may miss your latest settings. The WTF Cleaner and Interface Backup warn you if WoW is running. The Ace3 Profile Manager and the Saved Variables Browser refuse to apply or undo a change while WoW is running, since the game would overwrite it. The Screenshot Organizer doesn't mind if the game is open. |
 | Do I need to install anything besides Python? | No. Everything else the app needs comes in the download. |
 | Does it work on a Mac? | Yes, with `./wow-tools.sh`, and everything works there, including the "WoW is running" warning. |
 | Why does it say another copy may already be running? | Only one copy of the app can run at once. While it's open it keeps a small file called `wow-tools.lock` in its folder. If you start it a second time, or it crashed last time, you get a warning with two buttons: **Quit** if the app really is open somewhere else, or **Override and continue** if it isn't (for example after a crash). When the app can tell the other copy is gone, it says so and puts you on **Override and continue**. |

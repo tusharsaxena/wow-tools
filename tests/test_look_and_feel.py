@@ -11,15 +11,16 @@ from pathlib import Path
 from textual.widgets import Button, Checkbox, DataTable, OptionList, Tree
 from textual.widgets._footer import FooterKey
 
-from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, assert_keys_on_buttons, build_ace_tree, build_interface_tree,
-                            build_screenshot_tree, build_wow_tree, make_config, settle)
+from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, accept_disclaimer, assert_keys_on_buttons, build_ace_tree,
+                            build_interface_tree, build_screenshot_tree, build_wow_tree, make_config, settle,
+                            stage_sv_edit, submit_filter)
 from wowtools import __version__
 from wowtools.core.changelog import Changelog, parse_changelog
 from wowtools.core.lock import LockInfo
 from wowtools.core.updater import ReleaseInfo
 from wowtools.tools import TOOLS as TOOL_INFO
 from wowtools.tools.ace3_profile_manager.editor import Marker as AceMarker
-from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
+from wowtools.tools.ace3_profile_manager.popups import ACTIONS_ROWS, ActionsScreen, NameScreen, TargetScreen
 from wowtools.tools.ace3_profile_manager.review_screen import ProfileRecoveryScreen
 from wowtools.tools.wtf_cleaner.review_screen import RecoveryScreen as WtfRecoveryScreen
 from wowtools.tools.wtf_cleaner.safety import Marker as WtfMarker
@@ -30,18 +31,22 @@ from wowtools.ui.dialogs import (FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_H
                                  ProgressScreen)
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import MENU_HINT, LockScreen, WowToolsApp
-from wowtools.ui.tree_filter import FILTER_HINT, FILTER_PLACEHOLDER, NO_MATCH_TEXT, FilterInput
-from wowtools.ui.widgets import CHECK_OFF, NavHint, action_kind
+from wowtools.ui.tree_filter import FILTER_BUTTON_ID, FILTER_HINT, FILTER_PLACEHOLDER, NO_MATCH_TEXT, FilterInput
+from wowtools.ui.widgets import CHECK_OFF, RISK_TEXT, NavHint, RiskBanner, action_kind
 
 POPUP_MAX_WIDTH = 100  # a popup or confirm at LARGE: a readable width, never stretched edge to edge
 FORM_MAX_WIDTH = 100  # a settings form, at any size
-TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup", "ace3-profile-manager")
+# The tools whose screens are checked (the menu checks below cover every registered tool, TOOL_INFO).
+TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup", "ace3-profile-manager", "sv-browser")
 # The action that leads to a result screen without a running-WoW popup in between (dry runs, a backup).
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
-              "ace3-profile-manager": "dry_run"}
+              "ace3-profile-manager": "dry_run", "sv-browser": "dry_run"}
+# The reviews that can destroy data: the risk banner tops their left pane (spec D37).
+DESTRUCTIVE_REVIEWS = ("wtf-cleaner", "ace3-profile-manager", "sv-browser")
 # What a review needs before its run action has something to do (the Ace3 Profile Manager runs staged changes).
 PREPARE = {"ace3-profile-manager": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
-                                           review.refresh_view())}
+                                           review.refresh_view()),
+           "sv-browser": stage_sv_edit}
 
 
 def walk(node):
@@ -64,7 +69,8 @@ class LookAndFeelTest(TuiTestCase):
 
     def make_app(self):
         options = {"wtf-cleaner": {"wow_check": list, "locker_check": list},
-                   "interface-backup": {"wow_check": list}, "ace3-profile-manager": {"wow_check": list}}
+                   "interface-backup": {"wow_check": list}, "ace3-profile-manager": {"wow_check": list},
+                   "sv-browser": {"wow_check": list}}
         return WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list,
                            tool_options=options)
 
@@ -78,6 +84,7 @@ class LookAndFeelTest(TuiTestCase):
         self.assertIsInstance(app.screen, FlavorScreen)
         app.screen.dismiss(ALL_FLAVORS)
         await settle(app, pilot)
+        await accept_disclaimer(app, pilot)
         return app.screen
 
     def assert_inside(self, widget, box):
@@ -156,6 +163,31 @@ class LookAndFeelTest(TuiTestCase):
                     rows = [w.region.y for w in controls]
                     self.assertEqual(len(rows), len(set(rows)), [(w.id, w.region) for w in controls])
 
+    async def test_destructive_reviews_open_with_the_risk_banner(self):
+        """Spec D37: the reviews that can destroy data start their left pane with the shared banner (red, bold,
+        not focusable, inside the pane); the others have none."""
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    review = await self.open_review(app, pilot, tool)
+                    filters = review.query_one("#filters")
+                    banners = list(review.query(RiskBanner))
+                    if tool not in DESTRUCTIVE_REVIEWS:
+                        self.assertEqual(banners, [])
+                        continue
+                    self.assertEqual(len(banners), 1)
+                    banner = banners[0]
+                    self.assertIs(filters.children[0], banner)
+                    self.assertEqual(banner.render().plain, RISK_TEXT)
+                    # two spaces: a terminal that draws the triangle as a two-cell emoji covers the first one
+                    self.assertEqual(RISK_TEXT, "\u26a0  USE AT YOUR OWN RISK")
+                    self.assertFalse(banner.focusable)
+                    self.assertTrue(banner.styles.text_style.bold)
+                    self.assertEqual(banner.styles.color.hex, app.get_css_variables()["error"])
+                    pane = filters.region
+                    self.assert_inside(banner, pane._replace(width=pane.width - 1))
+
     async def test_every_tree_screen_has_the_filter_box(self):
         """Spec D7 at BASE and TINY: every review and the Ace3 blacklist have the tree filter in the left pane, one
         row of its own with the same label; the hint names `/ filter` right before the tree keys; `/` reaches it,
@@ -173,6 +205,7 @@ class LookAndFeelTest(TuiTestCase):
                             await settle(app, pilot)
                         app.screen.dismiss(ALL_FLAVORS)
                         await settle(app, pilot)
+                        await accept_disclaimer(app, pilot)
                         screen = app.screen
                         if tool == "blacklist":
                             screen.action_edit_blacklist()
@@ -186,11 +219,16 @@ class LookAndFeelTest(TuiTestCase):
                         self.assertIn(pane, field.ancestors)
                         others = [w for w in pane.query("*") if w.focusable and w is not field]
                         self.assertNotIn(field.region.y, [w.region.y for w in others])
+                        button = screen.query_one(f"#{FILTER_BUTTON_ID}", Button)  # D40: beside the box
+                        self.assertEqual((button.label_text, button.shortcut, action_kind(button)),
+                                         ("Filter", "enter", "navigate"))
+                        self.assertEqual(button.region.y, field.region.y)
+                        self.assertFalse(button.focusable)
                         hint = screen.query_one(NavHint)
                         self.assertIn(FILTER_HINT + TREE_HINT.removesuffix(" · "), hint.hint)
                         if size == BASE:
                             inside = pane.region._replace(width=pane.region.width - 1)
-                            for widget in (field, hint):
+                            for widget in (field, button, hint):
                                 self.assert_inside(widget, inside)
                         tree = screen.query_one(screen.TREE_SELECTOR, Tree)
                         tree.focus()
@@ -205,6 +243,37 @@ class LookAndFeelTest(TuiTestCase):
                         self.assertEqual(field.value, "")
                         self.assertIs(app.screen, screen)
                         self.assertIs(screen.focused, tree)
+
+    async def test_the_filter_waits_for_enter_or_its_button(self):
+        """Spec D40 on every tree screen: typing in the box never rebuilds the tree; Enter applies it, the Filter
+        button too, and an empty box submitted shows everything again."""
+        for tool in (*TOOLS, "blacklist"):
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    screen = await self.open_review(app, pilot, "ace3-profile-manager" if tool == "blacklist"
+                                                    else tool)
+                    if tool == "blacklist":
+                        screen.action_edit_blacklist()
+                        await settle(app, pilot)
+                        screen = app.screen
+                    tree = screen.query_one(screen.TREE_SELECTOR, Tree)
+                    before = [str(n.label) for n in tree.root.children]
+                    tree.focus()
+                    await pilot.press("slash", "z", "z", "z", "q")
+                    await settle(app, pilot)
+                    self.assertFalse(screen.filtering)
+                    self.assertEqual([str(n.label) for n in tree.root.children], before)
+                    await pilot.press("enter")
+                    await settle(app, pilot)
+                    self.assertTrue(screen.filtering)
+                    self.assertEqual([str(n.label) for n in tree.root.children], [NO_MATCH_TEXT])
+                    self.assertIs(screen.focused, tree)
+                    screen.filter_input().value = ""
+                    await pilot.click(f"#{FILTER_BUTTON_ID}")
+                    await settle(app, pilot)
+                    self.assertFalse(screen.filtering)
+                    self.assertEqual([str(n.label) for n in tree.root.children], before)
 
     async def test_a_group_mark_counts_what_the_filter_shows(self):
         """One rule in every tick tree: with the filter set, a group's and the root's mark count only the items the
@@ -227,7 +296,7 @@ class LookAndFeelTest(TuiTestCase):
                     tree.focus()
                     await pilot.press("a")
                     await settle(app, pilot)
-                    screen.filter_input().value = text
+                    submit_filter(screen, text)
                     await settle(app, pilot)
                     tree.focus()
                     await pilot.press("n")
@@ -249,10 +318,10 @@ class LookAndFeelTest(TuiTestCase):
                         await settle(app, pilot)
                         screen = app.screen
                     tree = screen.query_one(screen.TREE_SELECTOR, Tree)
-                    screen.filter_input().value = "zzzq"
+                    submit_filter(screen, "zzzq")
                     await settle(app, pilot)
                     self.assertEqual([str(n.label) for n in tree.root.children], [NO_MATCH_TEXT])
-                    screen.filter_input().value = ""
+                    submit_filter(screen, "")
                     await settle(app, pilot)
                     self.assertNotIn(NO_MATCH_TEXT, [str(n.label) for n in tree.root.children])
 
@@ -266,7 +335,7 @@ class LookAndFeelTest(TuiTestCase):
                     setattr(review, model, None)
                     review._scan_failed("The scan failed: disk gone")
                     await settle(app, pilot)
-                    review.filter_input().value = "re"
+                    submit_filter(review, "re")
                     await settle(app, pilot)
                     self.assertIn("disk gone", str(review.query_one("#summary").render()))
 
@@ -955,6 +1024,18 @@ class LookAndFeelTest(TuiTestCase):
                     screen.dismiss(None)
                     await settle(app, pilot)
 
+    async def test_ace_target_dropdown_shows_as_many_rows_as_the_actions_menu(self):
+        """The delete/assign target dropdown (the Select's overlay, an OptionList) shows up to ACTIONS_ROWS
+        profiles without scrolling, like the quick actions menu, not Select's default of 10."""
+        app = self.make_app()
+        async with app.run_test(size=LARGE) as pilot:
+            await pilot.pause()
+            screen = TargetScreen("Delete profiles", "Body", [f"Profile{i}" for i in range(30)])
+            app.push_screen(screen)
+            await settle(app, pilot)
+            overlay = screen.query_one("SelectOverlay")
+            self.assertEqual(overlay.styles.max_height.value, ACTIONS_ROWS + 2)
+
     def assert_popup_width(self, screen, size) -> None:
         box = screen.children[0].region
         if size == LARGE:
@@ -978,6 +1059,7 @@ class LookAndFeelTest(TuiTestCase):
                     await settle(app, pilot)
                     app.screen.dismiss(ALL_FLAVORS)
                     await settle(app, pilot)
+                    await accept_disclaimer(app, pilot)
                     review = app.screen
                     await self.tab_through(app, pilot, "review")
                     PREPARE.get(tool, lambda r: None)(review)

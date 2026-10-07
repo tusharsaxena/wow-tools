@@ -4,11 +4,8 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+from wowtools.core.sv_report import STATUS_COLOURS
 from wowtools.ui.result_screen import ResultScreen
-
-# Theme colour of a detail row's last cell, by its first words (report.RESULT_TEXT and the undo statuses).
-STATUS_COLOURS = (("would change", "accent"), ("changed", "success"), ("restored", "success"),
-                  ("put back", "warning"), ("skipped", "warning"), ("failed", "error"))
 
 
 class ProfileResultScreen(ResultScreen):

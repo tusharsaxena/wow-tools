@@ -12,8 +12,8 @@ from pathlib import Path
 from textual.widgets import Markdown
 from textual.widgets._footer import FooterKey
 
-from tests.fixtures import (BASE, TINY, TuiTestCase, build_ace_tree, build_interface_tree, build_screenshot_tree,
-                            build_wow_tree, footer_keys, make_config, settle)
+from tests.fixtures import (BASE, TINY, TuiTestCase, accept_disclaimer, build_ace_tree, build_interface_tree,
+                            build_screenshot_tree, build_wow_tree, footer_keys, make_config, settle, stage_sv_edit)
 from wowtools import __version__
 from wowtools.core.install import WowInstall
 from wowtools.tools import TOOLS
@@ -33,9 +33,10 @@ GITHUB = "https://github.com/tusharsaxena/wow-tools"
 URL = re.compile(r"https://[^\s)\]>]+")
 # The action that leads to a result screen without a running-WoW popup in between, and what it needs first.
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
-              "ace3-profile-manager": "dry_run"}
+              "ace3-profile-manager": "dry_run", "sv-browser": "dry_run"}
 PREPARE = {"ace3-profile-manager": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
-                                                   review.refresh_view())}
+                                                   review.refresh_view()),
+           "sv-browser": stage_sv_edit}
 
 
 def url_target(url: str) -> Path:
@@ -87,7 +88,8 @@ class HelpScreenTest(TuiTestCase):
 
     def make_app(self):
         options = {"wtf-cleaner": {"wow_check": list, "locker_check": list},
-                   "interface-backup": {"wow_check": list}, "ace3-profile-manager": {"wow_check": list}}
+                   "interface-backup": {"wow_check": list}, "ace3-profile-manager": {"wow_check": list},
+                   "sv-browser": {"wow_check": list}}
         return WowToolsApp(self.cfg, config_dir=self.config_dir, check_updates=False, detect=list,
                            tool_options=options)
 
@@ -143,6 +145,7 @@ class HelpScreenTest(TuiTestCase):
                     await self.assert_help(app, pilot, text)
                     picker.dismiss(ALL_FLAVORS)
                     await settle(app, pilot)
+                    await accept_disclaimer(app, pilot)
                     review = app.screen
                     labels = {b.label_text for b in review.query(ActionButton)}
                     self.assertTrue(labels)
@@ -206,6 +209,7 @@ class HelpScreenTest(TuiTestCase):
             picker = await self.open_flavors(app, pilot, "wtf-cleaner")
             picker.dismiss(ALL_FLAVORS)
             await settle(app, pilot)
+            await accept_disclaimer(app, pilot)
             review = app.screen
             review.action_clean()
             await pilot.pause()
@@ -232,6 +236,7 @@ class HelpScreenTest(TuiTestCase):
                     picker = await self.open_flavors(app, pilot, name)
                     picker.dismiss(ALL_FLAVORS)
                     await settle(app, pilot)
+                    await accept_disclaimer(app, pilot)
                     listed = await footer_keys(app.screen, pilot, {"h", "s", "q"})
                     self.assertTrue({"h", "s", "q"} <= listed, listed)
                     keys = list(app.screen.query(FooterKey))
@@ -249,6 +254,7 @@ class HelpScreenTest(TuiTestCase):
             picker = await self.open_flavors(app, pilot, "wtf-cleaner")
             picker.dismiss(ALL_FLAVORS)
             await settle(app, pilot)
+            await accept_disclaimer(app, pilot)
             review = app.screen
             await pilot.press("slash", "h")
             await settle(app, pilot)

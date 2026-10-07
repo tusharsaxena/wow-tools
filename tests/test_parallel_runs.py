@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.fixtures import build_ace_tree, build_interface_tree, build_screenshot_tree, build_wow_tree
+from wowtools.core import sv_undo
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.core.progress import ProgressBoard
@@ -283,37 +284,37 @@ class AceUndoParallelTest(TempTree):
 
     def test_snapshots_run_at_the_same_time(self):
         barrier = threading.Barrier(2, timeout=WAIT)
-        real = undo.take_snapshot
+        real = sv_undo.take_snapshot
 
         def meet(*args, **kwargs):
             barrier.wait()
             return real(*args, **kwargs)
 
         started, ended = [], []
-        with patch.object(undo, "take_snapshot", meet):
+        with patch.object(sv_undo, "take_snapshot", meet):
             result = self.undo(2, on_flavor=started.append, on_flavor_done=ended.append)
         self.assertEqual(len(result.restored), len(self.files))
         self.assertEqual(sorted(f.folder for f in started), ["_classic_era_", "_retail_"])
         self.assertEqual(sorted(f.folder for f in ended), ["_classic_era_", "_retail_"])
 
     def test_a_failed_snapshot_changes_nothing(self):
-        real = undo.take_snapshot
+        real = sv_undo.take_snapshot
         retail_done, wait = threading.Event(), {"for": 0}
 
         def broken(flavor, *args, **kwargs):
             if flavor.folder == "_classic_era_":
                 retail_done.wait(wait["for"])  # in parallel: fail once Retail's snapshot is made
-                raise undo.BackupError("disk full")
+                raise sv_undo.BackupError("disk full")
             made = real(flavor, *args, **kwargs)
             retail_done.set()
             return made
 
         edited = {p: p.read_bytes() for p in self.files}
-        snapshots = self.root / undo.SNAPSHOT_SUBDIR
+        snapshots = self.root / sv_undo.SNAPSHOT_SUBDIR
         before = sorted(snapshots.iterdir())
         for parallelism in (1, 4):
             wait["for"] = WAIT if parallelism > 1 else 0
-            with self.subTest(parallelism=parallelism), patch.object(undo, "take_snapshot", broken):
+            with self.subTest(parallelism=parallelism), patch.object(sv_undo, "take_snapshot", broken):
                 with self.assertRaises(undo.UndoError) as caught:
                     self.undo(parallelism)
                 self.assertIn("Nothing was changed", str(caught.exception))
@@ -327,9 +328,9 @@ class AceUndoParallelTest(TempTree):
 
         def broken(flavor, *args, **kwargs):
             calls.append(flavor.folder)
-            raise undo.BackupError("disk full")
+            raise sv_undo.BackupError("disk full")
 
-        with patch.object(undo, "take_snapshot", broken), self.assertRaises(undo.UndoError):
+        with patch.object(sv_undo, "take_snapshot", broken), self.assertRaises(undo.UndoError):
             self.undo(1)
         self.assertEqual(calls, ["_classic_era_"])  # as before: the next flavor never started
 

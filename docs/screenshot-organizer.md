@@ -63,10 +63,11 @@ Open a day to see its screenshots. A game version with nothing to do says why: "
 **At the bottom** a bar totals what's ticked, plus possible duplicates, conflicts and skipped files (all
 explained below).
 
-**Filter**: `/` puts you in the **Filter** box on the left. Type part of a name: a game version, a year, a date
-such as `2024-01-02`, or a file name (upper or lower case doesn't matter). The tree keeps the matching lines and
-the groups they're in, and opens a day when one of its screenshots matches. `Enter` goes back to the tree and keeps
-the filter; `Esc` in the box clears it. The filter only changes what you see: `a` and `n` act on what it shows, and a
+**Filter**: `/` puts you in the filter box on the left. Type part of a name: a game version, a year, a date
+such as `2024-01-02`, or a file name (upper or lower case doesn't matter), then press `Enter` or click the
+**Filter** button beside the box (typing alone changes nothing). The tree keeps the matching lines and the groups
+they're in, and opens a day when one of its screenshots matches. An empty box, applied, shows everything again; `Esc`
+in the box clears the filter. The filter only changes what you see: `a` and `n` act on what it shows, and a
 screenshot it hides keeps its tick and is still sorted. The bottom bar and the confirmation say how many ("3 selected
 shots are hidden by the filter").
 

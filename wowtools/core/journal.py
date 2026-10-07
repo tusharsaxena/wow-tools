@@ -33,6 +33,14 @@ def journal_dir(wow_path: Path | None, tool: str) -> Path | None:
     return wow_path / TOOLS_SUBDIR / tool / JOURNAL_SUBDIR if wow_path is not None else None
 
 
+def tool_root(backup_dir: Path | None, wow_path: Path | None, tool: str) -> Path | None:
+    """A tool's own folder: <backup_dir>/<tool> when a backup folder is set, else <WoW folder>/wow-tools/<tool>;
+    None with neither."""
+    if backup_dir is not None:
+        return backup_dir / tool
+    return wow_path / TOOLS_SUBDIR / tool if wow_path is not None else None
+
+
 def now_iso() -> str:
     """The local time with its UTC offset, to the second (journal headers and markers)."""
     return datetime.now().astimezone().isoformat(timespec="seconds")

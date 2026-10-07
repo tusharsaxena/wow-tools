@@ -111,6 +111,82 @@ class StructureTest(unittest.TestCase):
                  if isinstance(node, ast.ClassDef) and node.name in classes}
         self.assertEqual(where, {(f"wowtools/core/{module}", name) for name, module in classes.items()})
 
+    def test_saved_variables_reader_lives_in_core(self):
+        """The SavedVariables reader (SV Browser spec D20) is wowtools/core/luasv.py's: Ace3 and SV Browser import it,
+        no tool keeps a luasv module or defines its parser, codecs or parse classes."""
+        self.assertEqual([rel(p) for p in modules("wowtools") if p.name == "luasv.py"], ["wowtools/core/luasv.py"])
+        functions = {"parse", "parse_at", "iter_scalars", "decode_string", "encode_string", "encode_value",
+                     "encode_key", "key_id", "splice", "newline_of", "line_start", "is_blank_table"}
+        where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & functions}
+        self.assertEqual(where, {("wowtools/core/luasv.py", n) for n in functions})
+        classes = {"LuaParseError", "RawNumber", "Scalar", "Opaque", "Field", "Table", "Assignment", "Chunk"}
+        where = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
+                 if isinstance(node, ast.ClassDef) and node.name in classes}
+        self.assertEqual(where, {("wowtools/core/luasv.py", n) for n in classes})
+
+    def test_saved_variables_files_and_tool_root_live_in_core(self):
+        """The SavedVariables file model, walk and scan warning (SV Browser spec D20) are core/svfiles.py's (the WTF
+        Cleaner's ScanWarning is another shape, its own), tool_root is
+        core/journal.py's; only the WTF Cleaner, whose backup folder holds no tool subfolder, builds its own root
+        from TOOLS_SUBDIR."""
+        functions = {"sha256_of", "is_sv_file", "is_addon_sv_file", "candidate_files", "under_link", "_under_link",
+                     "walk_sv_files"}
+        where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & functions}
+        self.assertEqual(where, {("wowtools/core/svfiles.py", n) for n in functions - {"_under_link"}})
+        where = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
+                 if isinstance(node, ast.ClassDef) and node.name in ("SvFile", "SvScanWarning", "ScanWarning")}
+        self.assertEqual(where, {("wowtools/core/svfiles.py", "SvFile"), ("wowtools/core/svfiles.py", "SvScanWarning"),
+                                 ("wowtools/tools/wtf_cleaner/scanner.py", "ScanWarning")})
+        where = {rel(p) for p in modules("wowtools") if "tool_root" in defined_functions(tree(p))}
+        self.assertEqual(where, {"wowtools/core/journal.py"})
+        users = {rel(p) for p in modules("wowtools/tools") for node in ast.walk(tree(p))
+                 if isinstance(node, ast.Name) and node.id == "TOOLS_SUBDIR"}
+        self.assertEqual(users, {"wowtools/tools/wtf_cleaner/settings.py"})
+
+    def test_saved_variables_write_pipeline_lives_in_core(self):
+        """The SavedVariables write pipeline (SV Browser spec D20) is core's: apply, the edit journal, undo and
+        recovery, the verify helpers, the result rows and the one WowRunning. A tool keeps only thin wrappers that
+        pass its SvTool (name, event prefix) and its compile / verify callbacks."""
+        functions = {"_prepare": "sv_apply.py", "_roll_back": "sv_apply.py", "restore_original": "sv_apply.py",
+                     "edited_zip_path": "sv_apply.py", "prune_edited_zips": "sv_apply.py",
+                     "refuse_running": "sv_apply.py", "read_edit_journal": "sv_journal.py",
+                     "record_recovered": "sv_journal.py", "referenced_zips": "sv_journal.py",
+                     "destination": "sv_undo.py", "_put_back": "sv_undo.py", "_moved_zip": "sv_undo.py",
+                     "_snapshots": "sv_undo.py", "gaps": "sv_verify.py", "_gaps": "sv_verify.py",
+                     "check_assignments": "sv_verify.py", "rest_outside": "sv_verify.py",
+                     "same_outside": "sv_verify.py", "in_backup_folder": "sv_report.py",
+                     "apply_summary_rows": "sv_report.py", "apply_detail_rows": "sv_report.py",
+                     "undo_detail_rows": "sv_report.py", "sv_events": "sv_events.py"}
+        where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & set(functions)
+                 if not (n == "_roll_back" and rel(p) == "wowtools/tools/interface_backup/restore.py")}
+        self.assertEqual(where, {(f"wowtools/core/{module}", name) for name, module in functions.items()
+                                 if name != "_gaps"})
+        classes = {"ApplyResult": "sv_apply.py", "MultiApplyResult": "sv_apply.py", "ApplyError": "sv_apply.py",
+                   "UndoError": "sv_apply.py", "WowRunning": "sv_apply.py", "EditJournal": "sv_journal.py",
+                   "ProfileJournal": None, "SvTool": "sv_events.py"}
+        where = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
+                 if isinstance(node, ast.ClassDef) and node.name in classes}
+        self.assertEqual(where, {(f"wowtools/core/{module}", name) for name, module in classes.items() if module})
+        from wowtools.core import sv_apply, sv_journal, sv_undo
+        from wowtools.tools.ace3_profile_manager import editor, journal, multi, undo
+        from wowtools.tools.ace3_profile_manager.events import SV_TOOL
+        self.assertIs(editor.Marker, sv_apply.Marker)
+        self.assertIs(multi.WowRunning, undo.WowRunning)
+        self.assertIs(journal.read_profile_journal, sv_journal.read_edit_journal)
+        self.assertIs(journal.JOURNALS, SV_TOOL.journals)
+        self.assertIs(undo.UndoResult, sv_undo.UndoResult)
+        self.assertEqual((SV_TOOL.name, SV_TOOL.prefix), ("ace3-profile-manager", "ace"))
+        from wowtools.tools.sv_browser import editor as svb_editor
+        from wowtools.tools.sv_browser import journal as svb_journal
+        from wowtools.tools.sv_browser import undo as svb_undo
+        from wowtools.tools.sv_browser.events import SV_TOOL as SVB_TOOL
+        self.assertIs(svb_editor.Marker, sv_apply.Marker)
+        self.assertIs(svb_editor.WowRunning, undo.WowRunning)
+        self.assertIs(svb_journal.read_journal, sv_journal.read_edit_journal)
+        self.assertIs(svb_journal.JOURNALS, SVB_TOOL.journals)
+        self.assertIs(svb_undo.UndoResult, sv_undo.UndoResult)
+        self.assertEqual((SVB_TOOL.name, SVB_TOOL.prefix), ("sv-browser", "svb"))
+
     def test_tools_use_the_shared_helpers(self):
         """Each tool's journals, undo results and markers go through core (no copy of the bodies)."""
         from wowtools.core import journal, undo
@@ -118,15 +194,17 @@ class StructureTest(unittest.TestCase):
         from wowtools.tools.ace3_profile_manager import undo as ace_undo
         from wowtools.tools.interface_backup import journal as ib_journal
         from wowtools.tools.screenshot_organizer import journal as shots_journal
+        from wowtools.tools.sv_browser import journal as svb_journal
+        from wowtools.tools.sv_browser import undo as svb_undo
         from wowtools.tools.wtf_cleaner import journal as wtf_journal
         from wowtools.tools.wtf_cleaner import undo as wtf_undo
-        for module in (ace_journal, ib_journal, shots_journal, wtf_journal):
+        for module in (ace_journal, ib_journal, shots_journal, svb_journal, wtf_journal):
             self.assertIsInstance(module.JOURNALS, journal.ToolJournals)
             self.assertEqual(module.resolve_journal_dir, module.JOURNALS.dir)
             self.assertEqual(module.latest_undoable, module.JOURNALS.latest_undoable)
-        for module in (ace_undo, wtf_undo):
+        for module in (ace_undo, svb_undo, wtf_undo):
             self.assertTrue(issubclass(module.UndoResult, undo.UndoResultBase))
-        for path in ("wowtools/tools/wtf_cleaner/safety.py", "wowtools/tools/ace3_profile_manager/editor.py"):
+        for path in ("wowtools/tools/wtf_cleaner/safety.py", "wowtools/core/sv_apply.py"):
             self.assertIn("wowtools.core.marker", imported_modules(tree(REPO / path)) | {
                 f"{n.module}.{a.name}" for n in ast.walk(tree(REPO / path))
                 if isinstance(n, ast.ImportFrom) and n.module for a in n.names})
@@ -153,14 +231,42 @@ class StructureTest(unittest.TestCase):
 
     def test_lock_refusal_and_progress_close_are_shared(self):
         """Functionality two tools need lives in the shared library: the lock refusal (core/svfiles.py: the probe
-        loop and its message) and closing a review's progress popup (ui/review.py; Ace3's takes the popup)."""
+        loop and its message) and closing a review's progress popup (ui/review.py, Ace3's included)."""
         where = {(rel(p), n) for p in modules("wowtools")
                  for n in defined_functions(tree(p)) & {"find_locked", "locked_message"}}
         self.assertEqual(where, {("wowtools/core/svfiles.py", n) for n in ("find_locked", "locked_message")})
         texts = [rel(p) for p in modules("wowtools") if "Close it and" in p.read_text(encoding="utf-8")]
         self.assertEqual(texts, ["wowtools/core/svfiles.py"])
         closes = {rel(p) for p in modules("wowtools") if "_close_progress" in defined_functions(tree(p))}
-        self.assertEqual(closes, {"wowtools/ui/review.py", "wowtools/tools/ace3_profile_manager/review_screen.py"})
+        self.assertEqual(closes, {"wowtools/ui/review.py"})
+
+    def test_saved_variables_ui_helpers_live_in_ui(self):
+        """The UI a SavedVariables tool shares (SV Browser spec D20): the form popup look and error line, the text
+        prompt and the unfinished-run warning are ui/dialogs.py's; the apply / undo / recover plumbing (WoW check,
+        refusals, the progress popup, the worker, its result or failure) is ui/review.py's RunActions. Ace3's name
+        popup, recovery warning and review are built on them."""
+        functions = {"popup_css": "dialogs.py", "show_error": "dialogs.py", "recovery_text": None,
+                     "_check_wow": "review.py", "_refused_while_running": "review.py",
+                     "_backup_dir_refused": "review.py", "start_run": "review.py", "_run_worker": "review.py",
+                     "_run_done": "review.py", "_run_failed": "review.py", "_end_run": "review.py"}
+        where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & set(functions)}
+        self.assertEqual(where, {(f"wowtools/ui/{module}", name) for name, module in functions.items() if module}
+                         | {("wowtools/core/sv_report.py", "recovery_text")})
+        classes = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
+                   if isinstance(node, ast.ClassDef) and node.name in ("TextPromptScreen", "UnfinishedRunScreen",
+                                                                       "RunActions")}
+        self.assertEqual(classes, {("wowtools/ui/dialogs.py", "TextPromptScreen"),
+                                   ("wowtools/ui/dialogs.py", "UnfinishedRunScreen"),
+                                   ("wowtools/ui/review.py", "RunActions")})
+        from wowtools.tools.ace3_profile_manager import popups, review_screen
+        from wowtools.ui.dialogs import TextPromptScreen, UnfinishedRunScreen
+        from wowtools.ui.review import RunActions
+        self.assertTrue(issubclass(popups.NameScreen, TextPromptScreen))
+        self.assertTrue(issubclass(review_screen.ProfileRecoveryScreen, UnfinishedRunScreen))
+        self.assertTrue(issubclass(review_screen.ProfileReviewScreen, RunActions))
+        # Ace3's screen runs nothing in a worker of its own: no activity.running() outside RunActions.
+        self.assertNotIn("activity", (REPO / "wowtools/tools/ace3_profile_manager/review_screen.py").read_text(
+            encoding="utf-8"))
 
     def test_tree_filter_lives_in_ui(self):
         """The tree filter (spec D7) is wowtools/ui/tree_filter.py's: no tool defines its own match, model filter,
@@ -185,7 +291,7 @@ class StructureTest(unittest.TestCase):
         self.assertEqual(tools & {"action_focus_search", "matches"}, set())
         screens = [rel(p) for p in modules("wowtools/tools")
                    if p.name in ("review_screen.py", "restore_screen.py", "blacklist_screen.py")]
-        self.assertEqual(len(screens), 6)
+        self.assertEqual(len(screens), 7)
         self.assertEqual([p for p in screens if "on_input_changed" in defined_functions(tree(REPO / p))], [])
         from wowtools.tools.ace3_profile_manager.tree_view import Filters
         self.assertFalse({"search", "matches"} & set(dir(Filters())))
@@ -267,6 +373,22 @@ class StructureTest(unittest.TestCase):
                           and ((isinstance(n.func, ast.Name) and n.func.id == "Button")
                                or (isinstance(n.func, ast.Attribute) and n.func.attr == "Button"))]
         self.assertEqual(offenders, [])
+
+    def test_risk_banner_on_exactly_the_destructive_screens(self):
+        """Spec D37: one shared RiskBanner (ui/widgets.py), at the top of the left pane of the screens that can
+        destroy data, and nowhere else."""
+        users = {}
+        for path in modules("wowtools"):
+            for cls in (n for n in ast.walk(tree(path)) if isinstance(n, ast.ClassDef)):
+                if any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "RiskBanner"
+                       for n in ast.walk(cls)):
+                    users[cls.name] = rel(path)
+        self.assertEqual(users, {
+            "SvReviewScreen": "wowtools/tools/sv_browser/review_screen.py",
+            "ReviewScreen": "wowtools/tools/wtf_cleaner/review_screen.py",
+            "ProfileReviewScreen": "wowtools/tools/ace3_profile_manager/review_screen.py",
+            "RestoreScreen": "wowtools/tools/interface_backup/restore_screen.py",
+        })
 
     def test_footer_and_brand_bar_only_in_the_bottom_bar(self):
         """Screens yield a BottomBar; only it builds the Footer and the BrandBar, in one row (spec D5: docked on

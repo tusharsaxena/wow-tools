@@ -1,16 +1,21 @@
-"""Read WoW SavedVariables files (Lua) with byte spans, and splice edits into them (spec §5.1). UI-free.
+"""Read WoW SavedVariables files (Lua) with byte spans, and splice edits into them. UI-free; shared by Ace3 Profile
+Manager (its spec §5.1) and Saved Variables Browser (its D18, D20).
 
 WoW writes SavedVariables as `Name = value` assignments: tables, strings, numbers, booleans and nil, usually CRLF and
 unindented. This reader works on the raw bytes and records where every key and value starts and ends, so a caller
 can change a few exact spans and leave every other byte as it was. Nothing here ever re-serializes a file.
 
 parse() only builds the tables its `descend(path)` accepts; any other table is skipped by a fast scan that finds
-its closing brace (strings, comments and nested braces are honoured) and becomes an Opaque value.
+its closing brace (strings, comments and nested braces are honoured) and becomes an Opaque value. parse_at() parses
+one value at an offset (an Opaque expanded later), and iter_scalars() streams every scalar of a file without building
+Table or Field objects (a search over a 50 MB file). encode_value() / encode_key() write the Lua for an edit, and
+key_id() keys dicts by Lua key identity.
 """
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+import math
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field as dc_field
 from itertools import pairwise
 
@@ -22,10 +27,14 @@ _NUMBER = re.compile(rb"-?(?:0[xX][0-9a-fA-F]+|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d
                      rb"|-?(?:inf|nan)(?:\([a-z]*\))?", re.IGNORECASE)
 _INT = re.compile(rb"-?\d+")
 _SKIP = re.compile(rb'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|--\[(=*)\[.*?\]\1\]|--[^\n]*|[{}]', re.DOTALL)
-_ESCAPE = re.compile(rb"\\(?:(\d{1,3})|x([0-9a-fA-F]{2})|(\r\n|\n\r|\n|\r)|z\s*|(.))", re.DOTALL)
+# Lua 5.1 (WoW's) escapes: \ddd, a backslash-newline, the letter escapes; any other escaped byte stands for itself
+# (5.2's `\x41` and `\z` are not escapes there: they read "x41" and "z").
+_ESCAPE = re.compile(rb"\\(?:(\d{1,3})|(\r\n|\n\r|\n|\r)|(.))", re.DOTALL)
 _SIMPLE_ESCAPES = {b"n": b"\n", b"r": b"\r", b"t": b"\t", b"a": b"\a", b"b": b"\b", b"f": b"\f", b"v": b"\v",
                    b"\\": b"\\", b'"': b'"', b"'": b"'"}
-_LINE_REST = re.compile(rb"[ \t]*(?:\r\n|\n|\r)")
+# The rest of an entry's line: blanks, then maybe a line comment (WoW's `-- [n]` after an array entry, never the
+# start of a long comment, which may run on), then the line ending.
+_LINE_REST = re.compile(rb"[ \t]*(?:--(?!\[=*\[)[^\r\n]*)?(?:\r\n|\n|\r)")
 _KEYWORDS = {b"true": True, b"false": False, b"nil": None}
 
 
@@ -41,21 +50,21 @@ class RawNumber:
     text: str
 
 
-@dataclass
+@dataclass(slots=True)
 class Scalar:
     start: int
     end: int
     value: str | int | float | bool | RawNumber | None
 
 
-@dataclass
+@dataclass(slots=True)
 class Opaque:
     """A table that was not descended into: only its extent is known."""
     start: int
     end: int
 
 
-@dataclass
+@dataclass(slots=True)
 class Field:
     key: object
     key_span: tuple[int, int] | None
@@ -65,7 +74,7 @@ class Field:
     remove_span: tuple[int, int]
 
 
-@dataclass
+@dataclass(slots=True)
 class Table:
     start: int
     end: int
@@ -89,7 +98,7 @@ class Table:
 Value = Table | Opaque | Scalar
 
 
-@dataclass
+@dataclass(slots=True)
 class Assignment:
     name: str
     start: int
@@ -97,7 +106,7 @@ class Assignment:
     value: Value
 
 
-@dataclass
+@dataclass(slots=True)
 class Chunk:
     assignments: list[Assignment] = dc_field(default_factory=list)
 
@@ -109,19 +118,16 @@ class Chunk:
 
 
 def decode_string(raw: bytes) -> str:
-    """The text of a Lua string literal (quotes included). Bytes that aren't UTF-8 survive as surrogates."""
+    """The text of a Lua string literal (quotes included), read as Lua 5.1 reads it. Bytes that aren't UTF-8 survive
+    as surrogates."""
     body = raw[1:-1]
 
     def one(match: re.Match) -> bytes:
-        decimal, hexa, newline, other = match.groups()
+        decimal, newline, other = match.groups()
         if decimal is not None:
             return bytes([int(decimal) & 0xFF])
-        if hexa is not None:
-            return bytes([int(hexa, 16)])
         if newline is not None:
             return b"\n"
-        if other is None:  # \z: skips the following whitespace
-            return b""
         return _SIMPLE_ESCAPES.get(other, other)
 
     return _ESCAPE.sub(one, body).decode("utf-8", "surrogateescape")
@@ -170,6 +176,40 @@ def is_blank_table(data: bytes, value: Table | Opaque) -> bool:
             pos = len(inner) if newline < 0 else newline + 1
             continue
         return pos == len(inner)
+
+
+def encode_value(value: str | float | bool | RawNumber) -> bytes:
+    """The Lua for a scalar value. A float must read back as the same number, so inf and nan are refused (Python
+    writes `inf`, which Lua reads as a variable: nil). nil is never written: setting nil is a delete."""
+    if isinstance(value, str):
+        return encode_string(value)
+    if isinstance(value, bool):
+        return b"true" if value else b"false"
+    if isinstance(value, int):
+        return str(value).encode("ascii")
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"{value!r} cannot be written as a Lua number")
+        return repr(value).encode("ascii")
+    if isinstance(value, RawNumber):
+        return value.text.encode("ascii")
+    if value is None:
+        raise ValueError("nil is not a value to write (delete the key instead)")
+    raise TypeError(f"not a Lua scalar: {value!r}")
+
+
+def encode_key(key: str | float | bool | RawNumber) -> bytes:
+    """A table key, always in bracket form (`["s"]`, `[5]`, `[1.5]`, `[true]`): never a bare name, so a reserved
+    word such as `end` is safe."""
+    return b"[" + encode_value(key) + b"]"
+
+
+def key_id(key: object) -> tuple[str, object]:
+    """A key's identity in Lua, for dict keys: in Python 1, True and 1.0 are equal and hash alike; in Lua true and 1
+    are different keys, while [1.0] is the same key as [1]."""
+    if isinstance(key, float) and key.is_integer():
+        return ("int", int(key))
+    return (type(key).__name__, key)
 
 
 def splice(data: bytes, edits: list[tuple[int, int, bytes]]) -> bytes:
@@ -233,27 +273,61 @@ class _Parser:
         return chunk
 
     def value(self, pos: int, path: tuple) -> tuple[Value, int]:
-        data = self.data
-        if pos >= self.size:
-            raise LuaParseError(pos, "expected a value")
-        head = data[pos:pos + 1]
-        if head == b"{":
+        if self.data[pos:pos + 1] == b"{":
             if self.descend(path):
                 return self.table(pos, path)
             end = self.skip_table(pos)
             return Opaque(pos, end), end
+        scalar = self.scalar(pos)
+        return scalar, scalar.end
+
+    def scalar(self, pos: int) -> Scalar:
+        data = self.data
+        if pos >= self.size:
+            raise LuaParseError(pos, "expected a value")
+        head = data[pos:pos + 1]
         if head in (b'"', b"'"):
             match = _STRING.match(data, pos)
             if not match:
                 raise LuaParseError(pos, "unterminated string")
-            return Scalar(pos, match.end(), decode_string(match.group())), match.end()
+            return Scalar(pos, match.end(), decode_string(match.group()))
         number = _NUMBER.match(data, pos)
         if number and number.end() > pos:
-            return Scalar(pos, number.end(), _number(number.group())), number.end()
+            return Scalar(pos, number.end(), _number(number.group()))
         name = _NAME.match(data, pos)
         if name and name.group() in _KEYWORDS:
-            return Scalar(pos, name.end(), _KEYWORDS[name.group()]), name.end()
+            return Scalar(pos, name.end(), _KEYWORDS[name.group()])
         raise LuaParseError(pos, "expected a value")
+
+    def key(self, pos: int, index: int) -> tuple[object, tuple[int, int] | None, int, int]:
+        """The key of the table entry at pos (its first byte): (key, key span, value position, next index). A
+        positional entry gets the next index and no span."""
+        data = self.data
+        if data[pos:pos + 1] == b"[" and data[pos + 1:pos + 2] not in (b"[", b"="):
+            at = self.skip(pos + 1)
+            if data[at:at + 1] == b"{":
+                raise LuaParseError(pos, "bad table key")
+            key_value = self.scalar(at)
+            if key_value.value is None:
+                raise LuaParseError(pos, "bad table key")
+            after = self.expect(key_value.end, b"]")
+            return key_value.value, (pos, after), self.skip(self.expect(after, b"=")), index
+        name = _NAME.match(data, pos)
+        after_name = self.skip(name.end()) if name else pos
+        if name and name.group() not in _KEYWORDS and data[after_name:after_name + 1] == b"=" \
+                and data[after_name + 1:after_name + 2] != b"=":
+            return name.group().decode("ascii"), (pos, name.end()), self.skip(after_name + 1), index
+        return index, None, pos, index + 1
+
+    def separator(self, end: int) -> int:
+        """Past the `,` or `;` after an entry's value ending at end; at the `}` when there is none."""
+        pos = self.skip(end)
+        separator = self.data[pos:pos + 1]
+        if separator in (b",", b";"):
+            return pos + 1
+        if separator != b"}":
+            raise LuaParseError(pos, "expected ',' or '}'")
+        return pos
 
     def skip_table(self, pos: int) -> int:
         depth = 0
@@ -280,37 +354,70 @@ class _Parser:
                 table.end = pos + 1
                 return table, pos + 1
             entry_start = pos
-            if data[pos:pos + 1] == b"[" and data[pos + 1:pos + 2] not in (b"[", b"="):
-                key_value, after = self.value(self.skip(pos + 1), path)
-                if not isinstance(key_value, Scalar) or key_value.value is None:
-                    raise LuaParseError(pos, "bad table key")
-                after = self.expect(after, b"]")
-                key, key_span = key_value.value, (entry_start, after)
-                pos = self.skip(self.expect(after, b"="))
-            else:
-                name = _NAME.match(data, pos)
-                after_name = self.skip(name.end()) if name else pos
-                if name and name.group() not in _KEYWORDS and data[after_name:after_name + 1] == b"=" \
-                        and data[after_name + 1:after_name + 2] != b"=":
-                    key, key_span = name.group().decode("ascii"), (entry_start, name.end())
-                    pos = self.skip(after_name + 1)
-                else:
-                    key, key_span = index, None
-                    index += 1
+            key, key_span, pos, index = self.key(pos, index)
             value, end = self.value(pos, path + (key,))
-            pos = self.skip(end)
-            separator = data[pos:pos + 1]
-            if separator in (b",", b";"):
-                pos += 1
-            elif separator != b"}":
-                raise LuaParseError(pos, "expected ',' or '}'")
-            entry_end = pos
+            pos = entry_end = self.separator(end)
             remove_start, remove_end = entry_start, entry_end
             rest = _LINE_REST.match(data, entry_end)
             line = line_start(data, entry_start)
             if rest and not data[line:entry_start].strip(b" \t"):
                 remove_start, remove_end = line, rest.end()
             table.fields.append(Field(key, key_span, value, entry_start, entry_end, (remove_start, remove_end)))
+
+
+    def scalars(self) -> Iterator[tuple[tuple, object, tuple[int, int] | None, Scalar]]:
+        """iter_scalars(): the chunk() and table() walk with an explicit stack and no Table or Field objects."""
+        data = self.data
+        pos = self.skip(0)
+        while pos < self.size:
+            if data[pos:pos + 1] == b";":
+                pos = self.skip(pos + 1)
+                continue
+            name = _NAME.match(data, pos)
+            if not name:
+                raise LuaParseError(pos, "expected a variable name")
+            text = name.group().decode("ascii")
+            at = self.skip(self.expect(name.end(), b"="))
+            if data[at:at + 1] == b"{":
+                if self.descend((text,)):
+                    pos = yield from self.table_scalars(at, (text,))
+                else:
+                    pos = self.skip_table(at)
+            else:
+                scalar = self.scalar(at)
+                yield (), text, (pos, name.end()), scalar
+                pos = scalar.end
+            pos = self.skip(pos)
+
+    def table_scalars(self, pos: int, path: tuple) -> Iterator[tuple[tuple, object, tuple[int, int] | None, Scalar]]:
+        data = self.data
+        stack = [(path, pos, 1)]  # (table path, table start, next positional index)
+        pos += 1
+        while True:
+            pos = self.skip(pos)
+            if pos >= self.size:
+                raise LuaParseError(stack[-1][1], "unclosed table")
+            if data[pos:pos + 1] == b"}":
+                stack.pop()
+                if not stack:
+                    return pos + 1
+                pos = self.separator(pos + 1)
+                continue
+            table_path, start, index = stack[-1]
+            key, key_span, pos, index = self.key(pos, index)
+            stack[-1] = (table_path, start, index)
+            if data[pos:pos + 1] == b"{":
+                inner = table_path + (key,)
+                if self.descend(inner):
+                    stack.append((inner, pos, 1))
+                    pos += 1
+                    continue
+                end = self.skip_table(pos)
+            else:
+                scalar = self.scalar(pos)
+                yield table_path, key, key_span, scalar
+                end = scalar.end
+            pos = self.separator(end)
 
 
 def _number(text: bytes) -> int | float | RawNumber:
@@ -327,3 +434,21 @@ def _number(text: bytes) -> int | float | RawNumber:
 def parse(data: bytes, descend: Callable[[tuple], bool] = lambda path: True) -> Chunk:
     """Parse a SavedVariables file. Raises LuaParseError (with the byte offset) on anything that isn't one."""
     return _Parser(data, descend).chunk()
+
+
+def parse_at(data: bytes, start: int, path: tuple = (), descend: Callable[[tuple], bool] = lambda path: True,
+             ) -> tuple[Value, int]:
+    """Parse the one value at start (blanks and comments before it are skipped): (value, its end offset). For a
+    lazy tree, start is an Opaque's start and path its path, which descend() is first asked about."""
+    parser = _Parser(data, descend)
+    return parser.value(parser.skip(start), path)
+
+
+def iter_scalars(data: bytes, descend: Callable[[tuple], bool] = lambda path: True,
+                 ) -> Iterator[tuple[tuple, object, tuple[int, int] | None, Scalar]]:
+    """Every scalar of a SavedVariables file in file order, as (path, key, key span, Scalar), building no Table or
+    Field objects. path is the containing table's path (the tuple descend() gets: the variable name, then the keys,
+    each of its own type); it is () for a top-level `Name = value`, whose key is the name and key span the name's.
+    A positional entry's key is its index and its key span None. A table descend() refuses is skipped. Raises
+    LuaParseError like parse(), once the stream reaches the fault."""
+    return _Parser(data, descend).scalars()

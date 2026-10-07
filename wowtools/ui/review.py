@@ -1,10 +1,14 @@
 """The review screens' shared machinery (spec D9): the tree with its ← key, ticks over a tick model of either
 polarity, Space (tick, press, toggle or type), select all / none over the keys the tree shows, leaving, the
 running-WoW check in a worker, the debounced rebuild, the scan box and button-id dispatch. A review screen mixes
-`ReviewBase` in before `Screen`; a screen with buttons only (no ticks) can take `ButtonActions` alone."""
+`ReviewBase` in before `Screen`; a screen with buttons only (no ticks) can take `ButtonActions` alone. A review that
+runs the shared SavedVariables pipeline (Ace3, SV Browser) also mixes in `RunActions` (before `ReviewBase`): its
+apply / undo / recover plumbing."""
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Hashable, Iterable, Iterator
+from contextlib import nullcontext
+from pathlib import Path
 from typing import Any, ClassVar
 
 from rich.text import Text
@@ -12,11 +16,15 @@ from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import Button, Checkbox, Input, ProgressBar, Static, Tree
 
+from wowtools.core import activity
 from wowtools.core.events import log_event, log_exception
-from wowtools.ui.dialogs import BUSY_STYLE, TwoPaneFocus
+from wowtools.core.install import WowInstall, validate_backup_dir
+from wowtools.core.sv_events import SvTool
+from wowtools.ui.dialogs import BUSY_STYLE, ProgressScreen, TwoPaneFocus
+from wowtools.ui.widgets import WrapButtonRow
 
-__all__ = ["ButtonActions", "NotTicked", "Preflight", "ReviewBase", "ReviewTree", "ScheduledRebuild", "TickActions",
-           "TickModel"]
+__all__ = ["ActionBar", "BarTree", "ButtonActions", "NotTicked", "Preflight", "ReviewBase", "ReviewTree", "RunActions",
+           "ScheduledRebuild", "TickActions", "TickModel"]
 
 WowCheck = Callable[[], "list[str] | None"]
 
@@ -25,6 +33,45 @@ class ReviewTree(Tree):
     """A review screen's tree. ← jumps to the left pane (`screen.focus_filters`) instead of scrolling sideways."""
 
     BINDINGS: ClassVar[list[Binding]] = [Binding("left", "screen.focus_filters", "Filters", show=False)]
+
+
+class BarTree(ReviewTree):
+    """A review tree with an action bar under it (#tree-actions, an ActionBar: the Ace3 review, the SV Browser): ↓
+    on the last line goes on to the bar's first button that can take focus."""
+
+    BAR_SELECTOR: ClassVar[str] = "#tree-actions"
+    BINDINGS: ClassVar[list[Binding]] = [Binding("down", "down_or_bar", "Down", show=False)]
+
+    def action_down_or_bar(self) -> None:
+        if self.cursor_line >= self.last_line:
+            button = next((b for b in self.screen.query(f"{self.BAR_SELECTOR} Button").results(Button)
+                           if b.focusable), None)
+            if button is not None:
+                button.focus()
+        else:
+            self.action_cursor_down()
+
+
+class ActionBar(WrapButtonRow):
+    """The action bar under a review's tree (BarTree). ↑ goes back to the tree, from any of its rows."""
+
+    BINDINGS: ClassVar[list[Binding]] = [Binding("up", "screen.focus_tree", "Tree", show=False)]
+
+    def on_mount(self) -> None:
+        """A screen that keeps its toasts above the bar (place_toasts) moves them after every layout: the bar moves
+        and wraps onto more or fewer rows as the screen settles or is resized."""
+        place = getattr(self.screen, "place_toasts", None)
+        if place is not None:
+            self.screen.screen_layout_refresh_signal.subscribe(self, lambda _screen: place())
+
+
+def lift_toasts(screen: Screen, above: int) -> None:
+    """Show the screen's notifications (Textual's toast rack, docked at the bottom) `above` rows up from the
+    bottom, so a toast never covers an action bar or the lines under it."""
+    margin = (0, 0, max(above, 1), 0)
+    for toasts in screen.query("#textual-toastrack"):
+        if tuple(toasts.styles.margin) != margin:  # setting it lays the screen out again
+            toasts.styles.margin = margin
 
 
 class NotTicked:
@@ -159,6 +206,11 @@ class TickActions:
         """True while ticks must not change (a scan or a running-programs check)."""
         return False
 
+    def no_ticks_here(self) -> bool:
+        """True when the tree shows nothing that can be ticked (a screen with views that have none says why: Space,
+        a and n stay keys, as on every review)."""
+        return False
+
     def action_toggle(self) -> None:
         focused = self.focused
         if isinstance(focused, Checkbox):
@@ -170,7 +222,7 @@ class TickActions:
         if isinstance(focused, Input):  # Space is priority-bound: type it into the input
             focused.insert_text_at_cursor(" ")
             return
-        if not isinstance(focused, Tree) or self.ticks_frozen():
+        if not isinstance(focused, Tree) or self.ticks_frozen() or self.no_ticks_here():
             return
         node = self.query_one(self.TREE_SELECTOR, Tree).cursor_node
         if node is None or node.data is None:
@@ -189,7 +241,7 @@ class TickActions:
         self._select(False)
 
     def _select(self, tick: bool) -> None:
-        if self.ticks_frozen():
+        if self.ticks_frozen() or self.no_ticks_here():
             return
         model = self.tick_model()
         if tick:
@@ -326,3 +378,110 @@ class ReviewBase(TickActions, Preflight, ScheduledRebuild, ButtonActions, TwoPan
             return
         self.query_one("#scan-progress", ProgressBar).update(total=total or None, progress=current)
         self.query_one("#scan-label", Static).update(Text(label))
+
+
+class RunActions:
+    """The apply / undo / recover plumbing of a review on the shared SavedVariables pipeline (Ace3, SV Browser),
+    mixed in before ReviewBase (it uses Preflight and _close_progress):
+
+    - _check_wow(check, then): the running-WoW check in a worker, then `then(running)` on the UI thread;
+    - _refused_while_running(running, alerts): refuse (and say so, logging <prefix>.wow_running) while WoW runs,
+      or add an alert to the confirm when the check could not run;
+    - _backup_dir_refused(): refuse when the backup folder in the settings is not allowed;
+    - start_run(progress, work, done, ...): the app is busy, the progress popup opens and `work()` runs in a worker
+      inside activity.running(); then the popup closes and `done(result)` runs on the UI thread, or the failure is
+      logged (<prefix>.<name>) and shown (_run_failed).
+
+    The screen supplies SV_TOOL (its event prefix), `cfg` (the suite config: wow_path), run_backup_dir() (the
+    backup folder in its settings now), _refresh_buttons() and _mark_stale() (the files changed under the scan)."""
+
+    SV_TOOL: ClassVar[SvTool]
+
+    def run_backup_dir(self) -> Path | None:
+        """The tool's backup folder setting as saved now (None: the default)."""
+        raise NotImplementedError
+
+    def _refresh_buttons(self) -> None:
+        """Enable or disable the buttons for the current state (busy, pending changes)."""
+
+    def _mark_stale(self) -> None:
+        """The files changed under this scan (a run that failed half way)."""
+        raise NotImplementedError
+
+    # --- before a run --------------------------------------------------------------------------
+    def _check_wow(self, check: WowCheck, then: Callable[[list[str] | None], None]) -> None:
+        """The running-WoW check (ReviewBase.run_preflight, in a worker: it can take seconds), then `then` with its
+        answer on the UI thread: process names, [] when none run, None when it could not run."""
+        self.run_preflight(check, lambda running, _extra: then(running))
+
+    def _refused_while_running(self, running: list[str] | None, alerts: list[str]) -> bool:
+        """True (and say so) when WoW runs; adds an alert when the check could not run."""
+        if running:
+            log_event(self.SV_TOOL.event("wow_running"), action="preflight", running=running)
+            self.notify(f"WoW is running ({', '.join(running)}). Close it first: it would overwrite the changes.",
+                        title="WoW is running", severity="error", timeout=15)
+            return True
+        if running is None:
+            alerts.append("Could not check whether WoW is running; close it before you go on.")
+        return False
+
+    def _backup_dir_refused(self) -> bool:
+        """True (and say so) when the backup folder in the settings is not allowed (it may have been edited by
+        hand in the cfg): checked before anything is written to it, as on save."""
+        wow_path = self.cfg.wow_path
+        if wow_path is None:
+            return False
+        problem = validate_backup_dir(self.run_backup_dir(), WowInstall(wow_path))
+        if problem:
+            self.notify(f"{problem} Fix the folder in settings (s).", title="Backup folder not allowed",
+                        severity="error", timeout=15)
+        return bool(problem)
+
+    # --- the run -------------------------------------------------------------------------------
+    def start_run(self, progress: ProgressScreen, work: Callable[[], Any], done: Callable[[Any], None], *,
+                  name: str, failure: str, stale_on_crash: bool,
+                  expected: tuple[type[BaseException], ...] = (), writes: bool = True) -> None:
+        """Run `work()` (apply, undo, recover; a search with `writes=False`) in a worker with `progress` open over
+        the review. An `expected` error (refused before anything was written) is shown as its message; any other is
+        shown as "<failure>: <type>: <message>" and, with `stale_on_crash`, marks the scan stale. Both are logged as
+        errors at <prefix>.<name>. Work that `writes` runs inside activity.running() (file-changing work)."""
+        self.app.busy = True
+        self._refresh_buttons()
+        self._progress_screen = progress
+        self.app.push_screen(progress)
+        self.run_worker(lambda: self._run_worker(progress, work, done, name, failure, stale_on_crash, expected,
+                                                 writes), thread=True, exclusive=True, group="run")
+
+    def _run_worker(self, progress: ProgressScreen, work: Callable[[], Any], done: Callable[[Any], None],
+                    name: str, failure: str, stale_on_crash: bool,
+                    expected: tuple[type[BaseException], ...], writes: bool = True) -> None:
+        where = self.SV_TOOL.event(name)
+        try:
+            with activity.running() if writes else nullcontext():
+                result = work()
+        except expected as exc:  # WowRunning included: refused before anything was written
+            log_exception(where, exc)
+            self.app.call_from_thread(self._run_failed, str(exc), False)
+            return
+        except Exception as exc:  # noqa: BLE001 - shown and logged, never a crash
+            log_exception(where, exc)
+            self.app.call_from_thread(self._run_failed, f"{failure}: {type(exc).__name__}: {exc}", stale_on_crash)
+            return
+        progress.finish_all()  # the run ended: the board ends at m of m
+        self.app.call_from_thread(self._run_done, done, result)
+
+    def _end_run(self) -> None:
+        """The run is over: not busy, the progress popup closed."""
+        self.app.busy = False
+        self._close_progress()
+
+    def _run_done(self, done: Callable[[Any], None], result: Any) -> None:
+        self._end_run()
+        done(result)
+
+    def _run_failed(self, message: str, stale: bool) -> None:
+        self._end_run()
+        if stale:  # files may have changed: the scan no longer matches them
+            self._mark_stale()
+        self._refresh_buttons()
+        self.notify(message, severity="error", timeout=15)
