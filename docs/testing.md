@@ -55,7 +55,8 @@ read-only permissions and a 20-minute timeout per job ([STD-10.2](standards.md#1
 
 1. `python -m compileall -q wowtools scripts tests` (byte-compile: catches syntax newer than the interpreter).
 2. `python scripts/gen_event_docs.py --check`.
-3. `python scripts/run_tests.py`.
+3. `python scripts/run_tests.py --timeout 900`: 900 s per shard, not the 600 s default, since a slow Windows runner
+   has taken 594 s for one of its four shards; a hang still fails with its test's name inside the 20 minutes.
 
 Ruff is not part of CI (the suite stays stdlib-only); run it locally.
 
