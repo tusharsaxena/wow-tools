@@ -127,6 +127,8 @@ The app opens in a terminal window. You drive it with the keyboard:
 | `x` `c` | Expand or collapse every line of a tree |
 | `/` | Filter a tree: type part of a name, then `Enter` (or the **Filter** button) applies it; `Esc` clears it |
 | `a` `n` | Tick or untick everything the tree shows |
+| `!` | Open the warnings: what a scan couldn't read, listed by game version (only while the bottom bar shows a **⚠ … (!)** button; clicking it does the same) |
+| `b` | On the WTF Cleaner and Ace3 Profile Manager reviews: put the highlighted addon on that tool's blacklist, or take it off |
 | `c` (tool menu) | What's new: the changelog |
 | `h` | Help: on the tool menu, what each tool does and the keys every tool shares; in a tool, how to use that tool, with a link to its guide |
 | `Esc` | Go back |
@@ -227,7 +229,7 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 | File | Holds |
 |---|---|
 | `config\wow-tools.cfg` | Shared by every tool (`[general]`): your WoW folder, how many backups to keep per game version (`keep_backups`, 10; 0 keeps all) and journals per tool (`keep_journals`, 10), how many game versions to work on at once (`parallelism`, 2, from 1 to 8; also how many files a Saved Variables Browser search reads at once; use 1 on a hard drive or a WSL `/mnt` folder, where working on several at once is slower), plus update and log options |
-| `config\wtf-cleaner.cfg` | The WTF Cleaner's settings, including how many zips of cleaned files to keep per game version (`keep_cleaned`, 0 keeps all; the one retention setting a tool has of its own) |
+| `config\wtf-cleaner.cfg` | The WTF Cleaner's settings, including how many zips of cleaned files to keep per game version (`keep_cleaned`, 0 keeps all; the one retention setting a tool has of its own) and the blacklist of addons (each in one game version) it never cleans (`blacklist`, set with `b` on the review) |
 | `config\screenshot-organizer.cfg` | The Screenshot Organizer's settings |
 | `config\interface-backup.cfg` | Interface Backup's settings |
 | `config\ace3-profile-manager.cfg` | The Ace3 Profile Manager's settings (`[ace3_profile_manager]`): backup folder and the blacklist of addons (each in one game version) it never changes |
@@ -265,6 +267,8 @@ If you use WSL (Linux inside Windows), the same folder works from both sides. Ru
 | Do I need to install anything besides Python? | No. Everything else the app needs comes in the download. |
 | Does it work on a Mac? | Yes, with `./wow-tools.sh`, and everything works there, including the "WoW is running" warning. |
 | Why does it say another copy may already be running? | Only one copy of the app can run at once. While it's open it keeps a small file called `wow-tools.lock` in its folder. If you start it a second time, or it crashed last time, you get a warning with two buttons: **Quit** if the app really is open somewhere else, or **Override and continue** if it isn't (for example after a crash). When the app can tell the other copy is gone, it says so and puts you on **Override and continue**. |
+| A tool says "⚠ 4 scan warnings". What do I do? | Click it, or press `!`: the warnings view lists each place the scan couldn't read (a folder or file it had no permission for, say), by game version, with what went wrong. The tool carried on without them. You don't need to open the logs. |
+| How do I keep an addon out of a tool's reach? | In the WTF Cleaner or the Ace3 Profile Manager, highlight the addon in the review's tree and press `b`: it goes on that tool's blacklist (for that game version) and is never cleaned or changed. Press `b` on it again to take it off. Each tool keeps its own list. |
 | Can I work on all my game versions at once? | Yes. Pick **All flavors** at the top of the list, in any tool. |
 | Where are my settings, backups and logs? | Settings are in the app's `config` folder and logs in its `logs` folder. Backups and undo journals are in your WoW folder, under `wow-tools`. See [Your settings](#your-settings) and the guides. |
 | How do I update? | The app tells you on its bottom bar when a new version is out; press `u`. See [Updates](#updates). |

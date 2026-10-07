@@ -59,6 +59,7 @@ class SVGroup:
     character: Character | None
     addon: str
     files: list[SVFile] = field(default_factory=list)
+    main_hidden: bool = False  # its <Addon>.lua is there but not listed: renamed by a lock check, or unreadable
 
     @property
     def scope(self) -> str:
@@ -209,9 +210,11 @@ def _scan_sv_dir(sv_dir: Path, account: Account, character: Character | None,
         warnings.append(ScanWarning(str(sv_dir), f"cannot read folder: {exc}"))
         return []
     groups: dict[str, SVGroup] = {}
+    hidden: set[str] = set()  # names (casefolded) of files that are there but not listed
     for path in entries:
         if path.name.endswith(LOCK_PROBE_SUFFIX):
             original = path.name[:-len(LOCK_PROBE_SUFFIX)]
+            hidden.add(original.casefold())
             if (sv_dir / original).exists():
                 note = f"{original} exists too, so this copy is left alone; delete it if you don't need it"
             else:
@@ -227,9 +230,12 @@ def _scan_sv_dir(sv_dir: Path, account: Account, character: Character | None,
             stat = path.stat()
         except OSError as exc:
             warnings.append(ScanWarning(str(path), f"cannot read file: {exc}"))
+            hidden.add(path.name.casefold())
             continue
         group = groups.setdefault(addon.casefold(), SVGroup(account.name, character, addon))
         group.files.append(SVFile(path, stat.st_size, stat.st_mtime, is_canonical(path.name, addon)))
+    for group in groups.values():
+        group.main_hidden = f"{group.addon}.lua".casefold() in hidden
     return list(groups.values())
 
 

@@ -63,14 +63,15 @@ class ReportTest(unittest.TestCase):
         self.assertIn("✘ removed", gone.tags)
 
     def test_selection_and_pending_text(self):
-        self.assertEqual(report.selection_text(0, 0, ops.Summary(), 0),
+        self.assertEqual(report.selection_text(0, 0, ops.Summary()),
                          "Selected: 0 profiles · 0 characters · No pending changes")
         summary = ops.Summary(deleted=2, reassigned=5, renamed=1, files=2)
         self.assertEqual(report.pending_text(summary), "2 deletes · 1 rename · 5 reassigns")
         self.assertEqual(report.pending_text(ops.Summary()), "No pending changes")
-        self.assertEqual(report.selection_text(1, 3, summary, 2),
-                         "Selected: 1 profile · 3 characters · 8 pending changes in 2 files · ⚠ 2 scan warnings")
-        self.assertNotIn("staged", report.selection_text(1, 3, summary, 2).casefold())
+        # the scan warnings are on the bottom line's Warnings button, not in this text (spec W1)
+        self.assertEqual(report.selection_text(1, 3, summary),
+                         "Selected: 1 profile · 3 characters · 8 pending changes in 2 files")
+        self.assertNotIn("staged", report.selection_text(1, 3, summary).casefold())
 
     def test_guidance_steps_when_nothing_is_going_on(self):
         text = report.guidance("root", "", 0, 0, 0)

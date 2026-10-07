@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tests.fixtures import NOW, build_solo_tree, build_wow_tree
 from wowtools.core.config import Config
@@ -44,7 +45,7 @@ class RulesTest(unittest.TestCase):
 
     def test_each_criterion_alone(self):
         expected = {"not_installed": {"Uninstalled"}, "not_enabled": {"DisabledAddon"},
-                    "older_than": {"OldAddon"}, "stray_copies": {"Auctionator", "Details"}}
+                    "older_than": {"OldAddon"}, "stray_copies": {"Auctionator", "Details"}, "orphan_backups": set()}
         for name, addons in expected.items():
             with self.subTest(name):
                 proposal = evaluate(self.scan, Criteria.from_names([name]), now=NOW)
@@ -69,6 +70,50 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(item.reasons, ["not_installed", "stray_copies"])
         self.assertEqual(len(item.files), 3)
 
+    def test_orphan_backup_alone_is_its_own_criterion(self):
+        """A <Addon>.lua.bak with no <Addon>.lua next to it (any case) is an orphan backup, even when the addon is
+        installed, enabled and fresh: only the backup is proposed."""
+        char_sv = self.sv.parent / "Realm1" / "CharA" / "SavedVariables"
+        (char_sv / "details.LUA.bak").write_text("x")
+        (char_sv / "Auctionator.lua.bak").write_text("x")  # Auctionator.lua is there: not an orphan
+        proposal = evaluate(scan(self.retail), Criteria(), now=NOW)
+        orphans = [(i.owner_label, i.addon, tuple(i.reasons), tuple(f.name for f in i.files))
+                   for i in proposal.items if "orphan_backups" in i.reasons]
+        self.assertEqual(orphans, [("Realm1/CharA", "details", ("orphan_backups",), ("details.LUA.bak",))])
+        alone = evaluate(scan(self.retail), Criteria.from_names(["orphan_backups"]), now=NOW)
+        self.assertEqual([(i.addon, [f.name for f in i.files]) for i in alone.items], [("details", ["details.LUA.bak"])])
+        self.assertEqual(criterion_counts(scan(self.retail), max_age_days=90, now=NOW)["orphan_backups"], 1)
+
+    def test_a_backup_is_no_orphan_while_its_lua_is_renamed_by_a_lock_check_or_unreadable(self):
+        """An interrupted lock check leaves <Addon>.lua renamed to <Addon>.lua<LOCK_PROBE_SUFFIX>; the next clean
+        renames it back, so its .lua.bak is not an orphan. Neither is one whose .lua the scan could not read."""
+        from wowtools.core.svfiles import LOCK_PROBE_SUFFIX
+        (self.sv / "Auctionator.lua").rename(self.sv / f"Auctionator.lua{LOCK_PROBE_SUFFIX}")
+        result = scan(self.retail)
+        self.assertEqual(evaluate(result, Criteria.from_names(["orphan_backups"]), now=NOW).items, [])
+        real_stat = Path.stat
+
+        def failing_stat(path, *args, **kwargs):
+            if path.name == "Details.lua" and path.parent == self.sv:
+                raise PermissionError("denied")
+            return real_stat(path, *args, **kwargs)
+
+        (self.sv / "Details.lua.bak").write_text("x")
+        with mock.patch.object(Path, "stat", failing_stat):
+            result = scan(self.retail)
+        self.assertEqual(evaluate(result, Criteria.from_names(["orphan_backups"]), now=NOW).items, [])
+
+    def test_orphan_backup_of_a_flagged_addon_lists_both_reasons(self):
+        (self.sv / "Gone.lua.bak").write_text("x")
+        (self.sv / "Gone.lua.old").write_text("x")  # a stray copy in the same group
+        proposal = evaluate(scan(self.retail), Criteria(), now=NOW)
+        item = next(i for i in proposal.items if i.addon == "Gone")
+        self.assertEqual(item.reasons, ["not_installed", "stray_copies", "orphan_backups"])
+        self.assertEqual(sorted(f.name for f in item.files), ["Gone.lua.bak", "Gone.lua.old"])
+        only = evaluate(scan(self.retail), Criteria.from_names(["orphan_backups"]), now=NOW)
+        self.assertEqual([(i.addon, [f.name for f in i.files]) for i in only.items if i.addon == "Gone"],
+                         [("Gone", ["Gone.lua.bak"])])
+
     def test_unknown_criterion_rejected(self):
         with self.assertRaises(ValueError):
             Criteria.from_names(["bogus"])
@@ -82,7 +127,8 @@ class RulesTest(unittest.TestCase):
         # Files each criterion proposes on its own (see the fixture docstring): Uninstalled.lua + .bak +
         # CharA/Uninstalled.lua; DisabledAddon.lua; OldAddon.lua + .bak; the two hand-made copies.
         self.assertEqual(criterion_counts(self.scan, max_age_days=90, now=NOW),
-                         {"not_installed": 3, "not_enabled": 1, "older_than": 2, "stray_copies": 2})
+                         {"not_installed": 3, "not_enabled": 1, "older_than": 2, "stray_copies": 2,
+                          "orphan_backups": 0})
         self.assertEqual(criterion_counts(self.scan, max_age_days=250, now=NOW)["older_than"], 0)
 
     def test_criterion_counts_emits_no_proposal_events(self):
@@ -98,8 +144,39 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(built[0]["data"]["items"], 6)
         self.assertEqual(len([r for r in records if r["event"] == "proposal.item"]), 6)
 
+    def test_blacklisted_addon_is_kept_aside_never_proposed(self):
+        """Spec B2: a blacklisted (flavor, addon) is never proposed: it is held in `blacklisted` (the review shows it
+        greyed), outside the items, the totals, the per-reason counts and the proposal events. Case-insensitive."""
+        with capture_events() as records:
+            proposal = evaluate(self.scan, Criteria(), now=NOW, blacklist=[("_RETAIL_", "uninstalled")])
+        self.assertNotIn("Uninstalled", {i.addon for i in proposal.items})
+        self.assertEqual(sorted((i.owner_label, i.addon) for i in proposal.blacklisted),
+                         [("Realm1/CharA", "Uninstalled"), ("account-wide", "Uninstalled")])
+        self.assertTrue(all(i.blacklisted for i in proposal.blacklisted))
+        self.assertFalse(any(i.blacklisted for i in proposal.items))
+        self.assertEqual(proposal.total_files, 5)
+        self.assertNotIn("not_installed", proposal.by_reason())
+        self.assertEqual(len([r for r in records if r["event"] == "proposal.item"]), 4)
+        built = next(r["data"] for r in records if r["event"] == "proposal.built")
+        self.assertEqual((built["items"], built["blacklisted"]), (4, 2))
+
+    def test_blacklist_is_per_flavor_and_star_is_every_flavor(self):
+        other = evaluate(self.scan, Criteria(), now=NOW, blacklist=[("_classic_era_", "Uninstalled")], log=False)
+        self.assertIn("Uninstalled", {i.addon for i in other.items})
+        self.assertEqual(other.blacklisted, [])
+        star = evaluate(self.scan, Criteria(), now=NOW, blacklist=[("*", "OLDADDON")], log=False)
+        self.assertNotIn("OldAddon", {i.addon for i in star.items})
+        self.assertEqual([i.addon for i in star.blacklisted], ["OldAddon"])
+
+    def test_criterion_counts_leave_blacklisted_addons_out(self):
+        counts = criterion_counts(self.scan, max_age_days=90, now=NOW, blacklist=[("_retail_", "Uninstalled"),
+                                                                                  ("*", "Details")])
+        self.assertEqual(counts, {"not_installed": 0, "not_enabled": 1, "older_than": 2, "stray_copies": 1,
+                                  "orphan_backups": 0})
+
     def test_describe(self):
-        self.assertEqual(Criteria().describe(), "not_installed, not_enabled, older_than(90d), stray_copies")
+        self.assertEqual(Criteria().describe(),
+                         "not_installed, not_enabled, older_than(90d), stray_copies, orphan_backups")
         self.assertEqual(Criteria.from_names([]).describe(), "none")
 
 
@@ -169,6 +246,20 @@ class SettingsTest(unittest.TestCase):
         cfg = Config(self.path)
         cfg.set_path(SECTION, "backup_dir", Path("/elsewhere/bk"))
         self.assertEqual(resolve_backup_dir(load_settings(cfg), Path("/games/wow")), Path("/elsewhere/bk"))
+
+    def test_blacklist_round_trip(self):
+        """Spec B2: [wtf_cleaner] blacklist, the shared `flavor:Addon` format; empty by default; a bare name is "*"."""
+        cfg = Config(self.path)
+        self.assertEqual(load_settings(cfg).blacklist, [])
+        cfg.set(SECTION, "blacklist", "_retail_:ElkBuffBars, Questie", log=False)
+        settings = load_settings(cfg)
+        self.assertEqual(settings.blacklist, [("_retail_", "ElkBuffBars"), ("*", "Questie")])
+        save_settings(cfg, settings)
+        again = Config(self.path).load()
+        self.assertEqual(again.get(SECTION, "blacklist"), "_retail_:ElkBuffBars, Questie")
+        settings.blacklist = []
+        save_settings(cfg, settings)
+        self.assertEqual(load_settings(Config(self.path).load()).blacklist, [])
 
     def test_retention_is_global_and_stale_keys_go_on_save(self):
         """Feedback round 1: retention lives in [general]; the old per-tool keys are ignored, then removed."""

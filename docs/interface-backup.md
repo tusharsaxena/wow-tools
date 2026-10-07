@@ -91,7 +91,7 @@ up: no Interface or WTF folder"), and its backups only when it has some. Under i
 | **WTF** | The same for `WTF` |
 | **Links (N)** | Linked folders or files found inside. They're not backed up, and a restore keeps them. Open the line to see them |
 | ⚠ **Left from an interrupted restore** | A folder an interrupted restore left behind. Restores of this game version are blocked until you deal with it (see [If a restore was interrupted](#if-a-restore-was-interrupted)) |
-| ⚠ **Scan warnings (N)** | Places the app couldn't read, so they're not backed up. Open the line to see them; the log lists up to 20 per folder |
+| ⚠ **Scan warnings (N)** | Places the app couldn't read, so they're not backed up. Open the line to see them, or press `!` for the [warnings view](#scan-warnings) |
 | **Backups (N)** | The game version's backups. Safety backups are counted apart: "Backups (2 + 1 safety)". Open the line to list them, newest first |
 
 Each backup's line says **backup** or **safety** (a safety backup, taken before a restore), the date and time,
@@ -108,7 +108,7 @@ or "all backups"), the buttons and the keys.
 
 **At the bottom** a bar totals what's ticked ("Selected: 2 flavors · 12408 files · 412.0 MB · 3 links not backed
 up"). When a backup is highlighted, it names that backup in full, with its date and time; otherwise it says how
-to pick one. It also warns when a restore is blocked or the scan skipped something.
+to pick one. It also warns when a restore is blocked.
 
 **Filter**: `/` puts you in the filter box on the left. Type part of a name: a game version, a link, a warning
 or a backup's date and time (`2026-10-04`); upper or lower case doesn't matter. Then press `Enter` or click the
@@ -134,6 +134,7 @@ files. The backup itself works the same, and the results screen shows the sizes.
 | `b` | **Back up** the ticked game versions (asks first; **Yes** is selected, red when older backups are deleted to keep the number set, green when all are kept) |
 | `e` | **Restore** the highlighted backup |
 | `x` / `c` | Expand every line of the tree / collapse them all |
+| `!` | Open the [scan warnings](#scan-warnings) (only while there are any; the **⚠ … (!)** button at the bottom does the same) |
 | `r` | Scan again |
 | `z` | **Undo last restore** (asks first; **Yes** is selected, in red) |
 | `f` or `Esc` | Pick another game version |
@@ -149,6 +150,15 @@ restore** is greyed out when there's no restore to undo. While the screen scans,
 running, every button waits.
 
 If you change the settings, press `r` to scan again with them.
+
+### Scan warnings
+
+When the scan skipped something it couldn't read, a **⚠ N scan warnings (!)** button sits at the right end of the
+bottom bar: click it or press `!` to open the **warnings view**. It lists every warning, grouped by game version, each with its part
+(`Interface` or `WTF`) and what went wrong; the line on the left shows the highlighted one in full. `/` filters the
+list, `x` / `c` expand and collapse it, `h` opens the help, and **Back** (`Esc`) returns to the review. With no
+warnings there's no button. The log still has them too. The
+restore screen has the same button for its own scan of the game version.
 
 ## Backing up
 
@@ -236,7 +246,8 @@ The first two start open, the others open with `Enter` or `Space`. The warnings 
 lost, the tree says so: "Nothing on disk would be lost".
 
 **At the bottom** a bar sums it up: "Restore Interface and WTF of Retail from 2026-10-04 20:15:30 · 312 removed ·
-4 newer · needs 120.0 MB, 30.5 GB free".
+4 newer · needs 120.0 MB, 30.5 GB free". When its scan of the game version couldn't read something, a **⚠ N scan
+warnings (!)** button at the right end opens the [warnings view](#scan-warnings) (`!` too).
 
 | Key | Does |
 |---|---|

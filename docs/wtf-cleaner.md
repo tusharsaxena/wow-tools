@@ -41,12 +41,13 @@ An account or game version with nothing to remove says "nothing to clean".
 **On the left** are a red `⚠ USE AT YOUR OWN RISK` line (a clean deletes files), the rules that decide what gets
 suggested, the age limit, and the buttons.
 
-**At the bottom** a bar totals what's ticked (items, files and size), plus scan warnings and any game version
-that couldn't be scanned.
+**At the bottom** a bar totals what's ticked (items, files and size) and names any game version that couldn't be
+scanned. When the scan couldn't read something, a **⚠ N scan warnings (!)** button sits at the right end of the bar:
+see [Scan warnings](#scan-warnings).
 
-### The four rules
+### The five rules
 
-A file is suggested if **any** ticked rule matches it. All four are on to start with, and each has its own
+A file is suggested if **any** ticked rule matches it. All five are on to start with, and each has its own
 colour, used in the list too:
 
 | Rule | Suggests | Example |
@@ -55,13 +56,18 @@ colour, used in the list too:
 | **2 Not enabled** (orange) | Settings for addons that are installed but switched off on every character of that account | An addon you disabled everywhere, or that only your other account uses |
 | **3 Older than max age** (yellow) | Addons whose settings haven't changed in a long time (90 days to start with) | An addon from last expansion that you stopped using |
 | **4 Stray copies** (purple) | Copies you or another program made by hand next to the real file | `Details.lua - Copy.bak` |
+| **5 Orphan backups** (green) | A backup WoW made (`<Addon>.lua.bak`) whose settings file (`<Addon>.lua`) is gone | `Auctionator.lua.bak` with no `Auctionator.lua` |
 
-Each rule shows how many files it matches, for example `1 Not installed (672 files)`. Press `1`, `2`, `3` or `4`
+When an addon matches rule 1, 2 or 3, all of its files go: `Auctionator.lua`, `Auctionator.lua.bak` and any stray
+copies. Rules 4 and 5 suggest only the extra files of an addon that is otherwise kept.
+
+Each rule shows how many files it matches, for example `1 Not installed (672 files)`. Press `1` to `5`
 to switch a rule on or off. To change the age limit, type a number of days in the **Max age** box and press
 Enter.
 
 ### What the cleaner never touches
 
+- Addons on your [blacklist](#the-blacklist).
 - Blizzard's own settings (any file starting with `Blizzard_`).
 - Everything that isn't addon settings: your keybindings, macros, chat setup, UI layout, and the list of enabled
   addons.
@@ -89,16 +95,47 @@ does.
 
 If an account has no characters at all (only account-wide settings), the cleaner can't tell what is switched off
 there, so it counts every installed addon as enabled for that account and the "Not enabled" rule suggests nothing
-in it. The scan notes this in its warnings.
+in it. The scan notes this in its [warnings](#scan-warnings).
+
+### The blacklist
+
+Some addons you never want cleaned, whatever the rules say (an addon you only load now and then, say). Put them on
+the blacklist: highlight the addon's line in the tree, or one of its files, and press `b`. A short note
+confirms it ("ElkBuffBars (Retail) is now on the blacklist.").
+
+- A blacklisted addon stays in the tree, greyed out and tagged **blacklisted**, so you can still see what the rules
+  would suggest. It has no tick: `Space`, `a` and `n` skip it, and it's left out of the rule counts, the bottom
+  bar, the confirmation, **Clean** and **Dry run**.
+- An addon is blacklisted in one game version: blacklisting ElkBuffBars in Retail leaves ElkBuffBars in Classic
+  Era to the rules. With **All flavors**, `b` works on the game version of the line you're on.
+- `b` on a blacklisted addon takes it off again. Either way it's saved at once.
+- `b` on a line that isn't one addon (a game version, an account, a character) only tells you to highlight an
+  addon first.
+- A blacklisted addon that no rule matches isn't in the tree at all (there's nothing to clean). To take it off,
+  edit the list by hand (below).
+
+The list is `blacklist` under `[wtf_cleaner]` in `config\wtf-cleaner.cfg`: game version folder and addon name
+pairs, separated by commas, for example
+
+```ini
+blacklist = _retail_:ElkBuffBars, _classic_era_:Questie, WeakAuras
+```
+
+Upper or lower case doesn't matter. A name with no game version (`WeakAuras` above, or `*:WeakAuras`) is
+blacklisted in every game version; `b` on it in one game version takes it off there only and keeps it in the
+others. Close the app before editing the file, or your change may be overwritten. The settings screen doesn't show
+the list, but saving it keeps it.
 
 ### Keys on the review screen
 
 | Key | Does |
 |---|---|
 | `Space` | Tick or untick the highlighted line |
-| `a` / `n` | Tick / untick every file shown (a file a rule or the filter hides keeps its tick) |
+| `a` / `n` | Tick / untick every file shown (a file a rule or the filter hides keeps its tick; blacklisted files are skipped) |
+| `b` | Put the highlighted addon (or the addon of the highlighted file) on the [blacklist](#the-blacklist), or take it off |
+| `!` | Open the [scan warnings](#scan-warnings) (only while there are any; the **⚠ … (!)** button at the bottom does the same) |
 | `/` | Filter the tree (see below) |
-| `1` `2` `3` `4` | Switch a rule on or off |
+| `1` to `5` | Switch a rule on or off |
 | `w` | **Clean** the ticked files (asks first; **Yes** is selected, in red) |
 | `y` | **Dry run** (asks first; **Yes** is selected) |
 | `x` / `c` | Expand every line of the tree / collapse them all |
@@ -125,6 +162,15 @@ goes back to the tree.
 The filter only changes what you see. `a` and `n` tick and untick what it shows; a file it hides keeps its tick and
 is still cleaned. When that's the case, the bottom bar and the confirmation say so ("12 selected files are hidden
 by the filter").
+
+### Scan warnings
+
+When the scan couldn't read something (a folder, a settings file, a line of an `AddOns.txt`) it carries on without
+it and counts it. The count shows as a button at the right end of the bottom bar, **⚠ 4 scan warnings (!)**: click
+it or press `!` to open the **warnings view**. It lists every warning, grouped by game version, each with where it
+is (the path inside that game version's folder) and what went wrong; the line on the left shows the highlighted one
+in full. `/` filters the list, `x` / `c` expand and collapse it, `h` opens the help, and **Back** (`Esc`) returns
+to the review. With no warnings, there's no button. The log still has them too.
 
 ## Cleaning
 
@@ -243,13 +289,14 @@ in `config\wtf-cleaner.cfg`.
 | Setting | Starts as | What it means |
 |---|---|---|
 | Max age in days | 90 | The age limit for rule 3 |
-| The four rules | all on | Which rules are on when the review screen opens |
+| The five rules | all on | Which rules are on when the review screen opens |
 | Zip the files before deleting | on | Keep a zip of everything a clean removes (recommended) |
 | Cleaned-files zips to keep | 0 | How many `cleaned\cleaned-…zip` files to keep per game version; `0` keeps them all. Older ones are removed after a clean. The zip of the last clean is always kept, so **Undo last clean** is unaffected. A removed zip of an older clean can only be restored by hand from its WTF backup (`backup\backup-…zip`) while that is still kept |
 | Backup folder | empty | Where zips and backups go. Empty means `<WoW folder>\wow-tools\wtf-cleaner`. It must be a full path, and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
 
 The file itself uses these names, if you edit it by hand: `max_age_days`, `criterion_not_installed`,
-`criterion_not_enabled`, `criterion_older_than`, `criterion_stray_copies`, `backup_before_delete`, `keep_cleaned`, `backup_dir`,
+`criterion_not_enabled`, `criterion_older_than`, `criterion_stray_copies`, `criterion_orphan_backups`, `backup_before_delete`, `keep_cleaned`, `backup_dir`,
+`blacklist` (see [The blacklist](#the-blacklist); it has no row on the settings screen, `b` on the review edits it),
 `last_account` and `last_flavor_choice`.
 
 Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
@@ -271,6 +318,8 @@ version that fails. The WTF backups and the dry-run zips both follow
 | What's the difference between a Dry run and Clean? | A **Dry run** does every step except deleting, so you can see the full results first. **Clean** deletes the ticked files after backing them up. |
 | Can I clean one account only? | Yes. Pick a single game version; if it has more than one account, the next screen lets you pick one. |
 | How much space do the backups take? | Each WTF backup is a zip of your whole `WTF` folder, so it depends on how big that folder is (zipping shrinks these text files a lot). Only the newest 10 per game version are kept (you can change that in the shared settings; `0` keeps them all), and the same number of dry-run zips. The zips of cleaned files are kept until you delete them, unless you set **Cleaned-files zips to keep** in the cleaner's settings. |
+| How do I stop it suggesting an addon I still want? | Highlight the addon in the review and press `b`: it goes on the [blacklist](#the-blacklist) for that game version and is never ticked or cleaned again until you press `b` on it once more. |
+| What are the scan warnings? | Things the scan couldn't read, so it left them out. Click **⚠ N scan warnings (!)** at the bottom, or press `!`, to see each one and where it is. See [Scan warnings](#scan-warnings). |
 | Can I undo a clean from last week? | **Undo last clean** only goes back to the most recent clean. For an older one, unzip its files by hand; see [Restoring a backup](#restoring-a-backup). |
 
 ## Troubleshooting

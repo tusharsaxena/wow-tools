@@ -85,11 +85,19 @@ class FlavorPlan:
         return [i for i in self.items if i.state != CONFLICT]
 
 
+@dataclass(frozen=True)
+class PlanWarning:
+    """A folder the scan could not read: the flavor's name, the folder and the error (as logged)."""
+    flavor: str
+    path: str
+    message: str
+
+
 @dataclass
 class Plan:
     flavors: list[FlavorPlan]
     dest_dir: Path | None
-    warnings: list[str] = field(default_factory=list)
+    warnings: list[PlanWarning] = field(default_factory=list)
 
     @property
     def items(self) -> list[ShotItem]:
@@ -198,7 +206,7 @@ def scan(flavors: list[Flavor], dest_dir: Path | None, progress: ScanProgress | 
             files = list_files(src_dir)
         except OSError as exc:
             fp.error = str(exc)
-            plan.warnings.append(f"{src_dir}: {exc}")
+            plan.warnings.append(PlanWarning(flavor.display_name, str(src_dir), str(exc)))
             log_event("shots.scan_warning", path=str(src_dir), error=str(exc))
             continue
         for count, name in enumerate(sorted(files, key=str.casefold), start=1):
@@ -214,7 +222,7 @@ def scan(flavors: list[Flavor], dest_dir: Path | None, progress: ScanProgress | 
                 try:
                     targets[day_dir] = list_names(day_dir)
                 except OSError as exc:
-                    plan.warnings.append(f"{day_dir}: {exc}")
+                    plan.warnings.append(PlanWarning(flavor.display_name, str(day_dir), str(exc)))
                     log_event("shots.scan_warning", path=str(day_dir), error=str(exc))
                     targets[day_dir] = set()
             state = NEW

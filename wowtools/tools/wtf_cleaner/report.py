@@ -13,12 +13,14 @@ CRITERION_LABELS = {
     "not_enabled": "Addon is installed but not enabled on any character of its account",
     "older_than": "SavedVariables are older than the age limit",
     "stray_copies": "Hand-made copies (anything but <Addon>.lua / <Addon>.lua.bak)",
+    "orphan_backups": "<Addon>.lua.bak with no <Addon>.lua next to it",
 }
 CRITERION_SHORT = {
     "not_installed": "Not installed",
     "not_enabled": "Not enabled",
     "older_than": "Older than max age",
     "stray_copies": "Stray copies",
+    "orphan_backups": "Orphan backups",
 }
 
 CRITERION_COLORS = {
@@ -26,6 +28,7 @@ CRITERION_COLORS = {
     "not_enabled": "#F08C3A",
     "older_than": "#E8C547",
     "stray_copies": "#B07CFF",
+    "orphan_backups": "#5CC46A",
 }
 
 

@@ -70,6 +70,12 @@ a staged edit, it is inside a key staged for delete, or (rename) it is a top-lev
 key its table already has. Ticks only choose what to edit: **Apply** writes what is staged. A new search replaces
 the results; what is staged stays.
 
+## Warnings
+
+When the scan skipped a folder, or a file could not be read (opened in the tree or searched), the bottom line
+shows **⚠ N warnings**: click it or press `!` (the **Warnings** button) to list them by game version, each with the
+file or folder and what went wrong. **Back** (`Esc`) returns to the review.
+
 ## Safety
 
 - Before writing, Apply checks that no file changed since it was read and no program has one open, zips your

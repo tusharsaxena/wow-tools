@@ -58,6 +58,8 @@ from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, 
 from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, TickModel, WowCheck, lift_toasts
 from wowtools.ui.tree_filter import (FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TextFilter,
                                      TreeFilter)
+from wowtools.ui.warnings_view import (WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost, scan_warning_items,
+                                       where_text)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, RiskBanner, action_button
 
 BROWSE, RESULTS = "Browse", "Results"  # the tree's two views (v): the files, and the hits of the last search
@@ -137,9 +139,12 @@ def ident(data) -> Hashable:
     return kind, folder, account, data[3].label  # owner
 
 
-class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
+class SvReviewScreen(WarningsHost, TreeFilter, RunActions, ReviewBase, Screen[str]):
     """The SavedVariables files of the chosen flavors. `wow_check` (tests inject one) stands for the running-WoW
     check of every flavor."""
+
+    WARNINGS_TITLE = "Warnings"
+    WARNINGS_NOUN = "warning"
 
     SV_TOOL = SV_TOOL  # RunActions: svb.wow_running, the svb.search / apply / undo / recover error contexts
     TREE_SELECTOR = "#browse"
@@ -169,6 +174,7 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         Binding("y", "dry_run", "Dry run"),
         Binding("r", "rescan", "Rescan"),
         Binding("z", "undo", "Undo"),
+        WARNINGS_BINDING,
         Binding("e", "edit_value", "Edit value", show=False),
         Binding("k", "rename_key", "Rename key", show=False),
         Binding("d", "delete_key", "Delete key", show=False),
@@ -229,7 +235,7 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Apply", "destructive", "w", id="btn-apply")
                     yield action_button("Dry run", "simulate", "y", id="btn-dry-run")
-                    yield action_button("Rescan", "navigate", "r", id="btn-rescan")
+                    yield action_button("Rescan", "refresh", "r", id="btn-rescan")
                     yield action_button("Undo last change", "revert", "z", id="btn-undo")
                 yield NavHint(NAV_HINT)
             with Vertical(id="tree-pane"):
@@ -240,7 +246,7 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
                 with ActionBar(id="tree-actions"):
                     for button_id, label, kind, _, key in TREE_ACTIONS:
                         yield action_button(label, kind, key, id=button_id, compact=True)
-        yield Static(Text(self.summary_text), id="summary")
+        yield SummaryBar(Text(self.summary_text))
         yield BottomBar()
 
     def on_mount(self) -> None:
@@ -822,19 +828,33 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
             lines += ["\n", (f"{plural(len(result.unreadable), 'file')} can't be read.", warning)]
         return Text.assemble(*lines)
 
+    def warning_items(self) -> list[WarningItem]:
+        """Each flavor's scan warnings, then the files that could not be read (opened in the tree or searched), under
+        the flavor's name; a file found unreadable twice is listed once."""
+        items: list[WarningItem] = []
+        for flavor in self.scan.flavors if self.scan is not None else ():
+            items += scan_warning_items(flavor.warnings, flavor.flavor.display_name, flavor.flavor.path)
+        unreadable = [(doc.file, doc.error) for doc in self.docs.values() if doc.error]
+        if self.search_result is not None:
+            unreadable += self.search_result.unreadable
+        for file, message in unreadable:
+            item = WarningItem(where_text(file.path, file.flavor.path), message, file.flavor.display_name)
+            if item not in items:
+                items.append(item)
+        return items
+
     def _update_summary(self) -> None:
         if self.scan is None or not self.is_attached:
             return
         tree = self.query_one("#browse", Tree)
-        files, warnings = len(self.scan.files()), len(self.scan.warnings)
+        files = len(self.scan.files())
         counts = f"{plural(files, 'file')} in {plural(len(self.scan.flavors), 'flavor')}"
-        if warnings:
-            counts += f" · {plural(warnings, 'scan warning')}"
         self.summary_text = f"Selected: {self._where(tree.cursor_node)}    {counts}"
         hidden = self.hidden_ticked_note()
         if hidden:
             self.summary_text += f"    {hidden}"
         self.query_one("#summary", Static).update(Text(self.summary_text))
+        self.refresh_warnings()
         self.query_one("#pending", Static).update(self._pending_line())
         self._refresh_buttons()
 

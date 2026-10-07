@@ -13,7 +13,10 @@ EVENTS: dict[str, EventSpec] = {
     "scan.warning": EventSpec("warning", "Something was skipped during a scan (unreadable folder, bad AddOns.txt "
                                          "line, no characters to judge 'not enabled' by)."),
     "proposal.built": EventSpec("info", "The cleanup proposal was built from scan results and criteria (once per "
-                                       "scan and flavor; changing criteria does not log it again)."),
+                                       "scan and flavor; changing criteria does not log it again; blacklisted: "
+                                       "the addon groups the blacklist kept out)."),
+    "blacklist.changed": EventSpec("info", "b on the review put a (flavor, addon) pair on the blacklist or took it "
+                                           "off (flavor, addon, blacklisted); a blacklisted addon is never cleaned."),
     "proposal.item": EventSpec("debug", "One addon group in a clean or dry run the user confirmed."),
     "clean.started": EventSpec("info", "A clean (or dry run) started."),
     "backup.created": EventSpec("info", "The cleaned-files zip was written and verified (a dry run writes it too)."),

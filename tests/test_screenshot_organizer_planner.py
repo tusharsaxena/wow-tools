@@ -11,6 +11,7 @@ from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.tools.screenshot_organizer.organizer import execute
 from wowtools.tools.screenshot_organizer.planner import CONFLICT, FILED, MAYBE_DUPLICATE, NEW, scan, waiting_count
+from wowtools.tools.screenshot_organizer.settings import source_dir
 
 
 class PlannerTest(unittest.TestCase):
@@ -86,6 +87,9 @@ class PlannerTest(unittest.TestCase):
                                  side_effect=PermissionError(13, "denied")), capture_events() as records:
             plan = scan([self.retail, self.era], None)
         self.assertEqual(len(plan.warnings), 2)
+        # where and what apart, under the flavor (the warnings view lists them so)
+        self.assertEqual([(w.flavor, w.path, w.message) for w in plan.warnings],
+                         [(f.display_name, str(source_dir(f)), "[Errno 13] denied") for f in (self.retail, self.era)])
         self.assertEqual([fp.items for fp in plan.flavors], [[], []])
         self.assertTrue(all(fp.error for fp in plan.flavors))
         self.assertIn("shots.scan_warning", [r["event"] for r in records])

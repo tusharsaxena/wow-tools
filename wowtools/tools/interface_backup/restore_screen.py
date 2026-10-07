@@ -3,7 +3,7 @@ or undo."""
 from __future__ import annotations
 
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import ClassVar
 
 from rich.text import Text
@@ -30,6 +30,7 @@ from wowtools.ui.dialogs import ACCENT, TREE_BINDINGS, TREE_HINT, TwoPaneFocus, 
 from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
 from wowtools.ui.review import ButtonActions, ReviewTree
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, FilterBox, ModelFilter, ModelNode
+from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button
 
 # The review's hint shape, then the keys of this screen. Space here ticks a part or opens a node of the effects tree.
@@ -46,6 +47,13 @@ GROUPED = ("removed", "newer")  # listed as folder groups, then files
 WARN = ("removed", "newer", "links_removed", "unreadable")  # shown in the warning colour
 
 
+def flavor_warning_items(scans: Sequence[FlavorScan]) -> list[WarningItem]:
+    """The scan errors of these flavors as the warnings view lists them: under the flavor, the part as where (the
+    review's and the restore screen's)."""
+    return [WarningItem(name, error, scan.flavor.display_name)
+            for scan in scans for name, part in scan.parts.items() for error in part.errors]
+
+
 def _error_text(exc: Exception) -> str:
     return str(exc) if isinstance(exc, RestoreError) else f"{type(exc).__name__}: {exc}"
 
@@ -58,7 +66,7 @@ def group_label(name: str, files: int | None) -> Text:
                          (f" · {plural(files, 'file')}" if files is not None else "", "dim"))
 
 
-class RestoreScreen(FilterBox, ButtonActions, TwoPaneFocus, Screen[RestorePlan | None]):
+class RestoreScreen(WarningsHost, FilterBox, ButtonActions, TwoPaneFocus, Screen[RestorePlan | None]):
     """Two panes, like the review: on the left the backup's details, a box per part, the tree filter (nothing to
     tick in the tree: the filter only narrows it) and Restore / Back; on the right a tree of what the restore
     changes (worked out in a worker each time a box changes); a summary line below. Dismisses with the plan to
@@ -74,6 +82,7 @@ class RestoreScreen(FilterBox, ButtonActions, TwoPaneFocus, Screen[RestorePlan |
         Binding("o", "restore", "Restore"),
         Binding("b", "cancel", "Back"),
         Binding("escape", "cancel", "Back", show=False),
+        WARNINGS_BINDING,
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
         *FILTER_BINDINGS,
@@ -117,7 +126,7 @@ class RestoreScreen(FilterBox, ButtonActions, TwoPaneFocus, Screen[RestorePlan |
                 yield NavHint(NAV_HINT)
             # Short: the tree is narrow at 80 columns; the left pane has the kind and the zip.
             yield ReviewTree(Text(f"{self.flavor.display_name} · {self.info.when}", style=ACCENT), id="effects")
-        yield Static("", id="summary")
+        yield SummaryBar()
         yield BottomBar()
 
     def on_mount(self) -> None:
@@ -206,6 +215,11 @@ class RestoreScreen(FilterBox, ButtonActions, TwoPaneFocus, Screen[RestorePlan |
     def _set_summary(self, text: str, style: str = "") -> None:
         self.summary_text = text
         self.query_one("#summary", Static).update(Text(text, style=style))
+        self.refresh_warnings()
+
+    def warning_items(self) -> list[WarningItem]:
+        """What this screen's scan of the flavor skipped (a restore replaces whatever is there unlisted)."""
+        return flavor_warning_items([self.scan] if self.scan is not None else [])
 
     def _tree_message(self, text: str, style: str) -> None:
         """The tree holds one line: waiting, a problem or what to do."""

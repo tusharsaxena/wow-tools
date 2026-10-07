@@ -140,3 +140,30 @@ class DocsTest(unittest.TestCase):
         claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
         self.assertIn("`FilterBar`", claude)
         self.assertIn("`RiskBanner`", claude)
+
+    def test_warnings_view_and_blacklist_key_are_documented(self):
+        """Spec W1, B1-B4: every guide opens its warnings with `!` (no "(see the log)" left), the WTF Cleaner guide
+        explains its blacklist (`b`, greyed rows, the hand-edited setting, the wildcard), and the changelog,
+        architecture and CLAUDE.md name the shared pieces."""
+        for tool in TOOLS.values():
+            guide = (REPO_ROOT / "docs" / f"{tool.name}.md").read_text(encoding="utf-8")
+            self.assertNotIn("see the log)", guide, tool.name)
+            self.assertIn("| `!` | Open the", guide, tool.name)
+            self.assertIn("**warnings view**", guide, tool.name)
+        wtf = (REPO_ROOT / "docs" / "wtf-cleaner.md").read_text(encoding="utf-8")
+        for needle in ("### The blacklist", "| `b` | Put the highlighted addon", "**blacklisted**",
+                       "blacklist = _retail_:ElkBuffBars", "`*:WeakAuras`", "### Scan warnings"):
+            self.assertIn(needle, wtf)
+        changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        for needle in ("warnings view", "`!`", "`b`", "`[wtf_cleaner] blacklist`"):
+            self.assertIn(needle, changelog)
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("`!`", readme)
+        self.assertIn("config\\wtf-cleaner.cfg", readme)
+        architecture = (REPO_ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+        for needle in ("`WarningsScreen`", "`SummaryBar`", "`BlacklistAction`", "`core/blacklist.py`",
+                       "`Proposal.blacklisted`"):
+            self.assertIn(needle, architecture)
+        claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        for needle in ("`blacklist`", "`BlacklistAction`", "`WarningsScreen`"):
+            self.assertIn(needle, claude)

@@ -34,6 +34,7 @@ from wowtools.ui.help_screen import HelpScreen
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.tree_filter import FILTER_HINT, FilterInput
+from wowtools.ui.warnings_view import WARNINGS_BUTTON_ID, WarningsScreen
 from wowtools.ui.widgets import RISK_TEXT, ActionButton, NavHint, RiskBanner, action_kind
 
 SIZE = (140, 50)
@@ -293,7 +294,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             kinds = {i: action_kind(review.query_one(f"#{i}", Button))
                      for i in ("btn-backup", "btn-restore", "btn-undo", "btn-rescan")}
         self.assertEqual(kinds, {"btn-backup": "create", "btn-restore": "navigate", "btn-undo": "revert",
-                                 "btn-rescan": "navigate"})
+                                 "btn-rescan": "refresh"})
 
     async def test_ticks_space_all_and_none(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
@@ -1385,7 +1386,53 @@ class InterfaceBackupAppTest(TuiTestCase):
                 node.expand()
                 await settle(app, pilot)
                 self.assertEqual([str(c.label) for c in node.children], ["X0: denied", "X1: denied", "X2: denied"])
-                self.assertIn("3 scan warnings", review.summary_text)
+                # the count is on the bottom line's Warnings button (spec W1), which lists them
+                self.assertNotIn("scan warning", review.summary_text)
+                button = review.query_one(f"#{WARNINGS_BUTTON_ID}", Button)
+                self.assertTrue(button.display)
+                self.assertEqual(button.label.plain, "⚠ 3 scan warnings (!)")
+                await pilot.press("exclamation_mark")
+                await settle(app, pilot)
+                self.assertIsInstance(app.screen, WarningsScreen)
+                listed = [str(leaf.label) for group in app.screen.query_one("#warnings", Tree).root.children
+                          for leaf in group.children]
+                self.assertEqual(listed, ["Interface  X0: denied", "Interface  X1: denied", "Interface  X2: denied"])
+                await pilot.press("escape")
+                await settle(app, pilot)
+                self.assertIs(app.screen, review)
+
+    async def test_restore_screen_lists_its_scan_warnings(self):
+        """Spec W2: the restore screen's own scan of the flavor; what it skipped is replaced unlisted, so its bottom
+        line has the Warnings button too: a click opens the view, Esc comes back."""
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        real = restore_module.scan_flavor
+
+        def scan(*args, **kwargs):
+            result = real(*args, **kwargs)
+            result.parts["WTF"].errors.append("WTF/Account/X: denied")
+            return result
+
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_review(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            with patch.object(restore_module, "scan_flavor", scan):
+                screen = await self.open_restore(app, pilot)
+            button = screen.query_one(f"#{WARNINGS_BUTTON_ID}", Button)
+            self.assertTrue(button.display)
+            self.assertEqual(button.label.plain, "⚠ 1 scan warning (!)")
+            assert_keys_on_buttons(self, screen)
+            await pilot.click(f"#{WARNINGS_BUTTON_ID}")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, WarningsScreen)
+            group = app.screen.query_one("#warnings", Tree).root.children[0]
+            self.assertIn("Retail", str(group.label))
+            self.assertEqual([str(leaf.label) for leaf in group.children], ["WTF  WTF/Account/X: denied"])
+            await pilot.press("escape")
+            await settle(app, pilot)
+            self.assertIs(app.screen, screen)
 
     async def test_restore_screens_fit_at_base(self):
         self.save_tool_cfg(backup_dir=str(self.bk))

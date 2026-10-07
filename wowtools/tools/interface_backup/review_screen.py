@@ -25,7 +25,6 @@ from wowtools.core.install import Flavor, WowInstall, validate_backup_dir
 from wowtools.core.journal import Journal
 from wowtools.core.paths import to_stored
 from wowtools.core.process import wow_check_for
-from wowtools.core.text import plural
 from wowtools.tools.interface_backup.backup import BackupOutcome, back_up_all
 from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups, read_parts
 from wowtools.tools.interface_backup.journal import latest_undoable, read_restore_journal, resolve_journal_dir
@@ -34,7 +33,7 @@ from wowtools.tools.interface_backup.report import (BACKUP_RESULT_COLUMNS, PARTS
                                                     backups_title, flavor_text, held_text, leftover_text, part_text,
                                                     restore_confirm, selection_text, undo_confirm, warnings_text)
 from wowtools.tools.interface_backup.restore import RestoreError, RestorePlan, RestoreResult, RestoreStopped, restore
-from wowtools.tools.interface_backup.restore_screen import RestoreResultScreen, RestoreScreen
+from wowtools.tools.interface_backup.restore_screen import RestoreResultScreen, RestoreScreen, flavor_warning_items
 from wowtools.tools.interface_backup.scanner import CHEAP_STATS, PARTS, FlavorScan, scan_flavors
 from wowtools.tools.interface_backup.settings import load_settings, resolve_backup_root
 from wowtools.tools.interface_backup.undo import undo_restore
@@ -44,6 +43,7 @@ from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, 
 from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TreeFilter
+from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
@@ -105,7 +105,7 @@ class BackupResultScreen(ResultBase):
             table.add_row(Text(flavor), Text(kind, style=style), *(Text(c) for c in rest))
 
 
-class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
+class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
     """The chosen flavors as a tree (what Interface and WTF hold, links, warnings, the flavor's backups) with
     flavor ticks for Back up, a highlighted backup for Restore, and Undo. Dismisses with "flavors", "tools" or
     "quit"."""
@@ -126,6 +126,7 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         Binding("e", "restore", "Restore"),
         Binding("r", "rescan", "Rescan"),
         Binding("z", "undo", "Undo"),
+        WARNINGS_BINDING,
         Binding("f", "leave('flavors')", "Flavors"),
         Binding("t", "leave('tools')", "Tools"),
         Binding("q", "leave('quit')", "Quit"),
@@ -179,14 +180,14 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Back up", "create", "b", id="btn-backup")
                     yield action_button("Restore", "navigate", "e", id="btn-restore")
-                    yield action_button("Rescan", "navigate", "r", id="btn-rescan")
+                    yield action_button("Rescan", "refresh", "r", id="btn-rescan")
                     yield action_button("Undo last restore", "revert", "z", id="btn-undo")
                 yield NavHint(NAV_HINT)
             with Vertical(id="scan-box"):
                 yield ProgressBar(id="scan-progress", show_eta=False)
                 yield Static("", id="scan-label")
             yield ReviewTree(Text(self.scope_label), id="flavors")
-        yield Static("", id="summary")
+        yield SummaryBar()
         yield BottomBar()
 
     def on_mount(self) -> None:
@@ -568,11 +569,13 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         blocked = [s.flavor.display_name for s in self.scans if s.leftovers]
         if blocked:
             text += f"    ⚠ Restore blocked for {', '.join(blocked)} (interrupted restore)"
-        warnings = sum(len(p.errors) for s in self.scans for p in s.parts.values())
-        if warnings:
-            text += f"    ⚠ {plural(warnings, 'scan warning')} (see the tree)"
         self.summary_text = text
         self._set_summary(text)
+        self.refresh_warnings()
+
+    def warning_items(self) -> list[WarningItem]:
+        """What each flavor's scan skipped, under the flavor's name, the part as where (the message names the path)."""
+        return flavor_warning_items(self.scans or [])
 
     # --- ticks (Space, a, n: ReviewBase) ------------------------------------------------------------
     def tick_model(self) -> TickModel:

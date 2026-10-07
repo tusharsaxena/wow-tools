@@ -503,7 +503,7 @@ class ShotsAppTest(TuiTestCase):
             review = await self.open_review(app, pilot)
             kinds = {i: action_kind(review.query_one(f"#{i}", Button))
                      for i in ("btn-organize", "btn-dry", "btn-rescan", "btn-undo")}
-        self.assertEqual(kinds, {"btn-organize": "overwrite", "btn-dry": "simulate", "btn-rescan": "navigate",
+        self.assertEqual(kinds, {"btn-organize": "overwrite", "btn-dry": "simulate", "btn-rescan": "refresh",
                                  "btn-undo": "revert"})
 
     # --- the tree filter (spec D7/D8): it matches the plan (a day's files load on expand), a / n act on what it

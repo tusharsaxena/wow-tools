@@ -26,8 +26,9 @@ The first version: five tools in one app.
     doesn't rebuild the tree, so big trees stay quick). `a` / `n` tick or untick only what the filter shows; ticks it hides
     stay, and the bottom line and the "are you sure?" window say how many. A group's tick mark counts what the
     filter shows, and a filter that matches nothing says so. `Esc` in the filter box clears it.
-  - The title bar of every screen reads **Ka0s WoW Tools** in bold gold, then the tool, game version and view in bold
-    white.
+  - **Rescan** is lime on every screen, so it stands out from the grey buttons that only move between screens.
+  - The title bar of every screen reads **Ka0s WoW Tools** in bold gold, then the tool's name in bold cyan, then the
+    game version and view in bold white.
   - The screens that can destroy data (the WTF Cleaner, Ace3 Profile Manager and Saved Variables Browser reviews and
     Interface Backup's restore screen) show a red `⚠ USE AT YOUR OWN RISK` line at the top of their left panel.
   - Every checkbox and box in a left panel has a row of its own, so `↑` / `↓` reach each one.
@@ -54,14 +55,29 @@ The first version: five tools in one app.
   - The progress window keeps one size from start to finish in every tool: the job, an overall bar when several
     game versions are worked on ("1 of 3 game versions"), a row per game version being worked on (label, step and
     its own bar) and the current file; long text is cut short with "…" instead of wrapping.
+  - Scan warnings have a screen of their own, so you never have to read the logs for them: when a scan couldn't
+    read something, a **⚠ N scan warnings (!)** button sits at the right end of the bottom bar (the review screens
+    of every tool and Interface Backup's restore screen). Click it or press `!` to open the warnings view: every
+    warning grouped by game version, each with where it is and what went wrong, with the `/` filter, `x` / `c`, `h`
+    and **Back** (`Esc`).
+  - `b` on a tree line puts the highlighted addon (or the addon a file or profile belongs to) on the tool's
+    blacklist, or takes it off, in the tools that keep one (the WTF Cleaner and the Ace3 Profile Manager), and says
+    which ("ElkBuffBars (Retail) is now on the blacklist."). Each tool keeps its own list.
   - `c` on the tool menu opens the changelog: every version on the left (yours marked "current"), its notes on the
     right.
 - **WTF Cleaner**
   - Finds settings left behind by addons you no longer use, shows them for review, backs them up and deletes them.
   - Works on one game version, one account or **All flavors**.
+  - Five rules, each switched on or off with `1` to `5`: Not installed, Not enabled, Older than max age, Stray
+    copies and **Orphan backups** (an `<Addon>.lua.bak` whose `<Addon>.lua` is gone). An addon a rule matches
+    loses all its files, its `.lua.bak` included.
   - "Not enabled" is decided per account: settings for an addon that only another account uses are suggested (an
     account with no characters counts every addon as enabled).
   - **Clean** is on `w`.
+  - A blacklist of addons it never cleans, one game version each: `b` on an addon's line (or one of its files) adds
+    it or takes it off. Blacklisted addons stay in the review, greyed and tagged "blacklisted", but are never
+    ticked, counted or cleaned. The list is `[wtf_cleaner] blacklist` in `config\wtf-cleaner.cfg`
+    (`_retail_:ElkBuffBars, ...`; a name without a game version means every one).
   - **Dry run** and **Undo last clean**.
   - The zips of the files each clean removed are kept forever unless you set how many to keep per game version
     (**Cleaned-files zips to keep** in its settings; 0, the default, keeps them all).
@@ -79,7 +95,8 @@ The first version: five tools in one app.
   - Shows every Ace3 addon's profiles and which characters use them.
   - Deletes, renames and copies profiles, moves characters between them and removes characters that no longer
     exist.
-  - A blacklist (per game version, picked from a tree) keeps addons out of its reach. When the filter hides ticked
+  - A blacklist (per game version, picked from a tree, or `b` on an addon in the review) keeps addons out of its
+    reach. When the filter hides ticked
     addons, **Save** says how many and asks first.
   - Changes wait as **pending changes** until you apply them; an action bar and a guidance line under the tree say
     what to do next.

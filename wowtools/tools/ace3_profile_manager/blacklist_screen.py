@@ -14,6 +14,7 @@ from textual.widget import Widget
 from textual.widgets import Button, Header, ProgressBar, Static, Tree
 from textual.widgets.tree import TreeNode
 
+from wowtools.core.blacklist import WILDCARD, Pair, is_blacklisted, unique_pairs
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor, WowInstall
@@ -21,7 +22,6 @@ from wowtools.core.progress import ThrottledProgress
 from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager.report import scan_label
 from wowtools.tools.ace3_profile_manager.scanner import ScanResult, scan_flavors
-from wowtools.tools.ace3_profile_manager.settings import WILDCARD, Pair, is_blacklisted, unique_pairs
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, relabel_branch, review_hint,
                                 two_pane_css)

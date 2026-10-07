@@ -104,7 +104,14 @@ selected button), so they never cover either.
 **Filter** button, a **Pending changes** line that sums them up, and the buttons.
 
 **At the bottom** a bar counts what's ticked and what's pending, for example
-`Selected: 3 profiles · 8 characters · 6 pending changes in 2 files`, plus scan warnings when there are any.
+`Selected: 3 profiles · 8 characters · 6 pending changes in 2 files`.
+
+**Scan warnings**: when the scan couldn't read a settings file (or skipped a folder), the tree lists it under **Scan
+warnings** at the bottom, and a **⚠ N scan warnings (!)** button sits at the right end of the bottom bar:
+click it or press `!` to open the **warnings view**. It lists every warning, grouped by game version, each with the file or
+folder (inside that game version's folder) and what went wrong; the line on the left shows the highlighted one in
+full. `/` filters the list, `x` / `c` expand and collapse it, `h` opens the help, and **Back** (`Esc`) returns to
+the review. With no warnings there's no button. The log still has them too.
 
 ### Tags
 
@@ -237,6 +244,7 @@ version until you next save the blacklist.
 | `m` | Quick actions, and every key the bottom bar doesn't show |
 | `Backspace` | Discard all pending changes |
 | `b` | Put the highlighted addon on the blacklist, or take it off |
+| `!` | Open the scan warnings (only while there are any; the **⚠ … (!)** button at the bottom does the same) |
 | `u` | Unlock the highlighted blacklisted addon for this session, or lock it again (so on this screen `u` doesn't update the app: press it on the tool menu) |
 | `v` | Switch view: By addon / By character |
 | `/` | Filter the tree |
@@ -419,7 +427,7 @@ marker, and Apply stops at the first game version that fails. The WTF backups (`
 | A file was "skipped: changed since the scan; rescan" | WoW (or another program) saved that file after the scan. Press `r` to scan again, make that addon's changes again and apply. The other files were changed as planned. |
 | My changes were undone after I played | WoW was running while you applied, or an addon synced its profiles back. Close WoW completely, apply again, then start the game. |
 | "files are locked by another program" | Close the Raider.IO client or the WeakAuras Companion, then apply again. Nothing was changed. |
-| An addon is missing from the tree | It doesn't use Ace3 profiles, its file is blacklisted and hidden (tick **Blacklisted addons** under **Show**), or a Show box or the filter hides it. If its file couldn't be read, it's listed under **Scan warnings** at the bottom of the tree. |
+| An addon is missing from the tree | It doesn't use Ace3 profiles, its file is blacklisted and hidden (tick **Blacklisted addons** under **Show**), or a Show box or the filter hides it. If its file couldn't be read, it's listed under **Scan warnings** at the bottom of the tree and in the warnings view (`!`). |
 | "Not done" with a list of addons | The change couldn't be made in those addons (blacklisted, a name already taken, …); the message says why for each. It was made in the others. |
 | A character keeps a profile I changed | It has **spec profiles**: LibDualSpec switches its profile by spec at login. See the [FAQ](#faq). |
 | "An earlier change did not finish" | See [If a change was interrupted](#if-a-change-was-interrupted). |

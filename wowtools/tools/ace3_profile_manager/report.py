@@ -114,12 +114,10 @@ def pending_count(total: int, files: int) -> str:
     return f"{plural(total, 'pending change')} in {plural(files, 'file')}"
 
 
-def selection_text(profiles: int, chars: int, summary: Summary, warnings: int) -> str:
+def selection_text(profiles: int, chars: int, summary: Summary) -> str:
+    """The review's bottom line (its scan warnings are on the Warnings button beside it)."""
     pending = pending_count(summary.total, summary.files) if summary.total else NO_PENDING
-    text = f"Selected: {plural(profiles, 'profile')} · {plural(chars, 'character')} · {pending}"
-    if warnings:
-        text += f" · ⚠ {plural(warnings, 'scan warning')}"
-    return text
+    return f"Selected: {plural(profiles, 'profile')} · {plural(chars, 'character')} · {pending}"
 
 
 def node_hint(node_kind: str | None, node_name: str, ticked: int, locked: str = "") -> str:

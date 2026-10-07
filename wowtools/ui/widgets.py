@@ -30,7 +30,8 @@ ACTION_VARIANTS = {
     "revert": "warning",      # puts a change back (Undo last run, Undo (z), Put the originals back): violet
     "simulate": "primary",    # shows what would happen, changes nothing (Dry run): cyan
     "confirm": "primary",     # the expected next step of a dialog (Save, OK, Yes, Remind me next time): blue
-    "navigate": "default",    # moves between screens or refreshes (Rescan, Other flavor, Tools, More…): grey
+    "refresh": "success",     # reads the files again (Rescan): lime
+    "navigate": "default",    # moves between screens (Other flavor, Tools, More…): grey
     "cancel": "default",      # backs out or declines (Cancel, No, Later, Quit, Back, Discard): dim grey
 }
 

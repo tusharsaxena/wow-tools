@@ -19,7 +19,7 @@ up, and deletes the ones you leave ticked. **Close WoW first**: it rewrites thes
 
 ## The rules (left pane)
 
-A file is suggested when any ticked rule matches it. `1`-`4` switch a rule on or off; the **Max age in days** box sets
+A file is suggested when any ticked rule matches it. `1`-`5` switch a rule on or off; the **Max age in days** box sets
 the age limit for rule 3 (type the days, then `Enter`).
 
 | Key | Rule | Suggests |
@@ -28,6 +28,9 @@ the age limit for rule 3 (type the days, then `Enter`).
 | `2` | Not enabled | Addons installed but switched off on every character of that account |
 | `3` | Older than max age | Settings unchanged for longer than the age limit (90 days to start with) |
 | `4` | Stray copies | Copies made by hand next to the real file (`Details.lua - Copy.bak`) |
+| `5` | Orphan backups | A `<Addon>.lua.bak` with no `<Addon>.lua` next to it |
+
+When an addon matches a rule, its `.lua.bak` and stray copies go with it.
 
 Never touched: Blizzard's own files, keybindings, macros, chat and UI layout, and anything outside `WTF`.
 
@@ -45,6 +48,19 @@ Never touched: Blizzard's own files, keybindings, macros, chat and UI layout, an
 collapse it all, `←` `→` switch panes. `f` or `Esc` picks another game version, `t` goes back to the tool menu, `s`
 opens the settings, `q` quits. On the results: **Rescan** (`r`), **Other flavor** (`f`), **Tools** (`t`), **Quit**
 (`q`).
+
+## Blacklist
+
+An addon you never want cleaned goes on the **blacklist**: highlight its line (or one of its files) and press `b`.
+Its lines stay in the tree, greyed and marked *blacklisted*, but are never ticked, counted or cleaned, in that game
+version only. `b` on it again takes it off. The list is `blacklist` in `config\\wtf-cleaner.cfg`
+(`_retail_:ElkBuffBars, ...`; a name without a game version means every one).
+
+## Warnings
+
+When the scan could not read something (a folder, a file, a line of an `AddOns.txt`), the bottom line shows
+**⚠ N scan warnings**: click it or press `!` (the **Warnings** button) to list them by game version, each with
+where it is and what went wrong. **Back** (`Esc`) returns to the review.
 
 ## Safety
 

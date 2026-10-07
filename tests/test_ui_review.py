@@ -21,7 +21,8 @@ from wowtools.core import activity
 from wowtools.core.events import capture_events, register_events
 from wowtools.core.sv_events import SvTool, sv_events
 from wowtools.ui.dialogs import ProgressScreen, relabel_branch, tick_mark, two_pane_css
-from wowtools.ui.review import NotTicked, ReviewBase, ReviewTree, RunActions, TickModel
+from wowtools.ui.review import (BLACKLIST_BINDING, BLACKLIST_NO_TARGET, BlacklistAction, NotTicked, ReviewBase,
+                                ReviewTree, RunActions, TickModel, blacklist_toast)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, action_button
 
 KEYS = ("a1", "a2", "b1")  # two groups: a (a1, a2) and b (b1)
@@ -364,6 +365,82 @@ class ReviewBaseTest(TuiTestCase):
             self.assertTrue(tree.display)
             self.assertFalse(review.query_one("#scan-box").display)
         await self.run_toy(True, test)
+
+
+class ToyBlacklistReview(BlacklistAction, ToyReview):
+    """The toy review with the shared `b`: a key leaf is an addon of Retail; a group has no single addon."""
+
+    BINDINGS: ClassVar[list[Binding]] = [BLACKLIST_BINDING]
+
+    def __init__(self) -> None:
+        super().__init__(stores_ticked=True)
+        self.listed: set[tuple[str, str]] = set()
+        self.ready = True
+
+    def blacklist_ready(self) -> bool:
+        return self.ready
+
+    def blacklist_target(self, node):
+        if node is None or node.data is None or node.data[0] != "key":
+            return None
+        return "_retail_", node.data[1]
+
+    def toggle_blacklist(self, flavor: str, addon: str) -> bool:
+        pair = (flavor, addon)
+        listed = pair not in self.listed
+        if listed:
+            self.listed.add(pair)
+        else:
+            self.listed.discard(pair)
+        return listed
+
+
+class BlacklistActionTest(TuiTestCase):
+    """Spec B1: `b` on the highlighted node asks the screen for its (flavor, addon), toggles it with the tool's own
+    blacklist, says so in the shared toast and rebuilds; a node with no single addon only gets a short notice."""
+
+    def test_toast_names_the_addon_and_the_flavor(self):
+        self.assertEqual(blacklist_toast("_retail_", "ElkBuffBars", True),
+                         "ElkBuffBars (Retail) is now on the blacklist.")
+        self.assertEqual(blacklist_toast("_classic_era_", "Questie", False),
+                         "Questie (Classic Era) is no longer on the blacklist.")
+
+    async def test_b_toggles_the_highlighted_addon_and_rebuilds(self):
+        app = Host(ToyBlacklistReview())
+        async with app.run_test(size=(120, 30)) as pilot:
+            await pilot.pause()
+            review = app.review
+            tree = review.query_one("#toy", Tree)
+            tree.move_cursor(tree.root.children[0].children[0])  # a1
+            await pilot.press("b")
+            await settle(app, pilot)
+            self.assertEqual(review.listed, {("_retail_", "a1")})
+            self.assertEqual([n.message for n in app._notifications], ["a1 (Retail) is now on the blacklist."])
+            self.assertEqual(len(review.rebuilds), 1)
+            await pilot.press("b")
+            await settle(app, pilot)
+            self.assertEqual(review.listed, set())
+            self.assertEqual([n.message for n in app._notifications][-1], "a1 (Retail) is no longer on the blacklist.")
+            self.assertEqual(len(review.rebuilds), 2)
+
+    async def test_b_on_a_group_or_while_busy_changes_nothing(self):
+        app = Host(ToyBlacklistReview())
+        async with app.run_test(size=(120, 30)) as pilot:
+            await pilot.pause()
+            review = app.review
+            tree = review.query_one("#toy", Tree)
+            tree.move_cursor(tree.root.children[0])  # group a: no single addon
+            await pilot.press("b")
+            await settle(app, pilot)
+            self.assertEqual(review.listed, set())
+            self.assertEqual([n.message for n in app._notifications], [BLACKLIST_NO_TARGET])
+            self.assertEqual(review.rebuilds, [])
+            review.ready = False
+            tree.move_cursor(tree.root.children[0].children[0])
+            await pilot.press("b")
+            await settle(app, pilot)
+            self.assertEqual(review.listed, set())
+            self.assertEqual(len(app._notifications), 1)
 
 
 class ToyProgress(ProgressScreen):

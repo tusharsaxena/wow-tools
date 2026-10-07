@@ -63,6 +63,13 @@ Open a day to see its screenshots. A game version with nothing to do says why: "
 **At the bottom** a bar totals what's ticked, plus possible duplicates, conflicts and skipped files (all
 explained below).
 
+**Unreadable folders**: when a folder couldn't be read, its screenshots can't be sorted. The game version's line
+in the tree says "could not be read (see Warnings)", and a **⚠ N unreadable folders (!)** button sits at the right
+end of the bottom bar: click it or press `!` to open the **warnings view**. It lists every warning, grouped by game version, each with the folder
+and what went wrong; the line on the left shows the highlighted one in full. `/` filters the list, `x` / `c` expand
+and collapse it, `h` opens the help, and **Back** (`Esc`) returns to the review. With no warnings there's no button.
+The log still has them too.
+
 **Filter**: `/` puts you in the filter box on the left. Type part of a name: a game version, a year, a date
 such as `2024-01-02`, or a file name (upper or lower case doesn't matter), then press `Enter` or click the
 **Filter** button beside the box (typing alone changes nothing). The tree keeps the matching lines and the groups
@@ -81,6 +88,7 @@ shots are hidden by the filter").
 | `o` | **Organize** the ticked screenshots (asks first; **Yes** is selected, in red) |
 | `y` | **Dry run** (asks first; **Yes** is selected) |
 | `x` / `c` | Expand every line of the tree / collapse them all |
+| `!` | Open the unreadable folders (only while there are any; the **⚠ … (!)** button at the bottom does the same) |
 | `r` | Scan again |
 | `z` | **Undo last run** (asks first; **Yes** is selected, in red) |
 | `f` or `Esc` | Pick another game version |

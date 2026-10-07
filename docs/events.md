@@ -74,6 +74,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `backup.created` | info | The cleaned-files zip was written and verified (a dry run writes it too). |
 | `backup.dry_runs_pruned` | info | After a dry run, older dry-run zips of the flavor were deleted to keep its newest N (keep_backups). |
 | `backup.failed` | error | The cleaned-files zip failed; nothing was deleted. |
+| `blacklist.changed` | info | b on the review put a (flavor, addon) pair on the blacklist or took it off (flavor, addon, blacklisted); a blacklisted addon is never cleaned. |
 | `clean.check_failed` | warning | The post-clean check found problems; see the WTF backup it names. |
 | `clean.completed` | info | A clean finished (logged at warning if any file failed). |
 | `clean.flavors_stopped` | warning | A clean of several flavors stopped at one flavor; the flavors after it were not started. |
@@ -89,7 +90,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `clean.undo_started` | info | Undo last clean started, from the newest clean journal. |
 | `clean.validated` | info | After a clean, the WTF folder matched the WTF backup and the cleaned-files zip. |
 | `locker.running_warning` | warning | A program known to lock WTF files (e.g. the Raider.IO client) appears to be running. |
-| `proposal.built` | info | The cleanup proposal was built from scan results and criteria (once per scan and flavor; changing criteria does not log it again). |
+| `proposal.built` | info | The cleanup proposal was built from scan results and criteria (once per scan and flavor; changing criteria does not log it again; blacklisted: the addon groups the blacklist kept out). |
 | `proposal.item` | debug | One addon group in a clean or dry run the user confirmed. |
 | `recovery.incomplete_clean` | warning | A marker from an unfinished clean was found at startup. |
 | `restore.completed` | warning | A clean stopped unexpectedly; the files it had deleted were restored. |

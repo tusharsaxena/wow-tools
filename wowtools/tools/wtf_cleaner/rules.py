@@ -1,15 +1,16 @@
-"""Turn scan results into a cleanup proposal using the four toggleable criteria."""
+"""Turn scan results into a cleanup proposal using the five toggleable criteria."""
 from __future__ import annotations
 
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 
+from wowtools.core.blacklist import Pair, is_blacklisted
 from wowtools.core.events import log_event
 from wowtools.core.install import Character
 from wowtools.tools.wtf_cleaner.scanner import ScanResult, ScanWarning, SVFile, SVGroup
 
-CRITERIA = ("not_installed", "not_enabled", "older_than", "stray_copies")
+CRITERIA = ("not_installed", "not_enabled", "older_than", "stray_copies", "orphan_backups")
 DAY = 86400.0
 
 
@@ -19,6 +20,7 @@ class Criteria:
     not_enabled: bool = True
     older_than: bool = True
     stray_copies: bool = True
+    orphan_backups: bool = True
     max_age_days: int = 90
 
     @classmethod
@@ -46,6 +48,7 @@ class ProposalItem:
     group: SVGroup
     files: list[SVFile]
     reasons: list[str]
+    blacklisted: bool = False  # its addon is on the flavor's blacklist: shown, never cleaned (spec B2)
 
     @property
     def account(self) -> str:
@@ -76,7 +79,7 @@ class ProposalItem:
         return max(f.mtime for f in self.files)
 
     def with_files(self, files: Iterable[SVFile]) -> ProposalItem:
-        return ProposalItem(self.group, list(files), list(self.reasons))
+        return ProposalItem(self.group, list(files), list(self.reasons), self.blacklisted)
 
 
 @dataclass
@@ -84,6 +87,8 @@ class Proposal:
     items: list[ProposalItem]
     criteria: Criteria
     warnings: list[ScanWarning] = field(default_factory=list)
+    # What the criteria would propose but the blacklist keeps: never in `items`, the totals or the counts
+    blacklisted: list[ProposalItem] = field(default_factory=list)
 
     @property
     def total_files(self) -> int:
@@ -113,19 +118,39 @@ def _group_reasons(group: SVGroup, scan: ScanResult, criteria: Criteria, now: fl
     return reasons
 
 
-def evaluate(scan: ScanResult, criteria: Criteria, *, now: float | None = None, log: bool = True) -> Proposal:
+def orphan_backups(group: SVGroup) -> list[SVFile]:
+    """The group's <Addon>.lua.bak when there is no <Addon>.lua next to it (names in any case). A .lua the scan saw
+    but could not list (renamed by an interrupted lock check, or unreadable) still counts as there."""
+    main = f"{group.addon}.lua".casefold()
+    if group.main_hidden or any(f.name.casefold() == main for f in group.files):
+        return []
+    return [f for f in group.files if f.canonical]
+
+
+def evaluate(scan: ScanResult, criteria: Criteria, *, now: float | None = None, log: bool = True,
+             blacklist: Iterable[Pair] = ()) -> Proposal:
+    """Each group whose addon matches a criterion is proposed whole (its .lua.bak and stray copies with it); a
+    group that matches none still proposes its stray copies and its orphan backup when those criteria are on. A
+    group whose addon is on `blacklist` for the scan's flavor (spec B2) is never proposed: what the criteria would
+    propose of it is held in Proposal.blacklisted instead (marked blacklisted)."""
     now = time.time() if now is None else now
+    pairs = list(blacklist)
     items: list[ProposalItem] = []
     for group in scan.groups:
         reasons = _group_reasons(group, scan, criteria, now)
-        strays = [f for f in group.files if not f.canonical]
+        extra = [("stray_copies", [f for f in group.files if not f.canonical]),
+                 ("orphan_backups", orphan_backups(group))]
+        extra = [(name, files) for name, files in extra if getattr(criteria, name) and files]
         if reasons:
-            if criteria.stray_copies and strays:
-                reasons.append("stray_copies")
+            reasons += [name for name, _ in extra]
             items.append(ProposalItem(group, list(group.files), reasons))
-        elif criteria.stray_copies and strays:
-            items.append(ProposalItem(group, strays, ["stray_copies"]))
-    proposal = Proposal(items, criteria.copy(), list(scan.warnings))
+        elif extra:
+            files = {f.path: f for _, found in extra for f in found}
+            items.append(ProposalItem(group, [f for f in group.files if f.path in files], [n for n, _ in extra]))
+    listed = [bool(pairs) and is_blacklisted(pairs, scan.flavor.folder, i.addon) for i in items]
+    held = [replace(i, blacklisted=True) for i, on in zip(items, listed) if on]
+    items = [i for i, on in zip(items, listed) if not on]
+    proposal = Proposal(items, criteria.copy(), list(scan.warnings), held)
     if log:
         log_proposal_built(proposal, scan.flavor.folder)
         log_proposal_items(items)
@@ -137,7 +162,7 @@ def log_proposal_built(proposal: Proposal, flavor_folder: str) -> None:
     criteria = proposal.criteria
     log_event("proposal.built", flavor=flavor_folder, criteria=criteria.enabled_names(),
               max_age_days=criteria.max_age_days, items=len(proposal.items), files=proposal.total_files,
-              bytes=proposal.total_size, by_reason=proposal.by_reason())
+              bytes=proposal.total_size, by_reason=proposal.by_reason(), blacklisted=len(proposal.blacklisted))
 
 
 def log_proposal_items(items: list[ProposalItem], *, dry_run: bool | None = None) -> None:
@@ -147,9 +172,12 @@ def log_proposal_items(items: list[ProposalItem], *, dry_run: bool | None = None
                   addon=item.addon, reasons=item.reasons, files=[f.name for f in item.files])
 
 
-def criterion_counts(scan: ScanResult, *, max_age_days: int, now: float | None = None) -> dict[str, int]:
-    """The number of files each criterion would propose on its own (no proposal.* events)."""
+def criterion_counts(scan: ScanResult, *, max_age_days: int, now: float | None = None,
+                     blacklist: Iterable[Pair] = ()) -> dict[str, int]:
+    """The number of files each criterion would propose on its own (no proposal.* events; blacklisted addons left
+    out)."""
     now = time.time() if now is None else now
+    pairs = list(blacklist)
     return {name: evaluate(scan, Criteria.from_names([name], max_age_days=max_age_days), now=now,
-                           log=False).total_files
+                           log=False, blacklist=pairs).total_files
             for name in CRITERIA}
