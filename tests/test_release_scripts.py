@@ -1,14 +1,19 @@
-"""scripts/build_release.py (the zip + SHA256SUMS assets the updater verifies) and the hashed vendor lock in
-scripts/update_vendor.py (F-010). Temp git repos only; no network."""
+"""scripts/build_release.py (the zip + SHA256SUMS assets the updater verifies), the hashed vendor lock in
+scripts/update_vendor.py (F-010) and the per-shard timeout in scripts/run_tests.py (F-014). Temp git repos only; no
+network."""
 from __future__ import annotations
 
 import hashlib
 import importlib.util
+import io
 import shutil
 import subprocess
+import sys
 import tempfile
+import time
 import unittest
 import zipfile
+from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
 from pathlib import Path
 
@@ -191,3 +196,96 @@ class VendorLockTest(unittest.TestCase):
         pins = self.update_vendor.parse_pins((REPO_ROOT / "requirements.txt").read_text(encoding="utf-8"))
         self.update_vendor.check_lock(pins, (REPO_ROOT / "requirements.lock").read_text(encoding="utf-8"))
         self.assertIn("--hash=sha256:", (REPO_ROOT / "requirements.lock").read_text(encoding="utf-8"))
+
+
+class RunTestsTimeoutTest(unittest.TestCase):
+    """scripts/run_tests.py bounds each shard, so one hung test fails the run with its output instead of
+    blocking it until CI's job timeout (F-014)."""
+
+    def setUp(self):
+        self.run_tests = load_script("run_tests")
+
+    def run_main(self, *argv: str) -> tuple[int, str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = self.run_tests.main(list(argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def test_a_hung_shard_is_killed_and_reported_with_the_test_it_hung_in(self):
+        script = ("import sys, time\n"
+                  f"print({self.run_tests.RUNNING_PREFIX!r} + 'tests.test_x.T.test_fine', flush=True)\n"
+                  f"print({self.run_tests.RUNNING_PREFIX!r} + 'tests.test_x.T.test_hangs', flush=True)\n"
+                  "print('partial shard output', file=sys.stderr, flush=True)\n"
+                  "time.sleep(60)\n")
+        sleeper = [sys.executable, "-c", script]
+        started = time.monotonic()
+        with mock.patch.object(self.run_tests, "_shard_command", return_value=sleeper):
+            code, out, err = self.run_main("-j", "1", "--timeout", "1")
+        self.assertLess(time.monotonic() - started, 30)
+        self.assertEqual(code, 1)
+        self.assertIn("===== shard 1/1 timed out after 1 s in tests.test_x.T.test_hangs =====", err)
+        self.assertIn("partial shard output", err)
+        self.assertTrue(out.rstrip().endswith("FAILED"), out)
+
+    def test_a_shard_names_each_test_as_it_starts(self):
+        command = self.run_tests._shard_command(0, 1, "RunTestsTimeoutTest.test_default_timeout")
+        proc = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                              cwd=REPO_ROOT, timeout=120, check=False)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(self.run_tests.RUNNING_PREFIX + "tests.test_release_scripts.RunTestsTimeoutTest."
+                      "test_default_timeout_scales_below_four_shards_and_zero_turns_it_off", proc.stdout)
+
+    def test_a_shard_that_hangs_after_its_tests_finished_is_not_blamed_on_its_last_test(self):
+        summary = '{"run": 2, "failures": 0, "errors": 0, "skipped": 0}'
+        script = ("import time\n"
+                  f"print({self.run_tests.RUNNING_PREFIX!r} + 'tests.test_x.T.test_last', flush=True)\n"
+                  f"print({self.run_tests.RESULT_PREFIX!r} + {summary!r}, flush=True)\n"
+                  "time.sleep(60)\n")
+        sleeper = [sys.executable, "-c", script]
+        with mock.patch.object(self.run_tests, "_shard_command", return_value=sleeper):
+            code, out, err = self.run_main("-j", "1", "--timeout", "1")
+        self.assertEqual(code, 1)
+        self.assertIn("===== shard 1/1 timed out after 1 s after its tests finished =====", err)
+        self.assertNotIn("test_last", err)
+        self.assertIn("Ran 2 tests", out)
+        self.assertTrue(out.rstrip().endswith("FAILED"), out)
+
+    def test_a_timeout_kills_what_the_shard_started_and_does_not_wait_for_its_output(self):
+        # The hung shard starts a child that inherits its stdout and stderr and keeps writing to a file: on Windows,
+        # subprocess.run would wait for that child to close the pipes after the timeout; the child must die too.
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        ticks = Path(tmp.name) / "ticks.txt"
+        child = ("import time\n"
+                 "for _ in range(600):\n"
+                 f"    open({str(ticks)!r}, 'a').write('.')\n"
+                 "    time.sleep(0.1)\n")
+        script = ("import subprocess, sys, time\n"
+                  f"subprocess.Popen([sys.executable, '-c', {child!r}])\n"
+                  f"print({self.run_tests.RUNNING_PREFIX!r} + 'tests.test_x.T.test_spawns', flush=True)\n"
+                  "time.sleep(60)\n")
+        sleeper = [sys.executable, "-c", script]
+        started = time.monotonic()
+        with mock.patch.object(self.run_tests, "_shard_command", return_value=sleeper):
+            code, _, err = self.run_main("-j", "1", "--timeout", "2")
+        self.assertLess(time.monotonic() - started, 30)
+        self.assertEqual(code, 1)
+        self.assertIn("timed out after 2 s in tests.test_x.T.test_spawns", err)
+        self.assertTrue(ticks.exists(), "the child never started")
+        time.sleep(0.5)
+        size = ticks.stat().st_size
+        time.sleep(1.0)
+        self.assertEqual(ticks.stat().st_size, size, "the shard's child is still running after the timeout")
+
+    def test_default_timeout_scales_below_four_shards_and_zero_turns_it_off(self):
+        seen = []
+
+        def fake_launch(index, count, pattern, timeout):
+            seen.append(timeout)
+            return 0, {"run": 1, "failures": 0, "errors": 0, "skipped": 0}, "", None
+
+        with mock.patch.object(self.run_tests, "_launch", side_effect=fake_launch):
+            for argv in (["-j", "8"], ["-j", "4"], ["-j", "2"], ["-j", "1"], ["-j", "1", "--timeout", "0"],
+                         ["-j", "1", "--timeout", "90"]):
+                self.assertEqual(self.run_main(*argv)[0], 0, argv)
+        self.assertEqual(seen, [600] * 8 + [600] * 4 + [1200] * 2 + [2400, None, 90])

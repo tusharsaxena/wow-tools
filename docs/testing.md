@@ -23,16 +23,23 @@ rows are ways to run the suite while you work.
 
 | Command | What it does |
 |---|---|
-| **gate** `python3 scripts/run_tests.py` | The whole suite in parallel: the tests are sorted by id and dealt round-robin into one shard per CPU (at most 16), one process per shard. Exit code 0 only if every shard passed. About 70 to 100 s on WSL `/mnt/d`. |
+| **gate** `python3 scripts/run_tests.py` | The whole suite in parallel: the tests are sorted by id and dealt round-robin into one shard per CPU (at most 16), one process per shard. Exit code 0 only if every shard passed. About 100 to 120 s on WSL `/mnt/d`. |
 | `python3 scripts/run_tests.py -k TEXT` | Only the tests whose id (`tests.test_wtf_app.SomeTest.test_name`) contains `TEXT`, e.g. `-k sv_browser` or `-k test_look_and_feel`. |
 | `python3 scripts/run_tests.py -j N` | `N` shards instead of one per CPU. |
+| `python3 scripts/run_tests.py --timeout S` | Kill and fail a shard still running after `S` seconds (`0`: no limit). The default is 600 s per shard at `-j 4` or more, and proportionally more below that (1200 s at `-j 2`, 2400 s at `-j 1`; a one-shard run takes about 15 minutes on WSL `/mnt/d`). |
 | `python3 -m unittest discover -s tests -t . -v` | The same tests, serially and verbose, in one process. Use it to read a failure's full output in order. |
 | **gate** `ruff check --no-cache .` | Lint (settings in `ruff.toml`: Python 3.10 target, 120 columns, `vendor/` excluded). Not run in CI, so it is on you. |
 | **gate** `python3 scripts/gen_event_docs.py --check` | Fails if `docs/events.md` is out of date with the event registries. Run `python3 scripts/gen_event_docs.py` (no flag) to regenerate it after changing a registry. `tests/test_docs.py` checks the same thing. |
 
-`run_tests.py` adds `vendor/` to the path itself and pins each shard's output pipe to UTF-8, so it works the same on
-Windows. A failing shard prints its whole unittest output under `===== shard i/N failed =====`; the last line is
-`OK` or `FAILED` after a `Ran N tests in T s across J processes (...)` summary.
+`run_tests.py` adds `vendor/` to the path itself and pins each shard's output encoding to UTF-8, so it works the
+same on Windows. A failing shard prints its whole unittest output under `===== shard i/N failed =====`; the last line
+is `OK` or `FAILED` after a `Ran N tests in T s across J processes (...)` summary. A shard that hangs (say, a pilot
+waiting on a worker that never finishes) is killed at its timeout, with every process it started, and reported as
+`===== shard i/N timed out after S s in <test id> =====`, naming the test it was running, so a hang fails the run
+with a name well before CI's 20-minute job timeout. A shard that hangs after its last test (say, a non-daemon thread
+that keeps the interpreter alive) is reported as `timed out after S s after its tests finished`, and its tests still
+count in the summary. Shard output goes to temp files, not pipes, so a child process a hung test left behind cannot
+hold the run open on Windows.
 
 ## CI
 
@@ -99,7 +106,7 @@ Cleaner's tests predate that rule: its logic tests are `test_cleaner.py`, `test_
 |---|---|
 | `test_suite.py`, `test_suite_app.py` | `wowtools/suite.py` (start-up, the instance lock, renamed-tool migration on start, the update at start) and `WowToolsApp` (menu, setup, opening tools) |
 | `test_updater_check.py`, `test_updater_apply.py` | `core/updater.py`: the release check (fake openers, never the network) and applying an update |
-| `test_release_scripts.py` | `scripts/build_release.py` and the hashed vendor lock |
+| `test_release_scripts.py` | `scripts/build_release.py`, the hashed vendor lock and `scripts/run_tests.py`'s per-shard timeout |
 | `test_launcher.py` | `wow-tools.cmd` stays safe to replace while it runs (Windows-only parts skip elsewhere) |
 
 ### Per tool

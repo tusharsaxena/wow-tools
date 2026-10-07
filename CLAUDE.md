@@ -28,7 +28,7 @@ and `wowtools/ui/` (Textual); third-party code lives in `vendor/`. The five tool
 Before every commit, all three pass ([testing.md](docs/testing.md#the-green-gate)):
 
 ```sh
-python3 scripts/run_tests.py              # full suite, parallel, 70-100 s on WSL /mnt/d; -k TEXT, -j N
+python3 scripts/run_tests.py              # full suite, parallel, 100-120 s on WSL /mnt/d; -k TEXT, -j N
 ruff check --no-cache .                   # not run in CI
 python3 scripts/gen_event_docs.py --check # docs/events.md matches the event registries
 ```
