@@ -22,7 +22,8 @@ Back to [architecture](../architecture.md#tools).
     editor.apply_plan(plan, root, journal_dir, keep_journals, keep_snapshots, dry_run, wow_check, progress) → MultiApplyResult
     undo.undo_run(journal_path, ...) / undo.recover(marker, ...) / undo.leave(marker, root=) → UndoResult
 
-Modules in `tools/sv_browser/` (all UI-free except `app.py`, `review_screen.py`, `popups.py` and `result_screen.py`):
+Modules in `tools/sv_browser/` (all UI-free except `app.py`, `review_screen.py`, `edit_actions.py`, `popups.py` and
+`result_screen.py`):
 
 - `events` registers its 10 own `svb.*` events plus `sv_events("svb")` (the shared pipeline's) and exports
   `SV_TOOL = SvTool("sv-browser", "svb")`. `settings`: `[sv_browser]` `backup_dir`, `last_flavor_choice`;
@@ -76,8 +77,9 @@ Modules in `tools/sv_browser/` (all UI-free except `app.py`, `review_screen.py`,
 - `editor` (`flavor_plan(plan)` groups `Plan.units()` by flavor in plan order; `apply_flavor` = core
   `sv_apply.apply_flavor(SV_TOOL, ..., compile_file, verify_edit, started={files, edits})`; `apply_plan` = core
   `apply_flavors` under one journal), `journal` (`SV_TOOL.journals`), `undo` (`undo_run`, `recover`,
-  `pending_recovery(root)` = the crash marker, `leave(marker, root=)` clears it and logs `svb.recovery_done`
-  `choice="leave"`) and `report` (`DISCLAIMER`, `apply_confirm(plan, dry_run=)` with the array-shift and (Apply)
+  `pending_recovery(root)` = the crash marker, `leave(marker, root=)` = core `sv_undo.leave`: clears it and logs
+  `svb.recovery_done` `choice="leave"`, False (and `marker_left`, at warning) when the marker could not be removed:
+  the review keeps it and shows `leave_notice()`) and `report` (`DISCLAIMER`, `apply_confirm(plan, dry_run=)` with the array-shift and (Apply)
   disclaimer alert lines, `apply_groups` (per flavor, one line per file), `undo_confirm` (the shared one plus
   the disclaimer), `summary_rows`, `file_rows` / `FILE_COLUMNS`) are thin wrappers over the shared pipeline
   (`core/sv_apply.py`, `sv_journal.py`, `sv_undo.py`, `sv_report.py`).
@@ -96,7 +98,9 @@ understand** focused, **Back**/Esc back to the picker, `svb.disclaimer_accepted`
 (`svb.started`)). No account picker. `accepted` lives on the flow, so the warning is asked once per opening of the
 tool from the menu, not on a new flavor pick or a rescan.
 
-- `SvReviewScreen` (`review_screen.py`): `RunActions`, `TreeFilter` and `ReviewBase`, `two_pane_css`. Left pane
+- `SvReviewScreen` (`review_screen.py`): `SvEditActions` (`edit_actions.py`, F-007: Edit value, Rename key, Delete
+  key and Unstage, and the bulk edits on the results), `TreeFilter`, `SvRecoveryActions`, `RunActions` and
+  `ReviewBase`, `two_pane_css`. Left pane
   `#filters`, one control per row: the shared `RiskBanner` (D37), the `FilterBar` (filter box and **Filter** button), the multi-line `#pending` line
   (`Staged: N edits in F files`, then after a search the Results count, `Ticked: M results`, the cap line and the
   unreadable files), `ButtonRow#search-row` (**Search**, `S`, navigate; its own row so
@@ -128,8 +132,11 @@ tool from the menu, not on a new flavor pick or a rescan.
   checks the journal's flavors and confirms (destructive, with the disclaimer and the staged work it drops). A
   real Apply or Undo drops the staging (`_set_stale`) and rescans when the result screen is left; a crash or a
   recovery rescans at once (`_mark_stale`). A scan that finds a marker offers the shared `UnfinishedRunScreen`
-  (only while the review is the shown screen, else on resume), settled in the folder the marker was read from.
-- `popups.py`: `DisclaimerScreen`, `EditValueScreen` (`title`; with `matched` a first `#edit-mode` select, Replace
+  (only while the review is the shown screen, else on resume), settled in the folder the marker was read from; the
+  flow is the shared `SvRecoveryActions` (`recovery_screen` adds that Put back drops the staged edits,
+  `recovery_root` is the marker's folder, `recovery_done` is `_mark_stale`).
+- `popups.py`: `DisclaimerScreen`, `SearchProgressScreen` (the search's and the table reads' progress popup),
+  `EditValueScreen` (`title`; with `matched` a first `#edit-mode` select, Replace
   only the matched text / Whole value; a type `NavSelect`, then an `Input` or a `PopupCheckbox`), `RenameKeyScreen`
   (`title`), `delete_confirm`, `SearchScreen` (find only, D38: one labelled control per row, a blank row between
   the key pair and the value pair; the box scrolls at 80x24) and

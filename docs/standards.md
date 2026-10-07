@@ -53,10 +53,10 @@ it: a test (`tests/<file>.py::<test>`) or *review*. Decision IDs (D9, D17, W1, B
   *Enforced by:* `tests/test_structure.py::test_core_never_imports_textual`,
   `tests/test_structure.py::test_importing_core_loads_no_textual`.
 - **STD-1.7 MUST** Keep a tool's logic modules (scanner, planner, model, ops, journal, undo, report, settings, ...)
-  UI-free over plain dataclasses; only front-end modules (`app.py`, `*_screen.py`, `popups.py`, `tree_view.py`) import
-  `textual` or `wowtools.ui`.
+  UI-free over plain dataclasses; only front-end modules (`app.py`, `*_screen.py`, `*_actions.py` (a review screen's
+  action mixins), `popups.py`, `tree_view.py`) import `textual`, `rich` or `wowtools.ui`.
   *Why:* logic is unit-tested without Textual.
-  *Enforced by:* review.
+  *Enforced by:* `tests/test_structure.py::test_only_front_end_modules_import_the_ui`, review.
 - **STD-1.8 SHOULD** Keep front ends thin: `report.py` turns results into plain-string labels and table rows; screens
   lay out and dispatch to logic functions.
   *Why:* display text is testable without a TUI and screens stay small.
@@ -64,7 +64,9 @@ it: a test (`tests/<file>.py::<test>`) or *review*. Decision IDs (D9, D17, W1, B
 - **STD-1.9 SHOULD** Read and write text, and decode subprocess output, with an explicit `encoding="utf-8"` (and
   `PYTHONIOENCODING=utf-8` for child processes).
   *Why:* the Windows locale code page (cp1252) cannot decode every byte.
-  *Enforced by:* `tests/test_release_scripts.py::test_the_tags_changelog_is_read_as_utf8_whatever_the_locale`, review.
+  *Enforced by:* `tests/test_release_scripts.py::test_the_tags_changelog_is_read_as_utf8_whatever_the_locale`,
+  `tests/test_process.py::test_process_listings_ask_for_utf8`,
+  `tests/test_process.py::test_non_utf8_powershell_output_is_unknown_not_a_crash`, review.
 - **STD-1.10 MUST** Keep `ruff check --no-cache .` clean against `ruff.toml` (py310, 120 columns), marking
   deliberate broad excepts and late imports with their `noqa` code (`BLE001`, `E402`). It is part of the green gate
   (STD-10.1).
@@ -152,7 +154,8 @@ it: a test (`tests/<file>.py::<test>`) or *review*. Decision IDs (D9, D17, W1, B
   *Why:* the form, flow and tests treat every tool alike.
   *Enforced by:* the per-tool `tests/test_*_settings.py` round trips, review.
 - **STD-3.6 SHOULD** Lay out a new tool's package like the others: `__init__.py`, `events.py`, `settings.py`,
-  `help.py`, `app.py`, `review_screen.py` (plus `result_screen.py` if large), and UI-free logic (`scanner.py`/
+  `help.py`, `app.py`, `review_screen.py` (plus `result_screen.py` if large, and `*_actions.py` mixins named after
+  what they do when the review screen grows), and UI-free logic (`scanner.py`/
   `planner.py`, `journal.py`, `undo.py`, `report.py`). Follow [adding-a-tool.md](adding-a-tool.md).
   *Why:* one shape makes every tool navigable; some structure tests address files by name.
   *Enforced by:* review.
@@ -181,10 +184,14 @@ it: a test (`tests/<file>.py::<test>`) or *review*. Decision IDs (D9, D17, W1, B
   `tests/test_config.py::test_round_trip_preserves_unknown_keys_and_sections`,
   `tests/test_config.py::test_set_logs_real_changes_only`.
 - **STD-4.4 MUST** Store folder paths through `set_path`/`get_path` (`core/paths.to_stored`/`to_native`): Windows form
-  on disk (`G:\...`), converted to `/mnt/g/...` only when read under WSL. Journals store paths the same way.
-  *Why:* one config and one journal work from Windows and WSL.
+  on disk (`G:\...`), converted to `/mnt/g/...` only when read under WSL. Journals and crash markers store paths
+  the same way (`core/marker.write_marker` writes with `to_stored`, each tool's `read_marker` reads with
+  `to_native`).
+  *Why:* one config, one journal and one marker work from Windows and WSL.
   *Enforced by:* `tests/test_paths.py::test_to_stored_under_wsl`,
-  `tests/test_journal.py::test_paths_are_stored_in_windows_form_under_wsl`.
+  `tests/test_journal.py::test_paths_are_stored_in_windows_form_under_wsl`,
+  `tests/test_core_sv_pipeline.py::test_marker_paths_are_stored_in_windows_form_and_read_natively`,
+  `tests/test_safety.py::test_marker_paths_are_stored_in_windows_form_and_read_natively`.
 - **STD-4.5 MUST** Retention is global: backups and snapshots prune per flavor to `[general] keep_backups`
   (`Config.keep_backups`, 0 = all), journals per tool to `keep_journals`. A tool has no retention setting, and its
   `save_settings` calls `cfg.remove_retired(SECTION, source=source)` then `cfg.save()`.
@@ -265,6 +272,7 @@ marker, journal, atomic writes with read-back, roll-back on failure, clear marke
   *Why:* a stale plan must not overwrite newer data.
   *Enforced by:* `tests/test_ace_editor.py::test_file_changed_since_scan_is_skipped_others_applied`,
   `tests/test_cleaner.py::test_changed_and_missing_files_are_skipped`,
+  `tests/test_cleaner.py::test_a_file_changed_after_the_snapshot_is_not_deleted`,
   `tests/test_screenshot_organizer_organizer.py::test_target_appearing_after_scan_is_never_overwritten`.
 - **STD-5.8 MUST** Compile and verify every edit in memory before writing (one problem stops the run, nothing
   written), read each written file back, and check copies by hash before they replace or remove anything
@@ -294,20 +302,32 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   `tests/test_cleaner.py::test_snapshot_failure_deletes_nothing`.
 - **STD-5.11 MUST** Before the first destructive write, zip the original bytes of exactly the files the run changes,
   deletes or replaces (`core.backup.create_backup`, or Interface Backup's safety zip); if that fails, nothing changes.
-  *Why:* this zip is Undo's precise source.
+  Like the snapshot, the zip is verified and `fsync`ed (`fsutil.fsync_file`) before it is moved into place.
+  *Why:* this zip is Undo's precise source, and must survive a power cut after the first destructive write.
   *Enforced by:* `tests/test_cleaner.py::test_selective_backup_failure_after_snapshot_deletes_nothing`,
-  `tests/test_sv_browser_apply.py::test_the_snapshot_and_the_originals_zip_hold_the_right_members`.
+  `tests/test_sv_browser_apply.py::test_the_snapshot_and_the_originals_zip_hold_the_right_members`,
+  `tests/test_backup.py::test_zip_is_fsynced_before_it_is_moved_into_place`.
 - **STD-5.12 MUST** Write every backup or snapshot zip to `<name>.partial`, read every entry back (`verify_backup`),
   then move it into place with `rename_no_replace`; on any failure, Ctrl+C included, remove the partial.
   *Why:* an unverified or half-written zip is no backup.
   *Enforced by:* `tests/test_backup.py::test_verification_failure_leaves_nothing`,
+  `tests/test_backup.py::test_interrupt_leaves_no_partial`,
   `tests/test_no_replace_call_sites.py::test_create_backup_never_replaces`.
 - **STD-5.13 MUST** Before the first destructive write, atomically write a crash marker (`core.marker`) naming the
   flavor, the backup and each file with its SHA-256; clear it only when the run finished or fully rolled back. If it
-  cannot be written, nothing changes.
-  *Why:* the next start learns a run was cut short and where its originals are.
+  cannot be written, nothing changes. Clearing retries (`core.marker.clear_marker`); a marker still there after the
+  retries is reported, never passed over: a `<prefix>.marker_left` / `clean.marker_left` warning and a "Crash
+  marker" result row (or a notice). Recovery of a run its journal records as finished changes no file and only
+  removes the marker (`<prefix>.marker_stale`).
+  *Why:* the next start learns a run was cut short and where its originals are; a leftover marker of a run that
+  finished must not pass for an unfinished one.
   *Enforced by:* `tests/test_ace_editor.py::test_marker_write_failure_changes_nothing`,
-  `tests/test_ace_editor.py::test_marker_is_left_when_put_back_fails`.
+  `tests/test_ace_editor.py::test_marker_is_left_when_put_back_fails`,
+  `tests/test_core_shared.py::test_clear_marker_retries_then_reports_a_marker_it_could_not_remove`,
+  `tests/test_core_sv_pipeline.py::test_a_marker_that_cannot_be_removed_is_reported`,
+  `tests/test_core_sv_pipeline.py::test_recovery_of_a_finished_run_changes_nothing`,
+  `tests/test_cleaner.py::test_a_marker_that_cannot_be_removed_after_a_clean_is_reported`,
+  `tests/test_wtf_app.py::test_recovery_dialog_dismiss_reports_a_marker_it_could_not_remove`.
 - **STD-5.14 MUST** While a marker exists, refuse a new real run (a dry run is allowed) and offer the shared recovery
   choice (put the originals back, or leave as is), settled in the folder the marker was read from ([D15][svb],
   [D33][svb]).
@@ -324,10 +344,11 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
 ### 5c. Writing
 
 - **STD-5.16 MUST** Write a file in place only with `fsutil.atomic_write_bytes`/`atomic_write_text` (exclusive-create
-  `<name>.partial`, never following a link, then `os.replace`).
-  *Why:* a crash leaves the old file or the new one, never a mix.
+  `<name>.partial`, never following a link, `fsync` it, then `os.replace`).
+  *Why:* a crash, a power cut included, leaves the old file or the new one, never a mix.
   *Enforced by:* `tests/test_fsutil.py::test_failed_replace_keeps_the_original`,
-  `tests/test_fsutil.py::test_a_link_at_the_partial_name_is_never_followed`.
+  `tests/test_fsutil.py::test_a_link_at_the_partial_name_is_never_followed`,
+  `tests/test_fsutil.py::test_atomic_write_fsyncs_before_replace`.
 - **STD-5.17 MUST** Every rename or move into a final name goes through `fsutil.rename_no_replace` (never
   `os.rename`/`os.replace`); timestamped names come from `free_name`.
   *Why:* POSIX `os.rename` silently replaces; two runs in one second must not share a name.
@@ -339,7 +360,8 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   originals are ([D14][svb]).
   *Why:* a run is all or nothing per flavor.
   *Enforced by:* `tests/test_ace_editor.py::test_failure_mid_run_rolls_back_written_files`,
-  `tests/test_interface_backup_restore.py::test_swap_failure_rolls_back_exactly`.
+  `tests/test_interface_backup_restore.py::test_swap_failure_rolls_back_exactly`,
+  `tests/test_updater_apply.py::test_ctrl_c_during_the_swap_rolls_back`.
 - **STD-5.19 MUST** Run all file-changing work in a worker thread inside exactly one `with activity.running():`
   (`RunActions.start_run(..., writes=True)`); read-only work stays outside it.
   *Why:* the suite waits on `wait_idle()` before releasing the lock, so no exit or update cuts a write short.
@@ -361,10 +383,11 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
 ### 5d. Journals, Undo, dry run, retention
 
 - **STD-5.23 MUST** Every real run that changes files writes one journal (`ToolJournals`/`JournalWriter`): opened
-  before anything is touched (refuse the run if it cannot be), one flushed entry after each change, a finished line,
-  and no journal left when nothing changed.
-  *Why:* Undo can reverse only what the journal recorded.
+  before anything is touched (refuse the run if it cannot be), one flushed and `fsync`ed entry after each change, a
+  finished line, and no journal left when nothing changed.
+  *Why:* Undo can reverse only what the journal recorded, a power cut included.
   *Enforced by:* `tests/test_journal.py::test_open_is_exclusive_and_header_only_journal_is_discarded`,
+  `tests/test_journal.py::test_every_line_is_fsynced_as_it_is_written`,
   `tests/test_screenshot_organizer_organizer.py::test_unwritable_journal_stops_before_anything_moves`.
 - **STD-5.24 MUST** Undo offers only the latest run (`latest_undoable`), never overwrites a file that changed after the
   run (skip it with a reason), and stays undoable when nothing was restored and something failed ([D15][svb]).
@@ -374,9 +397,16 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   `tests/test_ace_undo.py::test_missing_zip_fails_and_journal_stays_undoable`.
 - **STD-5.25 MUST** Treat every journal or marker path as untrusted: map it back only through
   `core.undo.safe_destination` or the tool's equivalent, and refuse anything outside the flavor or the tool's root.
-  *Why:* a hand-edited journal must never make Undo write elsewhere.
+  Recovery resolves files under the configured WoW folder, never the marker's own flavor path, and refuses a
+  marker whose flavor is not a folder there; Undo snapshots only the flavors with an entry inside the install.
+  *Why:* a hand-edited journal or a marker from the other system (Windows or WSL) must never make Undo or recovery
+  write elsewhere.
   *Enforced by:* `tests/test_core_shared.py::test_safe_destination`,
-  `tests/test_wtf_undo.py::test_undo_refuses_entries_outside_the_wtf_folder`.
+  `tests/test_wtf_undo.py::test_undo_refuses_entries_outside_the_wtf_folder`,
+  `tests/test_core_sv_pipeline.py::test_undo_never_snapshots_a_flavor_outside_the_install`,
+  `tests/test_core_sv_pipeline.py::test_undo_flavors_keeps_only_flavors_with_an_entry_inside_the_install`,
+  `tests/test_core_sv_pipeline.py::test_recover_refuses_a_flavor_not_in_the_wow_folder_and_keeps_the_marker`,
+  `tests/test_core_sv_pipeline.py::test_recover_never_touches_the_folder_the_marker_names`.
 - **STD-5.26 SHOULD** An Undo or recovery that overwrites files in place takes its own snapshot first and refuses
   locked files, exactly as Apply does ([D15][svb]).
   *Why:* Undo is itself a write.

@@ -8,6 +8,7 @@ import time
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest import mock
 
 from wowtools.core.events import EventLog, capture_events
 from wowtools.core.journal import JournalWriter, read_journal
@@ -256,6 +257,11 @@ class RunUnitsTest(unittest.TestCase):
 
 
 class JournalThreadSafetyTest(unittest.TestCase):
+    """What is under test is the lock: lines stay whole and counts right. os.fsync is replaced by a counter, so
+    the hammer does not wait on the disk: the writer fsyncs every line under its lock (F-012), and a real
+    FlushFileBuffers on a Windows CI runner is slow enough that 1,200 of them in a row outlast WAIT (C1). That every
+    line is fsynced as it is written is test_journal's to pin; here the count of fsyncs must still equal the count
+    of lines."""
     THREADS = 8
     EACH = 150
 
@@ -263,6 +269,10 @@ class JournalThreadSafetyTest(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.dir = Path(tmp.name)
+        self.fsyncs: list[int] = []  # list.append is atomic, so writers on several threads may share it
+        patcher = mock.patch("os.fsync", side_effect=self.fsyncs.append)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def hammer(self, work):
         start = threading.Barrier(self.THREADS, timeout=WAIT)
@@ -289,6 +299,7 @@ class JournalThreadSafetyTest(unittest.TestCase):
         lines = (self.dir / "journal-1.jsonl").read_text(encoding="utf-8").splitlines()
         records = [json.loads(line) for line in lines]  # every line is whole JSON
         self.assertEqual(len(records), total + 2)
+        self.assertEqual(len(self.fsyncs), len(records))  # one fsync per line, the header and footer included
         self.assertEqual(records[0]["tool"], "test")
         self.assertEqual(records[-1]["entries"], total)
         journal = read_journal(self.dir / "journal-1.jsonl")
@@ -310,6 +321,7 @@ class JournalThreadSafetyTest(unittest.TestCase):
         self.assertEqual(writer.count, self.THREADS * self.EACH // 2)
         lines = (self.dir / "journal-2.jsonl").read_text(encoding="utf-8").splitlines()
         self.assertEqual(len([json.loads(line) for line in lines]), 1 + self.THREADS * self.EACH * 3 // 2)
+        self.assertEqual(len(self.fsyncs), len(lines))
 
 
 class EventLogThreadSafetyTest(unittest.TestCase):

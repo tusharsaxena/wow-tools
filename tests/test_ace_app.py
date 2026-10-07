@@ -10,17 +10,21 @@ from textual.widgets import Button, DataTable, Input, Static, Tree
 from tests.fixtures import BASE, TuiTestCase, build_ace_tree, make_config, settle, submit_filter
 from wowtools.core.backup import BackupEntry, create_backup
 from wowtools.core.config import Config
+from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
+from wowtools.core.sv_report import STALE_MARKER_TEXT
 from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager import editor
 from wowtools.tools.ace3_profile_manager import review_screen as review_module
 from wowtools.tools.ace3_profile_manager.app import ProfileSettingsScreen
 from wowtools.tools.ace3_profile_manager.blacklist_screen import BlacklistScreen
+from wowtools.tools.ace3_profile_manager.ops import OpResult
 from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
 from wowtools.tools.ace3_profile_manager.result_screen import ProfileResultScreen
 from wowtools.tools.ace3_profile_manager.review_screen import ProfileReviewScreen
 from wowtools.tools.ace3_profile_manager.scanner import sha256_of
 from wowtools.tools.ace3_profile_manager.settings import load_settings
+from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult
 from wowtools.ui.dialogs import ConfirmScreen, InfoScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
@@ -665,6 +669,29 @@ class RunTest(AceAppBase):
             self.assertEqual(path.read_bytes(), original)
             self.assertIsNone(editor.read_marker(root))
 
+    async def test_recovery_leave_that_cannot_remove_the_marker_says_so(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            path = next(k for k in review.staging.states if k.sv_name == "ElvDB").path
+            flavor = WowInstall(self.root).flavor("_retail_")
+            rel = path.relative_to(flavor.path).as_posix()
+            root = self.root / "wow-tools" / "ace3-profile-manager"
+            marker = editor.Marker("_retail_", flavor.path, root / "edited" / "edited-retail-all-x.zip",
+                                   {rel: "a"}, "2026-10-04T12:00:00+00:00", 1, "1.0.0", {rel: "b"})
+            editor.write_marker(root, marker)
+            await pilot.press("r")
+            await settle(app, pilot)
+            self.assertEqual(type(app.screen).__name__, "ProfileRecoveryScreen")
+            with patch("wowtools.core.sv_undo.clear_marker", return_value=False):
+                app.screen.dismiss("leave")
+                await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertIsNotNone(review.marker)
+            self.assertEqual(editor.read_marker(root), marker)
+            notes = [n for n in app._notifications if n.title == "Unfinished change"]
+            self.assertTrue(notes and "could not be removed" in notes[-1].message)
+
 
 def inside(widget, box) -> bool:
     """The widget is drawn whole inside box (and on screen)."""
@@ -1073,6 +1100,186 @@ class FinalReviewFixesTest(AceAppBase):
                 self.assertNotEqual(path.read_bytes(), before)
 
 
+class RecoveryFlowTest(AceAppBase):
+    """Characterization of the recovery flow before the review-screen split (review 2026-10-07 F-007, T4.1): each
+    branch of _recovery_chosen, _after_recover_preflight and _recovered, as the SV Browser's RecoveryTest does."""
+
+    write_torn_marker = ReviewFixesTest.write_torn_marker
+
+    def notes(self, app):
+        return [n for n in app._notifications if n.title == "Unfinished change"]
+
+    async def open_recovery(self, app, pilot):
+        review = await self.open_review(app, pilot)
+        root, path = await self.write_torn_marker(review)
+        await pilot.press("r")
+        await settle(app, pilot)
+        self.assertEqual(type(app.screen).__name__, "ProfileRecoveryScreen")
+        return review, root, path
+
+    async def test_leave_keeps_the_files_and_drops_the_marker(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review, root, path = await self.open_recovery(app, pilot)
+            with capture_events() as events:
+                app.screen.dismiss("leave")
+                await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertIsNone(review.marker)
+            self.assertIn(("ace.recovery_done", "leave"), [(e["event"], e["data"].get("choice")) for e in events])
+            self.assertEqual(self.notes(app), [])  # no notice when the marker went
+        self.assertEqual(path.read_bytes(), b"torn")
+        self.assertIsNone(editor.read_marker(root))
+
+    async def test_put_back_names_the_files_and_reads_the_files_again(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review, root, path = await self.open_recovery(app, pilot)
+            scans = []
+            real_scan = review._scan
+            review._scan = lambda: (scans.append(1), real_scan())[1]
+            app.screen.dismiss("put_back")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertIsNone(review.marker)
+            self.assertEqual(scans, [1])  # the files changed under the scan: read again
+            self.assertFalse(review._stale)
+            notes = self.notes(app)
+            self.assertEqual((notes[-1].message, notes[-1].severity),
+                             ("Put back 1 file; left 0 files as they are.", "information"))
+        self.assertNotEqual(path.read_bytes(), b"torn")
+        self.assertIsNone(editor.read_marker(root))
+
+    async def test_put_back_that_cannot_remove_the_marker_keeps_it_and_says_so(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review, root, path = await self.open_recovery(app, pilot)
+            with patch("wowtools.core.sv_undo.clear_marker", return_value=False):
+                app.screen.dismiss("put_back")
+                await settle(app, pilot)
+            # still there: the scan after the run finds it and offers it again
+            self.assertEqual(type(app.screen).__name__, "ProfileRecoveryScreen")
+            self.assertIsNotNone(review.marker)
+            notes = self.notes(app)
+            self.assertTrue(notes and "could not be removed" in notes[-1].message)
+            self.assertEqual(notes[-1].severity, "warning")
+        self.assertNotEqual(path.read_bytes(), b"torn")
+        self.assertIsNotNone(editor.read_marker(root))
+
+    async def test_a_finished_run_is_only_its_marker_removed(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review, root, path = await self.open_recovery(app, pilot)
+            def recover(*_args, **_kwargs):  # the core removed the leftover marker of a run that had finished
+                editor.clear_marker(root)
+                return UndoResult(stale_marker=True)
+            with patch.object(review_module, "recover", recover):
+                app.screen.dismiss("put_back")
+                await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertIsNone(review.marker)
+            notes = self.notes(app)
+            self.assertEqual((notes[-1].message, notes[-1].severity),
+                             (f"That change had finished: {STALE_MARKER_TEXT}", "information"))
+        self.assertEqual(path.read_bytes(), b"torn")
+
+    async def test_a_recovery_the_core_refuses_keeps_the_marker_and_shows_why(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review, root, path = await self.open_recovery(app, pilot)
+            refusal = UndoError("_retail_ is not in the WoW folder X. Nothing was changed.")
+            with patch.object(review_module, "recover", side_effect=refusal):
+                app.screen.dismiss("put_back")
+                await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertIsNotNone(review.marker)
+            self.assertFalse(app.busy)
+            errors = [n for n in app._notifications if n.severity == "error"]
+            self.assertTrue(errors and errors[-1].message == str(refusal))  # its message, no "stopped" prefix
+        self.assertEqual(path.read_bytes(), b"torn")
+        self.assertIsNotNone(editor.read_marker(root))
+
+    async def test_a_recovery_that_crashes_says_it_stopped_and_keeps_the_marker(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review, root, _path = await self.open_recovery(app, pilot)
+            with patch.object(review_module, "recover", side_effect=OSError("disk gone")):
+                app.screen.dismiss("put_back")
+                await settle(app, pilot)
+            # files may have changed: the review reads them again, and that scan offers the marker again
+            self.assertEqual(type(app.screen).__name__, "ProfileRecoveryScreen")
+            self.assertIsNotNone(review.marker)
+            errors = [n for n in app._notifications if n.severity == "error"]
+            self.assertEqual(errors[-1].message, "Putting the originals back stopped: OSError: disk gone")
+        self.assertIsNotNone(editor.read_marker(root))
+
+    async def test_recovery_refuses_a_backup_folder_not_allowed(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review, root, path = await self.open_recovery(app, pilot)
+            inside_wtf = self.root / "_retail_" / "WTF" / "bk"
+            review.tool_cfg.set_path("ace3_profile_manager", "backup_dir", inside_wtf)  # edited by hand in the cfg
+            app.screen.dismiss("put_back")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertIsNotNone(review.marker)
+            self.assertTrue(any(n.title == "Backup folder not allowed" for n in app._notifications))
+            self.assertFalse(inside_wtf.exists())
+        self.assertEqual(path.read_bytes(), b"torn")
+        self.assertIsNotNone(editor.read_marker(root))
+
+    async def test_put_back_drops_the_pending_changes(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review, _root, path = await self.open_recovery(app, pilot)
+            key = next(k for k in review.staging.states if k.sv_name == "KickCDDB" and "ACCT1" in k.path.parts)
+            review.staging.delete({key: ["Backup"]}, "Default")
+            review.ticked.add(("p", key, "Backup"))
+            self.assertGreater(review.staging.summary().total, 0)
+            app.screen.dismiss("put_back")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            # the Ace3 shape: _stale cleared and a rescan, which builds the staging again from the files
+            self.assertEqual(review.staging.summary().total, 0)
+            self.assertEqual(review.ticked, set())
+        self.assertNotEqual(path.read_bytes(), b"torn")
+
+    async def test_recovery_without_a_wow_folder_keeps_the_marker(self):
+        """The _after_recover_preflight guard: the WoW folder went from the settings while the WoW check ran (the
+        review would otherwise go back to the flavors first), so nothing is recovered under wow_root=None."""
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review, root, path = await self.open_recovery(app, pilot)
+
+            def check():
+                review.cfg.set_path("general", "wow_path", None)
+                return []
+            review._injected_check = check
+            with patch.object(review_module, "recover") as recover:
+                app.screen.dismiss("put_back")
+                await settle(app, pilot)
+            recover.assert_not_called()
+            self.assertFalse(app.busy)
+            self.assertIsNotNone(review.marker)
+        self.assertEqual(path.read_bytes(), b"torn")
+        self.assertIsNotNone(editor.read_marker(root))
+
+    async def test_recovery_with_no_tool_folder_keeps_the_marker(self):
+        """The _recovery_chosen guard (root is None: no backup folder and no WoW folder): Leave as is does not run
+        leave(root=None). (Put back would also stop at the WoW folder guard above.)"""
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review, root, path = await self.open_recovery(app, pilot)
+            review.cfg.set_path("general", "wow_path", None)
+            with patch.object(review_module, "leave") as leave:
+                app.screen.dismiss("leave")
+                await settle(app, pilot)
+            leave.assert_not_called()
+            self.assertIsNotNone(review.marker)
+        self.assertEqual(path.read_bytes(), b"torn")
+        self.assertIsNotNone(editor.read_marker(root))
+
+
 class GuidanceTest(AceAppBase):
     """Feedback round 1, item 5: the review explains itself (guidance line, action bar, "pending changes")."""
 
@@ -1470,7 +1677,7 @@ class PopupFeedbackTest(AceAppBase):
         async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot)
             with patch.object(review, "notify") as notify:
-                review._staged(review_module.OpResult(notes=[
+                review._staged(OpResult(notes=[
                     'AddonA: "Default" will be created by the addon at its next login, with its defaults.',
                     'AddonB: "Default" will be created by the addon at its next login, with its defaults.',
                     "a note with no addon"]))

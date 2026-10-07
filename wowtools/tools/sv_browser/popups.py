@@ -28,7 +28,8 @@ from wowtools.tools.sv_browser.report import DISCLAIMER
 from wowtools.tools.sv_browser.search import (KEY_CONTAINS, KEY_EXACT, REPLACE_BOOLEAN, REPLACE_NUMBER,
                                               REPLACE_STRING, VALUE_CONTAINS, VALUE_WHOLE, Replacement, SearchScope,
                                               SearchSpec, parse_replacement)
-from wowtools.ui.dialogs import ChoiceScreen, ConfirmScreen, TextPromptScreen, popup_css, show_error
+from wowtools.ui.dialogs import (ChoiceScreen, ConfirmScreen, ProgressScreen, TextPromptScreen, popup_css,
+                                 show_error)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, NavSelect, action_button
 
 ACCEPT, BACK = "accept", "back"
@@ -362,3 +363,10 @@ class SearchScreen(ModalScreen[SearchSpec | None]):
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+
+class SearchProgressScreen(ProgressScreen):
+    """Shown while a search runs: one row, the files searched of those in scope, and the file last searched."""
+
+    ID_PREFIX = "svb-search"
+    STAGE_TITLES: ClassVar[dict[str, str]] = {"search": "Searching", "tables": "Reading"}

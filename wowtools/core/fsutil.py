@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import errno
 import os
+import re
 import stat
 import sys
 import time
@@ -10,7 +11,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 # os.link errors meaning "this file system (or this kind of file) has no hard links", not "the target exists".
-_NO_HARDLINK = {errno.EPERM, errno.EACCES, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EMLINK, errno.ENOSYS}
+# EISDIR: WSL's drvfs (/mnt/<drive>) gives it for a junction or a relative symlink to a folder (Linux gives EPERM).
+_NO_HARDLINK = {errno.EPERM, errno.EACCES, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EMLINK, errno.ENOSYS, errno.EISDIR}
 
 # Reparse tags (os.lstat(...).st_reparse_tag on Windows) of the two kinds of link: a symlink and a junction.
 _LINK_TAGS = (0xA000000C, 0xA0000003)
@@ -38,6 +40,11 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
     the replace fails, the original file is untouched and the partial is removed. On Windows a replace refused
     because another program holds the target open is tried again for about a second (REPLACE_RETRY_WAITS).
 
+    The partial is fsync'ed before the replace, so the guarantee also holds after a power cut or an OS crash: without
+    it some file systems can commit the rename before the data and leave an empty or stale file under the target's
+    name (F-012). The parent folder is not fsync'ed (Windows cannot), so a replace in the last moments before a power
+    cut may be lost, leaving the old file, never a mix.
+
     Whatever already sits at <name>.partial (a stale partial, or a symlink or junction) is removed first, never
     followed, and the partial is then created exclusively, so the bytes can never land outside the folder."""
     path = Path(path)
@@ -50,6 +57,8 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
         with os.fdopen(os.open(partial, flags, 0o666), "wb") as handle:
             handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
         _replace_retrying(partial, path)
     except BaseException:
         try:
@@ -57,6 +66,17 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
         except OSError:
             pass
         raise
+
+
+def fsync_file(path: Path) -> None:
+    """Force a closed file's bytes to the disk (F-012): a safety zip before it is moved into place, so a power cut
+    or OS crash after the run's first destructive write never leaves that zip empty or truncated. Opened for
+    writing because Windows commits only a handle with write access; nothing is written."""
+    fd = os.open(path, os.O_RDWR | getattr(os, "O_BINARY", 0))
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def atomic_write_text(path: Path, text: str) -> None:
@@ -71,7 +91,8 @@ def rename_no_replace(src: Path, dst: Path) -> None:
 
     Windows' rename already refuses an existing target. On POSIX (Linux, macOS, WSL drives) os.rename silently
     replaces it, so the file is hard-linked to dst first (the kernel refuses an existing dst atomically) and then
-    unlinked from src. Where hard links are not supported the fallback is a last check plus rename (best effort).
+    unlinked from src. Where hard links are not supported (a folder, or a link on WSL's drvfs) the fallback is a
+    last check plus rename: best effort, since something that appears at dst in between is still replaced.
     A cross-device rename raises OSError(EXDEV), as os.rename does, so callers can copy instead."""
     src, dst = Path(src), Path(dst)
     if os.name == "nt":
@@ -158,28 +179,46 @@ def is_real_dir(path: Path) -> bool:
 
 
 _JUNCTION_TAG = _LINK_TAGS[1]
-_VERBATIM = "\\\\?\\"  # os.readlink's prefix on a Windows junction's target
+_VERBATIM = "\\\\?\\"  # os.readlink's prefix on a Windows absolute symlink's or junction's target
+_VERBATIM_UNC = _VERBATIM + "UNC\\"
+_VERBATIM_DRIVE = re.compile(r"[A-Za-z]:\\")
+
+
+def _plain_target(target: str) -> str:
+    """A link target without the \\\\?\\ prefix Windows' os.readlink gives an absolute one (its NT substitute
+    name): C:\\x or \\\\server\\share\\x, as the user made it. A target with no plain form (a volume GUID path)
+    is kept as it is."""
+    if target.startswith(_VERBATIM_UNC):
+        return "\\\\" + target[len(_VERBATIM_UNC):]
+    if target.startswith(_VERBATIM) and _VERBATIM_DRIVE.match(target, len(_VERBATIM)):
+        return target[len(_VERBATIM):]
+    return target
 
 
 def read_link(path: Path) -> tuple[str, bool] | None:
-    """(target, junction) of a symlink or a Windows junction, as os.readlink gives it (never resolved); None when
-    path is not a link or cannot be read. Never raises."""
+    """(target, junction) of a symlink or a Windows junction, as os.readlink gives it (never resolved) less the
+    \\\\?\\ prefix it adds to an absolute target on Windows; None when path is not a link or cannot be read.
+    Never raises."""
     try:
         info = os.lstat(path)
         junction = getattr(info, "st_reparse_tag", 0) == _JUNCTION_TAG
         if not (stat.S_ISLNK(info.st_mode) or junction):
             return None
-        return os.fsdecode(os.readlink(path)), junction
+        return _plain_target(os.fsdecode(os.readlink(path))), junction
     except (OSError, ValueError):
         return None
 
 
 def make_link(target: str, path: Path, *, junction: bool) -> None:
     """Make path a link to target again (read_link's pair): a junction on Windows when it was one, else a symlink
-    (to a folder when the target is one, as Windows needs to know). Raises OSError."""
+    (to a folder when the target is one, as Windows needs to know). Raises OSError, also for a junction to a
+    target with no plain form (a volume GUID path), which CreateJunction cannot make."""
     if junction and sys.platform == "win32":
+        plain = _plain_target(target)  # a journal written before read_link dropped the prefix still holds \\?\C:\
+        if plain.startswith(_VERBATIM):
+            raise OSError(errno.EINVAL, "a junction cannot be made to a volume path", target)
         import _winapi  # Windows only
-        _winapi.CreateJunction(target.removeprefix(_VERBATIM), str(path))
+        _winapi.CreateJunction(plain, str(path))
         return
     is_dir = junction or os.path.isdir(os.path.join(os.path.dirname(path), target))
     os.symlink(target, path, target_is_directory=is_dir)

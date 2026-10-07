@@ -3,6 +3,7 @@ from __future__ import annotations
 import errno
 import os
 import stat
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -46,6 +47,18 @@ class RenameNoReplaceTest(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "Windows renames never replace; hard links are not used there")
     def test_rename_no_replace_falls_back_without_hardlinks(self):
         with patch.object(fsutil.os, "link", side_effect=OSError(errno.EPERM, "not supported")):
+            rename_no_replace(self.src, self.dst)
+            self.assertEqual(self.dst.read_bytes(), b"source")
+            self.assertFalse(self.src.exists())
+            self.src.write_bytes(b"again")
+            with self.assertRaises(FileExistsError):
+                rename_no_replace(self.src, self.dst)
+        self.assertEqual(self.dst.read_bytes(), b"source")
+
+    @unittest.skipIf(os.name == "nt", "Windows renames never replace; hard links are not used there")
+    def test_rename_no_replace_falls_back_when_link_says_is_a_directory(self):
+        # On WSL's drvfs (/mnt/<drive>) os.link gives EISDIR for a junction or a relative symlink to a folder.
+        with patch.object(fsutil.os, "link", side_effect=OSError(errno.EISDIR, "Is a directory")):
             rename_no_replace(self.src, self.dst)
             self.assertEqual(self.dst.read_bytes(), b"source")
             self.assertFalse(self.src.exists())
@@ -240,7 +253,47 @@ class ReadMakeLinkTest(unittest.TestCase):
         os.unlink(link)
         fsutil.make_link(os.fspath(target), link, junction=False)
         self.assertTrue(link.is_symlink())
-        self.assertEqual(os.readlink(link), os.fspath(target))
+        # os.readlink on Windows gives an absolute target with the \\?\ prefix; read_link gives it as it was made.
+        self.assertEqual(fsutil.read_link(link), (os.fspath(target), False))
+        self.assertEqual(os.path.realpath(link), os.path.realpath(target))
+
+    def test_windows_verbatim_prefix_is_dropped(self):
+        r"""C2: on Windows os.readlink gives an absolute symlink's or junction's target with the \\?\ prefix (its
+        NT substitute name), so a restore journaled it and Undo made the link again to the prefixed path. read_link
+        gives the path as the user wrote it: a drive path or a \\server\share path."""
+        link = self.tmp / "link"
+        try:
+            os.symlink(self.tmp, link, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks not permitted here")
+        cases = {"\\\\?\\C:\\Users\\me\\repo": "C:\\Users\\me\\repo",
+                 "\\\\?\\d:\\": "d:\\",
+                 "\\\\?\\UNC\\server\\share\\repo": "\\\\server\\share\\repo",
+                 # no plain form for these: kept as os.readlink gave them
+                 "\\\\?\\Volume{0b1c}\\repo": "\\\\?\\Volume{0b1c}\\repo",
+                 "\\\\?\\C:": "\\\\?\\C:",
+                 "..\\repo": "..\\repo",
+                 "/home/me/repo": "/home/me/repo"}
+        for raw, want in cases.items():
+            with self.subTest(raw=raw), patch("wowtools.core.fsutil.os.readlink", return_value=raw):
+                self.assertEqual(fsutil.read_link(link), (want, False))
+
+    def test_junction_made_to_the_plain_target(self):
+        r"""C2 review: make_link's junction branch drops the \\?\ prefix only where a plain form exists (a journal
+        written before C2 holds \\?\C:\...). A volume GUID target has none: stripping it gave the relative
+        Volume{...}\x, a junction to the wrong place with no error. It is refused (OSError), so Undo reports it."""
+        made = []
+        fake_winapi = type(sys)("_winapi")
+        fake_winapi.CreateJunction = lambda src, dst: made.append((src, dst))
+        link = self.tmp / "link"
+        with patch.object(fsutil.sys, "platform", "win32"), patch.dict(sys.modules, {"_winapi": fake_winapi}):
+            fsutil.make_link("\\\\?\\C:\\Users\\me\\repo", link, junction=True)
+            fsutil.make_link("C:\\Users\\me\\repo", link, junction=True)
+            fsutil.make_link("\\\\?\\UNC\\server\\share\\repo", link, junction=True)
+            with self.assertRaises(OSError):
+                fsutil.make_link("\\\\?\\Volume{0b1c}\\repo", link, junction=True)
+        self.assertEqual(made, [("C:\\Users\\me\\repo", str(link)), ("C:\\Users\\me\\repo", str(link)),
+                                ("\\\\server\\share\\repo", str(link))])
 
     def test_not_a_link_is_none(self):
         (self.tmp / "file").write_text("x", encoding="utf-8")
@@ -256,6 +309,39 @@ class AtomicWriteBytesTest(unittest.TestCase):
             path.write_bytes(b"old")
             atomic_write_bytes(path, b"\r\nX = {\r\n}\r\n\xc3\xa2")
             self.assertEqual(path.read_bytes(), b"\r\nX = {\r\n}\r\n\xc3\xa2")
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["a.lua"])
+
+    def test_atomic_write_fsyncs_before_replace(self):
+        """F-012: the partial's bytes reach the disk before the replace, so a power cut leaves the old file or the
+        new one, never an empty or stale file under the target's name."""
+        calls = []
+        real_fsync, real_replace = os.fsync, os.replace
+
+        def fsync(fd):
+            calls.append(("fsync", os.fstat(fd).st_size))
+            real_fsync(fd)
+
+        def replace(src, dst):
+            calls.append(("replace", Path(src).name))
+            real_replace(src, dst)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "a.lua"
+            path.write_bytes(b"old")
+            with patch("os.fsync", side_effect=fsync), patch("os.replace", side_effect=replace):
+                atomic_write_bytes(path, b"new data")
+            self.assertEqual(path.read_bytes(), b"new data")
+        self.assertEqual(calls[:2], [("fsync", len(b"new data")), ("replace", "a.lua.partial")])
+
+    def test_failed_fsync_keeps_the_original(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "a.lua"
+            path.write_bytes(b"old")
+            with (patch("os.fsync", side_effect=OSError("disk gone")), patch("os.replace") as replace,
+                  self.assertRaises(OSError)):
+                atomic_write_bytes(path, b"new")
+            replace.assert_not_called()
+            self.assertEqual(path.read_bytes(), b"old")
             self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["a.lua"])
 
     def test_failed_replace_keeps_the_original(self):

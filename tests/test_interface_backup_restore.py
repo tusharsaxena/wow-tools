@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import json
 import os
 import shutil
@@ -13,6 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.fixtures import build_interface_tree, build_wow_tree
+from wowtools.core import fsutil
 from wowtools.core.backup import BackupError
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
@@ -495,6 +497,44 @@ class RunRestoreTest(RestoreTestBase):
         self.assertTrue(os.path.islink(link))
         self.assertEqual((repo / "dev.lua").read_text(encoding="utf-8"), "dev")
         self.assert_no_staging()
+
+    @unittest.skipIf(os.name == "nt", "hard links are not used for renames on Windows")
+    def test_links_kept_when_hard_linking_a_link_says_is_a_directory(self):
+        # WSL's drvfs gives EISDIR when hard-linking a junction or a relative symlink to a folder.
+        repo = self.tmp / "repo"
+        repo.mkdir()
+        (repo / "dev.lua").write_text("dev", encoding="utf-8")
+        link = self.retail / "Interface" / "AddOns" / "Dev"
+        _symlink(self, repo, link)
+        real = os.link
+
+        def link_like_drvfs(src, dst, *args, **kwargs):
+            if os.path.islink(src):
+                raise OSError(errno.EISDIR, "Is a directory", str(src))
+            return real(src, dst, *args, **kwargs)
+
+        with patch.object(fsutil.os, "link", link_like_drvfs):
+            result = self.run_restore(("Interface",))
+        self.assertEqual(result.parts[0].kind, "restored")
+        self.assertTrue(os.path.islink(link))
+        self.assertEqual((repo / "dev.lua").read_text(encoding="utf-8"), "dev")
+        self.assert_no_staging()
+
+    def test_folder_appearing_at_the_replaced_name_is_never_replaced(self):
+        # Something that appears at <part>.replaced after the leftover check is refused, not renamed over (STD-5.17).
+        intruder = self.retail / "Interface.replaced"
+        (self.retail / "Interface" / "mine.txt").write_text("mine", encoding="utf-8")
+
+        def progress(phase, *args):
+            if phase == "swap":
+                intruder.mkdir()
+
+        result = self.run_restore(("Interface",), progress=progress)
+        self.assertEqual(result.parts[0].kind, "rolled_back")
+        self.assertTrue(intruder.is_dir())
+        self.assertEqual(list(intruder.iterdir()), [])
+        self.assertEqual((self.retail / "Interface" / "mine.txt").read_text(encoding="utf-8"), "mine")
+        self.assertFalse(list(self.retail.glob("*.restoring")))
 
     def test_links_kept_and_target_untouched(self):
         repo = self.tmp / "repo"

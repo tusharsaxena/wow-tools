@@ -12,10 +12,11 @@ from unittest.mock import patch
 from tests.fixtures import NOW, build_wow_tree
 from wowtools.core import svfiles as svfiles_module
 from wowtools.core.backup import BackupError
-from wowtools.core.events import capture_events
+from wowtools.core.events import TOOL_REGISTRIES, capture_events
 from wowtools.core.install import WowInstall
 from wowtools.tools.wtf_cleaner import cleaner as cleaner_module
 from wowtools.tools.wtf_cleaner.cleaner import CleanError, execute, prune_cleaned_zips, prune_dry_run_zips
+from wowtools.tools.wtf_cleaner.result_screen import summary_rows
 from wowtools.tools.wtf_cleaner.rules import Criteria, ProposalItem, evaluate
 from wowtools.tools.wtf_cleaner.safety import MARKER_NAME
 from wowtools.tools.wtf_cleaner.scanner import SVFile, scan
@@ -117,6 +118,31 @@ class CleanerTest(unittest.TestCase):
         self.assertEqual(len(result.deleted), 6)
         with zipfile.ZipFile(result.backup_path) as zf:
             self.assertNotIn("WTF/Account/ACCT1/SavedVariables/Uninstalled.lua", zf.namelist())
+
+    def test_a_file_changed_after_the_snapshot_is_not_deleted(self):
+        # F-004 (STD-5.7): WoW rewrites a selected file while the WTF backup is taken; the clean rechecks each
+        # file right before deleting it, so the newer data is kept (with no cleaned-files zip to catch it).
+        target = self.sv / "Uninstalled.lua"
+        newer = "written by WoW during the WTF backup, longer than before"
+        real_snapshot = cleaner_module._take_safety_snapshot
+
+        def snapshot_then_rewrite(*args, **kwargs):
+            path = real_snapshot(*args, **kwargs)
+            target.write_text(newer)
+            return path
+
+        with capture_events() as records, \
+                patch.object(cleaner_module, "_take_safety_snapshot", snapshot_then_rewrite):
+            result = execute(self.proposal.items, self.retail, dry_run=False, backup=False,
+                             backup_dir=self.backup_dir, now=WHEN)
+        self.assertEqual(target.read_text(), newer)
+        self.assertEqual([(o.path, o.detail) for o in result.skipped], [(target, "changed")])
+        self.assertEqual(len(result.deleted), 7)
+        for path in self.paths():
+            if path != target:
+                self.assertFalse(path.exists(), path)
+        self.assertEqual(result.check_problems, [])
+        self.assertIn("sv.skipped", [r["event"] for r in records])
 
     def test_backup_failure_deletes_nothing(self):
         blocker = self.tmp / "blocker"
@@ -274,6 +300,38 @@ class SafetySnapshotCleanTest(unittest.TestCase):
         self.assertIn("snapshot.created", names)
         self.assertNotIn("snapshot.removed", names)
         self.assertLess(names.index("snapshot.created"), names.index("backup.created"))
+
+    def _hold_marker(self):
+        """Patch core.marker's os.remove so clean-in-progress.json can never be removed (a virus scanner holds it)."""
+        real_remove = os.remove
+
+        def remove(path, *args, **kwargs):
+            if Path(path).name == MARKER_NAME:
+                raise PermissionError(13, "held by another program", str(path))
+            return real_remove(path, *args, **kwargs)
+        return patch("wowtools.core.marker.os.remove", side_effect=remove)
+
+    def test_a_marker_that_cannot_be_removed_after_a_clean_is_reported(self):
+        """T5.1 (F-002 follow-through): a clean that finished but could not remove its marker says so."""
+        with self._hold_marker(), patch("wowtools.core.marker.time.sleep") as slept, \
+                capture_events() as records:
+            result = self.run_clean()
+        self.assertTrue(slept.called)  # retried before giving up
+        self.assertTrue(result.marker_left)
+        self.assertTrue(result.deleted)
+        self.assertTrue((self.backup_dir / MARKER_NAME).exists())
+        left = [r for r in records if r["event"] == "clean.marker_left"]
+        self.assertEqual(len(left), 1)
+        self.assertEqual(left[0]["data"]["stage"], "finished")
+        self.assertEqual(TOOL_REGISTRIES["wtf-cleaner"]["clean.marker_left"].level, "warning")
+        self.assertIn("Crash marker", dict(summary_rows(result)))
+
+    def test_a_removed_marker_is_not_reported(self):
+        with capture_events() as records:
+            result = self.run_clean()
+        self.assertFalse(result.marker_left)
+        self.assertNotIn("clean.marker_left", [r["event"] for r in records])
+        self.assertNotIn("Crash marker", dict(summary_rows(result)))
 
     def test_snapshot_failure_deletes_nothing(self):
         def boom(*args, **kwargs):
@@ -601,7 +659,6 @@ class ZipLayoutTest(unittest.TestCase):
                          [result.backup_path.name])
 
     def test_result_names_the_cleaned_zips_removed(self):
-        from wowtools.tools.wtf_cleaner.result_screen import summary_rows
         self._old_cleaned_zips()
         result = execute(self.proposal.items, self.retail, dry_run=False, backup=True,
                          backup_dir=self.backup_dir, now=WHEN, keep_cleaned=2)

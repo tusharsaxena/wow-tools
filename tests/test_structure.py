@@ -290,6 +290,60 @@ class StructureTest(unittest.TestCase):
         self.assertNotIn("activity", (REPO / "wowtools/tools/ace3_profile_manager/review_screen.py").read_text(
             encoding="utf-8"))
 
+    def test_sv_recovery_lives_in_ui(self):
+        """F-007 (C-07): the recovery of a SavedVariables Apply that did not finish (the offer, Leave as is or Put
+        the originals back, the WoW check, the run and its notice) is ui/review.py's SvRecoveryActions, defined
+        once; the Ace3 and SV Browser reviews supply only its hooks (STD-2.2, STD-2.3)."""
+        shared = {"offer_recovery", "_recovery_chosen", "_after_recover_preflight", "_recovered"}
+        where = {(rel(p), n) for p in modules("wowtools/ui", "wowtools/tools/ace3_profile_manager",
+                                              "wowtools/tools/sv_browser")
+                 for n in defined_functions(tree(p)) & shared}
+        self.assertEqual(where, {("wowtools/ui/review.py", n) for n in shared})
+        classes = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
+                   if isinstance(node, ast.ClassDef) and node.name == "SvRecoveryActions"}
+        self.assertEqual(classes, {("wowtools/ui/review.py", "SvRecoveryActions")})
+        from wowtools.tools.ace3_profile_manager.review_screen import ProfileReviewScreen
+        from wowtools.tools.sv_browser.review_screen import SvReviewScreen
+        from wowtools.ui.review import RunActions, SvRecoveryActions
+        for screen in (ProfileReviewScreen, SvReviewScreen):
+            self.assertTrue(issubclass(screen, SvRecoveryActions), screen)
+            mro = screen.__mro__
+            self.assertLess(mro.index(SvRecoveryActions), mro.index(RunActions), screen)  # it uses RunActions
+
+    def test_review_screens_are_split_into_action_mixins(self):
+        """F-007 (decision R5): the Ace3 and SV Browser review screens take their staging, blacklist and key-edit
+        actions from per-tool mixins named after what they do; the screen class does not define them again."""
+        from wowtools.tools.ace3_profile_manager.blacklist_actions import ProfileBlacklistActions
+        from wowtools.tools.ace3_profile_manager.review_screen import ProfileReviewScreen
+        from wowtools.tools.ace3_profile_manager.staging_actions import ProfileStagingActions
+        from wowtools.tools.sv_browser.edit_actions import SvEditActions
+        from wowtools.tools.sv_browser.review_screen import SvReviewScreen
+        for screen, mixins in ((ProfileReviewScreen, (ProfileStagingActions, ProfileBlacklistActions)),
+                               (SvReviewScreen, (SvEditActions,))):
+            for mixin in mixins:
+                self.assertTrue(issubclass(screen, mixin), (screen, mixin))
+                moved = {n for n, v in vars(mixin).items() if callable(v) or isinstance(v, (staticmethod, property))}
+                self.assertTrue(moved, mixin)
+                self.assertEqual(moved & set(vars(screen)), set(), (screen, mixin))
+        self.assertTrue({"action_delete", "action_discard"} <= set(vars(ProfileStagingActions)))
+        self.assertTrue({"action_unlock", "toggle_blacklist"} <= set(vars(ProfileBlacklistActions)))
+        self.assertTrue({"action_edit_value", "_bulk_rename"} <= set(vars(SvEditActions)))
+
+    def test_only_front_end_modules_import_the_ui(self):
+        """STD-1.7: a tool's logic modules stay UI-free; only its front-end modules (app.py, *_screen.py,
+        *_actions.py, popups.py, tree_view.py) import textual, rich or wowtools.ui."""
+        def front_end(name: str) -> bool:
+            return name in ("app.py", "popups.py", "tree_view.py") or name.endswith(("_screen.py", "_actions.py"))
+        banned = ("textual", "rich", "wowtools.ui")
+        offenders = [rel(p) for p in modules("wowtools/tools") if not front_end(p.name)
+                     and any(m == b or m.startswith(f"{b}.") for m in resolved_imports(tree(p), package_of(p))
+                             for b in banned)]
+        self.assertEqual(offenders, [])
+        mixins = sorted(rel(p) for p in modules("wowtools/tools") if p.name.endswith("_actions.py"))
+        self.assertEqual(mixins, ["wowtools/tools/ace3_profile_manager/blacklist_actions.py",
+                                  "wowtools/tools/ace3_profile_manager/staging_actions.py",
+                                  "wowtools/tools/sv_browser/edit_actions.py"])
+
     def test_tree_filter_lives_in_ui(self):
         """The tree filter (spec D7) is wowtools/ui/tree_filter.py's: no tool defines its own match, model filter,
         filter box or `/` action."""
@@ -494,7 +548,9 @@ class StructureTest(unittest.TestCase):
         from wowtools.core import install
         from wowtools.core.journal import JournalWriter
         from wowtools.core.migrate import FolderMerge
-        from wowtools.tools.wtf_cleaner import review_screen, safety
+        from wowtools.tools.ace3_profile_manager import report as ace_report
+        from wowtools.tools.sv_browser import report as svb_report
+        from wowtools.tools.wtf_cleaner import cleaner, review_screen, safety
         from wowtools.tools.wtf_cleaner.rules import ProposalItem
         self.assertFalse(hasattr(JournalWriter, "is_open"))
         self.assertFalse(hasattr(FolderMerge, "changed"))
@@ -502,6 +558,16 @@ class StructureTest(unittest.TestCase):
         self.assertFalse(hasattr(install, "InstallError"))
         self.assertFalse(hasattr(safety, "SNAPSHOT_NAME"))
         self.assertFalse(hasattr(safety, "re"))
+        # Re-exports nobody reads (F-011): import them from wowtools.core.snapshot, sv_report or svfiles.
+        self.assertFalse(hasattr(safety, "LIST_REPORT_EVERY"))
+        self.assertFalse(hasattr(ace_report, "RESULT_TEXT"))
+        self.assertFalse(hasattr(ace_report, "in_backup_folder"))
+        self.assertFalse(hasattr(svb_report, "in_backup_folder"))
+        self.assertFalse(hasattr(cleaner, "LOCK_PROBE_SUFFIX"))
+        # Read by ui/review.py's SvRecoveryActions only since the F-007 split: import them from sv_report.
+        for report in (ace_report, svb_report):
+            self.assertFalse(hasattr(report, "leave_notice"), report)
+            self.assertFalse(hasattr(report, "recovered_notice"), report)
         self.assertNotIn("ConfirmScreen", review_screen.__all__)  # import it from wowtools.ui.dialogs
 
     def test_core_never_imports_textual(self):

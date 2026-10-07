@@ -1,8 +1,8 @@
 """Run journals, shared by every tool that changes files: one JSON Lines file per real run.
 
 The standard location is <WoW>/wow-tools/<tool>/journal/journal-<YYYYMMDD-HHMMSS>.jsonl (journal_dir()). Line 1 is
-a header. Each completed change appends one line, flushed at once, so the journal is accurate even if the run is
-cut short. A {"finished": ...} line closes a run and an {"undone": ...} line records an undo.
+a header. Each completed change appends one line, flushed and fsync'ed at once (F-012), so the journal is accurate
+even if the run is cut short, a power cut included. A {"finished": ...} line closes a run and an {"undone": ...} line records an undo.
 
 Tools add their own entry fields (every entry has an "action") and their own undo rules. Path values are written
 with to_stored() and read back with to_native() (read_journal's path_fields). No textual import here.
@@ -10,6 +10,7 @@ with to_stored() and read back with to_native() (read_journal's path_fields). No
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 from collections.abc import Callable, Iterable
@@ -88,6 +89,7 @@ class JournalWriter:
             assert self._handle is not None
             self._handle.write(line)
             self._handle.flush()
+            os.fsync(self._handle.fileno())  # on the disk before the change it records (F-012)
 
     def open(self) -> None:
         with self.lock:
@@ -220,6 +222,8 @@ def append_record(path: Path, record: dict[str, Any]) -> None:
                 line = "\n" + line  # the last line was torn by a crash: start the record on its own line
         handle.seek(0, 2)
         handle.write(line.encode("utf-8"))
+        handle.flush()
+        os.fsync(handle.fileno())
 
 
 def mark_undone(path: Path, restored: int, skipped: int) -> None:

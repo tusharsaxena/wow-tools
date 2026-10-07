@@ -36,6 +36,7 @@ comments, a Blizzard_* file, a .bak and a broken file.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import time
 import unittest
@@ -515,3 +516,28 @@ def assert_keys_on_buttons(test, screen) -> None:
     covered = {screen.active_bindings[k].binding.action for k in on_buttons if k in screen.active_bindings}
     test.assertFalse({key.action for key in screen.query(FooterKey)} & covered, screen)
     test.assertEqual(len(listed), len(footer_bindings(screen)))
+
+
+@contextlib.contextmanager
+def record_fsyncs(module=None):
+    """Record ("fsync", size of the file) for every os.fsync and, when `module` is given, ("rename", size of the
+    source) for every call of that module's rename_no_replace (F-012: a safety zip reaches the disk before it is
+    moved into place). Yields the list of calls."""
+    calls: list[tuple[str, int]] = []
+    real_fsync = os.fsync
+
+    def fsync(fd):
+        calls.append(("fsync", os.fstat(fd).st_size))
+        real_fsync(fd)
+
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(mock.patch("os.fsync", side_effect=fsync))
+        if module is not None:
+            real_rename = module.rename_no_replace
+
+            def rename(src, dst):
+                calls.append(("rename", Path(src).stat().st_size))
+                return real_rename(src, dst)
+
+            stack.enter_context(mock.patch.object(module, "rename_no_replace", side_effect=rename))
+        yield calls

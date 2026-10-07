@@ -151,6 +151,8 @@ class ZipUpdateTest(unittest.TestCase):
         with self.assertRaises(UpdateError) as ctx:
             apply_update(bare, root=self.root, current="0.1.0", download=self.download)
         self.assertIn("allow_unverified_updates", str(ctx.exception))
+        self.assertIn("with the app closed", str(ctx.exception))  # F-013: a running app's save would undo the edit
+        self.assertIn("does not keep comments", str(ctx.exception))  # F-013: a save drops hand-written comments
         self.assertIn("https://github.com/r/releases/tag/v0.2.0", str(ctx.exception))
         self.assertEqual(self.downloaded, [])
         self.assertIn("0.1.0", self.version_on_disk())
@@ -408,6 +410,113 @@ class ZipUpdateTest(unittest.TestCase):
         self.assertIn("rollback also failed", str(ctx.exception))
         self.assertIn(".update-backup", str(ctx.exception))
 
+    def program_digest(self):
+        """The install without the update's own backup folder."""
+        return {k: v for k, v in self.tree_digest().items() if not k.startswith(updater.BACKUP_DIR_NAME + "/")}
+
+    def interrupt_on_first_shipped(self, exc_factory):
+        real_copy = updater._copy
+
+        def interrupting_copy(src, dst):
+            if TOP in str(src):
+                raise exc_factory()
+            real_copy(src, dst)
+        return interrupting_copy
+
+    def test_ctrl_c_during_the_swap_rolls_back(self):
+        """F-005: Ctrl+C between removing the old program folders and copying the new ones puts the old ones back."""
+        make_zipball(self.zipball, "0.2.0")
+        before = self.program_digest()
+        with patch.object(updater, "_copy", self.interrupt_on_first_shipped(KeyboardInterrupt)), \
+                capture_events() as records, self.assertRaises(KeyboardInterrupt):
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        self.assertEqual(self.program_digest(), before)
+        self.assertIn("update.failed", [r["event"] for r in records])
+
+    def test_ctrl_c_during_the_rollback_names_the_backup(self):
+        make_zipball(self.zipball, "0.2.0")
+
+        def interrupting_copy(src, dst):
+            if ".update-backup" in str(dst):
+                shutil.copytree(src, dst) if src.is_dir() else shutil.copy2(src, dst)
+                return
+            raise KeyboardInterrupt
+
+        with patch.object(updater, "_copy", interrupting_copy), self.assertRaises(UpdateError) as ctx:
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        self.assertIn("rollback also failed", str(ctx.exception))
+        self.assertIn(".update-backup", str(ctx.exception))
+
+    def test_a_non_os_error_during_the_swap_rolls_back(self):
+        make_zipball(self.zipball, "0.2.0")
+        before = self.program_digest()
+        with patch.object(updater, "_copy", self.interrupt_on_first_shipped(lambda: UnicodeError("bad name"))), \
+                self.assertRaises(UpdateError) as ctx:
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        self.assertIn("rolled back", str(ctx.exception))
+        self.assertEqual(self.program_digest(), before)
+
+    def test_a_non_os_error_while_backing_up_changes_nothing(self):
+        make_zipball(self.zipball, "0.2.0")
+        before = self.program_digest()
+        real_copy = updater._copy
+
+        def failing_backup(src, dst):
+            if ".update-backup" in str(dst):
+                raise UnicodeError("bad name")
+            real_copy(src, dst)
+
+        with patch.object(updater, "_copy", failing_backup), self.assertRaises(UpdateError) as ctx:
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        self.assertIn("could not back up the current version", str(ctx.exception))
+        self.assertEqual(self.program_digest(), before)
+
+    def test_a_failed_rollback_is_a_rollback_failed_error(self):
+        make_zipball(self.zipball, "0.2.0")
+
+        def always_fail(src, dst):
+            if ".update-backup" in str(dst):
+                shutil.copytree(src, dst) if src.is_dir() else shutil.copy2(src, dst)
+                return
+            raise OSError("disk full")
+
+        with patch.object(updater, "_copy", always_fail), self.assertRaises(updater.RollbackFailed):
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+
+    def test_ctrl_c_while_pruning_after_the_swap_is_an_applied_update(self):
+        """Ctrl+C after the new version is in place is not a rollback: the update is reported as applied."""
+        make_zipball(self.zipball, "0.2.0")
+        with patch.object(updater, "prune_update_backups", side_effect=KeyboardInterrupt), \
+                capture_events() as records:
+            msg = apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0",
+                               download=self.download)
+        self.assertIn("Updated Ka0s WoW Tools to v0.2.0", msg)
+        self.assertIn("0.2.0", self.version_on_disk())
+        events = [r["event"] for r in records]
+        self.assertIn("update.applied", events)
+        self.assertIn("update.cleanup_stopped", events)
+        self.assertNotIn("update.failed", events)
+
+    def test_ctrl_c_while_removing_the_download_is_an_applied_update(self):
+        make_zipball(self.zipball, "0.2.0")
+        real_tempdir = updater.tempfile.TemporaryDirectory
+
+        class InterruptedCleanup(real_tempdir):
+            def __exit__(self, *exc):
+                super().__exit__(*exc)
+                if exc[0] is None:
+                    raise KeyboardInterrupt
+
+        with patch.object(updater.tempfile, "TemporaryDirectory", InterruptedCleanup), \
+                capture_events() as records:
+            msg = apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0",
+                               download=self.download)
+        self.assertIn("v0.2.0", msg)
+        self.assertIn("0.2.0", self.version_on_disk())
+        events = [r["event"] for r in records]
+        self.assertIn("update.applied", events)
+        self.assertNotIn("update.failed", events)
+
 
 @unittest.skipUnless(HAS_GIT, "git not installed")
 class GitUpdateTest(unittest.TestCase):
@@ -599,6 +708,20 @@ class UpdateCommandTest(unittest.TestCase):
         code, _, err = self.run_cmd([], check=lambda cfg, **kw: ReleaseInfo.from_version("9.9.9"), apply=broken)
         self.assertEqual(code, 1)
         self.assertIn("nope", err)
+
+    def test_apply_os_error_is_reported(self):
+        def broken(release, **kw):
+            raise PermissionError("access denied")
+        code, _, err = self.run_cmd([], check=lambda cfg, **kw: ReleaseInfo.from_version("9.9.9"), apply=broken)
+        self.assertEqual(code, 1)
+        self.assertIn("Update failed: access denied", err)
+
+    def test_apply_interrupted_says_the_update_stopped(self):
+        def interrupted(release, **kw):
+            raise KeyboardInterrupt
+        code, _, err = self.run_cmd([], check=lambda cfg, **kw: ReleaseInfo.from_version("9.9.9"), apply=interrupted)
+        self.assertEqual(code, 130)
+        self.assertIn("Update stopped", err)
 
     def test_check_failure(self):
         def offline(cfg, **kw):

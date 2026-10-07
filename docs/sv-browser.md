@@ -372,6 +372,18 @@ their originals are. It **never repairs anything on its own**. You choose:
 If you close the message with `Esc`, it's shown again at the next scan, and when you press **Apply**: a new change
 can't start until you've chosen, since it would lose the way back for the earlier one.
 
+The message can also appear after a change that did finish, when another program (a virus scanner or OneDrive)
+held the app's reminder file so it could not be removed; the change's result says so. **Put the originals back**
+then sees the change finished and only removes the reminder: no file is changed, and Undo still offers the change.
+If the reminder still can't be removed (after **Put the originals back** or **Leave as is**), a notice says so and
+the message comes back at the next scan; close the other program and choose again.
+
+**Put the originals back** finds the files in the WoW folder set in the app, never in the folder the change was
+started from, so it works when you run the app from the other system (Windows or WSL). If that change's game
+version (for example `_retail_`) is not a folder in your WoW folder (you changed the WoW folder since, say), it is
+refused with "`<game version>` is not in the WoW folder `<path>`. Nothing was changed." and the message is offered
+again: set the WoW folder the change was made in (press `s`), then choose again.
+
 ## WoW running
 
 | Action | While WoW runs |
@@ -391,8 +403,10 @@ work on at once; then this tool's). The tool's settings are saved in `config\sv-
 |---|---|---|
 | Backup folder | empty | Where the `WTF` backups and the zips of edited files go: they're put in its `sv-browser` folder. Empty means `<WoW folder>\wow-tools`. It must be a full path (such as `D:\WoW backups`), and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
 
-The file itself uses these names under `[sv_browser]`, if you edit it by hand: `backup_dir` and
-`last_flavor_choice` (the game version you picked last time; empty means **All flavors**).
+The file itself uses these names under `[sv_browser]`, if you edit it by hand: `backup_dir` and `last_flavor_choice`
+(the game version you picked last time; empty means **All flavors**). Close the app before editing the file, or your
+change may be overwritten. Comments you add to the file aren't kept (the app rewrites it when it saves a setting or
+the game version you pick).
 
 How many backups and journals to keep is shared by every tool: `keep_backups` (10; `0` keeps all) and
 `keep_journals` (10) under `[general]` in `config\wow-tools.cfg`, on the first screen `s` opens. So is

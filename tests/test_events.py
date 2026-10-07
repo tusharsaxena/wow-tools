@@ -190,6 +190,30 @@ class SinkTest(unittest.TestCase):
         self.assertTrue(keep.exists())
         self.assertTrue(other.exists())
 
+    def test_prune_skips_a_folder_it_cannot_list(self):
+        (self.dir / "locked").mkdir()
+        (self.dir / "wtf-cleaner").mkdir()
+        old = self.dir / "wtf-cleaner" / "events-2026-01-01.log"
+        old.write_text("{}\n")
+        real_iterdir = Path.iterdir
+
+        def iterdir(path):
+            if path.name == "locked":
+                raise PermissionError(13, "Permission denied", str(path))
+            return real_iterdir(path)
+
+        with mock.patch.object(Path, "iterdir", iterdir):
+            removed = EventLog(self.dir, retention_days=90, clock=lambda: FIXED).prune()
+        self.assertEqual(removed, [old])
+
+    def test_prune_and_flat_migration_never_raise_when_the_log_folder_cannot_be_listed(self):
+        def iterdir(path):
+            raise PermissionError(13, "Permission denied", str(path))
+
+        with mock.patch.object(Path, "iterdir", iterdir):
+            self.assertEqual(EventLog(self.dir, retention_days=90, clock=lambda: FIXED).prune(), [])
+            self.assertEqual(events.migrate_flat_logs(self.dir), [])
+
     def test_flat_logs_are_split_into_tool_folders(self):
         suite_rec = json.dumps({"tool": "suite", "event": "session.start"})
         tool_rec = json.dumps({"tool": "wtf-cleaner", "event": "scan.started"})

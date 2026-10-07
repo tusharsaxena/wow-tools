@@ -7,9 +7,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from wowtools.core.install import flavor_name
-from wowtools.core.sv_report import (DETAIL_COLUMNS, RESULT_TEXT, STAGE_TITLES,  # noqa: F401 - re-exported
-                                     UNDO_COLUMNS, apply_detail_rows, apply_summary_rows, in_backup_folder,
-                                     recovery_text, undo_confirm, undo_detail_rows, undo_summary_rows)
+from wowtools.core.sv_report import (DETAIL_COLUMNS, STAGE_TITLES, UNDO_COLUMNS,  # noqa: F401 - re-exported
+                                     apply_detail_rows, apply_summary_rows, recovery_text, undo_confirm,
+                                     undo_detail_rows, undo_summary_rows)
 from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager.model import DEFAULT
 from wowtools.tools.ace3_profile_manager.ops import CopyOf, DbState, Original, Summary

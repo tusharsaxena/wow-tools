@@ -71,8 +71,8 @@ refuse every file.
 A same-name file at the target is hashed (SHA-256): identical means `duplicate_removed` (move: the
 source is deleted) or `already_filed` (copy); different means `conflict`, and neither file is touched. A move is
 `fsutil.rename_no_replace` (POSIX: hard link then unlink, so a file that appears at the target is never
-replaced; Windows: `os.rename`); on `EXDEV` (and always in copy mode) `copy_verified` copies to `<name>.partial`, checks size and
-SHA-256, then renames into place. After a cross-device move a failed source delete is `source_left`, a warning. A
+replaced; Windows: `os.rename`); on `EXDEV` (and always in copy mode) `copy_verified` copies to `<name>.partial`, `fsync`s it (F-012:
+the caller deletes the source next), checks size and SHA-256, then renames into place. After a cross-device move a failed source delete is `source_left`, a warning. A
 `FileExistsError` from the last check is `conflict`. Nothing is ever overwritten. A dry run walks the same checks,
 hashing included, and reports `would_move` / `would_copy` / `would_remove_duplicate`; it creates no folders and
 writes no journal. A per-file `OSError` is `failed` and the run continues; anything else (including

@@ -100,6 +100,8 @@ def _extract(zf: zipfile.ZipFile, info: zipfile.ZipInfo, dest: Path, size: int, 
             while chunk := src.read(1 << 20):
                 out.write(chunk)
                 written += len(chunk)
+            out.flush()
+            os.fsync(out.fileno())  # F-012: on disk before Undo reports it restored
     except BaseException as exc:
         remove_quietly(dest)
         if isinstance(exc, Exception):

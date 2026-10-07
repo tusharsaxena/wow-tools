@@ -382,6 +382,18 @@ originals are. It **never repairs anything on its own**. You choose:
 If you close the message with `Esc`, it's shown again next time, and when you press **Apply**: a new change
 can't start until you've chosen, since it would lose the way back for the earlier one.
 
+The message can also appear after a change that did finish, when another program (a virus scanner or OneDrive)
+held the app's reminder file so it could not be removed; the change's result says so. **Put the originals back**
+then sees the change finished and only removes the reminder: no file is changed, and Undo still offers the change.
+If the reminder still can't be removed (after **Put the originals back** or **Leave as is**), a notice says so and
+the message comes back at the next scan; close the other program and choose again.
+
+**Put the originals back** finds the files in the WoW folder set in the app, never in the folder the change was
+started from, so it works when you run the app from the other system (Windows or WSL). If that change's game
+version (for example `_retail_`) is not a folder in your WoW folder (you changed the WoW folder since, say), it is
+refused with "`<game version>` is not in the WoW folder `<path>`. Nothing was changed." and the message is offered
+again: set the WoW folder the change was made in (press `s`), then choose again.
+
 ## Settings
 
 Press `s` in the tool (you get the shared settings first: WoW folder, backups and journals to keep; then this
@@ -393,9 +405,10 @@ tool's settings). The tool's settings are saved in
 | Backup folder | empty | Where the `WTF` backups and the zips of edited files go: they're put in its `ace3-profile-manager` folder. Empty means `<WoW folder>\wow-tools`. It must be a full path (such as `D:\WoW backups`), and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
 | Blacklist | none | Addons, each in one game version, that are shown but never changed. **Edit blacklist…** opens the [blacklist screen](#the-blacklist); the line above it counts them |
 
-The file itself uses these names, if you edit it by hand: `backup_dir`, `blacklist` (pairs such as
-`_retail_:ElvUI, _classic_era_:Questie`), `last_flavor_choice` (the game version you picked last time; empty means
-**All flavors**) and `last_account` (empty means all accounts).
+The file itself uses these names, if you edit it by hand: `backup_dir`, `blacklist` (pairs such as `_retail_:ElvUI,
+_classic_era_:Questie`), `last_flavor_choice` (the game version you picked last time; empty means **All flavors**) and
+`last_account` (empty means all accounts). Close the app before editing the file, or your change may be overwritten.
+Comments you add to the file aren't kept (the app rewrites it when it saves a setting or the game version you pick).
 
 Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
 first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),

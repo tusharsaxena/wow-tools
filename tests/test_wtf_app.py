@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import tempfile
 import threading
@@ -706,6 +707,31 @@ class RecoveryDialogTest(AppTestCase):
         self.assertTrue(self.snapshot.exists())
         self.assertIn("recovery.incomplete_clean", [r["event"] for r in records])
         self.assertIn({"screen": "recovery", "control": "recovery", "value": "dismissed"},
+                      [r["data"] for r in records if r["event"] == "ui.selection"])
+
+    async def test_recovery_dialog_dismiss_reports_a_marker_it_could_not_remove(self):
+        """T5.1 (F-002 follow-through): Dismiss never claims the marker is gone when another program holds it."""
+        real_remove = os.remove
+
+        def remove(path, *args, **kwargs):
+            if Path(path).name == MARKER_NAME:
+                raise PermissionError(13, "held by another program", str(path))
+            return real_remove(path, *args, **kwargs)
+        app = self.make_app()
+        with patch("wowtools.core.marker.os.remove", side_effect=remove), \
+                patch("wowtools.core.marker.time.sleep"), capture_events() as records:
+            async with app.run_test(size=SIZE) as pilot:
+                await self.open_recovery(app, pilot)
+                await pilot.click("#recovery-dismiss")
+                await pilot.pause()
+                self.assertIsInstance(app.screen, ReviewScreen)
+                notes = [n for n in app._notifications if n.title == "Marker not removed"]
+                self.assertEqual(len(notes), 1)
+                self.assertIn(MARKER_NAME, notes[0].message)
+        self.assertTrue((self.backup_dir / MARKER_NAME).exists())
+        left = [r for r in records if r["event"] == "clean.marker_left"]
+        self.assertEqual([r["data"]["stage"] for r in left], ["dismiss"])
+        self.assertIn({"screen": "recovery", "control": "recovery", "value": "dismiss_failed"},
                       [r["data"] for r in records if r["event"] == "ui.selection"])
 
     async def test_recovery_dialog_remind_keeps_both(self):

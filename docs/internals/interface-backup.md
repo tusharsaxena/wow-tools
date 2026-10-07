@@ -50,7 +50,7 @@ starting and is raised once the running ones ended. The scan bar has no total, a
 Code: `backup.py`. No journal: nothing in the game folders changes. `write_zip` writes `<Part>/<rel>`
 entries plus `manifest.json` (`version`, `kind` backup | pre-restore, `flavor`, `flavor_folder`, `created`,
 `suite_version`, `parts`, `parts_existing`, `files[{path, size, mtime}]`, `links`) to `<name>.partial`, runs
-`verify_backup`, then `rename_no_replace`; any failure (Ctrl+C included) removes the `.partial` and is a
+`verify_backup`, `fsync_file` (F-012), then `rename_no_replace`; any failure (Ctrl+C included) removes the `.partial` and is a
 `BackupError`. Each file is opened without following links (POSIX `O_NOFOLLOW | O_NONBLOCK` plus `fstat`; Windows
 lstat first), and each ancestor folder is lstat-checked once: a file gone, turned into a link or no longer regular
 since the scan is left out and listed in `missing`; a part that vanished or lost every file is not claimed in the
@@ -91,7 +91,12 @@ keeps the extraction time), move the kept links into it, rename `<part>` → `<p
 → `<part>`, `on_swapped(existed)` writes a `{"action": "link_removed", "part", "rel", "target", "junction"}`
 per link the swap removed (read with `read_link` just before; a zip never holds links) and then
 `{"action": "replaced", "part", "existed"}`, then
-`remove_tree_no_follow(<part>.replaced)` (a failure is `replaced_left`). An error before or during the swap
+`remove_tree_no_follow(<part>.replaced)` (a failure is `replaced_left`). Every rename of the swap, its link moves
+and its rollback goes through `rename_no_replace` (STD-5.17; `restore`, `replace_part` and Undo's `undo_restore`
+default `rename=` to it), which refuses a target that already exists. The refusal is atomic only where the item
+can be hard-linked (a kept link on most POSIX file systems); a folder, and on WSL's drvfs a junction or a
+relative symlink, takes its best-effort fallback (a last `lexists` check, then `os.rename`), so something that
+appears in that last gap can still be replaced. An error before or during the swap
 (including Ctrl+C) rolls the part back exactly (`rolled_back`; `failed` when the rollback itself fails) and the
 next part goes on. A part present on disk that the safety zip does not hold is left alone. A journal entry that
 cannot be written stops the run (`RestoreStopped`, the reason naming the `.replaced` folder and the safety zip).

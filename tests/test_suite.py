@@ -261,6 +261,23 @@ class SuiteTest(unittest.TestCase):
         self.assertEqual(FakeApp.made, [])
         self.assertFalse(self.lock_path.exists())  # the lock taken first is released again
 
+    def test_lock_is_released_when_the_log_cannot_start(self):
+        with unittest.mock.patch("wowtools.suite.init_event_log",
+                                 side_effect=PermissionError(13, "Permission denied", str(self.log_dir))):
+            code, _, err = self.run_suite([])
+        self.assertEqual(code, 1)
+        self.assertIn("Could not start the log", err)
+        self.assertEqual(FakeApp.made, [])
+        self.assertFalse(self.lock_path.exists())  # the next start must not see "another copy may be running"
+
+    def test_lock_is_released_when_start_up_fails_after_the_log_started(self):
+        with unittest.mock.patch("wowtools.suite._migrate_renamed_folders", side_effect=RuntimeError("boom")), \
+                self.assertRaises(RuntimeError):
+            self.run_suite([])
+        self.assertEqual(FakeApp.made, [])
+        self.assertFalse(self.lock_path.exists())
+        self.assertEqual(events.get_event_log()._handles, {})
+
     def test_renames_wait_while_another_copy_holds_the_lock(self):
         self.lock_path.write_text(json.dumps({"pid": 1, "host": "pc", "started": "", "platform": "", "token": "x"}))
         (self.config_dir / "screenshots.cfg").write_text("[screenshots]\ncopy_mode = true\n", encoding="utf-8")
@@ -304,7 +321,7 @@ class AutoUpdateTest(unittest.TestCase):
     def test_deleted_cached_release_is_not_installed_and_is_cleared(self):
         with unittest.mock.patch("wowtools.core.updater.fetch_latest", return_value=None) as fetch, \
                 unittest.mock.patch("wowtools.suite.apply_update") as apply, capture_events():
-            self.assertFalse(_auto_update(self.cfg))
+            self.assertIsNone(_auto_update(self.cfg))
         fetch.assert_called_once()
         apply.assert_not_called()
         self.assertIsNone(Config(self.cfg.path).load().latest_seen_version)
@@ -314,8 +331,38 @@ class AutoUpdateTest(unittest.TestCase):
         with unittest.mock.patch("wowtools.core.updater.fetch_latest", return_value=fresh), \
                 unittest.mock.patch("wowtools.suite.apply_update", return_value="updated") as apply, \
                 capture_events(), redirect_stdout(io.StringIO()):
-            self.assertTrue(_auto_update(self.cfg))
+            self.assertEqual(_auto_update(self.cfg), 0)
         apply.assert_called_once_with(fresh, allow_unverified=False)
+
+    def test_an_os_error_while_applying_opens_the_menu(self):
+        fresh = ReleaseInfo.from_version("9.9.9")
+        err = io.StringIO()
+        with unittest.mock.patch("wowtools.core.updater.fetch_latest", return_value=fresh), \
+                unittest.mock.patch("wowtools.suite.apply_update", side_effect=PermissionError("access denied")), \
+                capture_events(), unittest.mock.patch("sys.stderr", err):
+            self.assertIsNone(_auto_update(self.cfg))
+        self.assertIn("Automatic update failed: access denied", err.getvalue())
+
+    def test_an_interrupted_update_says_so_and_stops(self):
+        fresh = ReleaseInfo.from_version("9.9.9")
+        err = io.StringIO()
+        with unittest.mock.patch("wowtools.core.updater.fetch_latest", return_value=fresh), \
+                unittest.mock.patch("wowtools.suite.apply_update", side_effect=KeyboardInterrupt), \
+                capture_events(), unittest.mock.patch("sys.stderr", err), self.assertRaises(KeyboardInterrupt):
+            _auto_update(self.cfg)
+        self.assertIn("Update stopped", err.getvalue())
+
+    def test_a_failed_rollback_exits_instead_of_opening_the_menu(self):
+        """A rollback that failed (or a second Ctrl+C during it) leaves a broken install: never open the menu on it."""
+        from wowtools.core.updater import RollbackFailed
+        fresh = ReleaseInfo.from_version("9.9.9")
+        err = io.StringIO()
+        with unittest.mock.patch("wowtools.core.updater.fetch_latest", return_value=fresh), \
+                unittest.mock.patch("wowtools.suite.apply_update",
+                                    side_effect=RollbackFailed("rollback also failed; saved in .update-backup/0.1.0")), \
+                capture_events(), unittest.mock.patch("sys.stderr", err):
+            self.assertEqual(_auto_update(self.cfg), 1)
+        self.assertIn(".update-backup/0.1.0", err.getvalue())
 
 
 class PersistUpdateStateTest(unittest.TestCase):

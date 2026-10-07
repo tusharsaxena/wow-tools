@@ -54,6 +54,11 @@ def journal_rows(journal: Path, folder: Path | None, note: str = "") -> list[tup
     return [("Journal folder", to_stored(journal.parent)), ("Run journal", f"{journal.name}{suffix}")]
 
 
+# A clean that finished but could not remove clean-in-progress.json (cleaner._clear_marker, clean.marker_left).
+MARKER_LEFT_TEXT = ("could not be removed (another program held it). This clean finished: the next start says an "
+                    "earlier clean did not finish; dismiss that (nothing is missing). Cleans are refused until then.")
+
+
 def _backup_folder(result: CleanResult) -> Path | None:
     zipped = result.backup_path or result.snapshot_path
     return zipped.parent.parent if zipped is not None else None
@@ -93,6 +98,8 @@ def summary_rows(result: CleanResult) -> list[tuple[str, str]]:
         ("Skipped", f"{len(result.skipped)} files (changed or missing since the scan)"),
         ("Failed", f"{len(result.failed)} files"),
     ]
+    if result.marker_left:
+        rows.append(("Crash marker", MARKER_LEFT_TEXT))
     if result.journal_path is not None:
         at = rows.index(("Post-clean check", check))
         rows[at:at] = journal_rows(result.journal_path, folder, UNDO_NOTE)

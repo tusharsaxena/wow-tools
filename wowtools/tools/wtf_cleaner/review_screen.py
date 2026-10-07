@@ -32,7 +32,8 @@ from wowtools.tools.wtf_cleaner.report import CRITERION_COLORS, CRITERION_SHORT,
 from wowtools.tools.wtf_cleaner.result_screen import ResultScreen, reasons_text
 from wowtools.tools.wtf_cleaner.rules import (CRITERIA, Proposal, ProposalItem, criterion_counts, evaluate,
                                              log_proposal_built, log_proposal_items)
-from wowtools.tools.wtf_cleaner.safety import SNAPSHOT_SUBDIR, Marker, clear_marker, read_marker, recovery_message
+from wowtools.tools.wtf_cleaner.safety import (MARKER_NAME, SNAPSHOT_SUBDIR, Marker, clear_marker, read_marker,
+                                               recovery_message)
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir, save_settings
 from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
 from wowtools.ui.branding import BottomBar
@@ -67,7 +68,8 @@ class CleanProgressScreen(ProgressScreen):
 
 class RecoveryScreen(ChoiceScreen):
     """An earlier clean did not finish: say where its WTF backup is. Never restores anything itself. Dismisses with
-    "dismissed" (the marker is cleared, the backup kept) or "remind"; Esc does nothing."""
+    "dismissed" (the marker is cleared, the backup kept), "dismiss_failed" (another program held the marker: it
+    stays, clean.marker_left is logged and the review shows a notice) or "remind"; Esc does nothing."""
 
     def __init__(self, marker: Marker, backup_dir: Path) -> None:
         super().__init__("An earlier clean did not finish", recovery_message(marker),
@@ -78,8 +80,12 @@ class RecoveryScreen(ChoiceScreen):
 
     def choose(self, choice: str) -> None:
         if choice == "recovery-dismiss":
-            clear_marker(self.backup_dir)  # the snapshot stays where it is
-            self.dismiss("dismissed")
+            if clear_marker(self.backup_dir):  # the snapshot stays where it is
+                self.dismiss("dismissed")
+                return
+            log_event("clean.marker_left", flavor=self.marker.flavor, stage="dismiss",
+                      path=str(self.backup_dir / MARKER_NAME))
+            self.dismiss("dismiss_failed")
         else:
             self.dismiss("remind")
 
@@ -197,6 +203,12 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
 
     def _recovery_chosen(self, choice: str | None) -> None:
         log_event("ui.selection", screen="recovery", control="recovery", value=choice or "remind")
+        if choice == "dismiss_failed":
+            backup_dir = resolve_backup_dir(self.settings, self.cfg.wow_path)
+            path = backup_dir / MARKER_NAME if backup_dir is not None else MARKER_NAME
+            self.notify(f"{path} could not be removed (another program holds it). Cleans are refused until it is "
+                        f"gone: delete it by hand, or dismiss the notice again at the next start.",
+                        title="Marker not removed", severity="warning", timeout=12)
 
     # --- scanning ------------------------------------------------------------------------------
     def action_rescan(self) -> None:

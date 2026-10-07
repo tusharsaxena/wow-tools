@@ -29,10 +29,10 @@ Back to [architecture](../architecture.md#tools).
                       → MultiApplyResult(dry_run, runs[FlavorRun(flavor, result: ApplyResult, error)], journal_path)
     undo_run(journal_path, wow_root, root, keep_snapshots, wow_check, progress, parallelism=1, on_flavor=None,
              on_flavor_done=None) → UndoResult(outcomes, snapshots)
-    recover(marker, root, journal_dir, keep_snapshots, wow_check, progress) → UndoResult
+    recover(marker, wow_root, root, journal_dir, keep_snapshots, wow_check, progress) → UndoResult
 
-Modules in `tools/ace3_profile_manager/` (all UI-free except `app.py`, `review_screen.py`, `tree_view.py`, `popups.py`,
-`blacklist_screen.py` and `result_screen.py`): `events`, `settings`, `help` (`HELP`, `GUIDE_URL`), `model`, `scanner`, `ops`, `verify`, `editor`, `multi`,
+Modules in `tools/ace3_profile_manager/` (all UI-free except `app.py`, `review_screen.py`, `staging_actions.py`,
+`blacklist_actions.py`, `tree_view.py`, `popups.py`, `blacklist_screen.py` and `result_screen.py`): `events`, `settings`, `help` (`HELP`, `GUIDE_URL`), `model`, `scanner`, `ops`, `verify`, `editor`, `multi`,
 `journal`, `undo` and `report` (labels, tags, confirm texts). The write pipeline is core's (`core/sv_apply.py`,
 `sv_journal.py`, `sv_undo.py`, `sv_verify.py`, `sv_report.py`): `editor`, `multi`, `journal` and `undo` are thin
 wrappers passing `SV_TOOL` (`events.py`: name `ace3-profile-manager`, prefix `ace`) and, for `editor`, the per-file
@@ -112,7 +112,9 @@ lock probe (`probe_lock`; any locked file refuses), whole-WTF snapshot (`core.sn
 per file: recheck, `atomic_write_bytes`, read back, journal `edited` entry. Any failure there (Ctrl+C included)
 puts back every file this run wrote, newest first, records `rolled_back` in the journal and raises `ApplyError`
 (its `result` keeps what was done; a file that could not be put back is `failed`, its detail naming the zip, and
-the marker then stays). Then the marker is cleared and snapshots pruned to `keep_snapshots`. Any refusal before the
+the marker then stays). Then the marker is cleared (`core/marker.clear_marker` tries again after 0.05, 0.1 and 0.2 s;
+a marker still there is `ApplyResult.marker_left`, `ace.marker_left`, and a "Crash marker" result row) and snapshots
+pruned to `keep_snapshots`. Any refusal before the
 writes is an `ApplyError` ending "Nothing was changed."; a flavor that stops ends the run (`ace.flavors_stopped`).
 `apply_flavors` is serial whatever `[general] parallelism` says: the flavors share the one crash marker (one pointer
 for the recovery screen) and the run stops at the first flavor that fails.
@@ -127,12 +129,14 @@ Code: `journal.py`, `undo.py`, on `core/sv_journal.py` and `core/sv_undo.py`. `<
     {"version": 1, "started": iso, "tool": "ace3-profile-manager", "kind": "apply", "flavors": [...], "root": stored, "suite_version": "..."}
     {"action": "edited", "flavor": "_retail_", "path": stored, "rel": "WTF/Account/...", "zip": stored, "sha_before": hex, "sha_after": hex, "size_before": n, "size_after": n, "changes": [...]}
     {"action": "rolled_back", "flavor": "_retail_", "rels": [...]}
+    {"action": "completed", "flavor": "_retail_", "zip": stored}
     {"finished": iso, "entries": n}
     {"undone": iso, "restored": n, "skipped": n}
 
 `read_profile_journal` drops `edited` entries a `rolled_back` line names. `latest_undoable` is the newest journal of
 the whole tool. `undo_run` refuses while WoW of a flavor the journal changed runs and when a file is locked
-(`UndoError`), snapshots each of those flavors, up to `parallelism` at once (`core/parallel.py` with
+(`UndoError`), snapshots each of those flavors that has an entry passing `safe_destination` (`undo_flavors`, the
+same list the popup's rows come from), up to `parallelism` at once (`core/parallel.py` with
 `stop_on_error`: every snapshot is its own zip of its own WTF folder; the first failure, in flavor order, is raised
 as "Nothing was changed" once the running ones ended, and a flavor not started by then never starts, so with 1 it
 stops where the serial loop did; the snapshots made by then are deleted, `ace.snapshot_discarded`, as they protect
@@ -141,10 +145,26 @@ nothing; `on_flavor` / `on_flavor_done` run in the snapshot's thread, the popup'
 worker's own thread, newest entry first: a file whose SHA-256 is `sha_after` gets
 its original bytes from the zip (checked against `sha_before`, written atomically: "restored"); any other file is
 "skipped: changed since"; the journal is marked undone unless nothing was restored and something failed.
-`recover(marker)` (the recovery popup's "Put the originals back") is guarded the same way and puts back only files
-still at the marker's `after` hash; a file at its original is left alone, any other is skipped. The files now at
-their original get a `rolled_back` line in the journal that holds their entries from the marker's zip
-(`journal.record_recovered`), so Undo never offers them again; its snapshot is pruned to `keep_snapshots`.
+`recover(marker)` (the recovery popup's "Put the originals back") first looks for a journal that records the
+marker's run as finished (spec R2): it holds a `completed` line for the marker's flavor and zip (Apply writes it once
+that flavor's write loop got through every file, before it removes the marker; never after a failure or Ctrl+C, so
+the run-level `finished` line, written either way, is not used) and an `edited` entry from the marker's zip for every
+file of the marker, except a file the run skipped as changed in its write loop, which counts when it is not at the marker's
+`after` hash. Such a run finished and only its marker was left (Apply logged `ace.marker_left`), so nothing is put
+back: the marker is removed, `ace.marker_stale` is logged and the result has `UndoResult.stale_marker` set; neither
+the flavor check nor the WoW-running and lock guards run, since no file is touched, and the run stays in its
+journal for Undo. Otherwise `recover` is guarded as Undo and puts back only files
+still at the marker's `after` hash, each resolved under the configured WoW folder (`wow_root`), never the marker's
+own `flavor_path` (a marker written on the other OS names a folder this one cannot open); a marker whose flavor is
+not a folder there is refused with "Nothing was changed." and kept; a file at its original is left alone, any other
+is skipped. The files now at their original get a `rolled_back` line in the journal that holds their entries from
+the marker's zip (`journal.record_recovered`), so Undo never offers them again; its snapshot is pruned to
+`keep_snapshots`. When removing the marker fails again (another program still holds it), the result has
+`marker_left` set and `ace.marker_stale` or `ace.recovery_done` is logged at warning with `marker_left`;
+`recovered_notice` then says the marker is still there and the review keeps it, so the next scan offers it again.
+"Leave as is" is `undo.leave(marker, root=)` (core `sv_undo.leave`): it removes the marker and logs
+`ace.recovery_done` `choice="leave"`; when the marker could not be removed it returns False, and the review keeps
+the marker and shows `leave_notice()`.
 
 ## Screens
 
@@ -154,7 +174,11 @@ their original get a `rolled_back` line in the journal that holds their entries 
 `ProfileSettingsScreen` (backup folder, a `#blacklist-summary` line and **Edit blacklist…**, which opens the
 `BlacklistScreen` and keeps its answer until Save; `validate_backup_dir` errors inline). `s` opens the shared WoW-folder settings, then this tool's (not while a `ProfileSettingsScreen` or a `BlacklistScreen` is on the stack: two Saves would overwrite each other).
 
-- `ProfileReviewScreen` (`review_screen.py`): `TreeFilter` and `ReviewBase`, `two_pane_css`. Left pane `#filters`, one control
+- `ProfileReviewScreen` (`review_screen.py`): `TreeFilter`, `SvRecoveryActions`, `RunActions` and `ReviewBase`,
+  `two_pane_css`, with two mixins of its own (F-007): `staging_actions.ProfileStagingActions` (Delete, Assign, Rename,
+  Copy, Leftovers, Only Default, Everyone → Default, the `m` menu and Discard: each picks its target, asks in a popup
+  and stages) and `blacklist_actions.ProfileBlacklistActions` (the `BlacklistAction` hooks, **Blacklist…**, `u` and
+  dropping a locked addon's pending changes and ticks). Left pane `#filters`, one control
   per row: the shared `RiskBanner` (D37), the View pair under a "View" heading (By addon / By character), the Show boxes under a "Show" heading, the
   shared `FilterBar` (its box id `#search`, `FILTER_SELECTOR`), the `#pending` line (`report.pending_text`, "N pending changes" or `NO_PENDING`) and the
   action row **Apply** (destructive), **Dry run**, **Rescan**, **Undo last change** (revert). Right:
@@ -202,9 +226,11 @@ their original get a `rolled_back` line in the journal that holds their entries 
   in red; Yes red for Apply and Undo, cyan for a dry run).
 - `ProfileProgressScreen(title, dry_run=, first_stage=, flavors=)` (ids `ace-*`, `report.STAGE_TITLES`; Apply feeds `report_unit`, a row per flavor in turn) and `ProfileRecoveryScreen` (the shared `UnfinishedRunScreen`: Put the originals
   back / Leave as is; Esc leaves the marker for the next scan). The review's apply, undo and recovery runs go through
-  the shared `RunActions` (`ui/review.py`).
+  the shared `RunActions` (`ui/review.py`); the recovery flow itself (offer, Leave as is, Put the originals back, the
+  notice) is the shared `SvRecoveryActions`, the screen supplying its hooks (`recovery_screen` is this popup,
+  `recovery_done` clears `_stale` and rescans, which rebuilds the staging).
 - `ProfileResultScreen` (`result_screen.py`): the shared `ResultScreen` built from rows; `#result-summary` (`apply_summary_rows` or
-  `undo_summary_rows`: zips and the journal are named inside the backup folder, `report.in_backup_folder`, which
+  `undo_summary_rows`: zips and the journal are named inside the backup folder, `sv_report.in_backup_folder`, which
   has a "Backup folder" row of its own) above `#result-detail` (`DETAIL_COLUMNS` or `UNDO_COLUMNS`); Rescan, Other flavor,
   Tools, Quit (keys `r` `f` `t` `q` on the buttons), plus a focused **Back to review** (Esc) after a dry run. After a real Apply or Undo the
   staging is dropped and the review rescans when shown again.

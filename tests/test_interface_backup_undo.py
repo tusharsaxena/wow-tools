@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from tests.fixtures import build_interface_tree, build_wow_tree
 from wowtools.core.events import capture_events
+from wowtools.core.fsutil import read_link
 from wowtools.core.install import WowInstall
 from wowtools.core.paths import to_stored
 from wowtools.tools.interface_backup import undo as undo_module
@@ -171,7 +172,7 @@ class UndoTest(unittest.TestCase):
         self.assertTrue(undone.ok)
         self.assertEqual([p.kind for p in undone.parts], ["restored"])
         self.assertTrue(os.path.islink(link))
-        self.assertEqual(os.readlink(link), os.fspath(repo))
+        self.assertEqual(read_link(link), (os.fspath(repo), False))  # not os.readlink: \\?\ prefix on Windows
         self.assertEqual((link / "dev.lua").read_text(encoding="utf-8"), "dev")
 
     def test_link_that_cannot_be_made_again_fails_the_part(self):

@@ -18,7 +18,8 @@ from typing import NoReturn
 from wowtools import __version__
 from wowtools.core.backup import MANIFEST_NAME, BackupError, verify_backup
 from wowtools.core.events import log_event
-from wowtools.core.fsutil import is_real_dir, read_link, remove_quietly, remove_tree_no_follow, safe_progress
+from wowtools.core.fsutil import (is_real_dir, read_link, remove_quietly, remove_tree_no_follow, rename_no_replace,
+                                  safe_progress)
 from wowtools.core.install import Flavor
 from wowtools.core.journal import JournalWriter, list_journals, new_journal_path, prune_journals
 from wowtools.core.paths import is_wsl, to_stored
@@ -388,8 +389,8 @@ def _move_links(live: Path, staging: Path, keep_links: list[str], moved: list[st
 
 
 def replace_part(zf: zipfile.ZipFile, files: dict[str, tuple[int, float]], flavor_path: Path, part: str,
-                 keep_links: list[str], *, progress: Callable[..., None] | None = None, rename: Rename = os.rename,
-                 on_swapped: Callable[[bool], None] | None = None) -> str | None:
+                 keep_links: list[str], *, progress: Callable[..., None] | None = None,
+                 rename: Rename = rename_no_replace, on_swapped: Callable[[bool], None] | None = None) -> str | None:
     """Swap <flavor>/<part> for the zip's copy: extract to <part>.restoring, move the links to keep into it, rename
     <part> to <part>.replaced and <part>.restoring to <part>, call on_swapped(existed) (the journal entry; existed:
     the part was there before), then delete <part>.replaced (never through a link). Returns why the old copy could
@@ -492,7 +493,7 @@ def _check_parts(scan: FlavorScan, parts: tuple[str, ...]) -> None:
 
 
 def restore(plan: RestorePlan, *, root: Path, journal_dir: Path, keep_journals: int, now: datetime | None = None,
-            progress: Callable[..., None] | None = None, rename: Rename = os.rename) -> RestoreResult:
+            progress: Callable[..., None] | None = None, rename: Rename = rename_no_replace) -> RestoreResult:
     """Restore the plan's parts: open the journal, verify the backup, write and verify a safety backup of the parts
     as they are now, then replace each part (one that fails is rolled back and the next one goes on), then prune
     journals and safety zips. Stages: verify, safety, safety_verify, extract, swap, cleanup. Raises RestoreError

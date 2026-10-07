@@ -5,8 +5,9 @@ Per flavor (apply_flavor): refuse while an earlier Apply's crash marker is there
 every path, re-read each file and check it is still what the scan saw (SHA-256), compile and verify every edit in
 memory (the tool's callbacks), then (real runs only) open the journal, recover lock-probe leftovers, refuse locked
 files, take the whole-WTF snapshot, zip the original bytes of every file to change, write the crash marker, and
-write each file atomically (re-read and compared), journalling each one. Any failure while writing puts the files
-already written back from their original bytes, then the run stops. A dry run stops after the verify step and
+write each file atomically (re-read and compared), journalling each one, then journal the flavor as completed and
+remove the marker. Any failure while writing puts the files already written back from their original bytes, then
+the run stops (no completed record). A dry run stops after the verify step and
 writes nothing at all.
 
 Over several flavors (apply_flavors): one journal for the whole run; the flavors are applied one after another,
@@ -31,6 +32,7 @@ from wowtools.core.events import log_event
 from wowtools.core.fsutil import atomic_write_bytes, free_name, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.core.journal import new_journal_path, now_iso
+from wowtools.core.paths import to_native
 from wowtools.core.snapshot import prune_snapshots, take_snapshot
 from wowtools.core.sv_events import SvTool
 from wowtools.core.sv_journal import EditJournal, referenced_zips
@@ -137,6 +139,7 @@ class ApplyResult(_ByStatus):
     snapshot: Path | None = None
     backup_zip: Path | None = None
     pruned: list[Path] = field(default_factory=list)
+    marker_left: bool = False  # the run finished but its crash marker could not be removed
 
 
 @dataclass
@@ -165,14 +168,15 @@ def read_marker(root: Path | None) -> Marker | None:
         if not all(isinstance(d, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in d.items())
                    for d in (files, after)):
             return None
-        return Marker(str(data["flavor"]), Path(data["flavor_path"]), Path(data["zip"]), dict(files),
+        return Marker(str(data["flavor"]), to_native(data["flavor_path"]), to_native(data["zip"]), dict(files),
                       str(data["started"]), int(data["pid"]), str(data["suite_version"]), dict(after))
     except Exception:  # noqa: BLE001 - an unreadable marker is no usable marker
         return None
 
 
-def clear_marker(root: Path) -> None:
-    core_marker.clear_marker(root, MARKER_NAME)
+def clear_marker(root: Path) -> bool:
+    """Remove the crash marker; False when it is still there after the retries (core/marker.clear_marker)."""
+    return core_marker.clear_marker(root, MARKER_NAME)
 
 
 def edited_zip_path(root: Path, flavor_short: str, account: str | None, now: datetime) -> Path:
@@ -329,7 +333,14 @@ def _apply(tool: SvTool, result: ApplyResult, units: Sequence[tuple[SvFile, Any]
             current_file = None
     except BaseException as exc:  # noqa: BLE001 - roll back on anything (even Ctrl+C), then re-raise
         _roll_back(tool, exc, written, current_file, result, journal, root, flavor)
-    clear_marker(root)
+    if result.edited:
+        try:  # before the marker goes: a marker left from here on belongs to a finished flavor (recover's guard)
+            journal.add_completed(flavor=flavor.folder, zip_path=result.backup_zip)
+        except OSError:
+            pass  # recovery then treats the flavor as unfinished and puts back what is still at its after
+    if not clear_marker(root):
+        result.marker_left = True
+        log_event(tool.event("marker_left"), flavor=flavor.folder, path=str(root / MARKER_NAME))
     result.pruned = prune_snapshots(root / SNAPSHOT_SUBDIR, SNAPSHOT_PREFIX, flavor.short_name, keep_snapshots)
     if result.pruned:
         log_event(tool.event("snapshots_pruned"), flavor=flavor.folder, removed=[p.name for p in result.pruned])
@@ -409,6 +420,10 @@ class MultiApplyResult(_ByStatus):
     @property
     def outcomes(self) -> list[FileOutcome]:
         return [o for r in self.runs if r.result is not None for o in r.result.outcomes]
+
+    @property
+    def marker_left(self) -> bool:
+        return any(r.result is not None and r.result.marker_left for r in self.runs)
 
     @property
     def stopped(self) -> FlavorRun | None:

@@ -10,27 +10,28 @@ from __future__ import annotations
 
 import hashlib
 import zipfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from wowtools.core.backup import BackupError
 from wowtools.core.events import log_event
 from wowtools.core.fsutil import atomic_write_bytes, safe_progress
 from wowtools.core.install import Flavor
-from wowtools.core.journal import mark_undone
+from wowtools.core.journal import list_journals, mark_undone
 from wowtools.core.parallel import run_units
+from wowtools.core.paths import to_stored
 from wowtools.core.snapshot import prune_snapshots, take_snapshot
 from wowtools.core.sv_apply import (EDITED_SUBDIR, SNAPSHOT_PREFIX, SNAPSHOT_SUBDIR, Marker, UndoError, WowRunning,
                                     clear_marker, refuse_running)
 from wowtools.core.sv_events import SvTool
-from wowtools.core.sv_journal import read_edit_journal, record_recovered
+from wowtools.core.sv_journal import completed_runs, read_edit_journal, record_recovered
 from wowtools.core.svfiles import find_locked, locked_message
 from wowtools.core.undo import FAILED, RESTORED, SKIPPED, UndoResultBase, safe_destination
 
-__all__ = ["CHANGED_SINCE", "UndoError", "UndoOutcome", "UndoResult", "WowRunning", "destination", "recover",
-           "undo_run"]
+__all__ = ["CHANGED_SINCE", "UndoError", "UndoOutcome", "UndoResult", "WowRunning", "destination", "leave",
+           "recover", "undo_flavors", "undo_run"]
 
 CHANGED_SINCE = "changed since the change was made (WoW may have saved it); left as it is"
 
@@ -49,11 +50,20 @@ class UndoResult(UndoResultBase):
     outcomes: list[UndoOutcome] = field(default_factory=list)
     journal_path: Path | None = None
     snapshots: list[Path] = field(default_factory=list)
+    stale_marker: bool = False  # recover(): the run had finished; nothing was put back, only its marker is removed
+    marker_left: bool = False  # recover(): the crash marker could not be removed (another program held it)
 
 
 def destination(wow_root: Path, flavor: str, rel: str) -> Path | None:
     """<WoW>/<flavor>/<rel> when rel is WTF/Account/.../SavedVariables/<file>; None for anything else."""
     return safe_destination(wow_root, flavor, rel, prefix=("WTF", "Account"), min_parts=5, parent="SavedVariables")
+
+
+def undo_flavors(wow_root: Path, entries: Iterable[dict]) -> list[Flavor]:
+    """The flavors Undo backs up, sorted: only those with an entry whose destination passed safe_destination, so a
+    crafted flavor ("../x") is never zipped or pruned (STD-5.25). The Undo popup builds its rows from the same list."""
+    return [Flavor(folder, wow_root / folder)
+            for folder in sorted({e["flavor"] for e in entries if destination(wow_root, e["flavor"], e["rel"])})]
 
 
 def _sha(data: bytes) -> str:
@@ -72,7 +82,7 @@ def _moved_zip(zip_path: Path, root: Path) -> Path:
     tool's folder was moved (renamed) after the journal or marker recorded the path."""
     if zip_path.exists():
         return zip_path
-    moved = root / EDITED_SUBDIR / zip_path.name
+    moved = root / EDITED_SUBDIR / PureWindowsPath(zip_path).name  # either separator: a path from the other OS
     return moved if moved.exists() else zip_path
 
 
@@ -162,7 +172,7 @@ def undo_run(tool: SvTool, journal_path: Path, *, wow_root: Path, root: Path, ke
     targets = [(e, destination(wow_root, e["flavor"], e["rel"])) for e in entries]
     _refuse_locked(tool, [(entry["rel"], dest) for entry, dest in targets], "undo")
     result = UndoResult(journal_path=journal_path)
-    flavors = [Flavor(folder, wow_root / folder) for folder in sorted({e["flavor"] for e in entries})]
+    flavors = undo_flavors(wow_root, entries)
     result.snapshots.extend(_snapshots(tool, flavors, root, now, report, parallelism, on_flavor, on_flavor_done))
     skipped = tool.event("file_skipped")
     for index, (entry, dest) in enumerate(targets, 1):
@@ -198,7 +208,50 @@ def undo_run(tool: SvTool, journal_path: Path, *, wow_root: Path, root: Path, ke
     return result
 
 
-def recover(tool: SvTool, marker: Marker, *, root: Path, journal_dir: Path | None = None,
+def _marker_flavor(marker: Marker, wow_root: Path) -> Flavor:
+    """The marker's flavor as a folder of wow_root. UndoError (nothing changed) when its name is not one plain
+    folder name, or that folder is not in wow_root (another WoW folder is configured now)."""
+    if destination(wow_root, marker.flavor, "WTF/Account/x/SavedVariables/x.lua") is None:
+        raise UndoError("The unfinished change names a game version folder that is not valid. Nothing was changed.")
+    flavor = Flavor(marker.flavor, wow_root / marker.flavor)
+    if not flavor.path.is_dir():
+        raise UndoError(f"{marker.flavor} is not in the WoW folder {to_stored(wow_root)}. Nothing was changed.")
+    return flavor
+
+
+def _never_written(wow_root: Path, marker: Marker, rels: set[str]) -> bool:
+    """Every file of rels is in the WTF folder and not at what the run would have written (marker.after): a run
+    that finished skipped it (it changed between the check and the write), so there is nothing to put back."""
+    for rel in rels:
+        dest = destination(wow_root, marker.flavor, rel)
+        if dest is None or _current_sha(dest) == marker.after.get(rel):
+            return False
+    return True
+
+
+def _finished_journal(journal_dir: Path | None, marker: Marker, wow_root: Path) -> Path | None:
+    """The journal showing the marker's flavor finished: it holds a completed record for the marker's flavor and
+    zip (written only when that flavor's write loop got through every file, never after a failure or Ctrl+C, so
+    the run-level "finished" line, written either way, proves nothing) and an edited entry (not rolled back) from
+    that zip for at least one file of the marker, and every file of the marker without one is not at what the run
+    would have written (the run skipped it, _never_written). None when there is no such journal (or one cannot be
+    read: the run is then treated as unfinished, as before)."""
+    wanted, zip_name = set(marker.files), PureWindowsPath(marker.zip).name
+    for path in list_journals(journal_dir):
+        try:
+            if (marker.flavor, zip_name) not in completed_runs(path):
+                continue
+            journal = read_edit_journal(path)
+        except (OSError, ValueError, TypeError):
+            continue
+        edited = {e["rel"] for e in journal.entries
+                  if e["flavor"] == marker.flavor and PureWindowsPath(e["zip"]).name == zip_name}
+        if edited and _never_written(wow_root, marker, wanted - edited):
+            return path
+    return None
+
+
+def recover(tool: SvTool, marker: Marker, *, wow_root: Path, root: Path, journal_dir: Path | None = None,
             keep_snapshots: int | None = None, wow_check: Callable[[], list[str] | None] | None = None,
             now: datetime | None = None, progress: Callable[[str, int, int, str], None] | None = None) -> UndoResult:
     """After an Apply that did not finish: put back every file of the marker that is still what the run wrote.
@@ -206,14 +259,34 @@ def recover(tool: SvTool, marker: Marker, *, root: Path, journal_dir: Path | Non
     or WoW saved it since) is skipped and never overwritten. As Undo: refused while that flavor's WoW runs or a
     file is locked, and the flavor's WTF folder is backed up first (when there is something to put back), then
     pruned to keep_snapshots. The files now at their original get a rolled_back entry in the run's journal (in
-    journal_dir), so Undo does not offer them again."""
+    journal_dir), so Undo does not offer them again.
+
+    Every file resolves under wow_root, the configured WoW folder, never under the marker's own flavor_path: a
+    marker written on the other OS (Windows or WSL) names a folder this process cannot open, and a hand-edited one
+    could name any folder (STD-4.4, STD-5.25). A marker whose flavor is not a folder in wow_root is refused
+    (UndoError) and kept, so nothing is cleared for files that were never looked at.
+
+    A run that did finish leaves a marker only when removing it failed (Apply logs marker_left). When a journal in
+    journal_dir records the marker's flavor as completed and holds an edited entry from the marker's zip for every
+    file of the marker (a file the run skipped as changed counts when it is not at what the run would have
+    written), nothing is put back: only the marker is removed (marker_stale) and the result has stale_marker set. The run stays in the
+    journal, so Undo still offers it (spec R2).
+
+    Removing the marker can fail again (another program still holds it): the result then has marker_left set, and
+    marker_stale or recovery_done is logged at warning with marker_left, so nothing claims it was removed."""
     report = safe_progress(progress)
+    finished = _finished_journal(journal_dir, marker, wow_root)
+    if finished is not None:
+        left = not clear_marker(root)
+        log_event(tool.event("marker_stale"), flavor=marker.flavor, journal=finished.name,
+                  zip=PureWindowsPath(marker.zip).name, marker_left=left, level="warning" if left else None)
+        return UndoResult(stale_marker=True, marker_left=left)
+    flavor = _marker_flavor(marker, wow_root)
     refuse_running(tool, wow_check, "recover", "files")
-    targets = {rel: destination(marker.flavor_path.parent, marker.flavor, rel) for rel in marker.files}
+    targets = {rel: destination(wow_root, marker.flavor, rel) for rel in marker.files}
     _refuse_locked(tool, sorted(targets.items()), "recover")
     result = UndoResult()
     original: list[str] = []
-    flavor = Flavor(marker.flavor, marker.flavor_path)
     if any(dest is not None and _current_sha(dest) == marker.after.get(rel) for rel, dest in targets.items()):
         result.snapshots.append(_snapshot(tool, flavor, root, now, report, "recovery"))
     skipped = tool.event("file_skipped")
@@ -243,7 +316,18 @@ def recover(tool: SvTool, marker: Marker, *, root: Path, journal_dir: Path | Non
     if result.snapshots:
         _prune(tool, [flavor], root, keep_snapshots)
     if not result.failed:
-        clear_marker(root)
+        result.marker_left = not clear_marker(root)
     log_event(tool.event("recovery_done"), choice="put_back", restored=len(result.restored),
-              skipped=len(result.skipped), failed=len(result.failed))
+              skipped=len(result.skipped), failed=len(result.failed), marker_left=result.marker_left,
+              level="warning" if result.marker_left else None)
     return result
+
+
+def leave(tool: SvTool, marker: Marker, *, root: Path) -> bool:
+    """Leave as is: the files stay as they are now, the originals zip and the WTF backup are kept; only the marker
+    goes, so the next Apply is no longer refused. False when the marker could not be removed (another program held
+    it): recovery_done is then logged at warning with marker_left, and the next scan offers the run again."""
+    left = not clear_marker(root)
+    log_event(tool.event("recovery_done"), choice="leave", flavor=marker.flavor, zip=str(marker.zip),
+              marker_left=left, level="warning" if left else None)
+    return not left

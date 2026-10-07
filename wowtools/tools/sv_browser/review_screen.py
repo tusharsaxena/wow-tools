@@ -28,41 +28,37 @@ from textual.widgets.tree import TreeNode
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor
-from wowtools.core.luasv import encode_value
 from wowtools.core.process import wow_check_for
 from wowtools.core.sv_apply import Marker
 from wowtools.core.svfiles import SvFile
 from wowtools.core.text import human_size, plural
-from wowtools.tools.sv_browser.bulk import (BulkResult, new_value, read_tables, stage_renames, stage_values,
-                                            table_key)
+from wowtools.tools.sv_browser.edit_actions import SvEditActions
 from wowtools.tools.sv_browser.editor import ApplyError, MultiApplyResult, apply_plan
 from wowtools.tools.sv_browser.events import SV_TOOL
 from wowtools.tools.sv_browser.journal import latest_undoable, read_journal, resolve_journal_dir
 from wowtools.tools.sv_browser.model import ERROR, MORE, Node, SvDocument, key_text, node_text, scalar_text
-from wowtools.tools.sv_browser.ops import (FieldEdit, Plan, Staging, key_input, key_problem, parse_key, path_text,
-                                           typed_path, value_problem)
-from wowtools.tools.sv_browser.popups import (NOT_TYPABLE, EditValueScreen, RenameKeyScreen, SearchScreen,
-                                              delete_confirm)
-from wowtools.tools.sv_browser.report import (FILE_COLUMNS, STAGE_TITLES, UNDO_COLUMNS, apply_confirm, apply_groups,
-                                              file_rows, recovery_text, summary_rows, undo_confirm, undo_detail_rows,
-                                              undo_summary_rows)
+from wowtools.tools.sv_browser.ops import FieldEdit, Plan, Staging, path_text, typed_path
+from wowtools.tools.sv_browser.popups import SearchProgressScreen, SearchScreen
+from wowtools.tools.sv_browser.report import (BROWSE, FILE_COLUMNS, RESULTS, STAGE_TITLES, UNDO_COLUMNS, apply_confirm,
+                                              apply_groups, file_rows, recovery_text, summary_rows, undo_confirm,
+                                              undo_detail_rows, undo_summary_rows)
 from wowtools.tools.sv_browser.result_screen import TITLE, SvResultScreen
 from wowtools.tools.sv_browser.scanner import FlavorFiles, ScanResult, scan_flavors
-from wowtools.tools.sv_browser.search import (REPLACE_BOOLEAN, REPLACE_NUMBER, REPLACE_STRING, Hit, SearchResult,
-                                              SearchSpec, run_search)
+from wowtools.tools.sv_browser.search import Hit, SearchResult, SearchSpec, run_search
 from wowtools.tools.sv_browser.settings import load_settings, resolve_root
-from wowtools.tools.sv_browser.undo import UndoError, UndoResult, leave, pending_recovery, recover, undo_run
+from wowtools.tools.sv_browser.undo import (UndoError, UndoResult, leave, pending_recovery, recover, undo_flavors,
+                                            undo_run)
 from wowtools.ui.branding import BottomBar
-from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
-                                 ProgressScreen, UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
-from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, TickModel, WowCheck, lift_toasts
+from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
+                                 UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
+from wowtools.ui.review import (ActionBar, BarTree, ReviewBase, RunActions, SvRecoveryActions, TickModel, WowCheck,
+                                lift_toasts)
 from wowtools.ui.tree_filter import (FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TextFilter,
                                      TreeFilter)
 from wowtools.ui.warnings_view import (WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost, scan_warning_items,
                                        where_text)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, RiskBanner, action_button
 
-BROWSE, RESULTS = "Browse", "Results"  # the tree's two views (v): the files, and the hits of the last search
 READING = "Reading…"
 NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
 # Space / a / n where nothing can be ticked (they stay keys, as on every review): why not.
@@ -72,8 +68,6 @@ RESULT_GROUPS = ("r-flavor", "r-account", "r-owner", "r-file")
 GROUP_KINDS = ("root", "flavor", "account", "realm", "owner", *RESULT_GROUPS)  # what x opens (no file is read)
 OPEN_KINDS = ("root", "flavor", "account", "owner", *RESULT_GROUPS)  # open when first shown (realms, files closed)
 NOTHING_FOUND = "Nothing found."
-READ_TABLES = "Reading the tables of the keys to rename"
-READ_UNSTAGE_TABLE = "Reading the table of the key to unstage"
 # The bar under the tree, acting on the highlighted key: (id, label, kind of action, action, key).
 TREE_ACTIONS = (
     ("act-edit", "Edit value", "overwrite", "edit_value", "e"),
@@ -84,13 +78,6 @@ TREE_ACTIONS = (
 )
 # The marks of a staged key (D12), after its label: its new name, its new value, or deleted.
 RENAME_MARK, VALUE_MARK, DELETE_MARK = "→", "✎", "✗ deleted"
-
-
-class SearchProgressScreen(ProgressScreen):
-    """Shown while a search runs: one row, the files searched of those in scope, and the file last searched."""
-
-    ID_PREFIX = "svb-search"
-    STAGE_TITLES: ClassVar[dict[str, str]] = {"search": "Searching", "tables": "Reading"}
 
 
 class RunProgressScreen(ProgressScreen):
@@ -139,7 +126,8 @@ def ident(data) -> Hashable:
     return kind, folder, account, data[3].label  # owner
 
 
-class SvReviewScreen(WarningsHost, TreeFilter, RunActions, ReviewBase, Screen[str]):
+class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions, RunActions, ReviewBase,
+                     Screen[str]):
     """The SavedVariables files of the chosen flavors. `wow_check` (tests inject one) stands for the running-WoW
     check of every flavor."""
 
@@ -147,6 +135,7 @@ class SvReviewScreen(WarningsHost, TreeFilter, RunActions, ReviewBase, Screen[st
     WARNINGS_NOUN = "warning"
 
     SV_TOOL = SV_TOOL  # RunActions: svb.wow_running, the svb.search / apply / undo / recover error contexts
+    RUN_PROGRESS = RunProgressScreen  # SvRecoveryActions: the progress popup of a recovery
     TREE_SELECTOR = "#browse"
     LOG_SCREEN = "svb_review"
     HIDDEN_NOUN = "result"
@@ -897,7 +886,7 @@ class SvReviewScreen(WarningsHost, TreeFilter, RunActions, ReviewBase, Screen[st
         """The ticked hits, in the order the search found them (what a bulk edit acts on, D39)."""
         return [self.hits[i] for i in sorted(self.ticked)] if self.hits else []
 
-    # --- actions ----------------------------------------------------------------------------------
+    # --- search and the views (the key edits are SvEditActions, edit_actions.py) ---------------------
     def action_search(self) -> None:
         """S: the search popup (a new search replaces the results and their ticks; staged edits stay)."""
         if not self.idle or self.scan is None or self.wow_folder_changed():
@@ -942,191 +931,6 @@ class SvReviewScreen(WarningsHost, TreeFilter, RunActions, ReviewBase, Screen[st
         found = plural(len(result.hits), "hit")
         self.notify(f"{found} in {plural(result.files_with_hits, 'file')} ({result.seconds:g} s)."
                     if result.hits else NOTHING_FOUND, title="Search")
-
-    def _key_target(self, problem: Callable[[SvDocument, Node], str | None]) -> tuple[SvDocument, Node] | None:
-        """The highlighted key, when the action may act on it; else None, saying why when the staging refuses it
-        (inside a deleted table, ...)."""
-        doc, node = self.highlighted()
-        if not self.idle or doc is None or node is None:
-            return None
-        why = problem(doc, node)
-        if why is not None:
-            self.notify(why, severity="warning")
-            return None
-        return doc, node
-
-    def _where_key(self, doc: SvDocument, node: Node) -> str:
-        return f"{doc.file.path.name} › {path_text(node.path)}"
-
-    def _staged(self, result, what: str) -> None:
-        """After a staging call: the marks and the pending line, or the refusal."""
-        if not result.ok:
-            self.notify(result.message, title=f"{what} refused", severity="error")
-            return
-        if result.dropped:
-            self.notify(f"{plural(result.dropped, 'edit')} staged inside it dropped.")
-        self._refresh_labels()
-
-    def action_edit_value(self) -> None:
-        if self.view == RESULTS:
-            self._bulk_edit_value()
-            return
-        target = self._key_target(lambda doc, node: self.staging.set_problem(doc, node, ""))
-        if target is None:
-            return
-        doc, node = target
-        old = node.value.value
-        raw = doc.data[node.value.start:node.value.end]
-        # the popup starts from the value staged on the key, if any (as Rename starts from a staged name); Now: is
-        # the file's
-        edit = self.staging.edit_for(doc, node)
-        start, start_raw = (edit.value, encode_value(edit.value)) if edit is not None and edit.set_value else (old, raw)
-        kind, text, note = REPLACE_STRING, "", ""
-        if isinstance(start, bool):
-            kind = REPLACE_BOOLEAN
-        elif isinstance(start, str):
-            if any(c < " " or c == "\x7f" or "\udc80" <= c <= "\udcff" for c in start):
-                note = NOT_TYPABLE
-            else:
-                text = start
-        elif start is not None:
-            kind, text = REPLACE_NUMBER, start_raw.decode("ascii", "replace")
-        popup = EditValueScreen(self._where_key(doc, node), scalar_text(old, raw), kind, text, start is True,
-                                check=lambda value: self.staging.set_problem(doc, node, value), note=note)
-
-        def done(value) -> None:
-            if value is not None:
-                self._staged(self.staging.set_value(doc, node, value), "Edit value")
-        self.app.push_screen(popup, done)
-
-    def action_rename_key(self) -> None:
-        if self.view == RESULTS:
-            self._bulk_rename()
-            return
-        target = self._key_target(lambda doc, node: self.staging.rename_problem(doc, node, node.key))
-        if target is None:
-            return
-        doc, node = target
-        edit = self.staging.edit_for(doc, node)
-        current = edit.new_key if edit is not None and edit.rename else node.key
-
-        def done(text) -> None:
-            if text is not None:
-                self._staged(self.staging.rename(doc, node, parse_key(text)), "Rename key")
-        self.app.push_screen(RenameKeyScreen(self._where_key(doc, node), key_input(current),
-                                             lambda key: self.staging.rename_problem(doc, node, key)), done)
-
-    def action_delete_key(self) -> None:
-        if self.view == RESULTS:
-            return  # Delete key stays single-key, in Browse (D39)
-        target = self._key_target(self.staging.delete_problem)
-        if target is None:
-            return
-        doc, node = target
-        popup = delete_confirm(self._where_key(doc, node), count=node.count, table=node.is_table,
-                               positional=node.positional, staged_inside=self.staging.staged_inside(doc, node))
-
-        def done(ok: bool | None) -> None:
-            if ok:
-                self._staged(self.staging.delete(doc, node), "Delete key")
-        self.app.push_screen(popup, done)
-
-    def action_unstage(self) -> None:
-        """Backspace: drop what is staged on the highlighted key (or hit, in Results)."""
-        if self.view == RESULTS:
-            hit = self.highlighted_hit()
-            edit = self.staging.hit_edit(hit) if hit is not None and self.idle else None
-            if edit is None:
-                return
-            if not edit.rename:
-                self._staged(self.staging.unstage_hit(hit), "Unstage")
-                return
-            # a rename needs its table (no key left twice): read in a worker, as the bulk rename reads it
-            self._read_tables_then([hit], lambda tables: self._staged(
-                self.staging.unstage_hit(hit, tables.get(table_key(hit))), "Unstage"), name="unstage_hit", title=READ_UNSTAGE_TABLE)
-            return
-        doc, node = self.highlighted()
-        if not self.idle or doc is None or node is None or self.staging.edit_for(doc, node) is None:
-            return
-        self._staged(self.staging.unstage(doc, node), "Unstage")
-
-    # --- bulk edits on the results (D39) ------------------------------------------------------------
-    def _loaded_shas(self) -> dict[Path, str]:
-        """The SHA-256 of each file opened in Browse (a hit read from other bytes is left out)."""
-        return {path: doc.sha256 for path, doc in self.docs.items() if doc.sha256}
-
-    def _bulk_where(self, hits: list[Hit]) -> str:
-        if len(hits) == 1:
-            return f"{hits[0].file.path.name} › {path_text(hits[0].path)}"
-        files = len({h.file.path for h in hits})
-        return f"{plural(len(hits), 'ticked result')} in {plural(files, 'file')}"
-
-    def _bulk_staged(self, result: BulkResult, what: str) -> None:
-        """After a bulk edit: the marks, the pending line and the notice (what was left out and why)."""
-        self._refresh_labels()
-        self.notify(result.text(), title=what, severity="warning" if result.left else "information",
-                    timeout=15 if result.left else 5)
-
-    def _bulk_edit_value(self) -> None:
-        """Edit value on the ticked (else highlighted) hits: one popup, one staged set per hit. After a value
-        Contains search it may replace only the matched text (the default)."""
-        hits = self.bulk_targets()
-        if not self.idle or not hits:
-            return
-        spec = self.search_result.spec if self.search_result is not None else None
-        matched = spec is not None and spec.contains_value
-        olds = {(type(h.old), h.old_bytes) for h in hits}
-        first = hits[0]
-        kind, text, flag = REPLACE_STRING, "", False
-        if len(olds) == 1 and not matched:  # one value on every hit: start from it
-            if isinstance(first.old, bool):
-                kind, flag = REPLACE_BOOLEAN, first.old
-            elif isinstance(first.old, str):
-                text = first.old if not any(c < " " or c == "\x7f" or "\udc80" <= c <= "\udcff"
-                                            for c in first.old) else ""
-            elif first.old is not None:
-                kind, text = REPLACE_NUMBER, first.old_bytes.decode("ascii", "replace")
-        title = "Edit value" if len(hits) == 1 else f"Edit {plural(len(hits), 'value')}"
-        current = scalar_text(first.old, first.old_bytes) if len(hits) == 1 else ""
-        popup = EditValueScreen(self._bulk_where(hits), current, kind, text, flag, check=value_problem, title=title,
-                                matched=matched)
-
-        def done(value) -> None:
-            if value is None:
-                return
-            mode = popup.mode
-            result = stage_values(self.staging, hits, lambda hit: new_value(spec, mode, value, hit),
-                                  self._loaded_shas())
-            self._bulk_staged(result, title)
-        self.app.push_screen(popup, done)
-
-    def _bulk_rename(self) -> None:
-        """Rename key on the ticked (else highlighted) hits: one popup, then the keys' tables are read in a worker
-        (the duplicate check) and one rename per hit is staged."""
-        hits = self.bulk_targets()
-        if not self.idle or not hits:
-            return
-        keys = {key_input(h.key) for h in hits}
-        initial = keys.pop() if len(keys) == 1 else ""
-        title = "Rename key" if len(hits) == 1 else f"Rename {plural(len(hits), 'key')}"
-
-        def done(text) -> None:
-            if text is not None:
-                shas = self._loaded_shas()
-                self._read_tables_then(hits, lambda tables: self._bulk_staged(
-                    stage_renames(self.staging, hits, parse_key(text), tables, shas), title), name="bulk_rename")
-        self.app.push_screen(RenameKeyScreen(self._bulk_where(hits), initial, key_problem, title=title), done)
-
-    def _read_tables_then(self, hits: list[Hit], then: Callable[[dict], None], *, name: str,
-                          title: str = READ_TABLES) -> None:
-        """Read the tables holding the hits' keys (bulk.read_tables) in a worker under the progress popup, then
-        then(tables) on the UI thread: a large file is never read or parsed on the event loop."""
-        progress = SearchProgressScreen(title, first_stage="tables")
-
-        def report(done: int, total: int, file: str) -> None:
-            progress.report("tables", done, total, file)
-        self.start_run(progress, lambda: read_tables(hits, report), then, name=name,
-                       failure="Reading the tables stopped", stale_on_crash=False, writes=False)
 
     def action_switch_view(self) -> None:
         """v: Browse and Results (once a search has run)."""
@@ -1282,13 +1086,11 @@ class SvReviewScreen(WarningsHost, TreeFilter, RunActions, ReviewBase, Screen[st
             return
         # The staged work is dropped once Undo has changed the files (_undone, or a crash: _mark_stale), as said in
         # the confirm; an Undo refused before it starts (WoW running, a locked file, the backup failed) keeps it.
-        # One row per flavor whose WTF folder is backed up first (up to [general] parallelism at once), as undo_run
-        # names them; the files are then put back in one more row.
-        folders = sorted({e["flavor"] for e in journal.entries})
+        # One row per flavor whose WTF folder is backed up first (up to [general] parallelism at once), the same
+        # undo_flavors list undo_run snapshots; the files are then put back in one more row.
         parallelism = self.cfg.parallelism
         screen = RunProgressScreen("Undoing the last change", first_stage="undo",
-                                   flavors=[Flavor(folder, wow_root / folder) for folder in folders],
-                                   parallelism=parallelism)
+                                   flavors=undo_flavors(wow_root, journal.entries), parallelism=parallelism)
         keep_snapshots = self.cfg.keep_backups
         self.start_run(screen, lambda: undo_run(path, wow_root=wow_root, root=root, keep_snapshots=keep_snapshots,
                                                 wow_check=check, progress=screen.report, parallelism=parallelism,
@@ -1302,54 +1104,28 @@ class SvReviewScreen(WarningsHost, TreeFilter, RunActions, ReviewBase, Screen[st
         self.app.push_screen(SvResultScreen("Undo", undo_summary_rows(result), UNDO_COLUMNS,
                                             undo_detail_rows(result), self.scope_label), self._after_result)
 
-    # --- recovery ----------------------------------------------------------------------------------
-    def offer_recovery(self, marker: Marker) -> None:
-        """An Apply did not finish (its marker was found by the scan): put the originals back, or leave the files."""
-        log_event(SV_TOOL.event("recovery_offered"), flavor=marker.flavor, files=len(marker.files),
-                  started=marker.started)
+    # --- recovery (SvRecoveryActions: offer, Leave as is, Put the originals back) ------------------------
+    def recovery_screen(self, marker: Marker) -> Screen:
+        """The unfinished-run popup; it also says that putting the originals back drops the staged edits."""
         message = recovery_text(marker)
-        if self.pending:  # putting the originals back reads the files again (_recovered)
+        if self.pending:  # putting the originals back reads the files again (recovery_done)
             message += (f"\n\nPutting the originals back reads the files again: the {self._pending_words()} not "
                         "applied yet will be dropped.")
-        self.app.push_screen(UnfinishedRunScreen(message, marker),
-                             lambda choice: self._recovery_chosen(marker, choice))
+        return UnfinishedRunScreen(message, marker)
 
-    def _recovery_chosen(self, marker: Marker, choice: str | None) -> None:
+    def recovery_root(self) -> Path | None:
         # settled where it was found (the backup folder may have been changed with s since the scan)
-        root = self.marker_root if self.marker_root is not None else \
+        return self.marker_root if self.marker_root is not None else \
             resolve_root(load_settings(self.tool_cfg), self.cfg.wow_path)
-        if root is None or choice not in ("put_back", "leave"):
-            return  # closed without a choice: offered again at the next scan or Apply
-        if choice == "leave":
-            leave(marker, root=root)
-            self.marker = None
-            return
-        if self._backup_dir_refused():
-            return  # the marker stays: offered again
-        check = self.check_for([marker.flavor])  # the marker's flavor, which may not be one reviewed
-        self._check_wow(check, lambda running: self._after_recover_preflight(marker, root, check, running))
 
-    def _after_recover_preflight(self, marker: Marker, root: Path, check: WowCheck,
-                                 running: list[str] | None) -> None:
-        if self._refused_while_running(running, []):
-            return  # the marker stays: offered again
-        screen = RunProgressScreen("Putting the originals back", first_stage="undo")
-        keep_snapshots = self.cfg.keep_backups
-        journal_dir = resolve_journal_dir(self.cfg.wow_path)
-        self.start_run(screen, lambda: recover(marker, root=root, journal_dir=journal_dir,
-                                               keep_snapshots=keep_snapshots, wow_check=check,
-                                               progress=screen.report),
-                       self._recovered, name="recover", failure="Putting the originals back stopped",
-                       stale_on_crash=True, expected=(UndoError,))
+    def run_leave(self, marker: Marker, *, root: Path) -> bool:
+        return leave(marker, root=root)
 
-    def _recovered(self, result: UndoResult) -> None:
-        self.marker = None
-        message = (f"Put back {plural(len(result.restored), 'file')}; left {plural(len(result.skipped), 'file')} "
-                   f"as they are")
-        if result.failed:
-            message += f"; {plural(len(result.failed), 'file')} could not be put back (see the log)"
-        self.notify(message + ".", title="Unfinished change", severity="error" if result.failed else "information",
-                    timeout=15)
+    def run_recover(self, marker: Marker, **kwargs) -> UndoResult:
+        return recover(marker, **kwargs)
+
+    def recovery_done(self) -> None:
+        """Drop the staged edits and read the files again now (_mark_stale)."""
         self._mark_stale()
 
     # --- leaving -------------------------------------------------------------------------------

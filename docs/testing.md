@@ -23,16 +23,23 @@ rows are ways to run the suite while you work.
 
 | Command | What it does |
 |---|---|
-| **gate** `python3 scripts/run_tests.py` | The whole suite in parallel: the tests are sorted by id and dealt round-robin into one shard per CPU (at most 16), one process per shard. Exit code 0 only if every shard passed. About 70 to 100 s on WSL `/mnt/d`. |
+| **gate** `python3 scripts/run_tests.py` | The whole suite in parallel: the tests are sorted by id and dealt round-robin into one shard per CPU (at most 16), one process per shard. Exit code 0 only if every shard passed. About 100 to 120 s on WSL `/mnt/d`. |
 | `python3 scripts/run_tests.py -k TEXT` | Only the tests whose id (`tests.test_wtf_app.SomeTest.test_name`) contains `TEXT`, e.g. `-k sv_browser` or `-k test_look_and_feel`. |
 | `python3 scripts/run_tests.py -j N` | `N` shards instead of one per CPU. |
+| `python3 scripts/run_tests.py --timeout S` | Kill and fail a shard still running after `S` seconds (`0`: no limit). The default is 600 s per shard at `-j 4` or more, and proportionally more below that (1200 s at `-j 2`, 2400 s at `-j 1`; a one-shard run takes about 15 minutes on WSL `/mnt/d`). |
 | `python3 -m unittest discover -s tests -t . -v` | The same tests, serially and verbose, in one process. Use it to read a failure's full output in order. |
 | **gate** `ruff check --no-cache .` | Lint (settings in `ruff.toml`: Python 3.10 target, 120 columns, `vendor/` excluded). Not run in CI, so it is on you. |
 | **gate** `python3 scripts/gen_event_docs.py --check` | Fails if `docs/events.md` is out of date with the event registries. Run `python3 scripts/gen_event_docs.py` (no flag) to regenerate it after changing a registry. `tests/test_docs.py` checks the same thing. |
 
-`run_tests.py` adds `vendor/` to the path itself and pins each shard's output pipe to UTF-8, so it works the same on
-Windows. A failing shard prints its whole unittest output under `===== shard i/N failed =====`; the last line is
-`OK` or `FAILED` after a `Ran N tests in T s across J processes (...)` summary.
+`run_tests.py` adds `vendor/` to the path itself and pins each shard's output encoding to UTF-8, so it works the
+same on Windows. A failing shard prints its whole unittest output under `===== shard i/N failed =====`; the last line
+is `OK` or `FAILED` after a `Ran N tests in T s across J processes (...)` summary. A shard that hangs (say, a pilot
+waiting on a worker that never finishes) is killed at its timeout, with every process it started, and reported as
+`===== shard i/N timed out after S s in <test id> =====`, naming the test it was running, so a hang fails the run
+with a name well before CI's 20-minute job timeout. A shard that hangs after its last test (say, a non-daemon thread
+that keeps the interpreter alive) is reported as `timed out after S s after its tests finished`, and its tests still
+count in the summary. Shard output goes to temp files, not pipes, so a child process a hung test left behind cannot
+hold the run open on Windows.
 
 ## CI
 
@@ -99,7 +106,7 @@ Cleaner's tests predate that rule: its logic tests are `test_cleaner.py`, `test_
 |---|---|
 | `test_suite.py`, `test_suite_app.py` | `wowtools/suite.py` (start-up, the instance lock, renamed-tool migration on start, the update at start) and `WowToolsApp` (menu, setup, opening tools) |
 | `test_updater_check.py`, `test_updater_apply.py` | `core/updater.py`: the release check (fake openers, never the network) and applying an update |
-| `test_release_scripts.py` | `scripts/build_release.py` and the hashed vendor lock |
+| `test_release_scripts.py` | `scripts/build_release.py`, the hashed vendor lock and `scripts/run_tests.py`'s per-shard timeout |
 | `test_launcher.py` | `wow-tools.cmd` stays safe to replace while it runs (Windows-only parts skip elsewhere) |
 
 ### Per tool
@@ -151,6 +158,7 @@ builders stamp on files.
 | `stage_sv_edit(review)` | Stage one value edit on a Saved Variables Browser review, so Apply and Dry run have something to do |
 | `await footer_keys(screen, pilot, wanted)` | The keys a screen's footer lists, once it lists every key in `wanted` (or the timeout passes) |
 | `assert_keys_on_buttons(test, screen)` | Spec D17 on one screen: a button shows its action's key, a shown key works there, and the footer lists none of them |
+| `with record_fsyncs(module=None) as calls:` | Record `("fsync", file size)` for every `os.fsync`, and with `module`, `("rename", source size)` for every call of that module's `rename_no_replace`: a test checks a file reached the disk before it was moved into place or counted (F-012) |
 
 Logging is tested through `wowtools.core.events.capture_events()`, a context manager that swaps in a strict
 in-memory event log and yields its records. An unregistered event then raises, and nothing is written to `logs/`
@@ -205,16 +213,22 @@ Reads the source of `wowtools`, `scripts` and `tests` with `ast`:
 
 - **Layering:** `wowtools/core` never imports `textual`, `wowtools.ui` or `wowtools.tools`, and has no relative
   imports (`test_core_never_imports_textual`); importing every core module in a fresh process loads no Textual
-  (`test_importing_core_loads_no_textual`).
+  (`test_importing_core_loads_no_textual`); in a tool, only its front-end modules (`app.py`, `*_screen.py`,
+  `*_actions.py`, `popups.py`, `tree_view.py`) import `textual`, `rich` or `wowtools.ui`
+  (`test_only_front_end_modules_import_the_ui`, STD-1.7).
 - **No cross-tool imports:** a tool never imports another tool, in any import form
   (`test_no_tool_imports_another_tool`, `test_the_import_check_sees_every_form`).
 - **Single definitions:** shared helpers, classes and literals are defined once, in core or UI, and never copied
   into a tool: `test_shared_helpers_are_defined_once`, `test_literals_are_defined_once`,
   `test_tools_use_the_shared_helpers`, the SavedVariables reader, file model and write pipeline
   (`test_saved_variables_*`), the review machinery, tree filter, blacklist, dialogs, result screens, settings forms
-  and flow steps (`test_review_machinery_lives_in_ui`, `test_tree_filter_lives_in_ui`,
+  and flow steps, and the recovery of an unfinished SavedVariables Apply (`SvRecoveryActions`)
+  (`test_review_machinery_lives_in_ui`, `test_sv_recovery_lives_in_ui`, `test_tree_filter_lives_in_ui`,
   `test_blacklist_helpers_and_key_are_shared`, `test_shared_dialogs_live_in_ui`,
   `test_result_choice_settings_and_flow_live_in_ui`, `test_lock_refusal_and_progress_close_are_shared`).
+- **Action mixins:** the Ace3 and SV Browser review screens take their staging, blacklist and key-edit actions
+  from per-tool `*_actions.py` mixins and never define them again (`test_review_screens_are_split_into_action_mixins`,
+  STD-3.6).
 - **Buttons:** only `action_button` builds a `Button` (`test_every_button_is_built_with_an_action_kind`); one label
   has one action kind everywhere (`test_same_label_same_colour`); a label never spells its key
   (`test_button_labels_never_spell_their_key`); every `ConfirmScreen` names its kind

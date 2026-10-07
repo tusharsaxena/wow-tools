@@ -20,7 +20,8 @@ from wowtools.core import snapshot as core_snapshot
 from wowtools.core.backup import BackupError
 from wowtools.core.fsutil import remove_quietly
 from wowtools.core.install import Flavor
-from wowtools.core.snapshot import LIST_REPORT_EVERY, SnapshotProgress, wtf_files  # noqa: F401 - re-exported
+from wowtools.core.paths import to_native
+from wowtools.core.snapshot import SnapshotProgress, wtf_files
 
 MARKER_NAME = "clean-in-progress.json"
 SNAPSHOT_SUBDIR = "backup"
@@ -75,15 +76,18 @@ def read_marker(backup_dir: Path | None) -> Marker | None:
         pid = data["pid"]
         if not isinstance(pid, int):
             return None
-        return Marker(snapshot=Path(data["snapshot"]), flavor=str(data["flavor"]),
-                      flavor_path=Path(data["flavor_path"]), started=str(data["started"]), pid=pid,
+        return Marker(snapshot=to_native(data["snapshot"]), flavor=str(data["flavor"]),
+                      flavor_path=to_native(data["flavor_path"]), started=str(data["started"]), pid=pid,
                       suite_version=str(data["suite_version"]), files=list(files))
     except Exception:  # noqa: BLE001 - any unreadable marker means "no usable marker"
         return None
 
 
-def clear_marker(backup_dir: Path) -> None:
-    core_marker.clear_marker(backup_dir, MARKER_NAME)
+def clear_marker(backup_dir: Path) -> bool:
+    """Remove the marker; False when it is still there after the retries (another program held it). The caller
+    reports that (clean.marker_left): while the marker exists the next start shows the unfinished-clean notice and
+    every real clean is refused (cleaner._take_safety_snapshot)."""
+    return core_marker.clear_marker(backup_dir, MARKER_NAME)
 
 
 def restore_deleted(snapshot: Path, flavor: Flavor, rel_paths: list[str]) -> list[str]:
@@ -166,4 +170,6 @@ def check_clean(snapshot: Path, flavor: Flavor, deleted: list[str], backup_zip: 
 def recovery_message(marker: Marker) -> str:
     return (f"The last clean of {marker.flavor} did not finish (it started {marker.started}).\n"
             f"A backup of the WTF folder from just before it is at: {marker.snapshot}\n"
-            f"If files are missing: close WoW, then unzip it into {marker.flavor_path} to restore.")
+            f"If files are missing: close WoW, then unzip it into {marker.flavor_path} to restore.\n"
+            f"If that clean's result said its crash marker could not be removed, the clean finished: nothing is "
+            f"missing, so just dismiss this.")

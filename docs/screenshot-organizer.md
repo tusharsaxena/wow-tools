@@ -190,7 +190,9 @@ saved in `config\screenshot-organizer.cfg`.
 | Destination folder | empty | Where screenshots go. Empty means sort them in place |
 | Copy instead of move | off | Keep the originals in `Screenshots` as well |
 
-The file itself uses these names, if you edit it by hand: `dest_dir`, `copy_mode` and `last_flavor_choice`.
+The file itself uses these names, if you edit it by hand: `dest_dir`, `copy_mode` and `last_flavor_choice`. Close the
+app before editing the file, or your change may be overwritten. Comments you add to the file aren't kept (the app
+rewrites it when it saves a setting or the game version you pick).
 
 Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
 first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),

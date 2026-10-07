@@ -20,7 +20,8 @@ from wowtools.core.events import get_event_log, init_event_log, log_event, log_e
 from wowtools.core.lock import LOCK_PATH, InstanceLock, LockInfo
 from wowtools.core.migrate import ConfigMigration, merge_folder_logged, migrate_tool_config, tool_folder_pairs
 from wowtools.core.paths import is_wsl
-from wowtools.core.updater import UpdateError, apply_update, check_for_update, run_update_command
+from wowtools.core.updater import (UPDATE_STOPPED, RollbackFailed, UpdateError, apply_update, check_for_update,
+                                   run_update_command)
 from wowtools.tools import RENAMED_TOOLS, TOOLS
 
 LOG_DIR = REPO_ROOT / "logs"
@@ -74,17 +75,29 @@ def run(argv: list[str], *, cfg: Config | None = None, log_dir: Path | None = LO
         lock.release()
         print(f"{exc}\nFix or delete the file, then run again.", file=sys.stderr)
         return 1
-    init_event_log(log_dir, tool="suite", mode="tui" if not argv else "cli",
-                   text_level=cfg.log_level, retention_days=cfg.log_retention_days)
-    if migrated:
-        log_event("config.migrated", legacy=str(legacy_config), files=[str(p) for p in migrated])
-    for m in renamed:
-        log_event("config.renamed", old=str(m.old), new=str(m.new), merged=m.merged, added=m.added,
-                  kept_old=str(m.kept_old) if m.kept_old else None)
-    if may_migrate:
-        _migrate_renamed_folders(log_dir, cfg.wow_path)
-    log_event("session.start", argv=argv, platform=platform.platform(), is_wsl=is_wsl(),
-              python=platform.python_version(), suite_version=__version__)
+    # Until the try/finally below takes over, any failure must release the lock, or the next start would see
+    # "another copy may be running" (and on Windows could not tell the lock is stale).
+    try:
+        init_event_log(log_dir, tool="suite", mode="tui" if not argv else "cli",
+                       text_level=cfg.log_level, retention_days=cfg.log_retention_days)
+        if migrated:
+            log_event("config.migrated", legacy=str(legacy_config), files=[str(p) for p in migrated])
+        for m in renamed:
+            log_event("config.renamed", old=str(m.old), new=str(m.new), merged=m.merged, added=m.added,
+                      kept_old=str(m.kept_old) if m.kept_old else None)
+        if may_migrate:
+            _migrate_renamed_folders(log_dir, cfg.wow_path)
+        log_event("session.start", argv=argv, platform=platform.platform(), is_wsl=is_wsl(),
+                  python=platform.python_version(), suite_version=__version__)
+    except OSError as exc:
+        lock.release()
+        get_event_log().close()
+        print(f"Could not start the log in {log_dir}: {exc}", file=sys.stderr)
+        return 1
+    except BaseException:
+        lock.release()
+        get_event_log().close()
+        raise
     started = time.monotonic()
     code = 1
     try:
@@ -118,20 +131,28 @@ def _migrate_renamed_folders(log_dir: Path | None, wow_path: Path | None) -> Non
             merge_folder_logged(old, new)
 
 
-def _auto_update(cfg: Config) -> bool:
-    """Apply an update before the menu opens when auto_update = true. True means 'exit now'."""
+def _auto_update(cfg: Config) -> int | None:
+    """Apply an update before the menu opens when auto_update = true. Returns the exit code to stop with, or None to
+    open the menu."""
     if not (cfg.exists and cfg.check_for_updates and cfg.auto_update):
-        return False
+        return None
     # Never install from the throttled cache alone: a release deleted since it was seen must not be installed (D16).
     release = check_for_update(cfg, verify_cached=True)
     if release is None:
-        return False
+        return None
     try:
         print(apply_update(release, allow_unverified=cfg.allow_unverified_updates))
-    except UpdateError as exc:
+    except RollbackFailed as exc:
+        # The old version could not be put back: never open the menu on a half-replaced install.
         print(f"Automatic update failed: {exc}", file=sys.stderr)
-        return False
-    return True
+        return 1
+    except (UpdateError, OSError) as exc:
+        print(f"Automatic update failed: {exc}", file=sys.stderr)
+        return None
+    except KeyboardInterrupt:
+        print(UPDATE_STOPPED, file=sys.stderr)
+        raise
+    return 0
 
 
 def _confirm_override(lock: InstanceLock, conflict: LockInfo, input_fn: Callable[[str], str]) -> bool:
@@ -159,8 +180,8 @@ def _dispatch(argv: list[str], cfg: Config, config_dir: Path, lock: InstanceLock
         if conflict is not None and not _confirm_override(lock, conflict, input_fn):
             return 1
         return run_update_command(argv[1:], cfg)
-    if conflict is None and _auto_update(cfg):  # never update under another running copy
-        return 0
+    if conflict is None and (code := _auto_update(cfg)) is not None:  # never update under another running copy
+        return code
     if app_factory is None:
         from wowtools.ui.suite_app import WowToolsApp
 

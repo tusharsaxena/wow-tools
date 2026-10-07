@@ -4,6 +4,52 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and version numbers follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **The app**
+  - Pressing Ctrl+C while `wow-tools update` (or an automatic update at start) is replacing a zip install's files
+    now puts the version you had back instead of leaving it half replaced, and says the update stopped. Any other
+    unexpected error while backing up or replacing the files is reported instead of crashing, and a half-done
+    replace is rolled back the same way. If putting it back fails too, the message names the folder your previous
+    version is saved in, and an automatic update then quits instead of opening the menu. A Ctrl+C after the new
+    version is in place (while old backups are tidied up) no longer reports the update as stopped.
+  - When the app cannot start because a folder in `logs/` can't be read, it no longer leaves its lock behind, so
+    the next start doesn't warn that another copy may be running. An unreadable log folder is now skipped instead.
+  - When your WoW folder's path has letters like é or ü and WoW is running, an Apply or Undo now refuses with the
+    usual "WoW is running" message instead of stopping with an unexpected error.
+  - Every file the app writes in place (a SavedVariables file, a settings file, an unfinished-change reminder) is
+    now flushed to the disk before it replaces the old one, so a power cut or a system crash right after an
+    Apply, an Undo or a settings change leaves the old file or the new one, never an empty file. Each Undo
+    journal line and each safety backup zip is flushed to the disk the same way before the change it covers,
+    and so is a screenshot copied to another drive before its original is deleted, and a file a WTF Cleaner
+    Undo puts back.
+  - The README, every tool's guide and the message about a release with no checksum now say that comments you
+    add to a settings file in `config` aren't kept: the app rewrites the file whenever it saves a setting or the
+    game version you pick. Edit these files with the app closed.
+- **WTF Cleaner**
+  - A file WoW rewrites while a clean is backing up the WTF folder is now kept (shown as changed since the scan)
+    instead of deleted, so its newer data is never lost.
+  - When another program (a virus scanner or OneDrive) keeps the cleaner from removing its marker file after a
+    clean that finished, the result now says so (a **Crash marker** row), and the next start's "An earlier clean
+    did not finish" message says such a clean needs nothing restored. **Dismiss** on that message now tells you
+    when it could not remove the file either, instead of closing as if it had while new cleans stay refused.
+- **Interface Backup**
+  - On Windows, **Undo** after a restore that removed a symlinked addon folder now makes the symlink again to
+    the path it had (`C:\...`), not to the same path written with a `\\?\` prefix. The Undo journal records
+    the path as you made it, too. A link to a mounted volume that **Undo** cannot make again is now listed as one
+    to make by hand, instead of being made to the wrong place.
+- **Ace3 Profile Manager and Saved Variables Browser**
+  - **Put the originals back** after an unfinished change now works when you run the app from the other system
+    (Windows or WSL) than the one the change was started from: the files are found in the WoW folder you set. If
+    that game version is not in your WoW folder, nothing is changed and the unfinished change is still offered,
+    instead of every file being reported as gone and the reminder cleared.
+  - When another program (a virus scanner or OneDrive) keeps the app from removing its unfinished-change reminder
+    after an Apply that finished, the result now says so, and **Put the originals back** on the next scan only
+    removes the reminder instead of undoing the finished change. If the reminder still can't be removed then, or
+    after **Leave as is**, a notice says so instead of reporting it removed.
+
 ## [0.1.0] - 2026-10-05
 
 The first version: five tools in one app.

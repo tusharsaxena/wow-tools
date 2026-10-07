@@ -334,7 +334,7 @@ class UndoTest(ApplyTestBase):
         self.assertEqual(sorted(marker.files), sorted(p.relative_to(self.retail.path).as_posix()
                                                       for p in (elvui, details)))
         with capture_events() as events:
-            result = undo.recover(marker, root=self.root, journal_dir=self.journal_dir, keep_snapshots=2,
+            result = undo.recover(marker, wow_root=self.wow, root=self.root, journal_dir=self.journal_dir, keep_snapshots=2,
                                   now=WHEN.replace(minute=5))
         self.assertEqual([o.path for o in result.restored], [elvui])
         self.assertEqual(self.snapshot_tree(), self.before)

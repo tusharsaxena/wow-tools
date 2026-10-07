@@ -16,6 +16,8 @@ from wowtools.core import svfiles
 from wowtools.core.backup import BackupEntry, BackupError, create_backup
 from wowtools.core.fsutil import rename_no_replace
 from wowtools.core.install import WowInstall
+from wowtools.tools.interface_backup import restore as ib_restore
+from wowtools.tools.interface_backup import undo as ib_undo
 from wowtools.tools.screenshot_organizer import organizer, undo
 from wowtools.tools.wtf_cleaner import cleaner, safety
 from wowtools.tools.wtf_cleaner.cleaner import CleanError
@@ -42,7 +44,8 @@ class NoReplaceCallSiteTest(unittest.TestCase):
         self.assertEqual(self.dst.read_bytes(), b"existing")
 
     def test_default_renames_are_rename_no_replace(self):
-        for func in (organizer.move_file, organizer.execute, undo.undo):
+        for func in (organizer.move_file, organizer.execute, undo.undo,
+                     ib_restore.replace_part, ib_restore.restore, ib_undo.undo_restore):
             with self.subTest(func=func.__qualname__):
                 self.assertIs(inspect.signature(func).parameters["rename"].default, rename_no_replace)
 
@@ -88,7 +91,7 @@ class NoReplaceCallSiteTest(unittest.TestCase):
         with patch.object(svfiles, "rename_no_replace", rename_then_new_file), self.assertRaises(CleanError):
             cleaner._probe_lock(self.src)
         self.assertEqual(self.src.read_bytes(), b"new file")
-        self.assertEqual(self.src.with_name("src.jpg" + cleaner.LOCK_PROBE_SUFFIX).read_bytes(), b"source")
+        self.assertEqual(self.src.with_name("src.jpg" + svfiles.LOCK_PROBE_SUFFIX).read_bytes(), b"source")
 
 
 if __name__ == "__main__":

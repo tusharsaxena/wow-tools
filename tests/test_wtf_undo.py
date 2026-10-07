@@ -7,9 +7,10 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from tests.fixtures import build_wow_tree
+from tests.fixtures import build_wow_tree, record_fsyncs
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
+from wowtools.tools.wtf_cleaner import undo
 from wowtools.tools.wtf_cleaner.journal import resolve_journal_dir, latest_undoable, read_journal
 from wowtools.tools.wtf_cleaner.multi import execute_flavors, scan_flavors
 from wowtools.tools.wtf_cleaner.rules import Criteria, evaluate
@@ -18,6 +19,19 @@ from wowtools.tools.wtf_cleaner.undo import undo_clean
 
 def contents(folder: Path) -> dict:
     return {p.relative_to(folder).as_posix(): p.read_bytes() for p in folder.rglob("*") if p.is_file()}
+
+
+class ExtractTest(unittest.TestCase):
+    def test_restored_file_is_fsynced_before_it_is_reported(self):
+        """F-012: a file Undo puts back reaches the disk before the run reports it restored."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        zpath, dest = Path(tmp.name) / "o.zip", Path(tmp.name) / "Gone.lua"
+        with zipfile.ZipFile(zpath, "w") as zf:
+            zf.writestr("Gone.lua", b"x" * 300)
+        with zipfile.ZipFile(zpath) as zf, record_fsyncs() as calls:
+            self.assertIsNone(undo._extract(zf, zf.getinfo("Gone.lua"), dest, 300, None))
+        self.assertEqual(calls, [("fsync", 300)])
 
 
 class UndoCleanTest(unittest.TestCase):

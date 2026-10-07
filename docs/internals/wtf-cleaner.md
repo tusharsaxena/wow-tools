@@ -55,7 +55,8 @@ before the next flavor (`clean.flavors_stopped`), and each `FlavorRun.status` is
 `execute` guards every path (it must resolve inside `<flavor>/WTF/Account/**/SavedVariables`) and re-checks
 size and mtime. For a real clean it then opens the run journal (when given one), takes the safety snapshot and
 writes the marker (`safety.py`), writes and verifies the selective backup, and only then deletes, journaling each
-file right after it is deleted. A dry run writes the backup (as `cleaned/dryrun-<flavor>-<account>-<stamp>.zip`) and deletes nothing; it takes
+file right after it is deleted. `_delete_one` re-checks size and mtime once more right before each delete (STD-5.7),
+so a file WoW rewrote while the backups were written is skipped (`sv.skipped`, `changed`) and kept. A dry run writes the backup (as `cleaned/dryrun-<flavor>-<account>-<stamp>.zip`) and deletes nothing; it takes
 no snapshot, writes no journal, and then prunes the flavor's dry-run zips to the newest `keep_backups`
 (`prune_dry_run_zips`). Real `cleaned-*.zip` files are pruned only when `[wtf_cleaner] keep_cleaned` is above 0: a
 real clean that deleted something then keeps the flavor's newest `keep_cleaned` (`prune_cleaned_zips`, any account,
@@ -91,7 +92,7 @@ backups (an earlier clean's Undo may need them).
 `latest_undoable(journal_dir)` is the only journal offered (never past an undone one). `undo_clean()` walks its
 entries newest first: the destination is `<wow_root>/<flavor>/<rel>`, refused (skipped) unless `flavor` is a plain
 folder name and `rel` starts with `WTF/` and has no `..`; a file that exists again is skipped; otherwise the entry
-is extracted, exclusive create, from the cleaned-files zip (by its name, which is `rel`) or, when there is no zip,
+is extracted, exclusive create and `fsync`ed (F-012), from the cleaned-files zip (by its name, which is `rel`) or, when there is no zip,
 the zip is gone or lacks it, or its size differs, from the WTF backup by `rel`. The written size must match the
 entry (else the partial file is removed and the entry fails) and the file's mtime is put back. Each zip is opened
 once. Afterwards the journal is marked undone, unless nothing was restored and something failed (a source
@@ -119,6 +120,11 @@ In `cleaner.execute`:
 - On success (including per-file failures) `check_clean()` compares the WTF folder with the snapshot
   (`clean.validated`, or `clean.check_failed` with the problems in `CleanResult.check_problems`), the marker is
   cleared, the snapshot is kept, and older snapshots are pruned (`snapshot.pruned`).
+- `clear_marker()` retries (`core/marker.clear_marker`) and returns False when another program still holds the
+  marker; `cleaner._clear_marker` then logs `clean.marker_left` (warning, with the `stage`), and a clean that
+  finished sets `CleanResult.marker_left`, shown as a "Crash marker" summary row. **Dismiss** on `RecoveryScreen`
+  does the same (stage `dismiss`) and the review shows a "Marker not removed" notice: while the marker exists every
+  real clean is refused.
 - Nothing ever restores automatically at start-up.
 
 ### Progress callbacks

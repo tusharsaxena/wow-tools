@@ -7,6 +7,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 
+from tests.fixtures import record_fsyncs
 from wowtools.core import journal as journal_mod
 from wowtools.core.journal import (JOURNAL_VERSION, JournalWriter, friendly_stamp, journal_dir, latest_undoable,
                                    list_journals, mark_undone, new_journal_path, prune_journals, read_journal)
@@ -54,6 +55,23 @@ class JournalTest(unittest.TestCase):
         self.assertEqual(journal.entries, [{"action": "deleted", "path": Path("/x/y/a.lua"), "size": 3}])
         self.assertIsNotNone(journal.finished)
         self.assertIsNone(journal.undone)
+
+    def test_every_line_is_fsynced_as_it_is_written(self):
+        """F-012: each journal line reaches the disk before the run goes on to the change it records, so a power
+        cut never leaves a durable changed file whose journal line was lost."""
+        path = self.dir / "journal-20260101-000000.jsonl"
+        writer = JournalWriter(path, {"tool": "t"})
+        with record_fsyncs() as calls:
+            writer.open()
+            after_header = path.stat().st_size
+            writer.add_entry({"action": "deleted", "path": Path("/x/a.lua")})
+            after_entry = path.stat().st_size
+            writer.finish()
+            writer.close()
+            after_finish = path.stat().st_size
+            mark_undone(path, 1, 0)
+        self.assertEqual(calls, [("fsync", after_header), ("fsync", after_entry), ("fsync", after_finish),
+                                 ("fsync", path.stat().st_size)])
 
     @unittest.skipIf(os.name == "nt", "simulates WSL: /mnt/g paths only exist on POSIX")
     def test_paths_are_stored_in_windows_form_under_wsl(self):
