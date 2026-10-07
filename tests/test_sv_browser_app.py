@@ -222,6 +222,20 @@ class SvBrowseViewTest(SvBrowserTestBase):
             self.assertTrue(review.summary_text.startswith("Selected: "), review.summary_text)
             self.assertIn("9 files in 2 flavors", review.summary_text)  # Broken.lua included, the .bak not
 
+    async def test_toasts_sit_above_the_action_bar(self):
+        """A toast ("Nothing found.") covered the action bar and touched the bottom bar (user feedback
+        2026-10-07): toasts go just above the bar, at the base size and the small one."""
+        for size in (BASE, TINY):
+            app = self.make_app()
+            async with app.run_test(size=size, notifications=True) as pilot:
+                review = await self.open_review(app, pilot)
+                review.notify("Nothing found.", title="Search")
+                await settle(app, pilot)
+                toast = review.query_one("Toast").region
+                bar = review.query_one("#tree-actions").region
+                self.assertGreater(toast.height, 0, size)
+                self.assertLessEqual(toast.bottom, bar.y, (size, toast, bar))
+
     async def test_tree_lists_flavors_accounts_owners_and_files_without_reading_them(self):
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:

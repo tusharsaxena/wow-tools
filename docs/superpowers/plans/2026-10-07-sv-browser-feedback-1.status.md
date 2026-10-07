@@ -94,3 +94,9 @@ after the round. Never merge without the user's go-ahead.
   bytes-only check. (6) New UI test opens ElvUI in Browse, changes it on disk, searches and bulk-edits: its hits are
   left out with `BYTES_DIFFER`; fails when `_loaded_shas` returns {}. Each new test was checked against the mutant or
   pre-fix code.
+- **FB1 follow-up** (user, 2026-10-07: a "Nothing found." toast covered the action bar and the bottom bar): shared
+  `ui.review.lift_toasts(screen, above)` keeps a screen's toast rack `above` rows up; Ace3's `_place_overlays` uses
+  it, and the SV Browser review's `place_toasts` puts toasts just above `#tree-actions`, re-run after every layout
+  (`ActionBar` subscribes to `screen_layout_refresh_signal` when its screen has `place_toasts`: the bar settles and
+  wraps after mount). Test `test_toasts_sit_above_the_action_bar` (120x30 and 80x24) failed before the fix; full
+  suite 1673 OK (2 skipped).

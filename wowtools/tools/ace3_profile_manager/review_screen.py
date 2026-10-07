@@ -47,7 +47,7 @@ from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult, reco
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, InfoScreen, ProgressScreen,
                                 UnfinishedRunScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
-from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, TickModel, WowCheck
+from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, TickModel, WowCheck, lift_toasts
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, TreeFilter, hidden_by_filter
 from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button,
                                  key_text, wrap_items)
@@ -549,8 +549,7 @@ class ProfileReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         rack.styles.margin = (0, 0, above, 0)
         if rack.display:
             above += self.query_one("#action-tip").outer_size.height  # the rack is invisible and reports no size
-        for toasts in self.query("#textual-toastrack"):  # Textual's rack of notifications on this screen
-            toasts.styles.margin = (0, 0, above, 0)
+        lift_toasts(self, above)
 
     def action_tip(self, action: str) -> str:
         """What an action bar button would do with the ticks (or the highlighted node) as they are now."""
