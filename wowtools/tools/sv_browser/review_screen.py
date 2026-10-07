@@ -55,7 +55,7 @@ from wowtools.ui.review import (ActionBar, BarTree, ReviewBase, RunActions, SvRe
                                 lift_toasts)
 from wowtools.ui.tree_filter import (FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TextFilter,
                                      TreeFilter)
-from wowtools.ui.warnings_view import (WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost, scan_warning_items,
+from wowtools.ui.warnings_view import (WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost, scan_warning_items,
                                        where_text)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, RiskBanner, action_button
 
@@ -382,7 +382,7 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
             return
         self.show_scan_box(False)
         self.summary_text = message
-        self.query_one("#summary", Static).update(Text(message))
+        self.query_one("#summary", SummaryLine).show_one_line(message)
         self.notify(message, title="Scan failed", severity="error", timeout=15)
         self._refresh_buttons()
 

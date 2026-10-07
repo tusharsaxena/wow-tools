@@ -597,6 +597,19 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   `lift_toasts`).
   *Why:* a toast must not cover the controls being pressed.
   *Enforced by:* `tests/test_sv_browser_app.py::test_toasts_sit_above_the_action_bar`.
+- **STD-7.25 MUST** A screen's bottom bars and button rows keep their place whatever stands in for the tree (scan
+  progress, an empty or failed scan, a load): the stand-in takes the tree's space (`two_pane_css` gives `#scan-box`
+  `height: 1fr`, as the tree has), so the rows under the tree (the Ace3 guide and action bar, the Saved Variables
+  Browser's action bar) and the left pane's `#actions` row never move during a scan or rescan. A failed scan's
+  message (and the Screenshot Organizer's refused folder) goes on one row of the bottom line
+  (`SummaryLine.show_one_line`, ellipsis; the notice and the log have it in full). The selection line itself still
+  wraps, so a warning at its end (hidden ticked items, flavors not scanned) is read in full; when the new selection
+  line after a scan is longer or shorter by a row, the rows above it move by that row.
+  *Why:* a bar that jumps to the top of the pane while a scan runs and back after it moves the buttons under the
+  pointer and reads as a broken layout (user feedback 2026-10-07, spec L2, L3).
+  *Enforced by:* `tests/test_look_and_feel.py::test_bars_keep_their_place_while_a_scan_runs` (a scan that is
+  done and one that failed; an empty scan and a load show the tree itself, so they need no check of their own),
+  `tests/test_ui_warnings.py::WarningsViewTest::test_a_failure_stays_on_one_row_and_the_next_update_wraps_again`.
 
 ## 8. Keys and buttons
 

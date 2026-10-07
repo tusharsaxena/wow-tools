@@ -6,7 +6,9 @@ smoke test makes sure every screen still opens and every control can still be fo
 from __future__ import annotations
 
 import tempfile
+import threading
 from pathlib import Path
+from unittest import mock
 
 from textual.widgets import Button, Checkbox, DataTable, OptionList, Tree
 from textual.widgets._footer import FooterKey
@@ -243,6 +245,75 @@ class LookAndFeelTest(TuiTestCase):
                         self.assertEqual(field.value, "")
                         self.assertIs(app.screen, screen)
                         self.assertIs(screen.focused, tree)
+
+    async def test_bars_keep_their_place_while_a_scan_runs(self):
+        """STD-7.25 (spec L2, L3) at BASE and LARGE: while a scan stands in for the tree (the scan box), and once it
+        is done or has failed, the rows under the tree (the Ace3 guide and action bar, the Saved Variables Browser's
+        action bar), the left pane's #actions button row and the bottom line are where they were before it, and the
+        scan box takes the tree's space. The general check is the last one (box == tree): on a screen with nothing
+        under the tree the rows cannot move. The scan worker is held on a gate, so the scan is open while the screen
+        is measured: every review on a rescan, which succeeds or fails with a message far wider than the screen,
+        the Ace3 blacklist on its first scan (a failed blacklist scan only notifies)."""
+        cases = [(tool, outcome) for tool in TOOLS for outcome in ("done", "failed")] + [("blacklist", "done")]
+        for size in (BASE, LARGE):
+            for tool, outcome in cases:
+                with self.subTest(size=size, tool=tool, outcome=outcome):
+                    await self.check_bars_during_a_scan(size, tool, outcome)
+
+    async def check_bars_during_a_scan(self, size, tool, outcome):
+        app = self.make_app()
+        async with app.run_test(size=size) as pilot:
+            screen = await self.open_review(app, pilot, "ace3-profile-manager" if tool == "blacklist" else tool)
+            gate = threading.Event()
+            self.addCleanup(gate.set)  # a failed check never leaves a worker waiting
+            if tool == "blacklist":
+                from wowtools.tools.ace3_profile_manager.blacklist_screen import BlacklistScreen
+                cls = BlacklistScreen
+            else:
+                cls = type(screen)
+                before = self.bar_rows(screen)
+            scan_worker = cls._scan_worker
+            failure = "The scan failed: [Errno 13] Permission denied: '" + "/World of Warcraft/_retail_/WTF" * 12 + "'"
+
+            def held(self_, *args, _worker=scan_worker, _gate=gate, **kwargs):
+                _gate.wait(10)
+                if outcome == "failed":
+                    self_.app.call_from_thread(self_._scan_failed, failure)
+                    return None
+                return _worker(self_, *args, **kwargs)
+
+            with mock.patch.object(cls, "_scan_worker", held):
+                if tool == "blacklist":
+                    screen.action_edit_blacklist()
+                else:
+                    screen.action_rescan()
+                for _ in range(3):
+                    await pilot.pause()
+                screen = app.screen
+                self.assertIsInstance(screen, cls)
+                self.assertTrue(screen.query_one("#scan-box").display, "the scan is not shown")
+                during = self.bar_rows(screen)
+                box = screen.query_one("#scan-box").region
+                gate.set()
+                await settle(app, pilot)
+            self.assertFalse(screen.query_one("#scan-box").display)
+            if outcome == "failed":
+                self.assertIn("Permission denied", screen.summary_text)
+            self.assertEqual(during, self.bar_rows(screen))
+            if tool != "blacklist":
+                self.assertEqual(before, during)
+            tree = screen.query_one(screen.TREE_SELECTOR, Tree).region
+            self.assertEqual((box.y, box.height), (tree.y, tree.height), "the scan box is not the tree's space")
+
+    @staticmethod
+    def bar_rows(screen) -> dict[str, int]:
+        """Where the left pane's button row, the rows under the tree (if any) and the bottom line start: id ->
+        screen y."""
+        rows = {"actions": screen.query_one("#actions").region.y, "summary": screen.query_one("#summary").region.y}
+        for selector in ("#guide", "#tree-actions"):
+            for widget in screen.query(selector):
+                rows[selector] = widget.region.y
+        return rows
 
     async def test_the_filter_waits_for_enter_or_its_button(self):
         """Spec D40 on every tree screen: typing in the box never rebuilds the tree; Enter applies it, the Filter

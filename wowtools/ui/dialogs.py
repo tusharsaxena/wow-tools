@@ -65,8 +65,10 @@ RESULT_HINT = "↑↓/Tab move · ←→ buttons · Enter/Space press · Esc bac
 
 def two_pane_css(screen: str, tree: str, *, width: int = FILTERS_WIDTH) -> str:
     """DEFAULT_CSS of a two-pane screen called `screen`: the left pane (#filters: .section headings, compact
-    checkboxes and inputs, the tree filter row (FilterBar) a row apart, the #actions button row in one line), the tree (`tree`), the scan progress that stands
-    in for the tree while a scan runs (#scan-box) and the bottom line (#summary)."""
+    checkboxes and inputs, the tree filter row (FilterBar) a row apart, the #actions button row in one line), the
+    tree (`tree`), the scan progress that stands in for the tree while a scan runs (#scan-box: it takes the tree's
+    space, height 1fr, so the rows under the tree and the button rows keep their place, STD-7.25) and the bottom
+    line (#summary)."""
     return f"""
     {screen} #body {{ height: 1fr; }}
     {screen} #filters {{ width: {width}; padding: 0 1; border-right: solid $primary; }}
@@ -76,7 +78,7 @@ def two_pane_css(screen: str, tree: str, *, width: int = FILTERS_WIDTH) -> str:
     {screen} #actions {{ margin-top: 1; height: auto; }}
     {screen} #actions Button {{ min-width: 0; width: auto; margin-right: 1; }}
     {screen} {tree} {{ width: 1fr; padding: 0 1; }}
-    {screen} #scan-box {{ width: 1fr; height: auto; padding: 1 2; }}
+    {screen} #scan-box {{ width: 1fr; height: 1fr; padding: 1 2; }}
     {screen} #scan-progress {{ width: 1fr; }}
     {screen} #scan-label {{ color: $text-muted; margin-top: 1; }}
     {screen} #summary {{ height: auto; padding: 0 1; background: $surface; }}

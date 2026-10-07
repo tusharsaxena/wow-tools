@@ -16,6 +16,10 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 ### Fixed
 
 - **The app**
+  - Scanning or rescanning no longer moves the bars under the tree to the top of the pane: the Ace3 Profile
+    Manager's guide and action bar, and the Saved Variables Browser's action bar, stay at the bottom while the scan
+    runs. When a scan fails, its message takes one line at the bottom (the notice shows it in full), so a long
+    error doesn't push the bars up either.
   - Pressing Ctrl+C while `wow-tools update` (or an automatic update at start) is replacing a zip install's files
     now puts the version you had back instead of leaving it half replaced, and says the update stopped. Any other
     unexpected error while backing up or replacing the files is reported instead of crashing, and a half-done

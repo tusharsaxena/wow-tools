@@ -43,7 +43,7 @@ from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, 
 from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TreeFilter
-from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost
+from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
@@ -297,7 +297,7 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
             return
         self._show_scan_progress(False)
         self.summary_text = message
-        self._set_summary(message)
+        self.query_one("#summary", SummaryLine).show_one_line(message)
         self.notify(message, title="Scan failed", severity="error", timeout=15)
         self._refresh_buttons()
 

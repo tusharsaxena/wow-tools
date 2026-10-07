@@ -41,7 +41,7 @@ from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, 
                                 ProgressScreen, relabel_branch, two_pane_css)
 from wowtools.ui.review import BLACKLIST_BINDING, BLACKLIST_KEY, BlacklistAction, ReviewBase, ReviewTree, TickModel
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TreeFilter
-from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost, scan_warning_items
+from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost, scan_warning_items
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button
 
 WARNING_STYLE = "#E8B04B"
@@ -252,7 +252,7 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
     def _scan_failed(self, message: str) -> None:
         self._show_scan_progress(False)
         self.summary_text = message
-        self.query_one("#summary", Static).update(Text(message))
+        self.query_one("#summary", SummaryLine).show_one_line(message)
         self.notify(message, title="Scan failed", severity="error", timeout=15)
 
     def _scanned(self, scans: list[FlavorScan]) -> None:

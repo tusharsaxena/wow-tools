@@ -34,7 +34,7 @@ from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, 
 from wowtools.ui.result_screen import ResultBase, result_bindings, status_style
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TreeFilter
-from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost, scan_warning_items
+from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost, scan_warning_items
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
@@ -194,7 +194,7 @@ class ShotReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
             tree.clear()
             message = f"{problem} Fix the folder in settings (s)."
             self.summary_text = message
-            self.query_one("#summary", Static).update(Text(message))
+            self.query_one("#summary", SummaryLine).show_one_line(message)
             for button_id in ("#btn-organize", "#btn-dry"):
                 self.query_one(button_id, Button).disabled = True
             self._refresh_undo()
@@ -235,7 +235,7 @@ class ShotReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         self._show_scan_progress(False)
         self._refresh_undo()
         self.summary_text = message
-        self.query_one("#summary", Static).update(Text(message))
+        self.query_one("#summary", SummaryLine).show_one_line(message)
         self.notify(message, title="Scan failed", severity="error", timeout=15)
 
     def _scanned(self, plan: Plan) -> None:
