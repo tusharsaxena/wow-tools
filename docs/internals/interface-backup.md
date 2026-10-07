@@ -50,7 +50,7 @@ starting and is raised once the running ones ended. The scan bar has no total, a
 Code: `backup.py`. No journal: nothing in the game folders changes. `write_zip` writes `<Part>/<rel>`
 entries plus `manifest.json` (`version`, `kind` backup | pre-restore, `flavor`, `flavor_folder`, `created`,
 `suite_version`, `parts`, `parts_existing`, `files[{path, size, mtime}]`, `links`) to `<name>.partial`, runs
-`verify_backup`, then `rename_no_replace`; any failure (Ctrl+C included) removes the `.partial` and is a
+`verify_backup`, `fsync_file` (F-012), then `rename_no_replace`; any failure (Ctrl+C included) removes the `.partial` and is a
 `BackupError`. Each file is opened without following links (POSIX `O_NOFOLLOW | O_NONBLOCK` plus `fstat`; Windows
 lstat first), and each ancestor folder is lstat-checked once: a file gone, turned into a link or no longer regular
 since the scan is left out and listed in `missing`; a part that vanished or lost every file is not claimed in the

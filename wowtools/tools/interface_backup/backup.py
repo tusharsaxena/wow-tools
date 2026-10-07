@@ -17,7 +17,7 @@ from pathlib import Path
 from wowtools import __version__
 from wowtools.core.backup import MANIFEST_NAME, BackupError, verify_backup
 from wowtools.core.events import log_event
-from wowtools.core.fsutil import is_real_dir, remove_quietly, rename_no_replace, safe_progress
+from wowtools.core.fsutil import fsync_file, is_real_dir, remove_quietly, rename_no_replace, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.core.journal import now_iso
 from wowtools.core.parallel import run_units, workers_for
@@ -184,6 +184,7 @@ def write_zip(scan: FlavorScan, dest: Path, *, kind: str, parts: tuple[str, ...]
                         "parts": written, "parts_existing": written, "files": files, "links": links}
             zf.writestr(MANIFEST_NAME, json.dumps(manifest, indent=2, ensure_ascii=False))
         verify_backup(partial, expected, progress=lambda i, n, name: report("verify", i, n, name))
+        fsync_file(partial)  # on the disk before it is in place (F-012)
         rename_no_replace(partial, dest)  # never replaces an existing backup
         bytes_zip = dest.stat().st_size
     except BackupError:

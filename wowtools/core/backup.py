@@ -9,7 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from wowtools.core.fsutil import is_link, remove_quietly, rename_no_replace
+from wowtools.core.fsutil import fsync_file, is_link, remove_quietly, rename_no_replace
 
 MANIFEST_NAME = "manifest.json"
 
@@ -77,6 +77,7 @@ def create_backup(entries: list[BackupEntry], base_dir: Path, dest_zip: Path, me
                     on_file(index, len(files), info["path"])
             zf.writestr(MANIFEST_NAME, json.dumps({**meta, "files": files}, indent=2, ensure_ascii=False))
         verify_backup(partial, expected, progress=on_verify)
+        fsync_file(partial)  # on the disk before it is in place (F-012)
         rename_no_replace(partial, dest_zip)  # never replaces an existing backup
     except BackupError:
         remove_quietly(partial)

@@ -295,9 +295,11 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   `tests/test_cleaner.py::test_snapshot_failure_deletes_nothing`.
 - **STD-5.11 MUST** Before the first destructive write, zip the original bytes of exactly the files the run changes,
   deletes or replaces (`core.backup.create_backup`, or Interface Backup's safety zip); if that fails, nothing changes.
-  *Why:* this zip is Undo's precise source.
+  Like the snapshot, the zip is verified and `fsync`ed (`fsutil.fsync_file`) before it is moved into place.
+  *Why:* this zip is Undo's precise source, and must survive a power cut after the first destructive write.
   *Enforced by:* `tests/test_cleaner.py::test_selective_backup_failure_after_snapshot_deletes_nothing`,
-  `tests/test_sv_browser_apply.py::test_the_snapshot_and_the_originals_zip_hold_the_right_members`.
+  `tests/test_sv_browser_apply.py::test_the_snapshot_and_the_originals_zip_hold_the_right_members`,
+  `tests/test_backup.py::test_zip_is_fsynced_before_it_is_moved_into_place`.
 - **STD-5.12 MUST** Write every backup or snapshot zip to `<name>.partial`, read every entry back (`verify_backup`),
   then move it into place with `rename_no_replace`; on any failure, Ctrl+C included, remove the partial.
   *Why:* an unverified or half-written zip is no backup.
@@ -326,10 +328,11 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
 ### 5c. Writing
 
 - **STD-5.16 MUST** Write a file in place only with `fsutil.atomic_write_bytes`/`atomic_write_text` (exclusive-create
-  `<name>.partial`, never following a link, then `os.replace`).
-  *Why:* a crash leaves the old file or the new one, never a mix.
+  `<name>.partial`, never following a link, `fsync` it, then `os.replace`).
+  *Why:* a crash, a power cut included, leaves the old file or the new one, never a mix.
   *Enforced by:* `tests/test_fsutil.py::test_failed_replace_keeps_the_original`,
-  `tests/test_fsutil.py::test_a_link_at_the_partial_name_is_never_followed`.
+  `tests/test_fsutil.py::test_a_link_at_the_partial_name_is_never_followed`,
+  `tests/test_fsutil.py::test_atomic_write_fsyncs_before_replace`.
 - **STD-5.17 MUST** Every rename or move into a final name goes through `fsutil.rename_no_replace` (never
   `os.rename`/`os.replace`); timestamped names come from `free_name`.
   *Why:* POSIX `os.rename` silently replaces; two runs in one second must not share a name.
@@ -364,10 +367,11 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
 ### 5d. Journals, Undo, dry run, retention
 
 - **STD-5.23 MUST** Every real run that changes files writes one journal (`ToolJournals`/`JournalWriter`): opened
-  before anything is touched (refuse the run if it cannot be), one flushed entry after each change, a finished line,
-  and no journal left when nothing changed.
-  *Why:* Undo can reverse only what the journal recorded.
+  before anything is touched (refuse the run if it cannot be), one flushed and `fsync`ed entry after each change, a
+  finished line, and no journal left when nothing changed.
+  *Why:* Undo can reverse only what the journal recorded, a power cut included.
   *Enforced by:* `tests/test_journal.py::test_open_is_exclusive_and_header_only_journal_is_discarded`,
+  `tests/test_journal.py::test_every_line_is_fsynced_as_it_is_written`,
   `tests/test_screenshot_organizer_organizer.py::test_unwritable_journal_stops_before_anything_moves`.
 - **STD-5.24 MUST** Undo offers only the latest run (`latest_undoable`), never overwrites a file that changed after the
   run (skip it with a reason), and stays undoable when nothing was restored and something failed ([D15][svb]).

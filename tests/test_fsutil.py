@@ -270,6 +270,39 @@ class AtomicWriteBytesTest(unittest.TestCase):
             self.assertEqual(path.read_bytes(), b"\r\nX = {\r\n}\r\n\xc3\xa2")
             self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["a.lua"])
 
+    def test_atomic_write_fsyncs_before_replace(self):
+        """F-012: the partial's bytes reach the disk before the replace, so a power cut leaves the old file or the
+        new one, never an empty or stale file under the target's name."""
+        calls = []
+        real_fsync, real_replace = os.fsync, os.replace
+
+        def fsync(fd):
+            calls.append(("fsync", os.fstat(fd).st_size))
+            real_fsync(fd)
+
+        def replace(src, dst):
+            calls.append(("replace", Path(src).name))
+            real_replace(src, dst)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "a.lua"
+            path.write_bytes(b"old")
+            with patch("os.fsync", side_effect=fsync), patch("os.replace", side_effect=replace):
+                atomic_write_bytes(path, b"new data")
+            self.assertEqual(path.read_bytes(), b"new data")
+        self.assertEqual(calls[:2], [("fsync", len(b"new data")), ("replace", "a.lua.partial")])
+
+    def test_failed_fsync_keeps_the_original(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "a.lua"
+            path.write_bytes(b"old")
+            with (patch("os.fsync", side_effect=OSError("disk gone")), patch("os.replace") as replace,
+                  self.assertRaises(OSError)):
+                atomic_write_bytes(path, b"new")
+            replace.assert_not_called()
+            self.assertEqual(path.read_bytes(), b"old")
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["a.lua"])
+
     def test_failed_replace_keeps_the_original(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "a.lua"

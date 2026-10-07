@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-from tests.fixtures import build_interface_tree, build_wow_tree
+from tests.fixtures import record_fsyncs, build_interface_tree, build_wow_tree
 from wowtools.core.backup import BackupError
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
@@ -39,6 +39,14 @@ class BackupTest(unittest.TestCase):
 
     def scan(self, folder="_retail_"):
         return scan_flavor(self.flavors[folder], with_stats=False)
+
+    def test_zip_is_fsynced_before_it_is_moved_into_place(self):
+        """F-012: a backup (and a pre-restore safety zip) is on the disk before a restore swaps any folder."""
+        with record_fsyncs(backup_module) as calls:
+            stats = write_zip(self.scan(), self.root / "pre-restore-retail-x.zip", kind="pre-restore",
+                              parts=("WTF",))
+        size = stats.path.stat().st_size
+        self.assertEqual(calls, [("fsync", size), ("rename", size)])
 
     def test_zip_layout_and_manifest(self):
         with capture_events():

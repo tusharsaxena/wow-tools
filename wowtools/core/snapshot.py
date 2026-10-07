@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 from wowtools.core.backup import BackupError, verify_backup, walk_files
-from wowtools.core.fsutil import free_name, remove_quietly, rename_no_replace
+from wowtools.core.fsutil import fsync_file, free_name, remove_quietly, rename_no_replace
 from wowtools.core.install import Flavor
 
 SnapshotProgress = Callable[[str, int, int, str], None]
@@ -64,6 +64,7 @@ def take_snapshot(flavor: Flavor, folder: Path, prefix: str, now: datetime,
                     progress("snapshot", index, len(files), arcname)
         verify_backup(partial, expected,
                       progress=None if progress is None else lambda i, n, name: progress("snapshot_verify", i, n, name))
+        fsync_file(partial)  # on the disk before it is in place (F-012)
         rename_no_replace(partial, dest)  # never replaces an existing backup
     except BackupError:
         remove_quietly(partial)

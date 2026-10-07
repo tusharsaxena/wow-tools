@@ -39,6 +39,11 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
     the replace fails, the original file is untouched and the partial is removed. On Windows a replace refused
     because another program holds the target open is tried again for about a second (REPLACE_RETRY_WAITS).
 
+    The partial is fsync'ed before the replace, so the guarantee also holds after a power cut or an OS crash: without
+    it some file systems can commit the rename before the data and leave an empty or stale file under the target's
+    name (F-012). The parent folder is not fsync'ed (Windows cannot), so a replace in the last moments before a power
+    cut may be lost, leaving the old file, never a mix.
+
     Whatever already sits at <name>.partial (a stale partial, or a symlink or junction) is removed first, never
     followed, and the partial is then created exclusively, so the bytes can never land outside the folder."""
     path = Path(path)
@@ -51,6 +56,8 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
         with os.fdopen(os.open(partial, flags, 0o666), "wb") as handle:
             handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
         _replace_retrying(partial, path)
     except BaseException:
         try:
@@ -58,6 +65,17 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
         except OSError:
             pass
         raise
+
+
+def fsync_file(path: Path) -> None:
+    """Force a closed file's bytes to the disk (F-012): a safety zip before it is moved into place, so a power cut
+    or OS crash after the run's first destructive write never leaves that zip empty or truncated. Opened for
+    writing because Windows commits only a handle with write access; nothing is written."""
+    fd = os.open(path, os.O_RDWR | getattr(os, "O_BINARY", 0))
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def atomic_write_text(path: Path, text: str) -> None:

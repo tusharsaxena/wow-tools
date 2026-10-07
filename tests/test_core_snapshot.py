@@ -7,7 +7,7 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
-from tests.fixtures import build_wow_tree
+from tests.fixtures import record_fsyncs, build_wow_tree
 from wowtools.core import snapshot
 from wowtools.core.install import WowInstall
 
@@ -20,6 +20,13 @@ class SnapshotTest(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.tmp = Path(tmp.name)
         self.flavor = WowInstall(build_wow_tree(self.tmp / "wow")).flavor("_retail_")
+
+    def test_snapshot_is_fsynced_before_it_is_moved_into_place(self):
+        """F-012: the WTF snapshot is on the disk before the run changes anything it holds."""
+        with record_fsyncs(snapshot) as calls:
+            out = snapshot.take_snapshot(self.flavor, self.tmp / "s", "snapshot", WHEN)
+        size = out.stat().st_size
+        self.assertEqual(calls, [("fsync", size), ("rename", size)])
 
     def test_prefix_and_folder_are_parameters(self):
         out = snapshot.take_snapshot(self.flavor, self.tmp / "out" / "snapshots", "snapshot", WHEN)

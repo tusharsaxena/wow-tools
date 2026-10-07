@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-from tests.fixtures import build_wow_tree
+from tests.fixtures import record_fsyncs, build_wow_tree
 from wowtools.core import backup
 from wowtools.core.backup import BackupEntry, BackupError, create_backup, walk_files
 
@@ -24,6 +24,13 @@ class BackupTest(unittest.TestCase):
         self.dest = self.tmp / "backups" / "b.zip"
         self.entries = [BackupEntry(self.sv / "Uninstalled.lua", ("not_installed",)),
                         BackupEntry(self.sv / "Uninstalled.lua.bak", ("not_installed",))]
+
+    def test_zip_is_fsynced_before_it_is_moved_into_place(self):
+        """F-012: the originals zip is on the disk before the run deletes or rewrites what it holds."""
+        with record_fsyncs(backup) as calls:
+            create_backup(self.entries, self.flavor_dir, self.dest, {})
+        size = self.dest.stat().st_size
+        self.assertEqual(calls, [("fsync", size), ("rename", size)])
 
     def test_zip_contains_files_relative_to_flavor_and_manifest(self):
         out = create_backup(self.entries, self.flavor_dir, self.dest, {"tool": "wtf-cleaner", "flavor": "_retail_"})
