@@ -58,6 +58,15 @@ class BackupTest(unittest.TestCase):
         self.assertFalse(self.dest.exists())
         self.assertFalse(self.dest.with_name("b.zip.partial").exists())
 
+    def test_interrupt_leaves_no_partial(self):
+        def interrupt(*_args):
+            raise KeyboardInterrupt
+
+        with self.assertRaises(KeyboardInterrupt):
+            create_backup(self.entries, self.flavor_dir, self.dest, {}, on_file=interrupt)
+        self.assertFalse(self.dest.exists())
+        self.assertEqual(list(self.dest.parent.glob("*.partial")), [])
+
     def test_unwritable_destination_raises_backup_error(self):
         blocker = self.tmp / "blocker"
         blocker.write_text("a file, not a folder")

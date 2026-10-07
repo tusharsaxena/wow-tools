@@ -302,6 +302,7 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   then move it into place with `rename_no_replace`; on any failure, Ctrl+C included, remove the partial.
   *Why:* an unverified or half-written zip is no backup.
   *Enforced by:* `tests/test_backup.py::test_verification_failure_leaves_nothing`,
+  `tests/test_backup.py::test_interrupt_leaves_no_partial`,
   `tests/test_no_replace_call_sites.py::test_create_backup_never_replaces`.
 - **STD-5.13 MUST** Before the first destructive write, atomically write a crash marker (`core.marker`) naming the
   flavor, the backup and each file with its SHA-256; clear it only when the run finished or fully rolled back. If it

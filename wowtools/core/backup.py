@@ -84,6 +84,9 @@ def create_backup(entries: list[BackupEntry], base_dir: Path, dest_zip: Path, me
     except (OSError, zipfile.BadZipFile, ValueError) as exc:
         remove_quietly(partial)
         raise BackupError(f"backup failed: {exc}") from exc
+    except BaseException:  # e.g. Ctrl+C while zipping: never leave a stray .partial behind (STD-5.12)
+        remove_quietly(partial)
+        raise
     return dest_zip
 
 
