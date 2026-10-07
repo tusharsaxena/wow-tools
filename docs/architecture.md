@@ -457,6 +457,7 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
   and files once read; "made …" when the manifest's date differs), "Restore" with an `Interface` and a `WTF`
   `Ka0sCheckbox` (`#part-Interface`, `#part-WTF`; disabled for a part the backup lacks or that is a link; both off
   when a leftover, another flavor's backup or an unreadable zip blocks it), the `FilterBar` (filter box and **Filter** button), **Restore** (overwrite, `o`) and **Back**
+  (the shared `RiskBanner` tops this pane, D37)
   (`b`/Esc). Right: a `ReviewTree` (`#effects`) rooted at "<flavor> · <date>": "Will be removed (N files)" and
   "Newer now than in the backup (N files)" (open, one node per folder group from `report.group_items`, files on
   expand), "Links kept", "Links replaced", "Could not be read" (lines on expand), a low-space leaf, or "Nothing on
@@ -591,7 +592,7 @@ their original get a `rolled_back` line in the journal that holds their entries 
 `BlacklistScreen` and keeps its answer until Save; `validate_backup_dir` errors inline). `s` opens the shared WoW-folder settings, then this tool's (not while a `ProfileSettingsScreen` or a `BlacklistScreen` is on the stack: two Saves would overwrite each other).
 
 - `ProfileReviewScreen` (`review_screen.py`): `TreeFilter` and `ReviewBase`, `two_pane_css`. Left pane `#filters`, one control
-  per row: the View pair under a "View" heading (By addon / By character), the Show boxes under a "Show" heading, the
+  per row: the shared `RiskBanner` (D37), the View pair under a "View" heading (By addon / By character), the Show boxes under a "Show" heading, the
   shared `FilterBar` (its box id `#search`, `FILTER_SELECTOR`), the `#pending` line (`report.pending_text`, "N pending changes" or `NO_PENDING`) and the
   action row **Apply** (destructive), **Dry run**, **Rescan**, **Undo last change** (revert). Right:
   `BarTree` (`#profiles`, the shared `ReviewTree` whose ↓ on the last line goes on to the action bar), built by `tree_view.TreeBuilder` from the scan, the staging, `Filters` (the
@@ -842,6 +843,15 @@ grows when the window is larger; 80x24 only has to keep working (Addendum B of
   targets inside a "Target folder" row (`report.target_folder`), each keeping its YYYY/MM/DD; a tree line longer
   than its pane scrolls sideways.
 
+**Title bar, risk banner and filter** (Addendum B of `docs/superpowers/specs/2026-10-06-sv-browser-design.md`,
+D37, D40, D41). Every title bar reads `Ka0s WoW Tools` in bold gold, then ` — ` and the sub-title (tool, flavor,
+view) in bold near-white (`Ka0sApp.format_title`, `theme.TITLE_GOLD` / `TITLE_TEXT`). A screen that can destroy data
+(the WTF Cleaner, Ace3 and Saved Variables Browser reviews, Interface Backup's restore screen) puts the shared
+`RiskBanner` (`⚠ USE AT YOUR OWN RISK`, red, bold, not focusable) first in its left pane; no other screen has it
+(`tests/test_structure.py`, `tests/test_look_and_feel.py`). Every tree's `/` filter is a `FilterBar` and applies
+only when submitted (Enter in the box or its **Filter** button), never on each keystroke, so a big tree is rebuilt
+once per filter.
+
 **Keys on buttons** (spec D17). A button that does what a key does shows that key: `action_button(label, kind, key)`
 puts it centred on a second line under the label (`Clean` over `(w)`; a full-size button is then four rows high,
 and so is every button of a `ButtonRow` holding one, so a row lines up), or after the label on a compact one-row
@@ -899,7 +909,7 @@ The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfC
 `include_all=True` and `last=last_flavor_choice`; All flavors skips the account screen. `review_screen.py` holds:
 
 - `ReviewScreen(cfg, tool_cfg, flavors, *, account, wow_check, locker_check)`: a `TreeFilter` and `ReviewBase`; tree,
-  criteria, the `FilterBar` (filter box and **Filter** button) under the max age (it narrows the proposal on top of the criteria: the tree is built
+  the shared `RiskBanner` (D37) above the criteria, the `FilterBar` (filter box and **Filter** button) under the max age (it narrows the proposal on top of the criteria: the tree is built
   from `ModelNode`s matched on flavor, account, owner, addon and file names; an addon opens when a file in it
   matches; the summary and the confirm's alerts say how many ticked files it hides), the Clean /
   Dry run / Rescan buttons and **Undo last clean** (violet, key `z`, last in the same row; disabled when nothing is

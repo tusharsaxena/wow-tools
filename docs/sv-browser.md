@@ -14,8 +14,8 @@ doesn't expect (text where it wants a number, a colour that is out of range, a k
 throw errors, reset itself to its defaults or quietly lose that setting. The tool can't warn you about that.
 
 So the tool asks you to accept this each time you open it from the tool menu (**I understand**, or **Back** to the
-game versions), shows the warning in red at the top of its left panel the whole time, and repeats it in red on every
-**Apply** and **Undo** confirm.
+game versions), shows `⚠ USE AT YOUR OWN RISK` in red at the top of its left panel the whole time, and repeats the
+warning in red on every **Apply** and **Undo** confirm.
 
 What it does guarantee: every byte you didn't change stays exactly as it was, your whole `WTF` folder and every file
 it changes are backed up before anything is written, and **Undo last change** puts the files back.
@@ -53,8 +53,8 @@ other files such as `Config.wtf`, and anything reached through a link (a symlink
 5. The review screen lists every SavedVariables file. Open a file to see its variables, and open a table to see its
    keys.
 6. Change what you want: highlight a key and press **Edit value**, **Rename key** or **Delete key** under the tree,
-   or press **Search** to find and replace values in many files at once. Each change is **staged**: the tree marks
-   it straight away, but no file is touched yet.
+   or press **Search** to find values in many files at once and edit the results in bulk. Each change is
+   **staged**: the tree marks it straight away, but no file is touched yet.
 7. Press **Dry run** (`y`) if you'd like every change checked without writing anything.
 8. Press **Apply** (`w`), read the summary and the warning, and press **Yes**.
 9. The results screen lists every file and what happened to it. If you don't like the result, close WoW and press
@@ -82,9 +82,11 @@ game version → account → **Account-wide**, or realm → character → the fi
   rest of the file is still there to read, but an edit staged anywhere in that file stops **Apply** before anything
   is written ("not readable Lua").
 
-**Results**: the hits of your last search; see [Search and replace](#search-and-replace).
+**Results**: the hits of your last search; see [Search](#search) and [Editing the results in bulk](#editing-the-results-in-bulk).
 
-**Under the tree** is the action bar. It works on the highlighted key; a button that can't act on it is greyed out.
+**Under the tree** is the action bar. It works on the highlighted key (in **Results**, **Edit value** and **Rename
+key** work on every ticked result; see [Editing the results in bulk](#editing-the-results-in-bulk)); a button that
+can't act on it is greyed out.
 
 | Button | Key | Does |
 |---|---|---|
@@ -97,9 +99,10 @@ game version → account → **Account-wide**, or realm → character → the fi
 `Tab` from the tree reaches the bar, and so does `↓` on the tree's last line; `←` `→` move along it and `↑` goes
 back to the tree.
 
-**On the left** are the red **USE AT YOUR OWN RISK** line, the **Filter** box, the line that counts what is
-waiting (`Staged: 3 edits · Ticked: 120 results in 14 files`, plus a few lines about the last search), **Search**
-on a row of its own, then **Apply**, **Dry run**, **Rescan** and **Undo last change**.
+**On the left** are the red `⚠ USE AT YOUR OWN RISK` line, the filter box with its **Filter** button, the lines that
+count what is waiting (`Staged: 3 edits in 2 files`, and after a search `Results: 120 hits in 14 files` and
+`Ticked: 120 results`), **Search** on a row of its own, then **Apply**, **Dry run**, **Rescan** and **Undo last
+change**.
 
 **At the bottom** a bar names the highlighted line in full
 (`Selected: Retail › ACCT1 › Account-wide › ElvUI.lua › ElvDB › font = "Expressway"`) and counts the files found
@@ -107,10 +110,12 @@ on a row of its own, then **Apply**, **Dry run**, **Rescan** and **Undo last cha
 
 ### The filter
 
-The **Filter** box (`/`) keeps only lines whose text contains what you type (upper or lower case doesn't matter),
-and the groups they're in. In **Browse** it looks only at what has been read so far: the files and accounts, and
-the keys of the files and tables you've opened; open a file first to filter inside it. In **Results** it looks at
-every hit. `Enter` goes back to the tree and keeps the filter; `Esc` in the box clears it.
+`/` takes you to the filter box. Type some text, then press `Enter` (or click **Filter** beside the box): the tree
+keeps only lines whose text contains it (upper or lower case doesn't matter), and the groups they're in. Typing alone
+changes nothing, so a big tree isn't rebuilt on every key you press. In **Browse** the filter looks only at what has
+been read so far: the files and accounts, and the keys of the files and tables you've opened; open a file first to
+filter inside it. In **Results** it looks at every hit. Empty the box and press `Enter` to show everything again;
+`Esc` in the box clears it at once and goes back to the tree.
 
 `x` opens every game version, account and character down to the files (it doesn't read any file), and `c` closes
 everything.
@@ -176,10 +181,10 @@ A confirm names the key (and for a table, how many entries go with it). **Yes** 
 - Edits staged inside a deleted table are dropped (the confirm says how many), and nothing more can be staged inside
   it until you unstage the delete.
 
-## Search and replace
+## Search
 
-**Search** (`S`, that's Shift+S; `s` is settings) opens the search popup. Fill in what you need and press **Find**
-(or `Enter`):
+**Search** (`S`, that's Shift+S; `s` is settings) opens the search popup. It only finds: what to change is chosen
+afterwards, on the results. Fill in what you need and press **Find** (or `Enter`):
 
 | Field | What it means |
 |---|---|
@@ -192,22 +197,11 @@ A confirm names the key (and for a table, how many entries go with it). **Yes** 
 | **Account** | Every account, or one |
 | **Character** | Every character and account-wide, **Account-wide only**, or one character |
 | **Addon file** | Only files whose name contains this text (`elv` finds `ElvUI.lua`), any case |
-| **Replace with** | **String**, **Number**, **Boolean**, or **Find only** |
-| **New value** | The replacement: text, a number, or a checkbox for a boolean |
 
 Fill in the key, the value, or both: with both, a hit must match both (key `font` exact **and** value `Friz`
 contains). Only plain values are hits: a key whose value is a table never is. Numbers and booleans match by how the
 file writes them, and only as a **Whole value**; **Contains** looks inside strings only. A `nil` value can be found by
 its key but never by its value.
-
-**The replacement** is checked before the search runs, so each hit can show its new value:
-
-- With **Whole value**, the whole value is replaced by the new one, of the type you picked (a string can become a
-  number).
-- With **Contains**, every place the text appears inside the string is replaced by the new text, and the rest of the
-  string stays (`Interface\Fonts\FRIZQT__.TTF` with value `FRIZQT__` contains, replaced by `ARIALN`, becomes
-  `Interface\Fonts\ARIALN.TTF`). **Contains** needs a String replacement.
-- **Find only** replaces nothing: it just shows you where things are.
 
 The popup opens with your last search filled in, so narrowing it is quick.
 
@@ -215,33 +209,45 @@ The popup opens with your last search filled in, so narrowing it is quick.
 
 The search reads every file in scope (several at once, with a progress window), and switches the tree to the
 **Results** view: game version → account → **Account-wide** or `Realm/Name` → file → one line per hit,
-`ElvDB › profiles › Default › general › font = "Expressway" → "Friz Quadrata TT"`. A message says how many hits it
-found, in how many files, and how long it took.
+`ElvDB › profiles › Default › general › font = "Expressway"`. A message says how many hits it found, in how many
+files, and how long it took.
 
 - **Every hit starts ticked.** `Space` ticks or unticks the highlighted hit or group, `a` and `n` tick and untick
-  everything the filter shows (a tick the filter hides stays, and the bottom bar says how many). Only ticked hits are
-  applied.
-- A **Find only** search shows `path = value` lines with no ticks: there is nothing to apply.
+  everything the filter shows (a tick the filter hides stays, and the bottom bar says how many). Ticks only choose
+  which results a bulk edit works on: a ticked result is never written by itself.
+- A hit with a staged edit shows the same marks as in Browse (`✎ "Arial"`, `→ size`), and a hit inside a key staged
+  for delete shows dim and struck through. The edits staged from the results show in Browse too.
 - `v` goes back to Browse and back again; the ticks stay. A **Rescan** drops the results.
 - The results stop at **10,000** hits; the left panel says how many more were left out. Narrow the search (a game
   version, an account, an addon file) to get the rest.
 - Files that can't be read are counted on the left ("3 files can't be read."); they are skipped.
-- A **new search** replaces the results. If some are ticked, it asks first.
+- A **new search** replaces the results and their ticks; what is staged stays.
 
-### When a ticked result is left out
+## Editing the results in bulk
 
-You can stage edits in Browse **and** tick search results, and **Apply** writes both in one run. When the two meet
-on the same value, the staged edit wins and the ticked result is **left out**. Its line shows `⚠ left out:` and the
-reason, the left panel counts them, and the Apply confirm says so. A result is left out when:
+In the **Results** view, **Edit value** (`e`) and **Rename key** (`k`) work on **every ticked result**, or on the
+highlighted one when none is ticked. They open the same popups as in Browse, titled with the count ("Edit 37
+values", "Rename 12 keys"), and **OK** stages one edit per result, exactly as if you had made each one in Browse. The
+results stay on screen with their ticks, so you can check the marks, unstage a hit with `Backspace`, or run another
+edit. **Delete key** works one key at a time, in Browse only.
 
-- its value has a staged edit;
+- **Edit value** starts from the results' value when they all hold the same one. After a search with value
+  **Contains**, the popup has one more choice first: **Replace only the matched text** (the default) puts your text
+  in place of every match inside each string and keeps the rest (`Interface\Fonts\FRIZQT__.TTF`, found with
+  value `FRIZQT__` contains and edited to `ARIALN`, becomes `Interface\Fonts\ARIALN.TTF`); **Whole value** sets
+  the whole value, of the type you pick, as a normal edit does.
+- **Rename key** first reads the tables the keys are in (a progress window shows "Reading"), so a rename to a key a
+  table already has can be refused.
+
+A notice then says how many edits were staged, how many results already had the new value (nothing to change), and
+how many were **left out**, with the reason for each. A result is left out when:
+
+- its key already has a staged edit (unstage it first if you want the bulk edit instead);
 - it is staged for delete, or inside a key staged for delete;
-- the same value is ticked twice;
-- its value already is the replacement (nothing to change, so the file is not rewritten; a case-fixing replace
-  leaves the values already in the right case alone);
-- the file changed between when you opened it in Browse and the search (rescan).
+- its file changed since the search, or differs from the copy you opened in Browse (rescan and search again);
+- (rename) it is a top-level variable, an array entry, or its table already has the new key.
 
-A result on a key you only **renamed** is not left out: the rename and the new value are both written.
+**Apply** then writes what is staged, from Browse and from the results alike.
 
 ## Apply
 
@@ -250,8 +256,8 @@ running for a game version you're changing, it stops there and asks you to close
 confirm warns you in red and lets you go on.
 
 Then the confirm counts the edits and files per game version, lists each file under its game version
-(`ACCT1 › Account-wide › ElvUI.lua: 2 edits`), and shows in red: ticked results left out, array entries that will
-move down, and the USE AT YOUR OWN RISK warning. **Yes** is selected, in red.
+(`ACCT1 › Account-wide › ElvUI.lua: 2 edits`), and shows in red: array entries that will move down, and the USE AT
+YOUR OWN RISK warning. **Yes** is selected, in red.
 
 A progress window then shows each step. For each game version the tool:
 
@@ -271,19 +277,19 @@ If anything goes wrong while writing, every file already written in that game ve
 run stops. With **All flavors** the game versions are changed one after another; if one runs into a problem, the
 versions after it aren't touched, and the versions before it keep their changes (Undo puts them back).
 
-After a real Apply the staged edits and ticks are gone, and the review reads the files again when you leave the
+After a real Apply the staged edits are gone, and the review reads the files again when you leave the
 results screen.
 
 ## Dry run
 
 A **Dry run** (`y`) does everything Apply does except writing: it rechecks every file and builds and checks each new
 version in memory. It writes nothing at all: no zip, no journal. It works while WoW is running. Its results screen
-has a **Back to review** button (`Esc`) that takes you back with your staged edits and ticks still there.
+has a **Back to review** button (`Esc`) that takes you back with your staged edits still there.
 
 ## The results screen
 
 The top table sums up the run: game versions, files changed (or that would change), edits written (or checked),
-ticked results left out, files skipped, put back or failed, the backup folder, the `WTF` backup, the zip of the
+files skipped, put back or failed, the backup folder, the `WTF` backup, the zip of the
 original files and the journal. The table below has one line per file: game version, account, account-wide or
 character, file, how many edits, and what happened ("changed", "would change", "skipped", "put back", "failed"),
 with the reason when there is one.
@@ -302,7 +308,7 @@ USE AT YOUR OWN RISK warning. Close WoW first: Undo refuses while it's running, 
   change.
 - Before it puts anything back, Undo backs up your whole `WTF` folder again, so the undo itself can be undone by hand.
 - Undo only goes back **one** change: after you undo, the button stays greyed out until your next Apply.
-- Anything staged or ticked that you haven't applied is dropped when the Undo runs (the confirm says how much). If
+- Anything staged that you haven't applied is dropped when the Undo runs (the confirm says how much). If
   the Undo is refused before it starts (WoW running, say), it stays.
 
 ## The safety net
@@ -351,7 +357,7 @@ their originals are. It **never repairs anything on its own**. You choose:
 - **Put the originals back**: each file the change had already written is put back from the zip of the original
   files. A file that's neither the original nor what the change wrote (WoW saved it since, say) is left as it is.
   This is guarded like Undo: refused while WoW is running, and your `WTF` folder is backed up first. It reads the
-  files again afterwards, so anything staged or ticked is dropped (the message says so).
+  files again afterwards, so anything staged is dropped (the message says so).
 - **Leave as is**: the files stay as they are now; the zips are kept.
 
 If you close the message with `Esc`, it's shown again at the next scan, and when you press **Apply**: a new change
@@ -389,19 +395,19 @@ once, and how many game versions Undo backs up at once. Apply still does one gam
 | Key | Does |
 |---|---|
 | `Enter` | Open or close the highlighted line (a file or table is read when first opened) |
-| `S` (Shift+S) | **Search** and replace |
-| `e` | **Edit value** of the highlighted key |
-| `k` | **Rename key** |
+| `S` (Shift+S) | **Search** |
+| `e` | **Edit value** of the highlighted key (Results: of every ticked result) |
+| `k` | **Rename key** (Results: of every ticked result) |
 | `d` | **Delete key** (asks first) |
 | `Backspace` | **Unstage** the highlighted key |
 | `v` | Switch view: Browse / Results |
 | `Space` | Tick or untick the highlighted result or group (Results view) |
 | `a` / `n` | Tick / untick every result shown (Results view; ticks hidden by the filter stay) |
-| `/` | Filter the tree |
+| `/` | Go to the filter box; `Enter` or **Filter** applies it |
 | `x` / `c` | Open everything down to the files / close everything |
-| `w` | **Apply** what is staged and ticked (asks first; **Yes** is selected, in red) |
+| `w` | **Apply** what is staged (asks first; **Yes** is selected, in red) |
 | `y` | **Dry run** (asks first; **Yes** is selected) |
-| `r` | **Rescan**: read the files again (asks first when something is staged or ticked) |
+| `r` | **Rescan**: read the files again (asks first when something is staged) |
 | `z` | **Undo last change** (asks first; **Yes** is selected, in red) |
 | `f` or `Esc` | Pick another game version (in the filter box, `Esc` clears the filter and goes back to the tree) |
 | `t` | Back to the tool menu |
@@ -411,8 +417,8 @@ once, and how many game versions Undo backs up at once. Apply still does one gam
 | `←` `→` | Jump between the tree and the left panel |
 | `Tab` | Move to the next control |
 
-Leaving with `f`, `Esc`, `t` or `q` while something is staged or ticked asks first. In the popups, `Enter` presses
-**OK** or **Find**, `Space` ticks a checkbox and `Esc` cancels.
+Leaving with `f`, `Esc`, `t` or `q` while something is staged asks first (ticks alone don't). In the popups,
+`Enter` presses **OK** or **Find**, `Space` ticks a checkbox and `Esc` cancels.
 
 ## FAQ
 
@@ -426,8 +432,8 @@ Leaving with `f`, `Esc`, `t` or `q` while something is staged or ticked asks fir
 | Why did my array entries renumber? | Deleting an array entry moves the entries after it down one place, as Lua's `table.remove` does. The confirm warns you. The `-- [n]` comments WoW writes are left stale until WoW saves the file again. |
 | Can I search with wildcards or regular expressions? | No: **Exact** / **Contains** for keys, **Whole value** / **Contains** for values, with or without **Match case**. Combine a key and a value to narrow it. |
 | Why are there only 10,000 results? | The results stop there so a broad search can't fill memory. The left panel says how many more there were; narrow the search by game version, account, character or addon file. |
-| Can I replace a number with text? | Yes, with **Whole value**: pick **String** under **Replace with**. **Contains** works inside strings only, so it needs a String replacement. |
-| What's the difference between Dry run and Apply? | A **Dry run** checks every staged edit and ticked result and shows the results without writing anything. **Apply** writes them, after backing everything up. |
+| Can I replace a number with text? | Yes: **Edit value** and pick **String** as the type. In a bulk edit after a value **Contains** search, pick **Whole value** first: **Replace only the matched text** works inside strings only. |
+| What's the difference between Dry run and Apply? | A **Dry run** checks every staged edit and shows the results without writing anything. **Apply** writes them, after backing everything up. |
 | Can I undo a change from last week? | **Undo last change** only goes back to the most recent change. For an older one, unzip its `edited` zip by hand; see [Where your backups go](#where-your-backups-go). |
 | Why does it ask me to accept the warning every time? | Because this tool can do damage no other tool in the app can. It asks once each time you open it from the tool menu (not when you pick another game version or rescan). |
 | Does it work on a Mac? | Yes. The "WoW is running" check works there too, so Apply and Undo wait until you close WoW. |
@@ -444,8 +450,9 @@ Leaving with `f`, `Esc`, `t` or `q` while something is staged or ticked asks fir
 | A file shows in red with "can't read" | It isn't readable Lua (damaged, or cut short when WoW crashed). The tool never changes or searches it. WoW rewrites it the next time that addon saves. |
 | `/` doesn't find a key I know is there | In Browse the filter only sees what has been read: open the file (and the table) first, or use **Search** (`S`). |
 | **Edit value**, **Rename key** or **Delete key** is greyed out | It can't act on the highlighted line: a top-level variable can only have its value edited, an array entry can't be renamed, a table can't be edited as a value, and a key inside a deleted table can't be changed. |
-| `Space` says there is nothing to tick | Ticks are for search results: run a search that replaces (`S`), then look at the Results view (`v`). |
-| A ticked result shows "⚠ left out" | A staged edit on the same value wins, or the value already is the replacement; see [When a ticked result is left out](#when-a-ticked-result-is-left-out). Unstage the edit (`Backspace` in Browse) if you want the result instead. |
+| `Space` says there is nothing to tick | Ticks are for search results: run a search (`S`), then look at the Results view (`v`). |
+| A bulk edit says some results were "left out" | The notice gives the reason for each; see [Editing the results in bulk](#editing-the-results-in-bulk). Unstage the earlier edit (`Backspace`) if you want the bulk edit instead, or rescan and search again if the file changed. |
+| I ticked results but **Apply** is greyed out | Ticks only choose what a bulk edit works on. Press **Edit value** (`e`) or **Rename key** (`k`) to stage the edits, then **Apply**. |
 | "An earlier change did not finish" | See [If a change was interrupted](#if-a-change-was-interrupted). |
 | "Backup folder not allowed" | The backup folder in settings is a relative path, your WoW folder, or inside a game version's `WTF`, `Interface` or `Screenshots` folder. Press `s` and pick another folder, or leave it empty for the default. |
 | **Undo last change** is greyed out | There's nothing to undo: you haven't applied a change yet, or you already undid the last one. |

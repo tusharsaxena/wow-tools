@@ -110,11 +110,12 @@ or "all backups"), the buttons and the keys.
 up"). When a backup is highlighted, it names that backup in full, with its date and time; otherwise it says how
 to pick one. It also warns when a restore is blocked or the scan skipped something.
 
-**Filter**: `/` puts you in the **Filter** box on the left. Type part of a name: a game version, a link, a warning
-or a backup's date and time (`2026-10-04`); upper or lower case doesn't matter. The tree keeps the matching lines
+**Filter**: `/` puts you in the filter box on the left. Type part of a name: a game version, a link, a warning
+or a backup's date and time (`2026-10-04`); upper or lower case doesn't matter. Then press `Enter` or click the
+**Filter** button beside the box (typing alone changes nothing). The tree keeps the matching lines
 and the game versions they're in, and opens a **Backups** (or **Links**) line when something in it matches. A game
-version stays shown, and tickable, while anything in it matches. `Enter` goes back to the tree and keeps the filter;
-`Esc` in the box clears it. The filter only changes what you see: `a` and `n` act on the game versions shown, and a
+version stays shown, and tickable, while anything in it matches. An empty box, applied, shows everything again;
+`Esc` in the box clears the filter. The filter only changes what you see: `a` and `n` act on the game versions shown, and a
 ticked one it hides is still backed up; the bottom bar and the confirmation say so ("1 selected flavor is hidden
 by the filter").
 
@@ -207,17 +208,17 @@ to the folders as they were before an older restore.
 
 The restore screen has the same shape as the review screen.
 
-**On the left**, under **Backup**, are the game version, the kind of backup ("Backup", or "Safety backup (before
-a restore)") and its date, then its size, what it holds and how many files (and when the zip itself says it was
-made, if that differs). Under **Restore** are two boxes, **Interface** and **WTF**, both ticked to start with:
+**On the left**, under a red `⚠ USE AT YOUR OWN RISK` line (a restore overwrites your folders) and **Backup**, are
+the game version, the kind of backup ("Backup", or "Safety backup (before a restore)") and its date, then its
+size, what it holds and how many files (and when the zip itself says it was made, if that differs). Under **Restore** are two boxes, **Interface** and **WTF**, both ticked to start with:
 
 - A folder the backup doesn't hold says "(not in this backup)" and can't be ticked.
 - A folder that is itself a link says "(link: restore by hand)" and can't be ticked. See
   [Links and junctions](#links-and-junctions).
 
-Below them are the **Filter** box (`/`), then **Restore** (amber: it overwrites files) and **Back**. The filter only
-narrows the tree on the right (type part of a folder or file name: `WeakAuras`); it never changes what is
-restored. `Esc` in the box clears it.
+Below them are the filter box (`/`) with its **Filter** button, then **Restore** (amber: it overwrites files) and
+**Back**. The filter only narrows the tree on the right (type part of a folder or file name: `WeakAuras`, then
+`Enter` or **Filter**); it never changes what is restored. `Esc` in the box clears it.
 
 **On the right** is a tree of what the restore would cost you, compared with your folders as they are now. It's
 worked out again each time you tick or untick a box ("Comparing the backup with your folders…" meanwhile):

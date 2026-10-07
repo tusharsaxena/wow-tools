@@ -30,8 +30,10 @@ Conventions:
   `app.py`) that pushes its own screens and `close()`s back to the menu.
 - One look and feel (`tests/test_look_and_feel.py`): one focusable control per row in a left pane (only a
   `ButtonRow` uses ←/→); every tree screen binds `TREE_BINDINGS` (`x` expand all, `c` collapse all) and puts
-  `TREE_HINT` in its hint, plus the `/` filter (`TreeFilter`/`FilterBox`, `FILTER_HINT` right before `TREE_HINT`;
-  `a`/`n` act on what it shows). Every button is `action_button(label, kind, key)` (kind = what it does, colours in
+  `TREE_HINT` in its hint, plus the `/` filter (`TreeFilter`/`FilterBox` with a `FilterBar` in the left pane, applied
+  on submit only: Enter or its **Filter** button; `FILTER_HINT` right before `TREE_HINT`; `a`/`n` act on what it
+  shows). A screen that can destroy data tops its left pane with `RiskBanner` (`ui/widgets.py`; the WTF Cleaner, Ace3
+  and SV Browser reviews, IB's restore screen). Every button is `action_button(label, kind, key)` (kind = what it does, colours in
   `ui/theme.py`); every `ConfirmScreen` names its `kind` (Yes is focused and coloured by it).
 - Keys on buttons (spec D17): a button shows its key under its label; the footer (`KeyFooter`) lists only keys no
   shown button carries (none under a popup); labels, hints and guide lines never repeat a button's key.
@@ -45,7 +47,7 @@ Conventions:
   `parse_at`, `iter_scalars`, encoders), `sv_events` (`SvTool`, `sv_events(prefix)`), `sv_apply` (write pipeline),
   `sv_journal`, `sv_undo`, `sv_verify`, `sv_report`.
   UI: `dialogs` (confirm/info/choice/progress popups, `TextPromptScreen`, `UnfinishedRunScreen`, `popup_css`, CSS,
-  tick helpers), `review` (`ReviewBase`, `ReviewTree`, `TickModel`, `RunActions`, `BarTree`/`ActionBar`), `tree_filter` (`TreeFilter`, `/` filter box), `result_screen` (`ResultBase`), `settings_form`
+  tick helpers), `review` (`ReviewBase`, `ReviewTree`, `TickModel`, `RunActions`, `BarTree`/`ActionBar`), `tree_filter` (`TreeFilter`, `FilterBar`, `/` filter box), `result_screen` (`ResultBase`), `settings_form`
   (`ToolSettingsScreen`), `tool_flow` (`ToolFlow`), `widgets` (`action_button`), `branding` (`BottomBar`, version,
   terms). `tests/test_structure.py` pins single definitions, the cross-tool rule, the future import and import order.
 - Tests use `tests/fixtures.py` temp trees; never a real WoW install, never the network.

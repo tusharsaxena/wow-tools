@@ -22,7 +22,7 @@ you land back on the menu.
 | **Screenshot Organizer** | Sorts your WoW screenshots into folders by year, month and day, one set per game version. | [Screenshot Organizer guide](docs/screenshot-organizer.md) |
 | **Interface Backup** | Zips a game version's `Interface` and `WTF` folders (your addons and their settings), and puts them back from a zip. | [Interface Backup guide](docs/interface-backup.md) |
 | **Ace3 Profile Manager** | Shows the profiles of every addon built on Ace3 and which characters use them, and lets you delete, rename and copy profiles or move characters between them. | [Ace3 Profile Manager guide](docs/ace3-profile-manager.md) |
-| **Saved Variables Browser** | Shows every SavedVariables file as a tree you can browse down to single values, and lets you edit, rename and delete keys, or find and replace values in bulk. Use at your own risk. | [Saved Variables Browser guide](docs/sv-browser.md) |
+| **Saved Variables Browser** | Shows every SavedVariables file as a tree you can browse down to single values, and lets you edit, rename and delete keys, or find values and edit the results in bulk. Use at your own risk. | [Saved Variables Browser guide](docs/sv-browser.md) |
 
 Every tool works with every version of the game you have installed: Retail, Classic, Classic Era, Anniversary,
 and the PTR and Beta clients. You can work on one version at a time or all of them at once.
@@ -125,7 +125,7 @@ The app opens in a terminal window. You drive it with the keyboard:
 | `Enter` | Choose |
 | `Space` | Tick or untick the highlighted line |
 | `x` `c` | Expand or collapse every line of a tree |
-| `/` | Filter a tree: type part of a name, `Enter` keeps the filter, `Esc` clears it |
+| `/` | Filter a tree: type part of a name, then `Enter` (or the **Filter** button) applies it; `Esc` clears it |
 | `a` `n` | Tick or untick everything the tree shows |
 | `c` (tool menu) | What's new: the changelog |
 | `h` | Help: on the tool menu, what each tool does and the keys every tool shares; in a tool, how to use that tool, with a link to its guide |
