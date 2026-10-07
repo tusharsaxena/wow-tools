@@ -301,6 +301,12 @@ If you use WSL (Linux inside Windows), the same folder works from both sides. Ru
 
 The logs list every step the app took, so they usually show what went wrong.
 
+## Developing
+
+Start with [CLAUDE.md](CLAUDE.md), the index of the developer docs: [standards](docs/standards.md),
+[architecture and the documentation map](docs/architecture.md#documentation-map), [testing](docs/testing.md) and
+[common tasks](docs/common-tasks.md).
+
 ## Issues and feature requests
 
 Bugs, ideas and planned work all go in the GitHub issue tracker:

@@ -1,5 +1,8 @@
 # Releasing
 
+Part of the developer docs: see the [Documentation map](architecture.md#documentation-map); the rules are STD-11.1,
+STD-11.2 and STD-12.3 in [standards.md](standards.md).
+
 The updater reads the latest **published, non-prerelease** GitHub Release of `tusharsaxena/wow-tools`,
 and its tag must be `vX.Y.Z` matching `wowtools/__init__.py`. Git installs fast-forward to the tag. Zip installs
 download two files attached to the release, and every release must have both:
@@ -16,10 +19,10 @@ they set `[general] allow_unverified_updates = true`. So a release without the a
 ## Steps
 
 1. Make sure `main`/`master` is green: the `tests` workflow on GitHub Actions (`.github/workflows/tests.yml`)
-   passes on all four jobs (Linux and Windows, Python 3.10 and 3.13). Locally: `python3 scripts/run_tests.py`
-   and `python3 scripts/gen_event_docs.py --check`.
+   passes on all four jobs (Linux and Windows, Python 3.10 and 3.13). Locally: the
+   [green gate](testing.md#the-green-gate) (`run_tests.py`, `ruff check --no-cache .`, `gen_event_docs.py --check`).
 2. Bump `__version__` in `wowtools/__init__.py`, following semver.
-3. Add the `CHANGELOG.md` entry for vX.Y.Z: a `## [X.Y.Z] - YYYY-MM-DD` heading (today's date) above the previous
+3. Add the [`CHANGELOG.md`](../CHANGELOG.md) entry for vX.Y.Z: a `## [X.Y.Z] - YYYY-MM-DD` heading (today's date) above the previous
    one, with what changed (move anything under `## [Unreleased]` into it). Every tagged release must have an entry:
    the app shows it (`c` on the tool menu), a test fails while `__version__` has none, and step 6 refuses a tag
    without one. It goes in before the release commit, so the tagged archive carries it. To pull a release later,

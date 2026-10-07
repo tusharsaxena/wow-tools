@@ -44,7 +44,8 @@ The full walk-through is [adding-a-tool.md](adding-a-tool.md); the test side is
    `DESTRUCTIVE_REVIEWS`, `PREPARE` in `tests/test_look_and_feel.py`; `RUN_ACTION`, `PREPARE` in `tests/test_help.py`.
 5. Docs: `docs/<tool id>.md` (the guide), a README row and guide link and its config file under "Your settings",
    a `CHANGELOG.md` bullet, a row in the [architecture.md](architecture.md) Documentation map and Config schema,
-   `docs/internals/<tool id>.md`, and the tool line in `CLAUDE.md`.
+   `docs/internals/<tool id>.md`, and in `CLAUDE.md` the tool line plus its links in the Documentation index's
+   `docs/internals/` and User guide rows.
 
 **Rules:** all of sections 1 to 10 apply; start with STD-3.1 to STD-3.6 (package and registry), STD-2.1/2.2 (shared
 library), STD-6.2/6.3 (events), STD-7.1 to STD-7.11 (the review), STD-9.1/9.2 (help and guide), STD-10.8 (meta-test

@@ -65,10 +65,11 @@ it: a test (`tests/<file>.py::<test>`) or *review*. Decision IDs (D9, D17, W1, B
   `PYTHONIOENCODING=utf-8` for child processes).
   *Why:* the Windows locale code page (cp1252) cannot decode every byte.
   *Enforced by:* `tests/test_release_scripts.py::test_the_tags_changelog_is_read_as_utf8_whatever_the_locale`, review.
-- **STD-1.10 SHOULD** Keep `ruff check --no-cache .` clean against `ruff.toml` (py310, 120 columns), marking
-  deliberate broad excepts and late imports with their `noqa` code (`BLE001`, `E402`).
+- **STD-1.10 MUST** Keep `ruff check --no-cache .` clean against `ruff.toml` (py310, 120 columns), marking
+  deliberate broad excepts and late imports with their `noqa` code (`BLE001`, `E402`). It is part of the green gate
+  (STD-10.1).
   *Why:* Ruff is not run in CI; the `noqa` codes document intent.
-  *Enforced by:* review.
+  *Enforced by:* the green gate, review.
 
 ## 2. Shared library
 
@@ -112,7 +113,11 @@ it: a test (`tests/<file>.py::<test>`) or *review*. Decision IDs (D9, D17, W1, B
   `tests/test_structure.py::test_shared_dialogs_live_in_ui`,
   `tests/test_structure.py::test_result_choice_settings_and_flow_live_in_ui`.
 - **STD-2.7 MUST** Define suite-wide literals once: the data folder name `"wow-tools"` only in `core/journal.py`
-  (`TOOLS_SUBDIR`), theme colours only in `ui/theme.py`, the 86400.0 day constant once.
+  (`TOOLS_SUBDIR`), the 86400.0 day constant once, and the theme's success colour `#4CC38A` taken from
+  `KA0S_THEME`, never re-typed. Button colours live only in `ui/theme.py` `ACTION_COLOURS` (STD-8.2). Other theme
+  hex values are still copied in a few modules (`ui/dialogs.py` `ALERT_STYLE`/`ACCENT`, WTF Cleaner's
+  `WARNING_STYLE`, result screen and report criteria, Screenshot Organizer's review); new code takes them from the
+  theme.
   *Why:* a copied literal drifts.
   *Enforced by:* `tests/test_structure.py::test_literals_are_defined_once`.
 - **STD-2.8 MUST** Delete dead code and re-exports outright (for example, no tool re-exports `ConfirmScreen`)
@@ -135,8 +140,7 @@ it: a test (`tests/<file>.py::<test>`) or *review*. Decision IDs (D9, D17, W1, B
   *Enforced by:* `tests/test_suite.py::test_registry`, `tests/test_suite.py::test_tools_cannot_be_started_directly`.
 - **STD-3.3 MUST** A tool's package `__init__.py` imports its `events` module, so its events register on import.
   *Why:* events must exist with fixed levels before anything logs them.
-  *Enforced by:* `tests/test_interface_backup_settings.py::test_events_are_registered_under_the_tool_with_the_prefix`,
-  review.
+  *Enforced by:* review (every `wowtools/tools/*/__init__.py` imports its `events`).
 - **STD-3.4 MUST** `app.py` defines a `ToolFlow` subclass with `SECTION` (= the registry's section) and
   `SETTINGS_SCREEN` (a `ToolSettingsScreen` subclass), implements `_pick_flavor()`, exports it as module-level `FLOW`,
   and redefines no shared flow step (`start`, `open_settings`, `_after_review`, `remember_flavor`, `pick_account`,
@@ -202,9 +206,10 @@ it: a test (`tests/<file>.py::<test>`) or *review*. Decision IDs (D9, D17, W1, B
   *Why:* Undo finds the latest run in a fixed place even after the backup folder changes.
   *Enforced by:* `tests/test_journal.py::test_journal_dir`,
   `tests/test_sv_browser_apply.py::test_a_backup_folder_puts_the_zips_there_and_the_journal_under_wow`.
-- **STD-4.9 MUST** Validate a backup or destination folder with `core.install.validate_backup_dir` (a full path, not
-  the WoW folder, not inside any flavor's WTF, Interface or Screenshots) when the form saves (show `_error`, return
-  `False`) and again before every run writes to it.
+- **STD-4.9 MUST** Validate a folder a tool writes into with `core.install.validate_output_dir`
+  (`validate_backup_dir` for a backup folder setting; Screenshot Organizer's `validate_dest` for its destination): a
+  full path, not the WoW folder, not inside any flavor's WTF, Interface or Screenshots. Validate when the form saves
+  (show `_error`, return `False`) and again before every run writes to it.
   *Why:* backups inside what they protect get swept up or deleted with it; the cfg can be hand-edited.
   *Enforced by:* `tests/test_core_shared.py::test_backup_folder_rules`, `tests/test_ui_review.py::test_backup_dir_refused`,
   `tests/test_interface_backup_app.py::test_settings_refuse_folder_inside_wtf`.
@@ -225,6 +230,7 @@ marker, journal, atomic writes with read-back, roll-back on failure, clear marke
   confirm of every real run that changes files under a flavor; an unknown result (`None`) is never "not running" and
   adds an alert to the confirm ([D16][svb]).
   *Why:* WoW rewrites SavedVariables at logout and can lock Interface files.
+  *Deviation:* Screenshot Organizer.
   *Enforced by:* `tests/test_ui_review.py::test_refused_while_running`,
   `tests/test_sv_browser_run_ui.py::test_apply_says_when_the_wow_check_could_not_run`.
 - **STD-5.2 MUST** Tools that edit SavedVariables in place (the `core/sv_apply` pipeline) refuse Apply, Undo and
@@ -276,6 +282,10 @@ marker, journal, atomic writes with read-back, roll-back on failure, clear marke
 
 ### 5b. Safety nets
 
+STD-5.10 to STD-5.15 apply to runs that change or delete SavedVariables or WTF files (WTF Cleaner, Ace3 Profile
+Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same goals differently; see the
+[Documented deviations](#documented-deviations).
+
 - **STD-5.10 MUST** Before a real run changes or deletes any SavedVariables file, take a verified whole-WTF snapshot of
   that flavor (`core.snapshot.take_snapshot`, `must_hold` = the files to change); if it fails, nothing changes
   ([D14][svb]).
@@ -321,6 +331,7 @@ marker, journal, atomic writes with read-back, roll-back on failure, clear marke
 - **STD-5.17 MUST** Every rename or move into a final name goes through `fsutil.rename_no_replace` (never
   `os.rename`/`os.replace`); timestamped names come from `free_name`.
   *Why:* POSIX `os.rename` silently replaces; two runs in one second must not share a name.
+  *Deviation:* `core/migrate.py`.
   *Enforced by:* `tests/test_no_replace_call_sites.py::test_default_renames_are_rename_no_replace`,
   `tests/test_safety.py::test_same_second_snapshot_gets_suffix`.
 - **STD-5.18 MUST** If writing fails part-way (any exception, Ctrl+C included), put back everything this run changed,
@@ -333,14 +344,16 @@ marker, journal, atomic writes with read-back, roll-back on failure, clear marke
   (`RunActions.start_run(..., writes=True)`); read-only work stays outside it.
   *Why:* the suite waits on `wait_idle()` before releasing the lock, so no exit or update cuts a write short.
   *Enforced by:* `tests/test_wtf_app.py::test_clean_and_undo_run_inside_activity_running`,
-  `tests/test_screenshot_organizer_app.py::test_runs_happen_inside_activity_running`.
+  `tests/test_screenshot_organizer_app.py::test_runs_happen_inside_activity_running`,
+  `tests/test_suite.py::test_lock_released_only_after_worker_finishes`.
 - **STD-5.20 MUST** Runs that write SavedVariables across several flavors go one flavor at a time whatever
   `parallelism` says, share one journal and stop at the first failing flavor ([D10][polish]).
   *Why:* they share one crash marker; damage and recovery stay to one flavor.
-  *Enforced by:* `tests/test_ace_multi.py::test_wow_running_refuses_everything`, review.
+  *Enforced by:* `tests/test_ace_multi.py::test_stops_at_failing_flavor`, review.
 - **STD-5.21 MUST** Only one copy of the suite runs at a time (`core.lock.InstanceLock`, `wow-tools.lock`).
   *Why:* two copies changing the same WTF, markers or journals corrupt each other.
-  *Enforced by:* `tests/test_suite.py::test_lock_released_only_after_worker_finishes`.
+  *Enforced by:* `tests/test_suite_app.py::test_first_acquires_second_sees_holder`,
+  `tests/test_suite_app.py::test_lock_conflict_quit`.
 - **STD-5.22 SHOULD** Wrap every progress callback a run reports to in `fsutil.safe_progress`.
   *Why:* a broken progress display must never abort a write.
   *Enforced by:* `tests/test_fsutil.py::test_safe_progress_passes_calls_and_swallows_errors`.
@@ -409,8 +422,10 @@ marker, journal, atomic writes with read-back, roll-back on failure, clear marke
   `journal_pruned`, `undo_*`).
   *Why:* one reader can query any tool's log the same way.
   *Enforced by:* review.
-- **STD-6.6 MUST** Log through `log_event(name, **data)` and `log_exception(where, exc)` only; never `print`, the
-  `logging` module or a hand-opened log file. Pass `dry_run=` where dry runs matter.
+- **STD-6.6 MUST** Tool and UI code logs through `log_event(name, **data)` and `log_exception(where, exc)` only;
+  never the `logging` module, a hand-opened log file or `print`. Pass `dry_run=` where dry runs matter. (The terminal
+  entry points `__main__.py`, `suite.py` and `core/updater.py`'s CLI print user messages to stdout/stderr, and the
+  sink-failure warning of STD-6.8 goes to stderr.)
   *Why:* one sink writes both log files with the shared envelope.
   *Enforced by:* `tests/test_events.py::test_record_has_envelope_fields_and_registry_level`, review.
 - **STD-6.7 SHOULD** Call `log_exception` with `where` = `<prefix>.<stage>` (`ace.scan`, `shots.ui`, `svb.load`).
@@ -561,7 +576,7 @@ marker, journal, atomic writes with read-back, roll-back on failure, clear marke
   *Why:* one colour per kind of action; an unknown kind raises.
   *Enforced by:* `tests/test_structure.py::test_every_button_is_built_with_an_action_kind`,
   `tests/test_ui_base.py::test_action_button_kinds`.
-- **STD-8.2 MUST** Colours live only in `ui/theme.py` `ACTION_COLOURS` (one readable, distinct colour per kind, in
+- **STD-8.2 MUST** Button colours live only in `ui/theme.py` `ACTION_COLOURS` (one readable, distinct colour per kind, in
   step with `ACTION_VARIANTS`).
   *Why:* readable, distinguishable, clear of the WTF criterion hues.
   *Enforced by:* `tests/test_ui_base.py::test_every_kind_has_a_readable_colour_and_a_variant`,
@@ -585,20 +600,24 @@ marker, journal, atomic writes with read-back, roll-back on failure, clear marke
 - **STD-8.6 MUST NOT** Repeat a shown button's key in a hint, label or guide line ([D17][polish]).
   *Why:* each key is said once, where it acts.
   *Enforced by:* `tests/test_look_and_feel.py::test_keys_are_on_the_buttons_and_off_the_footer`.
-- **STD-8.7 MUST** A review's hint starts with `REVIEW_HINT` and ends `FILTER_HINT + TREE_HINT + "f flavors · t tools"`;
-  hints are `·`-separated "key action" items in a `NavHint`, built from the shared constants.
+- **STD-8.7 MUST** A review's hint is `REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT +
+  "f flavors · t tools"`, followed by any tool-only keys (WTF Cleaner: `1-5 criteria · b blacklist`); hints are
+  `·`-separated "key action" items in a `NavHint`, built from the shared constants.
   *Why:* hints read alike and never split a key from its action.
-  *Enforced by:* `tests/test_look_and_feel.py::test_review_hint_wraps_between_items_at_base`.
+  *Enforced by:* review, `tests/test_look_and_feel.py::test_review_hint_wraps_between_items_at_base`.
 - **STD-8.8 MUST** Every review binds: Space (toggle), `a`, `n`, `x`/`c`, `/`, `r`, `z`, `f`, `t`, `q`, Esc (as `f`),
-  ←/→ (pane focus) and `!`. Letter keys that may be typed (`h`, `s`, `u`, `!`) are non-priority; only `/` is priority.
+  ←/→ (pane focus) and `!`. Letter keys that may be typed (`h`, `s`, `u`, `!`) are non-priority; `/` and Space are
+  priority (`ToggleTicks` passes Space through to a focused Input).
   *Why:* the same keys on every review; typing in a box never triggers an action.
   *Enforced by:* `tests/test_help.py::test_h_types_in_a_text_box`,
-  `tests/test_ui_tree_filter.py::test_slash_leaves_a_number_box_and_types_into_a_text_box`.
+  `tests/test_ui_tree_filter.py::test_slash_leaves_a_number_box_and_types_into_a_text_box`; the key list itself by
+  review.
 - **STD-8.9 SHOULD** Put a tool's writing run on `w` and its Dry run on `y`; never use a suite or shared review key
   (`s`, `h`, `u`, `c`, `q`, `f`, `t`, `r`, `z`, `a`, `n`, `x`, `/`, `!`) for a tool action ([D15][polish],
   [D22][svb]).
   *Why:* suite keys must mean the same on every screen.
-  *Enforced by:* review. *Deviations:* Organize `o`, Back up `b`, Restore `e`, Ace3 `u`.
+  *Enforced by:* review. *Deviations:* Organize `o`, Back up `b`, Restore `e`, restore-screen Restore `o` and Back
+  `b`, Ace3 `u`.
 - **STD-8.10 SHOULD** Wire presses through `ButtonActions.BUTTON_ACTIONS` (button id to action name), so a button and
   its key run the same `action_<name>`.
   *Why:* a button and its key never drift.
@@ -620,8 +639,10 @@ marker, journal, atomic writes with read-back, roll-back on failure, clear marke
   *Enforced by:* `tests/test_docs.py::test_readme_links_a_guide_for_every_tool`,
   `tests/test_docs.py::test_warnings_view_and_blacklist_key_are_documented`,
   `tests/test_docs.py::test_guides_filter_on_submit_and_risk_banner`.
-- **STD-9.3 SHOULD** Follow the shared skeletons. Help: intro, step by step, buttons and keys, Warnings, Safety,
-  Settings, Full guide. Guide: Step by step, The review screen (keys table), the run, Dry run, results, Undo last
+- **STD-9.3 SHOULD** Follow the shared skeletons. Help: intro, how to use it (step by step), the buttons and keys,
+  Warnings, Safety, then **Full guide:** last; Settings where the tool has settings beyond the backup folder. The
+  section names vary (Interface Backup splits the steps into Making / Restoring a backup; Ace3 and SV Browser name
+  their keys by pane), and Screenshot Organizer puts Settings before Warnings. Guide: Step by step, The review screen (keys table), the run, Dry run, results, Undo last
   ..., where backups go, interrupted runs, Settings, FAQ, Troubleshooting.
   *Why:* every tool's help and guide read alike.
   *Enforced by:* `tests/test_docs.py::test_ace3_profile_manager_guide_and_readme`,
@@ -644,10 +665,10 @@ marker, journal, atomic writes with read-back, roll-back on failure, clear marke
 
 ## 10. Testing
 
-- **STD-10.1 MUST** Keep the full suite green before every commit: `python3 scripts/run_tests.py` (`-k TEXT`, `-j N`),
-  or serially `python3 -m unittest discover -s tests -t . -v`.
-  *Why:* CI runs the same runner.
-  *Enforced by:* CI, review.
+- **STD-10.1 MUST** Pass the green gate before every commit: `python3 scripts/run_tests.py`,
+  `ruff check --no-cache .` and `python3 scripts/gen_event_docs.py --check` ([testing.md](testing.md#the-green-gate)).
+  *Why:* CI runs the same runner and events check; ruff runs only here.
+  *Enforced by:* CI (tests, events check), review.
 - **STD-10.2 MUST** Stay green on the CI matrix: Linux and Windows, Python 3.10 and 3.13 (byte-compile,
   `gen_event_docs.py --check`, `run_tests.py`).
   *Why:* users run Windows and WSL; 3.10 is the floor.
@@ -673,8 +694,8 @@ marker, journal, atomic writes with read-back, roll-back on failure, clear marke
 - **STD-10.7 MUST** Test logging with `core.events.capture_events()` (strict, in memory), never by reading log files.
   *Why:* an unregistered event fails the test; tests stay off `logs/`.
   *Enforced by:* `tests/test_events.py::test_capture_events_swaps_global_log`.
-- **STD-10.8 MUST** Add a new tool to every per-tool meta-test table: `TOOLS` (and `DESTRUCTIVE_REVIEWS`, `PREPARE` as
-  needed) in `tests/test_look_and_feel.py`, `RUN_ACTION`/`PREPARE` in `tests/test_help.py`, a builder in
+- **STD-10.8 MUST** Add a new tool to every per-tool meta-test table: `TOOLS` and `RUN_ACTION` (and
+  `DESTRUCTIVE_REVIEWS`, `PREPARE` as needed) in `tests/test_look_and_feel.py`, `RUN_ACTION`/`PREPARE` in `tests/test_help.py`, a builder in
   `tests/fixtures.py`.
   *Why:* the meta-tests only check tools they list.
   *Enforced by:* review.
@@ -715,16 +736,16 @@ marker, journal, atomic writes with read-back, roll-back on failure, clear marke
   (`<plan>.status.md`), set up as task 0.
   *Why:* any session resumes at the first task not done; decision IDs are stable citations.
   *Enforced by:* review.
-- **STD-12.2 MUST** Commit once per task, updating its ledger row (status, commit, full-suite count); push at each
-  milestone.
+- **STD-12.2 MUST** Within an approved plan, commit once per task, updating its ledger row (status, commit,
+  full-suite count), and push at each milestone; outside one, commit or push only when the user asks.
   *Why:* the ledger is the single resumable record.
   *Enforced by:* review.
 - **STD-12.3 MUST NOT** Merge into master, tag or publish a release without the user's explicit go-ahead; merge and
   release are separate approvals; never file a GitHub issue to track a release.
   *Why:* the user approves each gate and tags when ready.
   *Enforced by:* review.
-- **STD-12.4 MUST NOT** Edit a dated spec or plan in `docs/superpowers/` once its branch is merged; cite its decision
-  IDs instead, and record build-time choices under "Decisions taken during the build" in the ledger.
+- **STD-12.4 MUST NOT** Edit a dated spec or plan in `docs/superpowers/` once its branch is merged, or any bundle in
+  `reviews/`; cite their decision IDs instead, and record build-time choices under "Decisions taken during the build" in the ledger.
   *Why:* later sessions can trace why the code looks the way it does.
   *Enforced by:* review.
 - **STD-12.5 SHOULD** End a build with a whole-branch review task (review, fix, full suite, ruff, events check), and
@@ -743,12 +764,16 @@ The accepted exceptions to the rules above. A deviation not listed here is not a
 | STD-4.5 | WTF Cleaner keeps its own `keep_cleaned` (its `cleaned-*.zip` files, 0 = keep all, the default). | Once the snapshots holding them are pruned, a cleaned zip may be the only copy of deleted data. | Ace3 spec feedback round 1 ([ace]) |
 | STD-4.7 | WTF Cleaner resolves its own folder (`resolve_backup_dir`): a set `backup_dir` is used as is, with no `wtf-cleaner` subfolder; its `settings.py` builds the default from `TOOLS_SUBDIR`. | The first tool's folder layout predates `tool_root`; moving it would orphan users' backups. | [D20][svb] (tool_root moved to core for SV tools) |
 | STD-5.3 | WTF Cleaner (clean, undo) and Interface Backup (back up, restore, undo) warn about a running WoW instead of refusing. | Their safety nets (snapshot, safety zip, journal) still cover the run; only in-place edits are refused. | [IB spec][ib], [D16][svb] |
+| STD-5.1 | Screenshot Organizer runs no running-WoW check. | Filing screenshots does not depend on the game. | [SO spec][so] (Extras row) |
+| STD-5.11, STD-5.13, STD-5.14 | Screenshot Organizer writes no originals zip and no crash marker. | It only moves or copies files with `rename_no_replace`, never overwriting; its journal is the Undo source. | [SO spec][so] |
+| STD-5.13, STD-5.14 | Interface Backup restore writes no crash marker. | It detects an interrupted swap from leftover `.restoring` and `.replaced` folders (`scanner.leftover_folders`) and refuses a new restore of that flavor until they are gone. | [IB spec][ib] |
+| STD-5.17 | `core/migrate.py` (`merge_folder`, `_merge_into`, the `.migrated` config copy) renames with `os.rename` after an `lexists` check or onto a `_free_name`. | Start-up migration of the suite's own folders, while the instance lock is held and before any tool runs. | review |
 | STD-5.6 | SV Browser lists `Blizzard_*.lua` files. | It is a raw editor behind an at-your-own-risk disclaimer; it changes only what the user edits. | D2, D4 in the [SV Browser spec][svb] |
 | STD-5.27 | A WTF Cleaner dry run writes `dryrun-*.zip` of the selected files when its backup setting is on. | Lets the user inspect exactly what a clean would remove; it deletes nothing. | `wowtools/tools/wtf_cleaner/cleaner.py`, `tests/test_cleaner.py::test_dry_run_writes_backup_but_deletes_nothing` |
 | STD-6.3 | WTF Cleaner's events have bare names (`scan.started`, `clean.*`, `sv.*`, `backup.created`). | The first tool, registered before prefixes; renaming would break log readers. | Grandfathered ([adding-a-tool.md](adding-a-tool.md)) |
 | STD-3.4, STD-2.6 | Interface Backup wraps two shared steps: `ToolFlow._settings_done` (a changed WoW folder says nothing) and `ReviewBase.run_preflight` (logs a running WoW first). Both call the shared one. | Tool-specific behaviour around a shared step; the structure tests allow exactly these. | `tests/test_structure.py` |
 | STD-7.3 | SV Browser has no account picker; Screenshot Organizer and Interface Backup have no account level. | SV Browser shows every account by design; the others act per flavor. | [D3][svb] |
-| STD-7.5, STD-8.9 | Interface Backup's second review button is Restore (`e`), not Dry run (`y`); its run is Back up (`b`). Screenshot Organizer runs Organize on `o`. | Back up only adds files, so there is nothing to simulate; `w` reads as "write". | `tests/test_look_and_feel.py` |
+| STD-7.5, STD-8.9 | Interface Backup's second review button is Restore (`e`), not Dry run (`y`); its run is Back up (`b`). Screenshot Organizer runs Organize on `o`. | Back up only adds files, so there is nothing to simulate; `w` reads as "write". On the restore screen, Restore (the run) is `o` and Back is `b`. | `tests/test_look_and_feel.py` |
 | STD-8.3 | Interface Backup's **Restore** is `navigate` on the review (it opens the restore screen) and `overwrite` on the restore screen. | The left pane has no room for a longer label. | `tests/test_structure.py::test_same_label_same_colour` |
 | STD-8.9 | Ace3 Profile Manager binds `u` (unlock) on its review, shadowing the suite's update key there. | Users already know the unlock key; on any screen that binds `u` the update notice says "press u on the tool menu" instead. | [D15][polish] |
 | STD-8.9 | SV Browser adds Search (`S`) in its own button row above the four action buttons. | `s` is the suite's settings key. | [D22][svb] |
@@ -758,3 +783,4 @@ The accepted exceptions to the rules above. A deviation not listed here is not a
 [wb]: superpowers/specs/2026-10-07-warnings-and-blacklist-design.md
 [ace]: superpowers/specs/2026-10-04-ace-profiles-design.md
 [ib]: superpowers/specs/2026-10-04-interface-backup-design.md
+[so]: superpowers/specs/2026-10-03-screenshot-organizer-design.md

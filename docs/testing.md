@@ -18,16 +18,17 @@ enforce across the suite. The testing rules every change follows are the `STD-10
 
 ## The green gate
 
-Run all of these before every commit ([STD-10.1](standards.md#10-testing)). Each must pass.
+Before every commit, the three commands marked **gate** must pass ([STD-10.1](standards.md#10-testing)); the other
+rows are ways to run the suite while you work.
 
 | Command | What it does |
 |---|---|
-| `python3 scripts/run_tests.py` | The whole suite in parallel: the tests are sorted by id and dealt round-robin into one shard per CPU (at most 16), one process per shard. Exit code 0 only if every shard passed. About 70 to 100 s on WSL `/mnt/d`. |
+| **gate** `python3 scripts/run_tests.py` | The whole suite in parallel: the tests are sorted by id and dealt round-robin into one shard per CPU (at most 16), one process per shard. Exit code 0 only if every shard passed. About 70 to 100 s on WSL `/mnt/d`. |
 | `python3 scripts/run_tests.py -k TEXT` | Only the tests whose id (`tests.test_wtf_app.SomeTest.test_name`) contains `TEXT`, e.g. `-k sv_browser` or `-k test_look_and_feel`. |
 | `python3 scripts/run_tests.py -j N` | `N` shards instead of one per CPU. |
 | `python3 -m unittest discover -s tests -t . -v` | The same tests, serially and verbose, in one process. Use it to read a failure's full output in order. |
-| `ruff check --no-cache .` | Lint (settings in `ruff.toml`: Python 3.10 target, 120 columns, `vendor/` excluded). Not run in CI, so it is on you. |
-| `python3 scripts/gen_event_docs.py --check` | Fails if `docs/events.md` is out of date with the event registries. Run `python3 scripts/gen_event_docs.py` (no flag) to regenerate it after changing a registry. `tests/test_docs.py` checks the same thing. |
+| **gate** `ruff check --no-cache .` | Lint (settings in `ruff.toml`: Python 3.10 target, 120 columns, `vendor/` excluded). Not run in CI, so it is on you. |
+| **gate** `python3 scripts/gen_event_docs.py --check` | Fails if `docs/events.md` is out of date with the event registries. Run `python3 scripts/gen_event_docs.py` (no flag) to regenerate it after changing a registry. `tests/test_docs.py` checks the same thing. |
 
 `run_tests.py` adds `vendor/` to the path itself and pins each shard's output pipe to UTF-8, so it works the same on
 Windows. A failing shard prints its whole unittest output under `===== shard i/N failed =====`; the last line is

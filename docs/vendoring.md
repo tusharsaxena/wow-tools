@@ -1,5 +1,8 @@
 # Vendored libraries
 
+Part of the developer docs: see the [Documentation map](architecture.md#documentation-map). The rules are STD-11.3
+and STD-11.4 in [standards.md](standards.md).
+
 Third-party code lives in `vendor/` and is committed, so the tools run without pip or a virtualenv.
 `wowtools/__main__.py` (and `tests/__init__.py`) put `vendor/` first on `sys.path`.
 

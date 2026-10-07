@@ -42,8 +42,11 @@ python3 scripts/gen_event_docs.py --check # docs/events.md matches the event reg
   STD-11.3).
 - Tests never touch a real WoW install or the network: `tests/fixtures.py` temp trees, `make_config`,
   `TuiTestCase` for Textual tests (STD-10.3 to STD-10.5).
-- `docs/superpowers/` specs and plans and `reviews/` bundles are frozen records: read them for decision IDs (D17,
+- `docs/superpowers/` specs and plans (once merged) and `reviews/` bundles are frozen records: read them for decision IDs (D17,
   W1, B1 ...), never edit them (STD-12.4).
+- Never write a user's file except through the shared safety nets: atomic write, `rename_no_replace`,
+  snapshot/originals zip, crash marker and journal before the first destructive write; a dry run changes nothing
+  ([standards.md section 5](docs/standards.md#5-data-safety), STD-5.10 to STD-5.18, STD-5.27).
 - `wowtools/core/` never imports `textual`; a tool never imports another tool; what two tools need lives once in
   `core/` or `ui/` (STD-1.6, STD-2.1, STD-2.2).
 - Log only registered events and regenerate `docs/events.md` after a registry change (STD-6.1, STD-6.4). Every
