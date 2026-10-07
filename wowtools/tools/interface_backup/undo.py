@@ -11,7 +11,8 @@ from typing import NoReturn
 
 from wowtools.core.backup import BackupError, verify_backup
 from wowtools.core.events import log_event
-from wowtools.core.fsutil import is_link, is_real_dir, make_link, remove_tree_no_follow, safe_progress
+from wowtools.core.fsutil import (is_link, is_real_dir, make_link, remove_tree_no_follow, rename_no_replace,
+                                  safe_progress)
 from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.journal import Journal, mark_undone
 from wowtools.core.paths import to_stored
@@ -182,7 +183,7 @@ def _undo_part(zf: zipfile.ZipFile, contents: BackupContents, flavor: Flavor, pa
 
 
 def undo_restore(journal_path: Path, *, wow_root: Path, root: Path, progress: Callable[..., None] | None = None,
-                 rename: Rename = os.rename) -> RestoreResult:
+                 rename: Rename = rename_no_replace) -> RestoreResult:
     """Undo the restore journal_path records: each part it replaced, newest first, is put back from its safety
     backup (or taken away again when the restore created it), and the links the restore removed from it are made
     again (a part where one cannot be made is `failed`, its reason naming the link). Guards first: the journal not

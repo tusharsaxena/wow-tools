@@ -10,7 +10,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 # os.link errors meaning "this file system (or this kind of file) has no hard links", not "the target exists".
-_NO_HARDLINK = {errno.EPERM, errno.EACCES, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EMLINK, errno.ENOSYS}
+# EISDIR: WSL's drvfs (/mnt/<drive>) gives it for a junction or a relative symlink to a folder (Linux gives EPERM).
+_NO_HARDLINK = {errno.EPERM, errno.EACCES, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EMLINK, errno.ENOSYS, errno.EISDIR}
 
 # Reparse tags (os.lstat(...).st_reparse_tag on Windows) of the two kinds of link: a symlink and a junction.
 _LINK_TAGS = (0xA000000C, 0xA0000003)
@@ -71,7 +72,8 @@ def rename_no_replace(src: Path, dst: Path) -> None:
 
     Windows' rename already refuses an existing target. On POSIX (Linux, macOS, WSL drives) os.rename silently
     replaces it, so the file is hard-linked to dst first (the kernel refuses an existing dst atomically) and then
-    unlinked from src. Where hard links are not supported the fallback is a last check plus rename (best effort).
+    unlinked from src. Where hard links are not supported (a folder, or a link on WSL's drvfs) the fallback is a
+    last check plus rename: best effort, since something that appears at dst in between is still replaced.
     A cross-device rename raises OSError(EXDEV), as os.rename does, so callers can copy instead."""
     src, dst = Path(src), Path(dst)
     if os.name == "nt":

@@ -54,6 +54,18 @@ class RenameNoReplaceTest(unittest.TestCase):
                 rename_no_replace(self.src, self.dst)
         self.assertEqual(self.dst.read_bytes(), b"source")
 
+    @unittest.skipIf(os.name == "nt", "Windows renames never replace; hard links are not used there")
+    def test_rename_no_replace_falls_back_when_link_says_is_a_directory(self):
+        # On WSL's drvfs (/mnt/<drive>) os.link gives EISDIR for a junction or a relative symlink to a folder.
+        with patch.object(fsutil.os, "link", side_effect=OSError(errno.EISDIR, "Is a directory")):
+            rename_no_replace(self.src, self.dst)
+            self.assertEqual(self.dst.read_bytes(), b"source")
+            self.assertFalse(self.src.exists())
+            self.src.write_bytes(b"again")
+            with self.assertRaises(FileExistsError):
+                rename_no_replace(self.src, self.dst)
+        self.assertEqual(self.dst.read_bytes(), b"source")
+
     @unittest.skipIf(os.name == "nt", "EXDEV comes from os.link on POSIX only")
     def test_cross_device_error_is_raised_unchanged(self):
         with (
