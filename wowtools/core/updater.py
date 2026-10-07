@@ -327,8 +327,9 @@ def _sha256(path: Path) -> str:
 def _unverifiable(release: ReleaseInfo) -> UpdateError:
     where = release.html_url or f"https://github.com/{REPO}/releases"
     return UpdateError(f"v{release.version} has no published checksum ({SUMS_ASSET}), so the download can't be "
-                       f"verified and nothing was changed. Download it by hand from {where}, or set "
-                       f"allow_unverified_updates = true in config/wow-tools.cfg to update anyway.")
+                       f"verified and nothing was changed. Download it by hand from {where}, or, with the app "
+                       "closed, set allow_unverified_updates = true under [general] in config/wow-tools.cfg to "
+                       "update anyway (the app does not keep comments in that file when it saves it).")
 
 
 def _download_release(release: ReleaseInfo, archive: Path, download: Callable[[str, Path], None],

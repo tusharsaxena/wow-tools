@@ -172,6 +172,26 @@ class DocsTest(unittest.TestCase):
         for needle in ("`core/blacklist.py`", "`BlacklistAction`", "`WarningsScreen`"):
             self.assertIn(needle, standards)
 
+    def test_config_comments_are_not_kept(self):
+        """F-013: a save rewrites the config files through configparser, which drops comments; the README's settings
+        section and the WTF Cleaner guide's hand-edited blacklist say so."""
+        readme = " ".join((REPO_ROOT / "README.md").read_text(encoding="utf-8").split())
+        settings = readme[readme.index("## Your settings"):readme.index("## Undo and run journals")]
+        self.assertIn("Comments you add to these files aren't kept", settings)
+        # Not only `s`: picking a game version rewrites the files too, on almost every run.
+        self.assertIn("the game version you pick", settings)
+        update = readme[readme.index("allow_unverified_updates = true"):readme.index("Updating never touches")]
+        self.assertIn("with the app closed", update)
+        wtf = " ".join((REPO_ROOT / "docs" / "wtf-cleaner.md").read_text(encoding="utf-8").split())
+        self.assertIn("Comments you add to the file aren't kept", wtf)
+        for tool in TOOLS.values():  # every guide that names the keys for a hand edit says the same
+            with self.subTest(tool=tool.name):
+                guide = (REPO_ROOT / "docs" / f"{tool.name}.md").read_text(encoding="utf-8")
+                paragraph = next(" ".join(p.split()) for p in guide.split("\n\n")
+                                 if p.startswith("The file itself uses these names"))
+                self.assertIn("Close the app before editing the file", paragraph)
+                self.assertIn("Comments you add to the file aren't kept", paragraph)
+
     def test_claude_md_is_the_index(self):
         """CLAUDE.md is the entry point: it names every tool, points at standards.md and the architecture hub first,
         indexes every developer doc, guide and internals doc, and every relative link in it resolves."""

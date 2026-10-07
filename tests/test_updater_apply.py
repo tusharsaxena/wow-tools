@@ -151,6 +151,8 @@ class ZipUpdateTest(unittest.TestCase):
         with self.assertRaises(UpdateError) as ctx:
             apply_update(bare, root=self.root, current="0.1.0", download=self.download)
         self.assertIn("allow_unverified_updates", str(ctx.exception))
+        self.assertIn("with the app closed", str(ctx.exception))  # F-013: a running app's save would undo the edit
+        self.assertIn("does not keep comments", str(ctx.exception))  # F-013: a save drops hand-written comments
         self.assertIn("https://github.com/r/releases/tag/v0.2.0", str(ctx.exception))
         self.assertEqual(self.downloaded, [])
         self.assertIn("0.1.0", self.version_on_disk())

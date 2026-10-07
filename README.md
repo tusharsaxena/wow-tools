@@ -211,7 +211,8 @@ Before installing, the app checks that the download is exactly the file that was
 (its checksum, listed in the release's `SHA256SUMS` file). If it doesn't match, nothing is changed. If a release
 has no `SHA256SUMS` file, the update is refused and you're pointed to the Releases page to download it yourself.
 If you'd rather update anyway in that case, add `allow_unverified_updates = true` under `[general]` in
-`config\wow-tools.cfg` (it starts as `false`; leaving it that way is safer).
+`config\wow-tools.cfg` with the app closed (it starts as `false`; leaving it that way is safer; see
+[Your settings](#your-settings)).
 
 Updating never touches your settings, logs or backups, or files you put directly in the app's folder (notes, say).
 The app's own folders (`wowtools`, `vendor`, `scripts` and `docs`) are replaced as a whole, so don't keep your own
@@ -240,9 +241,11 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 | `config\ace3-profile-manager.cfg` | The Ace3 Profile Manager's settings (`[ace3_profile_manager]`): backup folder and the blacklist of addons (each in one game version) it never changes |
 | `config\sv-browser.cfg` | The Saved Variables Browser's settings (`[sv_browser]`): backup folder |
 
-The easiest way to change them is to press `s` in the app: the first screen is the shared one (WoW folder,
-backups and journals to keep, game versions (and search files) to work on at once), then the tool's own. You can also open the files in Notepad while the app
-is closed. The guides list every setting.
+The easiest way to change them is to press `s` in the app: the first screen is the shared one (WoW folder, backups and
+journals to keep, game versions (and search files) to work on at once), then the tool's own. You can also open the
+files in Notepad while the app is closed. Comments you add to these files aren't kept: the app rewrites a file
+whenever it saves anything (a setting from `s`, the game version you pick, an update check, the WTF Cleaner's
+blacklist), so keep your notes somewhere else. The guides list every setting.
 
 ## Undo and run journals
 

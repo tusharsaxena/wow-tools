@@ -397,8 +397,10 @@ work on at once; then this tool's). The tool's settings are saved in `config\sv-
 |---|---|---|
 | Backup folder | empty | Where the `WTF` backups and the zips of edited files go: they're put in its `sv-browser` folder. Empty means `<WoW folder>\wow-tools`. It must be a full path (such as `D:\WoW backups`), and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
 
-The file itself uses these names under `[sv_browser]`, if you edit it by hand: `backup_dir` and
-`last_flavor_choice` (the game version you picked last time; empty means **All flavors**).
+The file itself uses these names under `[sv_browser]`, if you edit it by hand: `backup_dir` and `last_flavor_choice`
+(the game version you picked last time; empty means **All flavors**). Close the app before editing the file, or your
+change may be overwritten. Comments you add to the file aren't kept (the app rewrites it when it saves a setting or
+the game version you pick).
 
 How many backups and journals to keep is shared by every tool: `keep_backups` (10; `0` keeps all) and
 `keep_journals` (10) under `[general]` in `config\wow-tools.cfg`, on the first screen `s` opens. So is

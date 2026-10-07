@@ -399,9 +399,10 @@ tool's settings). The tool's settings are saved in
 | Backup folder | empty | Where the `WTF` backups and the zips of edited files go: they're put in its `ace3-profile-manager` folder. Empty means `<WoW folder>\wow-tools`. It must be a full path (such as `D:\WoW backups`), and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
 | Blacklist | none | Addons, each in one game version, that are shown but never changed. **Edit blacklist…** opens the [blacklist screen](#the-blacklist); the line above it counts them |
 
-The file itself uses these names, if you edit it by hand: `backup_dir`, `blacklist` (pairs such as
-`_retail_:ElvUI, _classic_era_:Questie`), `last_flavor_choice` (the game version you picked last time; empty means
-**All flavors**) and `last_account` (empty means all accounts).
+The file itself uses these names, if you edit it by hand: `backup_dir`, `blacklist` (pairs such as `_retail_:ElvUI,
+_classic_era_:Questie`), `last_flavor_choice` (the game version you picked last time; empty means **All flavors**) and
+`last_account` (empty means all accounts). Close the app before editing the file, or your change may be overwritten.
+Comments you add to the file aren't kept (the app rewrites it when it saves a setting or the game version you pick).
 
 Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
 first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),

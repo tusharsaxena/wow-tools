@@ -23,6 +23,9 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
     now flushed to the disk before it replaces the old one, so a power cut or a system crash right after an
     Apply, an Undo or a settings change leaves the old file or the new one, never an empty file. Each Undo
     journal line and each safety backup zip is flushed to the disk the same way before the change it covers.
+  - The README, every tool's guide and the message about a release with no checksum now say that comments you
+    add to a settings file in `config` aren't kept: the app rewrites the file whenever it saves a setting or the
+    game version you pick. Edit these files with the app closed.
 - **WTF Cleaner**
   - A file WoW rewrites while a clean is backing up the WTF folder is now kept (shown as changed since the scan)
     instead of deleted, so its newer data is never lost.

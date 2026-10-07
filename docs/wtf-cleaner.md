@@ -123,8 +123,9 @@ blacklist = _retail_:ElkBuffBars, _classic_era_:Questie, WeakAuras
 
 Upper or lower case doesn't matter. A name with no game version (`WeakAuras` above, or `*:WeakAuras`) is
 blacklisted in every game version; `b` on it in one game version takes it off there only and keeps it in the
-others. Close the app before editing the file, or your change may be overwritten. The settings screen doesn't show
-the list, but saving it keeps it.
+others. Close the app before editing the file, or your change may be overwritten. Comments you add to the file
+aren't kept (the app rewrites it when it saves a setting). The settings screen doesn't show the list, but saving it
+keeps it.
 
 ### Keys on the review screen
 
@@ -297,9 +298,11 @@ in `config\wtf-cleaner.cfg`.
 | Backup folder | empty | Where zips and backups go. Empty means `<WoW folder>\wow-tools\wtf-cleaner`. It must be a full path, and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
 
 The file itself uses these names, if you edit it by hand: `max_age_days`, `criterion_not_installed`,
-`criterion_not_enabled`, `criterion_older_than`, `criterion_stray_copies`, `criterion_orphan_backups`, `backup_before_delete`, `keep_cleaned`, `backup_dir`,
-`blacklist` (see [The blacklist](#the-blacklist); it has no row on the settings screen, `b` on the review edits it),
-`last_account` and `last_flavor_choice`.
+`criterion_not_enabled`, `criterion_older_than`, `criterion_stray_copies`, `criterion_orphan_backups`,
+`backup_before_delete`, `keep_cleaned`, `backup_dir`, `blacklist` (see [The blacklist](#the-blacklist); it has no row
+on the settings screen, `b` on the review edits it), `last_account` and `last_flavor_choice`. Close the app before
+editing the file, or your change may be overwritten. Comments you add to the file aren't kept (the app rewrites it
+when it saves a setting or the game version you pick).
 
 Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
 first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),
