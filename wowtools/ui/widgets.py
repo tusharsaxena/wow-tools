@@ -274,8 +274,9 @@ def wrap_items(text: str, width: int, sep: str = " · ") -> str:
 
 
 # Spec D37: the banner at the top of the left pane of every screen that can destroy data (the Saved Variables
-# Browser, WTF Cleaner and Ace3 Profile Manager reviews, Interface Backup's restore screen).
-RISK_TEXT = "\u26a0 USE AT YOUR OWN RISK"
+# Browser, WTF Cleaner and Ace3 Profile Manager reviews, Interface Backup's restore screen). Two spaces after the
+# icon: a terminal that draws it as a two-cell emoji (Windows Terminal) covers the first one.
+RISK_TEXT = "\u26a0  USE AT YOUR OWN RISK"
 
 
 class RiskBanner(Static):

@@ -70,7 +70,7 @@ class ValueTest(BulkTestBase):
         path = hits[0].file.path
         result = stage_values(self.staging, hits, lambda hit: "Arial", {path: "0" * 64})
         mine = sum(1 for h in hits if h.file.path == path)
-        self.assertEqual(result.left_out, {ops.FILE_CHANGED: mine})
+        self.assertEqual(result.left_out, {ops.BYTES_DIFFER: mine})
 
 
 class RenameTest(BulkTestBase):

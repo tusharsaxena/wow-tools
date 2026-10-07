@@ -11,7 +11,7 @@ after the round. Never merge without the user's go-ahead.
 | F2 | filter on submit (all tools) | done | (this commit) | shared `FilterBar` (box + non-focusable compact **Filter** `(⏎)` button, navigate) replaces the bare `FilterInput` on all 7 tree screens; typing only edits the box, Enter or the button applies (`FilterBox.submit_filter`, one rebuild, tree focused after it), Esc clears box and filter; `FILTER_HINT` "/ filter, then Filter", tool and suite help updated; full suite 1655 OK (2 skipped), +4 tests |
 | F3 | find-only search, bulk edit/rename into staging | done | (this commit) | Search popup finds only (no Replace with / New value / Find only; a blank row between the key and value pairs), `SearchSpec.replacement` and `Hit.new`/`new_bytes` removed (`search.replace_matched` added); new UI-free `bulk.py` stages one edit per ticked (else highlighted) hit via new `Staging.stage_hit_value` / `stage_hit_rename` / `unstage_hit`, leaving out already-staged, under-delete, changed-bytes and D5-refused hits with a notice by reason (`svb.bulk_staged`); Results-view Edit value / Rename key open the normal popups titled with the count (matched-text vs whole value after a Contains search), marks show on hits and in Browse; `Staging.plans()` is staged edits only, the pending line reads `Staged: N edits in F files` + `Ticked: M results`; help, architecture, Addendum A updated; full suite 1667 OK (2 skipped), +12 tests (net) |
 | F4 | docs, review, push | done | (this commit) | `docs/sv-browser.md` rewritten for D37-D39 (find-only `## Search`, new `## Editing the results in bulk` with the matched-text/whole-value choice and left-out reasons, ticks only select, Apply/Rescan/leave/Undo/Dry run no longer mention ticks, filter on Enter/**Filter**, keys, FAQ, troubleshooting), the other four guides and README describe the filter on submit and the `⚠ USE AT YOUR OWN RISK` line, architecture gains a title bar/banner/filter paragraph and per-screen `RiskBanner` mentions, CLAUDE.md look-and-feel line names `FilterBar`/`RiskBanner`, CHANGELOG 0.1.0 updated (no new version), help texts verified; full suite 1668 OK (2 skipped), +1 test |
-| FB1 | push round | todo | | |
+| FB1 | push round | todo | | review fixes: Results Unstage of a rename reads its table in a worker and shows the real reason; `BYTES_DIFFER` (search again, then rescan) for hits differing from the loaded document or staged edits; banner two spaces after ⚠; regression tests for the D29 escapes case and the loaded-document hashes; full suite 1672 OK (2 skipped) |
 
 ## Decisions taken during the build
 - **F1** Header: Textual's `Header` renders title and sub-title in one `HeaderTitle` via `App.format_title`, so
@@ -81,3 +81,16 @@ after the round. Never merge without the user's go-ahead.
   "debounced rebuild" wording in code and `docs/adding-a-tool.md` (it is one rebuild per submit now, per F2).
 - **F4** `ruff check .` panicked on a stale cache ("wrong package cache for file", ruff 0.16.10); `ruff check
   --no-cache .` passes.
+- **FB1 review**: 6 findings, 6 fixed, 0 rejected (findings 1 and 3 were the same defect, fixed once): (1/3) Results
+  Unstage on a renamed hit no longer calls `read_tables` on the event loop: `_read_tables_then(hits, then, name=,
+  title=)` is shared with the bulk rename and runs it through `start_run(writes=False)` under the progress popup
+  ("Reading the table of the key to unstage"); `Staging.unstage_hit` now takes `Table | str | None` and a str is the
+  refusal (e.g. `FILE_CHANGED`), never `NOT_LOADED`. (2) `_hit_refused` returns the new `BYTES_DIFFER` ("...search
+  again, and rescan if that does not clear it") when the hit's bytes differ from the loaded document or the staged
+  edits; `FILE_CHANGED` ("...since the search; search again") is now only `read_tables`' reason, where a new search
+  does clear it. (4) `RISK_TEXT` has two spaces after U+26A0 (a terminal drawing it as a two-cell emoji covers the
+  first); spec D37 and the look-and-feel test say so; the guides' inline mentions keep one space (prose). (5) New
+  `test_a_hit_written_with_other_escapes_but_the_same_value_stages_nothing` (Details, matched b -> b) fails with the
+  bytes-only check. (6) New UI test opens ElvUI in Browse, changes it on disk, searches and bulk-edits: its hits are
+  left out with `BYTES_DIFFER`; fails when `_loaded_shas` returns {}. Each new test was checked against the mutant or
+  pre-fix code.

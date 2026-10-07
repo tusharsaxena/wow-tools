@@ -11,12 +11,13 @@ from pathlib import Path
 from tests.fixtures import SVB_FONT, build_sv_tree
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
-from wowtools.core.luasv import key_id
+from wowtools.core.luasv import encode_value, key_id
 from wowtools.tools.sv_browser import ops
+from wowtools.tools.sv_browser.bulk import MATCHED, new_value, stage_values
 from wowtools.tools.sv_browser.model import SvDocument
 from wowtools.tools.sv_browser.ops import FieldEdit, Staging, new_keys, path_text, typed_path
 from wowtools.tools.sv_browser.scanner import scan_flavors
-from wowtools.tools.sv_browser.search import SearchSpec, run_search
+from wowtools.tools.sv_browser.search import SearchScope, SearchSpec, run_search
 
 
 def by_key(nodes, key):
@@ -313,6 +314,18 @@ class HitStagingTest(StagingTestBase):
         self.assertEqual((result.ok, result.message), (True, "unchanged"))
         self.assertEqual(self.staging.count, 0)
 
+    def test_a_hit_written_with_other_escapes_but_the_same_value_stages_nothing(self):
+        """D29: Details' text is written with escapes (\\226\\128\\148) that encode_value writes otherwise; replacing
+        b with b is the value already there, so nothing is staged (no rewrite of the escapes)."""
+        spec = SearchSpec(value="b", value_mode="contains", match_case=True, scope=SearchScope(addon="details"))
+        hits = run_search(self.files, spec).hits
+        self.assertTrue(hits)
+        for hit in hits:
+            self.assertNotEqual(encode_value(hit.old), hit.old_bytes)  # only the value compare keeps it unchanged
+        result = stage_values(self.staging, hits, lambda hit: new_value(spec, MATCHED, "b", hit))
+        self.assertEqual((result.staged, result.unchanged), (0, len(hits)))
+        self.assertEqual(self.staging.count, 0)
+
     def test_already_staged_and_under_a_delete_are_refused(self):
         doc, node = self.elv("general", "font")
         self.staging.set_value(doc, node, "Mine")
@@ -330,9 +343,11 @@ class HitStagingTest(StagingTestBase):
         path = doc.file.path
         path.write_bytes(path.read_bytes().replace(b"Expressway", b"Expresswax"))
         hit = next(h for h in self.font_hits() if h.file.path == path)
-        self.assertEqual(self.staging.stage_hit_value(hit, "Arial").message, ops.FILE_CHANGED)
+        # a new search reads the same changed bytes, so the reason must not stop at "search again" (rescan)
+        self.assertEqual(self.staging.stage_hit_value(hit, "Arial").message, ops.BYTES_DIFFER)
+        self.assertIn("rescan", ops.BYTES_DIFFER)
         other = next(h for h in self.font_hits() if h.file.path.name == "Questie.lua")
-        self.assertEqual(self.staging.stage_hit_value(other, "Arial", doc_sha="0" * 64).message, ops.FILE_CHANGED)
+        self.assertEqual(self.staging.stage_hit_value(other, "Arial", doc_sha="0" * 64).message, ops.BYTES_DIFFER)
 
     def test_a_bad_value_is_refused(self):
         hit = self.font_hits()[0]
@@ -365,6 +380,13 @@ class HitStagingTest(StagingTestBase):
         self.staging.stage_hit_value(hit, "Arial")
         self.assertTrue(self.staging.unstage_hit(hit).ok)
         self.assertEqual(self.staging.count, 0)
+
+    def test_unstaging_a_hit_rename_whose_table_can_not_be_read_gives_the_reason(self):
+        cap = next(h for h in self.search(key="Font", match_case=True) if h.file.path.name == "ElvUI.lua")
+        self.assertTrue(self.staging.stage_hit_rename(cap, "face", ops_table(cap)).ok)
+        result = self.staging.unstage_hit(cap, ops.FILE_CHANGED)
+        self.assertEqual((result.ok, result.message), (False, ops.FILE_CHANGED))
+        self.assertEqual(self.staging.count, 1)
 
     def test_unstaging_a_hit_rename_that_would_leave_a_duplicate_is_refused(self):
         cap = next(h for h in self.search(key="Font", match_case=True) if h.file.path.name == "ElvUI.lua")

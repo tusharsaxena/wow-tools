@@ -55,7 +55,11 @@ _NUMBER_START = re.compile(r"[-.\d]")
 # Why a search hit can't be staged (a bulk edit leaves it out, D39), besides the D5 refusals above.
 ALREADY_STAGED = "It already has a staged edit."
 UNDER_DELETE = "It is staged for delete, or inside a key staged for delete."
-FILE_CHANGED = "The file changed since the search (or since it was opened); search again."
+FILE_CHANGED = "The file changed since the search; search again."
+# The hit's bytes differ from the document Browse loaded or the file's staged edits (both kept until a rescan): a new
+# search reads the file again, and only clears it when the search was the older read.
+BYTES_DIFFER = ("The search read other bytes than the file opened in Browse (or its staged edits); search again, "
+                "and rescan if that does not clear it.")
 
 
 def typed_path(path: Sequence) -> TypedPath:
@@ -371,7 +375,7 @@ class Staging:
         stage = self._files.get(hit.file.path)
         if (stage is not None and stage.edits and stage.sha256 != hit.sha256) or \
                 (doc_sha is not None and doc_sha != hit.sha256):
-            return FILE_CHANGED
+            return BYTES_DIFFER
         if self.hit_edit(hit) is not None:
             return ALREADY_STAGED
         return UNDER_DELETE if self.hit_deleted_above(hit) else None
@@ -417,16 +421,16 @@ class Staging:
         self._put_hit(hit, edit, "rename")
         return OpResult(True)
 
-    def unstage_hit(self, hit: Hit, table: Table | None = None) -> OpResult:
+    def unstage_hit(self, hit: Hit, table: Table | str | None = None) -> OpResult:
         """Drop what is staged on the hit's key (Backspace in Results). table: the key's table, needed to unstage a
-        rename (it must not leave a key twice)."""
+        rename (it must not leave a key twice); a str (bulk.read_tables) is why it could not be read."""
         edit = self.hit_edit(hit)
         if edit is None:
             return OpResult(False, NOTHING_STAGED)
         stage = self._files[hit.file.path]
         if edit.rename:
-            if table is None:
-                return OpResult(False, NOT_LOADED)
+            if table is None or isinstance(table, str):
+                return OpResult(False, table or NOT_LOADED)
             clash = _table_clash(stage, table, hit.typed_path, FieldEdit(hit.path))
             if clash:
                 return OpResult(False, f"Unstaging it would leave the key {key_text(clash[0][1])} twice in its "

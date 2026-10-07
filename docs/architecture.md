@@ -692,14 +692,16 @@ Modules in `tools/sv_browser/` (all UI-free except `app.py`, `review_screen.py`,
   delete drops the edits inside it). Search hits are staged by `stage_hit_value` / `stage_hit_rename` /
   `unstage_hit` (`hit_edit`, `hit_deleted_above` for the marks), keyed the same way with the SHA-256 the search read
   (D39): refused when the key already has an edit (`ALREADY_STAGED`), is on or under a staged delete, or the bytes
-  differ from the staging's or the loaded document's (`FILE_CHANGED`), plus D5 (a rename is given its table for the
-  duplicate check). `plans()` is the staged edits only. `parse_key` / `key_input` read and write keys as the tree
+  differ from the staging's or the loaded document's (`BYTES_DIFFER`: search again, and rescan if that does not clear
+  it, since both are kept until a rescan), plus D5 (a rename is given its table for the duplicate check;
+  `unstage_hit` of a rename too, and a str table is the reason it could not be read). `plans()` is the staged edits only. `parse_key` / `key_input` read and write keys as the tree
   shows them (`[5]`, `[true]`, `["[5]"]`).
 - `bulk` (D39): `stage_values(staging, hits, value_for, shas)` and `stage_renames(staging, hits, new_key, tables,
   shas)` stage one edit per hit and return a `BulkResult` (staged, unchanged, `left_out` by reason; `text()` is the
   notice; logs `svb.bulk_staged`); `new_value(spec, mode, value, hit)` (`MATCHED` after a value Contains search:
   `replace_matched`; `WHOLE`); `read_tables(hits, progress)` reads each file once, checks its SHA-256 against the
-  search's, and parses only the tables holding a hit (`compile.FieldIndex` / `locate`), a str reason where it can't.
+  search's (`FILE_CHANGED`), and parses only the tables holding a hit (`compile.FieldIndex` / `locate`), a str reason
+  where it can't.
 - `compile`: `compile_file` re-locates every target by typed path in the bytes Apply read (`FieldIndex`: one dict
   per touched table), parses only the touched tables, and splices the value, key and remove spans
   (`luasv.encode_value` / `encode_key`, keys always bracketed). A plan that doesn't fit the bytes (key missing or
@@ -754,7 +756,8 @@ tool from the menu, not on a new flavor pick or a rescan.
   `EditValueScreen`, `RenameKeyScreen` (the shared `TextPromptScreen`) and `delete_confirm` (destructive, with the
   array-shift alert); in Results `e`/`k` open them titled with the count (`Edit 37 values`), `EditValueScreen(...,
   matched=True)` after a value Contains search, then `bulk.stage_values` at once or, for a rename, `bulk.read_tables`
-  in a `start_run(writes=False)` worker ("Reading" row) then `bulk.stage_renames`; the `BulkResult` text is the
+  in a `start_run(writes=False)` worker ("Reading" row, `_read_tables_then`) then `bulk.stage_renames`; Backspace on
+  a renamed hit reads its table the same way before `unstage_hit` (never on the event loop); the `BulkResult` text is the
   notice and the Results view stays, ticks kept. Apply / Dry run build the plan once (`staging.plans()`), then: a waiting marker → recovery first, the
   backup-folder check, the WoW check over the plan's flavors (`run_preflight`), `ConfirmScreen(..., groups=
   report.apply_groups(plan))`, and `start_run` with `editor.apply_plan` and `RunProgressScreen` (ids `svb-*`). Undo

@@ -71,6 +71,7 @@ GROUP_KINDS = ("root", "flavor", "account", "realm", "owner", *RESULT_GROUPS)  #
 OPEN_KINDS = ("root", "flavor", "account", "owner", *RESULT_GROUPS)  # open when first shown (realms, files closed)
 NOTHING_FOUND = "Nothing found."
 READ_TABLES = "Reading the tables of the keys to rename"
+READ_UNSTAGE_TABLE = "Reading the table of the key to unstage"
 # The bar under the tree, acting on the highlighted key: (id, label, kind of action, action, key).
 TREE_ACTIONS = (
     ("act-edit", "Edit value", "overwrite", "edit_value", "e"),
@@ -1010,8 +1011,12 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
             edit = self.staging.hit_edit(hit) if hit is not None and self.idle else None
             if edit is None:
                 return
-            table = read_tables([hit]).get(table_key(hit)) if edit.rename else None
-            self._staged(self.staging.unstage_hit(hit, table if not isinstance(table, str) else None), "Unstage")
+            if not edit.rename:
+                self._staged(self.staging.unstage_hit(hit), "Unstage")
+                return
+            # a rename needs its table (no key left twice): read in a worker, as the bulk rename reads it
+            self._read_tables_then([hit], lambda tables: self._staged(
+                self.staging.unstage_hit(hit, tables.get(table_key(hit))), "Unstage"), name="unstage_hit", title=READ_UNSTAGE_TABLE)
             return
         doc, node = self.highlighted()
         if not self.idle or doc is None or node is None or self.staging.edit_for(doc, node) is None:
@@ -1080,19 +1085,21 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
 
         def done(text) -> None:
             if text is not None:
-                self._read_tables_then(hits, parse_key(text), title)
+                shas = self._loaded_shas()
+                self._read_tables_then(hits, lambda tables: self._bulk_staged(
+                    stage_renames(self.staging, hits, parse_key(text), tables, shas), title), name="bulk_rename")
         self.app.push_screen(RenameKeyScreen(self._bulk_where(hits), initial, key_problem, title=title), done)
 
-    def _read_tables_then(self, hits: list[Hit], new_key: object, title: str) -> None:
-        progress = SearchProgressScreen(READ_TABLES, first_stage="tables")
+    def _read_tables_then(self, hits: list[Hit], then: Callable[[dict], None], *, name: str,
+                          title: str = READ_TABLES) -> None:
+        """Read the tables holding the hits' keys (bulk.read_tables) in a worker under the progress popup, then
+        then(tables) on the UI thread: a large file is never read or parsed on the event loop."""
+        progress = SearchProgressScreen(title, first_stage="tables")
 
-        def report(done: int, total: int, name: str) -> None:
-            progress.report("tables", done, total, name)
-        shas = self._loaded_shas()
-        self.start_run(progress, lambda: read_tables(hits, report),
-                       lambda tables: self._bulk_staged(stage_renames(self.staging, hits, new_key, tables, shas),
-                                                        title),
-                       name="bulk_rename", failure="Reading the tables stopped", stale_on_crash=False, writes=False)
+        def report(done: int, total: int, file: str) -> None:
+            progress.report("tables", done, total, file)
+        self.start_run(progress, lambda: read_tables(hits, report), then, name=name,
+                       failure="Reading the tables stopped", stale_on_crash=False, writes=False)
 
     def action_switch_view(self) -> None:
         """v: Browse and Results (once a search has run)."""

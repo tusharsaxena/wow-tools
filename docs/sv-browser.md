@@ -244,7 +244,9 @@ how many were **left out**, with the reason for each. A result is left out when:
 
 - its key already has a staged edit (unstage it first if you want the bulk edit instead);
 - it is staged for delete, or inside a key staged for delete;
-- its file changed since the search, or differs from the copy you opened in Browse (rescan and search again);
+- its file changed since the search (search again), or the search read other bytes than the copy you opened in
+  Browse or your staged edits on that file (search again; if it is still left out, the file changed on disk after
+  you opened it: rescan);
 - (rename) it is a top-level variable, an array entry, or its table already has the new key.
 
 **Apply** then writes what is staged, from Browse and from the results alike.

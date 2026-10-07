@@ -15,7 +15,7 @@ from wowtools.core.events import capture_events
 from wowtools.core.svfiles import OWNER_ACCOUNT_WIDE
 from wowtools.tools.sv_browser import review_screen
 from wowtools.tools.sv_browser.bulk import MATCHED, WHOLE
-from wowtools.tools.sv_browser.ops import ALREADY_STAGED, FieldEdit
+from wowtools.tools.sv_browser.ops import ALREADY_STAGED, BYTES_DIFFER, FILE_CHANGED, FieldEdit
 from wowtools.tools.sv_browser.popups import EditValueScreen, RenameKeyScreen, SearchScreen
 from wowtools.tools.sv_browser.review_screen import BROWSE, RESULTS, SvReviewScreen
 from wowtools.tools.sv_browser.search import KEY_CONTAINS, NEED_TEXT, REPLACE_NUMBER, VALUE_CONTAINS
@@ -471,6 +471,54 @@ class BulkEditTest(SvEditTestBase, SearchTestBase):
             leaf = next(n for n in walk(self.tree_root(review))
                         if n.data is not None and n.data[0] == "hit" and "general › font" in n.label.plain)
             self.assertTrue(leaf.label.plain.endswith('✎ "Expressway"'))
+
+    async def test_a_file_opened_in_browse_then_changed_on_disk_leaves_its_hits_out(self):
+        """D39: the review passes the loaded documents' hashes, so a hit read from newer bytes than the document Browse
+        shows is left out (and the reason says a rescan is needed: a new search reads the same newer bytes)."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review, _ = await self.general(app, pilot)
+            (path,) = [p for p, d in review.docs.items() if d.loaded]
+            path.write_bytes(path.read_bytes().replace(b"Expressway", b"Expresswax"))
+            await self.search(review, pilot, search_value=FRIZ)
+            mine = sum(1 for h in review.hits if h.file.path == path)
+            self.assertTrue(mine)
+            with mock.patch.object(review, "notify") as notify:
+                await self.bulk_value(review, pilot, "Arial")
+            self.assertIn(f"{mine} · {BYTES_DIFFER}", notify.call_args.args[0])
+            self.assertEqual(review.staging.count, len(review.hits) - mine)
+
+    async def test_unstage_on_a_renamed_hit_reads_its_table_in_a_worker_and_gives_the_reason(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot, "_retail_")
+            await self.search(review, pilot, search_key="Font", match_case=True)
+            tree = review.query_one("#browse", Tree)
+            tree.focus()
+            await pilot.press("k")
+            await settle(app, pilot)
+            app.screen.query_one(Input).value = "face"
+            await settle(app, pilot)
+            await pilot.press("enter")
+            await settle(app, pilot)
+            await settle(app, pilot)
+            count = review.staging.count
+            self.assertTrue(count)
+            leaf = next(n for n in walk(tree.root) if n.data is not None and n.data[0] == "hit")
+            select(tree, leaf)
+            await settle(app, pilot)
+            hit = review.hits[leaf.data[1]]
+            hit.file.path.write_bytes(hit.file.path.read_bytes() + b"\n")
+            with mock.patch.object(review, "start_run", wraps=review.start_run) as run, \
+                    mock.patch.object(review, "notify") as notify:
+                await pilot.press("backspace")
+                await settle(app, pilot)
+                await settle(app, pilot)
+            run.assert_called_once()  # the file is read in a worker, under the progress popup
+            self.assertIs(app.screen, review)
+            self.assertFalse(app.busy)
+            self.assertEqual(notify.call_args.args[0], FILE_CHANGED)
+            self.assertEqual(review.staging.count, count)
 
     async def test_rename_on_the_ticked_hits(self):
         app = self.make_app()

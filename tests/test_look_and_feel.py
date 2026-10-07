@@ -180,7 +180,8 @@ class LookAndFeelTest(TuiTestCase):
                     banner = banners[0]
                     self.assertIs(filters.children[0], banner)
                     self.assertEqual(banner.render().plain, RISK_TEXT)
-                    self.assertEqual(RISK_TEXT, "\u26a0 USE AT YOUR OWN RISK")
+                    # two spaces: a terminal that draws the triangle as a two-cell emoji covers the first one
+                    self.assertEqual(RISK_TEXT, "\u26a0  USE AT YOUR OWN RISK")
                     self.assertFalse(banner.focusable)
                     self.assertTrue(banner.styles.text_style.bold)
                     self.assertEqual(banner.styles.color.hex, app.get_css_variables()["error"])
