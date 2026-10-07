@@ -107,7 +107,7 @@ def same_file_content(a: Path, b: Path) -> bool:
 
 
 def copy_verified(src: Path, dst: Path) -> None:
-    """Copy src to dst through <dst>.partial: copy bytes and times, check size and SHA-256, then rename into
+    """Copy src to dst through <dst>.partial: copy bytes and times, fsync, check size and SHA-256, then rename into
     place. Refuses an existing dst. Raises OSError on any failure (the partial file is removed)."""
     if os.path.lexists(dst):
         raise FileExistsError(errno.EEXIST, "target exists", str(dst))
@@ -120,6 +120,8 @@ def copy_verified(src: Path, dst: Path) -> None:
             for chunk in iter(lambda: reader.read(CHUNK), b""):
                 source_hash.update(chunk)
                 writer.write(chunk)
+            writer.flush()
+            os.fsync(writer.fileno())  # F-012: on disk before the rename, as the caller may then delete the source
         shutil.copystat(src, partial)
         if partial.stat().st_size != src.stat().st_size or sha256_file(partial) != source_hash.hexdigest():
             raise OSError(errno.EIO, "copy verification failed", str(dst))

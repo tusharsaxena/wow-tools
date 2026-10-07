@@ -7,9 +7,10 @@ import unittest
 import unittest.mock
 from pathlib import Path
 
-from tests.fixtures import OLD_SHOT, build_screenshot_tree, build_wow_tree
+from tests.fixtures import OLD_SHOT, build_screenshot_tree, build_wow_tree, record_fsyncs
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
+from wowtools.tools.screenshot_organizer import organizer
 from wowtools.tools.screenshot_organizer.journal import latest_undoable, prune_journals, read_journal
 from wowtools.tools.screenshot_organizer.organizer import (ALREADY_FILED, CONFLICT_KEPT, COPIED, DUPLICATE_REMOVED,
                                                            FAILED, MOVED, REFUSED, SKIPPED, SOURCE_LEFT, WOULD_COPY,
@@ -22,6 +23,20 @@ B = "WoWScrnShot_073119_232800.jpg"
 
 def exdev(src, dst):
     raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+
+class CopyVerifiedTest(unittest.TestCase):
+    def test_copy_is_fsynced_before_it_is_renamed_into_place(self):
+        """F-012: across devices the caller deletes the source once copy_verified returns, so the copy must be on
+        the disk first, or a power cut can leave neither."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        src, dst = Path(tmp.name) / "a.jpg", Path(tmp.name) / "b.jpg"
+        src.write_bytes(b"shot" * 1000)
+        with record_fsyncs(organizer) as calls:
+            organizer.copy_verified(src, dst)
+        self.assertEqual(calls, [("fsync", 4000), ("rename", 4000)])
+        self.assertEqual(dst.read_bytes(), src.read_bytes())
 
 
 class OrganizerTest(unittest.TestCase):

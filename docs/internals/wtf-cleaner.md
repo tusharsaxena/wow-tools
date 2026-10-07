@@ -92,7 +92,7 @@ backups (an earlier clean's Undo may need them).
 `latest_undoable(journal_dir)` is the only journal offered (never past an undone one). `undo_clean()` walks its
 entries newest first: the destination is `<wow_root>/<flavor>/<rel>`, refused (skipped) unless `flavor` is a plain
 folder name and `rel` starts with `WTF/` and has no `..`; a file that exists again is skipped; otherwise the entry
-is extracted, exclusive create, from the cleaned-files zip (by its name, which is `rel`) or, when there is no zip,
+is extracted, exclusive create and `fsync`ed (F-012), from the cleaned-files zip (by its name, which is `rel`) or, when there is no zip,
 the zip is gone or lacks it, or its size differs, from the WTF backup by `rel`. The written size must match the
 entry (else the partial file is removed and the entry fails) and the file's mtime is put back. Each zip is opened
 once. Afterwards the journal is marked undone, unless nothing was restored and something failed (a source
