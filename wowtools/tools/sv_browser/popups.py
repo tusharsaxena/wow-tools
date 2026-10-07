@@ -1,12 +1,11 @@
 """The Saved Variables Browser's popups (spec §5), styled like ConfirmScreen (ui.dialogs.popup_css; its USE AT YOUR
 OWN RISK warning, D2, is the shared ui.disclaimer popup): Edit value (D5, D10: a type select, then a text field or a
 checkbox), Rename key (the shared text prompt) and Delete key (a destructive confirm, with D5's array-shift warning)
-and Search (D6-D9, D38: the key and value texts, their modes, Match case and
-the scope; it only finds: Find checks them with the search's own rules and dismisses with a SearchSpec). Edit value
-and Rename key also serve the bulk edit of the search results (D39: titled with the count; Edit value then may offer
-"Replace only the matched text"). The edit popups check what is typed with the checks they are given (the review
-passes the staging's own, ops.Staging.*_problem) and dismiss with the value, the key text or the answer; the review
-stages it."""
+and Search (D6-D9, D38: the key and value texts, their modes, Match case and the scope; it only finds: Find checks
+them with the search's own rules and dismisses with a SearchSpec). Edit value and Rename key also serve the bulk edit
+of the search results (D39: titled with the count; Edit value then may offer "Replace only the matched text"). The
+edit popups check what is typed with the checks they are given (the review passes the staging's own,
+ops.Staging.*_problem) and dismiss with the value, the key text or the answer; the review stages it."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -27,8 +26,7 @@ from wowtools.tools.sv_browser.ops import SHIFT_WARNING, parse_key
 from wowtools.tools.sv_browser.search import (KEY_CONTAINS, KEY_EXACT, REPLACE_BOOLEAN, REPLACE_NUMBER,
                                               REPLACE_STRING, VALUE_CONTAINS, VALUE_WHOLE, Replacement, SearchScope,
                                               SearchSpec, parse_replacement)
-from wowtools.ui.dialogs import (ConfirmScreen, ProgressScreen, TextPromptScreen, popup_css,
-                                 show_error)
+from wowtools.ui.dialogs import ConfirmScreen, ProgressScreen, TextPromptScreen, popup_css, show_error
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, NavSelect, action_button
 
 VALUE_TYPES = ((REPLACE_STRING, "String"), (REPLACE_NUMBER, "Number"), (REPLACE_BOOLEAN, "Boolean"))
