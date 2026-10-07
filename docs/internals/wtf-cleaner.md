@@ -142,7 +142,9 @@ In `cleaner.execute`:
 
 The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfCleanerFlow` (`FLOW`) and
 `CleanerSettingsScreen` (criteria, max age, backup on/off, cleaned-files zips to keep, backup folder). The flow shows `FlavorScreen` with
-`include_all=True` and `last=last_flavor_choice`; All flavors skips the account screen. `review_screen.py` holds:
+`include_all=True` and `last=last_flavor_choice`; All flavors skips the account screen. Before the review it asks
+`ToolFlow.ask_disclaimer` (the shared `ui.disclaimer.DisclaimerScreen` with `report.DISCLAIMER`, once per app session,
+L4; `clean.disclaimer_accepted` / `_declined`; Back returns to the flavor picker). `review_screen.py` holds:
 
 - `ReviewScreen(cfg, tool_cfg, flavors, *, account, wow_check, locker_check)`: a `TreeFilter` and `ReviewBase`; tree,
   the shared `RiskBanner` (D37) above the criteria, the `FilterBar` (filter box and **Filter** button) under the max age (it narrows the proposal on top of the criteria: the tree is built

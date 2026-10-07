@@ -11,11 +11,13 @@ up, and deletes the ones you leave ticked. **Close WoW first**: it rewrites thes
 ## Step by step
 
 1. **Pick a game version**, or **All flavors**; then an account, or **All accounts**.
-2. The **review** lists the files suggested for removal: game version → account → character → addon → files.
+2. Read the **USE AT YOUR OWN RISK** warning: **I understand** goes on, **Back** returns to the game versions. Once
+   you press **I understand** it is not asked again until you restart the app.
+3. The **review** lists the files suggested for removal: game version → account → character → addon → files.
    Everything starts ticked ("remove this"): untick what you want to keep.
-3. **Dry run** (`y`) to see what would happen; nothing is deleted.
-4. **Clean** (`w`), read the summary, press **Yes**.
-5. The **results** list every file and what happened to it.
+4. **Dry run** (`y`) to see what would happen; nothing is deleted.
+5. **Clean** (`w`), read the summary, press **Yes**.
+6. The **results** list every file and what happened to it.
 
 ## The rules (left pane)
 

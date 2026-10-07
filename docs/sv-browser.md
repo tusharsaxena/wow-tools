@@ -13,9 +13,9 @@ doesn't. It shows you the raw data an addon saved and lets you change any value 
 doesn't expect (text where it wants a number, a colour that is out of range, a key it never reads), the addon may
 throw errors, reset itself to its defaults or quietly lose that setting. The tool can't warn you about that.
 
-So the tool asks you to accept this each time you open it from the tool menu (**I understand**, or **Back** to the
-game versions), shows `⚠ USE AT YOUR OWN RISK` in red at the top of its left panel the whole time, and repeats the
-warning in red on every **Apply** and **Undo** confirm.
+So the tool asks you to accept this the first time you open it after starting the app (**I understand**, or **Back**
+to the game versions; **Back** doesn't count, so it asks again next time), shows `⚠ USE AT YOUR OWN RISK` in red at
+the top of its left panel the whole time, and repeats the warning in red on every **Apply** and **Undo** confirm.
 
 What it does guarantee: every byte you didn't change stays exactly as it was, your whole `WTF` folder and every file
 it changes are backed up before anything is written, and **Undo last change** puts the files back.
@@ -459,7 +459,7 @@ Leaving with `f`, `Esc`, `t` or `q` while something is staged asks first (ticks 
 | Can I replace a number with text? | Yes: **Edit value** and pick **String** as the type. In a bulk edit after a value **Contains** search, pick **Whole value** first: **Replace only the matched text** works inside strings only. |
 | What's the difference between Dry run and Apply? | A **Dry run** checks every staged edit and shows the results without writing anything. **Apply** writes them, after backing everything up. |
 | Can I undo a change from last week? | **Undo last change** only goes back to the most recent change. For an older one, unzip its `edited` zip by hand; see [Where your backups go](#where-your-backups-go). |
-| Why does it ask me to accept the warning every time? | Because this tool can do damage no other tool in the app can. It asks once each time you open it from the tool menu (not when you pick another game version or rescan). |
+| Why does it ask me to accept the warning? | Because it can break an addon in ways it can't warn you about. It asks once each time you start the app: not again when you open the tool a second time, pick another game version or rescan. The WTF Cleaner and the Ace3 Profile Manager ask the same way, each for itself. |
 | Does it work on a Mac? | Yes. The "WoW is running" check works there too, so Apply and Undo wait until you close WoW. |
 
 ## Troubleshooting

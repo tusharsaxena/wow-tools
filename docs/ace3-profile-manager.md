@@ -46,15 +46,18 @@ changes and a very long name highlighted, it shows only the pending changes so t
    values are fine for most people.
 3. **Pick a game version**, or **All flavors** to see every version at once.
 4. If you picked one version that has more than one WoW account, **pick an account**, or **All accounts**.
-5. The tool reads every addon's settings file and shows the review screen. Nothing is ticked yet.
-6. Tick the profiles or characters you want to change, and press a button in the action bar under the tree, or its
+5. Read the **USE AT YOUR OWN RISK** warning: the tool rewrites your addons' profiles, so it asks you to accept
+   that first. **I understand** goes on; **Back** returns to the game versions. It's asked once each time you start
+   the app, not every time you open the tool.
+6. The tool reads every addon's settings file and shows the review screen. Nothing is ticked yet.
+7. Tick the profiles or characters you want to change, and press a button in the action bar under the tree, or its
    key: `d` deletes profiles, `p` moves characters to another profile, `e` renames a profile, `k` copies one, `o`
    removes leftover characters, `D` (Shift+D) keeps only "Default", `E` (Shift+E) moves everyone to "Default", and
    `m` opens the quick actions. Each change becomes a **pending change**: the tree shows the result straight away,
    but no file is touched yet. Make as many changes as you like.
-7. Press **Dry run** (`y`) if you'd like every change checked without writing anything.
-8. Press **Apply** (`w`), read the summary, and press **Yes**.
-9. The results screen lists every change and what happened to it.
+8. Press **Dry run** (`y`) if you'd like every change checked without writing anything.
+9. Press **Apply** (`w`), read the summary, and press **Yes**.
+10. The results screen lists every change and what happened to it.
 
 ## The review screen
 

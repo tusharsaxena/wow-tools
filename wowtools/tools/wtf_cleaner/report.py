@@ -8,6 +8,14 @@ from wowtools.core.text import human_size
 from wowtools.tools.wtf_cleaner.rules import DAY
 from wowtools.tools.wtf_cleaner.scanner import addon_name_for
 
+# The USE AT YOUR OWN RISK popup's text (ui.disclaimer, L4), shown before the first scan of a session.
+DISCLAIMER = ("This tool deletes addon settings files (SavedVariables) from your WTF folder. It goes by the rules you "
+              "tick and can't know what an addon still needs; a deleted file takes that addon's settings with it. A "
+              "backup zip of the WTF folder is made first and Undo puts the files back, but you are responsible for "
+              "what you clean."
+              "\n\nClose WoW before you clean: it rewrites the WTF folder when you log out and can bring back what "
+              "you removed. Every Clean and Undo asks again.")
+
 CRITERION_LABELS = {
     "not_installed": "Addon is not installed",
     "not_enabled": "Addon is installed but not enabled on any character of its account",

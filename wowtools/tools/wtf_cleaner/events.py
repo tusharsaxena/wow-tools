@@ -6,6 +6,8 @@ from wowtools.core.events import EventSpec, register_events
 TOOL_NAME = "wtf-cleaner"
 
 EVENTS: dict[str, EventSpec] = {
+    "clean.disclaimer_accepted": EventSpec("info", "The USE AT YOUR OWN RISK warning was accepted (I understand): it is not shown again this session."),
+    "clean.disclaimer_declined": EventSpec("info", "The USE AT YOUR OWN RISK warning was declined (Back): nothing was scanned."),
     "scan.started": EventSpec("info", "A scan of one flavor started."),
     "scan.addons": EventSpec("debug", "Installed and enabled addon lists found by the scan (enabled: per account "
                                                    "and their union)."),

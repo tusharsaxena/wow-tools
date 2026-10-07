@@ -19,11 +19,14 @@ ones you leave ticked. If you regret it later, you can undo the clean.
    values are fine for most people.
 3. **Pick a game version**, or **All flavors** to clean every version at once.
 4. If you picked one version that has more than one WoW account, **pick an account**, or **All accounts**.
-5. The cleaner scans and shows you the review screen. Look through the list and untick anything you want to
+5. Read the **USE AT YOUR OWN RISK** warning: the cleaner deletes files, so it asks you to accept that first.
+   **I understand** goes on; **Back** returns to the game versions. It's asked once each time you start the app,
+   not every time you open the tool.
+6. The cleaner scans and shows you the review screen. Look through the list and untick anything you want to
    keep.
-6. Press **Dry run** (`y`) if you'd like to see what would happen without deleting anything.
-7. Press **Clean** (`w`), read the summary, and press **Yes**.
-8. The results screen lists every file and what happened to it.
+7. Press **Dry run** (`y`) if you'd like to see what would happen without deleting anything.
+8. Press **Clean** (`w`), read the summary, and press **Yes**.
+9. The results screen lists every file and what happened to it.
 
 ## The review screen
 

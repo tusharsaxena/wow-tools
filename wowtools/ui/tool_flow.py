@@ -1,6 +1,6 @@
 """ToolFlow: how a tool runs inside the suite app. Each tool has its own screens, workflow and config file; the
 steps every tool takes the same way (first-run settings, the `s` key, remembering the flavor and account picked,
-picker notes worked out in the background, leaving the review) live here. Spec D9."""
+picker notes worked out in the background, the USE AT YOUR OWN RISK popup, leaving the review) live here. Spec D9."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -9,8 +9,10 @@ from typing import TYPE_CHECKING, ClassVar, TypeVar
 from textual.screen import Screen
 
 from wowtools.core.config import Config
+from wowtools.core.events import log_event
 from wowtools.core.install import Flavor, WowInstall
 from wowtools.ui.account_screen import AccountScreen
+from wowtools.ui.disclaimer import ACCEPT, DisclaimerScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.settings_form import ToolSettingsScreen
 from wowtools.ui.setup_screen import SetupScreen
@@ -29,7 +31,9 @@ class ToolFlow:
     (SETTINGS_SCREEN, while config/<tool>.cfg does not exist yet), then calls _pick_flavor(), which a subclass
     implements. open_settings() (the `s` key) opens the shared WoW-folder settings, then SETTINGS_SCREEN.
     _after_review() handles the review's "flavors" / "tools" / "quit". SECTION is the tool's config section, where
-    remember_flavor() and pick_account() keep the last choices.
+    remember_flavor() and pick_account() keep the last choices. A tool with DISCLAIMER (its USE AT YOUR OWN RISK
+    text) and DISCLAIMER_EVENTS (its registered accepted and declined events) calls ask_disclaimer() before its first
+    scan.
     self.cfg is the shared suite config (WoW folder, updates, logging); self.tool_cfg is the tool's own file.
     """
 
@@ -38,6 +42,8 @@ class ToolFlow:
     # Screens besides SETTINGS_SCREEN that `s` never opens a second settings stack over (their Saves would
     # overwrite each other).
     SETTINGS_BLOCKERS: ClassVar[tuple[type[Screen], ...]] = ()
+    DISCLAIMER: ClassVar[str] = ""
+    DISCLAIMER_EVENTS: ClassVar[tuple[str, str]] = ("", "")  # (accepted, declined)
 
     def __init__(self, app: WowToolsApp, tool_cfg: Config) -> None:
         self.app = app
@@ -133,6 +139,27 @@ class ToolFlow:
             then(account)
 
         self.app.push_screen(AccountScreen(self.cfg, flavor, last), chosen)
+
+    def ask_disclaimer(self, then: Callable[[], None], **data: object) -> None:
+        """The USE AT YOUR OWN RISK popup (L4) with DISCLAIMER, then then(). Shown at most once per tool per app
+        session: I understand is remembered in the app's `disclaimers_accepted` (by SECTION), and then() runs at once
+        when it is there. Back or Esc logs the declined event and goes back to the flavor picker, and is not
+        remembered. `data` goes into both events."""
+        if not self.DISCLAIMER or self.SECTION in self.app.disclaimers_accepted:
+            then()
+            return
+        accepted, declined = self.DISCLAIMER_EVENTS
+
+        def answered(answer: str | None) -> None:
+            if answer != ACCEPT:  # Back or Esc: nothing is read
+                log_event(declined, **data)
+                self._pick_flavor()
+                return
+            self.app.disclaimers_accepted.add(self.SECTION)
+            log_event(accepted, **data)
+            then()
+
+        self.app.push_screen(DisclaimerScreen(self.DISCLAIMER), answered)
 
     def fill_notes(self, picker: FlavorScreen, work: Callable[[], T], ready: Callable[[T], None], *,
                    group: str = "notes") -> None:

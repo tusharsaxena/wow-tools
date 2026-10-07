@@ -173,6 +173,8 @@ class WowToolsApp(Ka0sApp):
         self.tool_options = tool_options or {}
         self.flow: ToolFlow | None = None
         self.flow_name = ""  # the open tool's name in TOOLS
+        # SECTION of each tool whose USE AT YOUR OWN RISK popup was accepted this session (ToolFlow.ask_disclaimer)
+        self.disclaimers_accepted: set[str] = set()
         self.menu = ToolMenuScreen()
 
     def after_mount(self) -> None:

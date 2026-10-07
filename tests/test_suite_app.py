@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 
-from tests.fixtures import TuiTestCase, build_wow_tree, make_config, settle
+from tests.fixtures import TuiTestCase, accept_disclaimer, build_wow_tree, make_config, settle
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events, get_event_log
 from wowtools.core.lock import InstanceLock, LockInfo
@@ -68,6 +68,7 @@ class SuiteAppTest(TuiTestCase):
             await pilot.press("enter", "enter")  # flavor, all accounts
             await pilot.pause()
             await settle(app, pilot)
+            await accept_disclaimer(app, pilot)
             self.assertIsInstance(app.screen, ReviewScreen)
             await pilot.press("t")
             await pilot.pause()

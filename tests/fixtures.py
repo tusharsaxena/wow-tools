@@ -215,9 +215,10 @@ async def settle(app, pilot, timeout: float = 10.0) -> None:
 
 
 async def accept_disclaimer(app, pilot) -> None:
-    """The Saved Variables Browser's USE AT YOUR OWN RISK warning (spec D2) comes after its flavor pick: accept it
-    when it is the screen shown (any other tool, or the browser opened before in this tool session: nothing to do)."""
-    from wowtools.tools.sv_browser.popups import ACCEPT, DisclaimerScreen
+    """The USE AT YOUR OWN RISK warning (ui.disclaimer, L4) of the WTF Cleaner, Ace3 Profile Manager and Saved
+    Variables Browser comes after the flavor (and account) pick: accept it when it is the screen shown (any other
+    tool, or one accepted before in this app session: nothing to do)."""
+    from wowtools.ui.disclaimer import ACCEPT, DisclaimerScreen
     if isinstance(app.screen, DisclaimerScreen):
         app.screen.choose(ACCEPT)
         await settle(app, pilot)

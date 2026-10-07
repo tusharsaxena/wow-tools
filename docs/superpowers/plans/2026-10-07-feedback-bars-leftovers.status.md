@@ -9,7 +9,7 @@ go-ahead.
 | L0 | spec, plan, ledger | done | (this commit) | user feedback 2026-10-07 |
 | L1 | one-press Leftovers | done | (this commit) | `o` / the Leftovers button tick every shown leftover (`_tick_leftovers`, now returning whether it ticked any) then confirm the ticked leftovers; No keeps the ticks; none shown: notice, nothing staged. 4 tests in `OnePressLeftoversTest` (written first, failed first), 3 more after review (L1-e). Tip, help, guide, internals, CHANGELOG updated. Full suite 1804 tests OK (2 skipped), ruff clean, events check OK |
 | L2 | bars stay at the bottom during a scan + standard | done | (this commit) | `two_pane_css` gives `#scan-box` `height: 1fr` (was `auto`): the scan box takes the tree's space on every two-pane screen. Test first (`test_bars_keep_their_place_while_a_scan_runs`, failed first: SV Browser's action bar at y 6 during the scan, 42 after at 160x45; blacklist scan box 5 rows high): every review on a rescan and the Ace3 blacklist on its first scan, worker held on a gate, at BASE and LARGE. STD-7.25 added; architecture look and feel, two_pane_css docstring, tree-screen recipe, CHANGELOG. Review fixes L2-d (failed scan on one row, `SummaryLine`), L2-e rejected. Full suite 1806 tests OK (2 skipped), ruff clean, events check OK (`test_restore_from_backup_result_goes_to_the_backup_just_made` failed once in one run: a flake that also fails on 5d9408a, 1 in 6 alone) |
-| L4 | shared risk disclaimer, once per session (WTF, Ace3, SVB) | todo | | |
+| L4 | shared risk disclaimer, once per session (WTF, Ace3, SVB) | done | (this commit) | `ui/disclaimer.py` `DisclaimerScreen(text, title)` (moved out of `sv_browser/popups.py`), `ToolFlow.ask_disclaimer(then, **data)` with the flow's `DISCLAIMER` / `DISCLAIMER_EVENTS`, `WowToolsApp.disclaimers_accepted` (by `SECTION`). WTF and Ace3 ask after the flavor and account picks; events `clean.disclaimer_*`, `ace.disclaimer_*` registered, events.md regenerated. 5 tests in `tests/test_risk_disclaimer.py` (written first; first open of each tool, not again in the session, Back/Esc does not count, per tool, WTF after the account pick); SV Browser's "each time the tool is opened" test now checks it is not asked again; WTF/Ace3/suite open helpers accept it (`accept_disclaimer`). Help, guides, internals, testing.md, architecture, README FAQ, CHANGELOG updated. Full suite 1811 tests OK (2 skipped), ruff clean, events check OK |
 | L5 | `t` back to tools on the pickers | todo | | |
 | LR2 | review of L4-L5, green gate, push, CI | todo | | |
 | LR | review, green gate, push | done | (this commit) | Whole-branch review: code, docs, help and CHANGELOG agree with L1-L3 and STD-7.25; fixes: the new import and docstring lines in the four reviews and `warnings_view` re-wrapped to 120 columns (STD-1.10), the internals line for Leftovers re-wrapped. Full suite 1806 tests OK (2 skipped), ruff clean, events check OK |
@@ -61,3 +61,19 @@ go-ahead.
   flavors, sit at the end of the line and are warnings the user must read in full: an ellipsis at 120 columns would
   hide exactly them. The shift is one row, after the scan, because the new selection line is shorter, not the
   stand-in jumping; STD-7.25 says so.
+- L4-a: the gate lives on `WowToolsApp` (`disclaimers_accepted`, the tool's `SECTION`), not on `Ka0sApp`: only the
+  suite app opens tools, and it already holds the open flow. The popup and the gate are shared (`ui/disclaimer.py`,
+  `ToolFlow.ask_disclaimer`); each tool only sets `DISCLAIMER` (its text, in its UI-free `report.py`) and
+  `DISCLAIMER_EVENTS` (its own registered accepted/declined names), so the events stay per tool (STD-6.3).
+- L4-b: the WTF Cleaner's events take the `clean.` namespace (`clean.disclaimer_accepted` / `_declined`), next to
+  its other bare-named events (documented deviation of STD-6.3); both tools log `flavors` and `account`, the SV
+  Browser `flavors`, as before.
+- L4-c: the WTF Cleaner's text says it deletes SavedVariables files (it never deletes folders), that the WTF folder
+  is zipped first and Undo puts the files back; the Ace3 text names what it rewrites (rename, copy, delete
+  profiles; move or remove characters) and the backups and Undo. Both end with the close-WoW paragraph and that
+  every Clean / Apply and Undo asks again, as the SV Browser's text does.
+- L4-d: the SV Browser keeps its D2 text word for word (now `report.DISCLAIMER_POPUP`); its FAQ "Why does it ask me
+  every time?" is reworded for the once-per-session rule and no longer says no other tool can do damage.
+- L4-e (review of 9615f05): the hub's `dialogs` row still named "the Saved Variables Browser's `DisclaimerScreen`"
+  among the Esc-closable `ChoiceScreen`s; it now names the shared `ui.disclaimer.DisclaimerScreen` of the WTF
+  Cleaner, Ace3 and the SV Browser, as the `disclaimer` row does. The two review findings were the same line.

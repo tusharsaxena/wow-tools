@@ -8,6 +8,8 @@ TOOL_NAME = "ace3-profile-manager"
 SV_TOOL = SvTool(TOOL_NAME, "ace")  # on the shared SavedVariables write pipeline (core/sv_apply.py)
 
 EVENTS: dict[str, EventSpec] = {
+    "ace.disclaimer_accepted": EventSpec("info", "The USE AT YOUR OWN RISK warning was accepted (I understand): it is not shown again this session."),
+    "ace.disclaimer_declined": EventSpec("info", "The USE AT YOUR OWN RISK warning was declined (Back): nothing was scanned."),
     "ace.scan_started": EventSpec("info", "A scan of one flavor's SavedVariables for AceDB databases started."),
     "ace.scan_completed": EventSpec("info", "A scan finished, with counts (files, databases, profiles, characters, leftover characters, seconds)."),
     "ace.file_unreadable": EventSpec("warning", "A SavedVariables file or folder could not be read; it is left out."),

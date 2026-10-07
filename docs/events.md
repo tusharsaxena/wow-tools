@@ -78,6 +78,8 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `blacklist.changed` | info | b on the review put a (flavor, addon) pair on the blacklist or took it off (flavor, addon, blacklisted); a blacklisted addon is never cleaned. |
 | `clean.check_failed` | warning | The post-clean check found problems; see the WTF backup it names. |
 | `clean.completed` | info | A clean finished (logged at warning if any file failed). |
+| `clean.disclaimer_accepted` | info | The USE AT YOUR OWN RISK warning was accepted (I understand): it is not shown again this session. |
+| `clean.disclaimer_declined` | info | The USE AT YOUR OWN RISK warning was declined (Back): nothing was scanned. |
 | `clean.flavors_stopped` | warning | A clean of several flavors stopped at one flavor; the flavors after it were not started. |
 | `clean.journal_failed` | error | The run journal could not be written; the clean stopped before deleting anything. |
 | `clean.journal_pruned` | info | Older clean journals were deleted to keep the newest N (keep_journals). |
@@ -171,6 +173,8 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ace.apply_started` | info | Apply (or a dry run) of the pending changes started. |
 | `ace.backup_failed` | error | The zip of the original files failed; nothing was changed. |
 | `ace.blacklist_changed` | info | A (flavor, addon) pair was added to or removed from the blacklist (flavor, addon, blacklisted), or the whole list was saved from the blacklist screen (pairs). |
+| `ace.disclaimer_accepted` | info | The USE AT YOUR OWN RISK warning was accepted (I understand): it is not shown again this session. |
+| `ace.disclaimer_declined` | info | The USE AT YOUR OWN RISK warning was declined (Back): nothing was scanned. |
 | `ace.dry_run_completed` | info | A dry run finished. |
 | `ace.earlier_unfinished` | error | Apply was refused: an earlier Apply did not finish (its crash marker is there); nothing was changed. |
 | `ace.file_changed` | warning | A file changed since the scan; its changes were skipped. |
@@ -217,7 +221,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `svb.apply_started` | info | Apply (or a dry run) of the pending changes started. |
 | `svb.backup_failed` | error | The zip of the original files failed; nothing was changed. |
 | `svb.bulk_staged` | info | A bulk Edit value or Rename key on the search results was staged (edits staged, results already holding it, results left out and why). |
-| `svb.disclaimer_accepted` | info | The USE AT YOUR OWN RISK warning was accepted (I understand). |
+| `svb.disclaimer_accepted` | info | The USE AT YOUR OWN RISK warning was accepted (I understand): it is not shown again this session. |
 | `svb.disclaimer_declined` | info | The USE AT YOUR OWN RISK warning was declined (Back): nothing was scanned. |
 | `svb.dry_run_completed` | info | A dry run finished. |
 | `svb.earlier_unfinished` | error | Apply was refused: an earlier Apply did not finish (its crash marker is there); nothing was changed. |

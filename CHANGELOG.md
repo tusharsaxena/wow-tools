@@ -6,12 +6,22 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 
 ## [Unreleased]
 
+### Added
+
+- **WTF Cleaner** and **Ace3 Profile Manager**
+  - Before the first scan they ask you to accept a **USE AT YOUR OWN RISK** warning, like the Saved Variables
+    Browser: it says what the tool deletes or rewrites, that a backup and Undo are there, and to close WoW first.
+    **I understand** goes on, **Back** returns to the game versions. It's asked once each time you start the app.
+
 ### Changed
 
 - **Ace3 Profile Manager**
   - **Leftovers** (`o`) is now one press: it ticks every leftover character the tree shows, then asks to remove
     them, listing them under each addon. There's no need to tick them first. **No** keeps the ticks; with none
     shown it says so and changes nothing.
+- **Saved Variables Browser**
+  - The **USE AT YOUR OWN RISK** warning is asked once each time you start the app, no longer every time you open
+    the tool. **Back** still doesn't count: it asks again next time.
 
 ### Fixed
 

@@ -13,12 +13,14 @@ refuse while it runs.
 ## Step by step
 
 1. **Pick a game version**, or **All flavors**; then an account, or **All accounts**.
-2. The **review** shows a tree: game version → account → addon → profile → its characters. `v` switches to **By
+2. Read the **USE AT YOUR OWN RISK** warning: **I understand** goes on, **Back** returns to the game versions. Once
+   you press **I understand** it is not asked again until you restart the app.
+3. The **review** shows a tree: game version → account → addon → profile → its characters. `v` switches to **By
    character**. Nothing is ticked yet.
-3. **Tick** profiles or characters (`Space`), or just highlight one, and press an action below the tree. Each
+4. **Tick** profiles or characters (`Space`), or just highlight one, and press an action below the tree. Each
    change is **pending**: the tree shows it at once (`✘ deleted`, `was Healer`), but no file is touched.
-4. **Dry run** (`y`) checks every pending change without writing anything.
-5. **Apply** (`w`), read the summary, press **Yes**. The **results** list every change.
+5. **Dry run** (`y`) checks every pending change without writing anything.
+6. **Apply** (`w`), read the summary, press **Yes**. The **results** list every change.
 
 ## The action bar (under the tree)
 

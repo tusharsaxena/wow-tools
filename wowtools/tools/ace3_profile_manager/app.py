@@ -1,5 +1,6 @@
 """The Ace3 Profile Manager inside the suite app: (first run: settings) → flavor (or All flavors) → account (one
-flavor with several accounts only) → review → stage changes → apply."""
+flavor with several accounts only) → the USE AT YOUR OWN RISK warning (once per app session) → review → stage changes →
+apply."""
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
@@ -17,6 +18,7 @@ from wowtools.core.events import log_event
 from wowtools.core.install import Flavor, WowInstall, validate_backup_dir
 from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager.blacklist_screen import BlacklistScreen
+from wowtools.tools.ace3_profile_manager.report import DISCLAIMER
 from wowtools.tools.ace3_profile_manager.review_screen import ProfileReviewScreen
 from wowtools.tools.ace3_profile_manager.settings import (SECTION, ProfileSettings, load_settings, migrate_backup_root,
                                                           resolve_root, save_settings)
@@ -92,10 +94,14 @@ def blacklist_summary(pairs: list[Pair]) -> str:
 class AceProfilesFlow(ToolFlow):
     """The profile manager's workflow. Its settings live in config/ace3-profile-manager.cfg; the WoW folder is shared.
     `unlocked` holds the (casefolded) blacklisted (flavor folder, addon) pairs unlocked this session: it lives on
-    the flow, so it survives going back to the flavor picker, and goes when the tool closes."""
+    the flow, so it survives going back to the flavor picker, and goes when the tool closes. The USE AT YOUR OWN RISK
+    warning (L4) comes after the flavor and account picks until it is accepted once in the app session
+    (ToolFlow.ask_disclaimer)."""
 
     SECTION = SECTION
     SETTINGS_SCREEN = ProfileSettingsScreen
+    DISCLAIMER = DISCLAIMER
+    DISCLAIMER_EVENTS = ("ace.disclaimer_accepted", "ace.disclaimer_declined")
     SETTINGS_BLOCKERS = (BlacklistScreen,)
 
     def __init__(self, app: WowToolsApp, tool_cfg: Config, *,
@@ -137,6 +143,10 @@ class AceProfilesFlow(ToolFlow):
         self.pick_account(flavor, review)
 
     def _review(self, flavors: list[Flavor], label: str, account: str | None) -> None:
+        self.ask_disclaimer(lambda: self._open_review(flavors, label, account), flavors=[f.folder for f in flavors],
+                            account=account)
+
+    def _open_review(self, flavors: list[Flavor], label: str, account: str | None) -> None:
         self.app.push_screen(ProfileReviewScreen(self.cfg, self.tool_cfg, flavors, label, account=account,
                                                  unlocked=self.unlocked, wow_check=self._wow_check),
                              self._after_review)

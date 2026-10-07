@@ -13,7 +13,7 @@ from unittest.mock import patch
 from textual.app import App
 from textual.widgets import Button, DataTable, Input, OptionList, ProgressBar, Static, Tree
 
-from tests.fixtures import BASE, TuiTestCase, build_wow_tree, make_config, settle, submit_filter
+from tests.fixtures import BASE, TuiTestCase, accept_disclaimer, build_wow_tree, make_config, settle, submit_filter
 from wowtools.core import activity
 from wowtools.core.backup import BackupError
 from wowtools.core.config import Config
@@ -89,6 +89,7 @@ class AppTestCase(TuiTestCase):
         await pilot.press("enter")
         await pilot.pause()
         await settle(app, pilot)
+        await accept_disclaimer(app, pilot)
         review = app.screen
         self.assertIsInstance(review, ReviewScreen)
         self.assertIsNotNone(review.proposal)
@@ -691,6 +692,7 @@ class RecoveryDialogTest(AppTestCase):
         await pilot.press("enter")  # all accounts
         await pilot.pause()
         await settle(app, pilot)
+        await accept_disclaimer(app, pilot)
         self.assertIsInstance(app.screen, RecoveryScreen)
         self.assertIn(str(self.snapshot), app.screen.message_text)
         return app.screen
@@ -772,6 +774,7 @@ class AccountScopeFlowTest(AppTestCase):
             await pilot.press("down", "down", "enter")
             await pilot.pause()
             await settle(app, pilot)
+            await accept_disclaimer(app, pilot)
             review = app.screen
             self.assertIsInstance(review, ReviewScreen)
             self.assertEqual(review.account, "ACCT2")
@@ -809,6 +812,7 @@ class AccountScopeFlowTest(AppTestCase):
             await pilot.press("enter")
             await pilot.pause()
             await settle(app, pilot)
+            await accept_disclaimer(app, pilot)
             review = app.screen
             self.assertIsInstance(review, ReviewScreen)
             self.assertIsNone(review.account)
@@ -1484,6 +1488,7 @@ class AllFlavorsTest(AppTestCase):
         await pilot.press("enter")
         await pilot.pause()
         await settle(app, pilot)
+        await accept_disclaimer(app, pilot)
         review = app.screen
         self.assertIsInstance(review, ReviewScreen)  # no account picker with All flavors
         self.assertIsNotNone(review.proposal)
@@ -1548,6 +1553,7 @@ class AllFlavorsTest(AppTestCase):
             await pilot.press("enter")
             await pilot.pause()
             await settle(app, pilot)
+            await accept_disclaimer(app, pilot)
             self.assertIsInstance(app.screen, ReviewScreen)
         self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).last_flavor_choice, "_classic_era_")
         self.assertEqual(Config(self.cfg.path).load().last_flavor, "_classic_era_")
@@ -1616,6 +1622,7 @@ class AllFlavorsTest(AppTestCase):
             await pilot.press("enter")
             await pilot.pause()
             await settle(app, pilot)
+            await accept_disclaimer(app, pilot)
             review = app.screen
             self.assertIsInstance(review, ReviewScreen)
             self.assertIsNone(review.proposal)

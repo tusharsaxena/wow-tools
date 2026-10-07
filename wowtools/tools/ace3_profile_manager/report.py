@@ -14,6 +14,13 @@ from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager.model import DEFAULT
 from wowtools.tools.ace3_profile_manager.ops import CopyOf, DbState, Original, Summary
 
+# The USE AT YOUR OWN RISK popup's text (ui.disclaimer, L4), shown before the first scan of a session.
+DISCLAIMER = ("This tool edits the AceDB profile data inside addon SavedVariables: it renames, copies and deletes "
+              "profiles and moves or removes characters. It can't know how each addon uses its profiles; a wrong "
+              "change can reset an addon's settings. Every file it changes is backed up first and Undo puts them "
+              "back, but you are responsible for what you change."
+              "\n\nClose WoW before you apply anything: it rewrites every SavedVariables file when you log out. "
+              "Every Apply and Undo asks again.")
 DELETED = "✘ deleted"
 REMOVED = "✘ removed"
 NO_PENDING = "No pending changes"

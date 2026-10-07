@@ -1,5 +1,5 @@
 """Saved Variables Browser flow and review (spec D1-D3, D12, D18, §5): first-run settings, flavor picker with All
-flavors, the USE AT YOUR OWN RISK warning once per opening of the tool, and the review's Browse view (the file tree,
+flavors, the USE AT YOUR OWN RISK warning once per app session (L4), and the review's Browse view (the file tree,
 lazy loading, the child cap, x / c, the filter on loaded labels, the buttons, leaving with staged edits)."""
 from __future__ import annotations
 
@@ -14,10 +14,10 @@ from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.tools.sv_browser.app import SvBrowserSettingsScreen
 from wowtools.tools.sv_browser.model import CHILD_CAP
-from wowtools.tools.sv_browser.popups import ACCEPT, BACK, DISCLAIMER_TITLE, DisclaimerScreen
 from wowtools.tools.sv_browser.review_screen import READING, SvReviewScreen
 from wowtools.tools.sv_browser.settings import load_settings
 from wowtools.ui.dialogs import ConfirmScreen
+from wowtools.ui.disclaimer import ACCEPT, BACK, DISCLAIMER_TITLE, DisclaimerScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.tree_filter import NO_MATCH_TEXT
@@ -137,7 +137,7 @@ class SvBrowserFlowTest(SvBrowserTestBase):
             await settle(app, pilot)
             self.assertIsInstance(app.screen, FlavorScreen)
             self.assertEqual(app.screen.last, "")  # All flavors highlighted again
-            app.screen.dismiss(ALL_FLAVORS)  # accepted once in this opening of the tool: not asked again
+            app.screen.dismiss(ALL_FLAVORS)  # accepted once in this app session: not asked again
             await settle(app, pilot)
             self.assertIsInstance(app.screen, SvReviewScreen)
 
@@ -161,7 +161,7 @@ class SvBrowserFlowTest(SvBrowserTestBase):
                     self.assertNotIn("svb.scan_completed", names)
                     self.assertIsInstance(app.screen, FlavorScreen)
 
-    async def test_the_warning_comes_back_each_time_the_tool_is_opened(self):
+    async def test_the_warning_is_not_asked_again_when_the_tool_is_opened_again(self):
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot)
@@ -171,7 +171,7 @@ class SvBrowserFlowTest(SvBrowserTestBase):
             picker = await self.open_picker(app, pilot)
             picker.dismiss(ALL_FLAVORS)
             await settle(app, pilot)
-            self.assertIsInstance(app.screen, DisclaimerScreen)
+            self.assertIsInstance(app.screen, SvReviewScreen)  # L4: once per app session
 
     async def test_a_rescan_does_not_ask_again(self):
         app = self.make_app()

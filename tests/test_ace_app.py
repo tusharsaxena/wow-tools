@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from textual.widgets import Button, DataTable, Input, Static, Tree
 
-from tests.fixtures import BASE, TuiTestCase, build_ace_tree, make_config, settle, submit_filter
+from tests.fixtures import BASE, TuiTestCase, accept_disclaimer, build_ace_tree, make_config, settle, submit_filter
 from wowtools.core.backup import BackupEntry, create_backup
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
@@ -25,6 +25,7 @@ from wowtools.tools.ace3_profile_manager.review_screen import ProfileReviewScree
 from wowtools.tools.ace3_profile_manager.scanner import sha256_of
 from wowtools.tools.ace3_profile_manager.settings import load_settings
 from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult
+from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.dialogs import ConfirmScreen, InfoScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
@@ -58,9 +59,10 @@ class AceAppBase(TuiTestCase):
         self.assertIsInstance(app.screen, FlavorScreen)
         app.screen.dismiss(choice)
         await settle(app, pilot)
-        if not isinstance(app.screen, ProfileReviewScreen):  # one flavor with several accounts: the picker
+        if isinstance(app.screen, AccountScreen):  # one flavor with several accounts: the picker
             app.screen.dismiss("")
             await settle(app, pilot)
+        await accept_disclaimer(app, pilot)
         self.assertIsInstance(app.screen, ProfileReviewScreen)
         return app.screen
 
