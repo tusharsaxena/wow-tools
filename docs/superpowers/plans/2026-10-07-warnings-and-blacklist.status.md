@@ -10,7 +10,7 @@ go-ahead.
 | K1 | warnings view, all tools | done | (this commit) | Shared `ui/warnings_view.py` (`SummaryBar` bottom line + compact Warnings button "⚠ N … (!)", `WarningsHost`, `WarningsScreen` grouped by flavor with filter/x/c/Back(Esc)/detail line) adopted by the WTF Cleaner, Screenshot Organizer, Interface Backup review + restore, Ace3 and SV Browser reviews, every "(see the log)/(see the tree)" count gone; full suite 1689 OK (2 skipped), +13 tests |
 | K2 | blacklist helpers to core + shared b | done | (this commit) | Pair helpers moved to UI-free `core/blacklist.py` (Ace3 settings/app/blacklist screen/review import them), shared `BlacklistAction` + `BLACKLIST_BINDING` + `blacklist_toast` in `ui/review.py` adopted by the Ace3 review (its `b`, events, `u`, blacklist screen unchanged), single definitions pinned in test_structure; full suite 1693 OK (2 skipped), +4 tests |
 | K3 | WTF Cleaner blacklist | done | (this commit) | `[wtf_cleaner] blacklist` (core pair format, load/save, kept by the settings form, no new form row), `evaluate(blacklist=)` holds blacklisted groups in `Proposal.blacklisted` (out of items/totals/by_reason/criterion counts/summary/confirm/clean/dry run), review shows them greyed + tagged and untickable, shared `b` (`BlacklistAction`) on addon/file rows per flavor, `blacklist.changed` event, help section, hint names `b`; full suite 1705 OK (2 skipped), +12 tests |
-| K4 | docs | todo | | |
+| K4 | docs | done | (this commit) | WTF guide gains The blacklist (`b`, greyed/untickable rows, hand-editing `[wtf_cleaner] blacklist`, `*`/bare-name wildcard, FAQ) and Scan warnings sections plus `b`/`!` key rows, the four other guides replace "plus scan warnings"/"the log lists" with the `⚠ N … (!)` button and warnings view and a `!` key row, README keys/settings/FAQ, CHANGELOG 0.1.0 (app + WTF + Ace3 bullets), architecture (core `blacklist` row, `warnings_view` row, `BlacklistAction` in the review row, WTF config/data flow/review), CLAUDE.md look-and-feel rule, adding-a-tool, events.md regenerated (unchanged), pinned by test_docs; full suite 1706 OK (2 skipped), +1 test |
 | KR | review, fixes, push | todo | | |
 
 ## Decisions taken during the build
@@ -61,3 +61,13 @@ go-ahead.
   flavor becomes explicit pairs for the others), saves (`source="review"`) and logs the new WTF event
   `blacklist.changed` (the cleaner's unprefixed naming); `blacklist_changed()` refreshes the criterion counts, then
   rebuilds. docs/events.md regenerated.
+- **K4** New `tests/test_docs.py::test_warnings_view_and_blacklist_key_are_documented` pins the docs (no guide says
+  "see the log)", every guide has a `!` key row and names the warnings view, the WTF guide's blacklist section, ini
+  example and wildcard, the changelog/README/architecture/CLAUDE.md needles). CLAUDE.md already named the modules
+  (K1, K2); K4 added a look-and-feel sentence (warnings via `SummaryBar`/`WarningsHost`, never "(see the log)"; the
+  shared `b` for a tool with a blacklist). Also fixed the WTF guide's stale rule key row (`1` `2` `3` `4` → `1` to
+  `5`). `docs/events.md` regenerated: no change (K3 already did it). The Ace3 guide's `b` text stays (behaviour
+  unchanged); the README's `b` row names only the two tools that keep a blacklist (spec B3).
+- **K4** Interface Backup's guide no longer says the log lists the scan warnings (the tree lists all of them; only
+  the log samples 20 per folder); its new "### Scan warnings" sits after the review's key table and covers the
+  restore screen's button too.

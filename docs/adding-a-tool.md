@@ -110,6 +110,13 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      before `TREE_HINT`, through `TreeFilter` on a tick screen (placed before `ReviewBase`; supply `all_tick_keys()`
      and `filter_texts(key)`, and a `HIDDEN_NOUN` for the "N selected … are hidden by the filter" line) or
      `FilterBox` on a read-only tree.
+     If your scan collects warnings (things it could not read), make the bottom line a `SummaryBar` and mix in
+     `WarningsHost` (`wowtools/ui/warnings_view.py`): bind `WARNINGS_BINDING`, supply `warning_items()` (one
+     `WarningItem(where, what, group)` each) and call `refresh_warnings()` where the summary updates; `!` and the
+     Warnings button then open the shared `WarningsScreen`. Never point the user at the log. If your tool keeps a
+     blacklist of addons, use the pair helpers in `wowtools/core/blacklist.py` and the shared `b`: mix in
+     `BlacklistAction` (`wowtools/ui/review.py`), bind `BLACKLIST_BINDING`, supply `blacklist_target(node)` and
+     `toggle_blacklist(flavor, addon)`. Add a "## Warnings" (and "## Blacklist") section to your `help.py`.
      Build every button with `action_button(label, kind, key)` (`wowtools/ui/widgets.py`), never `Button(...)`.
      `key` is the binding key of what the button does (`"w"`, `"escape"`): the button shows it on a second line and
      the footer leaves it out (spec D17), so never write the key into the label ("Clean (w)") and leave button keys

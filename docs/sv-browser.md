@@ -106,7 +106,14 @@ change**.
 
 **At the bottom** a bar names the highlighted line in full
 (`Selected: Retail › ACCT1 › Account-wide › ElvUI.lua › ElvDB › font = "Expressway"`) and counts the files found
-(`312 files in 2 flavors`), plus scan warnings when there are any.
+(`312 files in 2 flavors`).
+
+**Warnings**: when the scan skipped a folder, or a file couldn't be read (when you opened it in the tree, or a
+search went through it), a **⚠ N warnings (!)** button sits at the right end of the bottom bar:
+click it or press `!` to open the **warnings view**. It lists every warning, grouped by game version, each with the file or
+folder (inside that game version's folder) and what went wrong; the line on the left shows the highlighted one in
+full. `/` filters the list, `x` / `c` expand and collapse it, `h` opens the help, and **Back** (`Esc`) returns to
+the review. With no warnings there's no button. The log still has them too.
 
 ### The filter
 
@@ -407,6 +414,7 @@ once, and how many game versions Undo backs up at once. Apply still does one gam
 | `a` / `n` | Tick / untick every result shown (Results view; ticks hidden by the filter stay) |
 | `/` | Go to the filter box; `Enter` or **Filter** applies it |
 | `x` / `c` | Open everything down to the files / close everything |
+| `!` | Open the warnings (only while there are any; the **⚠ … (!)** button at the bottom does the same) |
 | `w` | **Apply** what is staged (asks first; **Yes** is selected, in red) |
 | `y` | **Dry run** (asks first; **Yes** is selected) |
 | `r` | **Rescan**: read the files again (asks first when something is staged) |
