@@ -3,6 +3,7 @@ from __future__ import annotations
 import errno
 import os
 import stat
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -252,7 +253,47 @@ class ReadMakeLinkTest(unittest.TestCase):
         os.unlink(link)
         fsutil.make_link(os.fspath(target), link, junction=False)
         self.assertTrue(link.is_symlink())
-        self.assertEqual(os.readlink(link), os.fspath(target))
+        # os.readlink on Windows gives an absolute target with the \\?\ prefix; read_link gives it as it was made.
+        self.assertEqual(fsutil.read_link(link), (os.fspath(target), False))
+        self.assertEqual(os.path.realpath(link), os.path.realpath(target))
+
+    def test_windows_verbatim_prefix_is_dropped(self):
+        r"""C2: on Windows os.readlink gives an absolute symlink's or junction's target with the \\?\ prefix (its
+        NT substitute name), so a restore journaled it and Undo made the link again to the prefixed path. read_link
+        gives the path as the user wrote it: a drive path or a \\server\share path."""
+        link = self.tmp / "link"
+        try:
+            os.symlink(self.tmp, link, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks not permitted here")
+        cases = {"\\\\?\\C:\\Users\\me\\repo": "C:\\Users\\me\\repo",
+                 "\\\\?\\d:\\": "d:\\",
+                 "\\\\?\\UNC\\server\\share\\repo": "\\\\server\\share\\repo",
+                 # no plain form for these: kept as os.readlink gave them
+                 "\\\\?\\Volume{0b1c}\\repo": "\\\\?\\Volume{0b1c}\\repo",
+                 "\\\\?\\C:": "\\\\?\\C:",
+                 "..\\repo": "..\\repo",
+                 "/home/me/repo": "/home/me/repo"}
+        for raw, want in cases.items():
+            with self.subTest(raw=raw), patch("wowtools.core.fsutil.os.readlink", return_value=raw):
+                self.assertEqual(fsutil.read_link(link), (want, False))
+
+    def test_junction_made_to_the_plain_target(self):
+        r"""C2 review: make_link's junction branch drops the \\?\ prefix only where a plain form exists (a journal
+        written before C2 holds \\?\C:\...). A volume GUID target has none: stripping it gave the relative
+        Volume{...}\x, a junction to the wrong place with no error. It is refused (OSError), so Undo reports it."""
+        made = []
+        fake_winapi = type(sys)("_winapi")
+        fake_winapi.CreateJunction = lambda src, dst: made.append((src, dst))
+        link = self.tmp / "link"
+        with patch.object(fsutil.sys, "platform", "win32"), patch.dict(sys.modules, {"_winapi": fake_winapi}):
+            fsutil.make_link("\\\\?\\C:\\Users\\me\\repo", link, junction=True)
+            fsutil.make_link("C:\\Users\\me\\repo", link, junction=True)
+            fsutil.make_link("\\\\?\\UNC\\server\\share\\repo", link, junction=True)
+            with self.assertRaises(OSError):
+                fsutil.make_link("\\\\?\\Volume{0b1c}\\repo", link, junction=True)
+        self.assertEqual(made, [("C:\\Users\\me\\repo", str(link)), ("C:\\Users\\me\\repo", str(link)),
+                                ("\\\\server\\share\\repo", str(link))])
 
     def test_not_a_link_is_none(self):
         (self.tmp / "file").write_text("x", encoding="utf-8")

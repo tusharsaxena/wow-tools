@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import errno
 import os
+import re
 import stat
 import sys
 import time
@@ -178,28 +179,46 @@ def is_real_dir(path: Path) -> bool:
 
 
 _JUNCTION_TAG = _LINK_TAGS[1]
-_VERBATIM = "\\\\?\\"  # os.readlink's prefix on a Windows junction's target
+_VERBATIM = "\\\\?\\"  # os.readlink's prefix on a Windows absolute symlink's or junction's target
+_VERBATIM_UNC = _VERBATIM + "UNC\\"
+_VERBATIM_DRIVE = re.compile(r"[A-Za-z]:\\")
+
+
+def _plain_target(target: str) -> str:
+    """A link target without the \\\\?\\ prefix Windows' os.readlink gives an absolute one (its NT substitute
+    name): C:\\x or \\\\server\\share\\x, as the user made it. A target with no plain form (a volume GUID path)
+    is kept as it is."""
+    if target.startswith(_VERBATIM_UNC):
+        return "\\\\" + target[len(_VERBATIM_UNC):]
+    if target.startswith(_VERBATIM) and _VERBATIM_DRIVE.match(target, len(_VERBATIM)):
+        return target[len(_VERBATIM):]
+    return target
 
 
 def read_link(path: Path) -> tuple[str, bool] | None:
-    """(target, junction) of a symlink or a Windows junction, as os.readlink gives it (never resolved); None when
-    path is not a link or cannot be read. Never raises."""
+    """(target, junction) of a symlink or a Windows junction, as os.readlink gives it (never resolved) less the
+    \\\\?\\ prefix it adds to an absolute target on Windows; None when path is not a link or cannot be read.
+    Never raises."""
     try:
         info = os.lstat(path)
         junction = getattr(info, "st_reparse_tag", 0) == _JUNCTION_TAG
         if not (stat.S_ISLNK(info.st_mode) or junction):
             return None
-        return os.fsdecode(os.readlink(path)), junction
+        return _plain_target(os.fsdecode(os.readlink(path))), junction
     except (OSError, ValueError):
         return None
 
 
 def make_link(target: str, path: Path, *, junction: bool) -> None:
     """Make path a link to target again (read_link's pair): a junction on Windows when it was one, else a symlink
-    (to a folder when the target is one, as Windows needs to know). Raises OSError."""
+    (to a folder when the target is one, as Windows needs to know). Raises OSError, also for a junction to a
+    target with no plain form (a volume GUID path), which CreateJunction cannot make."""
     if junction and sys.platform == "win32":
+        plain = _plain_target(target)  # a journal written before read_link dropped the prefix still holds \\?\C:\
+        if plain.startswith(_VERBATIM):
+            raise OSError(errno.EINVAL, "a junction cannot be made to a volume path", target)
         import _winapi  # Windows only
-        _winapi.CreateJunction(target.removeprefix(_VERBATIM), str(path))
+        _winapi.CreateJunction(plain, str(path))
         return
     is_dir = junction or os.path.isdir(os.path.join(os.path.dirname(path), target))
     os.symlink(target, path, target_is_directory=is_dir)

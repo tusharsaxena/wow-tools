@@ -35,6 +35,11 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
     clean that finished, the result now says so (a **Crash marker** row), and the next start's "An earlier clean
     did not finish" message says such a clean needs nothing restored. **Dismiss** on that message now tells you
     when it could not remove the file either, instead of closing as if it had while new cleans stay refused.
+- **Interface Backup**
+  - On Windows, **Undo** after a restore that removed a symlinked addon folder now makes the symlink again to
+    the path it had (`C:\...`), not to the same path written with a `\\?\` prefix. The Undo journal records
+    the path as you made it, too. A link to a mounted volume that **Undo** cannot make again is now listed as one
+    to make by hand, instead of being made to the wrong place.
 - **Ace3 Profile Manager and Saved Variables Browser**
   - **Put the originals back** after an unfinished change now works when you run the app from the other system
     (Windows or WSL) than the one the change was started from: the files are found in the WoW folder you set. If

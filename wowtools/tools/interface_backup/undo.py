@@ -57,7 +57,7 @@ def _replaced_entries(journal: Journal) -> list[tuple[str, bool]] | None:
     return found
 
 
-# A link the restore removed: (rel inside the part, target as os.readlink gave it, a Windows junction).
+# A link the restore removed: (rel inside the part, target as read_link gave it, a Windows junction).
 RemovedLink = tuple[str, str, bool]
 
 
