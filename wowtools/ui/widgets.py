@@ -273,6 +273,22 @@ def wrap_items(text: str, width: int, sep: str = " · ") -> str:
     return "\n".join(lines)
 
 
+# Spec D37: the banner at the top of the left pane of every screen that can destroy data (the Saved Variables
+# Browser, WTF Cleaner and Ace3 Profile Manager reviews, Interface Backup's restore screen).
+RISK_TEXT = "\u26a0 USE AT YOUR OWN RISK"
+
+
+class RiskBanner(Static):
+    """The red USE AT YOUR OWN RISK line (spec D37). Not focusable: it takes no row from the controls."""
+
+    DEFAULT_CSS = """
+    RiskBanner { height: 1; width: 100%; margin-top: 1; color: $error; text-style: bold; text-wrap: nowrap; }
+    """
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(RISK_TEXT, markup=False, **kwargs)
+
+
 class NavHint(Static):
     """The keyboard hint under a screen's controls. When it needs more than one row it wraps between its " · "
     items, never inside one ("r rescan" stays together)."""

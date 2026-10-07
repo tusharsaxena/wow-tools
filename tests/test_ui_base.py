@@ -13,6 +13,7 @@ from unittest.mock import patch
 from textual.binding import Binding
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Input, Label, OptionList, Static
+from textual.widgets._header import HeaderTitle
 from textual.worker import WorkerCancelled, WorkerFailed
 
 from tests.fixtures import TuiTestCase, build_wow_tree
@@ -30,6 +31,7 @@ from wowtools.ui.dialogs import CONFIRM_GUARD, InfoScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
+from wowtools.ui.theme import TITLE_GOLD, TITLE_TEXT
 from wowtools.ui.widgets import ButtonRow, NavHint
 
 
@@ -74,12 +76,32 @@ class SuiteAppBaseTest(UiTestCase):
         async with app.run_test(size=(120, 40)) as pilot:
             await pilot.pause()
             self.assertEqual(app.theme, "ka0s")
-            self.assertEqual(app.title, "Ka0s · WoW Tools")
+            self.assertEqual(app.title, "Ka0s WoW Tools")
             self.assertIsInstance(app.screen, ToolMenuScreen)
             self.assertIn(f"Ka0s WoW Tools v{__version__}", app.screen.query_one(BrandBar).text)
             options = app.screen.query_one("#tools", OptionList)
             self.assertEqual([options.get_option_at_index(i).id for i in range(options.option_count)],
                              list(TOOLS))
+
+    async def test_title_bar_is_gold_then_near_white_all_bold(self):
+        """Spec D41: "Ka0s WoW Tools" in gold, the tool, flavor and view in near-white, all bold (the app formats
+        every screen's title bar), at 120x30 and 80x24."""
+        for size in ((120, 30), (80, 24)):
+            app = self.make_app()
+            async with app.run_test(size=size) as pilot:
+                await pilot.pause()
+                header = app.screen.query_one(HeaderTitle)
+                for sub_title in (app.screen.sub_title, "WTF Cleaner · Retail · review"):
+                    content = app.format_title(app.title, sub_title)
+                    self.assertEqual(content.plain, f"Ka0s WoW Tools — {sub_title}")
+                    spans = [(content.plain[s.start:s.end], str(s.style)) for s in content.spans]
+                    self.assertEqual(spans, [("Ka0s WoW Tools", f"bold {TITLE_GOLD}"),
+                                             (f" — {sub_title}", f"bold {TITLE_TEXT}")], size)
+                strip = header.render_line(0)
+                segments = [(seg.text, seg.style) for seg in strip if seg.text.strip()]
+                gold = [seg for seg in segments if "Ka0s" in seg[0]]
+                self.assertTrue(gold and gold[0][1].bold, segments)
+                self.assertEqual(gold[0][1].color.triplet.hex.upper(), TITLE_GOLD.upper())
 
     def test_version_text_names_the_new_version(self):
         """Spec D4: the menu's line under the banner is the version, plus the update notice once one is found."""

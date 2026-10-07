@@ -15,13 +15,13 @@ from wowtools.core.events import capture_events
 from wowtools.tools.sv_browser.app import SvBrowserSettingsScreen
 from wowtools.tools.sv_browser.model import CHILD_CAP
 from wowtools.tools.sv_browser.popups import ACCEPT, BACK, DISCLAIMER_TITLE, DisclaimerScreen
-from wowtools.tools.sv_browser.review_screen import READING, RISK_BANNER, SvReviewScreen
+from wowtools.tools.sv_browser.review_screen import READING, SvReviewScreen
 from wowtools.tools.sv_browser.settings import load_settings
 from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.tree_filter import NO_MATCH_TEXT
-from wowtools.ui.widgets import action_kind
+from wowtools.ui.widgets import RISK_TEXT, RiskBanner, action_kind
 
 TOOL = "sv-browser"
 
@@ -200,7 +200,7 @@ class SvBrowseViewTest(SvBrowserTestBase):
         async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot)
             pane = review.query_one("#filters")
-            self.assertEqual(review.query_one("#risk").render().plain, RISK_BANNER)
+            self.assertEqual(review.query_one(RiskBanner).render().plain, RISK_TEXT)
             self.assertEqual(review.query_one("#pending").render().plain,
                              "Staged: 0 edits · Ticked: 0 results in 0 files")
             self.assertEqual([(b.label_text, b.shortcut) for b in review.query_one("#search-row").query(Button)],
@@ -215,7 +215,7 @@ class SvBrowseViewTest(SvBrowserTestBase):
             controls = [w for w in pane.query("*") if w.focusable and review.query_one("#actions") not in w.ancestors]
             rows = [w.region.y for w in controls]
             self.assertEqual(len(rows), len(set(rows)))
-            for widget in (*review.query("#filters Button"), review.query_one("#risk")):
+            for widget in (*review.query("#filters Button"), review.query_one(RiskBanner)):
                 r, box = widget.region, pane.region
                 self.assertTrue(r.width > 0 and box.x <= r.x and r.right <= box.right - 1, (widget, r, box))
             assert_keys_on_buttons(self, review)

@@ -49,7 +49,7 @@ from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmS
                                 UnfinishedRunScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, TickModel, WowCheck
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, TreeFilter, hidden_by_filter
-from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button,
+from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button,
                                  key_text, wrap_items)
 
 NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
@@ -211,6 +211,7 @@ class ProfileReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         yield Header()
         with Horizontal(id="body"):
             with Vertical(id="filters"):
+                yield RiskBanner()
                 yield Label("View", classes="section")
                 yield Ka0sCheckbox("By addon", True, id="view-addon", compact=True)
                 yield Ka0sCheckbox("By character", False, id="view-character", compact=True)

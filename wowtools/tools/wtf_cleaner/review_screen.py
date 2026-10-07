@@ -38,7 +38,7 @@ from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, 
                                 ProgressScreen, relabel_branch, two_pane_css)
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, ModelFilter, ModelNode, TreeFilter
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button
 
 WARNING_STYLE = "#E8B04B"
 ALL_FLAVORS_LABEL = "All flavors"
@@ -143,6 +143,7 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         yield Header()
         with Horizontal(id="body"):
             with Vertical(id="filters"):
+                yield RiskBanner()
                 yield Label("Criteria (keys 1-4)", classes="section")
                 for index, name in enumerate(CRITERIA, start=1):
                     yield Ka0sCheckbox(self._criterion_label(index, name), getattr(self.criteria, name),

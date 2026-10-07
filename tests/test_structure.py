@@ -374,6 +374,22 @@ class StructureTest(unittest.TestCase):
                                or (isinstance(n.func, ast.Attribute) and n.func.attr == "Button"))]
         self.assertEqual(offenders, [])
 
+    def test_risk_banner_on_exactly_the_destructive_screens(self):
+        """Spec D37: one shared RiskBanner (ui/widgets.py), at the top of the left pane of the screens that can
+        destroy data, and nowhere else."""
+        users = {}
+        for path in modules("wowtools"):
+            for cls in (n for n in ast.walk(tree(path)) if isinstance(n, ast.ClassDef)):
+                if any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "RiskBanner"
+                       for n in ast.walk(cls)):
+                    users[cls.name] = rel(path)
+        self.assertEqual(users, {
+            "SvReviewScreen": "wowtools/tools/sv_browser/review_screen.py",
+            "ReviewScreen": "wowtools/tools/wtf_cleaner/review_screen.py",
+            "ProfileReviewScreen": "wowtools/tools/ace3_profile_manager/review_screen.py",
+            "RestoreScreen": "wowtools/tools/interface_backup/restore_screen.py",
+        })
+
     def test_footer_and_brand_bar_only_in_the_bottom_bar(self):
         """Screens yield a BottomBar; only it builds the Footer and the BrandBar, in one row (spec D5: docked on
         their own the two overlapped and the brand bar never showed)."""

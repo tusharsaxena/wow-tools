@@ -1,7 +1,7 @@
 """The Saved Variables Browser's review (spec §5, D11, D12, D18): every SavedVariables file of the chosen flavors as a
 tree, flavor › account › Account-wide / Realm › Character › Addon.lua (size) › keys, loaded lazily: the scan only
 lists the files, a file is read and parsed when it is opened and a table when it is opened (in a worker, model.py).
-The left pane has the USE AT YOUR OWN RISK banner, the filter, the staged/ticked summary and the run buttons; the
+The left pane has the shared risk banner (D37), the filter, the staged/ticked summary and the run buttons; the
 bar under the tree acts on the highlighted key. Search (S) opens the search popup and runs the search in a worker
 with the shared progress popup; its hits fill the Results view (v switches views): flavor › account › owner › file ›
 one leaf per hit, `path = old → new`, all ticked. Apply (w), Dry run (y) and Undo last change (z) run the shared
@@ -49,15 +49,14 @@ from wowtools.tools.sv_browser.search import (REPLACE_BOOLEAN, REPLACE_NUMBER, R
 from wowtools.tools.sv_browser.settings import load_settings, resolve_root
 from wowtools.tools.sv_browser.undo import UndoError, UndoResult, leave, pending_recovery, recover, undo_run
 from wowtools.ui.branding import BottomBar
-from wowtools.ui.dialogs import (ACCENT, ALERT_STYLE, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
+from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
                                  ProgressScreen, UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
 from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, TickModel, WowCheck
 from wowtools.ui.tree_filter import (FILTER_BINDINGS, FILTER_HINT, FilterInput, ModelFilter, ModelNode, TextFilter,
                                      TreeFilter)
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, RiskBanner, action_button
 
 BROWSE, RESULTS = "Browse", "Results"  # the tree's two views (v): the files, and the hits of the last search
-RISK_BANNER = "⚠ USE AT YOUR OWN RISK: you change addon data"
 READING = "Reading…"
 NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
 # Space / a / n where nothing can be ticked (they stay keys, as on every review): why not.
@@ -147,7 +146,6 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         "btn-search": "search", "btn-apply": "apply", "btn-dry-run": "dry_run", "btn-rescan": "rescan",
         "btn-undo": "undo", **{button_id: name for button_id, _, _, name, _ in TREE_ACTIONS}}
     DEFAULT_CSS = two_pane_css("SvReviewScreen", "#browse") + """
-    SvReviewScreen #risk { height: auto; margin-top: 1; }
     SvReviewScreen #pending { height: auto; margin-top: 1; }
     SvReviewScreen #search-row { margin-top: 1; height: auto; }
     SvReviewScreen #search-row Button { min-width: 0; width: auto; }
@@ -220,7 +218,7 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         yield Header()
         with Horizontal(id="body"):
             with Vertical(id="filters"):
-                yield Static(Text(RISK_BANNER, style=ALERT_STYLE), id="risk")
+                yield RiskBanner()
                 yield FilterInput()
                 yield Static(self._pending_line(), id="pending")
                 with ButtonRow(id="search-row", wrap=False):

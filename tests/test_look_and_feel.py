@@ -32,7 +32,7 @@ from wowtools.ui.dialogs import (FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_H
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import MENU_HINT, LockScreen, WowToolsApp
 from wowtools.ui.tree_filter import FILTER_HINT, FILTER_PLACEHOLDER, NO_MATCH_TEXT, FilterInput
-from wowtools.ui.widgets import CHECK_OFF, NavHint, action_kind
+from wowtools.ui.widgets import CHECK_OFF, RISK_TEXT, NavHint, RiskBanner, action_kind
 
 POPUP_MAX_WIDTH = 100  # a popup or confirm at LARGE: a readable width, never stretched edge to edge
 FORM_MAX_WIDTH = 100  # a settings form, at any size
@@ -41,6 +41,8 @@ TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup", "ace3-profil
 # The action that leads to a result screen without a running-WoW popup in between (dry runs, a backup).
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
               "ace3-profile-manager": "dry_run", "sv-browser": "dry_run"}
+# The reviews that can destroy data: the risk banner tops their left pane (spec D37).
+DESTRUCTIVE_REVIEWS = ("wtf-cleaner", "ace3-profile-manager", "sv-browser")
 # What a review needs before its run action has something to do (the Ace3 Profile Manager runs staged changes).
 PREPARE = {"ace3-profile-manager": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
                                            review.refresh_view()),
@@ -160,6 +162,30 @@ class LookAndFeelTest(TuiTestCase):
                                 if w.focusable and actions not in w.ancestors]
                     rows = [w.region.y for w in controls]
                     self.assertEqual(len(rows), len(set(rows)), [(w.id, w.region) for w in controls])
+
+    async def test_destructive_reviews_open_with_the_risk_banner(self):
+        """Spec D37: the reviews that can destroy data start their left pane with the shared banner (red, bold,
+        not focusable, inside the pane); the others have none."""
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    review = await self.open_review(app, pilot, tool)
+                    filters = review.query_one("#filters")
+                    banners = list(review.query(RiskBanner))
+                    if tool not in DESTRUCTIVE_REVIEWS:
+                        self.assertEqual(banners, [])
+                        continue
+                    self.assertEqual(len(banners), 1)
+                    banner = banners[0]
+                    self.assertIs(filters.children[0], banner)
+                    self.assertEqual(banner.render().plain, RISK_TEXT)
+                    self.assertEqual(RISK_TEXT, "\u26a0 USE AT YOUR OWN RISK")
+                    self.assertFalse(banner.focusable)
+                    self.assertTrue(banner.styles.text_style.bold)
+                    self.assertEqual(banner.styles.color.hex, app.get_css_variables()["error"])
+                    pane = filters.region
+                    self.assert_inside(banner, pane._replace(width=pane.width - 1))
 
     async def test_every_tree_screen_has_the_filter_box(self):
         """Spec D7 at BASE and TINY: every review and the Ace3 blacklist have the tree filter in the left pane, one

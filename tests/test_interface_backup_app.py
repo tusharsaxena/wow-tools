@@ -34,7 +34,7 @@ from wowtools.ui.help_screen import HelpScreen
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.tree_filter import FILTER_HINT, FilterInput
-from wowtools.ui.widgets import ActionButton, NavHint, action_kind
+from wowtools.ui.widgets import RISK_TEXT, ActionButton, NavHint, RiskBanner, action_kind
 
 SIZE = (140, 50)
 
@@ -762,6 +762,24 @@ class InterfaceBackupAppTest(TuiTestCase):
         await settle(app, pilot)
         self.assertIsInstance(app.screen, RestoreScreen)
         return app.screen
+
+    async def test_restore_screen_opens_with_the_risk_banner(self):
+        """Spec D37: Restore overwrites the flavor's files, so its left pane starts with the shared banner (the
+        backup review, which only adds files, has none)."""
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            self.assertEqual(list(review.query(RiskBanner)), [])
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            screen = await self.open_restore(app, pilot)
+            banner = screen.query_one(RiskBanner)
+            self.assertIs(screen.query_one("#filters").children[0], banner)
+            self.assertEqual(banner.render().plain, RISK_TEXT)
+            self.assertFalse(banner.focusable)
+            self.assertGreater(banner.region.width, 0)
 
     async def test_restore_tree_expands_and_collapses_all(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
