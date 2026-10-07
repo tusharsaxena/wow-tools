@@ -2,8 +2,9 @@
 (counts per flavor and file, the USE AT YOUR OWN RISK disclaimer as red alert lines on Apply, the alert when the
 WoW check could not run), the refusal while WoW runs, the result screen (summary with the zips and the journal, one
 row per file; Back to review after a dry run), Undo last change (z) with the disclaimer and the staged work it drops,
-the rescan after a run, and the unfinished-run popup on a scan (put back or leave). End to end: search, Apply, the
-files, the snapshot, the originals zip and the journal, then Undo back to the same bytes."""
+the rescan after a run, and the unfinished-run popup on a scan (put back or leave). End to end: search, a bulk Edit
+value or Rename key on the ticked hits (D39), Apply, the files, the snapshot, the originals zip and the journal, then
+Undo back to the same bytes."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,6 +21,7 @@ from wowtools.core.fsutil import atomic_write_bytes
 from wowtools.core.install import WowInstall
 from wowtools.core.luasv import key_id
 from wowtools.core.sv_apply import ApplyError
+from wowtools.core.svfiles import OWNER_ACCOUNT_WIDE
 from wowtools.tools.sv_browser import editor, undo
 from wowtools.tools.sv_browser.events import SV_TOOL
 from wowtools.tools.sv_browser.journal import latest_undoable, resolve_journal_dir
@@ -91,8 +93,11 @@ class RunTestBase(SearchTestBase):
         return resolve_root(SvBrowserSettings(), self.root)
 
     async def search_friz(self, review, pilot) -> None:
-        await self.search(review, pilot, search_value=SVB_FONT, new_text=NEW_FONT)
+        """Search the font everywhere and stage NEW_FONT on every hit (a bulk Edit value, D39)."""
+        await self.search(review, pilot, search_value=SVB_FONT)
         self.assertTrue(review.ticked)
+        await self.bulk_value(review, pilot, NEW_FONT)
+        self.assertEqual(review.staging.count, len(review.hits))
 
     async def press(self, app, pilot, *keys) -> None:
         await pilot.press(*keys)
@@ -273,7 +278,7 @@ class ApplyUndoEndToEndTest(RunTestBase):
             self.assertIsInstance(confirm, ConfirmScreen)
             self.assertEqual(confirm.kind, "destructive")
             self.assertIn(DISCLAIMER, confirm.alerts)
-            self.assertIn("1 staged edit and 0 ticked results not applied yet will be dropped", confirm.body_text)
+            self.assertIn("1 staged edit not applied yet will be dropped", confirm.body_text)
             confirm.dismiss(True)
             await settle(app, pilot)
             result = app.screen
@@ -285,6 +290,62 @@ class ApplyUndoEndToEndTest(RunTestBase):
             self.assertIs(app.screen, review)
             self.assertEqual(review.pending, 0)
             self.assertIsNone(review.undoable)
+
+    async def apply_and_check(self, app, pilot, before: dict[Path, bytes]) -> dict[Path, bytes]:
+        """Apply what is staged; the snapshot, the originals zip and the journal are made. Returns the bytes after."""
+        await self.press(app, pilot, "w")
+        self.assertIsInstance(app.screen, ConfirmScreen)
+        app.screen.dismiss(True)
+        await settle(app, pilot)
+        self.assertIsInstance(app.screen, SvResultScreen)
+        self.assertEqual(len(list((self.tool_root / "snapshots").glob("*.zip"))), 1)
+        self.assertEqual(len(list((self.tool_root / "edited").glob("*.zip"))), 1)
+        self.assertIsNotNone(latest_undoable(resolve_journal_dir(self.root)))
+        after = self.tree_bytes()
+        self.assertEqual(set(after), set(before))
+        return after
+
+    async def test_bulk_matched_text_on_some_ticked_hits_writes_exactly_those(self):
+        before = self.tree_bytes()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot, "_retail_")
+            await self.search(review, pilot, search_value="Quadrata", value_mode="contains",
+                              scope_account="ACCT1", scope_character=OWNER_ACCOUNT_WIDE)
+            elv = [i for i, h in enumerate(review.hits) if h.file.path.name == "ElvUI.lua"]
+            self.assertEqual(len(elv), 2)
+            review.ticked.clear()
+            review.ticked.add(elv[0])  # only general.font
+            review._refresh_labels()
+            await self.bulk_value(review, pilot, "Q")  # Replace only the matched text (the default)
+            target = review.hits[elv[0]]
+            after = await self.apply_and_check(app, pilot, before)
+        changed = [p for p in before if after[p] != before[p]]
+        self.assertEqual(changed, [target.file.path])
+        self.assertEqual(after[target.file.path],
+                         before[target.file.path].replace(b'["font"] = "Friz Quadrata TT"', b'["font"] = "Friz Q TT"'))
+
+    async def test_bulk_rename_writes_exactly_the_ticked_keys(self):
+        before = self.tree_bytes()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot, "_retail_")
+            await self.search(review, pilot, search_key="Font", match_case=True)
+            hits = list(review.hits)
+            self.assertTrue(hits)
+            review.query_one("#browse").focus()
+            await self.press(app, pilot, "k")
+            popup = app.screen
+            popup.query_one("Input").value = "face"
+            await settle(app, pilot)
+            await self.press(app, pilot, "enter")
+            await settle(app, pilot)
+            self.assertEqual(review.staging.count, len(hits))
+            after = await self.apply_and_check(app, pilot, before)
+        changed = {p for p in before if after[p] != before[p]}
+        self.assertEqual(changed, {h.file.path for h in hits})
+        for path in changed:
+            self.assertEqual(after[path], before[path].replace(b'["Font"] =', b'["face"] ='))
 
     async def test_the_run_works_at_80x24(self):
         app = self.make_app()
@@ -334,7 +395,7 @@ class RecoveryTest(RunTestBase):
             await self.press(app, pilot, "w")  # Apply would refuse: settle the unfinished run first
             popup = app.screen
             self.assertIsInstance(popup, UnfinishedRunScreen)
-            self.assertIn("1 staged edit and 0 ticked results not applied yet will be dropped", popup.message_text)
+            self.assertIn("1 staged edit not applied yet will be dropped", popup.message_text)
             with capture_events() as events:
                 popup.choose("leave")
                 await settle(app, pilot)

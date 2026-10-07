@@ -211,6 +211,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `svb.apply_completed` | info | Apply finished (logged at warning if any file was skipped or failed). |
 | `svb.apply_started` | info | Apply (or a dry run) of the pending changes started. |
 | `svb.backup_failed` | error | The zip of the original files failed; nothing was changed. |
+| `svb.bulk_staged` | info | A bulk Edit value or Rename key on the search results was staged (edits staged, results already holding it, results left out and why). |
 | `svb.disclaimer_accepted` | info | The USE AT YOUR OWN RISK warning was accepted (I understand). |
 | `svb.disclaimer_declined` | info | The USE AT YOUR OWN RISK warning was declined (Back): nothing was scanned. |
 | `svb.dry_run_completed` | info | A dry run finished. |
@@ -233,7 +234,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `svb.rolled_back` | warning | After a failure, the files this run had already written were put back. |
 | `svb.scan_completed` | info | The SavedVariables files were listed, with counts (flavors, accounts, files, bytes, seconds). |
 | `svb.search_completed` | info | A search finished, with counts (files searched, hits, hits dropped over the cap, seconds). |
-| `svb.search_started` | info | A search started (key and value text, modes, scope, replacement, files in scope). |
+| `svb.search_started` | info | A search started (key and value text, modes, scope, files in scope). |
 | `svb.snapshot_discarded` | info | A whole-WTF snapshot taken before an Undo whose other snapshot failed was deleted: nothing was changed, so it protected nothing. |
 | `svb.snapshot_failed` | error | The whole-WTF snapshot failed; nothing was changed. |
 | `svb.snapshot_taken` | info | The whole-WTF snapshot was written and verified. |

@@ -202,7 +202,7 @@ class SvBrowseViewTest(SvBrowserTestBase):
             pane = review.query_one("#filters")
             self.assertEqual(review.query_one(RiskBanner).render().plain, RISK_TEXT)
             self.assertEqual(review.query_one("#pending").render().plain,
-                             "Staged: 0 edits · Ticked: 0 results in 0 files")
+                             "Staged: 0 edits in 0 files")
             self.assertEqual([(b.label_text, b.shortcut) for b in review.query_one("#search-row").query(Button)],
                              [("Search", "S")])
             self.assertEqual([(b.label_text, b.shortcut) for b in review.query_one("#actions").query(Button)],
@@ -379,7 +379,7 @@ class SvBrowseViewTest(SvBrowserTestBase):
             review._update_summary()
             await settle(app, pilot)
             self.assertEqual(review.query_one("#pending").render().plain,
-                             "Staged: 1 edit · Ticked: 0 results in 1 file")
+                             "Staged: 1 edit in 1 file")
             for key in ("f", "r"):  # leaving, and a rescan, drop it: both ask
                 await pilot.press(key)
                 await settle(app, pilot)

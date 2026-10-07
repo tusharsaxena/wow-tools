@@ -1,10 +1,12 @@
 """The Saved Variables Browser's popups (spec §5), styled like ConfirmScreen (ui.dialogs.popup_css): the USE AT YOUR
 OWN RISK warning (D2), a warning ChoiceScreen the flow shows before the review scans; Edit value (D5, D10: a type
 select, then a text field or a checkbox), Rename key (the shared text prompt) and Delete key (a destructive
-confirm, with D5's array-shift warning) and Search (D6-D10: the key and value texts, their modes, Match case, the
-scope and the replacement; Find checks them with the search's own rules and dismisses with a SearchSpec). The edit
-popups check what is typed with the checks they are given (the review passes the staging's own,
-ops.Staging.*_problem) and dismiss with the value, the key text or the answer; the review stages it."""
+confirm, with D5's array-shift warning) and Search (D6-D9, D38: the key and value texts, their modes, Match case and
+the scope; it only finds: Find checks them with the search's own rules and dismisses with a SearchSpec). Edit value
+and Rename key also serve the bulk edit of the search results (D39: titled with the count; Edit value then may offer
+"Replace only the matched text"). The edit popups check what is typed with the checks they are given (the review
+passes the staging's own, ops.Staging.*_problem) and dismiss with the value, the key text or the answer; the review
+stages it."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -20,6 +22,7 @@ from textual.widgets import Button, Input, Select, Static
 
 from wowtools.core.svfiles import OWNER_ACCOUNT_WIDE
 from wowtools.core.text import plural
+from wowtools.tools.sv_browser.bulk import MATCHED, MODES, WHOLE
 from wowtools.tools.sv_browser.ops import SHIFT_WARNING, parse_key
 from wowtools.tools.sv_browser.report import DISCLAIMER
 from wowtools.tools.sv_browser.search import (KEY_CONTAINS, KEY_EXACT, REPLACE_BOOLEAN, REPLACE_NUMBER,
@@ -63,11 +66,14 @@ class DisclaimerScreen(ChoiceScreen):
 
 
 class EditValueScreen(ModalScreen[Replacement | None]):
-    """Edit value (D5, D10): `where` names the key, `current` its value as the tree shows it. The type select
-    (string, number, boolean; it starts on `kind`) shows a text field (#value-text, starting with `text`) for a
-    string or a number, or a checkbox (#value-bool, ticked = true, starting as `flag`) for a boolean. OK reads the
-    value (a number must read back in Lua as itself: search.parse_replacement) and asks `check` (the staging's
-    refusal, or None); a problem shows under the fields until they change. Dismisses with the value, or None."""
+    """Edit value (D5, D10): `where` names the key (or the results, D39), `current` its value as the tree shows it
+    ("" for many: no Now line). The type select (string, number, boolean; it starts on `kind`) shows a text field
+    (#value-text, starting with `text`) for a string or a number, or a checkbox (#value-bool, ticked = true, starting
+    as `flag`) for a boolean. With `matched` (a bulk edit after a value Contains search) a first select (#edit-mode)
+    offers Replace only the matched text (the default: the text field only, put in place of every match) or Whole
+    value; `mode` holds the choice once OK is pressed. OK reads the value (a number must read back in Lua as itself:
+    search.parse_replacement) and asks `check` (the staging's refusal, or None; never for matched text); a problem
+    shows under the fields until they change. Dismisses with the value, or None."""
 
     DEFAULT_CSS = popup_css("EditValueScreen", list_rows=len(VALUE_TYPES)) + """
     EditValueScreen Ka0sCheckbox { margin-top: 1; }
@@ -76,8 +82,12 @@ class EditValueScreen(ModalScreen[Replacement | None]):
                                          Binding("enter", "submit", show=False), *NAV_BINDINGS]
 
     def __init__(self, where: str, current: str, kind: str = REPLACE_STRING, text: str = "", flag: bool = False,
-                 check: Callable[[Replacement], str | None] | None = None, note: str = "") -> None:
+                 check: Callable[[Replacement], str | None] | None = None, note: str = "", *,
+                 title: str = "Edit value", matched: bool = False) -> None:
         super().__init__()
+        self.title_text = title
+        self.matched = matched
+        self.mode = MATCHED if matched else WHOLE
         self.where = where
         self.current = current
         self.kind = kind
@@ -88,9 +98,12 @@ class EditValueScreen(ModalScreen[Replacement | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="popup-box"):
-            yield Static(Text("Edit value"), classes="title")
-            body = f"{self.where}\nNow: {self.current}"
+            yield Static(Text(self.title_text), classes="title")
+            body = f"{self.where}\nNow: {self.current}" if self.current else self.where
             yield Static(Text(f"{body}\n{self.note}" if self.note else body), classes="popup-body")
+            if self.matched:
+                yield NavSelect([(label, mode) for mode, label in MODES], value=MATCHED, allow_blank=False,
+                                id="edit-mode", compact=True)
             yield NavSelect([(label, kind) for kind, label in VALUE_TYPES], value=self.kind, allow_blank=False,
                             id="value-type", compact=True)
             yield Input(self.text, placeholder="new value", id="value-text", compact=True)
@@ -103,15 +116,27 @@ class EditValueScreen(ModalScreen[Replacement | None]):
 
     def on_mount(self) -> None:
         self._show_fields()
-        self.query_one("#value-bool" if self.kind == REPLACE_BOOLEAN else "#value-text").focus()
+        self.query_one("#value-bool" if self.chosen_kind() == REPLACE_BOOLEAN else "#value-text").focus()
+
+    def chosen_mode(self) -> str:
+        """MATCHED or WHOLE (WHOLE when the popup offers no choice)."""
+        if not self.matched:
+            return WHOLE
+        value = self.query_one("#edit-mode", Select).value
+        return value if value in (MATCHED, WHOLE) else MATCHED
 
     def chosen_kind(self) -> str:
+        if self.chosen_mode() == MATCHED:
+            return REPLACE_STRING  # the matched text is replaced by text
         value = self.query_one("#value-type", Select).value
         return value if isinstance(value, str) else REPLACE_STRING
 
     def _show_fields(self) -> None:
         boolean = self.chosen_kind() == REPLACE_BOOLEAN
-        self.query_one("#value-text", Input).display = not boolean
+        self.query_one("#value-type", Select).display = self.chosen_mode() == WHOLE
+        text = self.query_one("#value-text", Input)
+        text.display = not boolean
+        text.placeholder = "text to put in place of each match" if self.chosen_mode() == MATCHED else "new value"
         self.query_one("#value-bool", Ka0sCheckbox).display = boolean
 
     def _error(self, problem: str | None) -> None:
@@ -134,7 +159,8 @@ class EditValueScreen(ModalScreen[Replacement | None]):
         except ValueError as exc:
             self._error(str(exc))
             return
-        problem = self.check(value)
+        self.mode = self.chosen_mode()
+        problem = None if self.mode == MATCHED else self.check(value)
         if problem is not None:
             self._error(problem)
             return
@@ -180,11 +206,13 @@ def key_check(check: Callable[[object], str | None]) -> Callable[[str], str | No
 
 
 class RenameKeyScreen(TextPromptScreen):
-    """Rename key (D5): the shared text prompt, starting with the key as ops.key_input writes it and checked with
-    key_check(check). Dismisses with the text (ops.parse_key reads the key), or None."""
+    """Rename key (D5; D39 for the search results, titled with the count): the shared text prompt, starting with the
+    key as ops.key_input writes it and checked with key_check(check). Dismisses with the text (ops.parse_key reads
+    the key), or None."""
 
-    def __init__(self, where: str, initial: str, check: Callable[[object], str | None]) -> None:
-        super().__init__("Rename key", f"{where}\n{KEY_HELP}", initial, key_check(check), placeholder="new key")
+    def __init__(self, where: str, initial: str, check: Callable[[object], str | None], *,
+                 title: str = "Rename key") -> None:
+        super().__init__(title, f"{where}\n{KEY_HELP}", initial, key_check(check), placeholder="new key")
 
 
 def delete_confirm(where: str, *, count: int | None = None, table: bool = False, positional: bool = False,
@@ -202,25 +230,22 @@ def delete_confirm(where: str, *, count: int | None = None, table: bool = False,
     return ConfirmScreen("Delete key?", "\n".join(lines), alerts, kind="destructive")
 
 
-FIND_ONLY = "find"  # the replacement select's "Find only": a search that replaces nothing (no ticks)
 KEY_MODES = ((KEY_EXACT, "Exact"), (KEY_CONTAINS, "Contains"))
 VALUE_MODES = ((VALUE_WHOLE, "Whole value"), (VALUE_CONTAINS, "Contains"))
-NEW_TYPES = (*VALUE_TYPES, (FIND_ONLY, "Find only"))
 EVERY = ""  # a scope select's "every flavor / account / character"
 SEARCH_LABEL_WIDTH = 13
 
 
 class SearchScreen(ModalScreen[SearchSpec | None]):
-    """Search (D6-D10, spec §5), one control per row, each after its label: the key text and Exact / Contains, the
-    value text and Whole value / Contains, Match case, the scope (Flavor, only when there are several; Account;
-    Character, with Account-wide only; Addon file, text the file name contains) and the replacement (String, Number,
-    Boolean or Find only, then the new value: a text field, or a checkbox for a boolean). It starts with `last`
-    (the previous search) or the defaults. Find (or Enter in a text field) builds the SearchSpec, checking the new
-    value (search.parse_replacement) and the spec (SearchSpec.problems); a problem shows under the fields until one
-    changes. Dismisses with the spec, or None. The box scrolls when the window is short (80x24): ↑/↓ move through
-    the fields, each scrolled into view."""
+    """Search (D6-D9, D38: it only finds), one control per row, each after its label: the key text and Exact /
+    Contains, a blank row, the value text and Whole value / Contains, Match case, then the scope (Flavor, only when
+    there are several; Account; Character, with Account-wide only; Addon file, text the file name contains). It
+    starts with `last` (the previous search) or the defaults. Find (or Enter in a text field) builds the SearchSpec
+    and checks it (SearchSpec.problems); a problem shows under the fields until one changes. Dismisses with the
+    spec, or None. The box scrolls when the window is short (80x24): ↑/↓ move through the fields, each scrolled
+    into view."""
 
-    DEFAULT_CSS = popup_css("SearchScreen", list_rows=max(len(NEW_TYPES), 8)) + f"""
+    DEFAULT_CSS = popup_css("SearchScreen", list_rows=8) + f"""
     SearchScreen .search-row {{ height: 1; }}
     SearchScreen .search-row Select, SearchScreen .search-row Input {{ margin-top: 0; width: 1fr; }}
     SearchScreen .search-label {{ width: {SEARCH_LABEL_WIDTH}; color: $text-muted; }}
@@ -252,13 +277,6 @@ class SearchScreen(ModalScreen[SearchSpec | None]):
     def compose(self) -> ComposeResult:
         last = self.last
         scope = last.scope
-        new = last.replacement
-        if last.has_key or last.has_value:  # a search ran: its replacement's type
-            new_type = FIND_ONLY if new is None else REPLACE_BOOLEAN if isinstance(new, bool) else \
-                REPLACE_STRING if isinstance(new, str) else REPLACE_NUMBER
-        else:
-            new_type = REPLACE_STRING
-        new_text = "" if new is None or isinstance(new, bool) else new if isinstance(new, str) else repr(new)
         with Vertical(classes="popup-box"):
             yield Static(Text("Search"), classes="title")
             yield self._row("Key", Input(last.key, placeholder="key name (or leave empty)", id="search-key",
@@ -266,7 +284,7 @@ class SearchScreen(ModalScreen[SearchSpec | None]):
             yield self._row("Key match", self._select([(label, v) for v, label in KEY_MODES], last.key_mode,
                                                       "key-mode"))
             yield self._row("Value", Input(last.value, placeholder="value (or leave empty)", id="search-value",
-                                           compact=True))
+                                           compact=True), gap=True)
             yield self._row("Value match", self._select([(label, v) for v, label in VALUE_MODES], last.value_mode,
                                                         "value-mode"))
             yield self._row("", PopupCheckbox("Match case", last.match_case, id="match-case", compact=True))
@@ -281,11 +299,6 @@ class SearchScreen(ModalScreen[SearchSpec | None]):
                  *((c, c) for c in self.characters)], scope.character or EVERY, "scope-character"))
             yield self._row("Addon file", Input(scope.addon, placeholder="any (the file name contains)",
                                                 id="scope-addon", compact=True))
-            yield self._row("Replace with", self._select([(label, v) for v, label in NEW_TYPES], new_type,
-                                                         "new-type"), gap=True)
-            yield self._row("New value", Input(new_text, placeholder="new value (text for Contains)",
-                                               id="new-text", compact=True))
-            yield self._row("New value", PopupCheckbox("true", new is True, id="new-bool", compact=True))
             yield Static("", id="search-error", classes="popup-error")
             with ButtonRow(classes="popup-buttons"):
                 yield action_button("Find", "confirm", id="find")
@@ -293,52 +306,31 @@ class SearchScreen(ModalScreen[SearchSpec | None]):
             yield NavHint("Enter Find · ↑↓/Tab move · Enter/Space open a list · Space tick · ←→ buttons")
 
     def on_mount(self) -> None:
-        self._show_fields()
         self.query_one("#search-key", Input).focus()
 
     def _value(self, select_id: str) -> str:
         value = self.query_one(f"#{select_id}", Select).value
         return value if isinstance(value, str) else ""
 
-    def _show_fields(self) -> None:
-        kind = self._value("new-type")
-        for selector, shown in (("#new-text", kind not in (REPLACE_BOOLEAN, FIND_ONLY)),
-                                ("#new-bool", kind == REPLACE_BOOLEAN)):
-            field = self.query_one(selector)
-            field.display = field.parent.display = shown  # the row with its label
-
     def _error(self, problem: str | None) -> None:
         show_error(self.query_one("#search-error", Static), problem)
 
     def spec(self) -> SearchSpec:
-        """The search entered; ValueError (its message for the user) when the new value is not one. The spec's own
-        problems are not checked here (SearchSpec.problems)."""
-        kind = self._value("new-type")
-        if kind == FIND_ONLY:
-            replacement: Replacement | None = None
-        elif kind == REPLACE_BOOLEAN:
-            replacement = self.query_one("#new-bool", Ka0sCheckbox).value
-        else:
-            replacement = parse_replacement(kind, self.query_one("#new-text", Input).value)
+        """The search entered. Its problems are not checked here (SearchSpec.problems)."""
         flavor = self._value("scope-flavor") if self.query("#scope-flavor") else EVERY
         scope = SearchScope(flavor=flavor or None, account=self._value("scope-account") or None,
                             character=self._value("scope-character") or None,
                             addon=self.query_one("#scope-addon", Input).value.strip())
         return SearchSpec(key=self.query_one("#search-key", Input).value, key_mode=self._value("key-mode"),
                           value=self.query_one("#search-value", Input).value, value_mode=self._value("value-mode"),
-                          match_case=self.query_one("#match-case", Ka0sCheckbox).value, scope=scope,
-                          replacement=replacement)
+                          match_case=self.query_one("#match-case", Ka0sCheckbox).value, scope=scope)
 
     def action_submit(self) -> None:
         """Enter where the focused control does not take it (a checkbox): Find."""
         self.action_find()
 
     def action_find(self) -> None:
-        try:
-            spec = self.spec()
-        except ValueError as exc:
-            self._error(str(exc))
-            return
+        spec = self.spec()
         problems = spec.problems()
         if problems:
             self._error(" ".join(problems))
@@ -347,7 +339,6 @@ class SearchScreen(ModalScreen[SearchSpec | None]):
 
     def on_select_changed(self, event: Select.Changed) -> None:
         event.stop()
-        self._show_fields()
         self._error(None)
 
     def on_input_changed(self, event: Input.Changed) -> None:

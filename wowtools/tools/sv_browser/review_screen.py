@@ -2,9 +2,11 @@
 tree, flavor › account › Account-wide / Realm › Character › Addon.lua (size) › keys, loaded lazily: the scan only
 lists the files, a file is read and parsed when it is opened and a table when it is opened (in a worker, model.py).
 The left pane has the shared risk banner (D37), the filter, the staged/ticked summary and the run buttons; the
-bar under the tree acts on the highlighted key. Search (S) opens the search popup and runs the search in a worker
-with the shared progress popup; its hits fill the Results view (v switches views): flavor › account › owner › file ›
-one leaf per hit, `path = old → new`, all ticked. Apply (w), Dry run (y) and Undo last change (z) run the shared
+bar under the tree acts on the highlighted key. Search (S) opens the search popup (it only finds, D38) and runs the
+search in a worker with the shared progress popup; its hits fill the Results view (v switches views): flavor ›
+account › owner › file › one leaf per hit, `path = old`, all ticked. There Edit value and Rename key act on every
+ticked hit (else the highlighted one) and stage one edit per hit (D39, bulk.py), shown with the same marks as in
+Browse; Unstage drops a hit's edit. Ticks only select: Apply (w), Dry run (y) and Undo last change (z) run the shared
 SavedVariables pipeline (RunActions: WoW check, confirm with the USE AT YOUR OWN RISK disclaimer, progress popup,
 result screen), then the files are read again; a scan that finds an Apply that did not finish offers to put the
 originals back. Dismisses with "flavors", "tools" or "quit" (ToolFlow._after_review)."""
@@ -31,12 +33,14 @@ from wowtools.core.process import wow_check_for
 from wowtools.core.sv_apply import Marker
 from wowtools.core.svfiles import SvFile
 from wowtools.core.text import human_size, plural
+from wowtools.tools.sv_browser.bulk import (BulkResult, new_value, read_tables, stage_renames, stage_values,
+                                            table_key)
 from wowtools.tools.sv_browser.editor import ApplyError, MultiApplyResult, apply_plan
 from wowtools.tools.sv_browser.events import SV_TOOL
 from wowtools.tools.sv_browser.journal import latest_undoable, read_journal, resolve_journal_dir
 from wowtools.tools.sv_browser.model import ERROR, MORE, Node, SvDocument, key_text, node_text, scalar_text
-from wowtools.tools.sv_browser.ops import (HAS_STAGED_EDIT, UNCHANGED, UNDER_DELETE, FieldEdit, Plan, Staging,
-                                           key_input, parse_key, path_text, typed_path)
+from wowtools.tools.sv_browser.ops import (FieldEdit, Plan, Staging, key_input, key_problem, parse_key, path_text,
+                                           typed_path, value_problem)
 from wowtools.tools.sv_browser.popups import (NOT_TYPABLE, EditValueScreen, RenameKeyScreen, SearchScreen,
                                               delete_confirm)
 from wowtools.tools.sv_browser.report import (FILE_COLUMNS, STAGE_TITLES, UNDO_COLUMNS, apply_confirm, apply_groups,
@@ -60,14 +64,13 @@ BROWSE, RESULTS = "Browse", "Results"  # the tree's two views (v): the files, an
 READING = "Reading…"
 NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
 # Space / a / n where nothing can be ticked (they stay keys, as on every review): why not.
-NO_TICKS_BROWSE = "Nothing to tick here: the results of a search that replaces are ticked (S, then v)."
-NO_TICKS_FIND_ONLY = "A find only has nothing to tick: search again with a new value to replace with (S)."
+NO_TICKS_BROWSE = "Nothing to tick here: the results of a search are ticked (S, then v)."
 # The Results view's groups (flavor › account › owner › file, each with the hits under it) and its leaves ("hit").
 RESULT_GROUPS = ("r-flavor", "r-account", "r-owner", "r-file")
 GROUP_KINDS = ("root", "flavor", "account", "realm", "owner", *RESULT_GROUPS)  # what x opens (no file is read)
 OPEN_KINDS = ("root", "flavor", "account", "owner", *RESULT_GROUPS)  # open when first shown (realms, files closed)
 NOTHING_FOUND = "Nothing found."
-LEFT_OUT_MARK = "⚠ left out:"  # a ticked hit Apply would leave out (D12), with the reason
+READ_TABLES = "Reading the tables of the keys to rename"
 # The bar under the tree, acting on the highlighted key: (id, label, kind of action, action, key).
 TREE_ACTIONS = (
     ("act-edit", "Edit value", "overwrite", "edit_value", "e"),
@@ -84,7 +87,7 @@ class SearchProgressScreen(ProgressScreen):
     """Shown while a search runs: one row, the files searched of those in scope, and the file last searched."""
 
     ID_PREFIX = "svb-search"
-    STAGE_TITLES: ClassVar[dict[str, str]] = {"search": "Searching"}
+    STAGE_TITLES: ClassVar[dict[str, str]] = {"search": "Searching", "tables": "Reading"}
 
 
 class RunProgressScreen(ProgressScreen):
@@ -197,8 +200,7 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         self.hits: list[Hit] | None = None  # the last search's hits; None: no search since the scan
         self.search_result: SearchResult | None = None
         self.last_spec: SearchSpec | None = None  # the search popup starts with it
-        self.ticked: set[int] = set()  # the ticked results (indexes into hits)
-        self._left_out: dict[int, str] = {}  # ticked hits Apply would leave out (D12), with why: _recount()
+        self.ticked: set[int] = set()  # the ticked results (indexes into hits): what a bulk edit acts on (D39)
         self.view = BROWSE
         self.undoable: Path | None = None  # the newest undoable journal, found by the scan worker
         self.marker: Marker | None = None  # an Apply that did not finish, found by the scan worker
@@ -285,13 +287,13 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
 
     @property
     def pending(self) -> int:
-        """Staged edits plus ticked results: what an Apply would write (and leaving would drop)."""
-        return self.staging.count + len(self.ticked)
+        """Staged edits: what an Apply would write (and leaving would drop). Ticks only select (D39)."""
+        return self.staging.count
 
     @property
     def tickable(self) -> bool:
-        """The tree shows results that can be ticked: the Results view of a search that replaces."""
-        return self.view == RESULTS and self.replaces and bool(self.hits)
+        """The tree shows results that can be ticked: the Results view of a search that found something."""
+        return self.view == RESULTS and bool(self.hits)
 
     def _refresh_buttons(self) -> None:
         if not self.is_attached:
@@ -302,6 +304,16 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         self.query_one("#btn-dry-run", Button).disabled = not idle or not self.pending
         self.query_one("#btn-rescan", Button).disabled = not idle
         self.query_one("#btn-undo", Button).disabled = not idle or self.undoable is None
+        self.query_one("#act-view", Button).disabled = self.hits is None
+        if self.view == RESULTS:  # D39: Edit value and Rename key act on the ticked (else highlighted) hits
+            hit = self.highlighted_hit()
+            off = not idle or not (self.ticked or hit is not None)  # bulk_targets(), without building the list
+            self.query_one("#act-edit", Button).disabled = off
+            self.query_one("#act-rename", Button).disabled = off
+            self.query_one("#act-delete", Button).disabled = True  # Delete key stays single-key, in Browse
+            self.query_one("#act-unstage", Button).disabled = not idle or hit is None or \
+                self.staging.hit_edit(hit) is None
+            return
         doc, node = self.highlighted()
         off = not idle or node is None
         self.query_one("#act-edit", Button).disabled = off or self.staging.set_problem(doc, node, "") is not None
@@ -309,7 +321,6 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
             self.staging.rename_problem(doc, node, node.key) is not None
         self.query_one("#act-delete", Button).disabled = off or self.staging.delete_problem(doc, node) is not None
         self.query_one("#act-unstage", Button).disabled = off or self.staging.edit_for(doc, node) is None
-        self.query_one("#act-view", Button).disabled = self.hits is None
 
     def ticks_frozen(self) -> bool:
         return not self.idle
@@ -381,7 +392,6 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         self.staging.clear()
         self.hits, self.search_result, self.view = None, None, BROWSE
         self.ticked.clear()
-        self._left_out = {}
         self._loading.clear()
         self._set_sub_title()
         if not self.is_attached:
@@ -508,7 +518,6 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         tree.root.data = ("root",)
         tree.root.set_label(self._label(tree.root.data))
         self._tree_nodes = {}
-        self._recount()
         for flavor in self._model():
             self._add(tree.root, flavor, kept)
         self.note_no_match(tree.root)
@@ -621,12 +630,11 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         return f"  {plural(files, 'file')}", "dim"
 
     def _result_name(self, data) -> str:
-        """A Results node's name: the flavor, account, owner or file; a hit's `path = old → new`."""
+        """A Results node's name: the flavor, account, owner or file; a hit's `path = old`."""
         kind = data[0]
         if kind == "hit":
             hit = self.hits[data[1]]
-            text = f"{path_text(hit.path)} = {scalar_text(hit.old, hit.old_bytes)}"
-            return text if hit.new is None else f"{text} → {scalar_text(hit.new, hit.new_bytes)}"
+            return f"{path_text(hit.path)} = {scalar_text(hit.old, hit.old_bytes)}"
         if kind == "r-flavor":
             return data[1].display_name
         if kind == "r-file":
@@ -634,15 +642,17 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         return data[-2]  # an account's or owner's name
 
     def _result_body(self, data) -> Text:
-        """A Results node's label: its tick mark (none for a find only), its name, how many hits a group holds, and
-        why Apply would leave a ticked hit out (D12)."""
+        """A Results node's label: its tick mark, its name, how many hits a group holds; a hit's staged edit with
+        Browse's marks (D39), or struck through under a staged delete."""
         kind, keys = data[0], self.node_tick_keys_of(data)
         mark = self.shown_tick_mark(keys) if keys else ("", "")
         name = self._result_name(data)
         if kind == "hit":
-            reason = self._left_out.get(data[1])
-            note = (f"  {LEFT_OUT_MARK} {reason}", f"bold {theme_colour(self.app, 'warning')}") if reason else ""
-            return Text.assemble(mark, name, note)
+            hit = self.hits[data[1]]
+            edit = self.staging.hit_edit(hit)
+            if edit is not None:
+                return Text.assemble(mark, name, *self._marks(edit))
+            return Text.assemble(mark, (name, "dim strike" if self.staging.hit_deleted_above(hit) else ""))
         count = (f"  {plural(len(data[-1]), 'result')}", "dim")
         if kind == "r-flavor":
             return Text.assemble(mark, (name, ACCENT), count)
@@ -704,11 +714,9 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         return self._body(data)
 
     def _refresh_labels(self, node: TreeNode | None = None) -> None:
-        """After a tick or a staging change: what Apply would leave out may change anywhere, so a node's branch is
-        not enough then."""
-        before = self._left_out
-        self._recount()
-        relabel_branch(self.query_one("#browse", Tree), node if self._left_out == before else None, self._label)
+        """After a tick (node's branch) or a staging change (None: every label, a staged delete strikes keys
+        anywhere below it)."""
+        relabel_branch(self.query_one("#browse", Tree), node, self._label)
         self._update_summary()
 
     # --- the highlighted node ------------------------------------------------------------------------
@@ -721,6 +729,21 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         if data is None or data[0] != "node" or data[1].path not in self.docs:
             return None, None
         return self.docs[data[1].path], data[2]
+
+    def highlighted_hit(self) -> Hit | None:
+        """The highlighted hit in the Results view (None on a group or nothing)."""
+        if not self.is_attached or self.view != RESULTS or not self.hits:
+            return None
+        node = self.query_one("#browse", Tree).cursor_node
+        data = node.data if node is not None else None
+        return self.hits[data[1]] if data is not None and data[0] == "hit" else None
+
+    def bulk_targets(self) -> list[Hit]:
+        """What Edit value and Rename key act on in Results (D39): every ticked hit, else the highlighted one."""
+        if self.ticked:
+            return self.ticked_hits()
+        hit = self.highlighted_hit()
+        return [hit] if hit is not None else []
 
     def highlighted_key(self) -> Node | None:
         """The model node of the highlighted key (None on a group, a file or nothing)."""
@@ -768,31 +791,27 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
 
     # --- summaries -------------------------------------------------------------------------------
     def _pending_words(self) -> str:
-        return f"{plural(self.staging.count, 'staged edit')} and {plural(len(self.ticked), 'ticked result')}"
+        return plural(self.staging.count, "staged edit")
 
     def _pending_line(self) -> Text:
-        """`Staged: N edits · Ticked: M results in F files`, then after a search what it found, how many hits the
-        cap dropped, the files it could not read and the ticked results Apply would leave out (D11, D12)."""
-        files = {f.path for f in self.staging.files()} | {self.hits[i].file.path for i in self.ticked}
-        line = Text.assemble(("Staged: ", "bold"), plural(self.staging.count, "edit"), " · ", ("Ticked: ", "bold"),
-                             f"{plural(len(self.ticked), 'result')} in {plural(len(files), 'file')}")
+        """`Staged: N edits in F files` (what Apply writes), then after a search what it found and `Ticked: M
+        results` (what a bulk edit acts on, D39), how many hits the cap dropped and the files it could not read
+        (D11)."""
+        files = len(self.staging.files())
+        line = Text.assemble(("Staged: ", "bold"), f"{plural(self.staging.count, 'edit')} in {plural(files, 'file')}")
         result = self.search_result
         if result is None:
             return line
         warning = f"bold {theme_colour(self.app, 'warning')}"
         found = f"{plural(len(result.hits), 'hit')} in {plural(result.files_with_hits, 'file')}"
-        lines: list = [line, "\n", ("Results: ", "bold"), found, " (find only)" if not result.spec.replaces else ""]
+        lines: list = [line, "\n", ("Results: ", "bold"), found, "\n", ("Ticked: ", "bold"),
+                       plural(len(self.ticked), "result")]
         if result.dropped:
             cap = (f"{plural(result.dropped, 'more hit')} left out (the results stop at {len(result.hits):,}): "
                    "narrow the search.")
             lines += ["\n", (cap, warning)]
         if result.unreadable:
             lines += ["\n", (f"{plural(len(result.unreadable), 'file')} can't be read.", warning)]
-        if self._left_out:
-            reasons = set(self._left_out.values())
-            why = ("a staged edit wins" if reasons <= {HAS_STAGED_EDIT, UNDER_DELETE}
-                   else "nothing to change" if reasons == {UNCHANGED} else "see the marked results")
-            lines += ["\n", (f"{plural(len(self._left_out), 'ticked result')} left out: {why}", warning)]
         return Text.assemble(*lines)
 
     def _update_summary(self) -> None:
@@ -812,17 +831,12 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         self._refresh_buttons()
 
     # --- ticks (the Results view; Browse has none) ----------------------------------------------------
-    @property
-    def replaces(self) -> bool:
-        """The last search replaces (its hits can be ticked); a find only can't."""
-        return self.search_result is not None and self.search_result.spec.replaces
-
     def tick_model(self) -> TickModel:
         return TickModel.of_ticked(self.ticked)
 
     def node_tick_keys_of(self, data) -> tuple[int, ...]:
-        """The hits a tick on a node with this data covers (none in Browse or for a find only)."""
-        if data is None or not self.replaces:
+        """The hits a tick on a node with this data covers (none in Browse)."""
+        if data is None or not self.hits:
             return ()
         if data[0] == "hit":
             return (data[1],)
@@ -835,7 +849,7 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         return str(ident(node.data))
 
     def all_tick_keys(self) -> Collection[Hashable]:
-        return range(len(self.hits)) if self.view == RESULTS and self.replaces and self.hits else ()
+        return range(len(self.hits)) if self.view == RESULTS and self.hits else ()
 
     def filter_texts(self, key) -> tuple[str, ...]:
         """A hit is matched on its groups' names and its own `path = old → new`, as the Results tree is."""
@@ -843,37 +857,22 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         return (file.flavor.display_name, file.account, file.owner, file.path.name, self._result_name(("hit", key)))
 
     def no_ticks_here(self) -> bool:
-        """TickActions: True (and say why) when Space / a / n on the tree have nothing to tick: Browse, or a find
-        only."""
+        """TickActions: True (and say why) when Space / a / n on the tree have nothing to tick: Browse, or a search
+        that found nothing."""
         if self.tickable:
             return False
-        self.notify(NO_TICKS_FIND_ONLY if self.view == RESULTS and self.hits else NO_TICKS_BROWSE)
+        if self.view != RESULTS:
+            self.notify(NO_TICKS_BROWSE)
         return True
 
     def ticked_hits(self) -> list[Hit]:
-        """The ticked hits, in the order the search found them (what Apply takes with the staged edits)."""
+        """The ticked hits, in the order the search found them (what a bulk edit acts on, D39)."""
         return [self.hits[i] for i in sorted(self.ticked)] if self.hits else []
-
-    def _recount(self) -> None:
-        """Which ticked hits Apply would leave out (D12: a staged edit wins, the file changed since it was read):
-        the staging's own plan over them."""
-        if not self.ticked or not self.hits:
-            self._left_out = {}
-            return
-        index = {id(self.hits[i]): i for i in self.ticked}
-        self._left_out = {index[id(d.hit)]: d.reason for d in self.staging.plans(self.ticked_hits()).dropped}
 
     # --- actions ----------------------------------------------------------------------------------
     def action_search(self) -> None:
-        """S: the search popup; over ticked results, after asking (a new search replaces them)."""
+        """S: the search popup (a new search replaces the results and their ticks; staged edits stay)."""
         if not self.idle or self.scan is None or self.wow_folder_changed():
-            return
-        if self.ticked:
-            self.app.push_screen(ConfirmScreen("Replace the results?",
-                                               f"A new search replaces the results: the "
-                                               f"{plural(len(self.ticked), 'ticked result')} are dropped; nothing "
-                                               "has been written.", kind="destructive"),
-                                 lambda ok: self._open_search() if ok else None)
             return
         self._open_search()
 
@@ -905,12 +904,10 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
                        expected=(ValueError,), writes=False)
 
     def _searched(self, result: SearchResult) -> None:
-        """The search ended: its hits replace the results, all ticked (none for a find only), in the Results
-        view."""
+        """The search ended: its hits replace the results, all ticked, in the Results view."""
         self.search_result, self.hits = result, list(result.hits)
         self.ticked.clear()
-        if result.spec.replaces:
-            self.ticked.update(range(len(self.hits)))
+        self.ticked.update(range(len(self.hits)))
         if not self.is_attached:
             return
         self._show_view(RESULTS)
@@ -943,6 +940,9 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         self._refresh_labels()
 
     def action_edit_value(self) -> None:
+        if self.view == RESULTS:
+            self._bulk_edit_value()
+            return
         target = self._key_target(lambda doc, node: self.staging.set_problem(doc, node, ""))
         if target is None:
             return
@@ -972,6 +972,9 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         self.app.push_screen(popup, done)
 
     def action_rename_key(self) -> None:
+        if self.view == RESULTS:
+            self._bulk_rename()
+            return
         target = self._key_target(lambda doc, node: self.staging.rename_problem(doc, node, node.key))
         if target is None:
             return
@@ -986,6 +989,8 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
                                              lambda key: self.staging.rename_problem(doc, node, key)), done)
 
     def action_delete_key(self) -> None:
+        if self.view == RESULTS:
+            return  # Delete key stays single-key, in Browse (D39)
         target = self._key_target(self.staging.delete_problem)
         if target is None:
             return
@@ -999,11 +1004,95 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         self.app.push_screen(popup, done)
 
     def action_unstage(self) -> None:
-        """Backspace: drop what is staged on the highlighted key."""
+        """Backspace: drop what is staged on the highlighted key (or hit, in Results)."""
+        if self.view == RESULTS:
+            hit = self.highlighted_hit()
+            edit = self.staging.hit_edit(hit) if hit is not None and self.idle else None
+            if edit is None:
+                return
+            table = read_tables([hit]).get(table_key(hit)) if edit.rename else None
+            self._staged(self.staging.unstage_hit(hit, table if not isinstance(table, str) else None), "Unstage")
+            return
         doc, node = self.highlighted()
         if not self.idle or doc is None or node is None or self.staging.edit_for(doc, node) is None:
             return
         self._staged(self.staging.unstage(doc, node), "Unstage")
+
+    # --- bulk edits on the results (D39) ------------------------------------------------------------
+    def _loaded_shas(self) -> dict[Path, str]:
+        """The SHA-256 of each file opened in Browse (a hit read from other bytes is left out)."""
+        return {path: doc.sha256 for path, doc in self.docs.items() if doc.sha256}
+
+    def _bulk_where(self, hits: list[Hit]) -> str:
+        if len(hits) == 1:
+            return f"{hits[0].file.path.name} › {path_text(hits[0].path)}"
+        files = len({h.file.path for h in hits})
+        return f"{plural(len(hits), 'ticked result')} in {plural(files, 'file')}"
+
+    def _bulk_staged(self, result: BulkResult, what: str) -> None:
+        """After a bulk edit: the marks, the pending line and the notice (what was left out and why)."""
+        self._refresh_labels()
+        self.notify(result.text(), title=what, severity="warning" if result.left else "information",
+                    timeout=15 if result.left else 5)
+
+    def _bulk_edit_value(self) -> None:
+        """Edit value on the ticked (else highlighted) hits: one popup, one staged set per hit. After a value
+        Contains search it may replace only the matched text (the default)."""
+        hits = self.bulk_targets()
+        if not self.idle or not hits:
+            return
+        spec = self.search_result.spec if self.search_result is not None else None
+        matched = spec is not None and spec.contains_value
+        olds = {(type(h.old), h.old_bytes) for h in hits}
+        first = hits[0]
+        kind, text, flag = REPLACE_STRING, "", False
+        if len(olds) == 1 and not matched:  # one value on every hit: start from it
+            if isinstance(first.old, bool):
+                kind, flag = REPLACE_BOOLEAN, first.old
+            elif isinstance(first.old, str):
+                text = first.old if not any(c < " " or c == "\x7f" or "\udc80" <= c <= "\udcff"
+                                            for c in first.old) else ""
+            elif first.old is not None:
+                kind, text = REPLACE_NUMBER, first.old_bytes.decode("ascii", "replace")
+        title = "Edit value" if len(hits) == 1 else f"Edit {plural(len(hits), 'value')}"
+        current = scalar_text(first.old, first.old_bytes) if len(hits) == 1 else ""
+        popup = EditValueScreen(self._bulk_where(hits), current, kind, text, flag, check=value_problem, title=title,
+                                matched=matched)
+
+        def done(value) -> None:
+            if value is None:
+                return
+            mode = popup.mode
+            result = stage_values(self.staging, hits, lambda hit: new_value(spec, mode, value, hit),
+                                  self._loaded_shas())
+            self._bulk_staged(result, title)
+        self.app.push_screen(popup, done)
+
+    def _bulk_rename(self) -> None:
+        """Rename key on the ticked (else highlighted) hits: one popup, then the keys' tables are read in a worker
+        (the duplicate check) and one rename per hit is staged."""
+        hits = self.bulk_targets()
+        if not self.idle or not hits:
+            return
+        keys = {key_input(h.key) for h in hits}
+        initial = keys.pop() if len(keys) == 1 else ""
+        title = "Rename key" if len(hits) == 1 else f"Rename {plural(len(hits), 'key')}"
+
+        def done(text) -> None:
+            if text is not None:
+                self._read_tables_then(hits, parse_key(text), title)
+        self.app.push_screen(RenameKeyScreen(self._bulk_where(hits), initial, key_problem, title=title), done)
+
+    def _read_tables_then(self, hits: list[Hit], new_key: object, title: str) -> None:
+        progress = SearchProgressScreen(READ_TABLES, first_stage="tables")
+
+        def report(done: int, total: int, name: str) -> None:
+            progress.report("tables", done, total, name)
+        shas = self._loaded_shas()
+        self.start_run(progress, lambda: read_tables(hits, report),
+                       lambda tables: self._bulk_staged(stage_renames(self.staging, hits, new_key, tables, shas),
+                                                        title),
+                       name="bulk_rename", failure="Reading the tables stopped", stale_on_crash=False, writes=False)
 
     def action_switch_view(self) -> None:
         """v: Browse and Results (once a search has run)."""
@@ -1023,10 +1112,9 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         return load_settings(self.tool_cfg).backup_dir
 
     def _drop_pending(self) -> None:
-        """Drop the staged edits, the ticks and the results (the files changed under them, or are about to)."""
+        """Drop the staged edits and the ticks (the files changed under them, or are about to)."""
         self.staging.clear()
         self.ticked.clear()
-        self._left_out = {}
 
     def _set_stale(self) -> None:
         """The files changed under this scan: drop what is pending; they are read again when the review is shown
@@ -1047,12 +1135,12 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         self._start(dry_run=True)
 
     def _start(self, dry_run: bool) -> None:
-        """Apply / Dry run: what is staged plus the ticked results, one plan (D12). A dry run writes nothing, so it
-        needs no WoW check, backup folder or settled unfinished run."""
+        """Apply / Dry run: what is staged, one plan (D39: ticks only select). A dry run writes nothing, so it needs
+        no WoW check, backup folder or settled unfinished run."""
         if not self.idle or not self.pending or self.wow_folder_changed():
             return
         log_event("ui.selection", screen=self.LOG_SCREEN, control="dry_run" if dry_run else "apply", value=True)
-        plan = self.staging.plans(self.ticked_hits())
+        plan = self.staging.plans()
         if dry_run:
             self._show_apply_confirm(plan, True, [])
             return
@@ -1071,7 +1159,7 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
 
     def _show_apply_confirm(self, plan: Plan, dry_run: bool, extra: list[str], check: WowCheck | None = None) -> None:
         """The confirm (D13): the edits per flavor, one line per file in its detail tree, and as red alert lines the
-        results left out, array entries that move, the WoW check that could not run and (Apply) the disclaimer."""
+        array entries that move, the WoW check that could not run and (Apply) the disclaimer."""
         title, body, alerts = apply_confirm(plan, dry_run=dry_run)
         self.app.push_screen(ConfirmScreen(title, body, (*extra, *alerts), kind="simulate" if dry_run else "destructive",
                                            groups=apply_groups(plan)),
@@ -1092,10 +1180,10 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         self.start_run(screen, lambda: apply_plan(plan, root=root, journal_dir=journal_dir, keep_journals=keep_journals,
                                                   keep_snapshots=keep_snapshots, dry_run=dry_run, wow_check=check,
                                                   progress=screen.report_unit),
-                       lambda result: self._applied(result, plan), name="apply",
+                       self._applied, name="apply",
                        failure="The run stopped unexpectedly", stale_on_crash=not dry_run, expected=(ApplyError,))
 
-    def _applied(self, result: MultiApplyResult, plan: Plan) -> None:
+    def _applied(self, result: MultiApplyResult) -> None:
         # A run refused before it wrote a byte (a locked file, the snapshot failed, ...: "Nothing was changed")
         # keeps the staged edits and ticks, as a dry run does: its result goes back to the review.
         kept = result.dry_run or not (result.edited or result.rolled_back or result.failed)
@@ -1105,7 +1193,7 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         if result.stopped is not None:
             self.notify(f"{result.stopped.flavor.display_name}: {result.stopped.error}", title="Apply stopped",
                         severity="error", timeout=20)
-        self.app.push_screen(SvResultScreen("Dry run" if result.dry_run else "Apply", summary_rows(result, plan),
+        self.app.push_screen(SvResultScreen("Dry run" if result.dry_run else "Apply", summary_rows(result),
                                             FILE_COLUMNS, file_rows(result), self.scope_label, back=kept),
                              self._after_result)
 
@@ -1232,7 +1320,7 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
 
     # --- leaving -------------------------------------------------------------------------------
     def action_leave(self, choice: str) -> None:
-        """Leaving drops the staged edits and ticked results: ask first (D12)."""
+        """Leaving drops the staged edits: ask first (D12)."""
         if self.app.busy:
             return
         if not self.pending:

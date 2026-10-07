@@ -1,5 +1,5 @@
 """Saved Variables Browser Apply, Undo and recovery end to end on build_sv_tree temp trees (spec D13-D17): the
-staged edits and ticked hits go through the shared pipeline per flavor under one journal; the bytes written are
+staged edits (made in Browse or on search hits) go through the shared pipeline per flavor under one journal; the bytes written are
 exactly the splices, the WTF snapshot and the originals zip hold the right members, Undo puts the files back
 byte-for-byte (a file saved since is left alone), a dry run writes nothing, WoW running refuses, a file changed
 since it was read is skipped, and a run that died while writing is put back (or left) from its marker. Plus the
@@ -23,6 +23,7 @@ from wowtools.core.luasv import key_id
 from wowtools.core.svfiles import sha256_of
 from wowtools.core.undo import UndoResultBase
 from wowtools.tools.sv_browser import editor, journal, report, undo
+from wowtools.tools.sv_browser.bulk import stage_values
 from wowtools.tools.sv_browser.events import SV_TOOL
 from wowtools.tools.sv_browser.model import SvDocument
 from wowtools.tools.sv_browser.ops import Staging
@@ -107,15 +108,16 @@ class ApplyTest(ApplyTestBase):
         started = [e for e in events if e["event"] == "svb.apply_started"]
         self.assertEqual([(e["data"]["files"], e["data"]["edits"]) for e in started], [(1, 1), (1, 1)])
 
-    def test_staged_edits_and_ticked_hits_go_in_one_run(self):
-        hits = run_search(self.files, SearchSpec(value=SVB_FONT, replacement="Arial")).hits
+    def test_browse_edits_and_staged_hits_go_in_one_run(self):
+        hits = run_search(self.files, SearchSpec(value=SVB_FONT)).hits
         elvui = self.file(self.retail, "ElvUI.lua")
         self.stage(elvui, "set_value", ELVUI_FONT, "Arial Narrow")
-        plan = self.staging.plans(hits)
-        self.assertEqual(len(plan.dropped), 1)  # the staged edit wins over the hit on the same value
+        bulk = stage_values(self.staging, hits, lambda hit: "Arial")
+        self.assertEqual(bulk.left, 1)  # the Browse edit on the same value stays
+        plan = self.staging.plans()
         result = self.apply(plan)
         self.assertEqual(len(result.edited), len(plan.files))
-        self.assertEqual(sum(len(o.changes) for o in result.edited), plan.staged + plan.hits)
+        self.assertEqual(sum(len(o.changes) for o in result.edited), plan.staged)
         written = elvui.path.read_bytes()
         self.assertIn(b'["font"] = "Arial Narrow",', written)
         self.assertIn(b'["Font"] = "Arial",', written)
@@ -385,12 +387,6 @@ class ReportTest(ApplyTestBase):
         self.assertEqual(title, "Dry run")
         self.assertIn("no file is written", body)
 
-    def test_apply_confirm_names_the_dropped_hits(self):
-        hits = run_search(self.files, SearchSpec(value=SVB_FONT, replacement="Arial")).hits
-        self.stage(self.file(self.retail, "ElvUI.lua"), "set_value", ELVUI_FONT, "Arial Narrow")
-        _, _, alerts = report.apply_confirm(self.staging.plans(hits), dry_run=False)
-        self.assertTrue(any(a.startswith("1 ticked result is left out") for a in alerts), alerts)
-
     def test_undo_confirm_carries_the_disclaimer(self):
         self.stage_two_flavors()
         result = self.apply()
@@ -400,15 +396,15 @@ class ReportTest(ApplyTestBase):
         self.assertEqual(alerts, [report.DISCLAIMER])
 
     def test_result_rows(self):
-        hits = run_search(self.files, SearchSpec(value=SVB_FONT, replacement="Arial")).hits
         self.stage(self.file(self.retail, "ElvUI.lua"), "set_value", ELVUI_FONT, "Arial Narrow")
-        plan = self.staging.plans(hits)
+        stage_values(self.staging, run_search(self.files, SearchSpec(value=SVB_FONT)).hits, lambda hit: "Arial")
+        plan = self.staging.plans()
         result = self.apply(plan)
-        rows = dict(report.summary_rows(result, plan))
+        rows = dict(report.summary_rows(result))
         self.assertEqual(rows["Flavors"], "Retail, Classic Era")
         self.assertEqual(rows["Changed"], f"{len(plan.files)} files")
-        self.assertEqual(rows["Edits written"], f"{plan.staged + plan.hits} edits")
-        self.assertEqual(rows["Ticked results left out"], "1 result")
+        self.assertEqual(rows["Edits written"], f"{plan.staged} edits")
+        self.assertNotIn("Ticked results left out", rows)
         self.assertIn("Backup folder", rows)
         self.assertIn("Journal", rows)
         files = report.file_rows(result)

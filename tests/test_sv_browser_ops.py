@@ -1,7 +1,7 @@
 """Saved Variables Browser staging (spec D5, D12): set value, rename key and delete key on the lazy tree's nodes with
 every D5 refusal (top level, positional rename, duplicate keys by Lua identity, nil), unstage, and the per-file plans
-Apply writes: staged edits plus ticked search hits, with the overlap rules (a staged edit wins over a hit, a hit
-under a staged delete is dropped, a rename and a set on one key combine)."""
+Apply writes (the staged edits only), and staging search hits (D39: one edit per hit, refused when already staged,
+under a staged delete, from other bytes, or against D5)."""
 from __future__ import annotations
 
 import tempfile
@@ -16,7 +16,7 @@ from wowtools.tools.sv_browser import ops
 from wowtools.tools.sv_browser.model import SvDocument
 from wowtools.tools.sv_browser.ops import FieldEdit, Staging, new_keys, path_text, typed_path
 from wowtools.tools.sv_browser.scanner import scan_flavors
-from wowtools.tools.sv_browser.search import SearchScope, SearchSpec, run_search
+from wowtools.tools.sv_browser.search import SearchSpec, run_search
 
 
 def by_key(nodes, key):
@@ -290,110 +290,118 @@ class DeleteTest(StagingTestBase):
         self.assertEqual(self.staging.plans().files, {})
 
 
-class PlanTest(StagingTestBase):
-    def test_ticked_hits_become_set_value_edits_keyed_by_file_with_the_search_hash(self):
-        hits = self.search(value=SVB_FONT, replacement="Arial")
-        plan = self.staging.plans(hits)
-        self.assertEqual(sum(len(p.edits) for p in plan.files.values()), len(hits))
-        self.assertEqual(plan.dropped, [])
-        for file, file_plan in plan.files.items():
-            self.assertTrue(file.sha256)
-            self.assertTrue(all(e.set_value and e.value == "Arial" and e.hit for e in file_plan.edits))
-        self.assertEqual({f.path for f in plan.files}, {h.file.path for h in hits})
+class HitStagingTest(StagingTestBase):
+    """D39: a bulk edit on search hits stages one edit per hit, in the same staging as Browse."""
 
-    def test_a_contains_hit_sets_the_whole_new_string(self):
-        hits = self.search(value="Quadrata", value_mode="contains", replacement="Q")
-        plan = self.staging.plans(hits)
-        values = {e.value for p in plan.files.values() for e in p.edits}
-        self.assertEqual(values, {"Friz Q TT", "friz Q tt"})
+    def font_hits(self, **spec):
+        return self.search(value=SVB_FONT, **spec)
 
-    def test_find_only_hits_are_ignored(self):
-        hits = self.search(value=SVB_FONT)
-        self.assertTrue(hits)
-        self.assertEqual(self.staging.plans(hits).files, {})
+    def test_a_hit_value_is_staged_with_the_search_hash_and_browse_sees_it(self):
+        hit = next(h for h in self.font_hits() if h.file.path.name == "ElvUI.lua" and h.key == "font")
+        result = self.staging.stage_hit_value(hit, "Arial")
+        self.assertTrue(result.ok, result.message)
+        self.assertEqual(self.staging.hit_edit(hit), FieldEdit(hit.path, set_value=True, value="Arial"))
+        doc, node = self.elv("general", "font")
+        self.assertEqual(self.staging.edit_for(doc, node), self.staging.hit_edit(hit))
+        (file, file_plan), = self.staging.plans().files.items()
+        self.assertEqual((file.path, file.sha256), (hit.file.path, hit.sha256))
+        self.assertEqual(file_plan.edits, [FieldEdit(hit.path, set_value=True, value="Arial")])
 
-    def test_a_staged_edit_wins_over_a_hit_on_the_same_value(self):
+    def test_the_value_already_there_stages_nothing(self):
+        hit = self.font_hits()[0]
+        result = self.staging.stage_hit_value(hit, hit.old)
+        self.assertEqual((result.ok, result.message), (True, "unchanged"))
+        self.assertEqual(self.staging.count, 0)
+
+    def test_already_staged_and_under_a_delete_are_refused(self):
         doc, node = self.elv("general", "font")
         self.staging.set_value(doc, node, "Mine")
-        hits = self.search(value=SVB_FONT, replacement="Arial")
-        plan = self.staging.plans(hits)
-        (dropped,), = [plan.dropped]
-        self.assertEqual(dropped.hit.path, node.path)
-        self.assertEqual(dropped.reason, ops.HAS_STAGED_EDIT)
-        edits = {e.path: e for e in plan.files[next(f for f in plan.files if f.path == doc.file.path)].edits}
-        self.assertEqual(edits[node.path].value, "Mine")
-        self.assertFalse(edits[node.path].hit)
-        self.assertEqual(edits[("ElvDB", "profiles", "Default", "unitframe", "Font")].value, "Arial")
+        _, unitframe = self.elv("unitframe")
+        self.staging.delete(doc, unitframe)
+        hits = {h.key: h for h in self.font_hits() if h.file.path == doc.file.path}
+        self.assertEqual(self.staging.stage_hit_value(hits["font"], "Arial").message, ops.ALREADY_STAGED)
+        self.assertEqual(self.staging.stage_hit_value(hits["Font"], "Arial").message, ops.UNDER_DELETE)
+        self.assertEqual(self.staging.edit_for(doc, node).value, "Mine")
+        self.assertTrue(self.staging.hit_deleted_above(hits["Font"]))
 
-    def test_a_hit_under_or_on_a_staged_delete_is_dropped(self):
-        doc, general = self.elv("general")
-        _, font = self.elv("unitframe", "Font")
-        self.staging.delete(doc, general)
-        self.staging.delete(doc, font)
-        hits = [h for h in self.search(value=SVB_FONT, replacement="Arial") if h.file.path == doc.file.path]
-        plan = self.staging.plans(hits)
-        self.assertEqual(sorted(d.reason for d in plan.dropped), [ops.UNDER_DELETE, ops.UNDER_DELETE])
-        (file_plan,) = plan.files.values()
-        self.assertTrue(all(e.delete for e in file_plan.edits))
-
-    def test_a_hit_on_a_renamed_key_combines_with_the_rename(self):
-        doc, node = self.elv("unitframe", "Font")
-        self.staging.rename(doc, node, "font")
-        hits = [h for h in self.search(key="Font", match_case=True, value=SVB_FONT, replacement="Arial")
-                if h.file.path == doc.file.path]
-        plan = self.staging.plans(hits)
-        (file_plan,) = plan.files.values()
-        (edit,) = file_plan.edits
-        self.assertEqual((edit.rename, edit.new_key, edit.set_value, edit.value, edit.hit),
-                         (True, "font", True, "Arial", True))
-        self.assertIsNone(self.staging.edit_for(doc, node).value)  # staging itself is unchanged
-
-    def test_hits_from_a_file_that_changed_since_it_was_loaded_are_dropped(self):
-        doc, node = self.elv("unitframe", "Font")
+    def test_a_hit_from_bytes_other_than_the_staged_or_loaded_ones_is_refused(self):
+        doc, node = self.elv("unitframe", "barFont")
         self.staging.set_value(doc, node, "Mine")
         path = doc.file.path
         path.write_bytes(path.read_bytes().replace(b"Expressway", b"Expresswax"))
-        hits = [h for h in self.search(value=SVB_FONT, replacement="Arial") if h.file.path == path]
-        plan = self.staging.plans(hits)
-        self.assertEqual({d.reason for d in plan.dropped}, {ops.FILE_CHANGED})
-        (file, file_plan), = plan.files.items()
-        self.assertEqual(file.sha256, doc.sha256)
-        self.assertEqual(len(file_plan.edits), 1)
+        hit = next(h for h in self.font_hits() if h.file.path == path)
+        self.assertEqual(self.staging.stage_hit_value(hit, "Arial").message, ops.FILE_CHANGED)
+        other = next(h for h in self.font_hits() if h.file.path.name == "Questie.lua")
+        self.assertEqual(self.staging.stage_hit_value(other, "Arial", doc_sha="0" * 64).message, ops.FILE_CHANGED)
 
-    def test_the_same_hit_twice_is_dropped_once(self):
-        hits = [h for h in self.search(value=SVB_FONT, replacement="Arial") if h.file.path.name == "Questie.lua"]
-        plan = self.staging.plans(hits + hits)
-        self.assertEqual([d.reason for d in plan.dropped], [ops.DUPLICATE_HIT] * len(hits))
+    def test_a_bad_value_is_refused(self):
+        hit = self.font_hits()[0]
+        self.assertEqual(self.staging.stage_hit_value(hit, None).message, ops.NIL_VALUE)
+        self.assertTrue(self.staging.stage_hit_value(hit, float("inf")).message)
+        self.assertEqual(self.staging.count, 0)
 
-    def test_a_hit_whose_replacement_is_the_value_already_there_is_left_out(self):
-        """A ticked hit that changes nothing (D29, as a manual edit to the same value) never rewrites its value:
-        a case-normalising replace leaves the values already in that case alone."""
-        hits = self.search(value=SVB_FONT, replacement=SVB_FONT)
-        same = [h for h in hits if h.old == SVB_FONT]
-        self.assertTrue(same and len(same) < len(hits))
-        plan = self.staging.plans(hits)
-        self.assertEqual([d.hit for d in plan.dropped], same)
-        self.assertEqual({d.reason for d in plan.dropped}, {ops.UNCHANGED})
-        self.assertEqual(plan.hits, len(hits) - len(same))
-        edited = {e.path for p in plan.files.values() for e in p.edits}
-        self.assertFalse(edited & {h.path for h in same})
+    def test_hit_renames_follow_d5(self):
+        hits = self.search(key="font", match_case=True)
+        elv = next(h for h in hits if h.file.path.name == "ElvUI.lua")
+        table = ops_table(elv)
+        self.assertTrue(self.staging.stage_hit_rename(elv, "face", table).ok)
+        self.assertEqual(self.staging.hit_edit(elv), FieldEdit(elv.path, rename=True, new_key="face"))
+        top = self.search(key="ElvVersion")[0]
+        self.assertEqual(self.staging.stage_hit_rename(top, "x", None).message, ops.TOP_LEVEL)
+        array = next(h for h in self.search(value="one", match_case=True) if h.file.path.name == "Details.lua")
+        self.assertEqual(self.staging.stage_hit_rename(array, "x", ops_table(array)).message, ops.ARRAY_RENAME)
+        self.assertEqual(self.staging.stage_hit_rename(elv, "zzz", table).message, ops.ALREADY_STAGED)
+        other = next(h for h in self.search(key="fontSize") if h.file.path.name == "ElvUI.lua")
+        self.assertEqual(self.staging.stage_hit_rename(other, "", table).message, ops.EMPTY_KEY)
+        # a key the table holds, or one another staged rename takes, is a duplicate
+        self.assertIn("already has the key", self.staging.stage_hit_rename(other, "autoRepair", table).message)
+        self.assertIn("already has the key", self.staging.stage_hit_rename(other, "face", table).message)
+        self.assertEqual(self.staging.stage_hit_rename(other, "fontSize", table).message, "unchanged")
+        self.assertEqual(self.staging.count, 1)
 
-    def test_a_hit_written_with_other_escapes_but_the_same_value_is_left_out(self):
-        hits = self.search(value="b", value_mode="contains", match_case=True, replacement="b",
-                           scope=SearchScope(addon="details"))
-        self.assertTrue(hits)
-        plan = self.staging.plans(hits)
-        self.assertEqual(plan.files, {})
-        self.assertEqual([d.reason for d in plan.dropped], [ops.UNCHANGED] * len(hits))
+    def test_unstage_a_hit(self):
+        hit = self.font_hits()[0]
+        self.assertEqual(self.staging.unstage_hit(hit).message, ops.NOTHING_STAGED)
+        self.staging.stage_hit_value(hit, "Arial")
+        self.assertTrue(self.staging.unstage_hit(hit).ok)
+        self.assertEqual(self.staging.count, 0)
 
-    def test_counts(self):
+    def test_unstaging_a_hit_rename_that_would_leave_a_duplicate_is_refused(self):
+        cap = next(h for h in self.search(key="Font", match_case=True) if h.file.path.name == "ElvUI.lua")
+        self.assertTrue(self.staging.stage_hit_rename(cap, "face", ops_table(cap)).ok)
+        doc, bar = self.elv("unitframe", "barFont")
+        self.assertTrue(self.staging.rename(doc, bar, "Font").ok)  # Font is free once renamed away
+        result = self.staging.unstage_hit(cap, ops_table(cap))
+        self.assertFalse(result.ok)
+        self.assertIn("twice", result.message)
+        self.assertTrue(self.staging.unstage(doc, bar).ok)
+        self.assertTrue(self.staging.unstage_hit(cap, ops_table(cap)).ok)
+
+
+class PlanTest(StagingTestBase):
+    def test_the_plan_is_the_staged_edits_only(self):
         doc, node = self.elv("general", "font")
         self.staging.set_value(doc, node, "Mine")
-        plan = self.staging.plans(self.search(value=SVB_FONT, replacement="Arial"))
-        self.assertEqual(plan.staged, 1)
-        self.assertEqual(plan.hits, 6)
-        self.assertEqual(len(plan.dropped), 1)
+        for hit in self.search(value=SVB_FONT):
+            self.staging.stage_hit_value(hit, "Arial")
+        plan = self.staging.plans()
+        self.assertEqual(plan.staged, 7)
+        self.assertEqual(sum(len(p.edits) for p in plan.files.values()), 7)
         self.assertEqual(len(plan.units()), len(plan.files))
+        values = {e.path: e.value for p in plan.files.values() for e in p.edits}
+        self.assertEqual(values[node.path], "Mine")
+        self.assertEqual(set(values.values()), {"Mine", "Arial"})
+
+
+def ops_table(hit):
+    """The table holding a hit's key (what bulk.read_tables gives the rename)."""
+    from wowtools.tools.sv_browser.bulk import read_tables
+    return read_tables([hit])[bulk_key(hit)]
+
+
+def bulk_key(hit):
+    from wowtools.tools.sv_browser.bulk import table_key
+    return table_key(hit)
 
 
 class HelpersTest(unittest.TestCase):

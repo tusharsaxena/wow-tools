@@ -12,13 +12,15 @@ value, rename it, or both; or delete it. D5's rules are enforced here:
   does, and their `-- [n]` comments go stale). Deleting a table drops the edits staged inside it, and nothing can be
   staged inside a deleted key.
 
-plans(hits) joins the staged edits with the ticked search hits (D11, D12): a hit sets the value to its replacement
-(a whole value, or the string with the Contains text replaced). A hit on a value that has a staged edit, or on or
-under a staged delete, is dropped with its reason (the staged edit wins), and so is a hit whose replacement is the
-value already there (D29: nothing to change, so the file is not rewritten); a hit on a key that is only renamed
-combines with the rename. Hits from a file whose bytes differ from what its staged edits were made on are dropped.
-The result is one FilePlan per file, keyed by its SvFile carrying the SHA-256 the edits were made against (the
-shared pipeline skips a file whose bytes changed since).
+Search hits are staged the same way (D39: a bulk Edit value or Rename key on the ticked results stages one edit per
+hit, stage_hit_value / stage_hit_rename), keyed by the hit's typed path and the SHA-256 of the bytes the search read,
+so Browse shows them as its own. A hit is refused (the bulk edit leaves it out) when its key already has a staged
+edit, is on or under a staged delete, comes from other bytes than the file's staged edits or loaded document, or
+breaks a D5 rule (a top-level or array-entry rename, a key its table would hold twice: the rename is given that
+table, bulk.read_tables).
+
+plans() is what Apply writes: the staged edits only (ticks select results, D39), one FilePlan per file, keyed by its
+SvFile carrying the SHA-256 the edits were made against (the shared pipeline skips a file whose bytes changed since).
 """
 from __future__ import annotations
 
@@ -50,12 +52,10 @@ NOTHING_STAGED = "Nothing is staged on it."
 EMPTY_KEY = "A key can't be empty."
 _NUMBER_START = re.compile(r"[-.\d]")
 
-# Why a ticked hit is left out of a plan (DroppedHit.reason).
-HAS_STAGED_EDIT = "its value has a staged edit (the staged edit wins)"
-UNDER_DELETE = "it is staged for delete, or inside a key staged for delete"
-FILE_CHANGED = "the file changed between browsing and the search; rescan"
-DUPLICATE_HIT = "the same value is ticked twice"
-UNCHANGED = "its value already is the replacement (nothing to change)"
+# Why a search hit can't be staged (a bulk edit leaves it out, D39), besides the D5 refusals above.
+ALREADY_STAGED = "It already has a staged edit."
+UNDER_DELETE = "It is staged for delete, or inside a key staged for delete."
+FILE_CHANGED = "The file changed since the search (or since it was opened); search again."
 
 
 def typed_path(path: Sequence) -> TypedPath:
@@ -71,7 +71,7 @@ def path_text(path: Sequence) -> str:
 class FieldEdit:
     """What happens to one key: its value set (set_value, value), its key renamed (rename, new_key; new_key may be
     False, so a flag says whether it is set), or the key deleted. path: the top-level name, then each key as the
-    file holds it now. positional: an array entry (no written key). hit: the value comes from a ticked search hit."""
+    file holds it now. positional: an array entry (no written key)."""
     path: tuple
     set_value: bool = False
     value: Replacement | None = None
@@ -79,7 +79,6 @@ class FieldEdit:
     new_key: object = None
     delete: bool = False
     positional: bool = False
-    hit: bool = False
 
     @property
     def typed(self) -> TypedPath:
@@ -200,18 +199,10 @@ class FilePlan:
     edits: list[FieldEdit]
 
 
-@dataclass(frozen=True)
-class DroppedHit:
-    hit: Hit
-    reason: str
-
-
 @dataclass
 class Plan:
     files: dict[SvFile, FilePlan] = field(default_factory=dict)
-    dropped: list[DroppedHit] = field(default_factory=list)
     staged: int = 0  # staged edits in the plan
-    hits: int = 0  # ticked hits in the plan (a hit combined with a staged rename included)
 
     def units(self) -> list[tuple[SvFile, FilePlan]]:
         """(file, plan) per file, the shared pipeline's units."""
@@ -281,16 +272,7 @@ class Staging:
         parent = node.parent
         if parent is None or not isinstance(parent.value, Table):
             return []
-        stage = self._stage(doc)
-        parent_typed = typed_path(parent.path)
-        edits = {typed[-1]: e for typed, e in (stage.edits.items() if stage else ())
-                 if typed[:-1] == parent_typed}
-        own = typed_path(node.path)[-1]
-        if edit.empty:
-            edits.pop(own, None)
-        else:
-            edits[own] = edit
-        return new_duplicates(parent.value.fields, edits)
+        return _table_clash(self._stage(doc), parent.value, typed_path(node.path), edit)
 
     def set_problem(self, doc: SvDocument, node: Node, value: object) -> str | None:
         """Why set_value would refuse value on node, or None (stages nothing)."""
@@ -370,48 +352,107 @@ class Staging:
         log_event("svb.unstaged", flavor=doc.file.flavor.folder, path=doc.file.rel, key=path_text(node.path))
         return OpResult(True)
 
-    def plans(self, hits: Iterable[Hit] = ()) -> Plan:
-        """The staged edits plus the ticked hits as one FilePlan per file (D12's overlap rules). Hits of a find-only
-        search (no replacement) are ignored."""
+    # --- search hits (D39) -------------------------------------------------------------------------
+    def hit_edit(self, hit: Hit) -> FieldEdit | None:
+        """The edit staged on the hit's key, if any (made on it or in Browse)."""
+        stage = self._files.get(hit.file.path)
+        return None if stage is None else stage.edits.get(hit.typed_path)
+
+    def hit_deleted_above(self, hit: Hit) -> bool:
+        """True when the hit's key or a key above it is staged for delete."""
+        stage = self._files.get(hit.file.path)
+        typed = hit.typed_path
+        return stage is not None and any(getattr(stage.edits.get(typed[:n]), "delete", False)
+                                         for n in range(1, len(typed) + 1))
+
+    def _hit_refused(self, hit: Hit, doc_sha: str | None) -> str | None:
+        """Why nothing may be staged on hit: the bytes differ from the file's staged edits' or its loaded document's
+        (doc_sha), or its key already has an edit or is under a delete."""
+        stage = self._files.get(hit.file.path)
+        if (stage is not None and stage.edits and stage.sha256 != hit.sha256) or \
+                (doc_sha is not None and doc_sha != hit.sha256):
+            return FILE_CHANGED
+        if self.hit_edit(hit) is not None:
+            return ALREADY_STAGED
+        return UNDER_DELETE if self.hit_deleted_above(hit) else None
+
+    def _put_hit(self, hit: Hit, edit: FieldEdit, operation: str) -> None:
+        stage = self._files.get(hit.file.path)
+        if stage is None:
+            stage = self._files[hit.file.path] = _FileStage(hit.file, hit.sha256)
+        stage.sha256 = hit.sha256
+        stage.edits[hit.typed_path] = edit
+        log_event("svb.staged", operation=operation, flavor=hit.file.flavor.folder, path=hit.file.rel,
+                  key=path_text(hit.path))
+
+    def stage_hit_value(self, hit: Hit, value: Replacement | None, doc_sha: str | None = None) -> OpResult:
+        """Stage value on the hit's key (D39). The value already there stages nothing ("unchanged", D29)."""
+        problem = self._hit_refused(hit, doc_sha) or value_problem(value)
+        if problem:
+            return OpResult(False, problem)
+        if _same_value(value, hit.old) or encode_value(value) == hit.old_bytes:
+            return OpResult(True, "unchanged")
+        self._put_hit(hit, FieldEdit(hit.path, set_value=True, value=value, positional=hit.key_span is None), "set")
+        return OpResult(True)
+
+    def stage_hit_rename(self, hit: Hit, new_key: object, table: Table | None,
+                         doc_sha: str | None = None) -> OpResult:
+        """Stage a rename of the hit's key to new_key (D39, D5). table: the table holding the key, as the search's
+        bytes have it (bulk.read_tables), for the duplicate check. Its own key stages nothing ("unchanged")."""
+        if len(hit.path) < 2:
+            return OpResult(False, TOP_LEVEL)
+        if hit.key_span is None:
+            return OpResult(False, ARRAY_RENAME)
+        problem = key_problem(new_key) or self._hit_refused(hit, doc_sha)
+        if problem:
+            return OpResult(False, problem)
+        if key_id(new_key) == key_id(hit.key):
+            return OpResult(True, "unchanged")
+        edit = FieldEdit(hit.path, rename=True, new_key=new_key)
+        if table is None:
+            return OpResult(False, NOT_LOADED)
+        clash = _table_clash(self._files.get(hit.file.path), table, hit.typed_path, edit)
+        if clash:
+            return OpResult(False, f"The table already has the key {key_text(clash[0][1])}.")
+        self._put_hit(hit, edit, "rename")
+        return OpResult(True)
+
+    def unstage_hit(self, hit: Hit, table: Table | None = None) -> OpResult:
+        """Drop what is staged on the hit's key (Backspace in Results). table: the key's table, needed to unstage a
+        rename (it must not leave a key twice)."""
+        edit = self.hit_edit(hit)
+        if edit is None:
+            return OpResult(False, NOTHING_STAGED)
+        stage = self._files[hit.file.path]
+        if edit.rename:
+            if table is None:
+                return OpResult(False, NOT_LOADED)
+            clash = _table_clash(stage, table, hit.typed_path, FieldEdit(hit.path))
+            if clash:
+                return OpResult(False, f"Unstaging it would leave the key {key_text(clash[0][1])} twice in its "
+                                       f"table; unstage the rename to that key first.")
+        stage.edits.pop(hit.typed_path)
+        log_event("svb.unstaged", flavor=hit.file.flavor.folder, path=hit.file.rel, key=path_text(hit.path))
+        return OpResult(True)
+
+    def plans(self) -> Plan:
+        """The staged edits as one FilePlan per file (what Apply and Dry run write)."""
         plan = Plan()
-        work: dict[Path, tuple[SvFile, dict[TypedPath, FieldEdit]]] = {}
-        for path, stage in self._files.items():
+        for stage in self._files.values():
             if stage.edits:
-                work[path] = (replace(stage.file, sha256=stage.sha256), dict(stage.edits))
+                file = replace(stage.file, sha256=stage.sha256)
+                plan.files[file] = FilePlan(file, list(stage.edits.values()))
                 plan.staged += len(stage.edits)
-        for hit in hits:
-            if hit.new is None:
-                continue
-            file, edits = work.setdefault(hit.file.path, (hit.file, {}))
-            reason = _overlap(file, edits, hit) or (UNCHANGED if _same_hit(hit) else None)
-            if reason:
-                plan.dropped.append(DroppedHit(hit, reason))
-                continue
-            typed = hit.typed_path
-            current = edits.get(typed) or FieldEdit(hit.path, positional=hit.key_span is None)
-            edits[typed] = replace(current, set_value=True, value=hit.new, hit=True)
-            plan.hits += 1
-        for file, edits in work.values():
-            if edits:
-                plan.files[file] = FilePlan(file, list(edits.values()))
         return plan
 
 
-def _same_hit(hit: Hit) -> bool:
-    """True when the hit's replacement is the value already there (D29, as for a manual edit): by Lua identity or by
-    the same Lua bytes."""
-    new_bytes = hit.new_bytes if hit.new_bytes is not None else encode_value(hit.new)
-    return _same_value(hit.new, hit.old) or new_bytes == hit.old_bytes
-
-
-def _overlap(file: SvFile, edits: dict[TypedPath, FieldEdit], hit: Hit) -> str | None:
-    """Why hit can't join the file's edits (D12), or None."""
-    if file.sha256 != hit.sha256:
-        return FILE_CHANGED
-    typed = hit.typed_path
-    if any(getattr(edits.get(typed[:n]), "delete", False) for n in range(1, len(typed) + 1)):
-        return UNDER_DELETE
-    current = edits.get(typed)
-    if current is not None and current.set_value:
-        return DUPLICATE_HIT if current.hit else HAS_STAGED_EDIT
-    return None
+def _table_clash(stage: _FileStage | None, table: Table, typed: TypedPath, edit: FieldEdit) -> list[tuple]:
+    """Keys table (holding the key at typed) would hold twice with edit staged on that key, counting the edits
+    already staged in it."""
+    parent = typed[:-1]
+    edits = {t[-1]: e for t, e in (stage.edits.items() if stage else ()) if t[:-1] == parent}
+    if edit.empty:
+        edits.pop(typed[-1], None)
+    else:
+        edits[typed[-1]] = edit
+    return new_duplicates(table.fields, edits)

@@ -16,6 +16,7 @@ from wowtools.core import sv_apply
 from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.luasv import decode_string, key_id, parse
 from wowtools.core.svfiles import SvFile, sha256_of
+from wowtools.tools.sv_browser.bulk import MATCHED, new_value, stage_values
 from wowtools.tools.sv_browser.compile import compile_file
 from wowtools.tools.sv_browser.events import SV_TOOL
 from wowtools.tools.sv_browser.model import SvDocument
@@ -54,9 +55,9 @@ class CompileTestBase(unittest.TestCase):
         result = getattr(self.staging, op)(doc, self.node(doc, *keys), *args)
         self.assertTrue(result.ok, result.message)
 
-    def run_plan(self, doc, hits=()):
+    def run_plan(self, doc):
         """Compile the doc's plan against its bytes now; assert it verifies; return (old, edit)."""
-        plan = self.staging.plans(hits)
+        plan = self.staging.plans()
         (file, file_plan), = [(f, p) for f, p in plan.files.items() if f.path == doc.file.path]
         old = file.path.read_bytes()
         edit = compile_file(file, file_plan, old)
@@ -168,23 +169,25 @@ class SpliceTest(CompileTestBase):
     def test_contains_replacement_inside_a_string_with_escapes(self):
         tree = build_sv_tree(self.tmp / "tree")
         files = scan_flavors([WowInstall(tree).flavor("_retail_")]).files()
-        hits = [h for h in run_search(files, SearchSpec(value='"b\\c', value_mode="contains", replacement="[X]")).hits
-                if h.file.account == "ACCT1"]
+        spec = SearchSpec(value='"b\\c', value_mode="contains")
+        hits = [h for h in run_search(files, spec).hits if h.file.account == "ACCT1"]
         (hit,) = hits
-        self.assertEqual(hit.new, 'a[X]\n—')
-        plan = self.staging.plans(hits)
+        new = new_value(spec, MATCHED, "[X]", hit)
+        self.assertEqual(new, 'a[X]\n—')
+        stage_values(self.staging, hits, lambda h: new)
+        plan = self.staging.plans()
         (file, file_plan), = plan.files.items()
         old = file.path.read_bytes()
         edit = compile_file(file, file_plan, old)
         self.assertEqual(verify_edit(edit, old), [])
         self.assertIn(b'["text"] = "a[X]\\n\xe2\x80\x94",\r\n', edit.data)
-        self.assertEqual(decode_string(b'"a[X]\\n\xe2\x80\x94"'), hit.new)
+        self.assertEqual(decode_string(b'"a[X]\\n\xe2\x80\x94"'), new)
 
     def test_whole_value_hits_across_a_file(self):
         tree = build_sv_tree(self.tmp / "tree")
         files = scan_flavors([WowInstall(tree).flavor("_retail_")]).files()
-        hits = run_search(files, SearchSpec(value=SVB_FONT, replacement="Arial")).hits
-        plan = self.staging.plans(hits)
+        stage_values(self.staging, run_search(files, SearchSpec(value=SVB_FONT)).hits, lambda h: "Arial")
+        plan = self.staging.plans()
         for file, file_plan in plan.files.items():
             old = file.path.read_bytes()
             edit = compile_file(file, file_plan, old)
@@ -337,7 +340,8 @@ class PipelineTest(CompileTestBase):
         details = next(f for f in files if f.path.name == "Details.lua" and f.account == "ACCT1")
         doc = SvDocument(details)
         staging.delete(doc, self.node(doc, "_detalhes_global", "bars", 1))
-        plan = staging.plans(run_search(files, SearchSpec(value=SVB_FONT, replacement="Arial")).hits)
+        stage_values(staging, run_search(files, SearchSpec(value=SVB_FONT)).hits, lambda h: "Arial")
+        plan = staging.plans()
         units = [(f, p) for f, p in plan.files.items() if f.flavor == flavor]
         result = sv_apply.apply_flavor(SV_TOOL, flavor, units, compile_file, verify_edit, root=self.tmp / "root",
                                        journal=None, dry_run=True, keep_snapshots=1)

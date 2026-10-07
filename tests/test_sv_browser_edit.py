@@ -87,7 +87,7 @@ class EditValueTest(SvEditTestBase):
             self.assertIn("svb.staged", [e["event"] for e in events])
             node = child(general, "fontSize")
             self.assertEqual(node.label.plain, "fontSize = 12  ✎ 14")
-            self.assertEqual(self.pending(review), "Staged: 1 edit · Ticked: 0 results in 1 file")
+            self.assertEqual(self.pending(review), "Staged: 1 edit in 1 file")
             self.assertFalse(review.query_one("#btn-apply", Button).disabled)
 
     async def test_the_type_may_change_to_a_boolean_or_a_string(self):
@@ -116,7 +116,7 @@ class EditValueTest(SvEditTestBase):
             await pilot.click("#ok")
             await settle(app, pilot)
             self.assertEqual(child(general, "autoRepair").label.plain, 'autoRepair = true  ✎ "12"')
-            self.assertEqual(self.pending(review), "Staged: 2 edits · Ticked: 0 results in 1 file")
+            self.assertEqual(self.pending(review), "Staged: 2 edits in 1 file")
 
     async def test_cancel_and_the_same_value_stage_nothing(self):
         app = self.make_app()
@@ -258,7 +258,7 @@ class RenameKeyTest(SvEditTestBase):
             await pilot.press("enter")
             await settle(app, pilot)
             self.assertEqual(child(general, "fontSize").label.plain, "fontSize = 12  → size  ✎ 13")
-            self.assertEqual(self.pending(review), "Staged: 1 edit · Ticked: 0 results in 1 file")
+            self.assertEqual(self.pending(review), "Staged: 1 edit in 1 file")
 
     async def test_k_is_refused_on_top_level_and_array_entries(self):
         app = self.make_app()
@@ -297,7 +297,7 @@ class DeleteKeyTest(SvEditTestBase):
             self.assertIs(app.screen, review)
             self.assertEqual(unit.label.plain, "unitframe {6}  ✗ deleted")
             self.assertEqual(child(unit, "barFont").label.plain, 'barFont = "Expressway"')  # its edit went
-            self.assertEqual(self.pending(review), "Staged: 1 edit · Ticked: 0 results in 1 file")
+            self.assertEqual(self.pending(review), "Staged: 1 edit in 1 file")
             # nothing can be staged inside it now: the bar is off there, and e says why
             await self.press_on(review, pilot, child(unit, "barFont"), "e")
             self.assertIs(app.screen, review)
@@ -345,12 +345,12 @@ class UnstageTest(SvEditTestBase):
             await pilot.press("y")
             await settle(app, pilot)
             self.assertFalse(review.query_one("#act-unstage", Button).disabled)
-            self.assertEqual(self.pending(review), "Staged: 1 edit · Ticked: 0 results in 1 file")
+            self.assertEqual(self.pending(review), "Staged: 1 edit in 1 file")
             with capture_events() as events:
                 await self.press_on(review, pilot, child(general, "scale"), "backspace")
             self.assertIn("svb.unstaged", [e["event"] for e in events])
             self.assertEqual(child(general, "scale").label.plain, "scale = 0.6000000000000001")
-            self.assertEqual(self.pending(review), "Staged: 0 edits · Ticked: 0 results in 0 files")
+            self.assertEqual(self.pending(review), "Staged: 0 edits in 0 files")
             self.assertTrue(review.query_one("#act-unstage", Button).disabled)
             self.assertTrue(review.query_one("#btn-apply", Button).disabled)
             await self.press_on(review, pilot, child(general, "scale"), "backspace")  # nothing staged: nothing

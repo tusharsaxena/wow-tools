@@ -1,7 +1,7 @@
-"""Find (and preview replacing) values across SavedVariables files (spec D6-D11). UI-free.
+"""Find values across SavedVariables files (spec D6-D9, D11, D38: the search only finds). UI-free.
 
-A SearchSpec holds the key text and the value text (either may be empty, not both), their modes, Match case, the
-scope (flavor, account, character or account-wide only, addon) and the replacement. run_search() streams every file
+A SearchSpec holds the key text and the value text (either may be empty, not both), their modes, Match case and the
+scope (flavor, account, character or account-wide only, addon). run_search() streams every file
 in scope with luasv.iter_scalars (no Table or Field objects, so a 50 MB file is never built in memory), one file per
 unit through core.parallel.run_units ([general] parallelism), and returns the hits in file-list and file order,
 capped at HIT_CAP (the rest are counted in `dropped`).
@@ -11,13 +11,13 @@ Matching (D6-D8). Only scalar values are hits; with both a key and a value given
   positional entry by its index; true/false; a top-level `Name = scalar` by its name), Exact or Contains.
 - Value, Whole value: a string's decoded text equals the needle, or a number's or boolean's written text does.
   nil is never a value hit (a key search does find it).
-- Value, Contains: strings only; the replacement text takes the place of every occurrence (re.escape, so the needle
-  is never a pattern, and the replacement is never a template).
+- Value, Contains: strings only (re.escape, so the needle is never a pattern).
 - Match case off: Exact and Whole compare casefold(); Contains is re.IGNORECASE.
 
-Replacement (D10): a typed value (string, number, boolean) for whole values; text for Contains; None for a find only
-(hits then have no new value). A number must read back in Lua as exactly that number: finite, an int within 2^53.
-parse_replacement() turns what the user typed into that value.
+The values a bulk Edit value sets on the hits (D10, D39) are typed values (string, number, boolean): a number must
+read back in Lua as exactly that number (finite, an int within 2^53); parse_replacement() turns what the user typed
+into one. replace_matched() is its "Replace only the matched text" for a Contains search: the new text takes the place
+of every occurrence (D7; the needle is never a pattern and the new text never a template).
 
 Byte pre-filter: a file is only parsed when its bytes can hold every needle. That is checked with bytes.find (on
 lowered bytes when match case is off), and only when it is safe: the needle has no quote, backslash or control
@@ -38,7 +38,7 @@ from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 
 from wowtools.core.events import log_event
-from wowtools.core.luasv import LuaParseError, RawNumber, Scalar, encode_value, iter_scalars, key_id
+from wowtools.core.luasv import LuaParseError, RawNumber, Scalar, iter_scalars, key_id
 from wowtools.core.parallel import run_units
 from wowtools.core.svfiles import SvFile, sha256_of
 
@@ -140,7 +140,6 @@ class SearchSpec:
     value_mode: str = VALUE_WHOLE
     match_case: bool = False
     scope: SearchScope = field(default_factory=SearchScope)
-    replacement: Replacement | None = None  # None: find only
 
     @property
     def has_key(self) -> bool:
@@ -149,16 +148,12 @@ class SearchSpec:
     @property
     def has_value(self) -> bool:
         """Any value text is a needle, blanks too (a value of spaces is never "no value": that would make a key-only
-        search, whose replacement overwrites every value under the key)."""
+        search, whose bulk edit overwrites every value under the key)."""
         return self.value != ""
 
     @property
     def contains_value(self) -> bool:
         return self.has_value and self.value_mode == VALUE_CONTAINS
-
-    @property
-    def replaces(self) -> bool:
-        return self.replacement is not None
 
     def problems(self) -> list[str]:
         found = []
@@ -168,19 +163,11 @@ class SearchSpec:
             found.append(f"Unknown key match {self.key_mode!r}.")
         if self.value_mode not in (VALUE_WHOLE, VALUE_CONTAINS):
             found.append(f"Unknown value match {self.value_mode!r}.")
-        new = self.replacement
-        if new is None:
-            return found
-        if self.contains_value:
-            if not isinstance(new, str):
-                found.append("A Contains value search puts text inside strings: the replacement must be text.")
-        elif isinstance(new, (int, float)) and not isinstance(new, bool):
-            problem = number_problem(new)
-            if problem:
-                found.append(f"Can't use {new!r} as the replacement: {problem}.")
-        elif not isinstance(new, (str, bool)):
-            found.append("The replacement must be a string, a number or a boolean.")
         return found
+
+    def pattern(self) -> re.Pattern[str]:
+        """The value text as a Contains pattern: literal (re.escape), any case unless Match case."""
+        return re.compile(re.escape(self.value), 0 if self.match_case else re.IGNORECASE)
 
     def check(self) -> None:
         problems = self.problems()
@@ -189,24 +176,26 @@ class SearchSpec:
 
     def as_log(self) -> dict:
         return {"key": self.key, "key_mode": self.key_mode, "value": self.value, "value_mode": self.value_mode,
-                "match_case": self.match_case, "scope": self.scope.as_log(),
-                "replacement": None if self.replacement is None else repr(self.replacement)}
+                "match_case": self.match_case, "scope": self.scope.as_log()}
+
+
+def replace_matched(spec: SearchSpec, text: str, new: str) -> str:
+    """text with every occurrence of the spec's value text replaced by new (D7, D39's "Replace only the matched
+    text"): the needle is literal, matched in any case unless Match case; new is put in as it is (never a template)."""
+    return spec.pattern().sub(lambda _m: new, text)
 
 
 @dataclass(frozen=True, slots=True)
 class Hit:
     """One matching scalar. file: the SvFile with the SHA-256 of the bytes searched (D17); path: the top-level name,
     then each key, each of its own type, ending in this value's key; key_span: the key's bytes (a top-level name's;
-    None for a positional entry); value_span: the value's bytes. new / new_bytes: the replacement and its Lua (None
-    for a find only)."""
+    None for a positional entry); value_span: the value's bytes; old / old_bytes: the value and its Lua."""
     file: SvFile
     path: tuple
     key_span: tuple[int, int] | None
     value_span: tuple[int, int]
     old: str | int | float | bool | RawNumber | None
     old_bytes: bytes
-    new: Replacement | None = None
-    new_bytes: bytes | None = None
 
     @property
     def sha256(self) -> str:
@@ -260,9 +249,8 @@ class _Matcher:
         self.key_contains = spec.key_mode == KEY_CONTAINS
         self.value = spec.value if spec.has_value else None
         self.contains = spec.contains_value
-        self.pattern = re.compile(re.escape(spec.value), 0 if spec.match_case else re.IGNORECASE)
+        self.pattern = spec.pattern()
         self.whole = fold(spec.value)
-        self.new_bytes = None if spec.replacement is None or self.contains else encode_value(spec.replacement)
 
     def key_ok(self, data: bytes, key: object, key_span: tuple[int, int] | None) -> bool:
         if self.key is None:
@@ -270,25 +258,16 @@ class _Matcher:
         text = self.fold(key_text(data, key, key_span))
         return self.key in text if self.key_contains else text == self.key
 
-    def value_hit(self, data: bytes, scalar: Scalar) -> tuple[bool, Replacement | None, bytes | None]:
-        """(matches, new value, new bytes)."""
+    def value_ok(self, data: bytes, scalar: Scalar) -> bool:
         value = scalar.value
-        new = self.spec.replacement
         if self.value is None:
-            return True, new, self.new_bytes
+            return True
         if self.contains:
-            if not isinstance(value, str) or not self.pattern.search(value):
-                return False, None, None
-            if new is None:
-                return True, None, None
-            text = self.pattern.sub(lambda _m: new, value)
-            return True, text, encode_value(text)
+            return isinstance(value, str) and self.pattern.search(value) is not None
         if value is None:
-            return False, None, None
+            return False
         text = value if isinstance(value, str) else data[scalar.start:scalar.end].decode("ascii", "replace")
-        if self.fold(text) != self.whole:
-            return False, None, None
-        return True, new, self.new_bytes
+        return self.fold(text) == self.whole
 
 
 def key_text(data: bytes, key: object, key_span: tuple[int, int] | None) -> str:
@@ -342,21 +321,18 @@ def search_file(file: SvFile, spec: SearchSpec, matcher: _Matcher | None = None,
     hits: list[tuple] = []
     try:
         for path, key, key_span, scalar in iter_scalars(data):
-            if not matcher.key_ok(data, key, key_span):
-                continue
-            ok, new, new_bytes = matcher.value_hit(data, scalar)
-            if not ok:
+            if not matcher.key_ok(data, key, key_span) or not matcher.value_ok(data, scalar):
                 continue
             if len(hits) >= room:
                 found.extra += 1
                 continue
-            hits.append((path + (key,), key_span, scalar, new, new_bytes))
+            hits.append((path + (key,), key_span, scalar))
     except LuaParseError as exc:
         return _unreadable(found, f"{file.path.name} is not readable Lua ({exc})", exc)
     if hits:
         searched = replace(file, sha256=sha256_of(data))
-        found.hits = [Hit(searched, path, key_span, (s.start, s.end), s.value, data[s.start:s.end], new, new_bytes)
-                      for path, key_span, s, new, new_bytes in hits]
+        found.hits = [Hit(searched, path, key_span, (s.start, s.end), s.value, data[s.start:s.end])
+                      for path, key_span, s in hits]
     return found
 
 

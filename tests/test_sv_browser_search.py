@@ -1,5 +1,6 @@
-"""Saved Variables Browser search (spec D6-D11): SearchSpec validation, key and value matching with the case and mode
-switches, scope filters, typed replacements, the byte pre-filter (never skipping a file that has a hit), unreadable
+"""Saved Variables Browser search (spec D6-D11, D38: find only): SearchSpec validation, key and value matching with
+the case and mode switches, scope filters, typed values and the matched-text replace of a bulk edit (D39), the byte
+pre-filter (never skipping a file that has a hit), unreadable
 files reported instead of raised, the result cap, and a streaming guard over a multi-MB file."""
 from __future__ import annotations
 
@@ -15,13 +16,12 @@ from tests.fixtures import SVB_FONT, _write_lua, ace_lua, build_sv_tree
 from wowtools.core import luasv
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
-from wowtools.core.luasv import RawNumber
 from wowtools.core.svfiles import OWNER_ACCOUNT_WIDE
 from wowtools.tools.sv_browser import search
 from wowtools.tools.sv_browser.scanner import scan_flavors
 from wowtools.tools.sv_browser.search import (KEY_CONTAINS, KEY_EXACT, REPLACE_BOOLEAN, REPLACE_NUMBER,
                                               REPLACE_STRING, VALUE_CONTAINS, VALUE_WHOLE, SearchScope, SearchSpec,
-                                              parse_replacement, run_search, search_file)
+                                              parse_replacement, replace_matched, run_search, search_file)
 
 
 def where(hit):
@@ -57,8 +57,8 @@ class SearchTestBase(unittest.TestCase):
 class SpecTest(unittest.TestCase):
     def test_defaults_are_exact_key_whole_value_any_case_everything(self):
         spec = SearchSpec(key="font")
-        self.assertEqual((spec.key_mode, spec.value_mode, spec.match_case, spec.scope, spec.replacement),
-                         (KEY_EXACT, VALUE_WHOLE, False, SearchScope(), None))
+        self.assertEqual((spec.key_mode, spec.value_mode, spec.match_case, spec.scope),
+                         (KEY_EXACT, VALUE_WHOLE, False, SearchScope()))
 
     def test_a_key_or_a_value_is_needed(self):
         self.assertEqual(SearchSpec().problems(), ["Enter a key, a value or both."])
@@ -68,30 +68,11 @@ class SpecTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             SearchSpec().check()
 
-    def test_contains_value_needs_text_to_put_in(self):
-        spec = SearchSpec(value="Friz", value_mode=VALUE_CONTAINS, replacement=5)
-        self.assertEqual(len(spec.problems()), 1)
-        self.assertIn("text", spec.problems()[0])
-        self.assertEqual(SearchSpec(value="Friz", value_mode=VALUE_CONTAINS, replacement="Arial").problems(), [])
-        self.assertEqual(SearchSpec(value="Friz", value_mode=VALUE_CONTAINS, replacement="").problems(), [])
-        # Without a value the value mode plays no part: a key search replaces whole values.
-        self.assertEqual(SearchSpec(key="font", value_mode=VALUE_CONTAINS, replacement=5).problems(), [])
-
-    def test_whole_value_replacement_is_any_scalar_type(self):
-        for value in ("Arial", 12, 2.5, True, False):
-            self.assertEqual(SearchSpec(key="font", replacement=value).problems(), [], value)
-
-    def test_number_replacement_must_read_back_as_the_same_number(self):
-        for value in (float("inf"), float("-inf"), float("nan"), 2 ** 53 + 1, -(2 ** 60)):
-            self.assertTrue(SearchSpec(key="x", replacement=value).problems(), value)
-        for value in (RawNumber("1.#INF"), object(), [1]):
-            self.assertTrue(SearchSpec(key="x", replacement=value).problems(), value)
-        self.assertEqual(SearchSpec(key="x", replacement=2 ** 53).problems(), [])
-
-    def test_no_replacement_is_a_find_only_search(self):
-        self.assertEqual(SearchSpec(key="font").problems(), [])
-        self.assertFalse(SearchSpec(key="font").replaces)
-        self.assertTrue(SearchSpec(key="font", replacement="").replaces)
+    def test_the_search_only_finds(self):
+        # D38: no replacement in the spec; what a bulk edit sets is chosen in its own popup
+        self.assertFalse(hasattr(SearchSpec(key="font"), "replacement"))
+        self.assertNotIn("replacement", SearchSpec(key="font").as_log())
+        self.assertFalse(hasattr(search.Hit, "new"))
 
     def test_unknown_modes_are_refused(self):
         self.assertTrue(SearchSpec(key="x", key_mode="regex").problems())
@@ -216,41 +197,32 @@ class ValueSearchTest(SearchTestBase):
 
     def test_contains_matches_strings_only(self):
         self.add_file("Mixed.lua", "MixedDB = {", '["a"] = "x12y",', '["b"] = 312,', '["c"] = true,', "}")
-        hits = [h for h in self.find(value="12", value_mode=VALUE_CONTAINS, replacement="!").hits
-                if h.file.path.name == "Mixed.lua"]
-        self.assertEqual([(h.path[-1], h.new) for h in hits], [("a", "x!y")])
+        hits = [h for h in self.find(value="12", value_mode=VALUE_CONTAINS).hits if h.file.path.name == "Mixed.lua"]
+        self.assertEqual([(h.path[-1], h.old) for h in hits], [("a", "x12y")])
         self.assertEqual(self.find(value="ru", value_mode=VALUE_CONTAINS).hits, [])
 
-    def test_contains_replaces_every_occurrence(self):
-        self.add_file("Rep.lua", "RepDB = {", '["a"] = "abcABCabc",', '["b"] = "a.b axb",', "}")
-        hits = {h.path[-1]: h for h in self.find(value="abc", value_mode=VALUE_CONTAINS, replacement="X").hits}
-        self.assertEqual(hits["a"].new, "XXX")
-        self.assertEqual(hits["a"].new_bytes, b'"XXX"')
-        hits = {h.path[-1]: h for h in self.find(value="abc", value_mode=VALUE_CONTAINS, replacement="X",
-                                                 match_case=True).hits}
-        self.assertEqual(hits["a"].new, "XABCX")
-        # the needle is text, never a pattern; the replacement is text, never a template
-        hits = {h.path[-1]: h for h in self.find(value="A.B", value_mode=VALUE_CONTAINS, replacement=r"\1$&").hits}
-        self.assertEqual(list(hits), ["b"])
-        self.assertEqual(hits["b"].new, r"\1$& axb")
+    def test_replace_matched_replaces_every_occurrence(self):
+        spec = SearchSpec(value="abc", value_mode=VALUE_CONTAINS)
+        self.assertEqual(replace_matched(spec, "abcABCabc", "X"), "XXX")
+        spec = SearchSpec(value="abc", value_mode=VALUE_CONTAINS, match_case=True)
+        self.assertEqual(replace_matched(spec, "abcABCabc", "X"), "XABCX")
+        # the needle is text, never a pattern; the new text is text, never a template
+        spec = SearchSpec(value="A.B", value_mode=VALUE_CONTAINS)
+        self.assertEqual(replace_matched(spec, "a.b axb", r"\1$&"), r"\1$& axb")
 
-    def test_contains_keeps_the_rest_of_the_string(self):
-        hits = self.find(value="quadrata", value_mode=VALUE_CONTAINS, replacement="Q").hits
+    def test_replace_matched_keeps_the_rest_of_the_string(self):
+        spec = SearchSpec(value="quadrata", value_mode=VALUE_CONTAINS)
+        hits = self.find(value="quadrata", value_mode=VALUE_CONTAINS).hits
         self.assertEqual(len(hits), 7)
-        self.assertEqual({h.new for h in hits}, {"Friz Q TT", "friz Q tt"})
+        self.assertEqual({replace_matched(spec, h.old, "Q") for h in hits}, {"Friz Q TT", "friz Q tt"})
 
-    def test_whole_value_replacement_is_typed(self):
-        hit = self.find(value=SVB_FONT, match_case=True, replacement=14, scope=SearchScope(addon="questie")).hits[0]
-        self.assertEqual((hit.old, hit.new, hit.new_bytes), (SVB_FONT, 14, b"14"))
-        hit = self.find(value="12", replacement="twelve").hits[0]
-        self.assertEqual((hit.old, hit.new, hit.new_bytes), (12, "twelve", b'"twelve"'))
-        hit = self.find(value="false", replacement=True).hits[0]
-        self.assertEqual((hit.old, hit.new_bytes), (False, b"true"))
-
-    def test_find_only_hits_have_no_new_value(self):
+    def test_whole_value_hits_carry_the_value_and_its_bytes(self):
+        hit = self.find(value=SVB_FONT, match_case=True, scope=SearchScope(addon="questie")).hits[0]
+        self.assertEqual((hit.old, hit.old_bytes), (SVB_FONT, b'"Friz Quadrata TT"'))
         hit = self.find(value="12").hits[0]
-        self.assertIsNone(hit.new)
-        self.assertIsNone(hit.new_bytes)
+        self.assertEqual((hit.old, hit.old_bytes), (12, b"12"))
+        hit = self.find(value="false").hits[0]
+        self.assertEqual((hit.old, hit.old_bytes), (False, b"false"))
 
     def test_escaped_strings_match_their_decoded_text(self):
         result = self.find(value='a"b\\c\n\u2014', match_case=True)
@@ -261,13 +233,11 @@ class ValueSearchTest(SearchTestBase):
         # M2 review: a value of spaces is text to find, never "no value" (a key-only overwrite of every value)
         self.add_file("Sp.lua", "SpDB = {", '["name"] = "Foo  Bar",', '["x"] = {', '["name"] = 12,', "},",
                       '["y"] = {', '["name"] = "Baz",', "},", '["z"] = {', '["name"] = " ",', "},", "}")
-        self.assertEqual(SearchSpec(key="name", value="  ", value_mode=VALUE_CONTAINS, replacement=5).problems()[:1],
-                         ["A Contains value search puts text inside strings: the replacement must be text."])
-        hits = self.find(key="name", value="  ", value_mode=VALUE_CONTAINS, replacement=" ",
-                         scope=SearchScope(addon="sp")).hits
-        self.assertEqual([(h.path, h.new) for h in hits], [(("SpDB", "name"), "Foo Bar")])
-        hits = self.find(key="name", value=" ", replacement="-", scope=SearchScope(addon="sp")).hits
-        self.assertEqual([(h.path, h.old, h.new) for h in hits], [(("SpDB", "z", "name"), " ", "-")])
+        spec = SearchSpec(key="name", value="  ", value_mode=VALUE_CONTAINS, scope=SearchScope(addon="sp"))
+        hits = run_search(self.files(), spec).hits
+        self.assertEqual([(h.path, replace_matched(spec, h.old, " ")) for h in hits], [(("SpDB", "name"), "Foo Bar")])
+        hits = self.find(key="name", value=" ", scope=SearchScope(addon="sp")).hits
+        self.assertEqual([(h.path, h.old) for h in hits], [(("SpDB", "z", "name"), " ")])
         self.assertEqual(SearchSpec(value=" ").problems(), [])
 
 
@@ -327,7 +297,7 @@ class ScopeTest(SearchTestBase):
 
 class HitTest(SearchTestBase):
     def test_hit_carries_file_hash_spans_and_values(self):
-        result = self.find(key="font", match_case=True, scope=SearchScope(addon="questie"), replacement="Arial")
+        result = self.find(key="font", match_case=True, scope=SearchScope(addon="questie"))
         hit = result.hits[0]
         data = hit.file.path.read_bytes()
         self.assertEqual(hit.file.sha256, hashlib.sha256(data).hexdigest())
@@ -338,7 +308,7 @@ class HitTest(SearchTestBase):
         self.assertEqual(data[slice(*hit.key_span)], b'["font"]')
         self.assertEqual(data[slice(*hit.value_span)], b'"Friz Quadrata TT"')
         self.assertEqual(hit.old_bytes, b'"Friz Quadrata TT"')
-        self.assertEqual((hit.old, hit.new, hit.new_bytes), (SVB_FONT, "Arial", b'"Arial"'))
+        self.assertEqual(hit.old, SVB_FONT)
 
     def test_top_level_hit_key_span_is_the_name(self):
         hit = self.find(key="DetailsVersion").hits[0]
@@ -415,8 +385,9 @@ class PrefilterTest(SearchTestBase):
     def test_a_contains_replace_keeps_what_lua_5_1_reads(self):
         # M2 review: `\\x41BC` is "x41BC" in WoW, so replacing BC must give "x41ZZ", never "AZZ"
         self.add_file("Hex.lua", 'HexDB = {', '["a"] = "\\x41BC",', "}")
-        hit, = self.find(value="BC", value_mode=VALUE_CONTAINS, replacement="ZZ", scope=SearchScope(addon="hex")).hits
-        self.assertEqual((hit.old, hit.new, hit.new_bytes), ("x41BC", "x41ZZ", b'"x41ZZ"'))
+        spec = SearchSpec(value="BC", value_mode=VALUE_CONTAINS, scope=SearchScope(addon="hex"))
+        hit, = run_search(self.files(), spec).hits
+        self.assertEqual((hit.old, replace_matched(spec, hit.old, "ZZ")), ("x41BC", "x41ZZ"))
 
     def test_escaped_keys_are_found(self):
         self.add_file("Esc.lua", 'EscDB = {', '["\\102ont"] = 1,', "}")
@@ -533,7 +504,7 @@ class RunTest(SearchTestBase):
 
     def test_counts_and_events(self):
         with capture_events() as events:
-            result = self.find(key="font", value=SVB_FONT, match_case=True, replacement="Arial",
+            result = self.find(key="font", value=SVB_FONT, match_case=True,
                                scope=SearchScope(flavor="_retail_"))
         self.assertEqual((result.files, len(result.hits), result.dropped), (7, 1, 0))
         self.assertEqual(result.files_with_hits, 1)
@@ -561,7 +532,7 @@ class StreamingGuardTest(SearchTestBase):
         self.assertGreater(path.stat().st_size, 5_000_000)
         files = [f for f in self.files() if f.path.name == "Big.lua"]
         started = time.monotonic()
-        result = run_search(files, SearchSpec(key="font", value=SVB_FONT, replacement="Arial"))
+        result = run_search(files, SearchSpec(key="font", value=SVB_FONT))
         seconds = time.monotonic() - started
         self.assertEqual(len(result.hits), 20)
         self.assertLess(seconds, 15)

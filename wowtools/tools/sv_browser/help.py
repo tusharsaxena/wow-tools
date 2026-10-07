@@ -12,7 +12,7 @@ Undo refuse while it runs.
 
 The **Saved Variables Browser** shows every SavedVariables file of your WoW folder (every game version, account,
 account-wide and per character) as a tree you can browse down to single values, and lets you change them offline:
-edit a value, rename a key, delete a key, or find and replace values in bulk.
+edit a value, rename a key, delete a key, or find values and edit them in bulk.
 
 ## Step by step
 
@@ -23,19 +23,19 @@ edit a value, rename a key, delete a key, or find and replace values in bulk.
    then the file and its size. Nothing is read until you open a file; opening a file shows its SavedVariables, and
    opening a table shows its keys (a table with more than 500 shows the first 500 and how many more). A file that is
    not readable Lua shows in red and is never changed.
-4. **Stage** changes with the buttons under the tree, or **Search** to find and replace in bulk. Nothing is written
-   yet: a staged key shows its new value (✎), its new name (→) or ✗ deleted, and the left pane counts what is
-   staged and ticked.
+4. **Stage** changes with the buttons under the tree, or **Search** and edit the results in bulk. Nothing is
+   written yet: a staged key shows its new value (✎), its new name (→) or ✗ deleted, and the left pane counts what
+   is staged.
 5. **Dry run** (`y`) checks everything without writing. **Apply** (`w`), read the summary and the warning, press
    **Yes**. The **results** list every file.
 
-## Under the tree (the highlighted key)
+## Under the tree (the highlighted key; in the results, the ticked results)
 
 | Button | Key | Does |
 |---|---|---|
 | **Edit value** | `e` | Sets a string, number or boolean (the type may change) |
 | **Rename key** | `k` | Renames the key; `[5]` or `[true]` makes a number or boolean key |
-| **Delete key** | `d` | Deletes the key, a whole table with it; an array entry moves the entries after it down |
+| **Delete key** | `d` | Deletes the key, a whole table with it; an array entry moves the entries after it down (browsing only) |
 | **Unstage** | `Backspace` | Drops what is staged on the key |
 | **View** | `v` | Switches between browsing and the search results |
 
@@ -46,24 +46,29 @@ table already has is refused.
 
 | Button | Key | Does |
 |---|---|---|
-| **Search** | `S` | Find and replace in bulk (below) |
-| **Apply** | `w` | Writes what is staged and ticked, after backing everything up (asks first) |
+| **Search** | `S` | Finds values, to edit in bulk (below) |
+| **Apply** | `w` | Writes what is staged, after backing everything up (asks first) |
 | **Dry run** | `y` | Checks it all, writes nothing; **Back to review** (`Esc`) keeps it staged |
 | **Rescan** | `r` | Reads the files again (drops what is staged; asks first) |
 | **Undo last change** | `z` | Puts back every file the last Apply changed |
 
-## Search and replace
+## Search and bulk edits
 
 **Search** finds values in every file in scope, by **key** (Exact or Contains), by **value** (Whole value, or
 Contains for text inside strings), or both (a hit then matches both), with **Match case** off by default. Numbers and
 booleans match by their written text, as a whole value only; a key whose value is a table is never a hit. Narrow it
-to one game version, account, character (or **Account-wide only**) or addon file. **Replace with** a string, a
-number or a boolean (Contains puts the new text in place of every match inside the string), or **Find only**.
-**Find** checks what you typed and searches; each hit shows as `path = old → new` in the **Results** view (game
-version, account, owner, file), all ticked: `Space` ticks one or a group, `a` and `n` tick or untick what the filter
-shows. The results stop at 10,000 hits (narrow the search for more). A ticked result on a key with a staged edit is
-left out when you apply: the staged edit wins. A new search replaces the results (it asks first when some are
-ticked).
+to one game version, account, character (or **Account-wide only**) or addon file. **Find** searches; each hit shows
+as `path = value` in the **Results** view (game version, account, owner, file), all ticked: `Space` ticks one or a
+group, `a` and `n` tick or untick what the filter shows. The results stop at 10,000 hits (narrow the search for
+more).
+
+In the results, **Edit value** and **Rename key** act on every ticked result (or the highlighted one when none is
+ticked): one popup ("Edit 37 values"), then one staged edit per result, marked as in browsing. After a value
+**Contains** search, Edit value can **Replace only the matched text** (every match in each string) or set the
+**Whole value**. A result that can't take the edit is left out, and a notice says how many and why: it already has
+a staged edit, it is inside a key staged for delete, or (rename) it is a top-level variable, an array entry or a
+key its table already has. Ticks only choose what to edit: **Apply** writes what is staged. A new search replaces
+the results; what is staged stays.
 
 ## Safety
 
@@ -81,7 +86,7 @@ ticked).
 `/` reaches the filter box: type, then **Filter** or `Enter` filters what has been opened (in the results: every
 hit), `x` opens everything down to the files and `c` closes it all, `←` `→` switch panes, `Tab` or `↓` on the last
 line reach the buttons under the tree. `f` or `Esc` picks another game version, `t` goes back to the tool menu, `s`
-opens the settings, `q` quits (leaving with something staged or ticked asks first). On the results: **Rescan**
+opens the settings, `q` quits (leaving with something staged asks first). On the results: **Rescan**
 (`r`), **Other flavor** (`f`), **Tools** (`t`), **Quit** (`q`).
 
 ## Settings (`s`)

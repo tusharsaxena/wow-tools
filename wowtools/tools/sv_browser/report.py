@@ -30,18 +30,9 @@ def _per_flavor(plan: Plan) -> str:
     return ", ".join(f"{flavor_name(folder)}: {plural(n, 'file')}" for folder, n in counts.items())
 
 
-def dropped_text(plan: Plan) -> str:
-    """The ticked results the plan leaves out (D12), "" when none: the staged edit on the same value wins."""
-    n = len(plan.dropped)
-    if not n:
-        return ""
-    reasons = sorted({d.reason for d in plan.dropped})
-    return f"{plural(n, 'ticked result')} {'is' if n == 1 else 'are'} left out: {'; '.join(reasons)}."
-
-
 def apply_confirm(plan: Plan, *, dry_run: bool) -> tuple[str, str, list[str]]:
     """(title, body, alerts) of the Apply / Dry run confirm: the counts per flavor, what the run does, and as red
-    alert lines the hits left out, array entries that move down and (Apply) the disclaimer."""
+    alert lines the array entries that move down and (Apply) the disclaimer."""
     title = "Dry run" if dry_run else "Apply the pending changes?"
     lines = [f"{plural(_edits(plan), 'edit')} in {plural(len(plan.files), 'file')} ({_per_flavor(plan)})."]
     if dry_run:
@@ -50,9 +41,6 @@ def apply_confirm(plan: Plan, *, dry_run: bool) -> tuple[str, str, list[str]]:
         lines.append("A backup of the whole WTF folder and of every file changed is taken first. Undo (z) puts "
                      "the files back.")
     alerts = []
-    dropped = dropped_text(plan)
-    if dropped:
-        alerts.append(dropped)
     shifts = sum(1 for p in plan.files.values() for e in p.edits if e.delete and e.positional)
     if shifts:
         alerts.append(f"{plural(shifts, 'array entry', 'array entries')} deleted: the entries after each move down "
@@ -78,16 +66,14 @@ def undo_confirm(journal: Journal) -> tuple[str, str, list[str]]:
     return title, body, [*alerts, DISCLAIMER]
 
 
-def summary_rows(result: MultiApplyResult, plan: Plan | None = None) -> list[tuple[str, str]]:
+def summary_rows(result: MultiApplyResult) -> list[tuple[str, str]]:
     """The result screen's summary: the flavors, the files changed (or that would be), the edits written (or
-    checked), the hits left out, then the shared rows (skipped, put back, failed, stopped, the zips, the journal)."""
+    checked), then the shared rows (skipped, put back, failed, stopped, the zips, the journal)."""
     shared = sv_report.apply_summary_rows(result)
     outcomes = result.would_edit if result.dry_run else result.edited
     edits = sum(len(o.changes) for o in outcomes)
     rows = [("Flavors", ", ".join(flavor_name(run.flavor.folder) for run in result.runs)), shared[0],
             ("Edits checked" if result.dry_run else "Edits written", plural(edits, "edit"))]
-    if plan is not None and plan.dropped:
-        rows.append(("Ticked results left out", plural(len(plan.dropped), "result")))
     return rows + shared[1:]
 
 
