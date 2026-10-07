@@ -38,6 +38,7 @@ tool's data flow and screens are in [`docs/internals/`](internals/).
 | [wtf-cleaner.md](wtf-cleaner.md), [screenshot-organizer.md](screenshot-organizer.md), [interface-backup.md](interface-backup.md), [ace3-profile-manager.md](ace3-profile-manager.md), [sv-browser.md](sv-browser.md) | The user guides, one per tool (linked from the README and from each tool's in-app help) |
 | [`superpowers/specs/`](superpowers/specs/), [`superpowers/plans/`](superpowers/plans/) | The dated design specs and build plans, source of the decision IDs (D12, D17, D18, W1, B1 ...). Frozen records: read, never edit |
 | [`../reviews/`](../reviews/) | Dated review bundles (findings, proposed changes, test plan, execution plan, summary). Frozen records |
+| [`ideas/`](ideas/) | Dated, scored ideas for new tools (brainstorms, not plans or decisions) |
 
 ## Layers
 
