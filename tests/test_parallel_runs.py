@@ -60,22 +60,34 @@ class InterfaceBackupParallelTest(TempTree):
         self.assertEqual(done, sorted(f.folder for f in self.flavors))
 
     def test_scan_raises_an_unexpected_error_after_the_others(self):
-        """At 4 every flavor runs at once: Retail fails once another finished, and the error comes after the
-        running ones ended (each logged ibackup.scan_completed). At 1 the flavors after Retail never start."""
-        real, other_done = ib_scanner.scan_flavor, threading.Event()
+        """At 4 every flavor runs at once: Retail fails once every other one started and one finished, and the
+        error comes after the running ones ended (each logged ibackup.scan_completed). At 1 the flavors after
+        Retail never start. (Retail waits for the others to start: a flavor whose thread has not started when
+        Retail fails is, rightly, never started, C4.)"""
+        real, lock = ib_scanner.scan_flavor, threading.Lock()
+        others_started, other_done = threading.Event(), threading.Event()
         folders = [f.folder for f in self.flavors]
         self.assertLessEqual(len(folders), 4)
         retail = folders.index("_retail_")
+        started: set[str] = set()
 
         def broken(flavor, **kwargs):
             if flavor.folder == "_retail_":
-                other_done.wait(WAIT if parallel else 0)
+                if parallel:
+                    self.assertTrue(others_started.wait(WAIT), started)
+                    self.assertTrue(other_done.wait(WAIT))
                 raise RuntimeError("boom")
+            with lock:
+                started.add(flavor.folder)
+                if len(started) == len(folders) - 1:
+                    others_started.set()
             scan = real(flavor, **kwargs)
             other_done.set()
             return scan
 
         for parallel, parallelism in ((False, 1), (True, 4)):
+            started.clear()
+            others_started.clear()
             other_done.clear()
             with self.subTest(parallelism=parallelism), capture_events() as records, \
                     patch.object(ib_scanner, "scan_flavor", broken):

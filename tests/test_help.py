@@ -123,7 +123,7 @@ class HelpScreenTest(TuiTestCase):
     async def test_h_on_the_menu_and_the_changelog_opens_the_suite_help(self):
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
-            await pilot.pause()
+            await settle(app, pilot)  # the footer recomposes after a refresh: one pause may come before it (C4)
             self.assertIsInstance(app.screen, ToolMenuScreen)
             self.assertIn("h", {key.key for key in app.screen.query(FooterKey)})  # "h Help" in the footer
             for close in ("escape", "q", "h"):
