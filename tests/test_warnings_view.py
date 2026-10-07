@@ -5,6 +5,7 @@ screen: tests/test_interface_backup_app.py.)"""
 from __future__ import annotations
 
 import tempfile
+import threading
 from pathlib import Path
 
 from textual.widgets import Tree
@@ -14,6 +15,7 @@ from tests.fixtures import (BASE, TINY, TuiTestCase, accept_disclaimer, build_ac
 from wowtools.core.svfiles import SvScanWarning
 from wowtools.tools import TOOLS
 from wowtools.tools.screenshot_organizer.planner import PlanWarning
+from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.help_screen import HelpScreen
 from wowtools.ui.suite_app import WowToolsApp
@@ -154,6 +156,63 @@ class WarningsViewToolsTest(TuiTestCase):
             await pilot.press("exclamation_mark")
             await settle(app, pilot)
             self.assertIs(app.screen, review)
+
+    async def assert_no_view(self, app, pilot, review, why) -> None:
+        for how in ("key", "click"):
+            if how == "key":
+                await pilot.press("exclamation_mark")
+            else:
+                await pilot.click(f"#{WARNINGS_BUTTON_ID}")
+            await pilot.pause()
+            self.assertIs(app.screen, review, f"{why} ({how})")
+
+    async def test_no_view_while_the_review_is_busy(self):
+        """A scan, a run (app.busy) or the running-programs check: `!` and the button do nothing (the confirm the
+        check leads to opens only on the review); once idle again the view opens."""
+        for tool in TOOLS:
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    review = await self.open_review(app, pilot, tool)
+                    add_warnings(tool, review)
+                    await settle(app, pilot)
+                    self.assertTrue(review.warning_items())
+                    for flag in ("_scanning", "_checking"):
+                        setattr(review, flag, True)
+                        await self.assert_no_view(app, pilot, review, flag)
+                        setattr(review, flag, False)
+                    app.busy = True
+                    await self.assert_no_view(app, pilot, review, "busy")
+                    app.busy = False
+                    await pilot.press("exclamation_mark")
+                    await settle(app, pilot)
+                    self.assertIsInstance(app.screen, WarningsScreen)
+
+    async def test_no_view_during_the_running_programs_check(self):
+        """The real check (WTF Cleaner's Clean): while it runs `!` does nothing; then its confirm opens."""
+        release = threading.Event()
+
+        def slow_check():
+            release.wait(10)
+            return []
+
+        app = self.make_app()
+        app.tool_options["wtf-cleaner"] = {"wow_check": slow_check, "locker_check": list}
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot, "wtf-cleaner")
+            self.assertTrue(review.warning_items())
+            review.action_clean()
+            await pilot.pause()
+            self.assertTrue(review._checking)
+            await self.assert_no_view(app, pilot, review, "check")
+            release.set()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, ConfirmScreen)
+            app.screen.dismiss(False)
+            await settle(app, pilot)
+            await pilot.press("exclamation_mark")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, WarningsScreen)
 
 
 if __name__ == "__main__":

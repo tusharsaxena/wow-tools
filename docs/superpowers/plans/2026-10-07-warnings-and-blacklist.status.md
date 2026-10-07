@@ -11,7 +11,7 @@ go-ahead.
 | K2 | blacklist helpers to core + shared b | done | (this commit) | Pair helpers moved to UI-free `core/blacklist.py` (Ace3 settings/app/blacklist screen/review import them), shared `BlacklistAction` + `BLACKLIST_BINDING` + `blacklist_toast` in `ui/review.py` adopted by the Ace3 review (its `b`, events, `u`, blacklist screen unchanged), single definitions pinned in test_structure; full suite 1693 OK (2 skipped), +4 tests |
 | K3 | WTF Cleaner blacklist | done | (this commit) | `[wtf_cleaner] blacklist` (core pair format, load/save, kept by the settings form, no new form row), `evaluate(blacklist=)` holds blacklisted groups in `Proposal.blacklisted` (out of items/totals/by_reason/criterion counts/summary/confirm/clean/dry run), review shows them greyed + tagged and untickable, shared `b` (`BlacklistAction`) on addon/file rows per flavor, `blacklist.changed` event, help section, hint names `b`; full suite 1705 OK (2 skipped), +12 tests |
 | K4 | docs | done | (this commit) | WTF guide gains The blacklist (`b`, greyed/untickable rows, hand-editing `[wtf_cleaner] blacklist`, `*`/bare-name wildcard, FAQ) and Scan warnings sections plus `b`/`!` key rows, the four other guides replace "plus scan warnings"/"the log lists" with the `⚠ N … (!)` button and warnings view and a `!` key row, README keys/settings/FAQ, CHANGELOG 0.1.0 (app + WTF + Ace3 bullets), architecture (core `blacklist` row, `warnings_view` row, `BlacklistAction` in the review row, WTF config/data flow/review), CLAUDE.md look-and-feel rule, adding-a-tool, events.md regenerated (unchanged), pinned by test_docs; full suite 1706 OK (2 skipped), +1 test |
-| KR | review, fixes, push | todo | | |
+| KR | review, fixes, push | todo | | review fixes: WTF review keeps the opened rows and the highlighted row across the rebuild after b (b again on a file row takes the addon back off), the settings-form blacklist test drives `CleanerSettingsScreen`, the warnings view's busy guard tested on every review plus the real running-programs check; full suite 1709 OK (2 skipped), +3 tests |
 
 ## Decisions taken during the build
 - **K1** Key `!` (`exclamation_mark`): free on every review and the IB restore screen (b, h, s, digits, letters all taken
@@ -71,3 +71,11 @@ go-ahead.
 - **K4** Interface Backup's guide no longer says the log lists the scan warnings (the tree lists all of them; only
   the log samples 20 per folder); its new "### Scan warnings" sits after the review's key table and covers the
   restore screen's button too.
+- **KR review**: 3 findings, 3 fixed, 0 rejected. (1) The WTF review's rebuild after `b` collapsed the addon and
+  left the cursor on a line number: `blacklist_changed()` now records which rows are open and the highlighted row by
+  identity (`_row_ident`: a file's path, an addon's flavor + group key, a group's names), and that rebuild puts them
+  back (`_restore_view`); other rebuilds (criteria, max age, the `/` filter) still lay the tree out fresh, so a
+  filter's opened addons are not overridden. (2) `test_settings_form_keeps_the_blacklist` now saves through
+  `CleanerSettingsScreen` (checked to fail if `save()` drops the blacklist). (3) New tests in
+  `tests/test_warnings_view.py`: `!` and the button do nothing on every review while `_scanning`, `_checking` or
+  `app.busy`, and during the WTF Cleaner's real running-programs check (checked to fail without `warnings_blocked()`).

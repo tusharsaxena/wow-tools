@@ -29,7 +29,7 @@ from wowtools.tools.wtf_cleaner.review_screen import CleanProgressScreen, Recove
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, criterion_counts
 from wowtools.tools.wtf_cleaner.safety import MARKER_NAME
 from wowtools.tools.wtf_cleaner.scanner import scan
-from wowtools.tools.wtf_cleaner.settings import load_settings, save_settings
+from wowtools.tools.wtf_cleaner.settings import load_settings
 from wowtools.tools.wtf_cleaner.undo import UndoResult
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.dialogs import ConfirmScreen
@@ -631,13 +631,44 @@ class BlacklistKeyTest(AppTestCase):
             self.assertTrue(any(n.message == BLACKLIST_NO_TARGET for n in app._notifications))
         self.assertEqual(self.saved(), [])
 
+    async def test_b_twice_on_a_file_row_keeps_the_view_and_toggles_back(self):
+        """The rebuild after b keeps the opened addon and the highlighted row, so b again takes it back off."""
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            addon = self.node(review, "item", "Uninstalled")
+            file_row = next(iter(addon.children))
+            path = file_row.data[2].path
+            await self.press_b_on(app, pilot, review, file_row)
+            self.assertEqual(self.saved(), [("_retail_", "Uninstalled")])
+            cursor = tree.cursor_node
+            self.assertEqual(cursor.data[0], "file", str(cursor.label))
+            self.assertEqual(cursor.data[2].path, path)
+            self.assertTrue(cursor.parent.is_expanded)
+            await pilot.press("b")  # no cursor moves in between
+            await settle(app, pilot)
+            self.assertEqual(self.saved(), [])
+            self.assertEqual(tree.cursor_node.data[2].path, path)
+            self.assertTrue(tree.cursor_node.parent.is_expanded)
+
     async def test_settings_form_keeps_the_blacklist(self):
+        """Saving the settings form (which has no blacklist field) keeps the hand-edited blacklist."""
         self.tool_cfg.set("wtf_cleaner", "blacklist", "_retail_:Uninstalled", log=False)
         self.tool_cfg.save()
-        settings = load_settings(self.tool_cfg)
-        settings.backup_before_delete = False
-        save_settings(self.tool_cfg, settings)
-        self.assertEqual(self.saved(), [("_retail_", "Uninstalled")])
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            screen = CleanerSettingsScreen(self.tool_cfg, self.root, source="settings")
+            app.push_screen(screen)
+            await pilot.pause()
+            screen.query_one("#max_age", Input).value = "45"
+            screen.query_one("#save", Button).press()
+            await pilot.pause()
+            self.assertIsNot(app.screen, screen, screen.error_text)
+        stored = load_settings(Config(self.tool_cfg.path).load())
+        self.assertEqual(stored.criteria.max_age_days, 45)
+        self.assertEqual(stored.blacklist, [("_retail_", "Uninstalled")])
 
 
 class RecoveryDialogTest(AppTestCase):

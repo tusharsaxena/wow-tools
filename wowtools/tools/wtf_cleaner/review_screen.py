@@ -145,6 +145,8 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         self._scanning = False
         self._log_next_build = False  # the first rebuild after a scan logs proposal.built
         self._checking = False  # the running-programs check before a confirm is in a worker
+        # what b saw (row ident -> expanded, the highlighted row's ident), put back by the rebuild it schedules
+        self._kept_view: tuple[dict[tuple, bool], tuple | None] | None = None
 
     # --- layout -------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -328,7 +330,60 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         self.note_no_match(tree.root)
         tree.root.set_label(self._label(tree.root.data))  # its mark counts what the filter shows: texts known now
         tree.root.expand()
+        self._restore_view(tree)
         self._update_summary()
+
+    def _row_ident(self, node: TreeNode) -> tuple | None:
+        """A row's identity across rebuilds (its data is rebuilt): a file's path, an addon in its flavor, a group's
+        names from the top."""
+        data = node.data
+        if data is None:
+            return None
+        kind = data[0]
+        if kind == "file":
+            return ("file", data[2].path)
+        if kind == "item":
+            return ("item", self._item_flavor.get(id(data[1])), data[1].key)
+        names = []
+        while node is not None and node.data is not None and node.parent is not None:
+            names.append(node.data[2])
+            node = node.parent
+        return ("group", *reversed(names))
+
+    def _keep_view(self) -> None:
+        """Remember which rows are open and the highlighted row, for the next rebuild to put back."""
+        tree = self.query_one("#proposal", Tree)
+        expanded = {}
+        stack = list(tree.root.children)
+        while stack:
+            node = stack.pop()
+            if node.allow_expand:
+                expanded[self._row_ident(node)] = node.is_expanded
+            stack.extend(node.children)
+        cursor = tree.cursor_node
+        self._kept_view = (expanded, self._row_ident(cursor) if cursor is not None else None)
+
+    def _restore_view(self, tree: Tree) -> None:
+        if self._kept_view is None:
+            return
+        expanded, cursor_id = self._kept_view
+        self._kept_view = None
+        target = None
+        stack = list(tree.root.children)
+        while stack:
+            node = stack.pop()
+            ident = self._row_ident(node)
+            if node.allow_expand and ident in expanded:
+                if expanded[ident]:
+                    node.expand()
+                else:
+                    node.collapse()
+            if cursor_id is not None and ident == cursor_id:
+                target = node
+            stack.extend(node.children)
+        tree.get_node_at_line(0)  # lay the lines out now, so move_cursor finds the new nodes
+        if target is not None and target.line >= 0:
+            tree.move_cursor(target)
 
     def _account_nodes(self, account_names: tuple[str, ...], proposal_items: list[ProposalItem],
                        path: tuple[str, ...], held: Sequence[ProposalItem] = ()) -> list[ModelNode]:
@@ -522,6 +577,7 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
 
     def blacklist_changed(self) -> None:
         self._update_criterion_labels()
+        self._keep_view()  # b again on the same row takes it back off
         self._schedule_rebuild()
 
     # --- actions ---------------------------------------------------------------------------------
