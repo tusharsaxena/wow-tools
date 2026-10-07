@@ -3,10 +3,10 @@ instead of only in the log, which nobody reads.
 
 - `SummaryLine`: the bottom line's text (#summary); `show_one_line` keeps a failed scan's message on one row
   (ellipsis), so a long error never moves the bars above it (STD-7.25); the next `update` wraps again.
-- `SummaryBar`: a screen's bottom line (#summary, a `SummaryLine`) with the compact **Warnings** button at its right end, shown only
-  while there are warnings ("⚠ 4 scan warnings (!)"): a click or its key, `!` (WARNINGS_KEY), opens the view. The
-  button takes no focus (the bottom line is not a row of controls) and carries its key (spec D17), so the footer
-  never lists it.
+- `SummaryBar`: a screen's bottom line (#summary, a `SummaryLine`) with the compact **Warnings** button at its right
+  end, shown only while there are warnings ("⚠ 4 scan warnings (!)"): a click or its key, `!` (WARNINGS_KEY), opens
+  the view. The button takes no focus (the bottom line is not a row of controls) and carries its key (spec D17),
+  so the footer never lists it.
 - `WarningsHost`: the mixin a screen showing warnings takes: `warning_items()` (what it collected), `refresh_warnings()`
   (call it where the screen updates its bottom line), `action_show_warnings()` (bind WARNINGS_BINDING).
 - `WarningsScreen`: the view, in the two-pane look: a count, the `/` filter and Back (Esc) on the left; on the right
@@ -104,8 +104,8 @@ class SummaryLine(Static):
 
 
 class SummaryBar(Horizontal):
-    """A screen's bottom line: the #summary `SummaryLine` (what the screen says about the selection) and, at its right end,
-    the Warnings button (hidden until `show_count` has a count)."""
+    """A screen's bottom line: the #summary `SummaryLine` (what the screen says about the selection) and, at its
+    right end, the Warnings button (hidden until `show_count` has a count)."""
 
     DEFAULT_CSS = """
     SummaryBar { height: auto; width: 100%; background: $surface; }

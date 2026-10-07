@@ -177,8 +177,9 @@ the marker and shows `leave_notice()`.
 - `ProfileReviewScreen` (`review_screen.py`): `TreeFilter`, `SvRecoveryActions`, `RunActions` and `ReviewBase`,
   `two_pane_css`, with two mixins of its own (F-007): `staging_actions.ProfileStagingActions` (Delete, Assign, Rename,
   Copy, Leftovers, Only Default, Everyone → Default, the `m` menu and Discard: each picks its target, asks in a popup
-  and stages; Leftovers first ticks every leftover character shown, `_tick_leftovers`, decision L1) and `blacklist_actions.ProfileBlacklistActions` (the `BlacklistAction` hooks, **Blacklist…**, `u` and
-  dropping a locked addon's pending changes and ticks). Left pane `#filters`, one control
+  and stages; Leftovers first ticks every leftover character shown, `_tick_leftovers`, decision L1) and
+  `blacklist_actions.ProfileBlacklistActions` (the `BlacklistAction` hooks, **Blacklist…**, `u` and dropping a
+  locked addon's pending changes and ticks). Left pane `#filters`, one control
   per row: the shared `RiskBanner` (D37), the View pair under a "View" heading (By addon / By character), the Show boxes under a "Show" heading, the
   shared `FilterBar` (its box id `#search`, `FILTER_SELECTOR`), the `#pending` line (`report.pending_text`, "N pending changes" or `NO_PENDING`) and the
   action row **Apply** (destructive), **Dry run**, **Rescan**, **Undo last change** (revert). Right:

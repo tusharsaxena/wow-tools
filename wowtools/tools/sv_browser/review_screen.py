@@ -55,8 +55,8 @@ from wowtools.ui.review import (ActionBar, BarTree, ReviewBase, RunActions, SvRe
                                 lift_toasts)
 from wowtools.ui.tree_filter import (FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TextFilter,
                                      TreeFilter)
-from wowtools.ui.warnings_view import (WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost, scan_warning_items,
-                                       where_text)
+from wowtools.ui.warnings_view import (WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost,
+                                       scan_warning_items, where_text)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, RiskBanner, action_button
 
 READING = "Reading…"
