@@ -38,6 +38,7 @@ from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, 
                                 ProgressScreen, relabel_branch, two_pane_css)
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TreeFilter
+from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost, scan_warning_items
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button
 
 WARNING_STYLE = "#E8B04B"
@@ -80,7 +81,7 @@ class RecoveryScreen(ChoiceScreen):
             self.dismiss("remind")
 
 
-class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
+class ReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
     TREE_SELECTOR = "#proposal"
     LOG_SCREEN = "review"
     HIDDEN_NOUN = "file"
@@ -97,6 +98,7 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         Binding("y", "dry_run", "Dry run"),
         Binding("r", "rescan", "Rescan"),
         Binding("z", "undo", "Undo"),
+        WARNINGS_BINDING,
         Binding("f", "leave('flavors')", "Flavors"),
         Binding("t", "leave('tools')", "Tools"),
         Binding("q", "leave('quit')", "Quit"),
@@ -162,7 +164,7 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                 yield ProgressBar(id="scan-progress", show_eta=False)
                 yield Static("", id="scan-label")
             yield ReviewTree(Text(self._root_name()), id="proposal")
-        yield Static("", id="summary")
+        yield SummaryBar()
         yield BottomBar()
 
     def on_mount(self) -> None:
@@ -426,9 +428,6 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         text = f"Selected: {plural(len(selection), 'item')} · {plural(files, 'file')} · {human_size(size)}"
         if self.proposal is not None and not self.proposal.items:
             text = "Nothing to clean with the current criteria.    " + text
-        if self.proposal is not None and self.proposal.warnings:
-            count = len(self.proposal.warnings)
-            text += f"    ⚠ {count} scan warning{'' if count == 1 else 's'} (see the log)"
         not_scanned = [s.flavor.display_name for s in self.scans if s.result is None]
         if not_scanned:
             text += f"    ⚠ not scanned: {', '.join(not_scanned)}"
@@ -437,6 +436,12 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             text += f"    {hidden}"
         self.summary_text = text
         self.query_one("#summary", Static).update(Text(text))
+        self.refresh_warnings()
+
+    def warning_items(self) -> list[WarningItem]:
+        """The scan warnings of every flavor scanned, under its name, as logged (paths inside its folder)."""
+        return [item for flavor, proposal in self.proposals
+                for item in scan_warning_items(proposal.warnings, flavor.display_name, flavor.path)]
 
     def _root_name(self) -> str:
         return ALL_FLAVORS_LABEL if self.multi else self.flavor.display_name

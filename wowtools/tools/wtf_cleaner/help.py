@@ -49,6 +49,12 @@ collapse it all, `←` `→` switch panes. `f` or `Esc` picks another game versi
 opens the settings, `q` quits. On the results: **Rescan** (`r`), **Other flavor** (`f`), **Tools** (`t`), **Quit**
 (`q`).
 
+## Warnings
+
+When the scan could not read something (a folder, a file, a line of an `AddOns.txt`), the bottom line shows
+**⚠ N scan warnings**: click it or press `!` (the **Warnings** button) to list them by game version, each with
+where it is and what went wrong. **Back** (`Esc`) returns to the review.
+
 ## Safety
 
 - Before deleting, the cleaner checks that no program has the files open (the Raider.IO client and the WeakAuras

@@ -49,6 +49,7 @@ from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmS
                                 UnfinishedRunScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, TickModel, WowCheck, lift_toasts
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, TreeFilter, hidden_by_filter
+from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost, scan_warning_items
 from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button,
                                  key_text, wrap_items)
 
@@ -113,7 +114,7 @@ class ActionTip(Static):
             place()  # its height is known now: the toasts go above it
 
 
-class ProfileReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
+class ProfileReviewScreen(WarningsHost, TreeFilter, RunActions, ReviewBase, Screen[str]):
     """The AceDB databases of the chosen flavors (and account) as a tree. Dismisses with "flavors", "tools" or
     "quit". `unlocked` is the flow's set of casefolded blacklisted (flavor folder, addon) pairs unlocked this
     session (shared, not copied)."""
@@ -165,6 +166,7 @@ class ProfileReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         Binding("y", "dry_run", "Dry run"),
         Binding("r", "rescan", "Rescan"),
         Binding("z", "undo", "Undo"),
+        WARNINGS_BINDING,
         Binding("f", "leave('flavors')", "Flavors"),
         Binding("t", "leave('tools')", "Tools"),
         Binding("q", "leave('quit')", "Quit"),
@@ -239,7 +241,7 @@ class ProfileReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
                         yield action_button(label, kind, key, id=button_id, compact=True)
         with Vertical(id="tip-rack"):
             yield ActionTip("", id="action-tip")
-        yield Static(Text(self.summary_text), id="summary")
+        yield SummaryBar(Text(self.summary_text))
         yield BottomBar()
 
     def on_mount(self) -> None:
@@ -433,16 +435,22 @@ class ProfileReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         relabel_branch(self.query_one("#profiles", Tree), node, self._label, skip=READ_ONLY)
         self._update_summary()
 
+    def warning_items(self) -> list[WarningItem]:
+        """Every flavor's scan warnings (also the tree's "Scan warnings" group), under the flavor's name."""
+        return [item for flavor in (self.scan.flavors if self.scan is not None else [])
+                for item in scan_warning_items(flavor.warnings, flavor.flavor.display_name, flavor.flavor.path)]
+
     def _update_summary(self) -> None:
         if self.scan is None or self.staging is None or not self.is_attached:
             return
         summary = self.staging.summary()
         profiles, chars = counts(self.ticked)
-        self.summary_text = selection_text(profiles, chars, summary, len(self.scan.warnings))
+        self.summary_text = selection_text(profiles, chars, summary)
         hidden = self.hidden_ticked_note()
         if hidden:
             self.summary_text += f"    {hidden}"
         self.query_one("#summary", Static).update(Text(self.summary_text))
+        self.refresh_warnings()
         self.query_one("#pending", Static).update(self._pending_line(pending_text(summary)))
         self._refresh_buttons()
         self._update_guide()

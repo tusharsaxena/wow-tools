@@ -34,6 +34,7 @@ from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, 
 from wowtools.ui.result_screen import ResultBase, result_bindings, status_style
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TreeFilter
+from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost, scan_warning_items
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
@@ -84,8 +85,10 @@ class ShotResultScreen(ResultBase):
                           *(Text(c) for c in rest))
 
 
-class ShotReviewScreen(TreeFilter, ReviewBase, Screen[str]):
+class ShotReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
     TREE_SELECTOR = "#shots"
+    WARNINGS_TITLE = "Folders not read"
+    WARNINGS_NOUN = "unreadable folder"
     LOG_SCREEN = "shots_review"
     HIDDEN_NOUN = "shot"
     BUTTON_ACTIONS: ClassVar[dict[str, str]] = {"btn-organize": "organize", "btn-dry": "dry_run",
@@ -101,6 +104,7 @@ class ShotReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         Binding("y", "dry_run", "Dry run"),
         Binding("r", "rescan", "Rescan"),
         Binding("z", "undo", "Undo"),
+        WARNINGS_BINDING,
         Binding("f", "leave('flavors')", "Flavors"),
         Binding("t", "leave('tools')", "Tools"),
         Binding("q", "leave('quit')", "Quit"),
@@ -147,7 +151,7 @@ class ShotReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                 yield ProgressBar(id="scan-progress", show_eta=False)
                 yield Static("", id="scan-label")
             yield ReviewTree(Text(self.scope_label), id="shots")
-        yield Static("", id="summary")
+        yield SummaryBar()
         yield BottomBar()
 
     def on_mount(self) -> None:
@@ -433,7 +437,7 @@ class ShotReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             fp = data[1]
             name = fp.flavor.display_name
             if not items:  # nothing selectable: say why instead of a tick and "0 shots"
-                why = ("no Screenshots folder" if fp.missing else "could not be read (see the log)" if fp.error
+                why = ("no Screenshots folder" if fp.missing else "could not be read (see Warnings)" if fp.error
                        else "nothing to file")
                 return Text.assemble("  ", (name, ACCENT), (f"  {why}", "dim"))
         elif kind == "day":
@@ -469,13 +473,20 @@ class ShotReviewScreen(TreeFilter, ReviewBase, Screen[str]):
             text = f"Nothing to file{reason}.    " + text
         for button_id in ("#btn-organize", "#btn-dry"):  # already-filed copies can still be ticked by hand
             self.query_one(button_id, Button).disabled = not plan.selectable
-        if plan.warnings:
-            text += f"    ⚠ {plural(len(plan.warnings), 'folder')} could not be read (see the log)"
         hidden = self.hidden_ticked_note()
         if hidden:
             text += f"    {hidden}"
         self.summary_text = text
         self.query_one("#summary", Static).update(Text(text))
+        self.refresh_warnings()
+
+    def warning_items(self) -> list[WarningItem]:
+        """The folders the scan could not read, under their flavor's name (inside its folder when they are)."""
+        plan = self.plan
+        if plan is None:
+            return []
+        bases = {fp.flavor.display_name: fp.flavor.path for fp in plan.flavors}
+        return [item for w in plan.warnings for item in scan_warning_items([w], w.flavor, bases.get(w.flavor))]
 
     # --- ticks (Space, a, n: ReviewBase) ------------------------------------------------------------
     def tick_model(self) -> TickModel:

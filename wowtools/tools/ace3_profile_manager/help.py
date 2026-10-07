@@ -51,6 +51,12 @@ this session, `←` `→` switch panes, `Tab` or `↓` on the last line reach th
 game version, `t` goes back to the tool menu, `s` opens the settings, `q` quits (leaving with pending changes asks
 first). On the results: **Rescan** (`r`), **Other flavor** (`f`), **Tools** (`t`), **Quit** (`q`).
 
+## Warnings
+
+When the scan could not read a file (or skipped a folder), the bottom line shows **⚠ N scan warnings**, and the
+tree lists them too: click it or press `!` (the **Warnings** button) to see them by game version, each with the
+file and what went wrong. **Back** (`Esc`) returns to the review.
+
 ## Safety
 
 - Before writing, Apply checks no file changed since the scan and no program has one open, zips your **whole `WTF`

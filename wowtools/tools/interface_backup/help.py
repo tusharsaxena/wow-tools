@@ -40,6 +40,12 @@ up), `x` / `c` expand / collapse it all, `←` `→` switch panes. `f` or `Esc` 
 back to the tool menu, `s` opens the settings, `q` quits. On the results: **Rescan** (`r`), **Restore** (`e`),
 **Other flavor** (`f`), **Tools** (`t`), **Quit** (`q`).
 
+## Warnings
+
+When the scan skipped something it could not read, the bottom line of the review and of the restore screen shows
+**⚠ N scan warnings**: click it or press `!` (the **Warnings** button) to list them by game version, each with
+its folder (`Interface` or `WTF`) and what went wrong. **Back** (`Esc`) returns.
+
 ## Safety
 
 - Every zip is checked after it is written. Only the newest backups per game version are kept (as many as

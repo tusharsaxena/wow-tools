@@ -39,6 +39,12 @@ game version, `t` goes back to the tool menu, `s` opens the settings, `q` quits.
   `<folder>\\<game version>\\<year>\\<month>\\<day>`.
 - **Copy instead of move**: keep the originals in `Screenshots` too.
 
+## Warnings
+
+When a folder could not be read, the bottom line shows **⚠ N unreadable folders**: click it or press `!` (the
+**Warnings** button) to list them by game version, each with the folder and the error. **Back** (`Esc`) returns to
+the review.
+
 ## Safety
 
 - **Nothing is ever overwritten.** The same file already sorted is a duplicate (removed from `Screenshots`); a

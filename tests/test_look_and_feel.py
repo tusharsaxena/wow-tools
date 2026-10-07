@@ -488,8 +488,8 @@ class LookAndFeelTest(TuiTestCase):
                 self.assertGreaterEqual(button.region.width, len(button.label.plain) + 2, button.label)
 
     async def test_ace_left_pane_hint_fits_with_several_kinds_of_pending_change(self):
-        """Feedback round 1 review: several kinds of pending change and a scan warning (the bottom line takes two
-        rows) still leave the whole hint in the left pane at BASE."""
+        """Feedback round 1 review: several kinds of pending change and a scan warning (the Warnings button on the
+        bottom line) still leave the whole hint in the left pane at BASE."""
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot, "ace3-profile-manager")
@@ -504,7 +504,10 @@ class LookAndFeelTest(TuiTestCase):
             await settle(app, pilot)
             summary = staging.summary()
             self.assertTrue(summary.deleted and summary.copied and summary.reassigned and summary.removed)
-            self.assertIn("scan warning", review.summary_text)
+            warnings = review.query_one("#btn-warnings")  # the scan warning, on the bottom line (spec W1)
+            self.assertTrue(warnings.display)
+            self.assertIn("scan warning", warnings.label.plain)
+            self.assertEqual(warnings.region.y, review.query_one("#summary").region.y)
             left = review.query_one("#filters").region
             hint = review.query_one(NavHint)
             for widget in (review.query_one("#pending"), hint):
