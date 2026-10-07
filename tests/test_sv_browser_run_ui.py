@@ -15,12 +15,13 @@ from textual.widgets import Button, DataTable
 from tests.fixtures import BASE, SVB_FONT, TINY, accept_disclaimer, settle, stage_sv_edit
 from tests.test_sv_browser_app import TOOL
 from tests.test_sv_browser_search_ui import SearchTestBase
-from wowtools.core import sv_journal
+from wowtools.core import sv_apply, sv_journal
 from wowtools.core.events import capture_events
 from wowtools.core.fsutil import atomic_write_bytes
 from wowtools.core.install import WowInstall
 from wowtools.core.luasv import key_id
 from wowtools.core.sv_apply import ApplyError
+from wowtools.core.sv_report import STALE_MARKER_TEXT
 from wowtools.core.svfiles import OWNER_ACCOUNT_WIDE
 from wowtools.tools.sv_browser import editor, undo
 from wowtools.tools.sv_browser.events import SV_TOOL
@@ -422,6 +423,204 @@ class RecoveryTest(RunTestBase):
             notes = [n for n in app._notifications if n.title == "Unfinished change"]
             self.assertTrue(notes and "could not be removed" in notes[-1].message)
             self.assertEqual(notes[-1].severity, "warning")
+        self.assertIsNotNone(undo.pending_recovery(self.tool_root))
+
+
+class RecoveryFlowTest(RunTestBase):
+    """Characterization of the recovery flow before the review-screen split (review 2026-10-07 F-007, T4.1): the
+    branches RecoveryTest does not reach, as the Ace3 Profile Manager's RecoveryFlowTest pins them."""
+
+    def notes(self, app):
+        return [n for n in app._notifications if n.title == "Unfinished change"]
+
+    async def test_put_back_names_the_files_and_reads_the_files_again(self):
+        crash_retail(self.root)
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            popup = await self.open_to_recovery(app, pilot)
+            review = app.screen_stack[-2]
+            scans = []
+            real_scan = review._scan
+            review._scan = lambda: (scans.append(1), real_scan())[1]
+            popup.choose("put_back")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertIsNone(review.marker)
+            self.assertEqual(scans, [1])  # the files changed under the scan: read again
+            notes = self.notes(app)
+            self.assertEqual((notes[-1].message, notes[-1].severity),
+                             ("Put back 1 file; left 0 files as they are.", "information"))
+
+    async def test_recovery_refused_while_wow_runs(self):
+        crash_retail(self.root)
+        written = self.tree_bytes()
+        running: list[str] = []
+        app = self.make_app(wow_check=lambda: list(running))
+        async with app.run_test(size=BASE) as pilot:
+            popup = await self.open_to_recovery(app, pilot)
+            review = app.screen_stack[-2]
+            running.append("Wow.exe")
+            popup.choose("put_back")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertIsNotNone(review.marker)  # offered again
+        self.assertEqual(self.tree_bytes(), written)
+        self.assertIsNotNone(undo.pending_recovery(self.tool_root))
+
+    async def test_put_back_that_cannot_remove_the_marker_keeps_it_and_says_so(self):
+        before = self.tree_bytes()
+        crash_retail(self.root)
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            popup = await self.open_to_recovery(app, pilot)
+            review = app.screen_stack[-2]
+            with patch("wowtools.core.sv_undo.clear_marker", return_value=False):
+                popup.choose("put_back")
+                await settle(app, pilot)
+            # still there: the scan after the run finds it and offers it again
+            self.assertIsInstance(app.screen, UnfinishedRunScreen)
+            self.assertIsNotNone(review.marker)
+            notes = self.notes(app)
+            self.assertTrue(notes and "could not be removed" in notes[-1].message)
+            self.assertEqual(notes[-1].severity, "warning")
+        self.assertEqual(self.tree_bytes(), before)
+        self.assertIsNotNone(undo.pending_recovery(self.tool_root))
+
+    async def test_a_finished_run_is_only_its_marker_removed(self):
+        crash_retail(self.root)
+        written = self.tree_bytes()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            popup = await self.open_to_recovery(app, pilot)
+            review = app.screen_stack[-2]
+            root = self.tool_root
+
+            def recover(*_args, **_kwargs):  # the core removed the leftover marker of a run that had finished
+                sv_apply.clear_marker(root)
+                return undo.UndoResult(stale_marker=True)
+            with patch("wowtools.tools.sv_browser.review_screen.recover", recover):
+                popup.choose("put_back")
+                await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertIsNone(review.marker)
+            notes = self.notes(app)
+            self.assertEqual((notes[-1].message, notes[-1].severity),
+                             (f"That change had finished: {STALE_MARKER_TEXT}", "information"))
+        self.assertEqual(self.tree_bytes(), written)
+
+    async def test_a_recovery_the_core_refuses_keeps_the_marker_and_shows_why(self):
+        crash_retail(self.root)
+        written = self.tree_bytes()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            popup = await self.open_to_recovery(app, pilot)
+            review = app.screen_stack[-2]
+            refusal = undo.UndoError("_retail_ is not in the WoW folder X. Nothing was changed.")
+            with patch("wowtools.tools.sv_browser.review_screen.recover", side_effect=refusal):
+                popup.choose("put_back")
+                await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertIsNotNone(review.marker)
+            self.assertFalse(app.busy)
+            errors = [n for n in app._notifications if n.severity == "error"]
+            self.assertTrue(errors and errors[-1].message == str(refusal))  # its message, no "stopped" prefix
+        self.assertEqual(self.tree_bytes(), written)
+        self.assertIsNotNone(undo.pending_recovery(self.tool_root))
+
+    async def test_a_recovery_that_crashes_says_it_stopped_and_keeps_the_marker(self):
+        crash_retail(self.root)
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            popup = await self.open_to_recovery(app, pilot)
+            review = app.screen_stack[-2]
+            with patch("wowtools.tools.sv_browser.review_screen.recover", side_effect=OSError("disk gone")):
+                popup.choose("put_back")
+                await settle(app, pilot)
+            # files may have changed: the review reads them again, and that scan offers the marker again
+            self.assertIsInstance(app.screen, UnfinishedRunScreen)
+            self.assertIsNotNone(review.marker)
+            errors = [n for n in app._notifications if n.severity == "error"]
+            self.assertEqual(errors[-1].message, "Putting the originals back stopped: OSError: disk gone")
+        self.assertIsNotNone(undo.pending_recovery(self.tool_root))
+
+    async def test_recovery_refuses_a_backup_folder_not_allowed(self):
+        crash_retail(self.root)
+        written = self.tree_bytes()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            popup = await self.open_to_recovery(app, pilot)
+            review = app.screen_stack[-2]
+            inside_wtf = self.root / "_retail_" / "WTF" / "bk"
+            review.tool_cfg.set_path("sv_browser", "backup_dir", inside_wtf)  # edited by hand in the cfg
+            popup.choose("put_back")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertIsNotNone(review.marker)
+            self.assertTrue(any(n.title == "Backup folder not allowed" for n in app._notifications))
+            self.assertFalse(inside_wtf.exists())
+        self.assertEqual(self.tree_bytes(), written)
+        self.assertIsNotNone(undo.pending_recovery(self.tool_root))
+
+    async def test_put_back_drops_the_staged_edits_before_reading_the_files_again(self):
+        crash_retail(self.root)
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            popup = await self.open_to_recovery(app, pilot)
+            review = app.screen_stack[-2]
+            stage_sv_edit(review)
+            self.assertEqual(review.pending, 1)
+            seen = []
+            real_scan = review._scan
+            review._scan = lambda: (seen.append((review.pending, len(review.ticked), review._stale)), real_scan())[1]
+            popup.choose("put_back")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            # the SV Browser shape (_mark_stale): the edits and ticks are dropped first, even if the scan then fails
+            self.assertEqual(seen, [(0, 0, True)])
+            self.assertEqual(review.pending, 0)
+            self.assertEqual(review.ticked, set())
+
+    async def test_recovery_without_a_wow_folder_keeps_the_marker(self):
+        """The _after_recover_preflight guard: the WoW folder went from the settings while the WoW check ran (the
+        review would otherwise go back to the flavors first), so nothing is recovered under wow_root=None."""
+        crash_retail(self.root)
+        written = self.tree_bytes()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            popup = await self.open_to_recovery(app, pilot)
+            review = app.screen_stack[-2]
+            self.assertIsNotNone(review.marker_root)  # the tool folder is settled where the marker was found
+
+            def check():
+                review.cfg.set_path("general", "wow_path", None)
+                return []
+            review._injected_check = check
+            with patch("wowtools.tools.sv_browser.review_screen.recover") as recover:
+                popup.choose("put_back")
+                await settle(app, pilot)
+            recover.assert_not_called()
+            self.assertFalse(app.busy)
+            self.assertIsNotNone(review.marker)
+        self.assertEqual(self.tree_bytes(), written)
+        self.assertIsNotNone(undo.pending_recovery(self.tool_root))
+
+    async def test_recovery_with_no_tool_folder_keeps_the_marker(self):
+        """The _recovery_chosen guard (root is None: no marker_root, no backup folder and no WoW folder): Leave as is
+        does not run leave(root=None). (Put back would also stop at the WoW folder guard above.)"""
+        crash_retail(self.root)
+        written = self.tree_bytes()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            popup = await self.open_to_recovery(app, pilot)
+            review = app.screen_stack[-2]
+            review.marker_root = None
+            review.cfg.set_path("general", "wow_path", None)
+            with patch("wowtools.tools.sv_browser.review_screen.leave") as leave:
+                popup.choose("leave")
+                await settle(app, pilot)
+            leave.assert_not_called()
+            self.assertIsNotNone(review.marker)
+        self.assertEqual(self.tree_bytes(), written)
         self.assertIsNotNone(undo.pending_recovery(self.tool_root))
 
 
