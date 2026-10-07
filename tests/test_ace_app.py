@@ -18,6 +18,7 @@ from wowtools.tools.ace3_profile_manager import editor
 from wowtools.tools.ace3_profile_manager import review_screen as review_module
 from wowtools.tools.ace3_profile_manager.app import ProfileSettingsScreen
 from wowtools.tools.ace3_profile_manager.blacklist_screen import BlacklistScreen
+from wowtools.tools.ace3_profile_manager.ops import OpResult
 from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
 from wowtools.tools.ace3_profile_manager.result_screen import ProfileResultScreen
 from wowtools.tools.ace3_profile_manager.review_screen import ProfileReviewScreen
@@ -1676,7 +1677,7 @@ class PopupFeedbackTest(AceAppBase):
         async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot)
             with patch.object(review, "notify") as notify:
-                review._staged(review_module.OpResult(notes=[
+                review._staged(OpResult(notes=[
                     'AddonA: "Default" will be created by the addon at its next login, with its defaults.',
                     'AddonB: "Default" will be created by the addon at its next login, with its defaults.',
                     "a note with no addon"]))

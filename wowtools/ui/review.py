@@ -3,7 +3,8 @@ polarity, Space (tick, press, toggle or type), select all / none over the keys t
 running-WoW check in a worker, the debounced rebuild, the scan box and button-id dispatch. A review screen mixes
 `ReviewBase` in before `Screen`; a screen with buttons only (no ticks) can take `ButtonActions` alone. A review that
 runs the shared SavedVariables pipeline (Ace3, SV Browser) also mixes in `RunActions` (before `ReviewBase`): its
-apply / undo / recover plumbing."""
+apply / undo / recover plumbing, and `SvRecoveryActions` (before `RunActions`): the recovery of an Apply that did not
+finish."""
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Hashable, Iterable, Iterator
@@ -20,13 +21,16 @@ from textual.widgets.tree import TreeNode
 from wowtools.core import activity
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import WowInstall, flavor_name, validate_backup_dir
+from wowtools.core.sv_apply import Marker
 from wowtools.core.sv_events import SvTool
+from wowtools.core.sv_report import leave_notice, recovered_notice
+from wowtools.core.sv_undo import UndoError, UndoResult
 from wowtools.ui.dialogs import BUSY_STYLE, ProgressScreen, TwoPaneFocus
 from wowtools.ui.widgets import WrapButtonRow
 
 __all__ = ["BLACKLIST_BINDING", "BLACKLIST_KEY", "BLACKLIST_NO_TARGET", "ActionBar", "BarTree", "BlacklistAction",
            "ButtonActions", "NotTicked", "Preflight", "ReviewBase", "ReviewTree", "RunActions",
-           "ScheduledRebuild", "TickActions", "TickModel", "blacklist_toast"]
+           "ScheduledRebuild", "SvRecoveryActions", "TickActions", "TickModel", "blacklist_toast"]
 
 WowCheck = Callable[[], "list[str] | None"]
 
@@ -535,3 +539,85 @@ class RunActions:
             self._mark_stale()
         self._refresh_buttons()
         self.notify(message, severity="error", timeout=15)
+
+
+class SvRecoveryActions:
+    """The recovery of a SavedVariables Apply that did not finish (its crash marker was found by the scan), mixed
+    in before RunActions by a review on the shared pipeline (Ace3, SV Browser; F-007):
+
+    - offer_recovery(marker): log <prefix>.recovery_offered and open the tool's unfinished-run popup;
+    - Leave as is: drop the marker (core sv_undo.leave), or say it is still there;
+    - Put the originals back: the backup-folder and running-WoW checks of the marker's flavor, then the tool's
+      recover in start_run (RUN_PROGRESS popup), then the notice (sv_report.recovered_notice) and recovery_done().
+
+    Closed without a choice, refused, or stopped, the marker stays: it is offered again at the next scan or Apply.
+    The screen supplies `marker`, RUN_PROGRESS (its run progress popup), recovery_screen(marker) (the popup),
+    recovery_root() (the tool folder the marker is settled in), run_leave(marker, root=) and run_recover(marker,
+    **kwargs) (the tool's undo.leave and undo.recover), and recovery_done() (read the files again)."""
+
+    RUN_PROGRESS: ClassVar[type[ProgressScreen]]
+    marker: Marker | None
+
+    def recovery_screen(self, marker: Marker) -> Screen:
+        """The popup that offers the choice (a ui.dialogs.UnfinishedRunScreen)."""
+        raise NotImplementedError
+
+    def recovery_root(self) -> Path | None:
+        """The tool folder the marker is settled in (None: none, nothing is done)."""
+        raise NotImplementedError
+
+    def run_leave(self, marker: Marker, *, root: Path) -> bool:
+        """The tool's undo.leave: True when the marker is gone."""
+        raise NotImplementedError
+
+    def run_recover(self, marker: Marker, **kwargs: Any) -> UndoResult:
+        """The tool's undo.recover (run in the worker)."""
+        raise NotImplementedError
+
+    def recovery_done(self) -> None:
+        """After the notice: the files were put back (or the marker dropped), read them again."""
+        raise NotImplementedError
+
+    def offer_recovery(self, marker: Marker) -> None:
+        """An Apply did not finish: offer to put the originals back, or to leave the files as they are."""
+        log_event(self.SV_TOOL.event("recovery_offered"), flavor=marker.flavor, files=len(marker.files),
+                  started=marker.started)
+        self.app.push_screen(self.recovery_screen(marker), lambda choice: self._recovery_chosen(marker, choice))
+
+    def _recovery_chosen(self, marker: Marker, choice: str | None) -> None:
+        root = self.recovery_root()
+        if root is None or choice not in ("put_back", "leave"):
+            return  # closed without a choice: offered again at the next scan or Apply
+        if choice == "leave":
+            if self.run_leave(marker, root=root):
+                self.marker = None
+            else:  # the marker stays (another program holds it): offered again, and the user is told why
+                message, severity = leave_notice()
+                self.notify(message, title="Unfinished change", severity=severity, timeout=15)
+            return
+        if self._backup_dir_refused():
+            return  # the marker stays: offered again
+        check = self.check_for([marker.flavor])  # the marker's flavor, which may not be one reviewed
+        self._check_wow(check, lambda running: self._after_recover_preflight(marker, root, check, running))
+
+    def _after_recover_preflight(self, marker: Marker, root: Path, check: WowCheck,
+                                 running: list[str] | None) -> None:
+        if self._refused_while_running(running, []):
+            return  # the marker stays: offered again
+        if self.cfg.wow_path is None:
+            return  # the marker stays: offered again (recovery resolves files under the WoW folder)
+        screen = self.RUN_PROGRESS("Putting the originals back", first_stage="undo")
+        keep_snapshots = self.cfg.keep_backups
+        wow_root, journal_dir = self.cfg.wow_path, self.SV_TOOL.journals.dir(self.cfg.wow_path)
+        self.start_run(screen, lambda: self.run_recover(marker, wow_root=wow_root, root=root,
+                                                        journal_dir=journal_dir, keep_snapshots=keep_snapshots,
+                                                        wow_check=check, progress=screen.report),
+                       self._recovered, name="recover", failure="Putting the originals back stopped",
+                       stale_on_crash=True, expected=(UndoError,))
+
+    def _recovered(self, result: UndoResult) -> None:
+        if not result.marker_left:
+            self.marker = None
+        message, severity = recovered_notice(result)
+        self.notify(message, title="Unfinished change", severity=severity, timeout=15)
+        self.recovery_done()

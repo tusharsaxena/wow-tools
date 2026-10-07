@@ -9,7 +9,7 @@ from wowtools.core.install import flavor_name
 from wowtools.core.journal import Journal
 from wowtools.core.sv_apply import MultiApplyResult
 from wowtools.core.sv_report import (RESULT_TEXT, STAGE_TITLES, UNDO_COLUMNS,  # noqa: F401 - re-exported
-                                     leave_notice, recovered_notice, recovery_text, undo_detail_rows, undo_summary_rows)
+                                     recovery_text, undo_detail_rows, undo_summary_rows)
 from wowtools.core.text import plural
 from wowtools.tools.sv_browser.ops import Plan
 
@@ -17,6 +17,7 @@ DISCLAIMER = ("USE AT YOUR OWN RISK. This tool edits addon SavedVariables direct
               "addon expects; a wrong value can break an addon or lose its settings. Backups and Undo are made, but "
               "you are responsible for what you change.")
 FILE_COLUMNS = ("Flavor", "Account", "Owner", "File", "Edits", "Result")
+BROWSE, RESULTS = "Browse", "Results"  # the review tree's two views (v): the files, and the hits of the last search
 
 
 def _edits(plan: Plan) -> int:

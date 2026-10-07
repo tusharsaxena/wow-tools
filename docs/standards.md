@@ -53,10 +53,10 @@ it: a test (`tests/<file>.py::<test>`) or *review*. Decision IDs (D9, D17, W1, B
   *Enforced by:* `tests/test_structure.py::test_core_never_imports_textual`,
   `tests/test_structure.py::test_importing_core_loads_no_textual`.
 - **STD-1.7 MUST** Keep a tool's logic modules (scanner, planner, model, ops, journal, undo, report, settings, ...)
-  UI-free over plain dataclasses; only front-end modules (`app.py`, `*_screen.py`, `popups.py`, `tree_view.py`) import
-  `textual` or `wowtools.ui`.
+  UI-free over plain dataclasses; only front-end modules (`app.py`, `*_screen.py`, `*_actions.py` (a review screen's
+  action mixins), `popups.py`, `tree_view.py`) import `textual`, `rich` or `wowtools.ui`.
   *Why:* logic is unit-tested without Textual.
-  *Enforced by:* review.
+  *Enforced by:* `tests/test_structure.py::test_only_front_end_modules_import_the_ui`, review.
 - **STD-1.8 SHOULD** Keep front ends thin: `report.py` turns results into plain-string labels and table rows; screens
   lay out and dispatch to logic functions.
   *Why:* display text is testable without a TUI and screens stay small.
@@ -152,7 +152,8 @@ it: a test (`tests/<file>.py::<test>`) or *review*. Decision IDs (D9, D17, W1, B
   *Why:* the form, flow and tests treat every tool alike.
   *Enforced by:* the per-tool `tests/test_*_settings.py` round trips, review.
 - **STD-3.6 SHOULD** Lay out a new tool's package like the others: `__init__.py`, `events.py`, `settings.py`,
-  `help.py`, `app.py`, `review_screen.py` (plus `result_screen.py` if large), and UI-free logic (`scanner.py`/
+  `help.py`, `app.py`, `review_screen.py` (plus `result_screen.py` if large, and `*_actions.py` mixins named after
+  what they do when the review screen grows), and UI-free logic (`scanner.py`/
   `planner.py`, `journal.py`, `undo.py`, `report.py`). Follow [adding-a-tool.md](adding-a-tool.md).
   *Why:* one shape makes every tool navigable; some structure tests address files by name.
   *Enforced by:* review.

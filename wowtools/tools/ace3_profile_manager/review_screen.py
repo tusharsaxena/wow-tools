@@ -17,39 +17,36 @@ from textual.widget import Widget
 from textual.widgets import Button, Checkbox, Header, Label, ProgressBar, Static, Tree
 from textual.widgets.tree import TreeNode
 
-from wowtools.core.blacklist import Pair, format_blacklist, is_blacklisted, toggle_pair
+from wowtools.core.blacklist import is_blacklisted
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
-from wowtools.core.install import Flavor, WowInstall, flavor_name
+from wowtools.core.install import Flavor
 from wowtools.core.journal import Journal
 from wowtools.core.process import wow_check_for
 from wowtools.core.progress import ThrottledProgress
-from wowtools.core.svfiles import SvFile
 from wowtools.core.text import plural
-from wowtools.tools.ace3_profile_manager.blacklist_screen import BlacklistScreen
+from wowtools.tools.ace3_profile_manager.blacklist_actions import ProfileBlacklistActions
 from wowtools.tools.ace3_profile_manager.editor import ApplyError, Marker, read_marker
 from wowtools.tools.ace3_profile_manager.events import SV_TOOL
 from wowtools.tools.ace3_profile_manager.journal import latest_undoable, read_profile_journal, resolve_journal_dir
-from wowtools.tools.ace3_profile_manager.model import DEFAULT
 from wowtools.tools.ace3_profile_manager.multi import MultiApplyResult, apply_flavors
-from wowtools.tools.ace3_profile_manager.ops import DbKey, OpResult, Staging, valid_name
-from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
+from wowtools.tools.ace3_profile_manager.ops import DbKey, Staging
 from wowtools.tools.ace3_profile_manager.report import (CHARACTER_KINDS, DETAIL_COLUMNS, NO_PENDING, STAGE_TITLES,
                                                         STEPS, UNDO_COLUMNS, apply_confirm, apply_detail_rows,
-                                                        apply_summary_rows, guidance, leave_notice, pending_text,
-                                                        recovered_notice,
-                                                        recovery_text, scan_label, selection_text, shorten,
-                                                        undo_confirm, undo_detail_rows, undo_summary_rows)
+                                                        apply_summary_rows, guidance, pending_text, recovery_text,
+                                                        scan_label, selection_text, shorten, undo_confirm,
+                                                        undo_detail_rows, undo_summary_rows)
 from wowtools.tools.ace3_profile_manager.result_screen import ProfileResultScreen
 from wowtools.tools.ace3_profile_manager.scanner import ScanResult, scan_flavors
-from wowtools.tools.ace3_profile_manager.settings import load_settings, resolve_root, save_settings
+from wowtools.tools.ace3_profile_manager.settings import load_settings, resolve_root
+from wowtools.tools.ace3_profile_manager.staging_actions import ProfileStagingActions
 from wowtools.tools.ace3_profile_manager.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
 from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult, leave, recover, undo_flavors, undo_run
 from wowtools.ui.branding import BottomBar
-from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, InfoScreen, ProgressScreen,
+from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                 UnfinishedRunScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
-from wowtools.ui.review import (BLACKLIST_BINDING, BLACKLIST_NO_TARGET, ActionBar, BarTree, BlacklistAction, ReviewBase,
-                                RunActions, TickModel, WowCheck, lift_toasts)
+from wowtools.ui.review import (BLACKLIST_BINDING, ActionBar, BarTree, BlacklistAction, ReviewBase, RunActions,
+                                SvRecoveryActions, TickModel, WowCheck, lift_toasts)
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, TreeFilter, hidden_by_filter
 from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost, scan_warning_items
 from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button,
@@ -116,14 +113,18 @@ class ActionTip(Static):
             place()  # its height is known now: the toasts go above it
 
 
-class ProfileReviewScreen(WarningsHost, BlacklistAction, TreeFilter, RunActions, ReviewBase, Screen[str]):
+class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistActions, BlacklistAction, TreeFilter,
+                          SvRecoveryActions, RunActions, ReviewBase, Screen[str]):
     """The AceDB databases of the chosen flavors (and account) as a tree. Dismisses with "flavors", "tools" or
     "quit". `unlocked` is the flow's set of casefolded blacklisted (flavor folder, addon) pairs unlocked this
-    session (shared, not copied)."""
+    session (shared, not copied). The staging actions are ProfileStagingActions (staging_actions.py), the blacklist
+    ProfileBlacklistActions (blacklist_actions.py), the recovery of an unfinished Apply ui.review.SvRecoveryActions
+    (F-007)."""
 
     TREE_SELECTOR = "#profiles"
     LOG_SCREEN = "ace_review"
     SV_TOOL = SV_TOOL  # RunActions: ace.wow_running, the ace.apply / ace.undo / ace.recover error contexts
+    RUN_PROGRESS = ProfileProgressScreen  # SvRecoveryActions: the progress popup of a recovery
     FILTER_SELECTOR = "#search"  # the shared tree filter, in the box the search had
     PREFLIGHT_TEXT = "Checking whether WoW is running…"
     BUTTON_ACTIONS: ClassVar[dict[str, str]] = {
@@ -739,357 +740,6 @@ class ProfileReviewScreen(WarningsHost, BlacklistAction, TreeFilter, RunActions,
     def action_switch_view(self) -> None:
         self._set_view("character" if self.view == "addon" else "addon")
 
-    # --- blacklist -------------------------------------------------------------------------------
-    def _file_of(self, node: TreeNode | None) -> SvFile | None:
-        """The SavedVariables file (flavor and addon) of this addon node, or of the addon it is in (None above
-        one)."""
-        while node is not None and node.data is not None:
-            data = node.data
-            if data[0] == "addon":
-                return data[1].file
-            if len(data) > 1 and isinstance(data[1], DbKey) and self.staging is not None:
-                return self.staging.state(data[1]).file
-            node = node.parent
-        return None
-
-    def _file_at_cursor(self) -> SvFile | None:
-        """The SavedVariables file (flavor and addon) of the highlighted addon, or of what is highlighted in one."""
-        file = self._file_of(self.query_one("#profiles", Tree).cursor_node)
-        if file is None:
-            self.notify(BLACKLIST_NO_TARGET)
-        return file
-
-    def _flavor_folders(self) -> list[str]:
-        """Every flavor folder of the install (a wildcard pair taken off in one flavor stays in the others)."""
-        try:
-            folders = [f.folder for f in WowInstall(self.cfg.wow_path).flavors()] if self.cfg.wow_path else []
-        except OSError:
-            folders = []
-        return folders or [f.folder for f in self.flavors]
-
-    # b (BlacklistAction): the highlighted addon in its flavor, on or off the tool's blacklist
-    def blacklist_ready(self) -> bool:
-        return self.idle and self.scan is not None
-
-    def blacklist_target(self, node: TreeNode | None) -> tuple[str, str] | None:
-        file = self._file_of(node)
-        return None if file is None else (file.flavor.folder, file.addon)
-
-    def toggle_blacklist(self, flavor: str, addon: str) -> bool:
-        self.settings = load_settings(self.tool_cfg)
-        self.settings.blacklist, listed = toggle_pair(self.settings.blacklist, flavor, addon, self._flavor_folders())
-        save_settings(self.tool_cfg, self.settings, source="review")
-        log_event("ace.blacklist_changed", flavor=flavor, addon=addon, blacklisted=listed)
-        return listed
-
-    def blacklist_changed(self) -> None:
-        self._drop_locked()
-        self._schedule_rebuild()
-
-    def action_edit_blacklist(self) -> None:
-        """The blacklist tree for the reviewed flavors; what it saves is written at once."""
-        if not self.idle or self.wow_folder_changed():
-            return
-        self.settings = load_settings(self.tool_cfg)
-        self.app.push_screen(BlacklistScreen(self.cfg, self.flavors, self.settings.blacklist),
-                             self._blacklist_edited)
-
-    def _blacklist_edited(self, pairs: list[Pair] | None) -> None:
-        if pairs is None:
-            return
-        self.settings = load_settings(self.tool_cfg)
-        self.settings.blacklist = pairs
-        save_settings(self.tool_cfg, self.settings, source="review")
-        log_event("ace.blacklist_changed", pairs=format_blacklist(pairs))
-        self.notify("Blacklist saved.")
-        self._drop_locked()
-        self._schedule_rebuild()
-
-    def action_unlock(self) -> None:
-        if not self.idle or self.scan is None:
-            return
-        file = self._file_at_cursor()
-        if file is None:
-            return
-        flavor, addon = file.flavor.folder, file.addon
-        if not self._blacklisted(flavor, addon):
-            self.notify(f"{addon} is not blacklisted.")
-            return
-        pair = (flavor.casefold(), addon.casefold())
-        unlocked = pair not in self.unlocked
-        if unlocked:
-            self.unlocked.add(pair)
-        else:
-            self.unlocked.discard(pair)
-        log_event("ace.unlocked", flavor=flavor, addon=addon, unlocked=unlocked)
-        self.notify(f"{addon} is {'unlocked for this session' if unlocked else 'locked again'}.")
-        self._drop_locked()
-        self._schedule_rebuild()
-
-    def _drop_locked(self) -> bool:
-        """A blacklisted (locked) addon is never changed: drop its pending changes and its ticks, and say so.
-        True when something was dropped."""
-        if self.staging is None:
-            return False
-        files = {k: self.staging.state(k[1]).file for k in self.ticked}
-        locked = {k for k, f in files.items() if self.locked(f.flavor.folder, f.addon)}
-        self.ticked -= locked
-        dropped = self.staging.drop_locked()
-        if dropped:
-            self.notify(f"Dropped the pending changes of {', '.join(dropped)}: blacklisted addons are never "
-                        "changed.", title="Blacklisted", severity="warning", timeout=10)
-        return bool(dropped or locked)
-
-    def _reload_settings(self) -> None:
-        """Read the settings again (changed with `s`): a newly blacklisted addon loses its pending changes."""
-        self.settings = load_settings(self.tool_cfg)
-        if self._drop_locked() and self.is_attached:
-            self.refresh_view()
-
-    # --- staging -------------------------------------------------------------------------------------
-    def _ready(self) -> bool:
-        return self.idle and self.staging is not None and not self.wow_folder_changed()
-
-    def _addon_name(self, key: DbKey) -> str:
-        """The addon, with its database when its file has several, and its flavor and account when the same
-        addon is in another one too (All flavors, or a flavor with several accounts)."""
-        assert self.staging is not None
-        state = self.staging.state(key)
-        name = state.file.addon
-        if sum(1 for k in self.staging.states if k.path == key.path) > 1:
-            name += f" ({key.sv_name})"
-        others = [s.file for s in self.staging.states.values()
-                  if s.file.addon.casefold() == state.file.addon.casefold() and s.file.path != key.path]
-        if others:
-            where = [state.file.account] + ([state.file.owner] if state.file.character is not None else [])
-            if any(f.flavor != state.file.flavor for f in others):
-                where.insert(0, flavor_name(state.file.flavor.folder))
-            name += f" [{' · '.join(where)}]"
-        return name
-
-    def _targets(self, keys: Iterable[DbKey], exclude: dict[DbKey, list[str]] | None = None) -> list[str]:
-        """"Default" first, then every profile name of these databases, minus the ones being deleted (a profile
-        deleted in any of them can't take their characters)."""
-        assert self.staging is not None
-        gone = {n for names in (exclude or {}).values() for n in names}
-        names: list[str] = [] if DEFAULT in gone else [DEFAULT]
-        for key in keys:
-            names += [n for n in self.staging.state(key).names() if n not in gone and n not in names]
-        return names
-
-    def _staged(self, result: OpResult) -> None:
-        """After an operation: say what was refused and noted (one notification each, however many databases),
-        clear the ticks of the databases it changed and show the new pending changes."""
-        assert self.staging is not None
-        if result.refused:
-            lines = [f"{self._addon_name(key)}: {reason}" for key, reason in result.refused]
-            self.notify(self._lines(lines), title=f"Not done ({len(lines)})", severity="warning", timeout=15)
-        changed = set(result.applied)
-        self.ticked = {k for k in self.ticked if k[1] not in changed}
-        self.refresh_view()
-        if result.notes:
-            self.app.push_screen(InfoScreen("Notes", self._notes_by_message(result.notes)))
-
-    @staticmethod
-    def _notes_by_message(notes: list[str]) -> dict[str, list[str]]:
-        """Notes ("<addon>: <message>") grouped by message, with the addons it concerns under it."""
-        groups: dict[str, list[str]] = {}
-        for note in dict.fromkeys(notes):
-            addon, sep, message = note.partition(": ")
-            if not sep:
-                groups.setdefault(note, [])
-                continue
-            message = message.rstrip(".")
-            groups.setdefault(message[:1].upper() + message[1:], []).append(addon)
-        return groups
-
-    @staticmethod
-    def _lines(lines: list[str], most: int = 8) -> str:
-        shown = lines[:most]
-        if len(lines) > most:
-            shown.append(f"… and {len(lines) - most} more")
-        return "\n".join(shown)
-
-    def action_delete(self) -> None:
-        if not self._ready():
-            return
-        assert self.staging is not None
-        selection = self.selected_profiles()
-        if not selection:
-            self.notify("Tick or highlight a profile first")
-            return
-        lines = []
-        for key, names in selection.items():
-            state = self.staging.state(key)
-            moved = sum(len(state.users(n)) for n in names)
-            lines.append(f"{self._addon_name(key)}: {', '.join(names)} ({plural(moved, 'character')} move)")
-        body = "\n".join(["Delete these profiles and move their characters to the profile chosen below:", *lines,
-                          *self._hidden_line("p", "profile")])
-
-        def done(target: str | None) -> None:
-            if target is not None and self.staging is not None:
-                self._staged(self.staging.delete(selection, target))
-        self.app.push_screen(TargetScreen("Delete profiles", body, self._targets(selection, selection)), done)
-
-    def action_assign(self) -> None:
-        if not self._ready():
-            return
-        assert self.staging is not None
-        selection = self.selected_chars()
-        if not selection:
-            self.notify("Tick or highlight a character first")
-            return
-        lines = [f"{self._addon_name(key)}: {plural(len(chars), 'character')}" for key, chars in selection.items()]
-        body = "\n".join(["Move these characters to the profile chosen below:", *lines,
-                          *self._hidden_line("c", "character")])
-
-        def done(target: str | None) -> None:
-            if target is not None and self.staging is not None:
-                self._staged(self.staging.assign(selection, target))
-        self.app.push_screen(TargetScreen("Assign a profile", body, self._targets(selection)), done)
-
-    def _highlighted_profile(self) -> tuple[DbKey, str] | None:
-        node = self.query_one("#profiles", Tree).cursor_node
-        data = node.data if node is not None else None
-        if data is None or data[0] != "profile":
-            self.notify("Highlight a profile")
-            return None
-        return data[1], data[2]
-
-    def _name_check(self, key: DbKey) -> Callable[[str], str | None]:
-        def check(name: str) -> str | None:
-            problem = valid_name(name)
-            if problem is None and self.staging is not None and self.staging.state(key).taken(name):
-                problem = f'"{name}" is already a profile of this database.'
-            return problem
-        return check
-
-    def action_rename(self) -> None:
-        if not self._ready():
-            return
-        picked = self._highlighted_profile()
-        if picked is None:
-            return
-        key, name = picked
-
-        def done(new: str | None) -> None:
-            if new is not None and self.staging is not None:
-                self._staged(self.staging.rename(key, name, new))
-        body = f'{self._addon_name(key)}: rename "{name}". Its characters follow it.'
-        self.app.push_screen(NameScreen("Rename a profile", body, name, self._name_check(key)), done)
-
-    def action_copy(self) -> None:
-        if not self._ready():
-            return
-        picked = self._highlighted_profile()
-        if picked is None:
-            return
-        key, name = picked
-
-        def done(new: str | None) -> None:
-            if new is not None and self.staging is not None:
-                self._staged(self.staging.copy(key, name, new))
-        body = f'{self._addon_name(key)}: copy "{name}" (its settings) under a new name.'
-        self.app.push_screen(NameScreen("Copy a profile", body, f"{name} copy", self._name_check(key)), done)
-
-    def action_remove_leftovers(self) -> None:
-        if not self._ready():
-            return
-        assert self.staging is not None
-        staging = self.staging
-        selection = {key: [c for c in chars if c in staging.state(key).leftovers]
-                     for key, chars in self.selected_chars().items()}
-        selection = {key: chars for key, chars in selection.items() if chars}
-        if not selection:
-            self.notify("Tick or highlight a leftover character first")
-            return
-        groups = {self._addon_name(key): chars for key, chars in selection.items()}
-        body = "These characters have no folder in WTF any more. Remove their entries from these addons:"
-
-        def done(ok: bool | None) -> None:
-            if ok and self.staging is not None:
-                self._staged(self.staging.remove_leftovers(selection))
-        self.app.push_screen(ConfirmScreen("Remove leftover characters?", body, tuple(self._hidden_line(
-            "c", "leftover character", lambda k: k[2] in staging.state(k[1]).leftovers)), kind="destructive", groups=groups), done)
-
-    def _databases(self) -> list[DbKey]:
-        """The databases of the ticked keys, else of the highlighted node's addon or database."""
-        if self.ticked:
-            return sorted({k[1] for k in self.ticked}, key=lambda k: (str(k.path), k.sv_name))
-        node = self.query_one("#profiles", Tree).cursor_node
-        data = node.data if node is not None else None
-        if data is not None and data[0] == "addon":
-            return [DbKey(data[1].file.path, db.sv_name) for db in data[1].dbs]
-        if data is not None and len(data) > 1 and isinstance(data[1], DbKey):
-            return [data[1]]
-        return []
-
-    def _tick_leftovers(self) -> None:
-        assert self.staging is not None
-        staging = self.staging
-        visible = self._tick_keys(self.query_one("#profiles", Tree).root)
-        leftovers = {k for k in visible if k[0] == "c" and k[2] in staging.state(k[1]).leftovers}
-        if not leftovers:
-            self.notify("No leftover characters are shown.")
-            return
-        self.ticked.update(leftovers)
-        log_event("ui.selection", screen="ace_review", control="tick_leftovers", value=len(leftovers))
-        self._refresh_labels()
-
-    def action_more(self) -> None:
-        if not self._ready():
-            return
-
-        def done(choice: str | None) -> None:
-            if choice is None or self.staging is None:
-                return
-            keys = {"discard": self.action_discard, "rename": self.action_rename, "copy": self.action_copy,
-                    "blacklist": self.action_blacklist, "edit_blacklist": self.action_edit_blacklist,
-                    "unlock": self.action_unlock, "switch_view": self.action_switch_view,
-                    "filter": self.action_focus_filter, "tick_leftovers": self._tick_leftovers,
-                    "select_all": self.action_select_all, "select_none": self.action_select_none}
-            if choice in keys:
-                keys[choice]()
-        self.app.push_screen(ActionsScreen(), done)
-
-    def _whole_databases(self, operation: str) -> None:
-        """Run a Staging operation (keep_only_default, everyone_to_default) on whole databases: the ticked ones,
-        else the highlighted addon's or database."""
-        if not self._ready():
-            return
-        assert self.staging is not None
-        keys = self._databases()
-        if not keys:
-            self.notify("Tick or highlight an addon first")
-            return
-        for line in self._hidden_line():  # staged at once, no popup: said in a toast
-            self.notify(line, severity="warning")
-        self._staged(getattr(self.staging, operation)(keys))
-
-    def action_keep_default(self) -> None:
-        self._whole_databases("keep_only_default")
-
-    def action_everyone_default(self) -> None:
-        self._whole_databases("everyone_to_default")
-
-    def action_discard(self) -> None:
-        if not self._ready():
-            return
-        assert self.staging is not None
-        summary = self.staging.summary()
-        if not summary.total:
-            self.notify(NO_PENDING)
-            return
-
-        def done(ok: bool | None) -> None:
-            if ok and self.staging is not None:
-                self.staging.discard()
-                log_event("ui.selection", screen="ace_review", control="discard", value=True)
-                self.refresh_view()
-        self.app.push_screen(ConfirmScreen("Discard the pending changes?",
-                                           f"{pending_text(summary)}. Nothing has been written; the files stay as "
-                                           "they are.", kind="destructive"), done)
-
     # --- runs: apply, dry run, undo ---------------------------------------------------------------------
     def _checking_changed(self) -> None:
         self._refresh_buttons()
@@ -1255,48 +905,21 @@ class ProfileReviewScreen(WarningsHost, BlacklistAction, TreeFilter, RunActions,
         self.app.push_screen(ProfileResultScreen("Undo", undo_summary_rows(result), UNDO_COLUMNS,
                                                  undo_detail_rows(result), self.scope_label), self._after_result)
 
-    # --- recovery ----------------------------------------------------------------------------------
-    def offer_recovery(self, marker: Marker) -> None:
-        """An Apply did not finish: offer to put the originals back."""
-        log_event("ace.recovery_offered", flavor=marker.flavor, files=len(marker.files), started=marker.started)
-        self.app.push_screen(ProfileRecoveryScreen(marker), lambda choice: self._recovery_chosen(marker, choice))
+    # --- recovery (SvRecoveryActions: offer, Leave as is, Put the originals back) ------------------------
+    def recovery_screen(self, marker: Marker) -> Screen:
+        return ProfileRecoveryScreen(marker)
 
-    def _recovery_chosen(self, marker: Marker, choice: str | None) -> None:
-        root = resolve_root(load_settings(self.tool_cfg), self.cfg.wow_path)
-        if root is None or choice not in ("put_back", "leave"):
-            return  # closed without a choice: offered again at the next scan
-        if choice == "leave":
-            if leave(marker, root=root):
-                self.marker = None
-            else:  # the marker stays (another program holds it): offered again, and the user is told why
-                message, severity = leave_notice()
-                self.notify(message, title="Unfinished change", severity=severity, timeout=15)
-            return
-        if self._backup_dir_refused():
-            return  # the marker stays: offered again at the next scan
-        check = self.check_for([marker.flavor])  # the marker's flavor, which may not be the one reviewed
-        self._check_wow(check, lambda running: self._after_recover_preflight(marker, root, check, running))
+    def recovery_root(self) -> Path | None:
+        return resolve_root(load_settings(self.tool_cfg), self.cfg.wow_path)
 
-    def _after_recover_preflight(self, marker: Marker, root: Path, check: WowCheck,
-                                 running: list[str] | None) -> None:
-        if self._refused_while_running(running, []):
-            return  # the marker stays: offered again at the next scan
-        if self.cfg.wow_path is None:
-            return  # the marker stays: offered again at the next scan (recovery resolves files under the WoW folder)
-        screen = ProfileProgressScreen("Putting the originals back", first_stage="undo")
-        keep_snapshots = self.cfg.keep_backups
-        wow_root, journal_dir = self.cfg.wow_path, resolve_journal_dir(self.cfg.wow_path)
-        self.start_run(screen, lambda: recover(marker, wow_root=wow_root, root=root, journal_dir=journal_dir,
-                                               keep_snapshots=keep_snapshots, wow_check=check,
-                                               progress=screen.report),
-                       self._recovered, name="recover", failure="Putting the originals back stopped",
-                       stale_on_crash=True, expected=(UndoError,))
+    def run_leave(self, marker: Marker, *, root: Path) -> bool:
+        return leave(marker, root=root)
 
-    def _recovered(self, result: UndoResult) -> None:
-        if not result.marker_left:
-            self.marker = None
-        message, severity = recovered_notice(result)
-        self.notify(message, title="Unfinished change", severity=severity, timeout=15)
+    def run_recover(self, marker: Marker, **kwargs) -> UndoResult:
+        return recover(marker, **kwargs)
+
+    def recovery_done(self) -> None:
+        """Read the files again now: the rescan rebuilds the staging."""
         self._stale = False
         self._scan()
 

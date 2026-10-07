@@ -31,8 +31,8 @@ Back to [architecture](../architecture.md#tools).
              on_flavor_done=None) → UndoResult(outcomes, snapshots)
     recover(marker, wow_root, root, journal_dir, keep_snapshots, wow_check, progress) → UndoResult
 
-Modules in `tools/ace3_profile_manager/` (all UI-free except `app.py`, `review_screen.py`, `tree_view.py`, `popups.py`,
-`blacklist_screen.py` and `result_screen.py`): `events`, `settings`, `help` (`HELP`, `GUIDE_URL`), `model`, `scanner`, `ops`, `verify`, `editor`, `multi`,
+Modules in `tools/ace3_profile_manager/` (all UI-free except `app.py`, `review_screen.py`, `staging_actions.py`,
+`blacklist_actions.py`, `tree_view.py`, `popups.py`, `blacklist_screen.py` and `result_screen.py`): `events`, `settings`, `help` (`HELP`, `GUIDE_URL`), `model`, `scanner`, `ops`, `verify`, `editor`, `multi`,
 `journal`, `undo` and `report` (labels, tags, confirm texts). The write pipeline is core's (`core/sv_apply.py`,
 `sv_journal.py`, `sv_undo.py`, `sv_verify.py`, `sv_report.py`): `editor`, `multi`, `journal` and `undo` are thin
 wrappers passing `SV_TOOL` (`events.py`: name `ace3-profile-manager`, prefix `ace`) and, for `editor`, the per-file
@@ -174,7 +174,11 @@ the marker and shows `leave_notice()`.
 `ProfileSettingsScreen` (backup folder, a `#blacklist-summary` line and **Edit blacklist…**, which opens the
 `BlacklistScreen` and keeps its answer until Save; `validate_backup_dir` errors inline). `s` opens the shared WoW-folder settings, then this tool's (not while a `ProfileSettingsScreen` or a `BlacklistScreen` is on the stack: two Saves would overwrite each other).
 
-- `ProfileReviewScreen` (`review_screen.py`): `TreeFilter` and `ReviewBase`, `two_pane_css`. Left pane `#filters`, one control
+- `ProfileReviewScreen` (`review_screen.py`): `TreeFilter`, `SvRecoveryActions`, `RunActions` and `ReviewBase`,
+  `two_pane_css`, with two mixins of its own (F-007): `staging_actions.ProfileStagingActions` (Delete, Assign, Rename,
+  Copy, Leftovers, Only Default, Everyone → Default, the `m` menu and Discard: each picks its target, asks in a popup
+  and stages) and `blacklist_actions.ProfileBlacklistActions` (the `BlacklistAction` hooks, **Blacklist…**, `u` and
+  dropping a locked addon's pending changes and ticks). Left pane `#filters`, one control
   per row: the shared `RiskBanner` (D37), the View pair under a "View" heading (By addon / By character), the Show boxes under a "Show" heading, the
   shared `FilterBar` (its box id `#search`, `FILTER_SELECTOR`), the `#pending` line (`report.pending_text`, "N pending changes" or `NO_PENDING`) and the
   action row **Apply** (destructive), **Dry run**, **Rescan**, **Undo last change** (revert). Right:
@@ -222,7 +226,9 @@ the marker and shows `leave_notice()`.
   in red; Yes red for Apply and Undo, cyan for a dry run).
 - `ProfileProgressScreen(title, dry_run=, first_stage=, flavors=)` (ids `ace-*`, `report.STAGE_TITLES`; Apply feeds `report_unit`, a row per flavor in turn) and `ProfileRecoveryScreen` (the shared `UnfinishedRunScreen`: Put the originals
   back / Leave as is; Esc leaves the marker for the next scan). The review's apply, undo and recovery runs go through
-  the shared `RunActions` (`ui/review.py`).
+  the shared `RunActions` (`ui/review.py`); the recovery flow itself (offer, Leave as is, Put the originals back, the
+  notice) is the shared `SvRecoveryActions`, the screen supplying its hooks (`recovery_screen` is this popup,
+  `recovery_done` clears `_stale` and rescans, which rebuilds the staging).
 - `ProfileResultScreen` (`result_screen.py`): the shared `ResultScreen` built from rows; `#result-summary` (`apply_summary_rows` or
   `undo_summary_rows`: zips and the journal are named inside the backup folder, `sv_report.in_backup_folder`, which
   has a "Backup folder" row of its own) above `#result-detail` (`DETAIL_COLUMNS` or `UNDO_COLUMNS`); Rescan, Other flavor,
