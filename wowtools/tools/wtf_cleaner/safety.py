@@ -83,8 +83,10 @@ def read_marker(backup_dir: Path | None) -> Marker | None:
         return None
 
 
-def clear_marker(backup_dir: Path) -> None:
-    core_marker.clear_marker(backup_dir, MARKER_NAME)
+def clear_marker(backup_dir: Path) -> bool:
+    """Remove the marker; False when it is still there after the retries. Callers may ignore it: a leftover marker
+    here only produces a notice at the next start."""
+    return core_marker.clear_marker(backup_dir, MARKER_NAME)
 
 
 def restore_deleted(snapshot: Path, flavor: Flavor, rel_paths: list[str]) -> list[str]:

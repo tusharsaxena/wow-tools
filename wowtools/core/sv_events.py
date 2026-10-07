@@ -25,6 +25,8 @@ _EVENTS: dict[str, tuple[str, str]] = {
     "backup_failed": ("error", "The zip of the original files failed; nothing was changed."),
     "earlier_unfinished": ("error", "Apply was refused: an earlier Apply did not finish (its crash marker is there); nothing was changed."),
     "marker_failed": ("error", "The crash marker could not be written; nothing was changed."),
+    "marker_left": ("warning", "Apply finished but its crash marker could not be removed (another program held it); the next scan offers the run as unfinished, and putting the originals back then only removes the marker."),
+    "marker_stale": ("info", "Recovery found that the run named by the crash marker had finished (its journal says so for every file it wrote, and the files it skipped are not at what it would have written): no file was changed, only the marker is removed (logged at warning with marker_left when it could not be removed either: the next scan offers it again)."),
     "file_edited": ("info", "A SavedVariables file was rewritten with the pending changes."),
     "would_edit": ("info", "Dry run: a file that would be rewritten, with its changes (checked, not written)."),
     "verify_failed": ("error", "An edited file did not re-read as expected; it was not written and the run stopped."),
@@ -44,7 +46,7 @@ _EVENTS: dict[str, tuple[str, str]] = {
     "undo_failed": ("error", "Undo or recovery: a file could not be put back (its zip is missing or does not match)."),
     "undo_completed": ("info", "Undo last change finished (logged at warning if any file was skipped or failed)."),
     "recovery_offered": ("warning", "A marker from an Apply that did not finish was found by a scan (on opening or a rescan), or Apply was pressed while it is there."),
-    "recovery_done": ("info", "The user chose what to do about an unfinished Apply (put back or leave)."),
+    "recovery_done": ("info", "The user chose what to do about an unfinished Apply (put back or leave); logged at warning with marker_left when its crash marker could not be removed (the next scan offers it again)."),
 }
 
 

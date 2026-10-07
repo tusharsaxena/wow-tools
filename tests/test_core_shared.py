@@ -10,6 +10,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+from unittest.mock import patch
 
 from tests.fixtures import build_wow_tree
 from wowtools.core import marker
@@ -152,9 +153,18 @@ class MarkerTest(unittest.TestCase):
                          {"zip": str(Path("/x/y.zip")), "files": ["a"], "pid": 7})
         self.assertFalse(path.with_name("run.json.partial").exists())
         self.assertEqual(marker.read_marker(self.folder, "run.json")["pid"], 7)
-        marker.clear_marker(self.folder, "run.json")
+        self.assertTrue(marker.clear_marker(self.folder, "run.json"))
         self.assertFalse(path.exists())
-        marker.clear_marker(self.folder, "run.json")  # already gone: no error
+        self.assertTrue(marker.clear_marker(self.folder, "run.json"))  # already gone: no error
+
+    def test_clear_marker_retries_then_reports_a_marker_it_could_not_remove(self):
+        marker.write_marker(self.folder, "run.json", {"pid": 7})
+        with patch("wowtools.core.marker.os.remove", side_effect=PermissionError("held")) as remove, \
+                patch("wowtools.core.marker.time.sleep") as slept:
+            self.assertFalse(marker.clear_marker(self.folder, "run.json", waits=(0.01, 0.02)))
+        self.assertEqual(remove.call_count, 3)
+        self.assertEqual([c.args[0] for c in slept.call_args_list], [0.01, 0.02])
+        self.assertTrue((self.folder / "run.json").exists())
 
     def test_unreadable_marker_is_none(self):
         self.assertIsNone(marker.read_marker(None, "run.json"))

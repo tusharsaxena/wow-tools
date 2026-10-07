@@ -44,8 +44,8 @@ from wowtools.tools.sv_browser.ops import (FieldEdit, Plan, Staging, key_input, 
 from wowtools.tools.sv_browser.popups import (NOT_TYPABLE, EditValueScreen, RenameKeyScreen, SearchScreen,
                                               delete_confirm)
 from wowtools.tools.sv_browser.report import (FILE_COLUMNS, STAGE_TITLES, UNDO_COLUMNS, apply_confirm, apply_groups,
-                                              file_rows, recovery_text, summary_rows, undo_confirm, undo_detail_rows,
-                                              undo_summary_rows)
+                                              file_rows, leave_notice, recovered_notice, recovery_text, summary_rows,
+                                              undo_confirm, undo_detail_rows, undo_summary_rows)
 from wowtools.tools.sv_browser.result_screen import TITLE, SvResultScreen
 from wowtools.tools.sv_browser.scanner import FlavorFiles, ScanResult, scan_flavors
 from wowtools.tools.sv_browser.search import (REPLACE_BOOLEAN, REPLACE_NUMBER, REPLACE_STRING, Hit, SearchResult,
@@ -1320,8 +1320,11 @@ class SvReviewScreen(WarningsHost, TreeFilter, RunActions, ReviewBase, Screen[st
         if root is None or choice not in ("put_back", "leave"):
             return  # closed without a choice: offered again at the next scan or Apply
         if choice == "leave":
-            leave(marker, root=root)
-            self.marker = None
+            if leave(marker, root=root):
+                self.marker = None
+            else:  # the marker stays (another program holds it): offered again, and the user is told why
+                message, severity = leave_notice()
+                self.notify(message, title="Unfinished change", severity=severity, timeout=15)
             return
         if self._backup_dir_refused():
             return  # the marker stays: offered again
@@ -1344,13 +1347,10 @@ class SvReviewScreen(WarningsHost, TreeFilter, RunActions, ReviewBase, Screen[st
                        stale_on_crash=True, expected=(UndoError,))
 
     def _recovered(self, result: UndoResult) -> None:
-        self.marker = None
-        message = (f"Put back {plural(len(result.restored), 'file')}; left {plural(len(result.skipped), 'file')} "
-                   f"as they are")
-        if result.failed:
-            message += f"; {plural(len(result.failed), 'file')} could not be put back (see the log)"
-        self.notify(message + ".", title="Unfinished change", severity="error" if result.failed else "information",
-                    timeout=15)
+        if not result.marker_left:
+            self.marker = None
+        message, severity = recovered_notice(result)
+        self.notify(message, title="Unfinished change", severity=severity, timeout=15)
         self._mark_stale()
 
     # --- leaving -------------------------------------------------------------------------------

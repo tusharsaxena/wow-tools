@@ -19,7 +19,8 @@ from wowtools.core.fsutil import atomic_write_bytes
 from wowtools.core.install import WowInstall
 from wowtools.core.luasv import parse
 from wowtools.core.sv_events import SvTool, sv_events
-from wowtools.core.sv_report import apply_summary_rows, recovery_text, undo_detail_rows, undo_summary_rows
+from wowtools.core.sv_report import (apply_summary_rows, leave_notice, recovered_notice, recovery_text, undo_detail_rows,
+                                    undo_summary_rows)
 from wowtools.core.sv_verify import check_assignments, gaps, rest_outside, same_outside
 from wowtools.core.svfiles import SvFile, sha256_of
 
@@ -68,11 +69,11 @@ class PipelineTest(unittest.TestCase):
     def apply_one(self, flavor, units, **kwargs):
         return sv_apply.apply_flavor(TOOL, flavor, units, compile_swap, no_problems, **kwargs)
 
-    def run_apply(self, **kwargs):
+    def run_apply(self, apply_one=None, **kwargs):
         options = {"root": self.root, "journal_dir": self.journals, "keep_journals": 5, "keep_snapshots": 2,
                    "dry_run": False, "now": WHEN}
         options.update(kwargs)
-        return sv_apply.apply_flavors(TOOL, [(self.flavor, self.units())], self.apply_one, **options)
+        return sv_apply.apply_flavors(TOOL, [(self.flavor, self.units())], apply_one or self.apply_one, **options)
 
     def test_events_are_named_from_the_prefix(self):
         names = set(sv_events("xyz"))
@@ -169,6 +170,240 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual({p: p.read_bytes() for p in self.paths}, self.originals)
         self.assertIsNone(sv_apply.read_marker(self.root))
         self.assertIsNone(TOOL.journals.latest_undoable(self.journals))
+
+    def test_a_marker_that_cannot_be_removed_is_reported(self):
+        real_remove = os.remove
+
+        def remove(path, *args, **kwargs):
+            if Path(path).name == sv_apply.MARKER_NAME:
+                raise PermissionError(13, "held by another program", str(path))
+            return real_remove(path, *args, **kwargs)
+        with patch("wowtools.core.marker.os.remove", side_effect=remove), \
+                patch("wowtools.core.marker.time.sleep") as slept, capture_events() as events:
+            result = self.run_apply()
+        run = result.runs[0].result
+        self.assertTrue(run.marker_left)
+        self.assertTrue(result.marker_left)
+        self.assertTrue(slept.called)  # retried before giving up
+        left = [e for e in events if e["event"] == "tsv.marker_left"]
+        self.assertEqual(len(left), 1)
+        self.assertEqual(TOOL_REGISTRIES[TOOL.name]["tsv.marker_left"].level, "warning")
+        self.assertEqual(len(result.edited), 2)
+        self.assertIsNotNone(sv_apply.read_marker(self.root))
+        self.assertIn("Crash marker", dict(apply_summary_rows(result)))
+
+    def test_a_marker_removed_after_a_retry_is_not_reported(self):
+        real_remove, calls = os.remove, []
+
+        def remove(path, *args, **kwargs):
+            if Path(path).name == sv_apply.MARKER_NAME and not calls:
+                calls.append(path)
+                raise PermissionError(13, "held for a moment", str(path))
+            return real_remove(path, *args, **kwargs)
+        with patch("wowtools.core.marker.os.remove", side_effect=remove), \
+                patch("wowtools.core.marker.time.sleep"), capture_events() as events:
+            result = self.run_apply()
+        self.assertFalse(result.marker_left)
+        self.assertNotIn("tsv.marker_left", [e["event"] for e in events])
+        self.assertIsNone(sv_apply.read_marker(self.root))
+        self.assertNotIn("Crash marker", dict(apply_summary_rows(result)))
+
+    def finished_run_with_its_marker(self):
+        """A successful Apply whose crash marker is written back by hand, as if removing it had failed."""
+        captured = []
+        real_write = sv_apply.write_marker
+
+        def keep(root, marker):
+            captured.append(marker)
+            real_write(root, marker)
+        with patch("wowtools.core.sv_apply.write_marker", side_effect=keep):
+            result = self.run_apply()
+        self.assertIsNone(sv_apply.read_marker(self.root))
+        sv_apply.write_marker(self.root, captured[0])
+        return result, sv_apply.read_marker(self.root)
+
+    def test_recovery_of_a_finished_run_changes_nothing(self):
+        result, marker = self.finished_run_with_its_marker()
+        after = {p: p.read_bytes() for p in self.paths}
+        self.assertTrue(all(sha256_of(after[p]) == marker.after[p.relative_to(self.flavor.path).as_posix()]
+                            for p in self.paths))
+        journal_before = result.journal_path.read_bytes()
+        with capture_events() as events:
+            recovered = sv_undo.recover(TOOL, marker, wow_root=self.wow, root=self.root, journal_dir=self.journals,
+                                        now=WHEN, wow_check=lambda: ["Wow.exe"])
+        names = [e["event"] for e in events]
+        self.assertIn("tsv.marker_stale", names)
+        self.assertNotIn("tsv.file_restored", names)
+        self.assertTrue(recovered.stale_marker)
+        self.assertEqual((recovered.outcomes, recovered.snapshots), ([], []))
+        self.assertEqual({p: p.read_bytes() for p in self.paths}, after)
+        self.assertIsNone(sv_apply.read_marker(self.root))
+        self.assertEqual(result.journal_path.read_bytes(), journal_before)  # no rolled_back record
+        self.assertEqual(TOOL.journals.latest_undoable(self.journals), result.journal_path)
+        self.assertIn("Already finished", dict(undo_summary_rows(recovered)))
+        self.assertEqual(recovered_notice(recovered)[1], "information")
+        self.assertTrue(recovered_notice(recovered)[0].startswith("That change had finished"))
+
+    def test_recovery_still_puts_back_a_run_whose_journal_misses_a_file(self):
+        result, marker = self.finished_run_with_its_marker()
+        rel = self.paths[1].relative_to(self.flavor.path).as_posix()
+        sv_journal.core.append_record(result.journal_path, {"action": "rolled_back", "flavor": "_retail_",
+                                                            "rels": [rel]})
+        recovered = sv_undo.recover(TOOL, marker, wow_root=self.wow, root=self.root, journal_dir=self.journals,
+                                    now=WHEN)
+        self.assertFalse(recovered.stale_marker)
+        self.assertEqual(len(recovered.restored), 2)
+        self.assertEqual({p: p.read_bytes() for p in self.paths}, self.originals)
+
+    def test_recovery_of_a_finished_run_that_skipped_a_file_changes_nothing(self):
+        """A file that changed between the check and the write loop is skipped (no edited entry); a finished run
+        is still recognised when that file is not at what the run would have written, so nothing is put back."""
+        captured, real_write = [], sv_apply.write_marker
+
+        def keep(root, marker):
+            captured.append(marker)
+            real_write(root, marker)
+            self.paths[1].write_bytes(b'DB = {\n\t["x"] = 9,\n}\n')  # WoW saves it before the loop reaches it
+        with patch("wowtools.core.sv_apply.write_marker", side_effect=keep):
+            result = self.run_apply()
+        self.assertEqual((len(result.edited), len(result.skipped)), (1, 1))
+        sv_apply.write_marker(self.root, captured[0])  # as if removing it had failed
+        marker = sv_apply.read_marker(self.root)
+        after = {p: p.read_bytes() for p in self.paths}
+        with capture_events() as events:
+            recovered = sv_undo.recover(TOOL, marker, wow_root=self.wow, root=self.root, journal_dir=self.journals,
+                                        now=WHEN)
+        self.assertTrue(recovered.stale_marker)
+        self.assertNotIn("tsv.file_restored", [e["event"] for e in events])
+        self.assertEqual({p: p.read_bytes() for p in self.paths}, after)
+        self.assertIsNone(sv_apply.read_marker(self.root))
+
+    def test_recovery_of_a_finished_run_whose_skipped_file_is_at_its_after_is_put_back(self):
+        """The skipped file reads as what the run would have written: the journal cannot tell, so recover as before."""
+        captured, real_write = [], sv_apply.write_marker
+
+        def keep(root, marker):
+            captured.append(marker)
+            real_write(root, marker)
+            self.paths[1].write_bytes(b'DB = {\n\t["x"] = 3,\n}\n')
+        with patch("wowtools.core.sv_apply.write_marker", side_effect=keep):
+            self.run_apply()
+        marker = captured[0]
+        self.paths[1].write_bytes(self.originals[self.paths[1]].replace(b"1", b"2"))  # now at marker.after
+        sv_apply.write_marker(self.root, marker)
+        recovered = sv_undo.recover(TOOL, marker, wow_root=self.wow, root=self.root, journal_dir=self.journals,
+                                    now=WHEN)
+        self.assertFalse(recovered.stale_marker)
+        self.assertEqual(len(recovered.restored), 2)
+
+    def stopped_run(self, write):
+        """A real apply_flavors run that stops while writing, and whose roll-back fails: the journal ends with
+        "finished" (the run is over) but the flavor did not complete, so its marker is kept."""
+        def apply_one(flavor, units, **kwargs):
+            return sv_apply.apply_flavor(TOOL, flavor, units, compile_swap, no_problems, write=write, **kwargs)
+        with patch("wowtools.core.sv_apply.restore_original", side_effect=OSError("no")):
+            result = self.run_apply(apply_one=apply_one)
+        self.assertIsNotNone(result.stopped)
+        self.assertTrue(sv_journal.read_edit_journal(result.journal_path).finished)
+        marker = sv_apply.read_marker(self.root)
+        self.assertIsNotNone(marker)
+        return marker
+
+    def test_recovery_after_a_stopped_run_whose_roll_back_failed_puts_back(self):
+        def write(path, data):
+            if path == self.paths[0]:
+                atomic_write_bytes(path, data)
+            else:
+                raise OSError("killed")
+        marker = self.stopped_run(write)
+        with capture_events() as events:
+            recovered = sv_undo.recover(TOOL, marker, wow_root=self.wow, root=self.root, journal_dir=self.journals,
+                                        now=WHEN)
+        self.assertNotIn("tsv.marker_stale", [e["event"] for e in events])
+        self.assertFalse(recovered.stale_marker)
+        self.assertEqual(len(recovered.restored), 1)
+        self.assertEqual({p: p.read_bytes() for p in self.paths}, self.originals)
+        self.assertIsNone(sv_apply.read_marker(self.root))
+
+    def test_recovery_after_a_failed_read_back_is_not_taken_as_finished(self):
+        def write(path, data):
+            atomic_write_bytes(path, data if path == self.paths[0] else b"garbage")
+        marker = self.stopped_run(write)
+        recovered = sv_undo.recover(TOOL, marker, wow_root=self.wow, root=self.root, journal_dir=self.journals,
+                                    now=WHEN)
+        self.assertFalse(recovered.stale_marker)
+        self.assertEqual(self.paths[0].read_bytes(), self.originals[self.paths[0]])  # at its after: put back
+        self.assertEqual(self.paths[1].read_bytes(), b"garbage")  # neither original nor after: never overwritten
+        self.assertEqual([o.rel for o in recovered.skipped],
+                         [self.paths[1].relative_to(self.flavor.path).as_posix()])
+
+    def failing_marker_remove(self):
+        real_remove = os.remove
+
+        def remove(path, *args, **kwargs):
+            if Path(path).name == sv_apply.MARKER_NAME:
+                raise PermissionError(13, "held by another program", str(path))
+            return real_remove(path, *args, **kwargs)
+        return patch("wowtools.core.marker.os.remove", side_effect=remove)
+
+    def test_stale_recovery_reports_a_marker_it_could_not_remove(self):
+        _, marker = self.finished_run_with_its_marker()
+        with self.failing_marker_remove(), patch("wowtools.core.marker.time.sleep"), capture_events() as events:
+            recovered = sv_undo.recover(TOOL, marker, wow_root=self.wow, root=self.root, journal_dir=self.journals,
+                                        now=WHEN)
+        self.assertTrue(recovered.stale_marker)
+        self.assertTrue(recovered.marker_left)
+        self.assertIsNotNone(sv_apply.read_marker(self.root))
+        stale = [e for e in events if e["event"] == "tsv.marker_stale"]
+        self.assertEqual(len(stale), 1)
+        self.assertEqual(stale[0]["level"], "warning")
+        self.assertTrue(stale[0]["data"]["marker_left"])
+        message, severity = recovered_notice(recovered)
+        self.assertEqual(severity, "warning")
+        self.assertNotIn("marker was removed", message)
+        self.assertIn("could not be removed", message)
+        self.assertIn("Crash marker", dict(undo_summary_rows(recovered)))
+
+    def test_recovery_reports_a_marker_it_could_not_remove_after_putting_back(self):
+        def write(path, data):
+            if path == self.paths[0]:
+                atomic_write_bytes(path, data)
+            else:
+                raise OSError("killed")
+        journal = sv_journal.EditJournal(self.journals / "journal-20261007-120000.jsonl", {"kind": "apply"})
+        self.addCleanup(journal.close)
+        with patch("wowtools.core.sv_apply.restore_original", side_effect=OSError("no")), \
+                self.assertRaises(sv_apply.ApplyError):
+            sv_apply.apply_flavor(TOOL, self.flavor, self.units(), compile_swap, no_problems, root=self.root,
+                                  journal=journal, dry_run=False, keep_snapshots=2, now=WHEN, write=write)
+        journal.close()
+        marker = sv_apply.read_marker(self.root)
+        with self.failing_marker_remove(), patch("wowtools.core.marker.time.sleep"), capture_events() as events:
+            result = sv_undo.recover(TOOL, marker, wow_root=self.wow, root=self.root, journal_dir=self.journals,
+                                     now=WHEN)
+        self.assertEqual(len(result.restored), 1)
+        self.assertTrue(result.marker_left)
+        done = [e for e in events if e["event"] == "tsv.recovery_done"]
+        self.assertEqual(done[0]["level"], "warning")
+        self.assertTrue(done[0]["data"]["marker_left"])
+        message, severity = recovered_notice(result)
+        self.assertEqual(severity, "warning")
+        self.assertIn("could not be removed", message)
+
+    def test_leave_reports_a_marker_it_could_not_remove(self):
+        _, marker = self.finished_run_with_its_marker()
+        with self.failing_marker_remove(), patch("wowtools.core.marker.time.sleep"), capture_events() as events:
+            self.assertFalse(sv_undo.leave(TOOL, marker, root=self.root))
+        done = [e for e in events if e["event"] == "tsv.recovery_done"]
+        self.assertEqual((done[0]["data"]["choice"], done[0]["data"]["marker_left"], done[0]["level"]),
+                         ("leave", True, "warning"))
+        self.assertIsNotNone(sv_apply.read_marker(self.root))
+        self.assertIn("could not be removed", leave_notice()[0])
+        self.assertEqual(leave_notice()[1], "warning")
+        with capture_events() as events:
+            self.assertTrue(sv_undo.leave(TOOL, marker, root=self.root))
+        self.assertFalse(events[0]["data"]["marker_left"])
+        self.assertIsNone(sv_apply.read_marker(self.root))
 
     def test_recovery_text_names_the_run_and_its_zip(self):
         marker = sv_apply.Marker("_retail_", self.flavor.path, self.root / "edited.zip", {"a": "0", "b": "1"},

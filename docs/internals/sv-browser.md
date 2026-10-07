@@ -76,8 +76,9 @@ Modules in `tools/sv_browser/` (all UI-free except `app.py`, `review_screen.py`,
 - `editor` (`flavor_plan(plan)` groups `Plan.units()` by flavor in plan order; `apply_flavor` = core
   `sv_apply.apply_flavor(SV_TOOL, ..., compile_file, verify_edit, started={files, edits})`; `apply_plan` = core
   `apply_flavors` under one journal), `journal` (`SV_TOOL.journals`), `undo` (`undo_run`, `recover`,
-  `pending_recovery(root)` = the crash marker, `leave(marker, root=)` clears it and logs `svb.recovery_done`
-  `choice="leave"`) and `report` (`DISCLAIMER`, `apply_confirm(plan, dry_run=)` with the array-shift and (Apply)
+  `pending_recovery(root)` = the crash marker, `leave(marker, root=)` = core `sv_undo.leave`: clears it and logs
+  `svb.recovery_done` `choice="leave"`, False (and `marker_left`, at warning) when the marker could not be removed:
+  the review keeps it and shows `leave_notice()`) and `report` (`DISCLAIMER`, `apply_confirm(plan, dry_run=)` with the array-shift and (Apply)
   disclaimer alert lines, `apply_groups` (per flavor, one line per file), `undo_confirm` (the shared one plus
   the disclaimer), `summary_rows`, `file_rows` / `FILE_COLUMNS`) are thin wrappers over the shared pipeline
   (`core/sv_apply.py`, `sv_journal.py`, `sv_undo.py`, `sv_report.py`).

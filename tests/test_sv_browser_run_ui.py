@@ -406,6 +406,25 @@ class RecoveryTest(RunTestBase):
         self.assertIsNone(undo.pending_recovery(self.tool_root))
 
 
+    async def test_leave_that_cannot_remove_the_marker_says_so_and_keeps_it(self):
+        crash_retail(self.root)
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            popup = await self.open_to_recovery(app, pilot)
+            review = app.screen_stack[-2]
+            with patch("wowtools.core.sv_undo.clear_marker", return_value=False), capture_events() as events:
+                popup.choose("leave")
+                await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertIsNotNone(review.marker)  # still there: Apply offers it again
+            done = [e for e in events if e["event"] == "svb.recovery_done"]
+            self.assertEqual((done[0]["level"], done[0]["data"]["marker_left"]), ("warning", True))
+            notes = [n for n in app._notifications if n.title == "Unfinished change"]
+            self.assertTrue(notes and "could not be removed" in notes[-1].message)
+            self.assertEqual(notes[-1].severity, "warning")
+        self.assertIsNotNone(undo.pending_recovery(self.tool_root))
+
+
 class KeptPendingTest(RunTestBase):
     """A run refused before it wrote anything keeps the staged edits and ticks, and the review still shows them."""
 

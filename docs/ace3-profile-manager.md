@@ -382,6 +382,12 @@ originals are. It **never repairs anything on its own**. You choose:
 If you close the message with `Esc`, it's shown again next time, and when you press **Apply**: a new change
 can't start until you've chosen, since it would lose the way back for the earlier one.
 
+The message can also appear after a change that did finish, when another program (a virus scanner or OneDrive)
+held the app's reminder file so it could not be removed; the change's result says so. **Put the originals back**
+then sees the change finished and only removes the reminder: no file is changed, and Undo still offers the change.
+If the reminder still can't be removed (after **Put the originals back** or **Leave as is**), a notice says so and
+the message comes back at the next scan; close the other program and choose again.
+
 ## Settings
 
 Press `s` in the tool (you get the shared settings first: WoW folder, backups and journals to keep; then this

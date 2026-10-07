@@ -665,6 +665,29 @@ class RunTest(AceAppBase):
             self.assertEqual(path.read_bytes(), original)
             self.assertIsNone(editor.read_marker(root))
 
+    async def test_recovery_leave_that_cannot_remove_the_marker_says_so(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            path = next(k for k in review.staging.states if k.sv_name == "ElvDB").path
+            flavor = WowInstall(self.root).flavor("_retail_")
+            rel = path.relative_to(flavor.path).as_posix()
+            root = self.root / "wow-tools" / "ace3-profile-manager"
+            marker = editor.Marker("_retail_", flavor.path, root / "edited" / "edited-retail-all-x.zip",
+                                   {rel: "a"}, "2026-10-04T12:00:00+00:00", 1, "1.0.0", {rel: "b"})
+            editor.write_marker(root, marker)
+            await pilot.press("r")
+            await settle(app, pilot)
+            self.assertEqual(type(app.screen).__name__, "ProfileRecoveryScreen")
+            with patch("wowtools.core.sv_undo.clear_marker", return_value=False):
+                app.screen.dismiss("leave")
+                await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertIsNotNone(review.marker)
+            self.assertEqual(editor.read_marker(root), marker)
+            notes = [n for n in app._notifications if n.title == "Unfinished change"]
+            self.assertTrue(notes and "could not be removed" in notes[-1].message)
+
 
 def inside(widget, box) -> bool:
     """The widget is drawn whole inside box (and on screen)."""

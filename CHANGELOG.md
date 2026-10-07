@@ -13,6 +13,10 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
     (Windows or WSL) than the one the change was started from: the files are found in the WoW folder you set. If
     that game version is not in your WoW folder, nothing is changed and the unfinished change is still offered,
     instead of every file being reported as gone and the reminder cleared.
+  - When another program (a virus scanner or OneDrive) keeps the app from removing its unfinished-change reminder
+    after an Apply that finished, the result now says so, and **Put the originals back** on the next scan only
+    removes the reminder instead of undoing the finished change. If the reminder still can't be removed then, or
+    after **Leave as is**, a notice says so instead of reporting it removed.
 
 ## [0.1.0] - 2026-10-05
 

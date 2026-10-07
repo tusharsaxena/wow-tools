@@ -112,7 +112,9 @@ lock probe (`probe_lock`; any locked file refuses), whole-WTF snapshot (`core.sn
 per file: recheck, `atomic_write_bytes`, read back, journal `edited` entry. Any failure there (Ctrl+C included)
 puts back every file this run wrote, newest first, records `rolled_back` in the journal and raises `ApplyError`
 (its `result` keeps what was done; a file that could not be put back is `failed`, its detail naming the zip, and
-the marker then stays). Then the marker is cleared and snapshots pruned to `keep_snapshots`. Any refusal before the
+the marker then stays). Then the marker is cleared (`core/marker.clear_marker` tries again after 0.05, 0.1 and 0.2 s;
+a marker still there is `ApplyResult.marker_left`, `ace.marker_left`, and a "Crash marker" result row) and snapshots
+pruned to `keep_snapshots`. Any refusal before the
 writes is an `ApplyError` ending "Nothing was changed."; a flavor that stops ends the run (`ace.flavors_stopped`).
 `apply_flavors` is serial whatever `[general] parallelism` says: the flavors share the one crash marker (one pointer
 for the recovery screen) and the run stops at the first flavor that fails.
@@ -127,6 +129,7 @@ Code: `journal.py`, `undo.py`, on `core/sv_journal.py` and `core/sv_undo.py`. `<
     {"version": 1, "started": iso, "tool": "ace3-profile-manager", "kind": "apply", "flavors": [...], "root": stored, "suite_version": "..."}
     {"action": "edited", "flavor": "_retail_", "path": stored, "rel": "WTF/Account/...", "zip": stored, "sha_before": hex, "sha_after": hex, "size_before": n, "size_after": n, "changes": [...]}
     {"action": "rolled_back", "flavor": "_retail_", "rels": [...]}
+    {"action": "completed", "flavor": "_retail_", "zip": stored}
     {"finished": iso, "entries": n}
     {"undone": iso, "restored": n, "skipped": n}
 
@@ -142,13 +145,26 @@ nothing; `on_flavor` / `on_flavor_done` run in the snapshot's thread, the popup'
 worker's own thread, newest entry first: a file whose SHA-256 is `sha_after` gets
 its original bytes from the zip (checked against `sha_before`, written atomically: "restored"); any other file is
 "skipped: changed since"; the journal is marked undone unless nothing was restored and something failed.
-`recover(marker)` (the recovery popup's "Put the originals back") is guarded the same way and puts back only files
+`recover(marker)` (the recovery popup's "Put the originals back") first looks for a journal that records the
+marker's run as finished (spec R2): it holds a `completed` line for the marker's flavor and zip (Apply writes it once
+that flavor's write loop got through every file, before it removes the marker; never after a failure or Ctrl+C, so
+the run-level `finished` line, written either way, is not used) and an `edited` entry from the marker's zip for every
+file of the marker, except a file the run skipped as changed in its write loop, which counts when it is not at the marker's
+`after` hash. Such a run finished and only its marker was left (Apply logged `ace.marker_left`), so nothing is put
+back: the marker is removed, `ace.marker_stale` is logged and the result has `UndoResult.stale_marker` set; neither
+the flavor check nor the WoW-running and lock guards run, since no file is touched, and the run stays in its
+journal for Undo. Otherwise `recover` is guarded as Undo and puts back only files
 still at the marker's `after` hash, each resolved under the configured WoW folder (`wow_root`), never the marker's
 own `flavor_path` (a marker written on the other OS names a folder this one cannot open); a marker whose flavor is
 not a folder there is refused with "Nothing was changed." and kept; a file at its original is left alone, any other
 is skipped. The files now at their original get a `rolled_back` line in the journal that holds their entries from
 the marker's zip (`journal.record_recovered`), so Undo never offers them again; its snapshot is pruned to
-`keep_snapshots`.
+`keep_snapshots`. When removing the marker fails again (another program still holds it), the result has
+`marker_left` set and `ace.marker_stale` or `ace.recovery_done` is logged at warning with `marker_left`;
+`recovered_notice` then says the marker is still there and the review keeps it, so the next scan offers it again.
+"Leave as is" is `undo.leave(marker, root=)` (core `sv_undo.leave`): it removes the marker and logs
+`ace.recovery_done` `choice="leave"`; when the marker could not be removed it returns False, and the review keeps
+the marker and shows `leave_notice()`.
 
 ## Screens
 

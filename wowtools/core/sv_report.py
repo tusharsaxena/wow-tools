@@ -23,6 +23,15 @@ UNDO_COLUMNS = ("Flavor", "File", "Result")
 # statuses): ui.result_screen.ResultScreen.STATUS_COLOURS of every tool on this pipeline.
 STATUS_COLOURS = (("would change", "accent"), ("changed", "success"), ("restored", "success"),
                   ("put back", "warning"), ("skipped", "warning"), ("failed", "error"))
+# A run that finished but whose crash marker could not be removed (sv_apply marker_left), and recovery finding such a
+# marker (sv_undo marker_stale): nothing is put back then.
+MARKER_LEFT_TEXT = ("could not be removed (another program held it). The next scan offers this change as unfinished; "
+                    "Put the originals back then only removes the marker.")
+STALE_MARKER_TEXT = "only its leftover marker was removed. No file was changed, and Undo still offers it."
+STALE_KEPT_TEXT = "No file was changed, and Undo still offers it."
+# Recovery or Leave as is could not remove the marker either (sv_undo marker_left): the next scan offers it again.
+MARKER_STILL_TEXT = ("Its crash marker could not be removed (another program held it), so the next scan offers this "
+                     "change again.")
 RESULT_TEXT = {"edited": "changed", "would_edit": "would change", "skipped": "skipped", "failed": "failed",
                "rolled_back": "put back"}
 
@@ -60,6 +69,8 @@ def apply_summary_rows(result: MultiApplyResult) -> list[tuple[str, str]]:
         rows.append(("Failed", plural(len(result.failed), "file")))
     if result.stopped:
         rows.append(("Stopped", f"{flavor_name(result.stopped.flavor.folder)}: {result.stopped.error}"))
+    if result.marker_left:
+        rows.append(("Crash marker", MARKER_LEFT_TEXT))
     zips = [(f"{label} ({flavor_name(run.flavor.folder)})", path) for run in result.runs if run.result is not None
             for label, path in (("WTF backup", run.result.snapshot), ("Original files", run.result.backup_zip))
             if path is not None]
@@ -94,12 +105,36 @@ def apply_detail_rows(result: MultiApplyResult) -> list[tuple[str, str, str, str
 
 
 def undo_summary_rows(result: UndoResult) -> list[tuple[str, str]]:
+    if result.stale_marker:
+        if result.marker_left:
+            return [("Already finished", STALE_KEPT_TEXT), ("Crash marker", MARKER_STILL_TEXT)]
+        return [("Already finished", STALE_MARKER_TEXT)]
     rows = [("Put back", plural(len(result.restored), "file"))]
     if result.skipped:
         rows.append(("Left as they are", plural(len(result.skipped), "file")))
     if result.failed:
         rows.append(("Failed", plural(len(result.failed), "file")))
     return rows + in_backup_folder([("WTF backup", p) for p in result.snapshots], result.snapshots)
+
+
+def recovered_notice(result: UndoResult) -> tuple[str, str]:
+    """The notice after putting the originals back: (message, severity)."""
+    if result.stale_marker:
+        if result.marker_left:
+            return f"That change had finished. {STALE_KEPT_TEXT} {MARKER_STILL_TEXT}", "warning"
+        return f"That change had finished: {STALE_MARKER_TEXT}", "information"
+    message = (f"Put back {plural(len(result.restored), 'file')}; left {plural(len(result.skipped), 'file')} "
+               f"as they are")
+    if result.failed:
+        message += f"; {plural(len(result.failed), 'file')} could not be put back (see the log)"
+    if result.marker_left:
+        return f"{message}. {MARKER_STILL_TEXT}", "error" if result.failed else "warning"
+    return message + ".", "error" if result.failed else "information"
+
+
+def leave_notice() -> tuple[str, str]:
+    """The notice when Leave as is (sv_undo.leave) could not remove the marker: (message, severity)."""
+    return f"The files were left as they are. {MARKER_STILL_TEXT}", "warning"
 
 
 def undo_detail_rows(result: UndoResult) -> list[tuple[str, str, str]]:

@@ -183,9 +183,11 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ace.journal_pruned` | info | Older journals (and the zips only they used) were deleted to keep the newest N (keep_journals). |
 | `ace.lookalike` | debug | A table looks like an AceDB database but is not one; it is left alone. |
 | `ace.marker_failed` | error | The crash marker could not be written; nothing was changed. |
+| `ace.marker_left` | warning | Apply finished but its crash marker could not be removed (another program held it); the next scan offers the run as unfinished, and putting the originals back then only removes the marker. |
+| `ace.marker_stale` | info | Recovery found that the run named by the crash marker had finished (its journal says so for every file it wrote, and the files it skipped are not at what it would have written): no file was changed, only the marker is removed (logged at warning with marker_left when it could not be removed either: the next scan offers it again). |
 | `ace.parse_failed` | warning | A SavedVariables file is not readable Lua; it is shown as a warning and never changed. |
 | `ace.probe_recovered` | warning | A SavedVariables file left as <name>.wowtools-lockcheck by an interrupted lock check was renamed back. |
-| `ace.recovery_done` | info | The user chose what to do about an unfinished Apply (put back or leave). |
+| `ace.recovery_done` | info | The user chose what to do about an unfinished Apply (put back or leave); logged at warning with marker_left when its crash marker could not be removed (the next scan offers it again). |
 | `ace.recovery_offered` | warning | A marker from an Apply that did not finish was found by a scan (on opening or a rescan), or Apply was pressed while it is there. |
 | `ace.rollback_failed` | error | A file could not be put back after a failure; restore it from the zip the message names. |
 | `ace.rolled_back` | warning | After a failure, the files this run had already written were put back. |
@@ -228,8 +230,10 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `svb.journal_failed` | error | The run journal could not be written; nothing was changed. |
 | `svb.journal_pruned` | info | Older journals (and the zips only they used) were deleted to keep the newest N (keep_journals). |
 | `svb.marker_failed` | error | The crash marker could not be written; nothing was changed. |
+| `svb.marker_left` | warning | Apply finished but its crash marker could not be removed (another program held it); the next scan offers the run as unfinished, and putting the originals back then only removes the marker. |
+| `svb.marker_stale` | info | Recovery found that the run named by the crash marker had finished (its journal says so for every file it wrote, and the files it skipped are not at what it would have written): no file was changed, only the marker is removed (logged at warning with marker_left when it could not be removed either: the next scan offers it again). |
 | `svb.probe_recovered` | warning | A SavedVariables file left as <name>.wowtools-lockcheck by an interrupted lock check was renamed back. |
-| `svb.recovery_done` | info | The user chose what to do about an unfinished Apply (put back or leave). |
+| `svb.recovery_done` | info | The user chose what to do about an unfinished Apply (put back or leave); logged at warning with marker_left when its crash marker could not be removed (the next scan offers it again). |
 | `svb.recovery_offered` | warning | A marker from an Apply that did not finish was found by a scan (on opening or a rescan), or Apply was pressed while it is there. |
 | `svb.rollback_failed` | error | A file could not be put back after a failure; restore it from the zip the message names. |
 | `svb.rolled_back` | warning | After a failure, the files this run had already written were put back. |

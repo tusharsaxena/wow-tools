@@ -27,7 +27,7 @@ from wowtools.core.progress import ThrottledProgress
 from wowtools.core.svfiles import SvFile
 from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager.blacklist_screen import BlacklistScreen
-from wowtools.tools.ace3_profile_manager.editor import ApplyError, Marker, clear_marker, read_marker
+from wowtools.tools.ace3_profile_manager.editor import ApplyError, Marker, read_marker
 from wowtools.tools.ace3_profile_manager.events import SV_TOOL
 from wowtools.tools.ace3_profile_manager.journal import latest_undoable, read_profile_journal, resolve_journal_dir
 from wowtools.tools.ace3_profile_manager.model import DEFAULT
@@ -36,14 +36,15 @@ from wowtools.tools.ace3_profile_manager.ops import DbKey, OpResult, Staging, va
 from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
 from wowtools.tools.ace3_profile_manager.report import (CHARACTER_KINDS, DETAIL_COLUMNS, NO_PENDING, STAGE_TITLES,
                                                         STEPS, UNDO_COLUMNS, apply_confirm, apply_detail_rows,
-                                                        apply_summary_rows, guidance, pending_text, recovery_text,
-                                                        scan_label, selection_text, shorten, undo_confirm,
-                                                        undo_detail_rows, undo_summary_rows)
+                                                        apply_summary_rows, guidance, leave_notice, pending_text,
+                                                        recovered_notice,
+                                                        recovery_text, scan_label, selection_text, shorten,
+                                                        undo_confirm, undo_detail_rows, undo_summary_rows)
 from wowtools.tools.ace3_profile_manager.result_screen import ProfileResultScreen
 from wowtools.tools.ace3_profile_manager.scanner import ScanResult, scan_flavors
 from wowtools.tools.ace3_profile_manager.settings import load_settings, resolve_root, save_settings
 from wowtools.tools.ace3_profile_manager.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
-from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult, recover, undo_flavors, undo_run
+from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult, leave, recover, undo_flavors, undo_run
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, InfoScreen, ProgressScreen,
                                 UnfinishedRunScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
@@ -1265,9 +1266,11 @@ class ProfileReviewScreen(WarningsHost, BlacklistAction, TreeFilter, RunActions,
         if root is None or choice not in ("put_back", "leave"):
             return  # closed without a choice: offered again at the next scan
         if choice == "leave":
-            clear_marker(root)
-            log_event("ace.recovery_done", choice="leave")
-            self.marker = None
+            if leave(marker, root=root):
+                self.marker = None
+            else:  # the marker stays (another program holds it): offered again, and the user is told why
+                message, severity = leave_notice()
+                self.notify(message, title="Unfinished change", severity=severity, timeout=15)
             return
         if self._backup_dir_refused():
             return  # the marker stays: offered again at the next scan
@@ -1290,13 +1293,10 @@ class ProfileReviewScreen(WarningsHost, BlacklistAction, TreeFilter, RunActions,
                        stale_on_crash=True, expected=(UndoError,))
 
     def _recovered(self, result: UndoResult) -> None:
-        self.marker = None
-        message = (f"Put back {plural(len(result.restored), 'file')}; left {plural(len(result.skipped), 'file')} "
-                   f"as they are")
-        if result.failed:
-            message += f"; {plural(len(result.failed), 'file')} could not be put back (see the log)"
-        self.notify(message + ".", title="Unfinished change", severity="error" if result.failed else "information",
-                    timeout=15)
+        if not result.marker_left:
+            self.marker = None
+        message, severity = recovered_notice(result)
+        self.notify(message, title="Unfinished change", severity=severity, timeout=15)
         self._stale = False
         self._scan()
 

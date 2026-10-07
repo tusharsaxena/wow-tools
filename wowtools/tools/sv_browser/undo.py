@@ -5,8 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from wowtools.core import sv_undo
-from wowtools.core.events import log_event
-from wowtools.core.sv_apply import Marker, clear_marker, read_marker
+from wowtools.core.sv_apply import Marker, read_marker
 from wowtools.core.sv_undo import (CHANGED_SINCE, UndoError, UndoOutcome, UndoResult, WowRunning, destination,
                                     undo_flavors)
 from wowtools.tools.sv_browser.events import SV_TOOL
@@ -31,8 +30,6 @@ def recover(marker: Marker, **options) -> UndoResult:
     return sv_undo.recover(SV_TOOL, marker, **options)
 
 
-def leave(marker: Marker, *, root: Path) -> None:
-    """Leave as is: the files stay as they are now, the originals zip and the WTF backup are kept; only the marker
-    goes, so the next Apply is no longer refused."""
-    clear_marker(root)
-    log_event(SV_TOOL.event("recovery_done"), choice="leave", flavor=marker.flavor, zip=str(marker.zip))
+def leave(marker: Marker, *, root: Path) -> bool:
+    """Leave as is: core/sv_undo.leave (False when the marker could not be removed)."""
+    return sv_undo.leave(SV_TOOL, marker, root=root)

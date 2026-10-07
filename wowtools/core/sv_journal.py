@@ -5,8 +5,11 @@ One journal per Apply, even across several flavors: <WoW>/wow-tools/<tool>/journ
 rewritten file adds {"action": "edited", "flavor", "path", "rel", "zip", "sha_before", "sha_after", "size_before",
 "size_after", "changes"}: zip is the edited-*.zip holding the file's original bytes (as <rel>). When a run puts
 written files back after a failure it appends {"action": "rolled_back", "flavor", "rels"}; those entries are
-dropped on reading, so they are never offered for Undo. Recovery after an Apply that did not finish appends the
-same entry for the files it put back (record_recovered), so Undo never offers them again.
+dropped on reading, so they are never offered for Undo. When one flavor's write loop got through every file (no
+failure, no Ctrl+C) it appends {"action": "completed", "flavor", "zip"}, before its crash marker is removed: recovery
+reads it (completed_runs) to tell a marker left by a finished flavor from one left by a flavor that stopped (the
+run-level "finished" line is written either way). Recovery after an Apply that did not finish appends a rolled_back
+entry for the files it put back (record_recovered), so Undo never offers them again.
 """
 from __future__ import annotations
 
@@ -14,9 +17,11 @@ from pathlib import Path
 
 from wowtools.core import journal as core
 from wowtools.core.journal import Journal
+from wowtools.core.paths import to_stored
 
 A_EDITED = "edited"
 A_ROLLED_BACK = "rolled_back"
+A_COMPLETED = "completed"
 PATH_FIELDS = ("path", "zip")
 
 
@@ -42,6 +47,13 @@ class EditJournal(core.JournalWriter):
             self._edited -= undone
             self.count -= len(undone)
 
+    def add_completed(self, *, flavor: str, zip_path: Path) -> None:
+        """One flavor wrote every file it was going to (not counted as an entry: it changes nothing)."""
+        with self.lock:
+            if self._handle is None:
+                self.open()
+            self._write({"action": A_COMPLETED, "flavor": flavor, "zip": to_stored(zip_path)})
+
 
 def read_edit_journal(path: Path) -> Journal:
     journal = core.read_journal(path, path_fields=PATH_FIELDS)
@@ -59,6 +71,13 @@ def read_edit_journal(path: Path) -> Journal:
         entries.append(entry)
     journal.entries = entries
     return journal
+
+
+def completed_runs(path: Path) -> set[tuple[str, str]]:
+    """The (flavor, edited-*.zip name) pairs whose write loop completed in this journal (A_COMPLETED records)."""
+    journal = core.read_journal(path, path_fields=PATH_FIELDS)
+    return {(e["flavor"], e["zip"].name) for e in journal.entries
+            if e.get("action") == A_COMPLETED and isinstance(e.get("flavor"), str) and isinstance(e.get("zip"), Path)}
 
 
 def record_recovered(folder: Path | None, flavor: str, zip_name: str, rels: list[str]) -> list[Path]:
