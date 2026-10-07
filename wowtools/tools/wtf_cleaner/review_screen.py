@@ -43,7 +43,7 @@ from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, 
 WARNING_STYLE = "#E8B04B"
 ALL_FLAVORS_LABEL = "All flavors"
 __all__ = ["CleanProgressScreen", "RecoveryScreen", "ResultScreen", "ReviewScreen"]
-NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools · 1-4 criteria"
+NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools · 1-5 criteria"
 
 
 class CleanProgressScreen(ProgressScreen):
@@ -105,6 +105,7 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         Binding("2", "criterion(1)", CRITERION_SHORT["not_enabled"], show=False),
         Binding("3", "criterion(2)", CRITERION_SHORT["older_than"], show=False),
         Binding("4", "criterion(3)", CRITERION_SHORT["stray_copies"], show=False),
+        Binding("5", "criterion(4)", CRITERION_SHORT["orphan_backups"], show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
         *NAV_BINDINGS,
@@ -144,7 +145,7 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         with Horizontal(id="body"):
             with Vertical(id="filters"):
                 yield RiskBanner()
-                yield Label("Criteria (keys 1-4)", classes="section")
+                yield Label("Criteria (keys 1-5)", classes="section")
                 for index, name in enumerate(CRITERIA, start=1):
                     yield Ka0sCheckbox(self._criterion_label(index, name), getattr(self.criteria, name),
                                        id=f"crit_{name}", compact=True)

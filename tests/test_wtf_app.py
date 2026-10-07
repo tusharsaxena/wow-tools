@@ -404,7 +404,8 @@ class ReviewFlowTest(AppTestCase):
             review = await self.open_review(app, pilot)
             retail = WowInstall(self.root).flavor("retail")
             counts = criterion_counts(scan(retail), max_age_days=review.criteria.max_age_days, now=time.time())
-            self.assertEqual(counts, {"not_installed": 3, "not_enabled": 1, "older_than": 2, "stray_copies": 2})
+            self.assertEqual(counts, {"not_installed": 3, "not_enabled": 1, "older_than": 2, "stray_copies": 2,
+                                      "orphan_backups": 0})
             for index, name in enumerate(CRITERIA, start=1):
                 label = review.query_one(f"#crit_{name}", Ka0sCheckbox).label
                 files = counts[name]
@@ -965,12 +966,12 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertTrue(settings.query(ButtonRow))
             self.assertTrue(settings.query(NavHint))
             self.assertFalse(settings.query("Switch"))
+            expected = ["max_age", "backup_dir", *[f"sw_{n}" for n in CRITERIA], "sw_backup", "keep_cleaned", "save"]
             order = [settings.focused.id]
-            for _ in range(8):
+            for _ in expected[1:]:
                 await pilot.press("down")
                 order.append(settings.focused.id)
-            self.assertEqual(order, ["max_age", "backup_dir", *[f"sw_{n}" for n in CRITERIA],
-                                     "sw_backup", "keep_cleaned", "save"])
+            self.assertEqual(order, expected)
             for name in (*[f"sw_{n}" for n in CRITERIA], "sw_backup"):
                 self.assertIsInstance(settings.query_one(f"#{name}"), Ka0sCheckbox)
             await pilot.press("up", "up")  # back to the backup toggle

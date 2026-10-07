@@ -1,4 +1,4 @@
-"""Turn scan results into a cleanup proposal using the four toggleable criteria."""
+"""Turn scan results into a cleanup proposal using the five toggleable criteria."""
 from __future__ import annotations
 
 import time
@@ -9,7 +9,7 @@ from wowtools.core.events import log_event
 from wowtools.core.install import Character
 from wowtools.tools.wtf_cleaner.scanner import ScanResult, ScanWarning, SVFile, SVGroup
 
-CRITERIA = ("not_installed", "not_enabled", "older_than", "stray_copies")
+CRITERIA = ("not_installed", "not_enabled", "older_than", "stray_copies", "orphan_backups")
 DAY = 86400.0
 
 
@@ -19,6 +19,7 @@ class Criteria:
     not_enabled: bool = True
     older_than: bool = True
     stray_copies: bool = True
+    orphan_backups: bool = True
     max_age_days: int = 90
 
     @classmethod
@@ -113,18 +114,30 @@ def _group_reasons(group: SVGroup, scan: ScanResult, criteria: Criteria, now: fl
     return reasons
 
 
+def orphan_backups(group: SVGroup) -> list[SVFile]:
+    """The group's <Addon>.lua.bak when there is no <Addon>.lua next to it (names in any case)."""
+    main = f"{group.addon}.lua".casefold()
+    if any(f.name.casefold() == main for f in group.files):
+        return []
+    return [f for f in group.files if f.canonical]
+
+
 def evaluate(scan: ScanResult, criteria: Criteria, *, now: float | None = None, log: bool = True) -> Proposal:
+    """Each group whose addon matches a criterion is proposed whole (its .lua.bak and stray copies with it); a
+    group that matches none still proposes its stray copies and its orphan backup when those criteria are on."""
     now = time.time() if now is None else now
     items: list[ProposalItem] = []
     for group in scan.groups:
         reasons = _group_reasons(group, scan, criteria, now)
-        strays = [f for f in group.files if not f.canonical]
+        extra = [("stray_copies", [f for f in group.files if not f.canonical]),
+                 ("orphan_backups", orphan_backups(group))]
+        extra = [(name, files) for name, files in extra if getattr(criteria, name) and files]
         if reasons:
-            if criteria.stray_copies and strays:
-                reasons.append("stray_copies")
+            reasons += [name for name, _ in extra]
             items.append(ProposalItem(group, list(group.files), reasons))
-        elif criteria.stray_copies and strays:
-            items.append(ProposalItem(group, strays, ["stray_copies"]))
+        elif extra:
+            files = {f.path: f for _, found in extra for f in found}
+            items.append(ProposalItem(group, [f for f in group.files if f.path in files], [n for n, _ in extra]))
     proposal = Proposal(items, criteria.copy(), list(scan.warnings))
     if log:
         log_proposal_built(proposal, scan.flavor.folder)

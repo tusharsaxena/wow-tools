@@ -28,6 +28,9 @@ the age limit for rule 3 (type the days, then `Enter`).
 | `2` | Not enabled | Addons installed but switched off on every character of that account |
 | `3` | Older than max age | Settings unchanged for longer than the age limit (90 days to start with) |
 | `4` | Stray copies | Copies made by hand next to the real file (`Details.lua - Copy.bak`) |
+| `5` | Orphan backups | A `<Addon>.lua.bak` with no `<Addon>.lua` next to it |
+
+When an addon matches a rule, its `.lua.bak` and stray copies go with it.
 
 Never touched: Blizzard's own files, keybindings, macros, chat and UI layout, and anything outside `WTF`.
 

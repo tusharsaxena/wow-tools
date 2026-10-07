@@ -6,6 +6,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from textual.containers import Horizontal
 from textual.widget import Widget
 from textual.widgets import Input, Label
 
@@ -27,6 +28,11 @@ if TYPE_CHECKING:
 
 class CleanerSettingsScreen(ToolSettingsScreen):
     FORM_TITLE = "WTF Cleaner settings"
+    DEFAULT_CSS = ToolSettingsScreen.DEFAULT_CSS + """
+    CleanerSettingsScreen #max-age-row { height: 1; }
+    CleanerSettingsScreen #max-age-row Label { width: auto; }
+    CleanerSettingsScreen #max_age { width: 10; }
+    """
     FIRST_FIELD = "max_age"
     TICKS = True
 
@@ -35,8 +41,10 @@ class CleanerSettingsScreen(ToolSettingsScreen):
 
     def fields(self) -> Iterable[Widget]:
         criteria = self.settings.criteria
-        yield Label("Propose SavedVariables older than this many days")
-        yield Input(str(criteria.max_age_days), type="integer", id="max_age")
+        # Label and box on one row (a compact box): with five rules the form still shows whole at 120x30.
+        with Horizontal(id="max-age-row"):
+            yield Label("Propose SavedVariables older than this many days: ")
+            yield Input(str(criteria.max_age_days), type="integer", id="max_age", compact=True)
         # One line each: the form shows whole, Save included, at 120x30 (the default is the folder's placeholder).
         yield Label("Backup folder for backup/ (whole WTF folder) and cleaned/ (files removed); empty = default")
         yield self.folder_input(self.settings.backup_dir, id="backup_dir",

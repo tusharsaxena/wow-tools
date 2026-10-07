@@ -44,9 +44,9 @@ suggested, the age limit, and the buttons.
 **At the bottom** a bar totals what's ticked (items, files and size), plus scan warnings and any game version
 that couldn't be scanned.
 
-### The four rules
+### The five rules
 
-A file is suggested if **any** ticked rule matches it. All four are on to start with, and each has its own
+A file is suggested if **any** ticked rule matches it. All five are on to start with, and each has its own
 colour, used in the list too:
 
 | Rule | Suggests | Example |
@@ -55,8 +55,12 @@ colour, used in the list too:
 | **2 Not enabled** (orange) | Settings for addons that are installed but switched off on every character of that account | An addon you disabled everywhere, or that only your other account uses |
 | **3 Older than max age** (yellow) | Addons whose settings haven't changed in a long time (90 days to start with) | An addon from last expansion that you stopped using |
 | **4 Stray copies** (purple) | Copies you or another program made by hand next to the real file | `Details.lua - Copy.bak` |
+| **5 Orphan backups** (blue) | A backup WoW made (`<Addon>.lua.bak`) whose settings file (`<Addon>.lua`) is gone | `Auctionator.lua.bak` with no `Auctionator.lua` |
 
-Each rule shows how many files it matches, for example `1 Not installed (672 files)`. Press `1`, `2`, `3` or `4`
+When an addon matches rule 1, 2 or 3, all of its files go: `Auctionator.lua`, `Auctionator.lua.bak` and any stray
+copies. Rules 4 and 5 suggest only the extra files of an addon that is otherwise kept.
+
+Each rule shows how many files it matches, for example `1 Not installed (672 files)`. Press `1` to `5`
 to switch a rule on or off. To change the age limit, type a number of days in the **Max age** box and press
 Enter.
 
@@ -243,13 +247,13 @@ in `config\wtf-cleaner.cfg`.
 | Setting | Starts as | What it means |
 |---|---|---|
 | Max age in days | 90 | The age limit for rule 3 |
-| The four rules | all on | Which rules are on when the review screen opens |
+| The five rules | all on | Which rules are on when the review screen opens |
 | Zip the files before deleting | on | Keep a zip of everything a clean removes (recommended) |
 | Cleaned-files zips to keep | 0 | How many `cleaned\cleaned-…zip` files to keep per game version; `0` keeps them all. Older ones are removed after a clean. The zip of the last clean is always kept, so **Undo last clean** is unaffected. A removed zip of an older clean can only be restored by hand from its WTF backup (`backup\backup-…zip`) while that is still kept |
 | Backup folder | empty | Where zips and backups go. Empty means `<WoW folder>\wow-tools\wtf-cleaner`. It must be a full path, and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
 
 The file itself uses these names, if you edit it by hand: `max_age_days`, `criterion_not_installed`,
-`criterion_not_enabled`, `criterion_older_than`, `criterion_stray_copies`, `backup_before_delete`, `keep_cleaned`, `backup_dir`,
+`criterion_not_enabled`, `criterion_older_than`, `criterion_stray_copies`, `criterion_orphan_backups`, `backup_before_delete`, `keep_cleaned`, `backup_dir`,
 `last_account` and `last_flavor_choice`.
 
 Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the

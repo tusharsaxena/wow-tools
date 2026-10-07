@@ -59,6 +59,9 @@ The first version: five tools in one app.
 - **WTF Cleaner**
   - Finds settings left behind by addons you no longer use, shows them for review, backs them up and deletes them.
   - Works on one game version, one account or **All flavors**.
+  - Five rules, each switched on or off with `1` to `5`: Not installed, Not enabled, Older than max age, Stray
+    copies and **Orphan backups** (an `<Addon>.lua.bak` whose `<Addon>.lua` is gone). An addon a rule matches
+    loses all its files, its `.lua.bak` included.
   - "Not enabled" is decided per account: settings for an addon that only another account uses are suggested (an
     account with no characters counts every addon as enabled).
   - **Clean** is on `w`.
