@@ -135,7 +135,7 @@ files. The backup itself works the same, and the results screen shows the sizes.
 | `e` | **Restore** the highlighted backup |
 | `x` / `c` | Expand every line of the tree / collapse them all |
 | `!` | Open the [scan warnings](#scan-warnings) (only while there are any; the **⚠ … (!)** button at the bottom does the same) |
-| `r` | Scan again |
+| `r` | **Rescan**: scan again |
 | `z` | **Undo last restore** (asks first; **Yes** is selected, in red) |
 | `f` or `Esc` | Pick another game version |
 | `t` | Back to the tool menu |
@@ -145,9 +145,9 @@ files. The backup itself works the same, and the results screen shows the sizes.
 | `←` `→` | Jump between the tree and the left panel |
 | `Tab` | Move to the next control |
 
-**Back up** is greyed out when none of the game versions shown has an `Interface` or `WTF` folder. **Undo last
-restore** is greyed out when there's no restore to undo. While the screen scans, or checks whether WoW is
-running, every button waits.
+**Back up** is greyed out when none of the game versions you picked has an `Interface` or `WTF` folder (the
+filter doesn't change this). **Undo last restore** is greyed out when there's no restore to undo. While the screen
+scans, or checks whether WoW is running, every button waits.
 
 If you change the settings, press `r` to scan again with them.
 

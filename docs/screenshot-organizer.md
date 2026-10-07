@@ -63,8 +63,10 @@ Open a day to see its screenshots. A game version with nothing to do says why: "
 **At the bottom** a bar totals what's ticked, plus possible duplicates, conflicts and skipped files (all
 explained below).
 
-**Unreadable folders**: when a folder couldn't be read, its screenshots can't be sorted. The game version's line
-in the tree says "could not be read (see Warnings)", and a **⚠ N unreadable folders (!)** button sits at the right
+**Unreadable folders**: when a game version's `Screenshots` folder couldn't be read, its screenshots can't be sorted
+and its line in the tree says "could not be read (see Warnings)". A dated folder that couldn't be read is also listed
+as a warning, but its screenshots are still offered for sorting (the scan treats that folder as empty). Either way a
+**⚠ N unreadable folders (!)** button sits at the right
 end of the bottom bar: click it or press `!` to open the **warnings view**. It lists every warning, grouped by game version, each with the folder
 and what went wrong; the line on the left shows the highlighted one in full. `/` filters the list, `x` / `c` expand
 and collapse it, `h` opens the help, and **Back** (`Esc`) returns to the review. With no warnings there's no button.

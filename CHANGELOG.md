@@ -48,8 +48,9 @@ The first version: five tools in one app.
   - The tool menu shows the version under the banner (and the new one, once found), and the terms of use along
     its bottom; in a short window the tool list scrolls so the terms and the keys stay in view.
   - Game versions that don't depend on each other are worked on several at once: Interface Backup's backups and
-    its scan, the WTF Cleaner's scan of All flavors, the Screenshot Organizer's counts in the flavor picker and the
-    WTF backups Ace3 Undo takes first. How many at once is `parallelism` on the first settings screen (2, from 1 to
+    its scan, the WTF Cleaner's scan of All flavors, the Screenshot Organizer's counts in the flavor picker, and the
+    WTF backups that Ace3 and Saved Variables Browser Undo take first. The Saved Variables Browser's Search also
+    works on several files at once. How many at once is `parallelism` on the first settings screen (2, from 1 to
     8; use 1 on a hard drive or a WSL `/mnt` folder). A WTF clean and an Ace3 Apply still go one game version at a
     time.
   - The progress window keeps one size from start to finish in every tool: the job, an overall bar when several

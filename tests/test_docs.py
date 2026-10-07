@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import unittest
 
 from wowtools import __version__
@@ -112,13 +113,14 @@ class DocsTest(unittest.TestCase):
         self.assertNotIn("four tools", readme.casefold())
         claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
         self.assertIn("Saved Variables Browser (`sv-browser`, package `tools/sv_browser`)", claude)
-        for module in ("luasv", "sv_apply", "sv_journal", "sv_undo", "sv_verify", "sv_report", "sv_events"):
-            self.assertIn(f"`{module}`", claude)
         changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
         self.assertIn("- **Saved Variables Browser**", changelog)
         architecture = (REPO_ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
-        self.assertIn("## Saved Variables Browser data flow", architecture)
-        self.assertIn("| `luasv` |", architecture)
+        for module in ("luasv", "sv_apply", "sv_journal", "sv_undo", "sv_verify", "sv_report", "sv_events"):
+            self.assertIn(f"| `{module}` |", architecture)  # the shared SavedVariables stack, in the Core modules table
+        self.assertIn("](internals/sv-browser.md)", architecture)
+        internals = (REPO_ROOT / "docs" / "internals" / "sv-browser.md").read_text(encoding="utf-8")
+        self.assertIn("## Data flow", internals)  # the tool's data flow moved from architecture.md to its internals doc
 
     def test_guides_filter_on_submit_and_risk_banner(self):
         """Feedback round 1 (D37, D40, D41): every tree filter applies on Enter or its Filter button, never as you
@@ -137,14 +139,14 @@ class DocsTest(unittest.TestCase):
         for needle in ("**Filter**", "⚠ USE AT YOUR OWN RISK", "Ka0s WoW Tools** in bold gold"):
             self.assertIn(needle, changelog)
         self.assertNotIn("Find only", changelog)
-        claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
-        self.assertIn("`FilterBar`", claude)
-        self.assertIn("`RiskBanner`", claude)
+        standards = (REPO_ROOT / "docs" / "standards.md").read_text(encoding="utf-8")
+        self.assertIn("`FilterBar`", standards)
+        self.assertIn("`RiskBanner`", standards)
 
     def test_warnings_view_and_blacklist_key_are_documented(self):
         """Spec W1, B1-B4: every guide opens its warnings with `!` (no "(see the log)" left), the WTF Cleaner guide
         explains its blacklist (`b`, greyed rows, the hand-edited setting, the wildcard), and the changelog,
-        architecture and CLAUDE.md name the shared pieces."""
+        architecture (the WTF Cleaner's internals doc for its data flow) and standards.md name the shared pieces."""
         for tool in TOOLS.values():
             guide = (REPO_ROOT / "docs" / f"{tool.name}.md").read_text(encoding="utf-8")
             self.assertNotIn("see the log)", guide, tool.name)
@@ -161,9 +163,28 @@ class DocsTest(unittest.TestCase):
         self.assertIn("`!`", readme)
         self.assertIn("config\\wtf-cleaner.cfg", readme)
         architecture = (REPO_ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
-        for needle in ("`WarningsScreen`", "`SummaryBar`", "`BlacklistAction`", "`core/blacklist.py`",
-                       "`Proposal.blacklisted`"):
+        for needle in ("`WarningsScreen`", "`SummaryBar`", "`BlacklistAction`", "`core/blacklist.py`"):
             self.assertIn(needle, architecture)
+        wtf_internals = (REPO_ROOT / "docs" / "internals" / "wtf-cleaner.md").read_text(encoding="utf-8")
+        self.assertIn("`Proposal.blacklisted`", wtf_internals)  # the WTF Cleaner's data flow is in its internals doc
+        self.assertIn("| `blacklist` |", architecture)
+        standards = (REPO_ROOT / "docs" / "standards.md").read_text(encoding="utf-8")
+        for needle in ("`core/blacklist.py`", "`BlacklistAction`", "`WarningsScreen`"):
+            self.assertIn(needle, standards)
+
+    def test_claude_md_is_the_index(self):
+        """CLAUDE.md is the entry point: it names every tool, points at standards.md and the architecture hub first,
+        indexes every developer doc, guide and internals doc, and every relative link in it resolves."""
         claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
-        for needle in ("`blacklist`", "`BlacklistAction`", "`WarningsScreen`"):
-            self.assertIn(needle, claude)
+        for tool in TOOLS.values():
+            self.assertIn(f"{tool.title} (`{tool.name}`, package `tools/{tool.section}`)", claude)
+            self.assertIn(f"](docs/{tool.name}.md)", claude)
+            self.assertIn(f"](docs/internals/{tool.name}.md)", claude)
+        for doc in ("standards", "architecture", "testing", "common-tasks", "adding-a-tool", "releasing",
+                    "vendoring", "events"):
+            self.assertIn(f"](docs/{doc}.md)", claude)
+        self.assertIn("## Read first", claude)
+        self.assertIn("## The green gate", claude)
+        self.assertIn("## Hard rules", claude)
+        for target in re.findall(r"\]\(([^)#:]+)(?:#[^)]*)?\)", claude):
+            self.assertTrue((REPO_ROOT / target).exists(), target)

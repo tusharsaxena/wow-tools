@@ -140,9 +140,9 @@ A pending change shows in the tree as if it were already done, marked so you can
 | `was Old` | The character moves to this profile; it used Old before |
 | `✘ removed` | The leftover character will be removed |
 
-The **Pending changes** line on the left counts each kind ("2 deletes · 5 reassigns · 1 rename"). Press `Backspace`
-(or **Discard**) to throw all pending changes away. **Rescan** with pending changes asks first, and so does leaving
-the screen.
+The **Pending changes** line on the left counts each kind ("2 deletes · 1 rename · 5 reassigns"). Press `Backspace`
+(or **Discard**) to throw all pending changes away; it asks first (**Yes** is selected, in red). **Rescan** with
+pending changes asks first too, and so does leaving the screen.
 
 ### The filters
 
@@ -242,7 +242,7 @@ version until you next save the blacklist.
 | `D` (Shift+D) | Only Default: delete every profile except "Default" of the ticked (or highlighted) addons |
 | `E` (Shift+E) | Everyone → Default: move every character of the ticked (or highlighted) addons to "Default" |
 | `m` | Quick actions, and every key the bottom bar doesn't show |
-| `Backspace` | Discard all pending changes |
+| `Backspace` | Discard all pending changes (asks first; **Yes** is selected, in red) |
 | `b` | Put the highlighted addon on the blacklist, or take it off |
 | `!` | Open the scan warnings (only while there are any; the **⚠ … (!)** button at the bottom does the same) |
 | `u` | Unlock the highlighted blacklisted addon for this session, or lock it again (so on this screen `u` doesn't update the app: press it on the tool menu) |

@@ -1,5 +1,8 @@
 # Adding a tool
 
+Part of the developer docs: start at [CLAUDE.md](../CLAUDE.md) (the index) and follow the rules in
+[standards.md](standards.md); [common-tasks.md](common-tasks.md#1-add-a-tool) has the short checklist.
+
 This walks through how the Screenshot Organizer (`screenshot-organizer`) was added, as an example.
 
 1. **Package.** Create `wowtools/tools/screenshot_organizer/` with:
@@ -125,8 +128,9 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      no keys: the popup's buttons and hint say what to press.
      A result screen's `lead_buttons()` / `extra_buttons()` give `(label, kind, id, key)`. Pick
      its kind by what it does, as the other tools do: `destructive` (deletes), `overwrite` (overwrites or changes
-     files), `create` (only adds files), `revert` (undo), `simulate` (dry run), `confirm` (Save, OK), `navigate`
-     (Rescan, Other flavor, a button that opens a screen) or `cancel` (Cancel, Back, Quit). A button that stages a
+     files), `create` (only adds files), `revert` (undo), `simulate` (dry run), `confirm` (Save, OK), `refresh`
+     (Rescan: reads the files again), `navigate` (Other flavor, a button that opens a screen) or `cancel` (Cancel,
+     Back, Quit). A button that stages a
      change takes the kind of the change. `tests/test_structure.py` checks that one label has one kind everywhere.
      Lay the screens out for 120x30 (Windows Terminal's default window) and let trees and tables take any extra
      room; 80x24 only has to keep working. `tests/test_look_and_feel.py` checks every tool against them at those
@@ -145,7 +149,11 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
    plain style as the other guides, with screenshots from `docs/assets/`, its settings and its troubleshooting.
    Add a row to the README's tools table and a link under "Tool guides", plus the tool's config file in "Your
    settings", and a bullet under the tool in the next `CHANGELOG.md` entry (Keep a Changelog format). Add the
-   config section, data flow and screens to `docs/architecture.md`. `tests/test_docs.py` checks that the README names and links a guide for every tool.
+   config section, a short summary under "Tools" and a "Documentation map" row to `docs/architecture.md`, and the data
+   flow and screens to a new `docs/internals/<tool name>.md` (same shape as the others: title, purpose, contents, a link
+   back to the architecture). In `CLAUDE.md`, add the tool line plus its links in the Documentation index's
+   `docs/internals/` and User guide rows. `tests/test_docs.py` checks that the README names and links a guide for
+   every tool, and that `CLAUDE.md` names the tool and links its guide and internals doc.
 6. **Renaming a tool later**: change the name in `TOOLS`, the tool's `TOOL_NAME` and `SECTION`, and add one line
    to `RENAMED_TOOLS` in `wowtools/tools/__init__.py`, e.g.
    `ToolRename("screenshots", "screenshot-organizer", "screenshots", "screenshot_organizer")`. On the next start
