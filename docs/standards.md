@@ -633,12 +633,12 @@ marker, journal, atomic writes with read-back, roll-back on failure, clear marke
   *Enforced by:* `tests/test_docs.py::test_readme_has_the_menus_terms_of_use`,
   `tests/test_docs.py::test_version_badge_and_changelog_match_the_version`.
 - **STD-9.5 SHOULD** A change that adds a user-visible behaviour or a shared module updates the guides, README,
-  CHANGELOG, [architecture.md](architecture.md) and `CLAUDE.md` in the same branch, and pins key phrases in
-  `tests/test_docs.py`.
+  CHANGELOG, [architecture.md](architecture.md), the tool's [internals](internals/) doc and `CLAUDE.md` in the same
+  branch, and pins key phrases in `tests/test_docs.py`.
   *Why:* docs tests stop drift.
   *Enforced by:* `tests/test_docs.py`, review.
-- **STD-9.6 MUST** Moving or rewording text in `CLAUDE.md`, `README.md`, `docs/architecture.md` or a guide keeps the
-  strings `tests/test_docs.py` pins, or updates the test in the same commit.
+- **STD-9.6 MUST** Moving or rewording text in `CLAUDE.md`, `README.md`, `docs/architecture.md`, `docs/internals/` or
+  a guide keeps the strings `tests/test_docs.py` pins, or updates the test in the same commit.
   *Why:* the docs tests read these files directly.
   *Enforced by:* `tests/test_docs.py`.
 

@@ -146,7 +146,9 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
    plain style as the other guides, with screenshots from `docs/assets/`, its settings and its troubleshooting.
    Add a row to the README's tools table and a link under "Tool guides", plus the tool's config file in "Your
    settings", and a bullet under the tool in the next `CHANGELOG.md` entry (Keep a Changelog format). Add the
-   config section, data flow and screens to `docs/architecture.md`. `tests/test_docs.py` checks that the README names and links a guide for every tool.
+   config section, a short summary under "Tools" and a "Documentation map" row to `docs/architecture.md`, and the data
+   flow and screens to a new `docs/internals/<tool name>.md` (same shape as the others: title, purpose, contents, a link
+   back to the architecture). `tests/test_docs.py` checks that the README names and links a guide for every tool.
 6. **Renaming a tool later**: change the name in `TOOLS`, the tool's `TOOL_NAME` and `SECTION`, and add one line
    to `RENAMED_TOOLS` in `wowtools/tools/__init__.py`, e.g.
    `ToolRename("screenshots", "screenshot-organizer", "screenshots", "screenshot_organizer")`. On the next start

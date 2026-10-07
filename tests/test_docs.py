@@ -117,8 +117,10 @@ class DocsTest(unittest.TestCase):
         changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
         self.assertIn("- **Saved Variables Browser**", changelog)
         architecture = (REPO_ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
-        self.assertIn("## Saved Variables Browser data flow", architecture)
         self.assertIn("| `luasv` |", architecture)
+        self.assertIn("](internals/sv-browser.md)", architecture)
+        internals = (REPO_ROOT / "docs" / "internals" / "sv-browser.md").read_text(encoding="utf-8")
+        self.assertIn("## Data flow", internals)  # the tool's data flow moved from architecture.md to its internals doc
 
     def test_guides_filter_on_submit_and_risk_banner(self):
         """Feedback round 1 (D37, D40, D41): every tree filter applies on Enter or its Filter button, never as you
@@ -144,7 +146,7 @@ class DocsTest(unittest.TestCase):
     def test_warnings_view_and_blacklist_key_are_documented(self):
         """Spec W1, B1-B4: every guide opens its warnings with `!` (no "(see the log)" left), the WTF Cleaner guide
         explains its blacklist (`b`, greyed rows, the hand-edited setting, the wildcard), and the changelog,
-        architecture and CLAUDE.md name the shared pieces."""
+        architecture (the WTF Cleaner's internals doc for its data flow) and CLAUDE.md name the shared pieces."""
         for tool in TOOLS.values():
             guide = (REPO_ROOT / "docs" / f"{tool.name}.md").read_text(encoding="utf-8")
             self.assertNotIn("see the log)", guide, tool.name)
@@ -161,9 +163,10 @@ class DocsTest(unittest.TestCase):
         self.assertIn("`!`", readme)
         self.assertIn("config\\wtf-cleaner.cfg", readme)
         architecture = (REPO_ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
-        for needle in ("`WarningsScreen`", "`SummaryBar`", "`BlacklistAction`", "`core/blacklist.py`",
-                       "`Proposal.blacklisted`"):
+        for needle in ("`WarningsScreen`", "`SummaryBar`", "`BlacklistAction`", "`core/blacklist.py`"):
             self.assertIn(needle, architecture)
+        wtf_internals = (REPO_ROOT / "docs" / "internals" / "wtf-cleaner.md").read_text(encoding="utf-8")
+        self.assertIn("`Proposal.blacklisted`", wtf_internals)  # the WTF Cleaner's data flow is in its internals doc
         claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
         for needle in ("`blacklist`", "`BlacklistAction`", "`WarningsScreen`"):
             self.assertIn(needle, claude)
