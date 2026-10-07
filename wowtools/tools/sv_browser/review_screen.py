@@ -51,7 +51,8 @@ from wowtools.tools.sv_browser.scanner import FlavorFiles, ScanResult, scan_flav
 from wowtools.tools.sv_browser.search import (REPLACE_BOOLEAN, REPLACE_NUMBER, REPLACE_STRING, Hit, SearchResult,
                                               SearchSpec, run_search)
 from wowtools.tools.sv_browser.settings import load_settings, resolve_root
-from wowtools.tools.sv_browser.undo import UndoError, UndoResult, leave, pending_recovery, recover, undo_run
+from wowtools.tools.sv_browser.undo import (UndoError, UndoResult, leave, pending_recovery, recover, undo_flavors,
+                                            undo_run)
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
                                  ProgressScreen, UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
@@ -1282,13 +1283,11 @@ class SvReviewScreen(WarningsHost, TreeFilter, RunActions, ReviewBase, Screen[st
             return
         # The staged work is dropped once Undo has changed the files (_undone, or a crash: _mark_stale), as said in
         # the confirm; an Undo refused before it starts (WoW running, a locked file, the backup failed) keeps it.
-        # One row per flavor whose WTF folder is backed up first (up to [general] parallelism at once), as undo_run
-        # names them; the files are then put back in one more row.
-        folders = sorted({e["flavor"] for e in journal.entries})
+        # One row per flavor whose WTF folder is backed up first (up to [general] parallelism at once), the same
+        # undo_flavors list undo_run snapshots; the files are then put back in one more row.
         parallelism = self.cfg.parallelism
         screen = RunProgressScreen("Undoing the last change", first_stage="undo",
-                                   flavors=[Flavor(folder, wow_root / folder) for folder in folders],
-                                   parallelism=parallelism)
+                                   flavors=undo_flavors(wow_root, journal.entries), parallelism=parallelism)
         keep_snapshots = self.cfg.keep_backups
         self.start_run(screen, lambda: undo_run(path, wow_root=wow_root, root=root, keep_snapshots=keep_snapshots,
                                                 wow_check=check, progress=screen.report, parallelism=parallelism,

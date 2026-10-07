@@ -175,6 +175,32 @@ class PipelineTest(unittest.TestCase):
         self.assertTrue(lines[-2].startswith("Put the originals back:"))
         self.assertTrue(lines[-1].startswith("Leave as is:"))
 
+    def test_undo_never_snapshots_a_flavor_outside_the_install(self):
+        outside = self.tmp / "elsewhere" / "WTF"
+        outside.mkdir(parents=True)
+        (outside / "secret.lua").write_bytes(b"secret")
+        rel = "WTF/Account/ACCT1/SavedVariables/A.lua"
+        path = self.journals / "journal-20261007-120000.jsonl"
+        journal = sv_journal.EditJournal(path, {"kind": "apply"})
+        journal.add_edited(flavor="../elsewhere", path=self.paths[0], rel=rel, zip_path=self.root / "edited.zip",
+                           sha_before="0", sha_after="1", size_before=1, size_after=1, changes=[])
+        journal.close()
+        before = sorted(p for p in self.tmp.rglob("*"))
+        result = sv_undo.undo_run(TOOL, path, wow_root=self.wow, root=self.root, keep_snapshots=2, now=WHEN)
+        self.assertEqual(result.snapshots, [])
+        self.assertFalse(list(self.tmp.rglob("*.zip")))
+        self.assertEqual([p for p in sorted(self.tmp.rglob("*")) if p not in before and p != path], [])
+        self.assertEqual([(o.status, o.detail) for o in result.outcomes], [(sv_undo.SKIPPED,
+                                                                            "it is outside the WTF folder")])
+
+    def test_undo_flavors_keeps_only_flavors_with_an_entry_inside_the_install(self):
+        good = "WTF/Account/ACCT1/SavedVariables/A.lua"
+        entries = [{"flavor": "_retail_", "rel": good}, {"flavor": "../elsewhere", "rel": good},
+                   {"flavor": "_classic_", "rel": "../../outside.lua"}, {"flavor": "_retail_", "rel": good},
+                   {"flavor": "_beta_", "rel": "../../outside.lua"}, {"flavor": "_beta_", "rel": good}]
+        self.assertEqual([(f.folder, f.path) for f in sv_undo.undo_flavors(self.wow, entries)],
+                         [("_beta_", self.wow / "_beta_"), ("_retail_", self.wow / "_retail_")])
+
     def test_referenced_zips_none_when_a_journal_cannot_be_read(self):
         self.run_apply()
         self.assertTrue(sv_journal.referenced_zips(self.journals))

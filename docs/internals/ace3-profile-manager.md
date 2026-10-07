@@ -132,7 +132,8 @@ Code: `journal.py`, `undo.py`, on `core/sv_journal.py` and `core/sv_undo.py`. `<
 
 `read_profile_journal` drops `edited` entries a `rolled_back` line names. `latest_undoable` is the newest journal of
 the whole tool. `undo_run` refuses while WoW of a flavor the journal changed runs and when a file is locked
-(`UndoError`), snapshots each of those flavors, up to `parallelism` at once (`core/parallel.py` with
+(`UndoError`), snapshots each of those flavors that has an entry passing `safe_destination` (`undo_flavors`, the
+same list the popup's rows come from), up to `parallelism` at once (`core/parallel.py` with
 `stop_on_error`: every snapshot is its own zip of its own WTF folder; the first failure, in flavor order, is raised
 as "Nothing was changed" once the running ones ended, and a flavor not started by then never starts, so with 1 it
 stops where the serial loop did; the snapshots made by then are deleted, `ace.snapshot_discarded`, as they protect

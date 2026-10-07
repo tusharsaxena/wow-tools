@@ -43,7 +43,7 @@ from wowtools.tools.ace3_profile_manager.result_screen import ProfileResultScree
 from wowtools.tools.ace3_profile_manager.scanner import ScanResult, scan_flavors
 from wowtools.tools.ace3_profile_manager.settings import load_settings, resolve_root, save_settings
 from wowtools.tools.ace3_profile_manager.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
-from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult, recover, undo_run
+from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult, recover, undo_flavors, undo_run
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, InfoScreen, ProgressScreen,
                                 UnfinishedRunScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
@@ -1235,12 +1235,11 @@ class ProfileReviewScreen(WarningsHost, BlacklistAction, TreeFilter, RunActions,
         root = resolve_root(self.settings, wow_root)
         if root is None:
             return
-        # One row per flavor whose WTF folder is backed up first (up to [general] parallelism at once), as undo_run
-        # names them; the files are then put back in one more row.
-        folders = sorted({e["flavor"] for e in journal.entries}) if journal is not None else []
+        # One row per flavor whose WTF folder is backed up first (up to [general] parallelism at once), the same
+        # undo_flavors list undo_run snapshots; the files are then put back in one more row.
+        flavors = undo_flavors(wow_root, journal.entries) if journal is not None else []
         parallelism = self.cfg.parallelism
-        screen = ProfileProgressScreen("Undoing the last change", first_stage="undo",
-                                       flavors=[Flavor(folder, wow_root / folder) for folder in folders],
+        screen = ProfileProgressScreen("Undoing the last change", first_stage="undo", flavors=flavors,
                                        parallelism=parallelism)
         keep_snapshots = self.cfg.keep_backups
         self.start_run(screen, lambda: undo_run(path, wow_root=wow_root, root=root, keep_snapshots=keep_snapshots,

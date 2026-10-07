@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import zipfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -30,7 +30,7 @@ from wowtools.core.svfiles import find_locked, locked_message
 from wowtools.core.undo import FAILED, RESTORED, SKIPPED, UndoResultBase, safe_destination
 
 __all__ = ["CHANGED_SINCE", "UndoError", "UndoOutcome", "UndoResult", "WowRunning", "destination", "recover",
-           "undo_run"]
+           "undo_flavors", "undo_run"]
 
 CHANGED_SINCE = "changed since the change was made (WoW may have saved it); left as it is"
 
@@ -54,6 +54,13 @@ class UndoResult(UndoResultBase):
 def destination(wow_root: Path, flavor: str, rel: str) -> Path | None:
     """<WoW>/<flavor>/<rel> when rel is WTF/Account/.../SavedVariables/<file>; None for anything else."""
     return safe_destination(wow_root, flavor, rel, prefix=("WTF", "Account"), min_parts=5, parent="SavedVariables")
+
+
+def undo_flavors(wow_root: Path, entries: Iterable[dict]) -> list[Flavor]:
+    """The flavors Undo backs up, sorted: only those with an entry whose destination passed safe_destination, so a
+    crafted flavor ("../x") is never zipped or pruned (STD-5.25). The Undo popup builds its rows from the same list."""
+    return [Flavor(folder, wow_root / folder)
+            for folder in sorted({e["flavor"] for e in entries if destination(wow_root, e["flavor"], e["rel"])})]
 
 
 def _sha(data: bytes) -> str:
@@ -162,7 +169,7 @@ def undo_run(tool: SvTool, journal_path: Path, *, wow_root: Path, root: Path, ke
     targets = [(e, destination(wow_root, e["flavor"], e["rel"])) for e in entries]
     _refuse_locked(tool, [(entry["rel"], dest) for entry, dest in targets], "undo")
     result = UndoResult(journal_path=journal_path)
-    flavors = [Flavor(folder, wow_root / folder) for folder in sorted({e["flavor"] for e in entries})]
+    flavors = undo_flavors(wow_root, entries)
     result.snapshots.extend(_snapshots(tool, flavors, root, now, report, parallelism, on_flavor, on_flavor_done))
     skipped = tool.event("file_skipped")
     for index, (entry, dest) in enumerate(targets, 1):

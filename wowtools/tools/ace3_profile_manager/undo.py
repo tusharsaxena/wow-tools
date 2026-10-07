@@ -6,11 +6,12 @@ from pathlib import Path
 
 from wowtools.core import sv_undo
 from wowtools.core.sv_apply import Marker
-from wowtools.core.sv_undo import CHANGED_SINCE, UndoError, UndoOutcome, UndoResult, WowRunning, destination
+from wowtools.core.sv_undo import (CHANGED_SINCE, UndoError, UndoOutcome, UndoResult, WowRunning, destination,
+                                    undo_flavors)
 from wowtools.tools.ace3_profile_manager.events import SV_TOOL
 
 __all__ = ["CHANGED_SINCE", "UndoError", "UndoOutcome", "UndoResult", "WowRunning", "destination", "recover",
-           "undo_run"]
+           "undo_flavors", "undo_run"]
 
 
 def undo_run(journal_path: Path, **options) -> UndoResult:
