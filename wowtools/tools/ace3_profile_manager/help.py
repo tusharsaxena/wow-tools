@@ -45,11 +45,11 @@ refuse while it runs.
 | **Undo last change** | `z` | Puts back every file the last Apply changed |
 
 The **Show** boxes narrow the tree (only addons with 2+ profiles, only unused profiles, leftover characters,
-blacklisted addons). `a` / `n` tick / untick everything shown, `/` filters the tree, `x` / `c` expand / collapse it
-all, `u` unlocks a blacklisted addon for this session, `←` `→` switch panes, `Tab` or `↓` on the last line reach the
-action bar. `f` or `Esc` picks another game version, `t` goes back to the tool menu, `s` opens the settings, `q`
-quits (leaving with pending changes asks first). On the results: **Rescan** (`r`), **Other flavor** (`f`),
-**Tools** (`t`), **Quit** (`q`).
+blacklisted addons). `a` / `n` tick / untick everything shown, `/` reaches the filter box (type, then **Filter** or
+`Enter` filters the tree; `Esc` clears it), `x` / `c` expand / collapse it all, `u` unlocks a blacklisted addon for
+this session, `←` `→` switch panes, `Tab` or `↓` on the last line reach the action bar. `f` or `Esc` picks another
+game version, `t` goes back to the tool menu, `s` opens the settings, `q` quits (leaving with pending changes asks
+first). On the results: **Rescan** (`r`), **Other flavor** (`f`), **Tools** (`t`), **Quit** (`q`).
 
 ## Safety
 

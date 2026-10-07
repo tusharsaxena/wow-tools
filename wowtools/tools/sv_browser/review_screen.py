@@ -52,7 +52,7 @@ from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen,
                                  ProgressScreen, UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
 from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, TickModel, WowCheck
-from wowtools.ui.tree_filter import (FILTER_BINDINGS, FILTER_HINT, FilterInput, ModelFilter, ModelNode, TextFilter,
+from wowtools.ui.tree_filter import (FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TextFilter,
                                      TreeFilter)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, RiskBanner, action_button
 
@@ -219,7 +219,7 @@ class SvReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
         with Horizontal(id="body"):
             with Vertical(id="filters"):
                 yield RiskBanner()
-                yield FilterInput()
+                yield FilterBar()
                 yield Static(self._pending_line(), id="pending")
                 with ButtonRow(id="search-row", wrap=False):
                     yield action_button("Search", "navigate", "S", id="btn-search")

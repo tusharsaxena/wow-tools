@@ -12,7 +12,7 @@ from unittest.mock import patch
 from textual.app import App
 from textual.widgets import Button, DataTable, Input, OptionList, ProgressBar, Static, Tree
 
-from tests.fixtures import BASE, TuiTestCase, build_wow_tree, make_config, settle
+from tests.fixtures import BASE, TuiTestCase, build_wow_tree, make_config, settle, submit_filter
 from wowtools.core import activity
 from wowtools.core.backup import BackupError
 from wowtools.core.config import Config
@@ -1838,11 +1838,12 @@ class TreeFilterTest(AppTestCase):
             await pilot.pause()
             await pilot.press(*"UNINST")
             await settle(app, pilot)
+            self.assertGreater(len(self.addons(review)), 1)  # typed, not submitted (D40)
+            await pilot.press("enter")  # filters, back to the tree
+            await settle(app, pilot)
             self.assertEqual(self.addons(review), {"Uninstalled"})
             shown = {f.path for i in review.proposal.items if i.addon == "Uninstalled" for f in i.files}
             self.assertEqual(set(review.shown_tick_keys()), shown)
-            await pilot.press("enter")  # keeps the filter, back to the tree
-            await pilot.pause()
             await pilot.press("n")
             self.assertEqual(review.unchecked, shown)  # only what the filter shows
             note = f"{len(every - shown)} selected files are hidden by the filter"
@@ -1869,13 +1870,13 @@ class TreeFilterTest(AppTestCase):
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
             item = review.proposal.items[0]
-            review.filter_input().value = item.files[0].name
+            submit_filter(review, item.files[0].name)
             await settle(app, pilot)
             tree = review.query_one("#proposal", Tree)
             node = next(n for n in _walk(tree.root) if n.data and n.data[0] == "item"
                         and n.data[1].key == item.key)
             self.assertTrue(node.is_expanded)  # a file in it matches: the addon opens
             self.assertEqual([str(c.label).split("  ")[0][2:] for c in node.children], [item.files[0].name])
-            review.filter_input().value = item.account
+            submit_filter(review, item.account)
             await settle(app, pilot)
             self.assertEqual({n.data[2] for n in tree.root.children if n.data}, {item.account})  # its account

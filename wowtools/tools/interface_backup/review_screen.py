@@ -43,7 +43,7 @@ from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, 
                                 relabel_branch, theme_colour, two_pane_css)
 from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
-from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, ModelFilter, ModelNode, TreeFilter
+from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TreeFilter
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
@@ -175,7 +175,7 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                 yield Static("", id="folder-label")
                 yield Label("Keep", classes="section")
                 yield Static("", id="keep-label")
-                yield FilterInput()
+                yield FilterBar()
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Back up", "create", "b", id="btn-backup")
                     yield action_button("Restore", "navigate", "e", id="btn-restore")
@@ -489,7 +489,7 @@ class BackupReviewScreen(TreeFilter, ReviewBase, Screen[str]):
         it (and maybe every Backups group), so it is cleared first."""
         if self.filtering:
             self.text_filter.text = ""
-            self.filter_input().value = ""  # its Changed event finds the text already empty: no second rebuild
+            self.filter_input().value = ""  # the box shows the cleared filter (typing never filters, D40)
             log_event("ui.selection", screen=self.LOG_SCREEN, control="filter", value="")
             self._rebuild()
         tree = self.query_one("#flavors", Tree)

@@ -8,7 +8,7 @@ from unittest import mock
 
 from textual.widgets import Button, Input, Select, Static, Tree
 
-from tests.fixtures import BASE, TINY, assert_keys_on_buttons, settle
+from tests.fixtures import BASE, TINY, assert_keys_on_buttons, settle, submit_filter
 from tests.test_sv_browser_app import SvBrowserTestBase, child, labels, select, walk
 from tests.test_sv_browser_edit import SvEditTestBase, error_text
 from wowtools.core.events import capture_events
@@ -296,7 +296,7 @@ class ResultsTicksTest(SearchTestBase):
             await settle(app, pilot)
             self.assertEqual(len(review.ticked), 5)
             self.assertIn("5 selected results are hidden by the filter", review.summary_text)
-            review.filter_input().value = "unitframe"
+            submit_filter(review, "unitframe")
             await settle(app, pilot)
             self.assertEqual(hits_of(self.tree_root(review)),
                              [f'✔ ElvDB › profiles › Default › unitframe › Font = "{FRIZ}" → "Arial"'])

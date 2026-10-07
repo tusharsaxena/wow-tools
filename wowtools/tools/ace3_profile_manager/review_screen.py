@@ -48,7 +48,7 @@ from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, InfoScreen, ProgressScreen,
                                 UnfinishedRunScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, TickModel, WowCheck
-from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, TreeFilter, hidden_by_filter
+from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, TreeFilter, hidden_by_filter
 from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button,
                                  key_text, wrap_items)
 
@@ -220,7 +220,7 @@ class ProfileReviewScreen(TreeFilter, RunActions, ReviewBase, Screen[str]):
                 yield Ka0sCheckbox("Only unused profiles", False, id="only-unused", compact=True)
                 yield Ka0sCheckbox("Leftover characters", True, id="show-leftovers", compact=True)
                 yield Ka0sCheckbox("Blacklisted addons", True, id="show-blacklisted", compact=True)
-                yield FilterInput(id="search")
+                yield FilterBar(input_id="search")
                 yield Static(self._pending_line(NO_PENDING), id="pending")
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Apply", "destructive", "w", id="btn-apply")

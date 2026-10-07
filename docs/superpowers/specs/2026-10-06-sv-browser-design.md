@@ -80,7 +80,7 @@ scans; Back returns to the flavor picker.
 
 **Review** (`SvReviewScreen`, two panes, 120x30 base, works at 80x24):
 - **Left pane** (`#filters`), one focusable control per row: the red `USE AT YOUR OWN RISK` banner (static),
-  `FilterInput`, the `Static#pending` summary, `ButtonRow#actions` with **Search** (`s`, navigate), **Apply** (`w`,
+  `FilterBar` (box + **Filter**, D40), the `Static#pending` summary, `ButtonRow#actions` with **Search** (`s`, navigate), **Apply** (`w`,
   destructive), **Dry run** (`y`, simulate), **Rescan** (`r`, navigate), **Undo last change** (`z`, revert), and the
   `NavHint` (REVIEW_HINT, `v` view, FILTER_HINT, TREE_HINT, flavors/tools). The search form lives in a popup so the
   left pane stays short at 80x24.

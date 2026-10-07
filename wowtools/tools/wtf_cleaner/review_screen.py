@@ -37,7 +37,7 @@ from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceScreen, ConfirmScreen,
                                 ProgressScreen, relabel_branch, two_pane_css)
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
-from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, ModelFilter, ModelNode, TreeFilter
+from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TreeFilter
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button
 
 WARNING_STYLE = "#E8B04B"
@@ -150,7 +150,7 @@ class ReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                                        id=f"crit_{name}", compact=True)
                 yield Label("Max age in days (Enter)", classes="section")
                 yield Input(str(self.criteria.max_age_days), type="integer", id="max_age", compact=True)
-                yield FilterInput()
+                yield FilterBar()
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Clean", "destructive", "w", id="btn-clean")
                     yield action_button("Dry run", "simulate", "y", id="btn-dry")

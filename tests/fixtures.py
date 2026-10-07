@@ -47,6 +47,7 @@ from textual.widgets._footer import FooterKey
 
 from wowtools.core.config import Config
 from wowtools.ui.branding import KeyFooter, footer_bindings
+from wowtools.ui.tree_filter import FILTER_BUTTON_ID, FilterInput
 from wowtools.ui.widgets import ActionButton, NavHint, button_keys, key_text, shown
 
 # Terminal sizes (docs/superpowers/specs/2026-10-04-ace-profiles-design.md, Addendum B): screens are designed for
@@ -179,6 +180,13 @@ class TuiTestCase(unittest.IsolatedAsyncioTestCase):
     def confirm_guard(self, seconds: float) -> None:
         from wowtools.ui import dialogs
         dialogs.CONFIRM_GUARD = seconds  # the asyncSetUp patcher puts the real value back
+
+
+def submit_filter(screen, text: str) -> None:
+    """Put `text` in a tree screen's filter box and submit it, as Enter there does (spec D40: typing alone never
+    filters). Await settle() after it."""
+    screen.filter_input().value = text
+    screen.submit_filter()
 
 
 async def settle(app, pilot, timeout: float = 10.0) -> None:
@@ -484,8 +492,13 @@ def assert_keys_on_buttons(test, screen) -> None:
         keys = set().union(*(bound.get(a, set()) for a in actions if a))
         if keys:  # its action has a key: the button shows one of them
             test.assertIn(button.shortcut, keys, (screen, button.id))
-        if button.shortcut is not None:  # and a key shown on a button does something on this screen
+        if button.id == FILTER_BUTTON_ID:  # the tree filter's button (D40): its key, Enter, is the filter box's
+            box = button.parent.query_one(FilterInput)
+            test.assertIn(button.shortcut, {b.key for b in box._bindings.key_to_bindings.get("enter", [])},
+                          (screen, button.id))
+        elif button.shortcut is not None:  # and a key shown on a button does something on this screen
             test.assertIn(button.shortcut, screen._bindings.key_to_bindings, (screen, button.id))
+        if button.shortcut is not None:
             plain = button.label.plain
             test.assertTrue(plain.endswith(f"({key_text(button.shortcut)})"), plain)
     shortcuts = {key_text(b.shortcut) for b in buttons if b.shortcut and shown(b)}

@@ -13,7 +13,7 @@ from textual.widgets._footer import FooterKey
 
 from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, accept_disclaimer, assert_keys_on_buttons, build_ace_tree,
                             build_interface_tree, build_screenshot_tree, build_wow_tree, make_config, settle,
-                            stage_sv_edit)
+                            stage_sv_edit, submit_filter)
 from wowtools import __version__
 from wowtools.core.changelog import Changelog, parse_changelog
 from wowtools.core.lock import LockInfo
@@ -31,7 +31,7 @@ from wowtools.ui.dialogs import (FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_H
                                  ProgressScreen)
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import MENU_HINT, LockScreen, WowToolsApp
-from wowtools.ui.tree_filter import FILTER_HINT, FILTER_PLACEHOLDER, NO_MATCH_TEXT, FilterInput
+from wowtools.ui.tree_filter import FILTER_BUTTON_ID, FILTER_HINT, FILTER_PLACEHOLDER, NO_MATCH_TEXT, FilterInput
 from wowtools.ui.widgets import CHECK_OFF, RISK_TEXT, NavHint, RiskBanner, action_kind
 
 POPUP_MAX_WIDTH = 100  # a popup or confirm at LARGE: a readable width, never stretched edge to edge
@@ -218,11 +218,16 @@ class LookAndFeelTest(TuiTestCase):
                         self.assertIn(pane, field.ancestors)
                         others = [w for w in pane.query("*") if w.focusable and w is not field]
                         self.assertNotIn(field.region.y, [w.region.y for w in others])
+                        button = screen.query_one(f"#{FILTER_BUTTON_ID}", Button)  # D40: beside the box
+                        self.assertEqual((button.label_text, button.shortcut, action_kind(button)),
+                                         ("Filter", "enter", "navigate"))
+                        self.assertEqual(button.region.y, field.region.y)
+                        self.assertFalse(button.focusable)
                         hint = screen.query_one(NavHint)
                         self.assertIn(FILTER_HINT + TREE_HINT.removesuffix(" · "), hint.hint)
                         if size == BASE:
                             inside = pane.region._replace(width=pane.region.width - 1)
-                            for widget in (field, hint):
+                            for widget in (field, button, hint):
                                 self.assert_inside(widget, inside)
                         tree = screen.query_one(screen.TREE_SELECTOR, Tree)
                         tree.focus()
@@ -237,6 +242,37 @@ class LookAndFeelTest(TuiTestCase):
                         self.assertEqual(field.value, "")
                         self.assertIs(app.screen, screen)
                         self.assertIs(screen.focused, tree)
+
+    async def test_the_filter_waits_for_enter_or_its_button(self):
+        """Spec D40 on every tree screen: typing in the box never rebuilds the tree; Enter applies it, the Filter
+        button too, and an empty box submitted shows everything again."""
+        for tool in (*TOOLS, "blacklist"):
+            with self.subTest(tool=tool):
+                app = self.make_app()
+                async with app.run_test(size=BASE) as pilot:
+                    screen = await self.open_review(app, pilot, "ace3-profile-manager" if tool == "blacklist"
+                                                    else tool)
+                    if tool == "blacklist":
+                        screen.action_edit_blacklist()
+                        await settle(app, pilot)
+                        screen = app.screen
+                    tree = screen.query_one(screen.TREE_SELECTOR, Tree)
+                    before = [str(n.label) for n in tree.root.children]
+                    tree.focus()
+                    await pilot.press("slash", "z", "z", "z", "q")
+                    await settle(app, pilot)
+                    self.assertFalse(screen.filtering)
+                    self.assertEqual([str(n.label) for n in tree.root.children], before)
+                    await pilot.press("enter")
+                    await settle(app, pilot)
+                    self.assertTrue(screen.filtering)
+                    self.assertEqual([str(n.label) for n in tree.root.children], [NO_MATCH_TEXT])
+                    self.assertIs(screen.focused, tree)
+                    screen.filter_input().value = ""
+                    await pilot.click(f"#{FILTER_BUTTON_ID}")
+                    await settle(app, pilot)
+                    self.assertFalse(screen.filtering)
+                    self.assertEqual([str(n.label) for n in tree.root.children], before)
 
     async def test_a_group_mark_counts_what_the_filter_shows(self):
         """One rule in every tick tree: with the filter set, a group's and the root's mark count only the items the
@@ -259,7 +295,7 @@ class LookAndFeelTest(TuiTestCase):
                     tree.focus()
                     await pilot.press("a")
                     await settle(app, pilot)
-                    screen.filter_input().value = text
+                    submit_filter(screen, text)
                     await settle(app, pilot)
                     tree.focus()
                     await pilot.press("n")
@@ -281,10 +317,10 @@ class LookAndFeelTest(TuiTestCase):
                         await settle(app, pilot)
                         screen = app.screen
                     tree = screen.query_one(screen.TREE_SELECTOR, Tree)
-                    screen.filter_input().value = "zzzq"
+                    submit_filter(screen, "zzzq")
                     await settle(app, pilot)
                     self.assertEqual([str(n.label) for n in tree.root.children], [NO_MATCH_TEXT])
-                    screen.filter_input().value = ""
+                    submit_filter(screen, "")
                     await settle(app, pilot)
                     self.assertNotIn(NO_MATCH_TEXT, [str(n.label) for n in tree.root.children])
 
@@ -298,7 +334,7 @@ class LookAndFeelTest(TuiTestCase):
                     setattr(review, model, None)
                     review._scan_failed("The scan failed: disk gone")
                     await settle(app, pilot)
-                    review.filter_input().value = "re"
+                    submit_filter(review, "re")
                     await settle(app, pilot)
                     self.assertIn("disk gone", str(review.query_one("#summary").render()))
 

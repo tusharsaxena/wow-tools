@@ -34,7 +34,7 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      there: use what is already there, and when your tool needs code another tool already has, move it into
      `core/` or `ui/` first and make both tools use it. Never copy it and never import it from the other tool
      (`tests/test_structure.py` pins the single definitions and the no-cross-tool-import rule). The main pieces:
-     `ui/review.py` (the review screen base: `ReviewBase`, `ReviewTree`, `TickModel`), `ui/tree_filter.py` (the tree filter: `TreeFilter`, `FilterInput`, `/`), `ui/result_screen.py`
+     `ui/review.py` (the review screen base: `ReviewBase`, `ReviewTree`, `TickModel`), `ui/tree_filter.py` (the tree filter: `TreeFilter`, `FilterBar`, `/`), `ui/result_screen.py`
      (`ResultBase` / `ResultScreen`), `ui/settings_form.py` (`ToolSettingsScreen`), `ui/tool_flow.py` (the
      `ToolFlow` helpers: `start`, `open_settings`, `remember_flavor`, `pick_account`, `fill_notes`),
      `ui/dialogs.py` (popups and CSS), `ui/widgets.py` (`action_button`), and in `core/` `journal.ToolJournals`,
@@ -106,14 +106,14 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      `REVIEW_HINT` (or `review_hint("tick or open")` when Space does more in your tree) and `RESULT_HINT`.
      Every tree screen binds `TREE_BINDINGS` (`x` expand all, `c` collapse all) and puts `TREE_HINT` in its hint
      (before `f flavors`); each focusable control of the left pane gets a row of its own. Every tree screen also gets
-     the `/` filter from `wowtools/ui/tree_filter.py`: a `FilterInput` in the left pane and `FILTER_HINT` right
+     the `/` filter from `wowtools/ui/tree_filter.py`: a `FilterBar` (the box and its **Filter** button) in the left pane and `FILTER_HINT` right
      before `TREE_HINT`, through `TreeFilter` on a tick screen (placed before `ReviewBase`; supply `all_tick_keys()`
      and `filter_texts(key)`, and a `HIDDEN_NOUN` for the "N selected … are hidden by the filter" line) or
      `FilterBox` on a read-only tree.
      Build every button with `action_button(label, kind, key)` (`wowtools/ui/widgets.py`), never `Button(...)`.
      `key` is the binding key of what the button does (`"w"`, `"escape"`): the button shows it on a second line and
      the footer leaves it out (spec D17), so never write the key into the label ("Clean (w)") and leave button keys
-     out of the left-pane hint (it names navigation and the keys with no button: `a all · n none · / filter · ...`)
+     out of the left-pane hint (it names navigation and the keys with no button: `a all · n none · / filter, then Filter · ...`)
      and out of any guide or status line (write "then Restore", not "press e"). Under a popup the footer lists
      no keys: the popup's buttons and hint say what to press.
      A result screen's `lead_buttons()` / `extra_buttons()` give `(label, kind, id, key)`. Pick

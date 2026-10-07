@@ -35,9 +35,10 @@ restore.**
 | **Undo last restore** | `z` | Puts back the folders the last restore replaced |
 
 `Space` ticks or unticks a game version (or opens a line), `a` / `n` tick / untick every game version shown, `/`
-filters the tree (a hidden ticked version is still backed up), `x` / `c` expand / collapse it all, `←` `→` switch
-panes. `f` or `Esc` picks another game version, `t` goes back to the tool menu, `s` opens the settings, `q` quits.
-On the results: **Rescan** (`r`), **Restore** (`e`), **Other flavor** (`f`), **Tools** (`t`), **Quit** (`q`).
+reaches the filter box (type, then **Filter** or `Enter` filters the tree; a hidden ticked version is still backed
+up), `x` / `c` expand / collapse it all, `←` `→` switch panes. `f` or `Esc` picks another game version, `t` goes
+back to the tool menu, `s` opens the settings, `q` quits. On the results: **Rescan** (`r`), **Restore** (`e`),
+**Other flavor** (`f`), **Tools** (`t`), **Quit** (`q`).
 
 ## Safety
 

@@ -33,7 +33,7 @@ from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, 
                                 relabel_branch, two_pane_css)
 from wowtools.ui.result_screen import ResultBase, result_bindings, status_style
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
-from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterInput, ModelFilter, ModelNode, TreeFilter
+from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TreeFilter
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
@@ -136,7 +136,7 @@ class ShotReviewScreen(TreeFilter, ReviewBase, Screen[str]):
                 yield Static(Text(destination_label(self.settings.dest_dir)), id="dest-label")
                 yield Label("Mode", classes="section")
                 yield Static(Text(self._mode_text()), id="mode-label")
-                yield FilterInput()
+                yield FilterBar()
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Organize", "overwrite", "o", id="btn-organize")
                     yield action_button("Dry run", "simulate", "y", id="btn-dry")

@@ -27,10 +27,11 @@ date comes from the name WoW gives each screenshot (`WoWScrnShot_MMDDYY_HHMMSS.j
 | **Rescan** | `r` | Scans again (after changing settings, say) |
 | **Undo last run** | `z` | Reverses the most recent run |
 
-`Space` ticks or unticks a line, `a` / `n` tick / untick everything shown, `/` filters the tree by a game version, a
-date (`2024-01`) or a file name (a hidden screenshot keeps its tick and is still sorted), `x` / `c` expand / collapse
-it all, `←` `→` switch panes. `f` or `Esc` picks another game version, `t` goes back to the tool menu, `s` opens the
-settings, `q` quits. On the results: **Rescan** (`r`), **Other flavor** (`f`), **Tools** (`t`), **Quit** (`q`).
+`Space` ticks or unticks a line, `a` / `n` tick / untick everything shown, `/` reaches the filter box: type a game
+version, a date (`2024-01`) or a file name, then **Filter** or `Enter` filters the tree (a hidden screenshot keeps
+its tick and is still sorted), `x` / `c` expand / collapse it all, `←` `→` switch panes. `f` or `Esc` picks another
+game version, `t` goes back to the tool menu, `s` opens the settings, `q` quits. On the results: **Rescan** (`r`),
+**Other flavor** (`f`), **Tools** (`t`), **Quit** (`q`).
 
 ## Settings (`s`)
 

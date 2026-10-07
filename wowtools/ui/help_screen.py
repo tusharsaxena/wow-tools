@@ -51,7 +51,7 @@ tool here (`↑` `↓`, then `Enter`); leaving a tool brings you back to this me
 | `←` `→` | Switch between a screen's two panes, or move along a row of buttons |
 | `Space` | Tick or untick the highlighted line |
 | `a` / `n` | Tick / untick everything the tree shows |
-| `/` | Filter a tree (`Enter` keeps the filter, `Esc` clears it) |
+| `/` | Filter a tree: type, then `Enter` or the **Filter** button filters it (`Esc` clears it) |
 | `x` / `c` | Expand / collapse every line of a tree |
 | `Esc` | Go back |
 | `s` | Settings |

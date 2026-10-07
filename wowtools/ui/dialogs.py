@@ -65,14 +65,14 @@ RESULT_HINT = "↑↓/Tab move · ←→ buttons · Enter/Space press · Esc bac
 
 def two_pane_css(screen: str, tree: str, *, width: int = FILTERS_WIDTH) -> str:
     """DEFAULT_CSS of a two-pane screen called `screen`: the left pane (#filters: .section headings, compact
-    checkboxes and inputs, the tree filter box a row apart, the #actions button row in one line), the tree (`tree`), the scan progress that stands
+    checkboxes and inputs, the tree filter row (FilterBar) a row apart, the #actions button row in one line), the tree (`tree`), the scan progress that stands
     in for the tree while a scan runs (#scan-box) and the bottom line (#summary)."""
     return f"""
     {screen} #body {{ height: 1fr; }}
     {screen} #filters {{ width: {width}; padding: 0 1; border-right: solid $primary; }}
     {screen} #filters .section {{ color: $accent; text-style: bold; margin: 1 0 0 0; }}
     {screen} #filters Ka0sCheckbox, {screen} #filters Input {{ margin: 0; }}
-    {screen} #filters FilterInput {{ margin-top: 1; }}
+    {screen} #filters FilterBar {{ margin-top: 1; }}
     {screen} #actions {{ margin-top: 1; height: auto; }}
     {screen} #actions Button {{ min-width: 0; width: auto; margin-right: 1; }}
     {screen} {tree} {{ width: 1fr; padding: 0 1; }}

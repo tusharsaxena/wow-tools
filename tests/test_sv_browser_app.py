@@ -9,7 +9,7 @@ from pathlib import Path
 from textual.widgets import Button, Tree
 
 from tests.fixtures import (BASE, TINY, TuiTestCase, accept_disclaimer, assert_keys_on_buttons, build_sv_tree,
-                            make_config, settle)
+                            make_config, settle, submit_filter)
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.tools.sv_browser.app import SvBrowserSettingsScreen
@@ -325,10 +325,10 @@ class SvBrowseViewTest(SvBrowserTestBase):
         async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot, "_retail_")
             tree = review.query_one("#browse", Tree)
-            review.filter_input().value = "autorepair"
+            submit_filter(review, "autorepair")
             await settle(app, pilot)
             self.assertEqual(labels(tree.root), [NO_MATCH_TEXT])  # ElvUI.lua is not read yet
-            review.filter_input().value = ""
+            submit_filter(review, "")
             await settle(app, pilot)
             wide = child(child(child(tree.root, "Retail"), "ACCT1"), "Account-wide")
             elv = await self.open_node(review, pilot, child(wide, "ElvUI.lua"))
@@ -336,11 +336,11 @@ class SvBrowseViewTest(SvBrowserTestBase):
             profiles = await self.open_node(review, pilot, child(db, "profiles"))
             default = await self.open_node(review, pilot, child(profiles, "Default"))
             await self.open_node(review, pilot, child(default, "general"))
-            review.filter_input().value = "autorepair"
+            submit_filter(review, "autorepair")
             await settle(app, pilot)
             shown = [n.label.plain for n in walk(tree.root) if n.data is not None and n.data[0] == "node"]
             self.assertEqual(shown, ["ElvDB {1}", "profiles {1}", "Default {2}", "general {4}", "autoRepair = true"])
-            review.filter_input().value = "kaelys"  # a group's name: everything in it shows
+            submit_filter(review, "kaelys")  # a group's name: everything in it shows
             await settle(app, pilot)
             files = [n.label.plain.split("  ")[0] for n in walk(tree.root) if n.data and n.data[0] == "file"]
             self.assertEqual(files, ["ElvUI.lua"])

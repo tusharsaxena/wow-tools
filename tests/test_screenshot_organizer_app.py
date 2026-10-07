@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from textual.widgets import Button, DataTable, Input, OptionList, Tree
 
-from tests.fixtures import BASE, TuiTestCase, build_screenshot_tree, build_wow_tree, make_config, settle
+from tests.fixtures import BASE, TuiTestCase, build_screenshot_tree, build_wow_tree, make_config, settle, submit_filter
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
@@ -519,7 +519,7 @@ class ShotsAppTest(TuiTestCase):
             review = await self.open_review(app, pilot)
             await pilot.press("slash")
             await pilot.pause()
-            await pilot.press(*"2019-07")
+            await pilot.press(*"2019-07", "enter")
             await settle(app, pilot)
             tree = review.query_one("#shots", Tree)
             days = [n for n in _walk(tree.root) if n.data and n.data[0] == "day"]
@@ -528,8 +528,7 @@ class ShotsAppTest(TuiTestCase):
             await settle(app, pilot)
             self.assertEqual(len(self.shown_files(review)), 2)
             self.assertEqual({n.data[1].flavor.display_name for n in tree.root.children}, {"Retail"})
-            await pilot.press("enter")  # keeps the filter, back to the tree
-            await pilot.pause()
+            self.assertIs(review.focused, tree)  # Enter filtered and went back to the tree
             await pilot.press("n")
             self.assertEqual(len(review.selection()), 4)  # the two shown unticked, the hidden four kept
             self.assertIn("4 selected shots are hidden by the filter", review.summary_text)
@@ -555,7 +554,7 @@ class ShotsAppTest(TuiTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
-            review.filter_input().value = A[:-4].upper()
+            submit_filter(review, A[:-4].upper())
             await settle(app, pilot)
             self.assertEqual(self.shown_files(review), [A])
             self.assertEqual(review.filter_keys(review.all_tick_keys()), [self.shots / A])

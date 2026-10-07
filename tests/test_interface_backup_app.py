@@ -13,7 +13,7 @@ from unittest.mock import patch
 from textual.widgets import Button, Checkbox, DataTable, Input, OptionList, Static, Tree
 
 from tests.fixtures import (BASE, TINY, TuiTestCase, assert_keys_on_buttons, build_interface_tree, build_wow_tree,
-                            make_config, settle)
+                            make_config, settle, submit_filter)
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
@@ -1635,7 +1635,7 @@ class InterfaceBackupAppTest(TuiTestCase):
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_review(app, pilot)
-            review.filter_input().value = "interface"
+            submit_filter(review, "interface")
             await settle(app, pilot)
             self.assertTrue(review.filtering)
             await self.make_backup(app, pilot)
@@ -2007,9 +2007,10 @@ class InterfaceBackupAppTest(TuiTestCase):
             await pilot.pause()
             await pilot.press(*"anniv")
             await settle(app, pilot)
+            self.assertGreater(len(self.flavor_nodes(review)), 1)  # typed, not submitted (D40)
+            await pilot.press("enter")  # filters, back to the tree
+            await settle(app, pilot)
             self.assertEqual(list(self.flavor_nodes(review)), ["Anniversary"])
-            await pilot.press("enter")  # keeps the filter, back to the tree
-            await pilot.pause()
             await pilot.press("n")  # unticks Anniversary only
             self.assertEqual(len(review.selection()), ticked - 1)
             self.assertNotIn("_anniversary_", [s.flavor.folder for s in review.selection()])
@@ -2037,7 +2038,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             await pilot.press("r")
             await settle(app, pilot)
             info = next(b for b in review.backups if b.flavor_short == "retail")
-            review.filter_input().value = info.when
+            submit_filter(review, info.when)
             await settle(app, pilot)
             flavors = self.flavor_nodes(review)
             self.assertIn("Retail", flavors)
@@ -2069,12 +2070,15 @@ class InterfaceBackupAppTest(TuiTestCase):
             await pilot.press("w", "b")  # typed: never Back (b)
             await settle(app, pilot)
             self.assertIs(app.screen, screen)
+            self.assertEqual(len(self.effect(screen, "removed").children), 2)  # not submitted yet (D40)
+            await pilot.press("enter")
+            await settle(app, pilot)
             removed = self.effect(screen, "removed")
             self.assertEqual([c.data[2] for c in removed.children], ["Interface/AddOns/WeakAuras"])
             group = removed.children[0]
             self.assertTrue(group.is_expanded)
             self.assertEqual([str(c.label) for c in group.children], ["wb.lua"])
-            await pilot.press("escape")  # clears the filter, stays on the screen
+            await pilot.press("slash", "escape")  # clears the filter, stays on the screen
             await settle(app, pilot)
             self.assertIs(app.screen, screen)
             self.assertEqual(len(self.effect(screen, "removed").children), 2)

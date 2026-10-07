@@ -29,7 +29,7 @@ from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import ACCENT, TREE_BINDINGS, TREE_HINT, TwoPaneFocus, review_hint, theme_colour, two_pane_css
 from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
 from wowtools.ui.review import ButtonActions, ReviewTree
-from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBox, FilterInput, ModelFilter, ModelNode
+from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, FilterBox, ModelFilter, ModelNode
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button
 
 # The review's hint shape, then the keys of this screen. Space here ticks a part or opens a node of the effects tree.
@@ -110,7 +110,7 @@ class RestoreScreen(FilterBox, ButtonActions, TwoPaneFocus, Screen[RestorePlan |
                 yield Label("Restore", classes="section")
                 for part in PARTS:
                     yield Ka0sCheckbox(part, True, id=f"part-{part}", disabled=True, compact=True)
-                yield FilterInput()
+                yield FilterBar()
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Restore", "overwrite", "o", id="btn-restore", disabled=True)
                     yield action_button("Back", "cancel", "b", id="btn-back")

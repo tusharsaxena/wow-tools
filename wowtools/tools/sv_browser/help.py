@@ -78,11 +78,11 @@ ticked).
 
 ## Keys
 
-`/` filters what has been opened (in the results: every hit), `x` opens everything down to the files and `c` closes
-it all, `←` `→` switch panes, `Tab` or `↓` on the last line reach the buttons under the tree. `f` or `Esc` picks
-another game version, `t` goes back to the tool menu, `s` opens the settings, `q` quits (leaving with something
-staged or ticked asks first). On the results: **Rescan** (`r`), **Other flavor** (`f`), **Tools** (`t`), **Quit**
-(`q`).
+`/` reaches the filter box: type, then **Filter** or `Enter` filters what has been opened (in the results: every
+hit), `x` opens everything down to the files and `c` closes it all, `←` `→` switch panes, `Tab` or `↓` on the last
+line reach the buttons under the tree. `f` or `Esc` picks another game version, `t` goes back to the tool menu, `s`
+opens the settings, `q` quits (leaving with something staged or ticked asks first). On the results: **Rescan**
+(`r`), **Other flavor** (`f`), **Tools** (`t`), **Quit** (`q`).
 
 ## Settings (`s`)
 

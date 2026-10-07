@@ -17,8 +17,8 @@ from tests.fixtures import TuiTestCase, settle
 from wowtools.core.events import capture_events
 from wowtools.ui.dialogs import TREE_BINDINGS, TwoPaneFocus, relabel_branch, two_pane_css
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
-from wowtools.ui.tree_filter import (FILTER_BINDINGS, FILTER_ID, FilterBox, FilterInput, ModelFilter, TextFilter,
-                                     TreeFilter, hidden_by_filter)
+from wowtools.ui.tree_filter import (FILTER_BINDINGS, FILTER_BUTTON_ID, FILTER_ID, FilterBar, FilterBox, FilterInput,
+                                     ModelFilter, TextFilter, TreeFilter, hidden_by_filter)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, action_button
 
 MODEL = {"Alpha": ["apple", "apricot"], "Beta": ["Banana", "cherry"]}
@@ -137,7 +137,7 @@ class ToyFilterReview(TreeFilter, ReviewBase, Screen[str]):
         with Horizontal(id="body"):
             with Vertical(id="filters"):
                 yield Ka0sCheckbox("Box", False, id="box", compact=True)
-                yield FilterInput()
+                yield FilterBar()
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Go", "overwrite", id="btn-go")
             with Vertical(id="scan-box"):
@@ -230,7 +230,7 @@ class SearchIdReview(ToyFilterReview):
                 yield Ka0sCheckbox("Box", False, id="box", compact=True)
                 yield Input(id="max-age", type="integer", compact=True)
                 yield Input(id="note", compact=True)
-                yield FilterInput(id="search")
+                yield FilterBar(input_id="search")
                 with ButtonRow(id="actions", wrap=False):
                     yield action_button("Go", "overwrite", id="btn-go")
             with Vertical(id="scan-box"):
@@ -263,7 +263,7 @@ class ToyFilterView(FilterBox, TwoPaneFocus, Screen[str]):
     def compose(self) -> ComposeResult:
         with Horizontal(id="body"):
             with Vertical(id="filters"):
-                yield FilterInput()
+                yield FilterBar()
             yield Tree(Text("root"), id="view")
         yield Static("", id="summary")
 
@@ -317,9 +317,20 @@ class TreeFilterTest(TuiTestCase):
             await test(app, app.review, pilot)
 
     async def type_filter(self, app, review, pilot, text: str) -> None:
+        """`/` and the text typed into the box: nothing is filtered yet (spec D40)."""
         await pilot.press("slash")
         await pilot.press(*(" " if ch == " " else ch for ch in text))
         await settle(app, pilot)
+
+    async def apply_filter(self, app, review, pilot, text: str) -> None:
+        """`/`, the text, then Enter: the filter is applied and the tree has focus."""
+        await self.type_filter(app, review, pilot, text)
+        await pilot.press("enter")
+        await settle(app, pilot)
+
+    def submit(self, review, text: str) -> None:
+        review.filter_input().value = text
+        review.submit_filter()
 
     async def test_slash_focuses_the_filter_from_anywhere(self):
         async def test(app, review, pilot):
@@ -333,31 +344,83 @@ class TreeFilterTest(TuiTestCase):
             self.assertEqual(field.value, "/")
         await self.run_toy(test)
 
-    async def test_typing_filters_the_model_and_opens_the_matches(self):
+    async def test_typing_alone_does_not_filter(self):
+        """Spec D40: typing changes the box only; the tree is not rebuilt until the filter is submitted."""
         async def test(app, review, pilot):
-            self.assertEqual(review.shown_labels(), ["Alpha", "Beta"])  # closed: items not loaded yet
+            before = review.rebuilt
             await self.type_filter(app, review, pilot, "AP")
-            self.assertEqual(review.shown_labels(), ["Alpha", "apple", "apricot"])
             self.assertIsInstance(review.focused, FilterInput)  # typing stays in the box
-            field = review.query_one(f"#{FILTER_ID}", Input)
-            field.value = "ban"
-            await settle(app, pilot)
-            self.assertEqual(review.shown_labels(), ["Beta", "Banana"])  # loaded on expand, still filtered
-            field.value = "beta"
-            await settle(app, pilot)
-            self.assertEqual(review.shown_labels(), ["Beta", "Banana", "cherry"])  # a matched group keeps all
-            field.value = "zzz"
-            await settle(app, pilot)
-            self.assertEqual(review.shown_labels(), [])
+            self.assertEqual(review.query_one(f"#{FILTER_ID}", Input).value, "AP")
+            self.assertEqual(review.text_filter.text, "")
+            self.assertFalse(review.filtering)
+            self.assertEqual(review.rebuilt, before)
+            self.assertEqual(review.shown_labels(), ["Alpha", "Beta"])
         await self.run_toy(test)
 
-    async def test_typing_folds_into_one_rebuild(self):
+    async def test_enter_filters_the_model_and_opens_the_matches(self):
+        async def test(app, review, pilot):
+            self.assertEqual(review.shown_labels(), ["Alpha", "Beta"])  # closed: items not loaded yet
+            await self.apply_filter(app, review, pilot, "AP")
+            self.assertEqual(review.shown_labels(), ["Alpha", "apple", "apricot"])
+            self.assertIs(review.focused, review.query_one("#toy", Tree))
+            self.submit(review, "ban")
+            await settle(app, pilot)
+            self.assertEqual(review.shown_labels(), ["Beta", "Banana"])  # loaded on expand, still filtered
+            self.submit(review, "beta")
+            await settle(app, pilot)
+            self.assertEqual(review.shown_labels(), ["Beta", "Banana", "cherry"])  # a matched group keeps all
+            self.submit(review, "zzz")
+            await settle(app, pilot)
+            self.assertEqual(review.shown_labels(), [])
+            self.submit(review, "")  # cleared and submitted: everything again
+            await settle(app, pilot)
+            self.assertEqual(review.shown_labels(), ["Alpha", "Beta"])
+            self.assertFalse(review.filtering)
+        await self.run_toy(test)
+
+    async def test_the_filter_button_applies_what_is_typed(self):
+        """The Filter button beside the box does what Enter does: one rebuild, a log line, the tree focused."""
+        async def test(app, review, pilot):
+            before = review.rebuilt
+            await self.type_filter(app, review, pilot, "cher")
+            with capture_events() as records:
+                await pilot.click(f"#{FILTER_BUTTON_ID}")
+                await settle(app, pilot)
+            self.assertEqual(review.shown_labels(), ["Beta", "cherry"])
+            self.assertEqual(review.rebuilt, before + 1)
+            self.assertIs(review.focused, review.query_one("#toy", Tree))
+            self.assertEqual([(r["data"]["control"], r["data"]["value"]) for r in records
+                              if r["event"] == "ui.selection"], [("filter", "cher")])
+            await pilot.click(f"#{FILTER_BUTTON_ID}")  # the same text again: nothing to rebuild
+            await settle(app, pilot)
+            self.assertEqual(review.rebuilt, before + 1)
+        await self.run_toy(test)
+
+    async def test_the_filter_button_sits_beside_the_box_and_takes_no_focus(self):
+        """One focusable control per row: the button shares the box's row but Tab and ↑/↓ never stop on it (Enter
+        in the box is its key, shown on it)."""
+        async def test(app, review, pilot):
+            field = review.query_one(f"#{FILTER_ID}", Input)
+            button = review.query_one(f"#{FILTER_BUTTON_ID}", Button)
+            self.assertEqual(button.region.y, field.region.y)
+            self.assertGreater(button.region.x, field.region.x)
+            self.assertFalse(button.focusable)
+            self.assertEqual(button.label.plain, "Filter (\u23ce)")  # Enter, as the footer writes it
+            self.assertEqual(button.shortcut, "enter")
+            self.assertEqual(button.region.height, 1)
+            self.assertIsInstance(field.parent, FilterBar)
+        await self.run_toy(test)
+
+    async def test_submitting_folds_into_one_rebuild(self):
         async def test(app, review, pilot):
             before = review.rebuilt
             field = review.query_one(f"#{FILTER_ID}", Input)
             field.focus()
             for value in ("a", "ap", "apr"):
                 field.value = value
+            await settle(app, pilot)
+            self.assertEqual(review.rebuilt, before)
+            await pilot.press("enter")
             await settle(app, pilot)
             self.assertEqual(review.rebuilt, before + 1)
             self.assertEqual(review.shown_labels(), ["Alpha", "apricot"])
@@ -409,7 +472,8 @@ class TreeFilterTest(TuiTestCase):
 
     async def test_escape_in_the_filter_clears_it_then_escape_on_the_tree_leaves(self):
         async def test(app, review, pilot):
-            await self.type_filter(app, review, pilot, "ap")
+            await self.apply_filter(app, review, pilot, "ap")
+            await self.type_filter(app, review, pilot, "x")  # typed, not applied: Esc clears the filter all the same
             with capture_events() as records:
                 await pilot.press("escape")
                 await settle(app, pilot)
@@ -433,6 +497,7 @@ class TreeFilterTest(TuiTestCase):
             await self.type_filter(app, review, pilot, "cher")
             with capture_events() as records:
                 await pilot.press("enter")
+                await settle(app, pilot)
             self.assertIs(review.focused, review.query_one("#toy", Tree))
             self.assertEqual(review.shown_labels(), ["Beta", "cherry"])
             self.assertEqual([(r["data"]["screen"], r["data"]["control"], r["data"]["value"]) for r in records
@@ -478,10 +543,12 @@ class TreeFilterTest(TuiTestCase):
             await self.type_filter(app, review, pilot, "ban")
             field = review.query_one("#search", Input)
             self.assertIs(review.focused, field)
-            self.assertEqual(review.text_filter.text, "ban")
-            self.assertEqual(review.shown_labels(), ["Beta", "Banana"])
+            self.assertEqual(review.text_filter.text, "")  # not submitted yet
             with capture_events() as records:
                 await pilot.press("enter")
+                await settle(app, pilot)
+            self.assertEqual(review.text_filter.text, "ban")
+            self.assertEqual(review.shown_labels(), ["Beta", "Banana"])
             self.assertIs(review.focused, review.query_one("#toy", Tree))
             self.assertEqual([r["data"]["value"] for r in records if r["event"] == "ui.selection"], ["ban"])
             await pilot.press("slash", "escape")
@@ -517,9 +584,11 @@ class TreeFilterTest(TuiTestCase):
     async def test_a_read_only_tree_takes_the_filter_box_alone(self):
         async def test(app, view, pilot):
             await self.type_filter(app, view, pilot, "cher")
-            self.assertEqual(view.shown_labels(), ["Beta", "cherry"])
+            self.assertEqual(len(view.shown_labels()), 6)  # typed, not submitted
             with capture_events() as records:
                 await pilot.press("enter")
+                await settle(app, pilot)
+                self.assertEqual(view.shown_labels(), ["Beta", "cherry"])
                 await pilot.press("slash", "escape")
                 await settle(app, pilot)
             self.assertIs(view.focused, view.query_one("#view", Tree))

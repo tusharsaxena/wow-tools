@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from textual.widgets import Button, DataTable, Input, Static, Tree
 
-from tests.fixtures import BASE, TuiTestCase, build_ace_tree, make_config, settle
+from tests.fixtures import BASE, TuiTestCase, build_ace_tree, make_config, settle, submit_filter
 from wowtools.core.backup import BackupEntry, create_backup
 from wowtools.core.config import Config
 from wowtools.core.install import WowInstall
@@ -24,6 +24,7 @@ from wowtools.tools.ace3_profile_manager.settings import load_settings
 from wowtools.ui.dialogs import ConfirmScreen, InfoScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
+from wowtools.ui.tree_filter import FILTER_HINT
 from wowtools.ui.widgets import action_kind
 
 TOOL = "ace3-profile-manager"
@@ -293,7 +294,7 @@ class ReviewTest(AceAppBase):
             text = "\n".join(labels(tree))
             self.assertIn("Kaelys - Realm1", text)
             self.assertIn("KickCD: Default", text)
-            review.query_one("#search", Input).value = "mierin"
+            submit_filter(review, "mierin")
             await settle(app, pilot)
             tree.root.expand_all()
             await settle(app, pilot)
@@ -323,13 +324,13 @@ class ReviewTest(AceAppBase):
             kinds = {k[0] for k in review.ticked}
             self.assertEqual(kinds, {"p", "c"})
             await pilot.press("n")
-            review.query_one("#search", Input).value = "mierin"
+            submit_filter(review, "mierin")
             await settle(app, pilot)
             await pilot.press("a")
             await settle(app, pilot)
             self.assertTrue(review.ticked)
             self.assertTrue(all(k[2].startswith("Mierin") for k in review.ticked if k[0] == "c"))
-            review.query_one("#search", Input).value = ""
+            submit_filter(review, "")
             await settle(app, pilot)
             self.assertTrue(review.ticked)  # hidden items keep their ticks
 
@@ -341,7 +342,7 @@ class ReviewTest(AceAppBase):
             await pilot.press("a")
             await settle(app, pilot)
             everything = set(review.ticked)
-            review.query_one("#search", Input).value = "mierin"
+            submit_filter(review, "mierin")
             await settle(app, pilot)
             shown = review._shown_keys()
             self.assertTrue(shown and shown < everything)
@@ -351,7 +352,7 @@ class ReviewTest(AceAppBase):
             hidden = len(everything - shown)
             self.assertEqual(len(review.hidden_ticked_keys()), hidden)
             self.assertIn(f"{hidden} selected items are hidden by the filter", review.summary_text)
-            review.query_one("#search", Input).value = ""
+            submit_filter(review, "")
             await settle(app, pilot)
             self.assertEqual(len(review.hidden_ticked_keys()), 0)
             self.assertNotIn("hidden by the filter", review.summary_text)
@@ -362,7 +363,7 @@ class ReviewTest(AceAppBase):
         async with app.run_test(size=(140, 50)) as pilot:
             review = await self.open_review(app, pilot)
             await pilot.press("a")
-            review.query_one("#search", Input).value = "mierin"
+            submit_filter(review, "mierin")
             await settle(app, pilot)
             hidden = review.hidden_ticked_keys()
             profiles = sum(1 for k in hidden if k[0] == "p")
@@ -393,7 +394,7 @@ class ReviewTest(AceAppBase):
             self.assertGreater(hidden, 0)
             self.assertIn(f"{hidden} selected items are hidden by the Show boxes", review.summary_text)
             self.assertNotIn("filter", review.summary_text)
-            review.query_one("#search", Input).value = "mierin"
+            submit_filter(review, "mierin")
             await settle(app, pilot)
             self.assertIn("hidden by the filter or the Show boxes", review.summary_text)
 
@@ -427,8 +428,11 @@ class ReviewTest(AceAppBase):
             field = review.query_one("#search", Input)
             self.assertIs(review.focused, field)
             self.assertEqual(field.value, "mier")
+            self.assertFalse(review.filtering)  # typed, not submitted (spec D40)
+            await pilot.press("enter")
+            await settle(app, pilot)
             self.assertTrue(review.filtering)
-            await pilot.press("escape")
+            await pilot.press("slash", "escape")
             await settle(app, pilot)
             self.assertEqual(field.value, "")
             self.assertIs(review.focused, review.query_one("#profiles", Tree))
@@ -978,7 +982,7 @@ class ReviewFixesTest(AceAppBase):
             tree = review.query_one("#profiles", Tree)
             shown = [str(tree.get_node_at_line(i).label) for i in range(tree.last_line + 1)]
             self.assertTrue(any("Mierin" in line for line in shown), shown)
-            review.query_one("#search", Input).value = ""
+            submit_filter(review, "")
             await settle(app, pilot)
             addon = find_addon(tree, "ElvUI")
             self.assertFalse(addon.is_expanded)  # back to how it was before the search
@@ -1214,7 +1218,7 @@ class BlacklistScreenTest(AceAppBase):
                 await settle(app, pilot)
                 screen = app.screen
                 self.assertTrue(screen._scanning)
-                screen.filter_input().value = "elv"
+                submit_filter(screen, "elv")
                 await settle(app, pilot)
                 self.assertEqual(screen.names, {})
                 screen.action_save()
@@ -1291,13 +1295,11 @@ class BlacklistScreenTest(AceAppBase):
             self.assertGreater(len(everything), 1)
             await pilot.press("slash")
             await pilot.pause()
-            await pilot.press(*"kick")
+            await pilot.press(*"kick", "enter")
             await settle(app, pilot)
             addons = {n.data[2] for n in tree.root.children for n in n.children if n.data[0] == "addon"}
             self.assertTrue(addons)
             self.assertTrue(all("kick" in a.casefold() for a in addons), addons)
-            await pilot.press("enter")
-            await pilot.pause()
             await pilot.press("n")
             kept = {k for k in everything if "kick" not in k[1]}
             self.assertEqual(screen.ticked, kept)
@@ -1315,7 +1317,7 @@ class BlacklistScreenTest(AceAppBase):
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
             screen, results = await self.open_screen(app, pilot, [])
-            screen.filter_input().value = "kick"
+            submit_filter(screen, "kick")
             await settle(app, pilot)
             screen.query_one("#save", Button).press()
             await settle(app, pilot)
@@ -1329,7 +1331,7 @@ class BlacklistScreenTest(AceAppBase):
             for widget in (*screen.query("#filters Button"), screen.query_one("NavHint")):
                 self.assertTrue(inside(widget, pane), widget)
             hint = screen.query_one("NavHint").hint
-            self.assertIn("/ filter · x expand all · c collapse all", hint)
+            self.assertIn(FILTER_HINT + "x expand all · c collapse all", hint)
 
 
 class FeedbackReviewFixesTest(AceAppBase):
