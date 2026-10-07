@@ -91,7 +91,7 @@ class NoReplaceCallSiteTest(unittest.TestCase):
         with patch.object(svfiles, "rename_no_replace", rename_then_new_file), self.assertRaises(CleanError):
             cleaner._probe_lock(self.src)
         self.assertEqual(self.src.read_bytes(), b"new file")
-        self.assertEqual(self.src.with_name("src.jpg" + cleaner.LOCK_PROBE_SUFFIX).read_bytes(), b"source")
+        self.assertEqual(self.src.with_name("src.jpg" + svfiles.LOCK_PROBE_SUFFIX).read_bytes(), b"source")
 
 
 if __name__ == "__main__":

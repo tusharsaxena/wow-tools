@@ -21,8 +21,8 @@ from wowtools.core.config import DEFAULT_KEEP_BACKUPS
 from wowtools.core.events import log_event
 from wowtools.core.fsutil import free_name, safe_progress
 from wowtools.core.install import Flavor
-from wowtools.core.svfiles import (LOCK_PROBE_SUFFIX, SvFileError, SvGuard, lstat_or_none,  # noqa: F401 - re-exported
-                                   find_locked, locked_message, probe_lock, saved_variables_folders)
+from wowtools.core.svfiles import (SvFileError, SvGuard, find_locked, locked_message, lstat_or_none, probe_lock,
+                                   saved_variables_folders)
 from wowtools.core.svfiles import recover_probe_leftovers as core_recover_probe_leftovers
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
 from wowtools.tools.wtf_cleaner.journal import CleanJournal

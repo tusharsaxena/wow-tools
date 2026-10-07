@@ -21,7 +21,7 @@ from wowtools.core.backup import BackupError
 from wowtools.core.fsutil import remove_quietly
 from wowtools.core.install import Flavor
 from wowtools.core.paths import to_native
-from wowtools.core.snapshot import LIST_REPORT_EVERY, SnapshotProgress, wtf_files  # noqa: F401 - re-exported
+from wowtools.core.snapshot import SnapshotProgress, wtf_files
 
 MARKER_NAME = "clean-in-progress.json"
 SNAPSHOT_SUBDIR = "backup"

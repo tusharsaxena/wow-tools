@@ -9,8 +9,7 @@ from wowtools.core.install import flavor_name
 from wowtools.core.journal import Journal
 from wowtools.core.sv_apply import MultiApplyResult
 from wowtools.core.sv_report import (RESULT_TEXT, STAGE_TITLES, UNDO_COLUMNS,  # noqa: F401 - re-exported
-                                     in_backup_folder, leave_notice, recovered_notice, recovery_text, undo_detail_rows,
-                                     undo_summary_rows)
+                                     leave_notice, recovered_notice, recovery_text, undo_detail_rows, undo_summary_rows)
 from wowtools.core.text import plural
 from wowtools.tools.sv_browser.ops import Plan
 

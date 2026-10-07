@@ -224,7 +224,7 @@ the marker and shows `leave_notice()`.
   back / Leave as is; Esc leaves the marker for the next scan). The review's apply, undo and recovery runs go through
   the shared `RunActions` (`ui/review.py`).
 - `ProfileResultScreen` (`result_screen.py`): the shared `ResultScreen` built from rows; `#result-summary` (`apply_summary_rows` or
-  `undo_summary_rows`: zips and the journal are named inside the backup folder, `report.in_backup_folder`, which
+  `undo_summary_rows`: zips and the journal are named inside the backup folder, `sv_report.in_backup_folder`, which
   has a "Backup folder" row of its own) above `#result-detail` (`DETAIL_COLUMNS` or `UNDO_COLUMNS`); Rescan, Other flavor,
   Tools, Quit (keys `r` `f` `t` `q` on the buttons), plus a focused **Back to review** (Esc) after a dry run. After a real Apply or Undo the
   staging is dropped and the review rescans when shown again.

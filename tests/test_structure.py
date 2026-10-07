@@ -494,7 +494,9 @@ class StructureTest(unittest.TestCase):
         from wowtools.core import install
         from wowtools.core.journal import JournalWriter
         from wowtools.core.migrate import FolderMerge
-        from wowtools.tools.wtf_cleaner import review_screen, safety
+        from wowtools.tools.ace3_profile_manager import report as ace_report
+        from wowtools.tools.sv_browser import report as svb_report
+        from wowtools.tools.wtf_cleaner import cleaner, review_screen, safety
         from wowtools.tools.wtf_cleaner.rules import ProposalItem
         self.assertFalse(hasattr(JournalWriter, "is_open"))
         self.assertFalse(hasattr(FolderMerge, "changed"))
@@ -502,6 +504,12 @@ class StructureTest(unittest.TestCase):
         self.assertFalse(hasattr(install, "InstallError"))
         self.assertFalse(hasattr(safety, "SNAPSHOT_NAME"))
         self.assertFalse(hasattr(safety, "re"))
+        # Re-exports nobody reads (F-011): import them from wowtools.core.snapshot, sv_report or svfiles.
+        self.assertFalse(hasattr(safety, "LIST_REPORT_EVERY"))
+        self.assertFalse(hasattr(ace_report, "RESULT_TEXT"))
+        self.assertFalse(hasattr(ace_report, "in_backup_folder"))
+        self.assertFalse(hasattr(svb_report, "in_backup_folder"))
+        self.assertFalse(hasattr(cleaner, "LOCK_PROBE_SUFFIX"))
         self.assertNotIn("ConfirmScreen", review_screen.__all__)  # import it from wowtools.ui.dialogs
 
     def test_core_never_imports_textual(self):
