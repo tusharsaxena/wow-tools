@@ -55,7 +55,7 @@ colour, used in the list too:
 | **2 Not enabled** (orange) | Settings for addons that are installed but switched off on every character of that account | An addon you disabled everywhere, or that only your other account uses |
 | **3 Older than max age** (yellow) | Addons whose settings haven't changed in a long time (90 days to start with) | An addon from last expansion that you stopped using |
 | **4 Stray copies** (purple) | Copies you or another program made by hand next to the real file | `Details.lua - Copy.bak` |
-| **5 Orphan backups** (blue) | A backup WoW made (`<Addon>.lua.bak`) whose settings file (`<Addon>.lua`) is gone | `Auctionator.lua.bak` with no `Auctionator.lua` |
+| **5 Orphan backups** (green) | A backup WoW made (`<Addon>.lua.bak`) whose settings file (`<Addon>.lua`) is gone | `Auctionator.lua.bak` with no `Auctionator.lua` |
 
 When an addon matches rule 1, 2 or 3, all of its files go: `Auctionator.lua`, `Auctionator.lua.bak` and any stray
 copies. Rules 4 and 5 suggest only the extra files of an addon that is otherwise kept.

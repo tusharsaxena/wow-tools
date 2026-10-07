@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tests.fixtures import NOW, build_solo_tree, build_wow_tree
 from wowtools.core.config import Config
@@ -82,6 +83,25 @@ class RulesTest(unittest.TestCase):
         alone = evaluate(scan(self.retail), Criteria.from_names(["orphan_backups"]), now=NOW)
         self.assertEqual([(i.addon, [f.name for f in i.files]) for i in alone.items], [("details", ["details.LUA.bak"])])
         self.assertEqual(criterion_counts(scan(self.retail), max_age_days=90, now=NOW)["orphan_backups"], 1)
+
+    def test_a_backup_is_no_orphan_while_its_lua_is_renamed_by_a_lock_check_or_unreadable(self):
+        """An interrupted lock check leaves <Addon>.lua renamed to <Addon>.lua<LOCK_PROBE_SUFFIX>; the next clean
+        renames it back, so its .lua.bak is not an orphan. Neither is one whose .lua the scan could not read."""
+        from wowtools.core.svfiles import LOCK_PROBE_SUFFIX
+        (self.sv / "Auctionator.lua").rename(self.sv / f"Auctionator.lua{LOCK_PROBE_SUFFIX}")
+        result = scan(self.retail)
+        self.assertEqual(evaluate(result, Criteria.from_names(["orphan_backups"]), now=NOW).items, [])
+        real_stat = Path.stat
+
+        def failing_stat(path, *args, **kwargs):
+            if path.name == "Details.lua" and path.parent == self.sv:
+                raise PermissionError("denied")
+            return real_stat(path, *args, **kwargs)
+
+        (self.sv / "Details.lua.bak").write_text("x")
+        with mock.patch.object(Path, "stat", failing_stat):
+            result = scan(self.retail)
+        self.assertEqual(evaluate(result, Criteria.from_names(["orphan_backups"]), now=NOW).items, [])
 
     def test_orphan_backup_of_a_flagged_addon_lists_both_reasons(self):
         (self.sv / "Gone.lua.bak").write_text("x")

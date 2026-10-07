@@ -19,7 +19,7 @@ up, and deletes the ones you leave ticked. **Close WoW first**: it rewrites thes
 
 ## The rules (left pane)
 
-A file is suggested when any ticked rule matches it. `1`-`4` switch a rule on or off; the **Max age in days** box sets
+A file is suggested when any ticked rule matches it. `1`-`5` switch a rule on or off; the **Max age in days** box sets
 the age limit for rule 3 (type the days, then `Enter`).
 
 | Key | Rule | Suggests |

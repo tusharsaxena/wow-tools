@@ -115,9 +115,10 @@ def _group_reasons(group: SVGroup, scan: ScanResult, criteria: Criteria, now: fl
 
 
 def orphan_backups(group: SVGroup) -> list[SVFile]:
-    """The group's <Addon>.lua.bak when there is no <Addon>.lua next to it (names in any case)."""
+    """The group's <Addon>.lua.bak when there is no <Addon>.lua next to it (names in any case). A .lua the scan saw
+    but could not list (renamed by an interrupted lock check, or unreadable) still counts as there."""
     main = f"{group.addon}.lua".casefold()
-    if any(f.name.casefold() == main for f in group.files):
+    if group.main_hidden or any(f.name.casefold() == main for f in group.files):
         return []
     return [f for f in group.files if f.canonical]
 
