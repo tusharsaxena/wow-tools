@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import unittest
 import zipfile
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 from tests.fixtures import NOW, build_wow_tree
 from wowtools.core.backup import BackupError
@@ -116,6 +118,19 @@ class SafetyTest(unittest.TestCase):
         self.assertIsNone(read_marker(self.backup_dir))
         (self.backup_dir / MARKER_NAME).write_bytes(b"\xff\xfe\x00garbage")
         self.assertIsNone(read_marker(self.backup_dir))
+
+    @unittest.skipIf(os.name == "nt", "simulates WSL: /mnt/g paths only exist on POSIX")
+    def test_marker_paths_are_stored_in_windows_form_and_read_natively(self):
+        marker = Marker(snapshot=Path("/mnt/d/wow-tools/out/backup/backup-retail-20260927-140311.zip"),
+                        flavor="_retail_", flavor_path=Path("/mnt/g/World of Warcraft/_retail_"),
+                        started="2026-09-27T14:03:11", pid=1234, suite_version="0.1.0", files=[])
+        with patch("wowtools.core.paths.is_wsl", return_value=True):
+            write_marker(self.backup_dir, marker)
+            data = json.loads((self.backup_dir / MARKER_NAME).read_text(encoding="utf-8"))
+            self.assertEqual((data["snapshot"], data["flavor_path"]),
+                             ("D:\\wow-tools\\out\\backup\\backup-retail-20260927-140311.zip",
+                              "G:\\World of Warcraft\\_retail_"))
+            self.assertEqual(read_marker(self.backup_dir), marker)
 
     def test_restore_deleted_never_overwrites(self):
         sv = self.retail.account_dir / "ACCT1" / "SavedVariables"

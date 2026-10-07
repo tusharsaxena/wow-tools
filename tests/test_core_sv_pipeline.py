@@ -2,6 +2,8 @@
 sv_undo.py, sv_verify.py and sv_report.py driven by a made-up tool, with its own event prefix and callbacks."""
 from __future__ import annotations
 
+import json
+import os
 import tempfile
 import unittest
 from dataclasses import dataclass, field
@@ -11,6 +13,7 @@ from unittest.mock import patch
 
 from tests.fixtures import build_wow_tree
 from wowtools.core import sv_apply, sv_journal, sv_undo
+from wowtools.core.backup import BackupEntry, create_backup
 from wowtools.core.events import TOOL_REGISTRIES, capture_events, register_events
 from wowtools.core.fsutil import atomic_write_bytes
 from wowtools.core.install import WowInstall
@@ -159,7 +162,8 @@ class PipelineTest(unittest.TestCase):
         marker = sv_apply.read_marker(self.root)
         self.assertIsNotNone(marker)
         with capture_events() as events:
-            result = sv_undo.recover(TOOL, marker, root=self.root, journal_dir=self.journals, now=WHEN)
+            result = sv_undo.recover(TOOL, marker, wow_root=self.wow, root=self.root, journal_dir=self.journals,
+                                     now=WHEN)
         self.assertIn("tsv.recovery_done", [e["event"] for e in events])
         self.assertEqual(len(result.restored), 1)
         self.assertEqual({p: p.read_bytes() for p in self.paths}, self.originals)
@@ -200,6 +204,63 @@ class PipelineTest(unittest.TestCase):
                    {"flavor": "_beta_", "rel": "../../outside.lua"}, {"flavor": "_beta_", "rel": good}]
         self.assertEqual([(f.folder, f.path) for f in sv_undo.undo_flavors(self.wow, entries)],
                          [("_beta_", self.wow / "_beta_"), ("_retail_", self.wow / "_retail_")])
+
+    def foreign_marker(self, flavor: str = "_retail_", flavor_path: str = "G:\\World of Warcraft\\_retail_"):
+        """An edit-in-progress.json as written on Windows (paths in Windows form) for A.lua, which holds what the
+        run wrote; its originals zip is in <root>/edited/ under the same name. Returns (marker, rel)."""
+        rel = self.paths[0].relative_to(self.flavor.path).as_posix()
+        (self.root / "edited" / "edited-x.zip").unlink(missing_ok=True)
+        create_backup([BackupEntry(self.paths[0])], self.flavor.path, self.root / "edited" / "edited-x.zip", {})
+        after = b'DB = {\n\t["x"] = 2,\n}\n'
+        self.paths[0].write_bytes(after)
+        data = {"flavor": flavor, "flavor_path": flavor_path, "zip": "G:\\wow-tools\\out\\edited\\edited-x.zip",
+                "files": {rel: sha256_of(self.originals[self.paths[0]])}, "started": "2026-10-07T12:00:00",
+                "pid": 1, "suite_version": "0.1.0", "after": {rel: sha256_of(after)}}
+        (self.root / sv_apply.MARKER_NAME).write_text(json.dumps(data), encoding="utf-8")
+        marker = sv_apply.read_marker(self.root)
+        self.assertIsNotNone(marker)
+        return marker, rel
+
+    def test_recover_uses_the_configured_wow_folder_not_the_markers(self):
+        marker, rel = self.foreign_marker()
+        result = sv_undo.recover(TOOL, marker, wow_root=self.wow, root=self.root, journal_dir=self.journals,
+                                 now=WHEN)
+        self.assertEqual([(o.rel, o.status) for o in result.outcomes], [(rel, sv_undo.RESTORED)])
+        self.assertEqual({p: p.read_bytes() for p in self.paths}, self.originals)
+        self.assertIsNone(sv_apply.read_marker(self.root))
+
+    def test_recover_never_touches_the_folder_the_marker_names(self):
+        decoy = self.tmp / "x" / "_retail_" / "WTF" / "Account" / "ACCT1" / "SavedVariables" / "A.lua"
+        decoy.parent.mkdir(parents=True)
+        marker, _rel = self.foreign_marker(flavor_path=str(self.tmp / "x" / "_retail_"))
+        decoy.write_bytes(self.paths[0].read_bytes())  # what the run wrote: recovery would put it back
+        sv_undo.recover(TOOL, marker, wow_root=self.wow, root=self.root, journal_dir=self.journals, now=WHEN)
+        self.assertEqual(decoy.read_bytes(), b'DB = {\n\t["x"] = 2,\n}\n')
+        self.assertEqual([p for p in (self.tmp / "x").rglob("*") if p.is_file()], [decoy])
+        self.assertEqual(self.paths[0].read_bytes(), self.originals[self.paths[0]])
+
+    def test_recover_refuses_a_flavor_not_in_the_wow_folder_and_keeps_the_marker(self):
+        for flavor in ("_ptr_", "../elsewhere", "_retail_/WTF"):
+            with self.subTest(flavor=flavor):
+                marker, _rel = self.foreign_marker(flavor=flavor)
+                with self.assertRaises(sv_undo.UndoError) as caught:
+                    sv_undo.recover(TOOL, marker, wow_root=self.wow, root=self.root, journal_dir=self.journals,
+                                    now=WHEN)
+                self.assertTrue(str(caught.exception).endswith("Nothing was changed."), str(caught.exception))
+                self.assertIsNotNone(sv_apply.read_marker(self.root))
+                self.assertFalse((self.root / sv_apply.SNAPSHOT_SUBDIR).exists())
+                self.paths[0].write_bytes(self.originals[self.paths[0]])
+
+    @unittest.skipIf(os.name == "nt", "simulates WSL: /mnt/g paths only exist on POSIX")
+    def test_marker_paths_are_stored_in_windows_form_and_read_natively(self):
+        marker = sv_apply.Marker("_retail_", Path("/mnt/g/World of Warcraft/_retail_"),
+                                 Path("/mnt/d/wow-tools/out/edited/edited-x.zip"), {"a": "0"}, "now", 1, "0.1.0")
+        with patch("wowtools.core.paths.is_wsl", return_value=True):
+            sv_apply.write_marker(self.root, marker)
+            data = json.loads((self.root / sv_apply.MARKER_NAME).read_text(encoding="utf-8"))
+            self.assertEqual((data["flavor_path"], data["zip"]),
+                             ("G:\\World of Warcraft\\_retail_", "D:\\wow-tools\\out\\edited\\edited-x.zip"))
+            self.assertEqual(sv_apply.read_marker(self.root), marker)
 
     def test_referenced_zips_none_when_a_journal_cannot_be_read(self):
         self.run_apply()

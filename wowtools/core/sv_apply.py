@@ -31,6 +31,7 @@ from wowtools.core.events import log_event
 from wowtools.core.fsutil import atomic_write_bytes, free_name, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.core.journal import new_journal_path, now_iso
+from wowtools.core.paths import to_native
 from wowtools.core.snapshot import prune_snapshots, take_snapshot
 from wowtools.core.sv_events import SvTool
 from wowtools.core.sv_journal import EditJournal, referenced_zips
@@ -165,7 +166,7 @@ def read_marker(root: Path | None) -> Marker | None:
         if not all(isinstance(d, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in d.items())
                    for d in (files, after)):
             return None
-        return Marker(str(data["flavor"]), Path(data["flavor_path"]), Path(data["zip"]), dict(files),
+        return Marker(str(data["flavor"]), to_native(data["flavor_path"]), to_native(data["zip"]), dict(files),
                       str(data["started"]), int(data["pid"]), str(data["suite_version"]), dict(after))
     except Exception:  # noqa: BLE001 - an unreadable marker is no usable marker
         return None

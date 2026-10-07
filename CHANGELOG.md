@@ -4,6 +4,16 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and version numbers follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Ace3 Profile Manager and Saved Variables Browser**
+  - **Put the originals back** after an unfinished change now works when you run the app from the other system
+    (Windows or WSL) than the one the change was started from: the files are found in the WoW folder you set. If
+    that game version is not in your WoW folder, nothing is changed and the unfinished change is still offered,
+    instead of every file being reported as gone and the reminder cleared.
+
 ## [0.1.0] - 2026-10-05
 
 The first version: five tools in one app.

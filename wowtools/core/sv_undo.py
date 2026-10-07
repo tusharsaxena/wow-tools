@@ -13,7 +13,7 @@ import zipfile
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from wowtools.core.backup import BackupError
 from wowtools.core.events import log_event
@@ -21,6 +21,7 @@ from wowtools.core.fsutil import atomic_write_bytes, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.core.journal import mark_undone
 from wowtools.core.parallel import run_units
+from wowtools.core.paths import to_stored
 from wowtools.core.snapshot import prune_snapshots, take_snapshot
 from wowtools.core.sv_apply import (EDITED_SUBDIR, SNAPSHOT_PREFIX, SNAPSHOT_SUBDIR, Marker, UndoError, WowRunning,
                                     clear_marker, refuse_running)
@@ -79,7 +80,7 @@ def _moved_zip(zip_path: Path, root: Path) -> Path:
     tool's folder was moved (renamed) after the journal or marker recorded the path."""
     if zip_path.exists():
         return zip_path
-    moved = root / EDITED_SUBDIR / zip_path.name
+    moved = root / EDITED_SUBDIR / PureWindowsPath(zip_path).name  # either separator: a path from the other OS
     return moved if moved.exists() else zip_path
 
 
@@ -205,7 +206,18 @@ def undo_run(tool: SvTool, journal_path: Path, *, wow_root: Path, root: Path, ke
     return result
 
 
-def recover(tool: SvTool, marker: Marker, *, root: Path, journal_dir: Path | None = None,
+def _marker_flavor(marker: Marker, wow_root: Path) -> Flavor:
+    """The marker's flavor as a folder of wow_root. UndoError (nothing changed) when its name is not one plain
+    folder name, or that folder is not in wow_root (another WoW folder is configured now)."""
+    if destination(wow_root, marker.flavor, "WTF/Account/x/SavedVariables/x.lua") is None:
+        raise UndoError("The unfinished change names a game version folder that is not valid. Nothing was changed.")
+    flavor = Flavor(marker.flavor, wow_root / marker.flavor)
+    if not flavor.path.is_dir():
+        raise UndoError(f"{marker.flavor} is not in the WoW folder {to_stored(wow_root)}. Nothing was changed.")
+    return flavor
+
+
+def recover(tool: SvTool, marker: Marker, *, wow_root: Path, root: Path, journal_dir: Path | None = None,
             keep_snapshots: int | None = None, wow_check: Callable[[], list[str] | None] | None = None,
             now: datetime | None = None, progress: Callable[[str, int, int, str], None] | None = None) -> UndoResult:
     """After an Apply that did not finish: put back every file of the marker that is still what the run wrote.
@@ -213,14 +225,19 @@ def recover(tool: SvTool, marker: Marker, *, root: Path, journal_dir: Path | Non
     or WoW saved it since) is skipped and never overwritten. As Undo: refused while that flavor's WoW runs or a
     file is locked, and the flavor's WTF folder is backed up first (when there is something to put back), then
     pruned to keep_snapshots. The files now at their original get a rolled_back entry in the run's journal (in
-    journal_dir), so Undo does not offer them again."""
+    journal_dir), so Undo does not offer them again.
+
+    Every file resolves under wow_root, the configured WoW folder, never under the marker's own flavor_path: a
+    marker written on the other OS (Windows or WSL) names a folder this process cannot open, and a hand-edited one
+    could name any folder (STD-4.4, STD-5.25). A marker whose flavor is not a folder in wow_root is refused
+    (UndoError) and kept, so nothing is cleared for files that were never looked at."""
     report = safe_progress(progress)
+    flavor = _marker_flavor(marker, wow_root)
     refuse_running(tool, wow_check, "recover", "files")
-    targets = {rel: destination(marker.flavor_path.parent, marker.flavor, rel) for rel in marker.files}
+    targets = {rel: destination(wow_root, marker.flavor, rel) for rel in marker.files}
     _refuse_locked(tool, sorted(targets.items()), "recover")
     result = UndoResult()
     original: list[str] = []
-    flavor = Flavor(marker.flavor, marker.flavor_path)
     if any(dest is not None and _current_sha(dest) == marker.after.get(rel) for rel, dest in targets.items()):
         result.snapshots.append(_snapshot(tool, flavor, root, now, report, "recovery"))
     skipped = tool.event("file_skipped")

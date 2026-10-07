@@ -3,7 +3,8 @@ ends, so the next start can tell a run was cut short (the WTF Cleaner's clean-in
 Manager's edit-in-progress.json). UI-free.
 
 Only the file handling is shared: each tool keeps its own Marker fields and checks them when reading. Path values
-are written with str() (the format the markers on disk already use)."""
+are written with to_stored() (Windows form for a path on a Windows drive, STD-4.4); the tool reads them back with
+to_native(), which leaves an older marker's str() path as it is."""
 from __future__ import annotations
 
 import json
@@ -11,11 +12,12 @@ from pathlib import Path
 from typing import Any
 
 from wowtools.core.fsutil import atomic_write_bytes, remove_quietly
+from wowtools.core.paths import to_stored
 
 
 def write_marker(folder: Path, name: str, data: dict[str, Any]) -> None:
     """Write folder/name atomically (a reader sees the old marker or the new one), making folder if needed."""
-    stored = {key: str(value) if isinstance(value, Path) else value for key, value in data.items()}
+    stored = {key: to_stored(value) if isinstance(value, Path) else value for key, value in data.items()}
     folder.mkdir(parents=True, exist_ok=True)
     atomic_write_bytes(folder / name, json.dumps(stored, indent=2, ensure_ascii=False).encode("utf-8"))
 

@@ -27,7 +27,7 @@ def pending_recovery(root: Path | None) -> Marker | None:
 
 
 def recover(marker: Marker, **options) -> UndoResult:
-    """Put back: core/sv_undo.recover's options (root, journal_dir, keep_snapshots, wow_check, now, progress)."""
+    """Put back: core/sv_undo.recover's options (wow_root, root, journal_dir, keep_snapshots, wow_check, now, progress)."""
     return sv_undo.recover(SV_TOOL, marker, **options)
 
 

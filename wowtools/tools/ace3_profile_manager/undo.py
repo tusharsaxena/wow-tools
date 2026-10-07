@@ -21,5 +21,5 @@ def undo_run(journal_path: Path, **options) -> UndoResult:
 
 
 def recover(marker: Marker, **options) -> UndoResult:
-    """core/sv_undo.recover's options (root, journal_dir, keep_snapshots, wow_check, now, progress)."""
+    """core/sv_undo.recover's options (wow_root, root, journal_dir, keep_snapshots, wow_check, now, progress)."""
     return sv_undo.recover(SV_TOOL, marker, **options)

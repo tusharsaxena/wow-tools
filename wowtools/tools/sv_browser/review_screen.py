@@ -1332,10 +1332,12 @@ class SvReviewScreen(WarningsHost, TreeFilter, RunActions, ReviewBase, Screen[st
                                  running: list[str] | None) -> None:
         if self._refused_while_running(running, []):
             return  # the marker stays: offered again
+        if self.cfg.wow_path is None:
+            return  # the marker stays: offered again (recovery resolves files under the WoW folder)
         screen = RunProgressScreen("Putting the originals back", first_stage="undo")
         keep_snapshots = self.cfg.keep_backups
-        journal_dir = resolve_journal_dir(self.cfg.wow_path)
-        self.start_run(screen, lambda: recover(marker, root=root, journal_dir=journal_dir,
+        wow_root, journal_dir = self.cfg.wow_path, resolve_journal_dir(self.cfg.wow_path)
+        self.start_run(screen, lambda: recover(marker, wow_root=wow_root, root=root, journal_dir=journal_dir,
                                                keep_snapshots=keep_snapshots, wow_check=check,
                                                progress=screen.report),
                        self._recovered, name="recover", failure="Putting the originals back stopped",

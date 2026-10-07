@@ -20,6 +20,7 @@ from wowtools.core import snapshot as core_snapshot
 from wowtools.core.backup import BackupError
 from wowtools.core.fsutil import remove_quietly
 from wowtools.core.install import Flavor
+from wowtools.core.paths import to_native
 from wowtools.core.snapshot import LIST_REPORT_EVERY, SnapshotProgress, wtf_files  # noqa: F401 - re-exported
 
 MARKER_NAME = "clean-in-progress.json"
@@ -75,8 +76,8 @@ def read_marker(backup_dir: Path | None) -> Marker | None:
         pid = data["pid"]
         if not isinstance(pid, int):
             return None
-        return Marker(snapshot=Path(data["snapshot"]), flavor=str(data["flavor"]),
-                      flavor_path=Path(data["flavor_path"]), started=str(data["started"]), pid=pid,
+        return Marker(snapshot=to_native(data["snapshot"]), flavor=str(data["flavor"]),
+                      flavor_path=to_native(data["flavor_path"]), started=str(data["started"]), pid=pid,
                       suite_version=str(data["suite_version"]), files=list(files))
     except Exception:  # noqa: BLE001 - any unreadable marker means "no usable marker"
         return None

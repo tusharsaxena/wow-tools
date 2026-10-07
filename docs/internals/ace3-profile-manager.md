@@ -29,7 +29,7 @@ Back to [architecture](../architecture.md#tools).
                       → MultiApplyResult(dry_run, runs[FlavorRun(flavor, result: ApplyResult, error)], journal_path)
     undo_run(journal_path, wow_root, root, keep_snapshots, wow_check, progress, parallelism=1, on_flavor=None,
              on_flavor_done=None) → UndoResult(outcomes, snapshots)
-    recover(marker, root, journal_dir, keep_snapshots, wow_check, progress) → UndoResult
+    recover(marker, wow_root, root, journal_dir, keep_snapshots, wow_check, progress) → UndoResult
 
 Modules in `tools/ace3_profile_manager/` (all UI-free except `app.py`, `review_screen.py`, `tree_view.py`, `popups.py`,
 `blacklist_screen.py` and `result_screen.py`): `events`, `settings`, `help` (`HELP`, `GUIDE_URL`), `model`, `scanner`, `ops`, `verify`, `editor`, `multi`,
@@ -143,9 +143,12 @@ worker's own thread, newest entry first: a file whose SHA-256 is `sha_after` get
 its original bytes from the zip (checked against `sha_before`, written atomically: "restored"); any other file is
 "skipped: changed since"; the journal is marked undone unless nothing was restored and something failed.
 `recover(marker)` (the recovery popup's "Put the originals back") is guarded the same way and puts back only files
-still at the marker's `after` hash; a file at its original is left alone, any other is skipped. The files now at
-their original get a `rolled_back` line in the journal that holds their entries from the marker's zip
-(`journal.record_recovered`), so Undo never offers them again; its snapshot is pruned to `keep_snapshots`.
+still at the marker's `after` hash, each resolved under the configured WoW folder (`wow_root`), never the marker's
+own `flavor_path` (a marker written on the other OS names a folder this one cannot open); a marker whose flavor is
+not a folder there is refused with "Nothing was changed." and kept; a file at its original is left alone, any other
+is skipped. The files now at their original get a `rolled_back` line in the journal that holds their entries from
+the marker's zip (`journal.record_recovered`), so Undo never offers them again; its snapshot is pruned to
+`keep_snapshots`.
 
 ## Screens
 
