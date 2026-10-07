@@ -1,5 +1,8 @@
 # Adding a tool
 
+Part of the developer docs: start at [CLAUDE.md](../CLAUDE.md) (the index) and follow the rules in
+[standards.md](standards.md); [common-tasks.md](common-tasks.md#1-add-a-tool) has the short checklist.
+
 This walks through how the Screenshot Organizer (`screenshot-organizer`) was added, as an example.
 
 1. **Package.** Create `wowtools/tools/screenshot_organizer/` with:

@@ -168,8 +168,7 @@ When a second tool needs code one tool already has, move it; never copy it and n
    `test_shared_helpers_are_defined_once`, or a test like `test_tree_filter_lives_in_ui`) and list the old tool copy
    in `gone`.
 4. Move its tests to `tests/test_core_shared.py` or a `tests/test_<module>.py` of its own.
-5. Docs: a row in the [architecture.md](architecture.md) Core modules or UI table, and the shared-library list in
-   `CLAUDE.md` when the module is new.
+5. Docs: a row in the [architecture.md](architecture.md) Core modules or UI table.
 
 **Rules:** STD-1.6, STD-1.7, STD-2.1 to STD-2.3, STD-2.8, STD-9.5. Then [the green gate](#the-green-gate).
 

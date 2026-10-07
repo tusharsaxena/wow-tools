@@ -265,7 +265,8 @@ Keeps the docs in step with the code:
   `__version__`.
 - Each user guide carries the sections, keys and wording its spec requires (a needle list per tool, plus the
   `**Filter**` button, the `⚠ USE AT YOUR OWN RISK` banner and the `!` warnings view in every guide that has them).
-- `CLAUDE.md`, `docs/architecture.md` and the per-tool `docs/internals/*.md` name the shared pieces the tests list.
+- `docs/standards.md`, `docs/architecture.md` and the per-tool `docs/internals/*.md` name the shared pieces the
+  tests list; `CLAUDE.md` names every tool and every link in it resolves.
 
 When a doc moves or a section is renamed, update the matching needles here in the same commit.
 

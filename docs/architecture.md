@@ -19,7 +19,7 @@ tool's data flow and screens are in [`docs/internals/`](internals/).
 
 | Document | Read it for |
 |---|---|
-| [`CLAUDE.md`](../CLAUDE.md) | The entry point for agents: commands, hard rules and where to read first |
+| [`CLAUDE.md`](../CLAUDE.md) | The entry point for agents: what to read first, the green gate, the hard rules and an index of every doc |
 | [`README.md`](../README.md) | The user-facing overview: install, run, update, the tools table, settings and the terms of use |
 | [`CHANGELOG.md`](../CHANGELOG.md) | Release notes, Keep a Changelog format; parsed by `core/changelog.py` and shown in-app on `c` |
 | [standards.md](standards.md) | The MUST / SHOULD rules every tool follows (`STD-N.M`), each with its reason and what enforces it |
