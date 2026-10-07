@@ -1349,7 +1349,9 @@ class PreflightWorkerTest(AppTestCase):
             started = time.monotonic()
             await pilot.press("w")
             await pilot.pause()
-            self.assertLess(time.monotonic() - started, 1.0)
+            # A check on the UI thread would hold the press for slow_check's whole 5 s; a slow CI runner (Windows,
+            # Python 3.10) took 1.8 s for the worker's press, so the bound sits between the two.
+            self.assertLess(time.monotonic() - started, 4.0)
             self.assertIs(app.screen, review)
             self.assertIn("Checking for running programs", str(review.query_one("#summary", Static).render()))
             await pilot.press("w")  # ignored while the check runs
@@ -1384,7 +1386,7 @@ class PreflightWorkerTest(AppTestCase):
             started = time.monotonic()
             await pilot.press("z")
             await pilot.pause()
-            self.assertLess(time.monotonic() - started, 1.0)
+            self.assertLess(time.monotonic() - started, 4.0)  # under slow_check's 5 s (see the preflight test)
             self.assertIs(app.screen, review)
             await pilot.press("z")  # ignored while the check runs
             release.set()
