@@ -72,3 +72,4 @@ python3 scripts/gen_event_docs.py --check # docs/events.md matches the event reg
 | User | [CHANGELOG.md](CHANGELOG.md) | Release notes, shown in-app on `c` |
 | Process | [docs/superpowers/specs/](docs/superpowers/specs/), [docs/superpowers/plans/](docs/superpowers/plans/) | Dated design specs (decision IDs), plans and their `.status.md` ledgers. Frozen |
 | Process | [reviews/](reviews/) | Dated review bundles. Frozen |
+| Process | [docs/ideas/](docs/ideas/) | Dated, scored ideas for new tools (not plans) |
