@@ -340,7 +340,8 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   originals are ([D14][svb]).
   *Why:* a run is all or nothing per flavor.
   *Enforced by:* `tests/test_ace_editor.py::test_failure_mid_run_rolls_back_written_files`,
-  `tests/test_interface_backup_restore.py::test_swap_failure_rolls_back_exactly`.
+  `tests/test_interface_backup_restore.py::test_swap_failure_rolls_back_exactly`,
+  `tests/test_updater_apply.py::test_ctrl_c_during_the_swap_rolls_back`.
 - **STD-5.19 MUST** Run all file-changing work in a worker thread inside exactly one `with activity.running():`
   (`RunActions.start_run(..., writes=True)`); read-only work stays outside it.
   *Why:* the suite waits on `wait_idle()` before releasing the lock, so no exit or update cuts a write short.

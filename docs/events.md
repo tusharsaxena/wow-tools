@@ -60,6 +60,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `update.backups_pruned` | info | After a zip update, older .update-backup folders were deleted (kept: the one just made plus the newest other). |
 | `update.check_failed` | debug | The release check failed (offline, rate limited, bad data). |
 | `update.checked` | debug | The GitHub release check ran or was throttled. |
+| `update.cleanup_stopped` | warning | Ctrl+C after a zip update had put the new version in place, while it was removing the temporary download (step temp) or pruning old .update-backup folders (step prune); the update counts as applied and the next update prunes again. |
 | `update.failed` | error | Applying an update failed. |
 | `update.leftovers_kept` | info | Before an old .update-backup folder was pruned, files the user had added inside the app's own folders were moved to update-leftovers/<version>/. |
 | `update.unverified` | warning | A zip update was applied without a checksum (allow_unverified_updates = true and the release has no SHA256SUMS). |

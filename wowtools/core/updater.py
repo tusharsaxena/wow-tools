@@ -32,8 +32,20 @@ USER_AGENT = f"ka0s-wow-tools/{__version__}"
 GIT_TIMEOUT_S = 120  # a git step that takes longer is stuck (a prompt, a dead connection): give up
 
 
+# Ctrl+C during an update, before the new version was fully in place: a zip install still has the version it had
+# (nothing was replaced yet, or _apply_zip put a half-done swap back; a failed rollback is RollbackFailed instead);
+# a git checkout is left to git. A Ctrl+C after the swap is not an interruption: the update is applied.
+UPDATE_STOPPED = ("Update stopped before it finished. A zip install still has the version you had; "
+                  "in a git checkout, check `git status`.")
+
+
 class UpdateError(Exception):
     """Checking for or applying an update failed."""
+
+
+class RollbackFailed(UpdateError):
+    """A zip update failed or was interrupted and putting the old version back failed too: the install is broken
+    and the message names the .update-backup/<version> folder that holds the old version."""
 
 
 class AssetMissing(UpdateError):
@@ -192,8 +204,8 @@ def apply_update(release: ReleaseInfo, *, root: Path = REPO_ROOT, current: str =
             _apply_git(root, release.tag, runner or _run_bounded)
         else:
             _apply_zip(root, release, current, download or _download, allow_unverified)
-    except UpdateError as exc:
-        log_event("update.failed", method=kind, error=str(exc))
+    except BaseException as exc:  # logged, then re-raised (an interrupted update is a failed one too)
+        log_event("update.failed", method=kind, error=str(exc) or type(exc).__name__)
         raise
     log_event("update.applied", method=kind, **{"from": current, "to": release.version})
     return f"Updated Ka0s WoW Tools to v{release.version}. Restart to use the new version."
@@ -523,55 +535,78 @@ def _rollback(root: Path, backup: Path, shipped: list[str]) -> None:
 
 def _apply_zip(root: Path, release: ReleaseInfo, current: str, download: Callable[[str, Path], None],
                allow_unverified: bool = False) -> None:
-    with tempfile.TemporaryDirectory(prefix="wowtools-update-") as tmp:
-        work = Path(tmp)
-        archive = work / "release.zip"
-        _download_release(release, archive, download, allow_unverified)
-        try:
-            with zipfile.ZipFile(archive) as zf:
-                zf.extractall(work / "extract")
-        except (zipfile.BadZipFile, OSError, RuntimeError, NotImplementedError, EOFError) as exc:
-            raise UpdateError(f"the downloaded file is not a valid zip: {exc}") from exc
-        tops = [p for p in (work / "extract").iterdir() if p.is_dir()]
-        if len(tops) != 1:
-            raise UpdateError("unexpected release layout")
-        staging = tops[0]
-        init = staging / "wowtools" / "__init__.py"
-        match = _VERSION_RE.search(init.read_text(encoding="utf-8")) if init.is_file() else None
-        if not match or match.group(1) != release.version:
-            raise UpdateError(f"the download does not contain version {release.version}")
-
-        backup = root / BACKUP_DIR_NAME / current
-        if backup.exists():
-            # A backup of this version from an earlier update (an older version was reinstalled since): save the
-            # user's files from it first, as a prune does (#7). The live install is this same version, so its files
-            # are the program files; a failed move stops the update before anything is changed.
-            if not _carry_user_files(backup, root, _managed_files(root)):
-                raise UpdateError(f"could not move your files out of the old backup {backup}; nothing was changed")
-            shutil.rmtree(backup)
-        backup.mkdir(parents=True)
-        shipped = _shipped_names(staging)
-        old_names = _replaced_names(root, shipped)
-        try:
-            for name in old_names:
-                _copy(root / name, backup / name)
-        except OSError as exc:
-            raise UpdateError(f"could not back up the current version: {exc}") from exc
-        try:
-            for name in old_names:
-                _remove_tree(root / name)
-            for name in shipped:
-                _copy(staging / name, root / name)
-        except OSError as exc:
-            try:
-                _rollback(root, backup, shipped)
-            except OSError as rollback_exc:
-                raise UpdateError(f"update failed ({exc}) and the rollback also failed ({rollback_exc}). "
-                                  f"Your previous version is saved in {backup}") from exc
-            raise UpdateError(f"update failed and was rolled back: {exc}") from exc
-    removed = prune_update_backups(root / BACKUP_DIR_NAME, current=current)
+    swapped = False
+    try:
+        with tempfile.TemporaryDirectory(prefix="wowtools-update-", ignore_cleanup_errors=True) as tmp:
+            _download_and_swap(root, release, current, download, allow_unverified, Path(tmp))
+            swapped = True
+    except KeyboardInterrupt:
+        if not swapped:
+            raise
+        # Ctrl+C while the temp download was being removed: the new version is already in place.
+        log_event("update.cleanup_stopped", step="temp", to=release.version)
+        return
+    try:
+        removed = prune_update_backups(root / BACKUP_DIR_NAME, current=current)
+    except KeyboardInterrupt:
+        # The new version is in place; a stopped prune only leaves old backups for the next update to prune.
+        log_event("update.cleanup_stopped", step="prune", to=release.version)
+        return
     if removed:
         log_event("update.backups_pruned", keep=KEEP_UPDATE_BACKUPS, removed=[p.name for p in removed])
+
+
+def _download_and_swap(root: Path, release: ReleaseInfo, current: str, download: Callable[[str, Path], None],
+                       allow_unverified: bool, work: Path) -> None:
+    """Download, verify and extract the release in `work`, back the install up, then swap the program files in,
+    rolling back on any exception. Returns only once the new version is fully in place."""
+    archive = work / "release.zip"
+    _download_release(release, archive, download, allow_unverified)
+    try:
+        with zipfile.ZipFile(archive) as zf:
+            zf.extractall(work / "extract")
+    except (zipfile.BadZipFile, OSError, RuntimeError, NotImplementedError, EOFError) as exc:
+        raise UpdateError(f"the downloaded file is not a valid zip: {exc}") from exc
+    tops = [p for p in (work / "extract").iterdir() if p.is_dir()]
+    if len(tops) != 1:
+        raise UpdateError("unexpected release layout")
+    staging = tops[0]
+    init = staging / "wowtools" / "__init__.py"
+    match = _VERSION_RE.search(init.read_text(encoding="utf-8")) if init.is_file() else None
+    if not match or match.group(1) != release.version:
+        raise UpdateError(f"the download does not contain version {release.version}")
+
+    backup = root / BACKUP_DIR_NAME / current
+    if backup.exists():
+        # A backup of this version from an earlier update (an older version was reinstalled since): save the
+        # user's files from it first, as a prune does (#7). The live install is this same version, so its files
+        # are the program files; a failed move stops the update before anything is changed.
+        if not _carry_user_files(backup, root, _managed_files(root)):
+            raise UpdateError(f"could not move your files out of the old backup {backup}; nothing was changed")
+        shutil.rmtree(backup)
+    backup.mkdir(parents=True)
+    shipped = _shipped_names(staging)
+    old_names = _replaced_names(root, shipped)
+    try:
+        for name in old_names:
+            _copy(root / name, backup / name)
+    except Exception as exc:  # any error (a bad file name too), before the live install is touched
+        raise UpdateError(f"could not back up the current version: {exc}") from exc
+    try:
+        for name in old_names:
+            _remove_tree(root / name)
+        for name in shipped:
+            _copy(staging / name, root / name)
+    except BaseException as exc:  # roll back on anything (even Ctrl+C), then re-raise (F-005)
+        try:
+            _rollback(root, backup, shipped)
+        except BaseException as rollback_exc:  # noqa: BLE001 - a second Ctrl+C too: say where the backup is
+            raise RollbackFailed(f"update failed ({exc or type(exc).__name__}) and the rollback also failed "
+                                 f"({rollback_exc or type(rollback_exc).__name__}). "
+                                 f"Your previous version is saved in {backup}") from exc
+        if not isinstance(exc, Exception):
+            raise
+        raise UpdateError(f"update failed and was rolled back: {exc}") from exc
 
 
 def run_update_command(argv: list[str], cfg: Config, *, stdout=None, stderr=None,
@@ -600,7 +635,10 @@ def run_update_command(argv: list[str], cfg: Config, *, stdout=None, stderr=None
     log_event("ui.selection", screen="cli", control="update", value="accepted")
     try:
         print(apply(release, allow_unverified=cfg.allow_unverified_updates), file=stdout)
-    except UpdateError as exc:
+    except (UpdateError, OSError) as exc:
         print(f"Update failed: {exc}", file=stderr)
         return 1
+    except KeyboardInterrupt:
+        print(UPDATE_STOPPED, file=stderr)
+        return 130
     return 0

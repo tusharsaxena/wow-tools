@@ -8,6 +8,13 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 
 ### Fixed
 
+- **The app**
+  - Pressing Ctrl+C while `wow-tools update` (or an automatic update at start) is replacing a zip install's files
+    now puts the version you had back instead of leaving it half replaced, and says the update stopped. Any other
+    unexpected error while backing up or replacing the files is reported instead of crashing, and a half-done
+    replace is rolled back the same way. If putting it back fails too, the message names the folder your previous
+    version is saved in, and an automatic update then quits instead of opening the menu. A Ctrl+C after the new
+    version is in place (while old backups are tidied up) no longer reports the update as stopped.
 - **WTF Cleaner**
   - A file WoW rewrites while a clean is backing up the WTF folder is now kept (shown as changed since the scan)
     instead of deleted, so its newer data is never lost.

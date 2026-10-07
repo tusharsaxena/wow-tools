@@ -77,6 +77,7 @@ CORE_EVENTS: dict[str, EventSpec] = {
     "update.unverified": EventSpec("warning", "A zip update was applied without a checksum (allow_unverified_updates = true and the release has no SHA256SUMS)."),
     "update.backups_pruned": EventSpec("info", "After a zip update, older .update-backup folders were deleted (kept: the one just made plus the newest other)."),
     "update.leftovers_kept": EventSpec("info", "Before an old .update-backup folder was pruned, files the user had added inside the app's own folders were moved to update-leftovers/<version>/."),
+    "update.cleanup_stopped": EventSpec("warning", "Ctrl+C after a zip update had put the new version in place, while it was removing the temporary download (step temp) or pruning old .update-backup folders (step prune); the update counts as applied and the next update prunes again."),
     "update.backup_kept": EventSpec("warning", "An old .update-backup folder was not pruned because a file the user had added could not be moved out of it; the next update tries again."),
     "wow.running_warning": EventSpec("warning", "World of Warcraft appears to be running."),
     "error": EventSpec("error", "An unexpected or fatal error."),

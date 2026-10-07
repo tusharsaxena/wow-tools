@@ -20,7 +20,8 @@ from wowtools.core.events import get_event_log, init_event_log, log_event, log_e
 from wowtools.core.lock import LOCK_PATH, InstanceLock, LockInfo
 from wowtools.core.migrate import ConfigMigration, merge_folder_logged, migrate_tool_config, tool_folder_pairs
 from wowtools.core.paths import is_wsl
-from wowtools.core.updater import UpdateError, apply_update, check_for_update, run_update_command
+from wowtools.core.updater import (UPDATE_STOPPED, RollbackFailed, UpdateError, apply_update, check_for_update,
+                                   run_update_command)
 from wowtools.tools import RENAMED_TOOLS, TOOLS
 
 LOG_DIR = REPO_ROOT / "logs"
@@ -118,20 +119,28 @@ def _migrate_renamed_folders(log_dir: Path | None, wow_path: Path | None) -> Non
             merge_folder_logged(old, new)
 
 
-def _auto_update(cfg: Config) -> bool:
-    """Apply an update before the menu opens when auto_update = true. True means 'exit now'."""
+def _auto_update(cfg: Config) -> int | None:
+    """Apply an update before the menu opens when auto_update = true. Returns the exit code to stop with, or None to
+    open the menu."""
     if not (cfg.exists and cfg.check_for_updates and cfg.auto_update):
-        return False
+        return None
     # Never install from the throttled cache alone: a release deleted since it was seen must not be installed (D16).
     release = check_for_update(cfg, verify_cached=True)
     if release is None:
-        return False
+        return None
     try:
         print(apply_update(release, allow_unverified=cfg.allow_unverified_updates))
-    except UpdateError as exc:
+    except RollbackFailed as exc:
+        # The old version could not be put back: never open the menu on a half-replaced install.
         print(f"Automatic update failed: {exc}", file=sys.stderr)
-        return False
-    return True
+        return 1
+    except (UpdateError, OSError) as exc:
+        print(f"Automatic update failed: {exc}", file=sys.stderr)
+        return None
+    except KeyboardInterrupt:
+        print(UPDATE_STOPPED, file=sys.stderr)
+        raise
+    return 0
 
 
 def _confirm_override(lock: InstanceLock, conflict: LockInfo, input_fn: Callable[[str], str]) -> bool:
@@ -159,8 +168,8 @@ def _dispatch(argv: list[str], cfg: Config, config_dir: Path, lock: InstanceLock
         if conflict is not None and not _confirm_override(lock, conflict, input_fn):
             return 1
         return run_update_command(argv[1:], cfg)
-    if conflict is None and _auto_update(cfg):  # never update under another running copy
-        return 0
+    if conflict is None and (code := _auto_update(cfg)) is not None:  # never update under another running copy
+        return code
     if app_factory is None:
         from wowtools.ui.suite_app import WowToolsApp
 
