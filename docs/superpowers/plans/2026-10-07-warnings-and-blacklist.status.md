@@ -8,7 +8,7 @@ go-ahead.
 |---|---|---|---|---|
 | K0 | spec, plan, ledger | done | (this commit) | user feedback 2026-10-07 |
 | K1 | warnings view, all tools | done | (this commit) | Shared `ui/warnings_view.py` (`SummaryBar` bottom line + compact Warnings button "⚠ N … (!)", `WarningsHost`, `WarningsScreen` grouped by flavor with filter/x/c/Back(Esc)/detail line) adopted by the WTF Cleaner, Screenshot Organizer, Interface Backup review + restore, Ace3 and SV Browser reviews, every "(see the log)/(see the tree)" count gone; full suite 1689 OK (2 skipped), +13 tests |
-| K2 | blacklist helpers to core + shared b | todo | | |
+| K2 | blacklist helpers to core + shared b | done | (this commit) | Pair helpers moved to UI-free `core/blacklist.py` (Ace3 settings/app/blacklist screen/review import them), shared `BlacklistAction` + `BLACKLIST_BINDING` + `blacklist_toast` in `ui/review.py` adopted by the Ace3 review (its `b`, events, `u`, blacklist screen unchanged), single definitions pinned in test_structure; full suite 1693 OK (2 skipped), +4 tests |
 | K3 | WTF Cleaner blacklist | todo | | |
 | K4 | docs | todo | | |
 | KR | review, fixes, push | todo | | |
@@ -34,3 +34,14 @@ go-ahead.
   on the summary line (they are not scan warnings). IB's tree node text "(the log lists up to 20 per folder)" kept.
 - **K1** The view does not open while the screen scans, runs or does its running-programs check, nor from under a
   popup; opening logs `ui.selection` (control `warnings`): no new event, docs/events.md unchanged.
+- **K2** `core/blacklist.py` holds `WILDCARD`, `Pair`, `unique_pairs`, `parse_blacklist`, `format_blacklist`,
+  `is_blacklisted`, `toggle_pair` (and `_pair_order`); Ace3's `settings.py` imports only what it uses (no re-export).
+  No `patch()` target named the moved helpers; the only test change is `tests/test_ace_settings.py` calling them as
+  `bl.<name>` (`from wowtools.core import blacklist as bl`) instead of `s.<name>`, assertions identical.
+- **K2** `BlacklistAction` (ui/review.py) is a plain mixin (Textual collects `BINDINGS` only from DOMNode classes), so
+  a screen binds `BLACKLIST_BINDING` (`b`, `show=False`, as Ace3 had it; a screen that wants `b` in the footer binds
+  its own shown Binding with `BLACKLIST_KEY`). Hooks: `blacklist_ready()` (Ace3: idle and scanned),
+  `blacklist_target(node)`, `toggle_blacklist(flavor, addon) -> listed` (save + the tool's own event),
+  `blacklist_changed()` (default a scheduled rebuild; Ace3 drops locked changes first). The toast
+  "<Addon> (<Flavor name>) is now / no longer on the blacklist." and the no-target notice `BLACKLIST_NO_TARGET`
+  ("Highlight an addon (or something inside one) first.", Ace3's existing text, also used by its `u`) are shared.

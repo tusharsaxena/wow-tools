@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from wowtools.core import blacklist as bl
 from wowtools.core.config import Config
 from wowtools.core.events import TOOL_REGISTRIES
 from wowtools.tools.ace3_profile_manager import settings as s
@@ -44,34 +45,34 @@ class SettingsTest(unittest.TestCase):
 
     def test_blacklist_pairs_parse_and_format(self):
         """Feedback round 1: the blacklist holds (flavor folder, addon) pairs; a bare (legacy) name is "*"."""
-        self.assertEqual(s.parse_blacklist("_retail_:ElvUI, Questie"), [("_retail_", "ElvUI"), ("*", "Questie")])
-        self.assertEqual(s.parse_blacklist(" _retail_:ElvUI\n_RETAIL_:elvui ,, _classic_era_ : Questie "),
+        self.assertEqual(bl.parse_blacklist("_retail_:ElvUI, Questie"), [("_retail_", "ElvUI"), ("*", "Questie")])
+        self.assertEqual(bl.parse_blacklist(" _retail_:ElvUI\n_RETAIL_:elvui ,, _classic_era_ : Questie "),
                          [("_retail_", "ElvUI"), ("_classic_era_", "Questie")])
         pairs = [("_classic_era_", "Questie"), ("_retail_", "ElvUI")]
-        text = s.format_blacklist(pairs)
+        text = bl.format_blacklist(pairs)
         self.assertEqual(text, "_retail_:ElvUI, _classic_era_:Questie")
-        self.assertEqual(s.parse_blacklist(text), sorted(pairs, key=lambda p: (p[1], p[0])))
-        self.assertEqual(s.format_blacklist([("*", "Questie")]), "Questie")  # a wildcard stays a bare name
-        self.assertEqual(s.parse_blacklist(s.format_blacklist([("*", "Questie")])), [("*", "Questie")])
-        self.assertEqual(s.parse_blacklist(""), [])
+        self.assertEqual(bl.parse_blacklist(text), sorted(pairs, key=lambda p: (p[1], p[0])))
+        self.assertEqual(bl.format_blacklist([("*", "Questie")]), "Questie")  # a wildcard stays a bare name
+        self.assertEqual(bl.parse_blacklist(bl.format_blacklist([("*", "Questie")])), [("*", "Questie")])
+        self.assertEqual(bl.parse_blacklist(""), [])
 
     def test_blacklist_matches_flavor_and_addon(self):
         retail = [("_retail_", "ElvUI")]
-        self.assertTrue(s.is_blacklisted(retail, "_retail_", "elvui"))
-        self.assertTrue(s.is_blacklisted([("_Retail_", "ELVUI")], "_retail_", "ElvUI"))
-        self.assertFalse(s.is_blacklisted(retail, "_classic_era_", "ElvUI"))  # Retail's pair: not Classic Era
-        self.assertFalse(s.is_blacklisted(retail, "_retail_", "ElvUI_Options"))
+        self.assertTrue(bl.is_blacklisted(retail, "_retail_", "elvui"))
+        self.assertTrue(bl.is_blacklisted([("_Retail_", "ELVUI")], "_retail_", "ElvUI"))
+        self.assertFalse(bl.is_blacklisted(retail, "_classic_era_", "ElvUI"))  # Retail's pair: not Classic Era
+        self.assertFalse(bl.is_blacklisted(retail, "_retail_", "ElvUI_Options"))
         legacy = [("*", "Questie")]  # a bare name from the first build: every flavor
-        self.assertTrue(s.is_blacklisted(legacy, "_retail_", "Questie"))
-        self.assertTrue(s.is_blacklisted(legacy, "_classic_era_", "questie"))
+        self.assertTrue(bl.is_blacklisted(legacy, "_retail_", "Questie"))
+        self.assertTrue(bl.is_blacklisted(legacy, "_classic_era_", "questie"))
 
     def test_toggle_pair(self):
         folders = ["_retail_", "_classic_era_"]
-        pairs, now = s.toggle_pair([], "_retail_", "ElvUI", folders)
+        pairs, now = bl.toggle_pair([], "_retail_", "ElvUI", folders)
         self.assertEqual((pairs, now), ([("_retail_", "ElvUI")], True))
-        self.assertEqual(s.toggle_pair(pairs, "_RETAIL_", "elvui", folders), ([], False))
+        self.assertEqual(bl.toggle_pair(pairs, "_RETAIL_", "elvui", folders), ([], False))
         # Un-blacklisting a wildcard in one flavor keeps it in the others, as explicit pairs.
-        self.assertEqual(s.toggle_pair([("*", "ElvUI"), ("_retail_", "KickCD")], "_retail_", "ElvUI", folders),
+        self.assertEqual(bl.toggle_pair([("*", "ElvUI"), ("_retail_", "KickCD")], "_retail_", "ElvUI", folders),
                          ([("_classic_era_", "ElvUI"), ("_retail_", "KickCD")], False))
 
     def test_legacy_names_load_as_wildcards(self):

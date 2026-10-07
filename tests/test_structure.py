@@ -229,6 +229,28 @@ class StructureTest(unittest.TestCase):
                    if isinstance(node, ast.ClassDef) and node.name in ("NotTicked", "ReviewTree", "TickModel")}
         self.assertEqual(classes, {("wowtools/ui/review.py", n) for n in ("NotTicked", "ReviewTree", "TickModel")})
 
+    def test_blacklist_helpers_and_key_are_shared(self):
+        """Spec B1: the (flavor, addon) pair helpers are core/blacklist.py's (UI-free) and the tree's `b` action is
+        ui/review.py's BlacklistAction; a tool supplies only its target and its toggle."""
+        functions = {"unique_pairs", "parse_blacklist", "format_blacklist", "is_blacklisted", "toggle_pair",
+                     "_pair_order"}
+        where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & functions}
+        self.assertEqual(where, {("wowtools/core/blacklist.py", n) for n in functions})
+        assigned = {(rel(p), t.id) for p in modules("wowtools") for node in ast.walk(tree(p))
+                    if isinstance(node, (ast.Assign, ast.AnnAssign))
+                    for t in (node.targets if isinstance(node, ast.Assign) else [node.target])
+                    if isinstance(t, ast.Name) and t.id in ("WILDCARD", "Pair")}
+        self.assertEqual(assigned, {("wowtools/core/blacklist.py", "WILDCARD"), ("wowtools/core/blacklist.py", "Pair")})
+        where = {(rel(p), n) for p in modules("wowtools")
+                 for n in defined_functions(tree(p)) & {"action_blacklist", "blacklist_toast"}}
+        self.assertEqual(where, {("wowtools/ui/review.py", "action_blacklist"),
+                                 ("wowtools/ui/review.py", "blacklist_toast")})
+        texts = [rel(p) for p in modules("wowtools") if "on the blacklist." in p.read_text(encoding="utf-8")]
+        self.assertEqual(texts, ["wowtools/ui/review.py"])
+        from wowtools.tools.ace3_profile_manager.review_screen import ProfileReviewScreen
+        from wowtools.ui.review import BlacklistAction
+        self.assertTrue(issubclass(ProfileReviewScreen, BlacklistAction))
+
     def test_lock_refusal_and_progress_close_are_shared(self):
         """Functionality two tools need lives in the shared library: the lock refusal (core/svfiles.py: the probe
         loop and its message) and closing a review's progress popup (ui/review.py, Ace3's included)."""

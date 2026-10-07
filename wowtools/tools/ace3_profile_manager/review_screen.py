@@ -17,6 +17,7 @@ from textual.widget import Widget
 from textual.widgets import Button, Checkbox, Header, Label, ProgressBar, Static, Tree
 from textual.widgets.tree import TreeNode
 
+from wowtools.core.blacklist import Pair, format_blacklist, is_blacklisted, toggle_pair
 from wowtools.core.config import Config
 from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor, WowInstall, flavor_name
@@ -40,14 +41,14 @@ from wowtools.tools.ace3_profile_manager.report import (CHARACTER_KINDS, DETAIL_
                                                         undo_detail_rows, undo_summary_rows)
 from wowtools.tools.ace3_profile_manager.result_screen import ProfileResultScreen
 from wowtools.tools.ace3_profile_manager.scanner import ScanResult, scan_flavors
-from wowtools.tools.ace3_profile_manager.settings import (Pair, format_blacklist, is_blacklisted, load_settings,
-                                                          resolve_root, save_settings, toggle_pair)
+from wowtools.tools.ace3_profile_manager.settings import load_settings, resolve_root, save_settings
 from wowtools.tools.ace3_profile_manager.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
 from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult, recover, undo_run
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, InfoScreen, ProgressScreen,
                                 UnfinishedRunScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
-from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, TickModel, WowCheck, lift_toasts
+from wowtools.ui.review import (BLACKLIST_BINDING, BLACKLIST_NO_TARGET, ActionBar, BarTree, BlacklistAction, ReviewBase,
+                                RunActions, TickModel, WowCheck, lift_toasts)
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, TreeFilter, hidden_by_filter
 from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost, scan_warning_items
 from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button,
@@ -114,7 +115,7 @@ class ActionTip(Static):
             place()  # its height is known now: the toasts go above it
 
 
-class ProfileReviewScreen(WarningsHost, TreeFilter, RunActions, ReviewBase, Screen[str]):
+class ProfileReviewScreen(WarningsHost, BlacklistAction, TreeFilter, RunActions, ReviewBase, Screen[str]):
     """The AceDB databases of the chosen flavors (and account) as a tree. Dismisses with "flavors", "tools" or
     "quit". `unlocked` is the flow's set of casefolded blacklisted (flavor folder, addon) pairs unlocked this
     session (shared, not copied)."""
@@ -159,7 +160,7 @@ class ProfileReviewScreen(WarningsHost, TreeFilter, RunActions, ReviewBase, Scre
         Binding("E", "everyone_default", "Everyone → Default", show=False),
         Binding("m", "more", "More", show=False),
         Binding("backspace", "discard", "Discard", show=False),
-        Binding("b", "blacklist", "Blacklist", show=False),
+        BLACKLIST_BINDING,
         Binding("u", "unlock", "Unlock", show=False),
         Binding("v", "switch_view", "View", show=False),
         Binding("w", "apply", "Apply"),
@@ -754,7 +755,7 @@ class ProfileReviewScreen(WarningsHost, TreeFilter, RunActions, ReviewBase, Scre
         """The SavedVariables file (flavor and addon) of the highlighted addon, or of what is highlighted in one."""
         file = self._file_of(self.query_one("#profiles", Tree).cursor_node)
         if file is None:
-            self.notify("Highlight an addon (or something inside one) first.")
+            self.notify(BLACKLIST_NO_TARGET)
         return file
 
     def _flavor_folders(self) -> list[str]:
@@ -765,20 +766,22 @@ class ProfileReviewScreen(WarningsHost, TreeFilter, RunActions, ReviewBase, Scre
             folders = []
         return folders or [f.folder for f in self.flavors]
 
-    def action_blacklist(self) -> None:
-        """b: blacklist the highlighted addon in its flavor, or take it off."""
-        if not self.idle or self.scan is None:
-            return
-        file = self._file_at_cursor()
-        if file is None:
-            return
-        flavor, addon = file.flavor.folder, file.addon
+    # b (BlacklistAction): the highlighted addon in its flavor, on or off the tool's blacklist
+    def blacklist_ready(self) -> bool:
+        return self.idle and self.scan is not None
+
+    def blacklist_target(self, node: TreeNode | None) -> tuple[str, str] | None:
+        file = self._file_of(node)
+        return None if file is None else (file.flavor.folder, file.addon)
+
+    def toggle_blacklist(self, flavor: str, addon: str) -> bool:
         self.settings = load_settings(self.tool_cfg)
         self.settings.blacklist, listed = toggle_pair(self.settings.blacklist, flavor, addon, self._flavor_folders())
         save_settings(self.tool_cfg, self.settings, source="review")
         log_event("ace.blacklist_changed", flavor=flavor, addon=addon, blacklisted=listed)
-        where = flavor_name(flavor)
-        self.notify(f"{addon} ({where}) is {'now' if listed else 'no longer'} on the blacklist.")
+        return listed
+
+    def blacklist_changed(self) -> None:
         self._drop_locked()
         self._schedule_rebuild()
 

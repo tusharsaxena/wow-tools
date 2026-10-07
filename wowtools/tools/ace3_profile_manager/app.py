@@ -11,15 +11,15 @@ from rich.text import Text
 from textual.widget import Widget
 from textual.widgets import Button, Label, Static
 
+from wowtools.core.blacklist import Pair, format_blacklist, unique_pairs
 from wowtools.core.config import Config
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor, WowInstall, validate_backup_dir
 from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager.blacklist_screen import BlacklistScreen
 from wowtools.tools.ace3_profile_manager.review_screen import ProfileReviewScreen
-from wowtools.tools.ace3_profile_manager.settings import (SECTION, Pair, ProfileSettings, format_blacklist,
-                                                          load_settings, migrate_backup_root, resolve_root,
-                                                          save_settings, unique_pairs)
+from wowtools.tools.ace3_profile_manager.settings import (SECTION, ProfileSettings, load_settings, migrate_backup_root,
+                                                          resolve_root, save_settings)
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.settings_form import ToolSettingsScreen, folder_hint
 from wowtools.ui.tool_flow import ToolFlow

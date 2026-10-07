@@ -43,11 +43,11 @@ Conventions:
   or more tools need lives there, never copied and never imported across tools (a tool never imports another tool).
   Core: `install`, `config`, `journal` (`ToolJournals`, `tool_root`), `snapshot`, `svfiles` (`SvFile`,
   `walk_sv_files`), `undo`, `marker`, `progress` (`ProgressBoard`), `parallel` (`run_units`, `[general] parallelism`),
-  `text`, `fsutil`, `backup`, `changelog`, and the SavedVariables stack Ace3 and SV Browser share: `luasv` (parser,
+  `text`, `fsutil`, `backup`, `changelog`, `blacklist` (`flavor:Addon` pairs: parse/format/match/toggle), and the SavedVariables stack Ace3 and SV Browser share: `luasv` (parser,
   `parse_at`, `iter_scalars`, encoders), `sv_events` (`SvTool`, `sv_events(prefix)`), `sv_apply` (write pipeline),
   `sv_journal`, `sv_undo`, `sv_verify`, `sv_report`.
   UI: `dialogs` (confirm/info/choice/progress popups, `TextPromptScreen`, `UnfinishedRunScreen`, `popup_css`, CSS,
-  tick helpers), `review` (`ReviewBase`, `ReviewTree`, `TickModel`, `RunActions`, `BarTree`/`ActionBar`), `tree_filter` (`TreeFilter`, `FilterBar`, `/` filter box), `warnings_view` (`SummaryBar` bottom line + Warnings button, `!` → `WarningsScreen`), `result_screen` (`ResultBase`), `settings_form`
+  tick helpers), `review` (`ReviewBase`, `ReviewTree`, `TickModel`, `RunActions`, `BarTree`/`ActionBar`, `BlacklistAction`: the tree's `b`), `tree_filter` (`TreeFilter`, `FilterBar`, `/` filter box), `warnings_view` (`SummaryBar` bottom line + Warnings button, `!` → `WarningsScreen`), `result_screen` (`ResultBase`), `settings_form`
   (`ToolSettingsScreen`), `tool_flow` (`ToolFlow`), `widgets` (`action_button`), `branding` (`BottomBar`, version,
   terms). `tests/test_structure.py` pins single definitions, the cross-tool rule, the future import and import order.
 - Tests use `tests/fixtures.py` temp trees; never a real WoW install, never the network.

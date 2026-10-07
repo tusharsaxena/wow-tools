@@ -15,16 +15,18 @@ from rich.text import Text
 from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import Button, Checkbox, Input, ProgressBar, Static, Tree
+from textual.widgets.tree import TreeNode
 
 from wowtools.core import activity
 from wowtools.core.events import log_event, log_exception
-from wowtools.core.install import WowInstall, validate_backup_dir
+from wowtools.core.install import WowInstall, flavor_name, validate_backup_dir
 from wowtools.core.sv_events import SvTool
 from wowtools.ui.dialogs import BUSY_STYLE, ProgressScreen, TwoPaneFocus
 from wowtools.ui.widgets import WrapButtonRow
 
-__all__ = ["ActionBar", "BarTree", "ButtonActions", "NotTicked", "Preflight", "ReviewBase", "ReviewTree", "RunActions",
-           "ScheduledRebuild", "TickActions", "TickModel"]
+__all__ = ["BLACKLIST_BINDING", "BLACKLIST_KEY", "BLACKLIST_NO_TARGET", "ActionBar", "BarTree", "BlacklistAction",
+           "ButtonActions", "NotTicked", "Preflight", "ReviewBase", "ReviewTree", "RunActions",
+           "ScheduledRebuild", "TickActions", "TickModel", "blacklist_toast"]
 
 WowCheck = Callable[[], "list[str] | None"]
 
@@ -378,6 +380,54 @@ class ReviewBase(TickActions, Preflight, ScheduledRebuild, ButtonActions, TwoPan
             return
         self.query_one("#scan-progress", ProgressBar).update(total=total or None, progress=current)
         self.query_one("#scan-label", Static).update(Text(label))
+
+
+BLACKLIST_KEY = "b"
+# Shown on no footer: a screen that wants `b` listed binds its own Binding(BLACKLIST_KEY, "blacklist", ..., show=True).
+BLACKLIST_BINDING = Binding(BLACKLIST_KEY, "blacklist", "Blacklist", show=False)
+BLACKLIST_NO_TARGET = "Highlight an addon (or something inside one) first."
+
+
+def blacklist_toast(flavor: str, addon: str, listed: bool) -> str:
+    """What `b` says once it has toggled (flavor folder, addon)."""
+    return f"{addon} ({flavor_name(flavor)}) is {'now' if listed else 'no longer'} on the blacklist."
+
+
+class BlacklistAction:
+    """The tree's `b` (spec B1), mixed into a review whose tool keeps a blacklist of (flavor folder, addon) pairs
+    (core/blacklist.py). Bind BLACKLIST_BINDING. The screen supplies `blacklist_target(node)` (the highlighted
+    node's (flavor folder, addon), or None for a node with no single addon) and `toggle_blacklist(flavor, addon)`
+    (its own list, saved and logged its own way; True when the pair is now listed). `b` then says so in the shared
+    toast and calls `blacklist_changed()` (by default a rebuild). What being listed means stays the tool's."""
+
+    TREE_SELECTOR: ClassVar[str]
+
+    def blacklist_ready(self) -> bool:
+        """`b` may act now (not while scanning or running): the screen narrows it."""
+        return True
+
+    def blacklist_target(self, node: TreeNode | None) -> tuple[str, str] | None:
+        raise NotImplementedError
+
+    def toggle_blacklist(self, flavor: str, addon: str) -> bool:
+        raise NotImplementedError
+
+    def blacklist_changed(self) -> None:
+        """After a toggle: show the change (the tree's labels, ticks and counts)."""
+        self._schedule_rebuild()
+
+    def action_blacklist(self) -> None:
+        """b: blacklist the highlighted addon in its flavor, or take it off."""
+        if not self.blacklist_ready():
+            return
+        target = self.blacklist_target(self.query_one(self.TREE_SELECTOR, Tree).cursor_node)
+        if target is None:
+            self.notify(BLACKLIST_NO_TARGET)
+            return
+        flavor, addon = target
+        listed = self.toggle_blacklist(flavor, addon)
+        self.notify(blacklist_toast(flavor, addon, listed))
+        self.blacklist_changed()
 
 
 class RunActions:
