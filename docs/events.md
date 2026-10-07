@@ -82,6 +82,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `clean.journal_failed` | error | The run journal could not be written; the clean stopped before deleting anything. |
 | `clean.journal_pruned` | info | Older clean journals were deleted to keep the newest N (keep_journals). |
 | `clean.locked` | error | A real clean stopped before the WTF backup: selected files are locked by another program. |
+| `clean.marker_left` | warning | clean-in-progress.json could not be removed (another program held it) after a clean that finished, a clean stopped before deleting or restored, or Dismiss on the unfinished-clean notice (stage); the next start shows that notice again and a clean is refused until the marker is gone. |
 | `clean.probe_recovered` | warning | A real clean renamed back a SavedVariables file left as <name>.wowtools-lockcheck by an interrupted lock check. |
 | `clean.started` | info | A clean (or dry run) started. |
 | `clean.undo_completed` | info | Undo last clean finished (logged at warning if any file was skipped or failed). |

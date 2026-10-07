@@ -53,7 +53,7 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      `iter_scalars`, `encode_value` / `encode_key` and `key_id` for writing and comparing keys),
      `core/svfiles.py` (`SvFile`, `sha256_of`, `walk_sv_files(flavor, accept=is_sv_file | is_addon_sv_file, ...)`)
      and the write pipeline. Make one `SV_TOOL = SvTool(TOOL_NAME, "<prefix>")` (`core/sv_events.py`) in the
-     tool's `events.py` and register `sv_events(SV_TOOL.prefix)` with its own events (the pipeline's 31 events
+     tool's `events.py` and register `sv_events(SV_TOOL.prefix)` with its own events (the pipeline's 33 events
      under your prefix). Then supply only the per-file parts: `compile(file, payload, bytes)` returning an edit
      with `.data` (the new bytes, built by byte-span splices, never by re-serializing) and `.changes`, and
      `verify(edit, old_bytes)` returning problems (the helpers in `core/sv_verify.py` check the assignments and
@@ -64,8 +64,14 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      stage titles, confirm text and result rows, and `tool_root(backup_dir, wow_path, TOOL_NAME)`
      (`core/journal.py`) the folder they live in. On the UI side, mix `RunActions` (`ui/review.py`) in before
      `ReviewBase` for the WoW check, the backup-folder refusal and `start_run` (busy flag, progress popup,
-     worker), and use `UnfinishedRunScreen` and `TextPromptScreen` from `ui/dialogs.py`. The Saved Variables
-     Browser (`tools/sv_browser/editor.py`, `undo.py`, `journal.py`, `report.py`) is the smallest worked example.
+     worker), and use `UnfinishedRunScreen` and `TextPromptScreen` from `ui/dialogs.py`. Never write your own
+     recovery of an unfinished Apply: mix `SvRecoveryActions` (`ui/review.py`) in before `RunActions`, call
+     `offer_recovery(marker)` when the scan finds a crash marker, and supply only its hooks: `RUN_PROGRESS` (your
+     run progress popup), `recovery_screen(marker)` (an `UnfinishedRunScreen`), `recovery_root()`,
+     `run_leave(marker, root=)` and `run_recover(marker, **kwargs)` (your `undo.leave` / `undo.recover`) and
+     `recovery_done()`; it does the offer, **Leave as is** and **Put the originals back** (STD-2.2). The Saved
+     Variables Browser (`tools/sv_browser/editor.py`, `undo.py`, `journal.py`, `report.py`, and
+     `SvReviewScreen` in `review_screen.py`) is the smallest worked example.
    - `help.py` with `HELP`, the tool's help screen text (Markdown; `h` on any of its screens shows it, spec D18) and
      `GUIDE_URL` (`https://github.com/tusharsaxena/wow-tools/blob/master/docs/<tool name>.md`): what the tool does,
      the flow step by step, every button with its key, the filter and tick keys, the safety notes (backups, Dry
@@ -84,7 +90,10 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      (`wowtools/ui/settings_form.py`: `FORM_TITLE`, `FIRST_FIELD`, `TICKS`, `load()`, `fields()`, `save()`;
      `folder_input()` / `folder_value()` for a folder field). Put `Header()` and `BottomBar()` (`wowtools/ui/branding.py`:
      the footer and the version in one row, two when the keys need it) on every screen, never a `Footer()` of its own. The organizer's screens are in `app.py` (`ScreenshotSettingsScreen`) and `review_screen.py`
-     (`ShotReviewScreen`, `ShotProgressScreen`, `ShotResultScreen`).
+     (`ShotReviewScreen`, `ShotProgressScreen`, `ShotResultScreen`). When the review screen grows, move its
+     tool-specific actions into `*_actions.py` mixins named after what they do (STD-3.6), mixed into the screen
+     class, as the Ace3 Profile Manager's `staging_actions.py` / `blacklist_actions.py` and the Saved Variables
+     Browser's `edit_actions.py` do; the screen keeps the layout and the wiring.
    - **Shared dialogs.** Take the confirm and progress dialogs from `wowtools/ui/dialogs.py`, never from another
      tool (a tool imports nothing from another tool; `tests/test_structure.py` checks it):
      `ConfirmScreen(title, body, alerts, kind=..., groups=...)` (it opens on Yes, so `kind` colours Yes by what it

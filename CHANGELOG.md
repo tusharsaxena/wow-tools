@@ -31,6 +31,10 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 - **WTF Cleaner**
   - A file WoW rewrites while a clean is backing up the WTF folder is now kept (shown as changed since the scan)
     instead of deleted, so its newer data is never lost.
+  - When another program (a virus scanner or OneDrive) keeps the cleaner from removing its marker file after a
+    clean that finished, the result now says so (a **Crash marker** row), and the next start's "An earlier clean
+    did not finish" message says such a clean needs nothing restored. **Dismiss** on that message now tells you
+    when it could not remove the file either, instead of closing as if it had while new cleans stay refused.
 - **Ace3 Profile Manager and Saved Variables Browser**
   - **Put the originals back** after an unfinished change now works when you run the app from the other system
     (Windows or WSL) than the one the change was started from: the files are found in the WoW folder you set. If

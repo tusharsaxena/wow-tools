@@ -120,6 +120,11 @@ In `cleaner.execute`:
 - On success (including per-file failures) `check_clean()` compares the WTF folder with the snapshot
   (`clean.validated`, or `clean.check_failed` with the problems in `CleanResult.check_problems`), the marker is
   cleared, the snapshot is kept, and older snapshots are pruned (`snapshot.pruned`).
+- `clear_marker()` retries (`core/marker.clear_marker`) and returns False when another program still holds the
+  marker; `cleaner._clear_marker` then logs `clean.marker_left` (warning, with the `stage`), and a clean that
+  finished sets `CleanResult.marker_left`, shown as a "Crash marker" summary row. **Dismiss** on `RecoveryScreen`
+  does the same (stage `dismiss`) and the review shows a "Marker not removed" notice: while the marker exists every
+  real clean is refused.
 - Nothing ever restores automatically at start-up.
 
 ### Progress callbacks

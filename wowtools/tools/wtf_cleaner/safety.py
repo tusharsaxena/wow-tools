@@ -84,8 +84,9 @@ def read_marker(backup_dir: Path | None) -> Marker | None:
 
 
 def clear_marker(backup_dir: Path) -> bool:
-    """Remove the marker; False when it is still there after the retries. Callers may ignore it: a leftover marker
-    here only produces a notice at the next start."""
+    """Remove the marker; False when it is still there after the retries (another program held it). The caller
+    reports that (clean.marker_left): while the marker exists the next start shows the unfinished-clean notice and
+    every real clean is refused (cleaner._take_safety_snapshot)."""
     return core_marker.clear_marker(backup_dir, MARKER_NAME)
 
 
@@ -169,4 +170,6 @@ def check_clean(snapshot: Path, flavor: Flavor, deleted: list[str], backup_zip: 
 def recovery_message(marker: Marker) -> str:
     return (f"The last clean of {marker.flavor} did not finish (it started {marker.started}).\n"
             f"A backup of the WTF folder from just before it is at: {marker.snapshot}\n"
-            f"If files are missing: close WoW, then unzip it into {marker.flavor_path} to restore.")
+            f"If files are missing: close WoW, then unzip it into {marker.flavor_path} to restore.\n"
+            f"If that clean's result said its crash marker could not be removed, the clean finished: nothing is "
+            f"missing, so just dismiss this.")

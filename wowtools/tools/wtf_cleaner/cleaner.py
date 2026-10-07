@@ -73,6 +73,7 @@ class CleanResult:
     dry_runs_pruned: list[Path] = field(default_factory=list)  # older dry-run zips removed to keep the newest N
     cleaned_pruned: list[Path] = field(default_factory=list)  # older cleaned-files zips removed (keep_cleaned)
     journal_path: Path | None = None  # the run journal this clean wrote to (set by execute_flavors)
+    marker_left: bool = False  # the clean finished but clean-in-progress.json could not be removed
 
     def _with(self, status: str) -> list[FileOutcome]:
         return [o for o in self.outcomes if o.status == status]
@@ -181,13 +182,23 @@ def _take_safety_snapshot(flavor: Flavor, backup_dir: Path | None, now: datetime
     try:
         write_marker(backup_dir, marker)
     except OSError as exc:
-        clear_marker(backup_dir)  # the backup itself stays: it is a good backup, nothing was deleted
+        _clear_marker(backup_dir, flavor, "not_started")  # the backup stays: a good backup, nothing was deleted
         log_event("snapshot.failed", flavor=flavor.folder, error=f"could not write the clean marker: {exc}")
         raise BackupError(f"could not write the clean marker: {exc}") from exc
     except BaseException:  # interrupted before deleting anything
-        clear_marker(backup_dir)
+        _clear_marker(backup_dir, flavor, "not_started")
         raise
     return snapshot
+
+
+def _clear_marker(backup_dir: Path, flavor: Flavor, stage: str) -> bool:
+    """Remove the in-progress marker; when another program holds it, log clean.marker_left (warning) and return
+    False. stage: "finished" (the clean ended), "restored" (it stopped and put back what it deleted) or
+    "not_started" (it stopped before deleting anything)."""
+    if clear_marker(backup_dir):
+        return True
+    log_event("clean.marker_left", flavor=flavor.folder, stage=stage, path=str(backup_dir / MARKER_NAME))
+    return False
 
 
 def _restore_after(exc: BaseException, snapshot: Path, backup_dir: Path, flavor: Flavor,
@@ -204,7 +215,7 @@ def _restore_after(exc: BaseException, snapshot: Path, backup_dir: Path, flavor:
                           f"it into {flavor.path} to restore.", files_missing=bool(deleted))
     log_event("restore.completed", flavor=flavor.folder, snapshot=str(snapshot), restored=len(restored),
               reason=reason, files=restored)
-    clear_marker(backup_dir)
+    _clear_marker(backup_dir, flavor, "restored")
     return CleanError(f"Clean stopped ({reason}); {len(restored)} deleted files were restored from {snapshot}",
                       restored=restored)
 
@@ -257,7 +268,7 @@ def execute(items: list[ProposalItem], flavor: Flavor, *, dry_run: bool, backup:
                 _prune_dry_run_zips(result, backup_dir, flavor, keep_backups)
     except BaseException:
         if snapshot is not None and backup_dir is not None:
-            clear_marker(backup_dir)  # nothing was deleted; the WTF backup is kept like any other
+            _clear_marker(backup_dir, flavor, "not_started")  # nothing was deleted; the WTF backup is kept
         raise
 
     deleted: list[str] = []
@@ -316,7 +327,7 @@ def _finish_safety(result: CleanResult, snapshot: Path, backup_dir: Path, flavor
     """Check the WTF folder against the backup taken before deleting, then clear the marker (the clean finished).
     The backup is kept either way."""
     problems = check_clean(snapshot, flavor, deleted, result.backup_path, report)
-    clear_marker(backup_dir)
+    result.marker_left = not _clear_marker(backup_dir, flavor, "finished")
     result.check_problems = problems
     if problems:
         log_event("clean.check_failed", flavor=flavor.folder, zip=str(snapshot), problems=len(problems),

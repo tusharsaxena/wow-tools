@@ -388,6 +388,12 @@ then sees the change finished and only removes the reminder: no file is changed,
 If the reminder still can't be removed (after **Put the originals back** or **Leave as is**), a notice says so and
 the message comes back at the next scan; close the other program and choose again.
 
+**Put the originals back** finds the files in the WoW folder set in the app, never in the folder the change was
+started from, so it works when you run the app from the other system (Windows or WSL). If that change's game
+version (for example `_retail_`) is not a folder in your WoW folder (you changed the WoW folder since, say), it is
+refused with "`<game version>` is not in the WoW folder `<path>`. Nothing was changed." and the message is offered
+again: set the WoW folder the change was made in (press `s`), then choose again.
+
 ## Settings
 
 Press `s` in the tool (you get the shared settings first: WoW folder, backups and journals to keep; then this

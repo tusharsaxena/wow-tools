@@ -284,6 +284,14 @@ If the app is closed in the middle of a clean (a power cut, or you closed the wi
 Until you dismiss it, new cleans are refused (dry runs still work), so the cleaner can't lose track of that
 backup.
 
+Sometimes another program (a virus scanner or OneDrive) holds the cleaner's marker file
+(`clean-in-progress.json` in the backup folder) for a moment, so it can't be removed:
+
+- **After a clean that finished**, the result shows a **Crash marker** row saying so. That clean is complete, so
+  when the next start says an earlier clean did not finish, nothing is missing: just dismiss it.
+- **When you dismiss the message**, a "Marker not removed" notice says so. New cleans stay refused until the file
+  is gone: dismiss the message again next time, or delete the file yourself.
+
 ## Settings
 
 Press `s` in the cleaner (you get the shared settings first, then the cleaner's). The cleaner's settings are saved

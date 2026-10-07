@@ -158,6 +158,7 @@ builders stamp on files.
 | `stage_sv_edit(review)` | Stage one value edit on a Saved Variables Browser review, so Apply and Dry run have something to do |
 | `await footer_keys(screen, pilot, wanted)` | The keys a screen's footer lists, once it lists every key in `wanted` (or the timeout passes) |
 | `assert_keys_on_buttons(test, screen)` | Spec D17 on one screen: a button shows its action's key, a shown key works there, and the footer lists none of them |
+| `with record_fsyncs(module=None) as calls:` | Record `("fsync", file size)` for every `os.fsync`, and with `module`, `("rename", source size)` for every call of that module's `rename_no_replace`: a test checks a file reached the disk before it was moved into place or counted (F-012) |
 
 Logging is tested through `wowtools.core.events.capture_events()`, a context manager that swaps in a strict
 in-memory event log and yields its records. An unregistered event then raises, and nothing is written to `logs/`
@@ -212,16 +213,22 @@ Reads the source of `wowtools`, `scripts` and `tests` with `ast`:
 
 - **Layering:** `wowtools/core` never imports `textual`, `wowtools.ui` or `wowtools.tools`, and has no relative
   imports (`test_core_never_imports_textual`); importing every core module in a fresh process loads no Textual
-  (`test_importing_core_loads_no_textual`).
+  (`test_importing_core_loads_no_textual`); in a tool, only its front-end modules (`app.py`, `*_screen.py`,
+  `*_actions.py`, `popups.py`, `tree_view.py`) import `textual`, `rich` or `wowtools.ui`
+  (`test_only_front_end_modules_import_the_ui`, STD-1.7).
 - **No cross-tool imports:** a tool never imports another tool, in any import form
   (`test_no_tool_imports_another_tool`, `test_the_import_check_sees_every_form`).
 - **Single definitions:** shared helpers, classes and literals are defined once, in core or UI, and never copied
   into a tool: `test_shared_helpers_are_defined_once`, `test_literals_are_defined_once`,
   `test_tools_use_the_shared_helpers`, the SavedVariables reader, file model and write pipeline
   (`test_saved_variables_*`), the review machinery, tree filter, blacklist, dialogs, result screens, settings forms
-  and flow steps (`test_review_machinery_lives_in_ui`, `test_tree_filter_lives_in_ui`,
+  and flow steps, and the recovery of an unfinished SavedVariables Apply (`SvRecoveryActions`)
+  (`test_review_machinery_lives_in_ui`, `test_sv_recovery_lives_in_ui`, `test_tree_filter_lives_in_ui`,
   `test_blacklist_helpers_and_key_are_shared`, `test_shared_dialogs_live_in_ui`,
   `test_result_choice_settings_and_flow_live_in_ui`, `test_lock_refusal_and_progress_close_are_shared`).
+- **Action mixins:** the Ace3 and SV Browser review screens take their staging, blacklist and key-edit actions
+  from per-tool `*_actions.py` mixins and never define them again (`test_review_screens_are_split_into_action_mixins`,
+  STD-3.6).
 - **Buttons:** only `action_button` builds a `Button` (`test_every_button_is_built_with_an_action_kind`); one label
   has one action kind everywhere (`test_same_label_same_colour`); a label never spells its key
   (`test_button_labels_never_spell_their_key`); every `ConfirmScreen` names its kind

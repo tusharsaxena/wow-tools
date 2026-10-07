@@ -35,6 +35,7 @@ EVENTS: dict[str, EventSpec] = {
     "clean.probe_recovered": EventSpec("warning", "A real clean renamed back a SavedVariables file left as <name>.wowtools-lockcheck by an interrupted lock check."),
     "clean.locked": EventSpec("error", "A real clean stopped before the WTF backup: selected files are locked by another program."),
     "clean.validated": EventSpec("info", "After a clean, the WTF folder matched the WTF backup and the cleaned-files zip."),
+    "clean.marker_left": EventSpec("warning", "clean-in-progress.json could not be removed (another program held it) after a clean that finished, a clean stopped before deleting or restored, or Dismiss on the unfinished-clean notice (stage); the next start shows that notice again and a clean is refused until the marker is gone."),
     "clean.check_failed": EventSpec("warning", "The post-clean check found problems; see the WTF backup it names."),
     "snapshot.failed": EventSpec("error", "The WTF backup failed; nothing was deleted."),
     "restore.completed": EventSpec("warning", "A clean stopped unexpectedly; the files it had deleted were restored."),
