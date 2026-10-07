@@ -427,7 +427,8 @@ class SettingsFormTest(TuiTestCase):
             self.assertIs(screen.focused, screen.query_one("#folder", Input))
             self.assertIn("Space/Enter tick", str(screen.query_one(NavHint).render()))
             self.assertEqual(screen.query_one("#folder", Input).placeholder, folder_hint(self.tmp))
-            screen.query_one("#folder", Input).value = "C:\\bad"
+            # A native path: C:\\bad would end in "bad" only on Windows or under WSL (C:\\ becomes /mnt/c).
+            screen.query_one("#folder", Input).value = str(self.tmp / "bad")
             await pilot.click("#save")
             await pilot.pause()
             self.assertEqual(screen.error_text, "Not that folder.")
