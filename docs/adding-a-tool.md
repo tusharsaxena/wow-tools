@@ -125,8 +125,9 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      no keys: the popup's buttons and hint say what to press.
      A result screen's `lead_buttons()` / `extra_buttons()` give `(label, kind, id, key)`. Pick
      its kind by what it does, as the other tools do: `destructive` (deletes), `overwrite` (overwrites or changes
-     files), `create` (only adds files), `revert` (undo), `simulate` (dry run), `confirm` (Save, OK), `navigate`
-     (Rescan, Other flavor, a button that opens a screen) or `cancel` (Cancel, Back, Quit). A button that stages a
+     files), `create` (only adds files), `revert` (undo), `simulate` (dry run), `confirm` (Save, OK), `refresh`
+     (Rescan: reads the files again), `navigate` (Other flavor, a button that opens a screen) or `cancel` (Cancel,
+     Back, Quit). A button that stages a
      change takes the kind of the change. `tests/test_structure.py` checks that one label has one kind everywhere.
      Lay the screens out for 120x30 (Windows Terminal's default window) and let trees and tables take any extra
      room; 80x24 only has to keep working. `tests/test_look_and_feel.py` checks every tool against them at those

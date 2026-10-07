@@ -185,16 +185,16 @@ shows each step and the file it's working on:
 
 Before anything is deleted, the cleaner:
 
-1. **Checks that no other program has the files open.** The Raider.IO client and the WeakAuras Companion are
+1. **Starts a journal**, a short record used by **Undo last clean**. If it can't write the journal, nothing is
+   deleted.
+2. **Checks that no other program has the files open.** The Raider.IO client and the WeakAuras Companion are
    known to lock these files. If any file is locked, the clean stops with nothing deleted and tells you which
    ones. Close that program and try again. (It checks by renaming each file to `<name>.wowtools-lockcheck` and
    straight back. If the app is closed in that split second, the next clean puts the file back first, and the
    scan warns about it until then.)
-2. **Backs up your whole `WTF` folder** into a zip file and checks the zip. If the backup fails, nothing is
+3. **Backs up your whole `WTF` folder** into a zip file and checks the zip. If the backup fails, nothing is
    deleted.
-3. **Zips the files it's about to remove** and checks that zip too. If it fails, nothing is deleted.
-4. **Starts a journal**, a short record used by **Undo last clean**. If it can't write the journal, nothing is
-   deleted.
+4. **Zips the files it's about to remove** and checks that zip too. If it fails, nothing is deleted.
 
 Then it deletes the files, and finally it compares your `WTF` folder against the backup to make sure only the
 right files are gone.
@@ -216,10 +216,11 @@ From here, `r` scans again, `f` picks another game version, `t` goes back to the
 
 ### Dry run
 
-A **Dry run** does everything a clean does except the deleting. It still writes the zip of the files it *would*
-remove (named `dryrun-…zip`, so you can tell it from a real clean's zip), and shows you the same results screen.
-When in doubt, do a dry run first. Since dry runs tend to be repeated, only the newest few dry-run zips of each
-game version are kept (the same number as WTF backups, 5 unless you change it).
+A **Dry run** does everything a clean does except the deleting. Unless **Zip the files before deleting** is turned
+off in settings, it still writes the zip of the files it *would* remove (named `dryrun-…zip`, so you can tell it
+from a real clean's zip). It shows you the same results screen. When in doubt, do a dry run first. Since dry runs
+tend to be repeated, only the newest few dry-run zips of each game version are kept (the same number as WTF
+backups, 10 unless you change it).
 
 ## Undo last clean
 
@@ -235,8 +236,9 @@ Close WoW before you undo.
 
 ## Where your backups go
 
-Everything the cleaner saves goes into its backup folder. Unless you change it in settings, that's
-`<your WoW folder>\wow-tools\wtf-cleaner`:
+The cleaner saves its zips in its backup folder. Unless you change it in settings, that's
+`<your WoW folder>\wow-tools\wtf-cleaner`. The journals always go to
+`<your WoW folder>\wow-tools\wtf-cleaner\journal`, even if you pick another backup folder:
 
 ```
 wow-tools\wtf-cleaner\

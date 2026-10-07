@@ -3,7 +3,7 @@
 ![Version](https://img.shields.io/badge/Version-0.1.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-yellow)
 ![Platforms](https://img.shields.io/badge/Platforms-Windows_%7C_macOS_%7C_Linux-purple)
-![Tests](https://img.shields.io/badge/Tests-1641%2F1641_passing-green)
+![Tests](https://img.shields.io/badge/Tests-1709%2F1709_passing-green)
 ![License](https://img.shields.io/badge/License-MIT-orange)
 
 Ka0s WoW Tools is a small set of World of Warcraft helpers that run ***outside*** the game and tidy up the files WoW
@@ -144,12 +144,13 @@ finished.
 
 Buttons are coloured by what they do, the same in every tool: **red** deletes, **amber** overwrites or changes
 files, **green** adds something new (a backup, an Ace3 profile copy), **violet** undoes, **cyan** is a dry run
-that changes nothing, **blue** confirms (Save, OK), **grey** moves between screens or rescans, and **dim grey** backs
-out (Cancel, Back, Quit).
+that changes nothing, **blue** confirms (Save, OK), **lime** reads the files again (Rescan), **grey** moves between screens, and
+**dim grey** backs out (Cancel, Back, Quit).
 
 Every "are you sure?" window opens with **Yes** selected, coloured the same way: red when it deletes, overwrites,
-undoes or throws away pending changes, cyan for a dry run. A backup's is red when older backups are deleted to
-keep the number you set, green only when every backup is kept. So read it before you press Enter.
+undoes or throws away pending changes, cyan for a dry run, blue for a plain save (the Ace3 blacklist, when the
+filter hides some of your ticks). A backup's is red whenever you've set a number of backups to keep (any older ones
+beyond it are deleted), and green only when you keep them all (0). So read it before you press Enter.
 For a quarter of a second after it opens, Enter and Space do nothing there, and a key you are still holding is
 ignored until you let it go, so it can't answer for you (the update offer's **Update now** waits the same way). `y` answers Yes, `n` or `Esc` No.
 
@@ -191,12 +192,16 @@ Each tool has its own guide, with pictures, that walks through every screen:
 
 ## Updates
 
-The app checks for a new version once a day while it's open. If there is one, the bottom bar says so (at its right
+When it starts, the app checks for a new version (at most once a day). If there is one, the bottom bar says so (at its right
 end, next to the version you have), and so does the line under the banner on the tool menu; press `u` to install it. On the Ace3 Profile Manager's review `u` unlocks an
 addon, so there (and while a text box has focus, where `u` types the letter) the bar tells you to press `u` on the
 tool menu instead. Before it tells you about a version, and again when you press `u`, the app asks GitHub; if that version has been
 withdrawn, the app says there is no update and the notice goes away. A small window stays up while it downloads and installs, then the app closes so you can start the
-new version. You can also update from a terminal in the app's folder:
+new version. To turn the check off, set `check_for_updates = false` under `[general]` in `config\wow-tools.cfg`. To have
+new versions installed automatically, set `auto_update = true` (it starts as `false`): the app then installs an update
+when it starts, before the tool menu opens, and closes so you can start the new version. This only works while
+`check_for_updates` is on, and never while another copy of the app is running. You can also update from a terminal
+in the app's folder:
 
 - `wow-tools update --check` (on Windows `wow-tools.cmd update --check`, on Mac and Linux
   `./wow-tools.sh update --check`) tells you whether an update is available.
@@ -279,7 +284,7 @@ If you use WSL (Linux inside Windows), the same folder works from both sides. Ru
 | Symptom | Fix |
 |---------|-----|
 | "Python was not found", or nothing happens when I double-click `wow-tools.cmd` | Python isn't installed, or **Add python.exe to PATH** wasn't ticked. Run the Python installer again, choose **Modify**, and tick it. |
-| "No WoW flavor folders were found" | Pick the `World of Warcraft` folder itself, not `_retail_` inside it. |
+| "No WoW flavor folders (\_retail\_, \_classic\_ ...) were found there" | Pick the `World of Warcraft` folder itself, not `_retail_` inside it. |
 | "Ka0s WoW Tools may already be running" | See *Why does it say another copy may already be running?* in the [FAQ](#faq). |
 | The window looks garbled or too small | Make the terminal window bigger (at least 120 columns by 30 lines; see [Terminal size](#terminal-size)), or use Windows Terminal (the default on Windows 11). |
 | It's very slow on WSL | WSL (Linux inside Windows) is slow at reading files on Windows drives such as `C:` or `G:`: every file takes a moment to check, and a WoW folder has thousands of them. Start the app from Windows instead, by double-clicking `wow-tools.cmd`. It uses the same settings, so nothing needs setting up again. If you stay on WSL, give the first scan time; the progress bar shows it's still working, and set "Game versions to work on at once" to 1 in the general settings (`s` on the tool menu). |
