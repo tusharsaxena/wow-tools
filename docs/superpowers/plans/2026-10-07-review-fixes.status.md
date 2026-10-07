@@ -1,0 +1,27 @@
+# Full-review fixes: status ledger
+
+Plan: `2026-10-07-review-fixes.md`. Spec: `../specs/2026-10-07-review-fixes-design.md`.
+Branch: `fix/review-2026-10-07`. Resume at the first task not marked `done`. Never merge without the user's
+go-ahead.
+
+| Task | Title | Status | Commit | Notes |
+|---|---|---|---|---|
+| T0 | spec, plan, ledger, review bundle | done | (this commit) | baseline full suite 1710 run, 0 failures (2 skipped) per the review |
+| T1.1 | C-02 Undo snapshots validated flavors (F-003) | todo | | |
+| T1.2 | C-01 recovery under the configured WoW folder (F-001) | todo | | |
+| T1.3 | C-03 marker_left, finished journal wins (F-002) | todo | | |
+| T2.1 | C-04 WTF recheck before each delete (F-004) | todo | | |
+| T2.2 | C-05 updater rollback on any interruption (F-005) | todo | | |
+| T2.3 | C-06 IB folder swaps use rename_no_replace (F-006) | todo | | |
+| T2.4 | C-09 create_backup removes its partial (F-009) | todo | | |
+| T3.1 | C-08 lock released when logging fails (F-008) | todo | | |
+| T3.2 | C-10 process listings decoded as UTF-8 (F-010) | todo | | |
+| T3.3 | C-11 drop dead re-exports (F-011) | todo | | |
+| T3.4 | C-12 fsync before atomic replace (F-012) | todo | | |
+| T3.5 | C-13 config comments documented (F-013) | todo | | |
+| T3.6 | C-14 per-shard timeout (F-014) | todo | | |
+| T4.1 | characterization of recovery flows (F-007) | todo | | |
+| T4.2 | C-07 SvRecoveryActions, screen split (F-007) | todo | | |
+| T5.1 | whole-branch review, fixes, push | todo | | |
+
+## Decisions taken during the build
