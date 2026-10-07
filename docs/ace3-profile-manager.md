@@ -88,12 +88,13 @@ that addon.
 | **Everyone → Default** | `E` (Shift+E) | Moves every character of the ticked addons (or the highlighted one) to "Default" and keeps the other profiles |
 | **Delete** | `d` | Deletes the ticked profiles, or the highlighted profile (or addon's profiles) |
 | **Only Default** | `D` (Shift+D) | Deletes every profile except "Default" of the ticked addons (or the highlighted one) and moves everyone onto "Default" |
-| **Leftovers** | `o` | Removes the ticked leftover characters |
+| **Leftovers** | `o` | Ticks every leftover character shown, then asks to remove them |
 | **Blacklist…** | | Opens the [blacklist](#the-blacklist) screen |
 | **More…** | `m` | The quick actions: every other key, in two groups |
 | **Discard** | `Backspace` | Drops every pending change |
 
-A button is never greyed out: if there's nothing for it to work on, it tells you what to tick or highlight first.
+A button is never greyed out: if there's nothing for it to work on, it tells you why (most say what to tick or
+highlight first; **Leftovers** says no leftover characters are shown).
 With nothing ticked, a game version, an account or the top line doesn't count as highlighted: tick first (`a`
 ticks everything shown).
 `Tab` from the tree reaches the bar, and so does `↓` on the tree's last line; `←` `→` move along it and `↑` goes
@@ -177,7 +178,7 @@ profile with the same name in Bartender4 are two different profiles.
 | `p` | **Assign a profile** | Moves the ticked characters to a profile you pick from the list, or to a new name you type |
 | `e` | **Rename a profile** | Renames the highlighted profile. Its characters follow it |
 | `k` | **Copy a profile** | Copies the highlighted profile, settings and all, under a new name. Nobody uses the copy until you assign it |
-| `o` | **Remove leftover characters** | Removes the ticked characters tagged "no character folder" from the addon's list |
+| `o` | **Remove leftover characters** | Ticks every character tagged "no character folder" that the tree shows, then removes the ticked ones from the addon's list. No need to tick them first |
 
 A profile name can be up to 100 characters. Names are case-sensitive, as in the game ("healer" and "Healer" are two
 profiles), and you can't rename or copy onto a name the addon already has.
@@ -185,8 +186,12 @@ profiles), and you can't rename or copy onto a name the addon already has.
 If a change can't be made in some of the ticked addons (a blacklisted addon, say), it's made in the others and a
 message lists the ones it skipped. Anything else worth knowing about a change (for example, that an addon will
 create "Default" itself at its next login) opens a **Notes** box, grouped by note with the addons under each.
-**Leftovers** asks first, listing the characters it will remove under each addon (`Space` opens an addon, `x`
-opens them all).
+**Leftovers** is one press: it ticks every leftover character the tree shows (what the View, the Show boxes and
+the filter let through), then asks first, listing the characters it will remove under each addon (`Space` opens an
+addon, `x` opens them all). **No** keeps the ticks, so you can see what it would have removed. To remove only some
+of them, narrow the tree first with the filter (`/`): **Leftovers** ticks only the ones shown (leftover characters
+you ticked yourself and then hid are included too, and the popup says so). With none shown (the **Leftover
+characters** box unticked, say) it says "No leftover characters are shown." and does nothing.
 
 ### Quick actions
 
@@ -199,7 +204,7 @@ highlighted one when nothing is ticked.
 `m` opens the quick actions menu, in two groups, so you can find every key without this guide:
 
 - **Selection** changes what's ticked or shown: **Tick all leftover characters** (every character tagged "no
-  character folder" that's shown, ready for **Leftovers**), tick everything shown (`a`), untick everything
+  character folder" that's shown, without removing them), tick everything shown (`a`), untick everything
   shown (`n`), filter the tree (`/`) and switch view (`v`).
 - **Modification** changes the ticked or highlighted items: rename (`e`), copy (`k`), blacklist (`b`), edit the
   blacklist, unlock (`u`) and discard the pending changes (`Backspace`).
@@ -238,7 +243,7 @@ version until you next save the blacklist.
 | `p` | Assign a profile to the ticked characters |
 | `e` | Rename the highlighted profile |
 | `k` | Copy the highlighted profile |
-| `o` | Remove the ticked leftover characters |
+| `o` | Tick every leftover character shown, then remove them (asks first) |
 | `D` (Shift+D) | Only Default: delete every profile except "Default" of the ticked (or highlighted) addons |
 | `E` (Shift+E) | Everyone → Default: move every character of the ticked (or highlighted) addons to "Default" |
 | `m` | Quick actions, and every key the bottom bar doesn't show |

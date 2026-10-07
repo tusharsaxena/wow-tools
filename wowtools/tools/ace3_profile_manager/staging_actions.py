@@ -1,8 +1,9 @@
 """The Ace3 review's staging actions (F-007, decision R5), mixed into ProfileReviewScreen: delete, assign, rename,
 copy, remove leftovers, only Default, everyone to Default, the quick actions menu (m) and discard. Each picks its
-target from the ticks (else the highlighted node), asks in a popup, and stages the change on the review's Staging
-(ops.py): nothing is written until Apply. The screen supplies `staging`, `ticked`, `idle`, wow_folder_changed(),
-selected_profiles() / selected_chars(), _tick_keys(), _hidden_line(), refresh_view() and _refresh_labels()."""
+target from the ticks (else the highlighted node; Leftovers first ticks every leftover character shown), asks in a
+popup, and stages the change on the review's Staging (ops.py): nothing is written until Apply. The screen supplies
+`staging`, `ticked`, `idle`, wow_folder_changed(), selected_profiles() / selected_chars(), _tick_keys(),
+_hidden_line(), refresh_view() and _refresh_labels()."""
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
@@ -173,24 +174,26 @@ class ProfileStagingActions:
         self.app.push_screen(NameScreen("Copy a profile", body, f"{name} copy", self._name_check(key)), done)
 
     def action_remove_leftovers(self) -> None:
+        """Tick every leftover character shown (as More… → "Tick all leftover characters" does), then ask to remove
+        exactly the ticked leftovers (decision L1). No keeps the ticks."""
         if not self._ready():
             return
         assert self.staging is not None
         staging = self.staging
+        if not self._tick_leftovers():
+            return
         selection = {key: [c for c in chars if c in staging.state(key).leftovers]
                      for key, chars in self.selected_chars().items()}
         selection = {key: chars for key, chars in selection.items() if chars}
-        if not selection:
-            self.notify("Tick or highlight a leftover character first")
-            return
         groups = {self._addon_name(key): chars for key, chars in selection.items()}
         body = "These characters have no folder in WTF any more. Remove their entries from these addons:"
 
         def done(ok: bool | None) -> None:
             if ok and self.staging is not None:
                 self._staged(self.staging.remove_leftovers(selection))
-        self.app.push_screen(ConfirmScreen("Remove leftover characters?", body, tuple(self._hidden_line(
-            "c", "leftover character", lambda k: k[2] in staging.state(k[1]).leftovers)), kind="destructive", groups=groups), done)
+        hidden = self._hidden_line("c", "leftover character", lambda k: k[2] in staging.state(k[1]).leftovers)
+        self.app.push_screen(ConfirmScreen("Remove leftover characters?", body, tuple(hidden), kind="destructive",
+                                           groups=groups), done)
 
     def _databases(self) -> list[DbKey]:
         """The databases of the ticked keys, else of the highlighted node's addon or database."""
@@ -204,17 +207,23 @@ class ProfileStagingActions:
             return [data[1]]
         return []
 
-    def _tick_leftovers(self) -> None:
+    def _shown_leftovers(self) -> set[tuple]:
+        """The tick keys of the leftover characters the tree shows (the View, the Show boxes and the filter)."""
         assert self.staging is not None
         staging = self.staging
         visible = self._tick_keys(self.query_one("#profiles", Tree).root)
-        leftovers = {k for k in visible if k[0] == "c" and k[2] in staging.state(k[1]).leftovers}
+        return {k for k in visible if k[0] == "c" and k[2] in staging.state(k[1]).leftovers}
+
+    def _tick_leftovers(self) -> bool:
+        """Tick every leftover character shown; False (and a notice) when none is shown."""
+        leftovers = self._shown_leftovers()
         if not leftovers:
             self.notify("No leftover characters are shown.")
-            return
+            return False
         self.ticked.update(leftovers)
         log_event("ui.selection", screen="ace_review", control="tick_leftovers", value=len(leftovers))
         self._refresh_labels()
+        return True
 
     def action_more(self) -> None:
         if not self._ready():

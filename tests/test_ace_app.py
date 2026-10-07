@@ -1810,3 +1810,156 @@ class ActionBarFeedbackTest(AceAppBase):
             self.assertFalse(rack.display)
             self.assertLessEqual(review.query_one("#textual-toastrack").region.bottom, guide.y)  # above the guide
             self.assertLess(guide.y, bar.y)
+
+
+class OnePressLeftoversTest(AceAppBase):
+    """Decision L1: Leftovers (o) first ticks every leftover character shown, then confirms removing exactly the
+    ticked leftovers; No keeps the ticks; with none shown it says so and stages nothing."""
+
+    def shown_leftovers(self, review):
+        tree = review.query_one("#profiles", Tree)
+        return {k for k in review._tick_keys(tree.root)
+                if k[0] == "c" and k[2] in review.staging.state(k[1]).leftovers}
+
+    def confirm_chars(self, screen):
+        tree = screen.query_one("#details", Tree)
+        return sorted(str(c.label) for branch in tree.root.children for c in branch.children)
+
+    async def test_o_with_nothing_ticked_ticks_every_shown_leftover_and_confirms_them(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            shown = self.shown_leftovers(review)
+            self.assertTrue(shown)
+            self.assertFalse(review.ticked)
+            review.query_one("#profiles", Tree).focus()
+            with capture_events() as events:
+                await pilot.press("o")
+                await settle(app, pilot)
+            screen = app.screen
+            self.assertIsInstance(screen, ConfirmScreen)
+            self.assertIn("leftover", screen.title_text)
+            self.assertEqual(review.ticked, shown)
+            self.assertEqual(self.confirm_chars(screen), sorted(k[2] for k in shown))
+            self.assertIn(("tick_leftovers", len(shown)), [(e["data"].get("control"), e["data"].get("value"))
+                                                           for e in events if e["event"] == "ui.selection"])
+            screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertEqual(review.staging.summary().removed, len(shown))
+
+    async def test_clicking_leftovers_then_no_keeps_the_ticks_and_stages_nothing(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            shown = self.shown_leftovers(review)
+            await self.highlight(app, pilot, review, "profile", "Healer")  # not a leftover: still ticks them
+            review.query_one("#act-leftovers", Button).press()
+            await settle(app, pilot)
+            screen = app.screen
+            self.assertIsInstance(screen, ConfirmScreen)
+            self.assertEqual(self.confirm_chars(screen), sorted(k[2] for k in shown))
+            screen.dismiss(False)
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(review.ticked, shown)
+            self.assertEqual(review.staging.summary().total, 0)
+
+    async def test_with_the_leftover_show_box_off_it_says_so_and_stages_nothing(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            review.query_one("#show-leftovers").value = False
+            await settle(app, pilot)
+            self.assertFalse(self.shown_leftovers(review))
+            with patch.object(review, "notify") as notify:
+                review.query_one("#act-leftovers", Button).press()
+                await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual([c.args[0] for c in notify.call_args_list], ["No leftover characters are shown."])
+            self.assertFalse(review.ticked)
+            self.assertEqual(review.staging.summary().total, 0)
+
+    def add_second_leftover(self):
+        """A second leftover, "Ghost - Realm1", in another addon (HandyNotes_MapNotesDB), next to KickCDDB's "Gone"."""
+        path = self.root / "_retail_" / "WTF" / "Account" / "ACCT1" / "SavedVariables" / "HandyNotes.lua"
+        text = path.read_bytes().decode("utf-8")  # keeps the CRLF
+        old = '["Kaelys - Realm1"] = "Default",\r\n},\r\n["profiles"] = {\r\n["Default"] = {\r\n["notes"]'
+        self.assertIn(old, text)
+        path.write_bytes(text.replace(old, '["Ghost - Realm1"] = "Default",\r\n' + old).encode("utf-8"))
+
+    def ticked_leftover_names(self, review):
+        return sorted(k[2] for k in review.ticked if k[0] == "c")
+
+    async def test_it_ticks_every_shown_leftover_across_addons(self):
+        self.add_second_leftover()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            shown = self.shown_leftovers(review)
+            self.assertEqual(sorted(k[2] for k in shown), ["Ghost - Realm1", "Gone - Realm1"])
+            self.assertEqual(len({k[1] for k in shown}), 2)  # two databases
+            review.query_one("#profiles", Tree).focus()
+            await pilot.press("o")
+            await settle(app, pilot)
+            screen = app.screen
+            self.assertIsInstance(screen, ConfirmScreen)
+            self.assertEqual(review.ticked, shown)
+            self.assertEqual(self.confirm_chars(screen), ["Ghost - Realm1", "Gone - Realm1"])
+            self.assertEqual(len(screen.query_one("#details", Tree).root.children), 2)  # one branch per addon
+            screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertEqual(review.staging.summary().removed, 2)
+
+    async def test_with_the_filter_it_ticks_only_the_shown_leftovers(self):
+        self.add_second_leftover()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            submit_filter(review, "ghost")
+            await settle(app, pilot)
+            self.assertEqual([k[2] for k in self.shown_leftovers(review)], ["Ghost - Realm1"])
+            review.query_one("#act-leftovers", Button).press()
+            await settle(app, pilot)
+            screen = app.screen
+            self.assertIsInstance(screen, ConfirmScreen)
+            self.assertEqual(self.ticked_leftover_names(review), ["Ghost - Realm1"])
+            self.assertEqual(self.confirm_chars(screen), ["Ghost - Realm1"])
+            self.assertNotIn("they are included", screen.body_text)
+            screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertEqual(review.staging.summary().removed, 1)
+
+    async def test_a_ticked_leftover_hidden_by_the_filter_is_included_and_the_popup_says_so(self):
+        self.add_second_leftover()  # decision L1-b
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            submit_filter(review, "gone")
+            await settle(app, pilot)
+            review.query_one("#act-leftovers", Button).press()
+            await settle(app, pilot)
+            app.screen.dismiss(False)  # No keeps the tick on "Gone"
+            await settle(app, pilot)
+            self.assertEqual(self.ticked_leftover_names(review), ["Gone - Realm1"])
+            submit_filter(review, "ghost")  # "Gone" is now hidden, still ticked
+            await settle(app, pilot)
+            review.query_one("#act-leftovers", Button).press()
+            await settle(app, pilot)
+            screen = app.screen
+            self.assertIsInstance(screen, ConfirmScreen)
+            self.assertEqual(self.confirm_chars(screen), ["Ghost - Realm1", "Gone - Realm1"])
+            self.assertIn("they are included", screen.body_text)
+            screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertEqual(review.staging.summary().removed, 2)
+
+    async def test_the_tip_says_it_ticks_the_shown_leftovers(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            n = len(self.shown_leftovers(review))
+            tip = review.action_tip("remove_leftovers")
+            self.assertIn(f"Tick the {plural(n, 'leftover character')} shown", tip)
+            review.query_one("#show-leftovers").value = False
+            await settle(app, pilot)
+            self.assertEqual(review.action_tip("remove_leftovers"), "No leftover characters are shown.")

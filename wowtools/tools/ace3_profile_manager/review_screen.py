@@ -60,7 +60,8 @@ GROUP_KINDS = ("root", "flavor", "account")  # nodes too broad to stand for a se
 # The action bar under the tree: (id, label, kind of action, action, key), staged changes first (amber; Copy is green: it
 # only adds a profile), then staged deletes (red), then the rest; a staging button takes the colour of the action it
 # stages (spec D12).
-# Each button does what its key does; one with nothing to act on stays enabled and says what to tick or highlight.
+# Each button does what its key does; one with nothing to act on stays enabled and says why (what to tick or
+# highlight; Leftovers, which ticks for itself, says no leftover character is shown).
 # The focused button's tip (action_tip) says what it would do now. The bar's buttons are compact: each shows its key
 # after its label on its one row ("Delete (d)"); two rows per button would take the tree two or three rows at 120x30
 # (D17). The labels are short enough for two rows at 160x45 (and three at 120x30): tests/test_look_and_feel.py.
@@ -601,13 +602,12 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
                         '"Default".')
             return f'In {addons(keys)}: move every character to "Default". The other profiles stay.'
         if action == "remove_leftovers":
-            chars = {k: [c for c in names if c in staging.state(k).leftovers]
-                     for k, names in self.selected_chars().items()}
-            chars = {k: names for k, names in chars.items() if names}
-            if not chars:
-                return "Tick or highlight leftover characters first (More… ticks them all)."
-            return (f"Remove {plural(sum(map(len, chars.values())), 'leftover character')} (no folder in WTF any "
-                    f"more) from {addons(chars)}.")
+            shown = self._shown_leftovers()
+            if not shown:
+                return "No leftover characters are shown."
+            keys = sorted({k[1] for k in shown}, key=lambda k: (str(k.path), k.sv_name))
+            return (f"Tick the {plural(len(shown), 'leftover character')} shown (no folder in WTF any more), then "
+                    f"ask to remove them from {addons(keys)}.")
         if action == "edit_blacklist":
             return "Choose the addons this tool never changes, in every game version."
         if action == "more":

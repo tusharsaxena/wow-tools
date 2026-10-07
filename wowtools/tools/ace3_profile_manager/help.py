@@ -30,7 +30,7 @@ refuse while it runs.
 | **Everyone → Default** | `E` | Moves every character of the ticked addons to "Default" |
 | **Delete** | `d` | Deletes the ticked profiles; you pick where their characters go |
 | **Only Default** | `D` | Deletes every profile but "Default" and moves everyone onto it |
-| **Leftovers** | `o` | Removes ticked characters whose folder no longer exists |
+| **Leftovers** | `o` | Ticks every shown character whose folder no longer exists, then asks to remove them |
 | **Blacklist…** | | Edits the blacklist: addons shown but never changed (`b` toggles the highlighted one) |
 | **More…** | `m` | Quick actions, and every key the bottom row doesn't show |
 | **Discard** | `Backspace` | Drops every pending change |

@@ -6,6 +6,13 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 
 ## [Unreleased]
 
+### Changed
+
+- **Ace3 Profile Manager**
+  - **Leftovers** (`o`) is now one press: it ticks every leftover character the tree shows, then asks to remove
+    them, listing them under each addon. There's no need to tick them first. **No** keeps the ticks; with none
+    shown it says so and changes nothing.
+
 ### Fixed
 
 - **The app**
