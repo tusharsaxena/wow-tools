@@ -14,6 +14,10 @@ from wowtools.core.paths import is_wsl
 WOW_EXECUTABLES = ("Wow.exe", "WowClassic.exe", "WowB.exe", "WowT.exe")
 # Companion apps known to hold SavedVariables files open, which makes deleting them fail on Windows.
 WTF_LOCKERS = ("RaiderIO.exe", "WeakAurasCompanion.exe")
+# STD-1.9: listings are decoded as UTF-8, never with the locale; a byte that is not UTF-8 (tasklist writes in the OEM
+# code page) becomes U+FFFD instead of raising. ValueError (UnicodeDecodeError) is still caught as a last resort.
+_DECODE = {"encoding": "utf-8", "errors": "replace"}
+_LIST_ERRORS = (OSError, subprocess.SubprocessError, ValueError)
 
 
 def names_in_tasklist(output: str, names: tuple[str, ...] = WOW_EXECUTABLES) -> list[str]:
@@ -37,8 +41,9 @@ def running_wow_executables(*, use_tasklist: bool | None = None, runner=subproce
     if use_tasklist:
         command = "tasklist" if os.name == "nt" else "tasklist.exe"
         try:
-            proc = runner([command, "/FO", "CSV", "/NH"], capture_output=True, text=True, timeout=5, check=False)
-        except (OSError, subprocess.SubprocessError):
+            proc = runner([command, "/FO", "CSV", "/NH"], capture_output=True, text=True, timeout=5, check=False,
+                          **_DECODE)
+        except _LIST_ERRORS:
             return None
         if proc.returncode != 0:
             return None
@@ -72,7 +77,10 @@ _CANONICAL = {exe.lower(): exe for exe in WOW_EXECUTABLES}
 _MAC_CLIENT = re.compile(r"world of warcraft(?: .*)?")
 _MAC_NOT_GAME = re.compile(r"\b(?:launcher|helper|crash|error|reporter|updater|agent)\b")
 # No double quotes: they do not survive Windows command-line quoting reliably. '' is a literal ' in PowerShell.
-_PS_QUERY = ("Get-CimInstance Win32_Process -Filter '" +
+# PowerShell writes in the OEM code page unless told otherwise: UTF-8 without a byte-order mark keeps a path with
+# letters like é or ü intact (F-010).
+_PS_QUERY = ("[Console]::OutputEncoding=New-Object Text.UTF8Encoding $false; "
+             "Get-CimInstance Win32_Process -Filter '" +
              " OR ".join(f"Name=''{exe}''" for exe in WOW_EXECUTABLES) +
              "' | ForEach-Object { $_.Name + '|' + $_.ExecutablePath }")
 
@@ -101,7 +109,7 @@ def wow_name(basename: str) -> str | None:
 def _parse_powershell(output: str) -> list[WowProcess]:
     result = []
     for line in output.splitlines():
-        line = line.strip()
+        line = line.strip().lstrip("\ufeff")
         if not line:
             continue
         name, _, path = line.partition("|")
@@ -115,10 +123,10 @@ def _windows_processes(platform: str, runner) -> list[WowProcess] | None:
     command = "powershell" if platform == "windows" else "powershell.exe"
     try:
         proc = runner([command, "-NoProfile", "-NonInteractive", "-Command", _PS_QUERY],
-                      capture_output=True, text=True, timeout=10, check=False)
+                      capture_output=True, text=True, timeout=10, check=False, **_DECODE)
         if proc.returncode == 0:
             return _parse_powershell(proc.stdout or "")
-    except (OSError, subprocess.SubprocessError):
+    except _LIST_ERRORS:
         pass
     names = running_wow_executables(use_tasklist=True, runner=runner)
     return None if names is None else [WowProcess(name, None) for name in names]
@@ -170,8 +178,8 @@ def _mac_processes(runner) -> list[WowProcess] | None:
         # -ww: without it macOS ps cuts the last column to the terminal width (79 with no tty), so a long bundle
         # path loses its executable name and a running WoW reads as "not running".
         proc = runner(["ps", "-axww", "-o", "comm="], capture_output=True, text=True, timeout=5, check=False,
-                      stdin=subprocess.DEVNULL)
-    except (OSError, subprocess.SubprocessError):
+                      stdin=subprocess.DEVNULL, **_DECODE)
+    except _LIST_ERRORS:
         return None
     if proc.returncode != 0:
         return None

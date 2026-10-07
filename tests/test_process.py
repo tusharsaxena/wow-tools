@@ -113,6 +113,55 @@ class WowProcessTest(unittest.TestCase):
             raise subprocess.TimeoutExpired("x", 10)
         self.assertIsNone(running_wow_processes(platform="wsl", runner=broken))
 
+    def test_non_utf8_powershell_output_is_unknown_not_a_crash(self):
+        # F-010: decode like subprocess.run does. Without an explicit encoding it would use the locale (ASCII here),
+        # and a non-ASCII path in the listing would raise UnicodeDecodeError out of the check.
+        raw_ps = b"Wow.exe|C:\\Jos\x82\\World of Warcraft\\_retail_\\Wow.exe\r\n"
+        raw_tasklist = b'"Wow.exe","1234","Console","1","1\xff000 K"\r\n'
+
+        def decoding(raw):
+            def runner(cmd, **kwargs):
+                text = raw.decode(kwargs.get("encoding") or "ascii", kwargs.get("errors") or "strict")
+                return ok(text)
+            return runner
+        for platform in ("wsl", "windows"):
+            procs = running_wow_processes(platform=platform, runner=decoding(raw_ps))
+            self.assertEqual([proc.name for proc in procs], ["Wow.exe"])
+            self.assertTrue(procs[0].path.endswith("_retail_\\Wow.exe"), procs[0].path)
+        self.assertEqual(running_wow_executables(use_tasklist=True, runner=decoding(raw_tasklist)), ["Wow.exe"])
+        mac = b"/Applications/World of Warcraft/_retail_/World of Warcraft.app/Contents/MacOS/World of Warcraft\n"
+        self.assertEqual(len(running_wow_processes(platform="mac", runner=decoding(mac.replace(b"_retail_",
+                                                                                              b"J\xe9\xff")))), 1)
+
+    def test_a_decode_error_from_the_runner_is_unknown_not_a_crash(self):
+        def undecodable(cmd, **kwargs):
+            raise UnicodeDecodeError("cp1252", b"\x81", 0, 1, "undefined")
+
+        def ps_undecodable(cmd, **kwargs):
+            if cmd[0].startswith("powershell"):
+                return undecodable(cmd)
+            return ok(TASKLIST)
+        self.assertIsNone(running_wow_executables(use_tasklist=True, runner=undecodable))
+        self.assertIsNone(running_wow_processes(platform="wsl", runner=undecodable))
+        self.assertIsNone(running_wow_processes(platform="mac", runner=undecodable))
+        self.assertEqual(running_wow_processes(platform="windows", runner=ps_undecodable),
+                         [WowProcess("Wow.exe", None)])
+
+    def test_process_listings_ask_for_utf8(self):
+        calls = []
+
+        def runner(cmd, **kwargs):
+            calls.append((cmd, kwargs))
+            return ok("\ufeff" + BETA_PS)
+        procs = running_wow_processes(platform="wsl", runner=runner)
+        self.assertEqual([proc.name for proc in procs], ["WowB.exe"])  # a UTF-8 byte-order mark is ignored
+        running_wow_executables(use_tasklist=True, runner=runner)
+        running_wow_processes(platform="mac", runner=runner)
+        for cmd, kwargs in calls:
+            self.assertEqual((kwargs.get("encoding"), kwargs.get("errors")), ("utf-8", "replace"), cmd[0])
+        self.assertTrue(calls[0][0][-1].startswith("[Console]::OutputEncoding="), calls[0][0][-1])
+        self.assertNotIn('"', calls[0][0][-1])
+
     def test_linux_proc_cmdline(self):
         with tempfile.TemporaryDirectory() as tmp:
             proc = Path(tmp)

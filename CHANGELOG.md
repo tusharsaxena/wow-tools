@@ -17,6 +17,8 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
     version is in place (while old backups are tidied up) no longer reports the update as stopped.
   - When the app cannot start because a folder in `logs/` can't be read, it no longer leaves its lock behind, so
     the next start doesn't warn that another copy may be running. An unreadable log folder is now skipped instead.
+  - When your WoW folder's path has letters like é or ü and WoW is running, an Apply or Undo now refuses with the
+    usual "WoW is running" message instead of stopping with an unexpected error.
 - **WTF Cleaner**
   - A file WoW rewrites while a clean is backing up the WTF folder is now kept (shown as changed since the scan)
     instead of deleted, so its newer data is never lost.
