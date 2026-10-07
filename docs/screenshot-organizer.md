@@ -16,6 +16,7 @@ a run afterwards.
 2. **The first time only:** choose where screenshots should go (see [Where screenshots go](#where-screenshots-go))
    and press **Save**.
 3. **Pick a game version**, or **All flavors**. Each row shows how many screenshots are waiting to be sorted.
+   `t` or `Esc` goes back to the tool menu.
 4. The organizer scans and shows you the review screen. Untick any days you want to leave alone.
 5. Press **Dry run** (`y`) if you'd like to see what would happen without moving anything.
 6. Press **Organize** (`o`), read the summary, and press **Yes**.

@@ -17,8 +17,9 @@ ones you leave ticked. If you regret it later, you can undo the clean.
 1. Start Ka0s WoW Tools and choose **WTF Cleaner**.
 2. **The first time only:** check the settings (see [Settings](#settings)) and press **Save**. The suggested
    values are fine for most people.
-3. **Pick a game version**, or **All flavors** to clean every version at once.
+3. **Pick a game version**, or **All flavors** to clean every version at once. `t` or `Esc` goes back to the tool menu.
 4. If you picked one version that has more than one WoW account, **pick an account**, or **All accounts**.
+   `Esc` goes back to the game versions, `t` to the tool menu.
 5. Read the **USE AT YOUR OWN RISK** warning: the cleaner deletes files, so it asks you to accept that first.
    **I understand** goes on; **Back** returns to the game versions. It's asked once each time you start the app,
    not every time you open the tool.

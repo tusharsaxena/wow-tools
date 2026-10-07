@@ -23,7 +23,8 @@ as they are, so you can undo the restore too.
 1. Start Ka0s WoW Tools and choose **Interface Backup**.
 2. **The first time only:** check the settings (see [Settings](#settings)) and press **Save**. The suggested
    values are fine for most people.
-3. **Pick a game version**, or **All flavors** to back up every version at once.
+3. **Pick a game version**, or **All flavors** to back up every version at once. `t` or `Esc` goes back
+   to the tool menu.
 4. The review screen counts what your `Interface` and `WTF` folders hold. Untick any game version you want to
    leave out.
 5. Press **Back up** (`b`), read the summary, and press **Yes**.

@@ -48,7 +48,7 @@ other files such as `Config.wtf`, and anything reached through a link (a symlink
 2. **The first time only:** check the settings (see [Settings](#settings)) and press **Save**. The suggested value
    is fine for most people.
 3. **Pick a game version**, or **All flavors** to see every version at once. There is no account picker: the tree
-   shows every account.
+   shows every account. `t` or `Esc` goes back to the tool menu.
 4. Read the warning and press **I understand** (or **Back** to pick again).
 5. The review screen lists every SavedVariables file. Open a file to see its variables, and open a table to see its
    keys.

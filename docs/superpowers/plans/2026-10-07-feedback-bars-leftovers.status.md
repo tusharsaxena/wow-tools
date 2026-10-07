@@ -10,7 +10,7 @@ go-ahead.
 | L1 | one-press Leftovers | done | (this commit) | `o` / the Leftovers button tick every shown leftover (`_tick_leftovers`, now returning whether it ticked any) then confirm the ticked leftovers; No keeps the ticks; none shown: notice, nothing staged. 4 tests in `OnePressLeftoversTest` (written first, failed first), 3 more after review (L1-e). Tip, help, guide, internals, CHANGELOG updated. Full suite 1804 tests OK (2 skipped), ruff clean, events check OK |
 | L2 | bars stay at the bottom during a scan + standard | done | (this commit) | `two_pane_css` gives `#scan-box` `height: 1fr` (was `auto`): the scan box takes the tree's space on every two-pane screen. Test first (`test_bars_keep_their_place_while_a_scan_runs`, failed first: SV Browser's action bar at y 6 during the scan, 42 after at 160x45; blacklist scan box 5 rows high): every review on a rescan and the Ace3 blacklist on its first scan, worker held on a gate, at BASE and LARGE. STD-7.25 added; architecture look and feel, two_pane_css docstring, tree-screen recipe, CHANGELOG. Review fixes L2-d (failed scan on one row, `SummaryLine`), L2-e rejected. Full suite 1806 tests OK (2 skipped), ruff clean, events check OK (`test_restore_from_backup_result_goes_to_the_backup_just_made` failed once in one run: a flake that also fails on 5d9408a, 1 in 6 alone) |
 | L4 | shared risk disclaimer, once per session (WTF, Ace3, SVB) | done | (this commit) | `ui/disclaimer.py` `DisclaimerScreen(text, title)` (moved out of `sv_browser/popups.py`), `ToolFlow.ask_disclaimer(then, **data)` with the flow's `DISCLAIMER` / `DISCLAIMER_EVENTS`, `WowToolsApp.disclaimers_accepted` (by `SECTION`). WTF and Ace3 ask after the flavor and account picks; events `clean.disclaimer_*`, `ace.disclaimer_*` registered, events.md regenerated. 5 tests in `tests/test_risk_disclaimer.py` (written first; first open of each tool, not again in the session, Back/Esc does not count, per tool, WTF after the account pick); SV Browser's "each time the tool is opened" test now checks it is not asked again; WTF/Ace3/suite open helpers accept it (`accept_disclaimer`). Help, guides, internals, testing.md, architecture, README FAQ, CHANGELOG updated. Full suite 1811 tests OK (2 skipped), ruff clean, events check OK |
-| L5 | `t` back to tools on the pickers | todo | | |
+| L5 | `t` back to tools on the pickers | done | (this commit) | `FlavorScreen` and `AccountScreen` bind `t` ("Tools", action `tool_menu`) next to Esc (now labelled "Back"): the flavor picker dismisses with `None` as Esc does, the account picker with `account_screen.TOOLS`, which `ToolFlow.pick_account` turns into `close()`; Esc on it still goes back to the flavor picker. Hints name `t tools`. 5 tests in `tests/test_picker_keys.py` (written first, failed first: t on every tool's flavor picker and on both account pickers goes to the tool menu, Esc unchanged, footer lists `t` and Esc, hint names t). Suite help keys table (`t` row), the five guides' pick steps, architecture rows, CHANGELOG updated. Full suite 1816 tests OK (2 skipped), ruff clean, events check OK |
 | LR2 | review of L4-L5, green gate, push, CI | todo | | |
 | LR | review, green gate, push | done | (this commit) | Whole-branch review: code, docs, help and CHANGELOG agree with L1-L3 and STD-7.25; fixes: the new import and docstring lines in the four reviews and `warnings_view` re-wrapped to 120 columns (STD-1.10), the internals line for Leftovers re-wrapped. Full suite 1806 tests OK (2 skipped), ruff clean, events check OK |
 
@@ -77,3 +77,18 @@ go-ahead.
 - L4-e (review of 9615f05): the hub's `dialogs` row still named "the Saved Variables Browser's `DisclaimerScreen`"
   among the Esc-closable `ChoiceScreen`s; it now names the shared `ui.disclaimer.DisclaimerScreen` of the WTF
   Cleaner, Ace3 and the SV Browser, as the `disclaimer` row does. The two review findings were the same line.
+- L5-a: the pickers bind `t` to their own action `tool_menu` (not `tools`: `action_tools` is the shared review
+  machinery's name, which `test_review_machinery_lives_in_ui` keeps in `ui/review.py`), and the footer lists one key
+  per action, so Esc keeps its own action and its label becomes "Back" (it was "Tools" on the flavor picker): the
+  footer reads "t Tools  Esc Back" on both pickers. No button carries either key (D17).
+- L5-b: the account picker dismisses with a `TOOLS` sentinel (`"__tools__"`, like `ALL_ID`), handled once in
+  `ToolFlow.pick_account`, so the WTF Cleaner and Ace3 need no change. `t` is not logged, as Esc and the review's
+  `t` are not (closing a tool is not a choice event).
+- L5-c: no other pre-review picker exists: the SV Browser and the other tools have no account picker, and the
+  setup and settings forms are forms with their own Save / Cancel, not pickers. The per-tool help pages do not list
+  the picker keys; the suite help's keys table gets a `t` row and the guides' pick steps name `t` and Esc.
+- L5-d (review of a23eaeb): README's "Navigating the app" keys table gets the same `t` row as the suite help
+  (STD-9.5; two findings, one line). The flavor picker's hint named two keys for one action ("t tools · Esc back to
+  tools"); it now reads "t/Esc tools", as the help's "Esc/q/h back" does. The account picker keeps "t tools · Esc
+  back to flavors": there the two keys differ. The footer keeps one key per action ("t Tools  Esc Back", L5-a).
+  The picker-keys test's 122-column setup line is wrapped (STD-1.10).

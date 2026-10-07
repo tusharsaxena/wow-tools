@@ -34,7 +34,7 @@ def flavor_rows(rows: list[tuple[str, str, str]]) -> list[Text]:
 
 
 class FlavorScreen(Screen[Flavor | str | None]):
-    """Dismisses with a Flavor, with ALL_FLAVORS (only when include_all), or with None (Esc).
+    """Dismisses with a Flavor, with ALL_FLAVORS (only when include_all), or with None (t or Esc: the tool menu).
 
     flavors overrides install.flavors(); last is the folder to highlight ("" means "All flavors"), and None falls
     back to [general] last_flavor. note(flavor) may return a short remark for a flavor's third column (e.g.
@@ -46,7 +46,8 @@ class FlavorScreen(Screen[Flavor | str | None]):
     FlavorScreen OptionList > .option-list--option-highlighted {{ background: {LIST_CURSOR_BACKGROUND}; }}
     FlavorScreen OptionList:focus > .option-list--option-highlighted {{ background: {LIST_CURSOR_BACKGROUND}; }}
     """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Tools"), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("t", "tool_menu", "Tools"), Binding("escape", "cancel", "Back"),
+                                         *NAV_BINDINGS]
 
     def __init__(self, cfg: Config, install: WowInstall, *, include_all: bool = False, last: str | None = None,
                  flavors: list[Flavor] | None = None, note: Callable[[Flavor], str | None] | None = None,
@@ -84,7 +85,7 @@ class FlavorScreen(Screen[Flavor | str | None]):
         yield Banner()
         yield Static("Choose a WoW flavor", classes="title")
         yield OptionList(*options, id="flavors")
-        yield NavHint("↑↓ choose · Enter select · Esc back to tools")
+        yield NavHint("↑↓ choose · Enter select · t/Esc tools")
         yield BottomBar()
 
     def on_mount(self) -> None:
@@ -107,4 +108,8 @@ class FlavorScreen(Screen[Flavor | str | None]):
         self.dismiss(flavor)
 
     def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def action_tool_menu(self) -> None:
+        """`t` (L5): the tool menu, as on every review and result screen; the same as Esc here."""
         self.dismiss(None)

@@ -11,7 +11,7 @@ from textual.screen import Screen
 from wowtools.core.config import Config
 from wowtools.core.events import log_event
 from wowtools.core.install import Flavor, WowInstall
-from wowtools.ui.account_screen import AccountScreen
+from wowtools.ui.account_screen import TOOLS, AccountScreen
 from wowtools.ui.disclaimer import ACCEPT, DisclaimerScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.settings_form import ToolSettingsScreen
@@ -121,8 +121,8 @@ class ToolFlow:
 
     def pick_account(self, flavor: Flavor, then: Callable[[str | None], None]) -> None:
         """A flavor with several accounts: the account picker, highlighting [SECTION] last_account. A choice is
-        remembered there and passed to then() (None for all accounts); Esc goes back to the flavor picker. With
-        one account (or none) then(None) runs at once."""
+        remembered there and passed to then() (None for all accounts); Esc goes back to the flavor picker, `t` to
+        the tool menu (L5). With one account (or none) then(None) runs at once."""
         if len(flavor.accounts()) <= 1:
             then(None)
             return
@@ -131,6 +131,9 @@ class ToolFlow:
         def chosen(choice: str | None) -> None:
             if choice is None:
                 self._pick_flavor()
+                return
+            if choice == TOOLS:
+                self.close()
                 return
             account = choice or None
             if self.tool_cfg.get(self.SECTION, "last_account", "") != (account or ""):
