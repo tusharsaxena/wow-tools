@@ -11,3 +11,5 @@ Spec: `../specs/2026-10-07-feedback-bars-leftovers-design.md`. Ledger: `2026-10-
 | L4 | shared risk disclaimer for WTF Cleaner, Ace3 and SV Browser, at most once per tool per session |
 | L5 | `t` goes back to the tool menu from the flavor and account pickers (Esc kept) |
 | LR2 | review of L4-L5, green gate, push, CI |
+| L6 | the review shows its scan box before any disk access; the Screenshot Organizer's destination check and Undo lookup move into the scan worker; audit every tool |
+| LR3 | review of L6, green gate, push, CI |
