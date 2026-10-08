@@ -42,6 +42,13 @@ lose.
 The tool menu shows these terms along its bottom. They say in plain words what the [MIT License](LICENSE) says: the
 software comes with no warranty.
 
+The tools that edit addon settings (the Ace3 Profile Manager and the Saved Variables Browser) also ask you to
+accept a USE AT YOUR OWN RISK warning when you open them.
+
+**_The USE AT YOUR OWN RISK warning_**
+
+![The USE AT YOUR OWN RISK warning, here with the Ace3 Profile Manager's wording (it differs per tool), with Back and I understand buttons](docs/assets/screenshots/suite/risk-warning.png)
+
 ## Screenshots
 
 **_WTF Cleaner: the list of leftover addon settings, ready to clean_**

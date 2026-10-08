@@ -17,6 +17,10 @@ So the tool asks you to accept this each time you open it from the tool menu (**
 game versions), shows `⚠ USE AT YOUR OWN RISK` in red at the top of its left panel the whole time, and repeats the
 warning in red on every **Apply** and **Undo** confirm.
 
+**_The USE AT YOUR OWN RISK warning_**
+
+![The USE AT YOUR OWN RISK warning (shown here with the Ace3 Profile Manager's text; the wording differs per tool), with Back and I understand buttons](assets/screenshots/suite/risk-warning.png)
+
 What it does guarantee: every byte you didn't change stays exactly as it was, your whole `WTF` folder and every file
 it changes are backed up before anything is written, and **Undo last change** puts the files back.
 
@@ -286,6 +290,10 @@ Then the confirm counts the edits and files per game version, lists each file un
 (`ACCT1 › Account-wide › ElvUI.lua: 2 edits`), and shows in red: array entries that will move down, and the USE AT
 YOUR OWN RISK warning. **Yes** is selected, in red.
 
+**_The Apply confirm_**
+
+![The Apply the pending changes? confirm: the edit and file counts, the warning in red, and each file under its game version](assets/screenshots/sv-browser/apply-confirm.png)
+
 A progress window then shows each step. For each game version the tool:
 
 1. **Checks every file again.** If a file changed since the tool read it (you logged a character out with the tool
@@ -303,6 +311,10 @@ A progress window then shows each step. For each game version the tool:
 If anything goes wrong while writing, every file already written in that game version is put back as it was, and the
 run stops. With **All flavors** the game versions are changed one after another; if one runs into a problem, the
 versions after it aren't touched, and the versions before it keep their changes (Undo puts them back).
+
+**_An Apply in progress_**
+
+![The Applying the changes progress window, backing up the WTF folder](assets/screenshots/sv-browser/apply-progress.png)
 
 After a real Apply the staged edits are gone, and the review reads the files again when you leave the
 results screen.

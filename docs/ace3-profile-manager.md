@@ -19,6 +19,10 @@ edits, and **Undo last change** puts them back.
 > would be overwritten. That's why **Apply** and **Undo** refuse to run while WoW is running (a **Dry run** works
 > any time).
 
+**_The USE AT YOUR OWN RISK warning_**
+
+![The USE AT YOUR OWN RISK warning shown when you open the Ace3 Profile Manager, with Back and I understand buttons](assets/screenshots/suite/risk-warning.png)
+
 ## How it works
 
 Nothing you do on the review screen touches a file until you press **Apply**. In four steps:
@@ -185,6 +189,10 @@ profile with the same name in Bartender4 are two different profiles.
 | `k` | **Copy a profile** | Copies the highlighted profile, settings and all, under a new name. Nobody uses the copy until you assign it |
 | `o` | **Remove leftover characters** | Removes the ticked characters tagged "no character folder" from the addon's list |
 
+**_Assigning a profile_**
+
+![The Assign a profile popup: the characters that move under each addon, the profile list and a box for a new name](assets/screenshots/ace3-profile-manager/assign-popup.png)
+
 A profile name can be up to 100 characters. Names are case-sensitive, as in the game ("healer" and "Healer" are two
 profiles), and you can't rename or copy onto a name the addon already has.
 
@@ -316,6 +324,10 @@ tool:
 If anything goes wrong while writing, every file already written in that game version is put back as it was, and
 the run stops. With **All flavors**, the game versions are changed one after another; if one runs into a problem,
 the versions after it aren't touched, and the versions before it keep their changes (Undo puts them back).
+
+**_An Apply in progress_**
+
+![The Applying the changes progress window, backing up the WTF folder](assets/screenshots/ace3-profile-manager/apply-progress.png)
 
 ## Dry run
 
