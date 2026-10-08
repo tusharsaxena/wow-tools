@@ -1,15 +1,17 @@
 """scripts/build_release.py (the zip + SHA256SUMS assets the updater verifies), the hashed vendor lock in
-scripts/update_vendor.py (F-010) and the per-shard timeout in scripts/run_tests.py (F-014). Temp git repos only; no
-network."""
+scripts/update_vendor.py (F-010), the per-shard timeout in scripts/run_tests.py (F-014) and its --windows /
+--all runs (spec F1). Temp git repos only; no network; no test starts cmd.exe."""
 from __future__ import annotations
 
 import hashlib
 import importlib.util
 import io
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 import zipfile
@@ -304,3 +306,266 @@ class RunTestsTimeoutTest(unittest.TestCase):
                          ["-j", "1", "--timeout", "90"]):
                 self.assertEqual(self.run_main(*argv)[0], 0, argv)
         self.assertEqual(seen, [600] * 8 + [600] * 4 + [1200] * 2 + [2400, None, 90])
+
+
+class RunTestsWindowsTest(unittest.TestCase):
+    """scripts/run_tests.py --windows and --all (spec F1): from WSL the suite also runs under the native Windows
+    Python in the same checkout through cmd.exe. The cmd.exe call (_relay) is faked here: no test starts Windows."""
+
+    def setUp(self):
+        self.run_tests = load_script("run_tests")
+        self.calls = []
+        self.codes = {"wsl": 0, "windows": 0}
+        self.windows_starts = True
+        self.windows_raises = None  # an exception the Windows side's start raises (cmd.exe gone, say)
+
+    def fake_relay(self, command, cwd, env, sink, windows):
+        self.calls.append({"command": command, "cwd": cwd, "env": env, "windows": windows})
+        side = "windows" if windows else "wsl"
+        if windows and self.windows_raises is not None:
+            raise self.windows_raises
+        if windows and not self.windows_starts:
+            sink("'py' is not recognized as an internal or external command,\n")
+            return 1
+        sink(f"{side} output\n")
+        sink("Ran 5 tests in 1.0s across 2 processes (0 failures, 0 errors, 0 skipped)\n")
+        sink("OK\n" if self.codes[side] == 0 else "FAILED\n")
+        return self.codes[side]
+
+    def run_main(self, *argv: str, host: str = "wsl") -> tuple[int, str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(self.run_tests, "host_kind", return_value=host), \
+                mock.patch.object(self.run_tests, "_windows_path", return_value=r"D:\GIT\wow-tools"), \
+                mock.patch.object(self.run_tests, "_require_cmd_exe"), \
+                mock.patch.object(self.run_tests, "_relay", side_effect=self.fake_relay), \
+                redirect_stdout(out), redirect_stderr(err):
+            code = self.run_tests.main(list(argv))
+        return code, out.getvalue(), err.getvalue()
+
+    def windows_line(self) -> str:
+        (call,) = [c for c in self.calls if c["windows"]]
+        return call["env"][self.run_tests.WINDOWS_RUN_VAR]
+
+    def test_windows_runs_the_suite_through_cmd_exe_with_the_flags_passed_through(self):
+        with mock.patch.dict("os.environ", {}, clear=False) as env:
+            env.pop(self.run_tests.WINDOWS_PYTHON_ENV, None)
+            self.codes["windows"] = 3
+            code, out, _ = self.run_main("--windows", "-j", "4", "-k", "tree view", "--timeout", "90")
+        self.assertEqual(code, 3, "the Windows run's exit code is returned")
+        (call,) = self.calls
+        self.assertTrue(call["windows"])
+        self.assertEqual(call["command"], ["cmd.exe", "/d", "/c", f"%{self.run_tests.WINDOWS_RUN_VAR}%"])
+        self.assertEqual(self.windows_line(), r'pushd "D:\GIT\wow-tools" && py -3 scripts\run_tests.py '
+                                              r'--announce-pid "-j" "4" "-k" "tree view" "--timeout" "90"')
+        self.assertIn(f"{self.run_tests.WINDOWS_RUN_VAR}:PYTHONIOENCODING", call["env"]["WSLENV"])
+        self.assertEqual(call["env"]["PYTHONIOENCODING"], "utf-8")
+        self.assertRegex(Path(call["cwd"]).as_posix(), r"^/mnt/[a-z](/|$)", "a Windows-drive cwd: no UNC warning")
+        self.assertIn("windows output", out)
+
+    def test_windows_without_flags_lets_the_windows_side_pick_its_shards(self):
+        self.assertEqual(self.run_main("--windows")[0], 0)
+        self.assertTrue(self.windows_line().endswith("--announce-pid"), self.windows_line())
+
+    def test_the_windows_python_command_can_be_overridden(self):
+        with mock.patch.dict("os.environ", {self.run_tests.WINDOWS_PYTHON_ENV: "py -3.14"}):
+            self.run_main("--windows")
+        self.assertIn(r" && py -3.14 scripts\run_tests.py ", self.windows_line())
+
+    def test_a_double_quote_in_a_passed_flag_is_refused(self):
+        code, _, err = self.run_main("--windows", "-k", 'a"b')
+        self.assertEqual(code, 2)
+        self.assertIn('"', err)
+        self.assertEqual(self.calls, [])
+
+    def test_a_trailing_backslash_in_a_passed_flag_reaches_windows_unchanged(self):
+        """Windows reads a lone \\" as an escaped quote: backslashes before the closing quote are doubled."""
+        self.run_main("--windows", "-k", "tests\\")
+        self.assertTrue(self.windows_line().endswith(r'"-k" "tests\\"'), self.windows_line())
+        self.assertEqual(self.run_tests._cmd_quote(r"a\b\\"), r'"a\b\\\\"', "only the trailing run is doubled")
+
+    def test_a_quoted_windows_python_path_is_passed_verbatim(self):
+        python = r'"C:\Program Files\Python314\python.exe"'
+        with mock.patch.dict("os.environ", {self.run_tests.WINDOWS_PYTHON_ENV: python}):
+            self.run_main("--windows")
+        self.assertIn(f" && {python} scripts\\run_tests.py ", self.windows_line())
+
+    def test_windows_unreachable_from_wsl_fails_with_a_clear_message(self):
+        """No cmd.exe on PATH (interop off), a failed wslpath, or cmd.exe failing to start: exit 2 and a message,
+        not a traceback; under --all the WSL run is stopped at once, not waited for."""
+        unreachable = self.run_tests.WindowsUnreachable("cmd.exe is not on PATH")
+        for flag in ("--windows", "--all"):
+            with mock.patch.object(self.run_tests, "_windows_invocation", side_effect=unreachable):
+                code, _, err = self.run_main(flag)
+            self.assertEqual(code, 2, flag)
+            self.assertIn("cmd.exe is not on PATH", err)
+            self.assertIn("WSL interop", err)
+        self.assertEqual(self.calls, [], "nothing started")
+        self.windows_raises = FileNotFoundError(2, "No such file or directory", "cmd.exe")
+        for flag in ("--windows", "--all"):
+            with mock.patch.object(self.run_tests, "_kill_relays") as kill:
+                code, _, err = self.run_main(flag)
+            self.assertEqual(code, 2, flag)
+            self.assertIn("No such file or directory", err)
+            self.assertEqual(kill.called, flag == "--all", flag)
+
+    def test_windows_path_and_cmd_exe_failures_become_windows_unreachable(self):
+        failed = subprocess.CalledProcessError(1, ["wslpath"], stderr="bad path")
+        with mock.patch.object(self.run_tests.subprocess, "run", side_effect=failed), \
+                self.assertRaises(self.run_tests.WindowsUnreachable):
+            self.run_tests._windows_path(Path("/home/me/wow-tools"))
+        with mock.patch.object(self.run_tests.shutil, "which", return_value=None), \
+                self.assertRaises(self.run_tests.WindowsUnreachable):
+            self.run_tests._require_cmd_exe()
+
+    def test_a_missing_windows_python_says_how_to_fix_it(self):
+        self.windows_starts = False
+        for flag in ("--windows", "--all"):
+            code, _, err = self.run_main(flag)
+            self.assertEqual(code, 1, flag)
+            self.assertIn(self.run_tests.WINDOWS_PYTHON_ENV, err)
+        self.windows_starts, self.codes["windows"] = True, 1
+        self.assertNotIn(self.run_tests.WINDOWS_PYTHON_ENV, self.run_main("--windows")[2], "a run that failed")
+
+    def test_windows_and_all_on_linux_that_is_not_wsl_fail_with_a_clear_message(self):
+        for flag in ("--windows", "--all"):
+            code, _, err = self.run_main(flag, host="linux")
+            self.assertEqual(code, 2, flag)
+            self.assertIn("WSL", err)
+        self.assertEqual(self.calls, [])
+
+    def test_windows_on_native_windows_is_the_normal_run(self):
+        seen = []
+
+        def fake_launch(index, count, pattern, timeout):
+            seen.append((count, pattern))
+            return 0, {"run": 1, "failures": 0, "errors": 0, "skipped": 0}, "", None
+
+        with mock.patch.object(self.run_tests, "_launch", side_effect=fake_launch):
+            code, out, _ = self.run_main("--windows", "-j", "2", "-k", "x", host="windows")
+        self.assertEqual(code, 0)
+        self.assertEqual(seen, [(2, "x"), (2, "x")])
+        self.assertEqual(self.calls, [])
+        self.assertTrue(out.rstrip().endswith("OK"))
+
+    def test_all_runs_both_suites_on_half_the_cpus_each_with_labelled_summaries(self):
+        with mock.patch.object(self.run_tests.os, "cpu_count", return_value=16):
+            code, out, _ = self.run_main("--all", "-k", "tree")
+        self.assertEqual(code, 0)
+        wsl, = [c for c in self.calls if not c["windows"]]
+        self.assertEqual(wsl["command"][-4:], ["-j", "8", "-k", "tree"])
+        self.assertNotIn("--all", wsl["command"])
+        self.assertIn('"-j" "8" "-k" "tree"', self.windows_line())
+        self.assertIn("===== WSL", out)
+        self.assertIn("===== Windows", out)
+        self.assertLess(out.index("wsl output"), out.index("===== Windows"))
+        self.assertIn("WSL: OK", out)
+        self.assertIn("Windows: OK", out)
+        self.assertTrue(out.rstrip().endswith("OK"))
+
+    def test_all_with_jobs_gives_each_suite_that_many_shards(self):
+        self.run_main("--all", "-j", "5")
+        self.assertEqual(len(self.calls), 2)
+        wsl, = [c for c in self.calls if not c["windows"]]
+        self.assertEqual(wsl["command"][-2:], ["-j", "5"])
+        self.assertIn('"-j" "5"', self.windows_line())
+
+    def test_all_fails_if_either_suite_fails(self):
+        for failing in ("wsl", "windows"):
+            self.calls.clear()
+            self.codes = {"wsl": 0, "windows": 0, failing: 1}
+            code, out, _ = self.run_main("--all")
+            self.assertEqual(code, 1, failing)
+            self.assertIn(("WSL" if failing == "wsl" else "Windows") + ": FAILED", out)
+            self.assertTrue(out.rstrip().endswith("FAILED"), out)
+
+    def test_ctrl_c_during_windows_or_all_kills_the_runs(self):
+        def interrupted(*_args):
+            raise KeyboardInterrupt
+
+        for flag in ("--windows", "--all"):
+            with mock.patch.object(self.run_tests, "host_kind", return_value="wsl"), \
+                    mock.patch.object(self.run_tests, "_windows_path", return_value=r"D:\x"), \
+                    mock.patch.object(self.run_tests, "_require_cmd_exe"), \
+                    mock.patch.object(self.run_tests, "_relay", side_effect=interrupted), \
+                    mock.patch.object(self.run_tests, "_kill_relays") as kill, redirect_stdout(io.StringIO()), \
+                    self.assertRaises(KeyboardInterrupt):
+                self.run_tests.main([flag])
+            kill.assert_called()
+
+    def test_cmd_exe_starts_on_a_windows_drive(self):
+        cwd = self.run_tests._windows_cwd
+        self.assertEqual(cwd(Path("/mnt/d/GIT/wow-tools")), Path("/mnt/d/GIT/wow-tools"))
+        self.assertEqual(cwd(Path("/home/me/wow-tools")), Path("/mnt/c"))
+
+    def test_host_kind(self):
+        kind = self.run_tests.host_kind
+        self.assertEqual(kind(os_name="nt", osrelease=""), "windows")
+        self.assertEqual(kind(os_name="posix", osrelease="6.6.87.2-microsoft-standard-WSL2"), "wsl")
+        self.assertEqual(kind(os_name="posix", osrelease="6.8.0-45-generic"), "linux")
+
+    def test_relay_streams_output_and_hides_the_pid_line(self):
+        """The real _relay on a plain Python child (not cmd.exe): the runner's pid line is kept for Ctrl+C, every
+        other line reaches the sink, and the child's exit code comes back."""
+        script = (f"print({self.run_tests.PID_PREFIX!r} + '4242', flush=True)\n"
+                  "print('line one', flush=True)\n"
+                  "import sys; print('line two', file=sys.stderr, flush=True); sys.exit(4)\n")
+        lines = []
+        code = self.run_tests._relay([sys.executable, "-c", script], REPO_ROOT, None, lines.append, False)
+        self.assertEqual(code, 4)
+        self.assertEqual([line.rstrip() for line in lines], ["line one", "line two"])
+
+    def test_kill_relays_kills_each_run_its_own_way(self):
+        """The real _kill_relays: a Windows runner whose pid is known goes with taskkill.exe /T /F; one whose pid
+        line has not arrived yet is waited for (its relay thread is still reading) and then killed the same way;
+        one that never announces is given up on; a WSL runner gets SIGINT. Each WSL-side process is then killed."""
+        relays = self.run_tests._RELAYS
+
+        def fake_proc(running=True):
+            proc = mock.Mock()
+            proc.poll.return_value = None if running else 0
+            return proc
+
+        def info(windows, pid=None):
+            entry = {"windows": windows, "pid": pid, "announced": threading.Event()}
+            if pid:
+                entry["announced"].set()
+            return entry
+
+        known, late, silent, gone, wsl = (fake_proc(), fake_proc(), fake_proc(), fake_proc(False), fake_proc())
+        late_info = info(True)
+        entries = {known: info(True, "77"), late: late_info, silent: info(True), gone: info(True),
+                   wsl: info(False)}
+
+        def announce():
+            late_info["pid"] = "88"
+            late_info["announced"].set()
+
+        timer = threading.Timer(0.2, announce)
+        with mock.patch.dict(relays, entries, clear=True), mock.patch.object(self.run_tests, "PID_WAIT", 1), \
+                mock.patch.object(self.run_tests.subprocess, "run") as run, \
+                mock.patch.object(self.run_tests, "_kill_tree") as kill_tree:
+            timer.start()
+            self.run_tests._kill_relays()
+        timer.join()
+        taskkilled = [call.args[0] for call in run.call_args_list]
+        self.assertEqual(taskkilled, [["taskkill.exe", "/T", "/F", "/PID", "77"],
+                                      ["taskkill.exe", "/T", "/F", "/PID", "88"]])
+        wsl.send_signal.assert_called_once_with(signal.SIGINT)
+        for proc in (known, late, silent, gone):
+            proc.send_signal.assert_not_called()
+        self.assertEqual({call.args[0] for call in kill_tree.call_args_list}, {known, late, silent, gone, wsl})
+
+    def test_relay_stops_waiting_for_a_pid_once_its_run_ends(self):
+        """A run that ends without announcing (say, no Windows Python) must not keep a later Ctrl+C waiting."""
+        lines, infos = [], []
+
+        def sink(line):
+            lines.append(line)
+            infos.extend(self.run_tests._RELAYS.values())
+
+        self.run_tests._relay([sys.executable, "-c", "print('no pid')"], REPO_ROOT, None, sink, True)
+        self.assertEqual([line.rstrip() for line in lines], ["no pid"])
+        (info,) = infos
+        self.assertIsNone(info["pid"])
+        self.assertTrue(info["announced"].is_set())
+        self.assertEqual(self.run_tests._RELAYS, {})

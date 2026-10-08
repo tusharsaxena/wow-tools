@@ -25,10 +25,13 @@ first ([STD-10.10](standards.md#10-testing)). If a step would break a MUST, stop
 Before every commit, all three pass ([testing.md](testing.md#the-green-gate) has the details):
 
 ```sh
-python3 scripts/run_tests.py              # the full suite; -k TEXT to filter while you work
+python3 scripts/run_tests.py --all        # the full suite on WSL and native Windows; -k TEXT to filter while you work
 ruff check --no-cache .                   # not run in CI, so it is on you
 python3 scripts/gen_event_docs.py --check # docs/events.md matches the registries
 ```
+
+On a machine with no Windows Python, run the plain `python3 scripts/run_tests.py` instead and let CI cover Windows
+before the merge ([testing.md](testing.md#windows-from-wsl)).
 
 ## 1. Add a tool
 

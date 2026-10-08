@@ -23,7 +23,9 @@ rows are ways to run the suite while you work.
 
 | Command | What it does |
 |---|---|
-| **gate** `python3 scripts/run_tests.py` | The whole suite in parallel: the tests are sorted by id and dealt round-robin into one shard per CPU (at most 16), one process per shard. Exit code 0 only if every shard passed. About 100 to 120 s on WSL `/mnt/d`. |
+| **gate** `python3 scripts/run_tests.py --all` | From WSL: the WSL suite and the native Windows suite at the same time, half the CPUs each (or `-j N` each), each printed under its own `===== WSL (-j N) =====` / `===== Windows (-j N) =====` heading, then `WSL: OK, Windows: OK, in T s` and `OK` or `FAILED`. Exit code 0 only if both passed. About 265 to 280 s on the 16-CPU WSL `/mnt/d` machine, against about 290 s for the two runs one after the other. With no Windows Python, the plain run below is the gate and CI covers Windows before the merge ([below](#windows-from-wsl)). |
+| `python3 scripts/run_tests.py` | The whole suite in parallel: the tests are sorted by id and dealt round-robin into one shard per CPU (at most 16), one process per shard. Exit code 0 only if every shard passed. About 100 to 150 s on WSL `/mnt/d`. |
+| `python3 scripts/run_tests.py --windows` | From WSL: the whole suite under the native Windows Python, in the same checkout, its output streamed as it comes; exit code that run's. About 140 s. On native Windows it is the plain run; on Linux that is not WSL both `--windows` and `--all` fail with a message. |
 | `python3 scripts/run_tests.py -k TEXT` | Only the tests whose id (`tests.test_wtf_app.SomeTest.test_name`) contains `TEXT`, e.g. `-k sv_browser` or `-k test_look_and_feel`. |
 | `python3 scripts/run_tests.py -j N` | `N` shards instead of one per CPU. |
 | `python3 scripts/run_tests.py --timeout S` | Kill and fail a shard still running after `S` seconds (`0`: no limit). The default is 600 s per shard at `-j 4` or more, and proportionally more below that (1200 s at `-j 2`, 2400 s at `-j 1`; a one-shard run takes about 15 minutes on WSL `/mnt/d`). |
@@ -40,6 +42,25 @@ with a name well before CI's 20-minute job timeout. A shard that hangs after its
 that keeps the interpreter alive) is reported as `timed out after S s after its tests finished`, and its tests still
 count in the summary. Shard output goes to temp files, not pipes, so a child process a hung test left behind cannot
 hold the run open on Windows.
+
+### Windows from WSL
+
+`--windows` and `--all` reach Windows through `cmd.exe` (spec F1): the runner turns the checkout into a Windows path
+with `wslpath -w`, and `cmd.exe` runs `pushd <that path> && py -3 scripts\run_tests.py ...` with `-k`, `-j` and
+`--timeout` passed through, so both suites test the same files. `py -3` is the newest Python the Windows `py`
+launcher knows; set `WOWTOOLS_WINDOWS_PYTHON` to another command (say `py -3.13`, or a full path to `python.exe`)
+to pick one. It goes into the `cmd.exe` line as written, so a path with spaces needs double quotes inside the value:
+`WOWTOOLS_WINDOWS_PYTHON='"C:\Program Files\Python314\python.exe"'`. The `cmd.exe` line travels in the
+`WOWTOOLS_WINDOWS_RUN` variable, shared through `WSLENV`, because WSL would escape the double quotes in an argument
+in a way `cmd.exe` does not read; for the same reason a `-k` text cannot contain a double quote (a trailing
+backslash is fine: it is doubled, as Windows argument parsing needs). `cmd.exe` starts from the checkout's own
+drive (or `C:`), so it never warns about a UNC current directory, and `pushd` also reaches a checkout on
+`\\wsl.localhost`. With no `cmd.exe` on `PATH` (WSL interop off) or a checkout `wslpath` cannot map, both flags
+stop at once with a message and exit 2. A Windows run that fails without printing its summary, typically because
+no Windows Python is installed, ends with a hint to set `WOWTOOLS_WINDOWS_PYTHON` or use the plain run. Ctrl+C
+stops both suites: the Windows runner announces its pid and is killed with its shards by `taskkill.exe /T` (a
+Ctrl+C before that line arrives waits up to 10 s for it), and the WSL runner gets SIGINT and kills its own shards.
+The Windows suite skips about 79 POSIX- or WSL-only tests that the WSL suite runs.
 
 ## CI
 
@@ -111,7 +132,7 @@ Cleaner's tests predate that rule: its logic tests are `test_cleaner.py`, `test_
 |---|---|
 | `test_suite.py`, `test_suite_app.py` | `wowtools/suite.py` (start-up, the instance lock, renamed-tool migration on start, the update at start) and `WowToolsApp` (menu, setup, opening tools) |
 | `test_updater_check.py`, `test_updater_apply.py` | `core/updater.py`: the release check (fake openers, never the network) and applying an update |
-| `test_release_scripts.py` | `scripts/build_release.py`, the hashed vendor lock and `scripts/run_tests.py`'s per-shard timeout |
+| `test_release_scripts.py` | `scripts/build_release.py`, the hashed vendor lock, `scripts/run_tests.py`'s per-shard timeout and its `--windows` / `--all` runs (the `cmd.exe` call is faked) |
 | `test_release_contents.py` | The release manifest (STD-11.5): every tracked path is in a table of [releasing.md](releasing.md#what-a-release-contains), `.gitattributes` export-ignores the "stays out" table, `git archive` of `HEAD` holds exactly the "ships" table, no shipped Markdown file links to a file that does not ship (needs git; skips without it), the updater's `RELEASE_SHIPS` / `RELEASE_STAYS_OUT` are the two tables entry for entry, and its `MANAGED_DIRS` / `MANAGED_FILES` are the top-level "ships" names |
 | `test_launcher.py` | `wow-tools.cmd` stays safe to replace while it runs (Windows-only parts skip elsewhere) |
 | `test_quit_key.py`, `test_tool_menu_key.py`, `test_toast_stack.py` | The suite-wide walks: `q` and `t` from every screen and popup, toasts above the bars (see [below](#the-suite-wide-key-and-toast-walks)) |

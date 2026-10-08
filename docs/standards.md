@@ -754,9 +754,11 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
 
 ## 10. Testing
 
-- **STD-10.1 MUST** Pass the green gate before every commit: `python3 scripts/run_tests.py`,
-  `ruff check --no-cache .` and `python3 scripts/gen_event_docs.py --check` ([testing.md](testing.md#the-green-gate)).
-  *Why:* CI runs the same runner and events check; ruff runs only here.
+- **STD-10.1 MUST** Pass the green gate before every commit: `python3 scripts/run_tests.py --all` (the suite on WSL
+  and under the native Windows Python; the plain `python3 scripts/run_tests.py` where no Windows Python is
+  available), `ruff check --no-cache .` and `python3 scripts/gen_event_docs.py --check`
+  ([testing.md](testing.md#the-green-gate)).
+  *Why:* CI runs the same runner and events check; ruff runs only here; Windows failures show up before a push.
   *Enforced by:* CI (tests, events check), review.
 - **STD-10.2 MUST** Stay green on the CI matrix: Linux and Windows, Python 3.10 and 3.13 (byte-compile,
   `gen_event_docs.py --check`, `run_tests.py`).
