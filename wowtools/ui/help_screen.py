@@ -54,7 +54,7 @@ tool here (`↑` `↓`, then `Enter`); leaving a tool brings you back to this me
 | `/` | Filter a tree: type, then `Enter` or the **Filter** button filters it (`Esc` clears it) |
 | `x` / `c` | Expand / collapse every line of a tree |
 | `Esc` | Go back |
-| `t` | Back to the tool menu, from a tool's game version or account picker, review or results |
+| `t` | Back to the tool menu, from any screen (typed as a letter in a text box; with changes staged it asks first) |
 | `s` | Settings |
 | `c` | The changelog (on this menu) |
 | `u` | Install an update, when the bottom bar offers one |

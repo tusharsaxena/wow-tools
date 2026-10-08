@@ -218,6 +218,34 @@ class WowToolsApp(Ka0sApp):
             self.pop_screen()
         self.sub_title = self.SUB_TITLE
 
+    def key_t(self) -> None:
+        """t goes back to the tool menu from every screen and popup (L11, STD-8.11), as q quits (key_q): a key
+        method, so it reaches the app under a modal screen too. A focused text box types the letter; a screen that
+        lists t in its footer (a flavor or account picker, a review, a result) binds it itself and leaves the
+        same way, through its own dismiss."""
+        self.action_tool_menu()
+
+    def action_tool_menu(self) -> None:
+        """Back to the tool menu: nothing on the menu itself or under the lock warning (the menu is not open yet);
+        refused while a run writes; work staged on a screen of the stack asks first (ask_before_leaving). Then the
+        open tool closes the way every leave does (ToolFlow.close -> close_tool: the flow dropped, the log context
+        back to the suite, every screen above the menu removed); with no tool open the screens over the menu are
+        removed the same way."""
+        if self.screen is self.menu or any(isinstance(screen, LockScreen) for screen in self.screen_stack):
+            return
+        if self.refused_while_busy("ui.tool_menu_refused", "going back to the tool menu"):
+            return
+        where = type(self.screen).__name__
+
+        def leave() -> None:
+            log_event("ui.selection", screen="app", control="tool_menu", value=where)
+            if self.flow is not None:
+                self.flow.close()
+            else:
+                self.close_tool()
+
+        self.ask_before_leaving(leave)
+
     # --- settings ---------------------------------------------------------------------------------
     def settings_allowed(self) -> bool:
         """`s` opens the open tool's settings, or with no tool open the general settings from the tool menu only:

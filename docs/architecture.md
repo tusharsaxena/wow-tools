@@ -209,7 +209,11 @@ Textual leaves the app's bindings out under a modal screen; a text box types it,
 handles it first (the menu and the reviews bind `app.quit` for their footer, a result its Quit button, the lock
 warning its Quit), and a review with work staged asks first through its `discard_question()`, from the review or any
 screen over it, in a `DiscardScreen` (the review's own on leaving is one too); while one is open, `q` asks nothing
-more (the stack is checked, no flag is kept).
+more (the stack is checked, no flag is kept: `Ka0sApp.ask_before_leaving`). `t` goes back to the tool menu the
+same way (L11): `WowToolsApp.key_t` -> `action_tool_menu`, refused while `app.busy` (`ui.tool_menu_refused`, the
+same `refused_while_busy` notice as `q`), asking first for staged work, then `ToolFlow.close()` (`close_tool`
+removes every screen above the menu, without running their dismiss callbacks); nothing on the menu or under the
+lock warning. The pickers, reviews and results keep their own `t` binding for the footer; it leaves the same way.
 An unhandled exception in a handler or worker is logged as `error` with `where=ui` by `Ka0sApp._handle_exception`
 (a private Textual hook, pinned by a test) before Textual exits; `suite.run()` returns the app's `return_code`, so
 `session.end` and the process exit status show the crash.

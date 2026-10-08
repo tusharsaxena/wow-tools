@@ -132,7 +132,7 @@ The app opens in a terminal window. You drive it with the keyboard:
 | `c` (tool menu) | What's new: the changelog |
 | `h` | Help: on the tool menu, what each tool does and the keys every tool shares; in a tool, how to use that tool, with a link to its guide |
 | `Esc` | Go back |
-| `t` | Back to the tool menu, from a tool's game version or account picker, review or results |
+| `t` | Back to the tool menu, from any screen (typed as a letter in a text box; with changes staged it asks first) |
 | `s` | Settings |
 | `q` | Quit, from any screen (typed as a letter in a text box; with changes staged it asks first) |
 

@@ -7,7 +7,7 @@ go-ahead.
 | Task | Title | Status | Commit | Notes |
 |---|---|---|---|---|
 | R0 | spec, plan, ledger | done | (this commit) | written 2026-10-08 09:58 while round 1's workflow ran |
-| L11 | `t` from any screen | todo | | |
+| L11 | `t` from any screen | done | (this commit) | `WowToolsApp.key_t` -> `action_tool_menu`; q's busy and staged-work logic shared (`refused_while_busy`, `ask_before_leaving`); new event `ui.tool_menu_refused`; STD-8.11 extended; tests/test_tool_menu_key.py (9 tests, every screen of every tool at BASE and LARGE); full suite 1872 tests OK (2 skipped) |
 | L14 | one "Run journal" row | todo | | |
 | L15 | blacklist mark | todo | | |
 | L16 | Interface Backup `backup/` folder | todo | | |
@@ -36,3 +36,19 @@ go-ahead.
 4. Never merge without the user's go-ahead (M).
 
 ## Decisions taken during the build
+
+- **L11-a** The app's `t` closes the tool through `ToolFlow.close()` (`close_tool`), which removes every screen
+  above the menu without running their dismiss callbacks, as the review's own `t` already ended. So `t` on the
+  USE AT YOUR OWN RISK popup logs no accepted or declined event (it is neither answer: the popup is asked again the
+  next time); the `ui.selection` event (`screen=app`, `control=tool_menu`, `value=<screen class>`) records where it
+  was pressed. A popup's callback (an update offer, a confirm) is dropped, never answered.
+- **L11-b** The busy notice is not word for word q's: one template, `BUSY_NOTICE` in `ui/base.py`, "A run is in
+  progress. Wait for it to finish before {quitting | going back to the tool menu}." (q's text is unchanged), logged
+  as a new event `ui.tool_menu_refused`. The review's own `t` binding (kept for the footer) says it too when busy;
+  its `f` and `Esc` stay silent, as before.
+- **L11-c** The per-screen `t` bindings stay on the flavor and account pickers, reviews and results (they put
+  Tools in the footer, D17); every other screen gets `t` from the app. `ToolMenuBindingsTest` allows a `t` binding
+  only to `leave('tools')`, `tool_menu` or `choose('tools')`.
+- **L11-d** `t` does nothing under the lock warning (the menu is not open until it is answered), as on the menu.
+- **L11-e** `Ka0sApp.action_quit` now calls `ask_before_leaving(self.exit)` instead of `super().action_quit()`;
+  Textual's `App.action_quit` is only `self.exit()`, so q's behaviour is unchanged (tests/test_quit_key.py green).

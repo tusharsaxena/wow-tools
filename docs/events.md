@@ -54,6 +54,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ui.item_toggled` | debug | The user ticked or unticked a single item. |
 | `ui.quit_refused` | info | q or Ctrl+Q was pressed while a run was in progress and was refused. |
 | `ui.selection` | info | The user made a choice in the TUI or CLI. |
+| `ui.tool_menu_refused` | info | t was pressed while a run was in progress and was refused: the tool menu waits for the run to finish. |
 | `update.applied` | info | The suite was updated. |
 | `update.available` | info | A newer suite release exists. |
 | `update.backup_kept` | warning | An old .update-backup folder was not pruned because a file the user had added could not be moved out of it; the next update tries again. |

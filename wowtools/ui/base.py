@@ -1,6 +1,7 @@
 """Ka0sApp: theme, branding, background update check and the `u` update flow for every tool."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import ClassVar
 
 from textual.app import App, ComposeResult
@@ -23,6 +24,9 @@ from wowtools.ui.branding import update_key_free, update_notice
 from wowtools.ui.dialogs import GUARD_BINDING, DiscardScreen, EnterGuard
 from wowtools.ui.theme import KA0S_THEME, TITLE_GOLD, TITLE_TEXT, TITLE_TOOL, action_variables
 from wowtools.ui.widgets import ACTION_CSS, NAV_BINDINGS, ButtonRow, NavHint, action_button
+
+
+BUSY_NOTICE = "A run is in progress. Wait for it to finish before {leaving}."
 
 
 class UpdateScreen(EnterGuard, ModalScreen[bool]):
@@ -168,24 +172,35 @@ class Ka0sApp(App):
     async def action_quit(self) -> None:
         """q on any screen (key_q) and Ctrl+Q (Textual's priority binding). Refused while a clean, organize or
         undo is running: quitting would end the session and release the lock while the worker thread is still
-        changing files. A screen on the stack with work that would be dropped (a review with staged changes:
-        `discard_question()`) asks first, from that screen or any screen over it; while such a question is open
-        (a DiscardScreen: this one, or the review's own on leaving) q asks nothing more. The open question is read
-        from the stack, never kept in a flag, so a popup closed without an answer cannot silence q. Quitting is
-        `exit()`, the path every way out takes: suite.run logs session.end and releases the lock once the app has
+        changing files. Work staged on a screen of the stack asks first (ask_before_leaving). Quitting is `exit()`,
+        the path every way out takes: suite.run logs session.end and releases the lock once the app has
         returned."""
-        if self.busy:
-            log_event("ui.quit_refused")
-            self.notify("A run is in progress. Wait for it to finish before quitting.", severity="warning")
+        if self.refused_while_busy("ui.quit_refused", "quitting"):
             return
+        self.ask_before_leaving(self.exit)
+
+    def refused_while_busy(self, event: str, leaving: str) -> bool:
+        """True (logged as `event`, with BUSY_NOTICE naming `leaving`) while a run writes (`busy`): q and t wait."""
+        if not self.busy:
+            return False
+        log_event(event)
+        self.notify(BUSY_NOTICE.format(leaving=leaving), severity="warning")
+        return True
+
+    def ask_before_leaving(self, leave: Callable[[], object]) -> None:
+        """Call leave() now, or once the user says yes when a screen on the stack has work leaving would drop (a
+        review with staged changes: `discard_question()`, the topmost one asked), from that screen or any screen
+        over it. While such a question is open (a DiscardScreen: one of these, or the review's own on leaving)
+        nothing more is asked. The open question is read from the stack, never kept in a flag, so a popup closed
+        without an answer cannot silence the key (q and t, L7 and L11)."""
         if any(isinstance(screen, DiscardScreen) for screen in self.screen_stack):
-            return  # a "discard the staged work?" question is open (q's own or a leave's): it is answered first
+            return  # a "discard the staged work?" question is open: it is answered first
         question = next((q for screen in reversed(self.screen_stack)
                          if (q := getattr(screen, "discard_question", lambda: None)()) is not None), None)
         if question is None:
-            await super().action_quit()
+            leave()
             return
-        self.push_screen(DiscardScreen(*question), lambda ok: self.exit() if ok else None)
+        self.push_screen(DiscardScreen(*question), lambda ok: leave() if ok else None)
 
     def _check_update(self) -> None:
         """Worker thread. The config is changed and saved on the UI thread only (see _persist_update_state)."""

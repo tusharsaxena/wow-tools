@@ -13,8 +13,10 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
     Browser: it says what the tool deletes or rewrites, that a backup and Undo are there, and to close WoW first.
     **I understand** goes on, **Back** returns to the game versions. It's asked once each time you start the app.
 - **Every tool**
-  - `t` goes back to the tool menu from the game version and account pickers too, as it does on the review and
-    results screens. `Esc` still works as before.
+  - `t` goes back to the tool menu from any screen and any popup, like `q` quits: the game version and account
+    pickers, the help, the settings, the warnings and every "are you sure?" window, not only reviews and results.
+    Typing `t` in a text box still types it, a run that is writing files has to finish first, and with changes
+    staged but not applied it asks first. On the tool menu it does nothing. `Esc` still works as before.
 - **WTF Cleaner**, **Ace3 Profile Manager** and **Saved Variables Browser**
   - The **USE AT YOUR OWN RISK** warning has a **Don't show this warning again for this tool** box (`Tab` to it,
     `Space` to tick, `Enter` still means **I understand**). Ticked with **I understand**, the warning is never

@@ -67,6 +67,8 @@ CORE_EVENTS: dict[str, EventSpec] = {
                                       "units already running carried on (what, unit, type, message, traceback)."),
     "ui.selection": EventSpec("info", "The user made a choice in the TUI or CLI."),
     "ui.quit_refused": EventSpec("info", "q or Ctrl+Q was pressed while a run was in progress and was refused."),
+    "ui.tool_menu_refused": EventSpec("info", "t was pressed while a run was in progress and was refused: "
+                                      "the tool menu waits for the run to finish."),
     "ui.item_toggled": EventSpec("debug", "The user ticked or unticked a single item."),
     "update.checked": EventSpec("debug", "The GitHub release check ran or was throttled."),
     "update.check_failed": EventSpec("debug", "The release check failed (offline, rate limited, bad data)."),

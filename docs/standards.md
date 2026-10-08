@@ -700,10 +700,15 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   `action_quit`, the same `exit()` every way out takes); no screen binds `q` to anything but quitting. A focused
   text box types it; while `app.busy` it is refused with the `ui.quit_refused` notice; a review with work staged
   asks first (`discard_question()`, in a `DiscardScreen`), from the review or any screen over it, and `q` while
-  such a question is open asks nothing more. Esc keeps its own meaning.
-  *Why:* one key always gets the user out, wherever they are (L7).
+  such a question is open asks nothing more. Esc keeps its own meaning. `t` goes back to the tool menu the same way
+  (L11): one app-level handler (`WowToolsApp.key_t` -> `action_tool_menu`, which closes the open tool through
+  `ToolFlow.close()`), typed in a text box, refused while `app.busy` (`ui.tool_menu_refused`), asking first for
+  staged work (`Ka0sApp.ask_before_leaving`, shared with `q`), doing nothing on the tool menu and the lock warning;
+  a screen binds `t` only to list it in its footer (a picker, a review, a result) and only to go to the tool menu.
+  *Why:* one key always gets the user out, wherever they are (L7), and one always gets them back to the menu (L11).
   *Enforced by:* `tests/test_quit_key.py` (every screen of every tool at BASE and LARGE, popups over popups, and
-  `QuitBindingsTest`, which reads the `BINDINGS` of every screen and widget class in `wowtools/`).
+  `QuitBindingsTest`, which reads the `BINDINGS` of every screen and widget class in `wowtools/`) and
+  `tests/test_tool_menu_key.py` (the same walk for `t`, and `ToolMenuBindingsTest`).
 
 ## 9. Help and docs
 

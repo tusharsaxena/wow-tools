@@ -354,8 +354,11 @@ class ReviewBase(TickActions, Preflight, ScheduledRebuild, ButtonActions, TwoPan
 
     def action_leave(self, choice: str) -> None:
         """Dismiss with `choice` ("flavors", "tools", "quit"), never while a run is going on; with work staged
-        (discard_question) only once the user says so."""
+        (discard_question) only once the user says so. While a run writes, `t` says why it waits (as the app's
+        own t does, L11); the other ways out stay silent."""
         if self.app.busy:
+            if choice == "tools":
+                self.app.refused_while_busy("ui.tool_menu_refused", "going back to the tool menu")
             return
         question = self.discard_question()
         if question is None:
