@@ -581,7 +581,7 @@ class RunRestoreTest(RestoreTestBase):
         plan = plan_restore(open_backup(self.backup), self.scan(), ("Interface",))
         with capture_events() as events, self.assertRaises(RestoreError):
             restore(plan, root=self.root, journal_dir=self.journal_dir, keep_journals=10)
-        self.assertFalse(list(self.root.glob("pre-restore-*")))
+        self.assertFalse(list(self.root.rglob("pre-restore-*")))
         self.assertEqual(list_or_empty(self.journal_dir), [])
         failed = [e for e in events if e["event"] == "ibackup.restore_failed"]
         self.assertEqual(len(failed), 1)
@@ -598,7 +598,7 @@ class RunRestoreTest(RestoreTestBase):
         self.assertTrue((self.retail / "Interface" / "new.txt").exists())
         self.assertIsNone(latest_undoable(self.journal_dir))
         self.assertEqual(list_or_empty(self.journal_dir), [])
-        self.assertFalse(list(self.root.glob("pre-restore-*")))
+        self.assertFalse(list(self.root.rglob("pre-restore-*")))
         self.assertIn("ibackup.restore_failed", [e["event"] for e in events])
 
     def test_safety_backup_failure_changes_nothing(self):
@@ -617,7 +617,7 @@ class RunRestoreTest(RestoreTestBase):
         with capture_events() as events, self.assertRaises(RestoreError):
             restore(plan, root=self.root, journal_dir=self.journal_dir, keep_journals=10)
         self.assertTrue((self.retail / "Interface" / "new.txt").exists())
-        self.assertFalse(list(self.root.glob("pre-restore-*")))
+        self.assertFalse(list(self.root.rglob("pre-restore-*")))
         self.assertIn("ibackup.restore_failed", [e["event"] for e in events])
 
     def test_part_turned_link_since_plan_refused(self):
@@ -789,7 +789,7 @@ class RunRestoreTest(RestoreTestBase):
         with capture_events() as events, self.assertRaisesRegex(RestoreError, "Undo"):
             restore(plan, root=self.root, journal_dir=self.journal_dir, keep_journals=10)
         self.assertEqual(((wtf / "foo.lua").read_bytes(), (wtf / "FOO.lua").read_bytes()), (b"lower", b"upper"))
-        self.assertFalse(list(self.root.glob("pre-restore-*")))
+        self.assertFalse(list(self.root.rglob("pre-restore-*")))
         self.assertEqual(list_or_empty(self.journal_dir), [])
         self.assertIn("ibackup.restore_failed", [e["event"] for e in events])
 

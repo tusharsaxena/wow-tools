@@ -14,6 +14,7 @@ from tests.fixtures import record_fsyncs, build_interface_tree, build_wow_tree
 from wowtools.core.backup import BackupError
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
+from wowtools.core.paths import to_stored
 from wowtools.tools.interface_backup import backup as backup_module
 from wowtools.tools.interface_backup.backup import back_up, back_up_all, write_zip
 from wowtools.tools.interface_backup.scanner import scan_flavor
@@ -52,7 +53,7 @@ class BackupTest(unittest.TestCase):
         with capture_events():
             outcome = back_up(self.scan(), self.root, keep=10, now=NOW)
         self.assertEqual(outcome.kind, "created")
-        self.assertEqual(outcome.path, self.root / "backup-retail-20261004-153012.zip")
+        self.assertEqual(outcome.path, self.root / "backup" / "backup-retail-20261004-153012.zip")  # L16
         with zipfile.ZipFile(outcome.path) as zf:
             names = set(zf.namelist())
             manifest = json.loads(zf.read("manifest.json"))
@@ -280,7 +281,7 @@ class BackupTest(unittest.TestCase):
             outcome = back_up(scan, self.root, keep=10, now=NOW)
         self.assertEqual(outcome.kind, "failed")
         self.assertIn("nothing could be read", outcome.reason)
-        self.assertEqual(list(self.root.iterdir()), [])
+        self.assertEqual([p for p in self.root.rglob("*") if not p.is_dir()], [])
 
     def test_linked_part_is_reported(self):
         if not hasattr(os, "symlink"):
@@ -325,7 +326,7 @@ class BackupTest(unittest.TestCase):
                 self.assertEqual(outcome.kind, "created")
                 self.assertTrue(outcome.path.exists())
                 self.assertNotIn(outcome.path, outcome.pruned)
-                self.assertEqual(len(list(self.root.glob("backup-retail-*.zip"))), left)
+                self.assertEqual(len(list(self.root.rglob("backup-retail-*.zip"))), left)
 
     def test_links_are_reported(self):
         scan = self.scan()
@@ -343,14 +344,14 @@ class BackupTest(unittest.TestCase):
             outcome = back_up(self.scan(), self.root, keep=10, now=NOW)
         self.assertEqual(outcome.kind, "failed")
         self.assertEqual(outcome.reason, "corrupt")
-        self.assertEqual(list(self.root.iterdir()), [])
+        self.assertEqual([p for p in self.root.rglob("*") if not p.is_dir()], [])
         self.assertIn("ibackup.backup_failed", [e["event"] for e in events])
 
     def test_interrupt_leaves_no_partial(self):
         with patch.object(backup_module, "verify_backup", side_effect=KeyboardInterrupt), \
                 self.assertRaises(KeyboardInterrupt):
             write_zip(self.scan(), self.root / "backup-retail-x.zip", kind="backup")
-        self.assertEqual(list(self.root.iterdir()), [])
+        self.assertEqual([p for p in self.root.rglob("*") if not p.is_dir()], [])
 
     def test_unreadable_file_fails_the_backup(self):
         real_open = os.open
@@ -364,7 +365,7 @@ class BackupTest(unittest.TestCase):
             outcome = back_up(self.scan(), self.root, keep=10, now=NOW)
         self.assertEqual(outcome.kind, "failed")
         self.assertIn("locked", outcome.reason)
-        self.assertEqual(list(self.root.iterdir()), [])
+        self.assertEqual([p for p in self.root.rglob("*") if not p.is_dir()], [])
 
     def test_existing_backup_never_replaced(self):
         self.root.mkdir(parents=True)
@@ -385,7 +386,7 @@ class BackupTest(unittest.TestCase):
         with capture_events(), patch.object(backup_module, "verify_backup", side_effect=BackupError("corrupt")):
             failed = back_up(self.scan(), self.root, keep=1, now=NOW)
         self.assertEqual(failed.pruned, [])
-        self.assertEqual(len(list(self.root.glob("backup-retail-*.zip"))), 2)
+        self.assertEqual(len(list(self.root.rglob("backup-retail-*.zip"))), 2)
 
     def test_progress_stages(self):
         seen = []
@@ -417,6 +418,7 @@ class BackupTest(unittest.TestCase):
         self.assertEqual(len(started), 2)
         names = [e["event"] for e in events]
         self.assertEqual(names[0], "ibackup.backup_started")
+        self.assertEqual(events[0]["data"]["dest"], to_stored(self.root / "backup"))  # where the zips go (L16)
         self.assertIn("ibackup.backup_failed", names)
         self.assertIn("ibackup.backup_created", names)
 

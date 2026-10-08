@@ -10,7 +10,7 @@ go-ahead.
 | L11 | `t` from any screen | done | (this commit) | `WowToolsApp.key_t` -> `action_tool_menu`; q's busy and staged-work logic shared (`refused_while_busy`, `ask_before_leaving`); new event `ui.tool_menu_refused`; STD-8.11 extended; tests/test_tool_menu_key.py (9 tests, every screen of every tool at BASE and LARGE); full suite 1872 tests OK (2 skipped) |
 | L14 | one "Run journal" row | done | (this commit) | cause: a clean across flavors (`multi_summary_rows`) named the shared journal on top and again in every flavor block (`summary_rows`); now once on top with the Undo note, blocks pass `journal=False`; the top note is `MULTI_UNDO_NOTE` (L14-c); the other four tools already have one journal row (Ace3/SV Browser guard test added); tests in test_wtf_app.py and test_ace_report.py; full suite 1875 tests OK (2 skipped) |
 | L15 | blacklist mark | done | (this commit) | `BLACKLISTED_MARK` (`⊘`), `BLACKLISTED_STYLE` (dim) and `blacklisted_mark()` in `ui/review.py`; WTF Cleaner addon and file rows, Ace3 every row of a locked addon in both views (`TreeBuilder.held`); help, guides, internals, architecture, STD-7.12, CHANGELOG; tests in test_wtf_app.py, test_ace_app.py, test_docs.py, test_structure.py; full suite 1879 tests OK (2 skipped) |
-| L16 | Interface Backup `backup/` folder | todo | | |
+| L16 | Interface Backup `backup/` folder | done | (this commit) | zips in `<root>/backup` (`catalog.ZIPS_SUBDIR`, `zips_dir`); `move_old_zips` in the review scan worker, `rename_no_replace`, new event `ibackup.zips_moved` (warning when a taken or failed name is left); listing and pruning span both places; Undo finds an older run's safety zip by name (`zip_now_at`); `core.fsutil.free_name(also=)`; guide, help, internals, architecture, CHANGELOG; tests/test_interface_backup_folder.py (17) plus an app test; full suite 1897 tests OK (2 skipped); review fixes L16-f to L16-i (folder tests 22, two app tests) |
 | LR5 | review L11-L16, push, CI | todo | | |
 | S1 | merge docs/screenshots | todo | | branch pushed at 3b6da86 |
 | L12 | docs and help in sync | todo | | |
@@ -85,3 +85,37 @@ go-ahead.
   leftover character (By addon) and the removed pair (By character) show the mark when locked and no mark when
   not. In the app `b` and the blacklist screen drop a locked addon's staged changes first, so the test locks it
   through the settings with the changes still staged, to pin the tree builder's own marking.
+- **L16-a** `root` stays the tool's folder (`resolve_backup_root`) in every API (`back_up`, `restore`,
+  `undo_restore`, the catalog); only the catalog knows the zips live in `zips_dir(root)` = `<root>/backup`. The
+  "Zips go to:" lines (settings, the Back up confirm) and the review's **Backup folder** label show `<root>/backup`.
+- **L16-b** The one-time move runs in the review's scan worker, just before `list_backups` (STD-7.20: never on the
+  UI thread; the flavor picker's notes worker only lists, and listing sees both places, so its counts are the
+  same). Nothing to move logs nothing and makes no empty `backup/`; a `backup` that is not a folder leaves every
+  zip in place, reported as failed.
+- **L16-c** `core.fsutil.free_name` gained `also=` (folders whose names count as taken too): `new_backup_path`
+  passes `<root>`, so a new zip never takes the name of a zip not moved yet and the later move never clashes
+  with it. A clash can still come from a zip copied in by hand; it is left in place and reported.
+- **L16-d** `prune_backups` matches `protect` by exact path first, then by name, so with a same-name zip left in
+  `<root>` the one just made is the one spared. Pre-restore zips are still never pruned by `prune_backups`;
+  `prune_safety` deletes by name in both places.
+- **L16-e** Undo accepts a safety zip the journal names in `<root>/backup` or `<root>` (an older run's), and
+  `zip_now_at` looks for it in `backup/` by file name only when the named path is gone. The move uses
+  `rename_no_replace` (STD-5.17). As first committed it ran outside `activity.running()`, which broke STD-5.19
+  (MUST); the review caught it and L16-g fixes it, so no deviation row is needed.
+- **L16-f** Review fixes: the settings label and the guide's settings row name `interface-backup\backup`;
+  `ibackup.backup_started` logs `dest` as `zips_dir(root)` (where the zips go, as the "Zips go to:" lines); the
+  `undo_restore` docstring line over 120 columns is rewrapped.
+- **L16-g** STD-5.19: `move_old_zips` renames the user's zips inside `activity.running()` when there is something
+  to move (nothing to move enters nothing), so `suite.run()`'s `wait_idle()` waits for it before releasing the
+  lock. Tests: the catalog's own and the review's scan (`*_inside_activity_running`).
+- **L16-h** "Once" (spec L16) is read as "a zip is moved the first time it can be": the move stays in every scan,
+  so a zip left in place (a taken name, or a move that keeps failing) is tried again each time and moves as soon
+  as it can. Its warning is logged the first time only: a per-session set of (folder, name) left in place; a
+  later scan logs `ibackup.zips_moved` only when something moved or a new name was left (that event lists every
+  name still left). A new session logs it once again. The guide says what to do with a taken name (two rows of
+  that name under Backups: check both, then move or delete the old one by hand); a test pins the two rows.
+- **L16-i** A `backup` folder that is a link: both paths now follow it. `new_backup_path` and the zip writers'
+  `mkdir(parents=True, exist_ok=True)` already wrote through it, and the user picks where backups go (the backup
+  folder setting itself may be a link), so `move_old_zips` no longer refuses it. STD-5.5 is about the folders
+  being scanned, backed up or restored (Interface, WTF), not the destination the user chose. A link to something
+  that is not a folder still leaves every zip in place, reported as failed.

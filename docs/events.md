@@ -166,6 +166,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ibackup.undo_completed` | info | Undo of a restore finished, with totals. |
 | `ibackup.undo_failed` | error | Undo was refused or failed on a part. |
 | `ibackup.undo_started` | info | Undo of a restore journal started. |
+| `ibackup.zips_moved` | info | Zips an older version left in interface-backup/ were moved into its backup/ folder: count, and names left in place (taken or failed: warning, logged the first time a name is left only). |
 
 ## `ace3-profile-manager` events
 

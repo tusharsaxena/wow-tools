@@ -40,16 +40,22 @@ as they are, so you can undo the restore too.
 
 ## Where your backups go
 
-Unless you change it in settings, the backup folder is `<your WoW folder>\wow-tools`. Zips go into its
-`interface-backup` folder:
+Unless you change it in settings, the backup folder is `<your WoW folder>\wow-tools`. Zips go into the
+`backup` folder of its `interface-backup` folder:
 
 ```
-<backup folder>\interface-backup\
+<backup folder>\interface-backup\backup\
   backup-<flavor>-<YYYYMMDD-HHMMSS>.zip         your Interface and WTF folders
   pre-restore-<flavor>-<YYYYMMDD-HHMMSS>.zip    a safety backup, taken just before a restore
 <your WoW folder>\wow-tools\interface-backup\
   journal\journal-<YYYYMMDD-HHMMSS>.jsonl        the record Undo uses
 ```
+
+Earlier versions put the zips straight into `interface-backup`. The first time you open the review, they're moved
+into its `backup` folder. A zip that can't be moved (one of the same name is already in `backup`, or the move
+fails) stays where it is and the log says so, once; it's still listed, restored and cleaned up like the others,
+and the move is tried again each time the review opens. With a name already in `backup`, Backups lists two
+zips of that name: look at both, then move or delete the old one in `interface-backup` yourself.
 
 `<flavor>` is the game version (`retail`, `classic_era` and so on). For example:
 `backup-retail-20261004-201530.zip`. If two backups start in the same second, the second gets `-2` added before
@@ -393,7 +399,7 @@ tool's settings). The tool's settings are saved in
 
 | Setting | Starts as | What it means |
 |---|---|---|
-| Backup folder | empty | Where zips go: they're put in its `interface-backup` folder. Empty means `<WoW folder>\wow-tools`. The line under the box shows where zips will go as you type. It must be a full path (such as `D:\WoW backups`), and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
+| Backup folder | empty | Where zips go: they're put in its `interface-backup\backup` folder. Empty means `<WoW folder>\wow-tools`. The line under the box shows where zips will go as you type. It must be a full path (such as `D:\WoW backups`), and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
 
 The file itself uses these names, if you edit it by hand: `backup_dir` and `last_flavor_choice` (the game version you
 picked last time; empty means **All flavors**). The backup folder is checked again before every backup and restore, in
@@ -408,8 +414,8 @@ zip, and one failing never stops the others), and so does reading their folders;
 for each one being backed up. A restore is always one game version. Restore journals follow `keep_journals`, and each keeps its
 safety backup.
 
-If you move the backup folder, move the zips in its `interface-backup` folder along with it, or the app won't
-find them. Undo needs the safety backup in the folder the settings name.
+If you move the backup folder, move the zips in its `interface-backup\backup` folder along with it, or the app
+won't find them. Undo needs the safety backup in the folder the settings name.
 
 ## FAQ
 

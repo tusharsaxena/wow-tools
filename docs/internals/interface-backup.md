@@ -27,10 +27,30 @@ Back to [architecture](../architecture.md#tools).
 Modules in `tools/interface_backup/` (all UI-free except `app.py`, `review_screen.py` and `restore_screen.py`):
 `settings` (`BackupSettings`, `resolve_backup_root` = `<backup_dir or WoW/wow-tools>/interface-backup`,
 `core.install.validate_backup_dir` checks the folder), `journal` (`resolve_journal_dir` = `<WoW>/wow-tools/interface-backup/journal`), `catalog` (names
-`backup-<flavor>-<stamp>[-N].zip` and `pre-restore-<flavor>-<stamp>[-N].zip`, `list_backups` newest first,
-`read_parts` (the manifest's parts only, never raises), `prune_backups`, `prune_safety`), `scanner`, `backup`,
+`backup-<flavor>-<stamp>[-N].zip` and `pre-restore-<flavor>-<stamp>[-N].zip` in `zips_dir(root)` =
+`<root>/backup` (L16), `list_backups` newest first, `read_parts` (the manifest's parts only, never raises),
+`prune_backups`, `prune_safety`, `move_old_zips`, `zip_now_at`), `scanner`, `backup`,
 `restore`, `undo`, `journal` and `report` (labels, stage titles, rows and dialog texts). `<flavor>` is the flavor's
 short name.
+
+### The backup folder
+
+`<root>` (`resolve_backup_root`) holds `backup/` (every zip: backups and pre-restore safety zips) next to
+`journal/` when the backup folder is the default. Before L16 the zips sat in `<root>` itself. The review's scan
+worker (never the UI thread, STD-7.20) calls `move_old_zips(root)` before `list_backups`: each
+`backup-*.zip` / `pre-restore-*.zip` in `<root>` is moved into `backup/` with `rename_no_replace` (STD-5.17),
+inside `activity.running()` (STD-5.19: `suite.run()`'s `wait_idle()` waits for it; nothing to move enters
+nothing). A name `backup/` already has is left in place (`taken`), and so is a move that fails (`failed`); both
+are tried again on every scan and logged in one `ibackup.zips_moved` (at warning when anything was left). A name
+left in place is logged the first time only (a per-session set of folder and name), so a later scan logs nothing
+until a zip moves or another is left; nothing is logged when there was nothing to move. A `backup` that is a
+link to a folder is used, as `new_backup_path` and the zip writers use it; one that is not a folder leaves every
+zip in place (`failed`).
+Until a zip is moved, `list_backups`, `prune_backups` and `prune_safety` see it in `<root>` too, and a
+pre-restore zip there is never pruned by `prune_backups`. `new_backup_path` picks a name free in both places
+(`free_name(..., also=(root,))`), so a later move never clashes with a new zip. A journal written before the move
+names `<root>/pre-restore-….zip`; `undo_restore` accepts a safety zip in either place and `zip_now_at` finds it in
+`backup/` by file name once it was moved.
 
 ### Scan
 
@@ -119,7 +139,8 @@ Code: `journal.py`, `undo.py`. `<WoW>/wow-tools/interface-backup/journal/journal
 one). `undo_restore` checks everything before changing anything (RestoreError, `ibackup.undo_failed` with
 `refused`): not undone, the journal's flavor a flavor folder of `wow_root` at the same path, `replaced` entries
 naming Interface/WTF once each, `link_removed` entries with a known part, a safe `rel` (`split_entry`) and a
-target, the safety zip in `root`, a regular file, of kind pre-restore and the same flavor,
+target, the safety zip in `<root>/backup` or `<root>` (an older run's; `zip_now_at` finds it in `backup/` by name
+once moved), a regular file, of kind pre-restore and the same flavor,
 holding every part that existed, no leftovers, and it verifies. Then, newest entry first, a part that existed is
 replaced from the safety zip with `replace_part` (its links kept; no further safety backup), then each link the
 restore removed from it is made again where nothing is now (`make_link`; one that cannot be made turns the part

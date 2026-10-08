@@ -45,6 +45,12 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
   - **Leftovers** (`o`) is now one press: it ticks every leftover character the tree shows, then asks to remove
     them, listing them under each addon. There's no need to tick them first. **No** keeps the ticks; with none
     shown it says so and changes nothing.
+- **Interface Backup**
+  - Backups and safety backups now go into a `backup` folder inside `interface-backup`, next to `journal`, instead
+    of sitting loose beside it. Zips made by an earlier version are moved there once, the first time you open
+    the review; one that can't be moved (its name is already taken there, or the move fails) stays where it is,
+    is still listed, restored and cleaned up as before, and the log says so once (the move is tried again each
+    time the review opens). **Undo** of an earlier restore finds its safety backup in the new folder.
 - **Saved Variables Browser**
   - The **USE AT YOUR OWN RISK** warning is asked once each time you start the app, no longer every time you open
     the tool. **Back** still doesn't count: it asks again next time.

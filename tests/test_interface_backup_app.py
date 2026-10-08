@@ -20,6 +20,7 @@ from wowtools.core.events import capture_events
 from wowtools.tools import TOOLS
 from wowtools.tools.interface_backup import app as app_module
 from wowtools.tools.interface_backup import backup as backup_module
+from wowtools.tools.interface_backup import catalog as catalog_module
 from wowtools.tools.interface_backup import restore_screen as restore_module
 from wowtools.tools.interface_backup import review_screen as review_module
 from wowtools.tools.interface_backup.app import BackupSettingsScreen
@@ -75,7 +76,7 @@ class InterfaceBackupAppTest(TuiTestCase):
         return app.screen
 
     def zips(self):
-        return sorted(p.name for p in (self.bk / "interface-backup").glob("backup-*.zip"))
+        return sorted(p.name for p in (self.bk / "interface-backup" / "backup").glob("backup-*.zip"))
 
     def assert_starts_on_yes(self, confirm, kind):
         """A confirm opens on Yes, coloured by what it does (spec D13)."""
@@ -253,6 +254,54 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertIn("nothing to back up: no Interface or WTF folder", str(ptr.label))
             # "├── ▼ " in front of the label
             self.assertLessEqual(6 + ptr.label.cell_len, tree.scrollable_content_region.width, ptr.label)
+
+    async def test_review_scan_moves_old_zips_into_the_backup_folder(self):
+        """L16: the scan worker moves an older version's zips from interface-backup/ into backup/ once."""
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        old = self.bk / "interface-backup"
+        old.mkdir(parents=True)
+        (old / "backup-retail-20261001-000000.zip").write_bytes(b"z")
+        (old / "pre-restore-retail-20261002-000000.zip").write_bytes(b"z")
+        app = self.make_app()
+        with capture_events() as events:
+            async with app.run_test(size=BASE) as pilot:
+                review = await self.open_review(app, pilot)
+                self.assertTrue(str(review.query_one("#folder-label", Static).render()).endswith("backup"))
+                retail = self.flavor_nodes(review)["Retail"]
+                self.assertIn("1 backup, last", str(retail.label))
+        self.assertEqual(sorted(p.name for p in (old / "backup").iterdir()),
+                         ["backup-retail-20261001-000000.zip", "pre-restore-retail-20261002-000000.zip"])
+        self.assertFalse(list(old.glob("*.zip")))
+        self.assertEqual([e["data"]["moved"] for e in events if e["event"] == "ibackup.zips_moved"], [2])
+
+    async def test_review_scan_moves_old_zips_inside_activity_running(self):
+        """STD-5.19: the scan worker's move of an older version's zips is file-changing work."""
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        old = self.bk / "interface-backup"
+        old.mkdir(parents=True)
+        (old / "backup-retail-20261001-000000.zip").write_bytes(b"z")
+        seen = []
+        real = catalog_module.rename_no_replace
+
+        def rename(src, dst):
+            seen.append(activity.wait_idle(0))
+            real(src, dst)
+
+        app = self.make_app()
+        with patch.object(catalog_module, "rename_no_replace", rename):
+            async with app.run_test(size=BASE) as pilot:
+                await self.open_review(app, pilot)
+        self.assertEqual(seen, [False])
+        self.assertTrue(activity.wait_idle(0))
+
+    async def test_settings_name_the_backup_sub_folder(self):
+        """L16: the settings label and the line under the box both name interface-backup\\backup."""
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.open_tool(app, pilot)
+            self.assertIsInstance(app.screen, BackupSettingsScreen)
+            labels = " ".join(str(w.render()) for w in app.screen.query("Label"))
+            self.assertIn("<backup folder>\\interface-backup\\backup\\backup-<flavor>-<date>.zip", labels)
 
     async def test_review_lists_every_flavor_and_where_zips_go(self):
         self.save_tool_cfg(backup_dir=str(self.bk), keep_backups="5")  # stale per-tool key: ignored
@@ -495,7 +544,7 @@ class InterfaceBackupAppTest(TuiTestCase):
         zips = self.zips()
         self.assertTrue(any(n.startswith("backup-retail-") for n in zips))
         self.assertFalse(any(n.startswith("backup-ptr-") for n in zips))  # neither part: skipped
-        with zipfile.ZipFile(self.bk / "interface-backup" / next(n for n in zips if "retail" in n)) as zf:
+        with zipfile.ZipFile(self.bk / "interface-backup" / "backup" / next(n for n in zips if "retail" in n)) as zf:
             self.assertIn("WTF/Config.wtf", zf.namelist())
         selections = [(r["data"].get("screen"), r["data"].get("control"), r["data"].get("value"))
                       for r in records if r["event"] == "ui.selection"]
@@ -1044,7 +1093,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             await settle(app, pilot)
             self.assertIsInstance(app.screen, BackupReviewScreen)
         self.assertTrue(extra.exists())
-        self.assertFalse(list((self.bk / "interface-backup").glob("pre-restore-*.zip")))
+        self.assertFalse(list((self.bk / "interface-backup").rglob("pre-restore-*.zip")))
 
     async def test_list_and_plan_built_in_workers(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
@@ -1991,7 +2040,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             await settle(app, pilot)
             self.assertIsInstance(app.screen, FlavorScreen)
         self.assertTrue(extra.exists())
-        self.assertFalse(list((self.bk / "interface-backup").glob("pre-restore-*.zip")))
+        self.assertFalse(list((self.bk / "interface-backup").rglob("pre-restore-*.zip")))
 
     async def test_new_wow_folder_while_picking_asks_again(self):
         self.save_tool_cfg(backup_dir=str(self.bk))

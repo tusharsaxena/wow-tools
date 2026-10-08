@@ -149,7 +149,7 @@ class InterfaceBackupParallelTest(TempTree):
                 self.assertEqual({k for f, k in kinds.items() if f != "_classic_era_"}, {"created"})
                 failed = next(o for o in outcomes if o.kind == "failed")
                 self.assertIn("RuntimeError: cable pulled", failed.reason)
-                self.assertEqual(len(list(root.glob("backup-*.zip"))), len(outcomes) - 1)
+                self.assertEqual(len(list((root / "backup").glob("backup-*.zip"))), len(outcomes) - 1)
 
     def test_on_flavor_and_on_flavor_done_name_every_flavor(self):
         started, ended = [], []

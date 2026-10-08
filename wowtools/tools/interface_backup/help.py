@@ -54,7 +54,7 @@ its folder (`Interface` or `WTF`) and what went wrong. **Back** (`Esc`) returns.
   A safety backup is listed under **Backups** and can be restored too.
 - A folder is swapped in one rename once the new copy is complete: never left half-copied. Links are kept.
 - **Undo last restore** goes back one restore, from its safety backup.
-- Backups go to `<WoW folder>\\wow-tools\\interface-backup` unless you pick another **Backup folder** (`s`).
+- Backups go to `<WoW folder>\\wow-tools\\interface-backup\\backup` unless you pick another **Backup folder** (`s`).
 
 **Full guide:** [{GUIDE_URL}]({GUIDE_URL})
 """
