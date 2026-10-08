@@ -28,13 +28,13 @@ and `wowtools/ui/` (Textual); third-party code lives in `vendor/`. The five tool
 Before every commit, all three pass ([testing.md](docs/testing.md#the-green-gate)):
 
 ```sh
-python3 scripts/run_tests.py --all        # WSL + native Windows suites at once, about 4.5 min; -k TEXT, -j N
+python3 scripts/run_tests.py --all        # WSL + native Windows suites at once, about 3.5 min; -k TEXT, -j N
 ruff check --no-cache .                   # not run in CI
 python3 scripts/gen_event_docs.py --check # docs/events.md matches the event registries
 ```
 
 Without a Windows Python (or off WSL), the first line is the plain `python3 scripts/run_tests.py` (WSL only, about
-2 min) and CI covers Windows before the merge. `--windows` runs only the Windows suite.
+100 s) and CI covers Windows before the merge. `--windows` runs only the Windows suite.
 
 ## Hard rules
 

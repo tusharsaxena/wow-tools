@@ -23,11 +23,12 @@ rows are ways to run the suite while you work.
 
 | Command | What it does |
 |---|---|
-| **gate** `python3 scripts/run_tests.py --all` | From WSL: the WSL suite and the native Windows suite at the same time, half the CPUs each (or `-j N` each), each printed under its own `===== WSL (-j N) =====` / `===== Windows (-j N) =====` heading, then `WSL: OK, Windows: OK, in T s` and `OK` or `FAILED`. Exit code 0 only if both passed. About 265 to 280 s on the 16-CPU WSL `/mnt/d` machine, against about 290 s for the two runs one after the other. With no Windows Python, the plain run below is the gate and CI covers Windows before the merge ([below](#windows-from-wsl)). |
-| `python3 scripts/run_tests.py` | The whole suite in parallel: the tests are sorted by id and dealt round-robin into one shard per CPU (at most 16), one process per shard. Exit code 0 only if every shard passed. About 100 to 150 s on WSL `/mnt/d`. |
-| `python3 scripts/run_tests.py --windows` | From WSL: the whole suite under the native Windows Python, in the same checkout, its output streamed as it comes; exit code that run's. About 140 s. On native Windows it is the plain run; on Linux that is not WSL both `--windows` and `--all` fail with a message. |
+| **gate** `python3 scripts/run_tests.py --all` | From WSL: the WSL suite and the native Windows suite at the same time, half the CPUs each (or `-j N` each), each printed under its own `===== WSL (-j N) =====` / `===== Windows (-j N) =====` heading, then `WSL: OK, Windows: OK, in T s` and `OK` or `FAILED`. Exit code 0 only if both passed. About 200 s on the 16-CPU WSL `/mnt/d` machine with balanced shards (265 to 280 s before them), about what the two runs take one after the other (about 100 s each): the machine is CPU-bound. With no Windows Python, the plain run below is the gate and CI covers Windows before the merge ([below](#windows-from-wsl)). |
+| `python3 scripts/run_tests.py` | The whole suite in parallel: one shard per CPU (at most 16), one process per shard, the tests dealt by recorded time ([below](#balanced-shards)). Exit code 0 only if every shard passed. About 100 s on WSL `/mnt/d` (145 s round-robin). |
+| `python3 scripts/run_tests.py --windows` | From WSL: the whole suite under the native Windows Python, in the same checkout, its output streamed as it comes; exit code that run's. About 100 s (140 s round-robin). On native Windows it is the plain run; on Linux that is not WSL both `--windows` and `--all` fail with a message. |
 | `python3 scripts/run_tests.py -k TEXT` | Only the tests whose id (`tests.test_wtf_app.SomeTest.test_name`) contains `TEXT`, e.g. `-k sv_browser` or `-k test_look_and_feel`. |
 | `python3 scripts/run_tests.py -j N` | `N` shards instead of one per CPU. |
+| `python3 scripts/run_tests.py --verbose-shards` | Also a line per shard before the summary: `shard i/N: T s, K tests, planned P s` (the time the cache predicted for it). Passed on with `--windows`, and to both sides of `--all`. |
 | `python3 scripts/run_tests.py --timeout S` | Kill and fail a shard still running after `S` seconds (`0`: no limit). The default is 600 s per shard at `-j 4` or more, and proportionally more below that (1200 s at `-j 2`, 2400 s at `-j 1`; a one-shard run takes about 15 minutes on WSL `/mnt/d`). |
 | `python3 -m unittest discover -s tests -t . -v` | The same tests, serially and verbose, in one process. Use it to read a failure's full output in order. |
 | **gate** `ruff check --no-cache .` | Lint (settings in `ruff.toml`: Python 3.10 target, 120 columns, `vendor/` excluded). Not run in CI, so it is on you. |
@@ -42,6 +43,29 @@ with a name well before CI's 20-minute job timeout. A shard that hangs after its
 that keeps the interpreter alive) is reported as `timed out after S s after its tests finished`, and its tests still
 count in the summary. Shard output goes to temp files, not pipes, so a child process a hung test left behind cannot
 hold the run open on Windows.
+
+### Balanced shards
+
+Shards are balanced by recorded test time (spec F2). Each shard child gets its explicit list of test ids in a temp
+file, times every test (from the end of the one before, so a class's `setUpClass` counts towards its first test) and
+reports the times with its summary, with how many ids it read and any it did not find (a shard that did not run its
+whole list fails the run); the runner merges the times into `.test-times-<platform>.json` at the repo root (`wsl`,
+`linux` or `windows`; one file per platform, so the WSL and the Windows side of `--all` never clobber each other).
+The files are gitignored (`.test-times-*.json`), so they are never committed and, untracked, never in a release. The
+next run deals the tests longest first (ties by id), each to the least-loaded shard (ties to the lowest index); a
+test with no recorded time counts as the median; each shard runs its tests in id order. A `-k` run uses the cache
+too and updates only its own tests' times; a full run also drops the times of tests that are gone. With no cache, or
+one that is unreadable, corrupt or of another version, the tests are dealt round-robin by id, silently, as before.
+The same tests and cache always give the same shards. Just before the `Ran N tests` line the runner prints `Shard
+times: fastest A s, slowest B s (balanced by recorded test times)` (or `(round-robin: no recorded test times yet)`).
+
+Measured 2026-10-09 on the 16-CPU WSL `/mnt/d` machine, 16 shards, median of 3 runs (1945 to 1959 tests):
+
+| Run | Round-robin | Balanced |
+|---|---|---|
+| WSL `run_tests.py` | 143.5 s (shards 62 to 144 s) | 99.8 s (shards 87 to 97 s) |
+| `--windows` (Python 3.14) | 138.6 s (shards 58 to 139 s) | 97.3 s (shards 91 to 97 s) |
+| `--all` (-j 8 each) | 269 to 283 s | 201.6 s (one run; shards 181 to 198 s) |
 
 ### Windows from WSL
 
@@ -132,7 +156,7 @@ Cleaner's tests predate that rule: its logic tests are `test_cleaner.py`, `test_
 |---|---|
 | `test_suite.py`, `test_suite_app.py` | `wowtools/suite.py` (start-up, the instance lock, renamed-tool migration on start, the update at start) and `WowToolsApp` (menu, setup, opening tools) |
 | `test_updater_check.py`, `test_updater_apply.py` | `core/updater.py`: the release check (fake openers, never the network) and applying an update |
-| `test_release_scripts.py` | `scripts/build_release.py`, the hashed vendor lock, `scripts/run_tests.py`'s per-shard timeout and its `--windows` / `--all` runs (the `cmd.exe` call is faked) |
+| `test_release_scripts.py` | `scripts/build_release.py`, the hashed vendor lock, `scripts/run_tests.py`'s per-shard timeout, its `--windows` / `--all` runs (the `cmd.exe` call is faked) and its shards balanced by recorded time (the cache in a temp folder) |
 | `test_release_contents.py` | The release manifest (STD-11.5): every tracked path is in a table of [releasing.md](releasing.md#what-a-release-contains), `.gitattributes` export-ignores the "stays out" table, `git archive` of `HEAD` holds exactly the "ships" table, no shipped Markdown file links to a file that does not ship (needs git; skips without it), the updater's `RELEASE_SHIPS` / `RELEASE_STAYS_OUT` are the two tables entry for entry, and its `MANAGED_DIRS` / `MANAGED_FILES` are the top-level "ships" names |
 | `test_launcher.py` | `wow-tools.cmd` stays safe to replace while it runs (Windows-only parts skip elsewhere) |
 | `test_quit_key.py`, `test_tool_menu_key.py`, `test_toast_stack.py` | The suite-wide walks: `q` and `t` from every screen and popup, toasts above the bars (see [below](#the-suite-wide-key-and-toast-walks)) |

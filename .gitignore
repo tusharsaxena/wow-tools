@@ -9,3 +9,4 @@ wow-tools-backups/
 .update-backup/
 update-leftovers/
 dist/
+.test-times-*.json

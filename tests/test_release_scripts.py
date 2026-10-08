@@ -1,11 +1,13 @@
 """scripts/build_release.py (the zip + SHA256SUMS assets the updater verifies), the hashed vendor lock in
 scripts/update_vendor.py (F-010), the per-shard timeout in scripts/run_tests.py (F-014) and its --windows /
---all runs (spec F1). Temp git repos only; no network; no test starts cmd.exe."""
+--all runs (spec F1) and its shards balanced by recorded test time (spec F2). Temp git repos only; no network; no
+test starts cmd.exe, and no test writes the checkout's own test-time cache."""
 from __future__ import annotations
 
 import hashlib
 import importlib.util
 import io
+import json
 import shutil
 import signal
 import subprocess
@@ -31,6 +33,21 @@ def load_script(name: str):
     spec = importlib.util.spec_from_file_location(name, REPO_ROOT / "scripts" / f"{name}.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def load_run_tests(case: unittest.TestCase, ids: list[str] | None = None):
+    """scripts/run_tests.py with its test-time cache in a temp folder (never the checkout's own) and, given ids,
+    a faked discovery, so main() neither imports the whole suite nor writes outside the test's temp folder."""
+    module = load_script("run_tests")
+    tmp = tempfile.TemporaryDirectory()
+    case.addCleanup(tmp.cleanup)
+    module.TIMES_DIR = Path(tmp.name)
+    if ids is not None:
+        patcher = mock.patch.object(module, "_discover_ids", side_effect=lambda pattern: [
+            test_id for test_id in ids if pattern is None or pattern in test_id])
+        patcher.start()
+        case.addCleanup(patcher.stop)
     return module
 
 
@@ -220,7 +237,7 @@ class RunTestsTimeoutTest(unittest.TestCase):
     blocking it until CI's job timeout (F-014)."""
 
     def setUp(self):
-        self.run_tests = load_script("run_tests")
+        self.run_tests = load_run_tests(self, ["tests.test_x.T.test_fine"])
 
     def run_main(self, *argv: str) -> tuple[int, str, str]:
         out, err = io.StringIO(), io.StringIO()
@@ -244,13 +261,53 @@ class RunTestsTimeoutTest(unittest.TestCase):
         self.assertIn("partial shard output", err)
         self.assertTrue(out.rstrip().endswith("FAILED"), out)
 
-    def test_a_shard_names_each_test_as_it_starts(self):
-        command = self.run_tests._shard_command(0, 1, "RunTestsTimeoutTest.test_default_timeout")
-        proc = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                              cwd=REPO_ROOT, timeout=120, check=False)
+    def test_a_shard_names_each_test_as_it_starts_and_runs_exactly_its_list(self):
+        """The real shard child (spec F2): it runs the ids in its list file, no others, names each as it starts
+        and reports how long each took."""
+        wanted = [("tests.test_release_scripts.RunTestsTimeoutTest."
+                   "test_default_timeout_scales_below_four_shards_and_zero_turns_it_off"),
+                  "tests.test_release_scripts.RunTestsBalanceTest.test_the_median_of_no_times_is_zero"]
+        ids_file = Path(self.run_tests.TIMES_DIR) / "ids.txt"
+        ids_file.write_text("\n".join(wanted) + "\n", encoding="utf-8")
+        proc = subprocess.run(self.run_tests._shard_command(ids_file), capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", cwd=REPO_ROOT, timeout=120, check=False)
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn(self.run_tests.RUNNING_PREFIX + "tests.test_release_scripts.RunTestsTimeoutTest."
-                      "test_default_timeout_scales_below_four_shards_and_zero_turns_it_off", proc.stdout)
+        started = [line[len(self.run_tests.RUNNING_PREFIX):] for line in proc.stdout.splitlines()
+                   if line.startswith(self.run_tests.RUNNING_PREFIX)]
+        self.assertEqual(started, sorted(wanted))
+        (result,) = [json.loads(line[len(self.run_tests.RESULT_PREFIX):]) for line in proc.stdout.splitlines()
+                     if line.startswith(self.run_tests.RESULT_PREFIX)]
+        self.assertEqual(result["run"], 2)
+        self.assertEqual(sorted(result["times"]), sorted(wanted))
+        self.assertTrue(all(seconds >= 0 for seconds in result["times"].values()))
+
+    def test_a_shard_fails_when_a_listed_test_is_not_found(self):
+        """A listed id the child does not discover again is not silently dropped: the child names it and fails."""
+        found = "tests.test_release_scripts.RunTestsBalanceTest.test_the_median_of_no_times_is_zero"
+        gone = "tests.test_x.T.test_that_does_not_exist"
+        ids_file = Path(self.run_tests.TIMES_DIR) / "ids.txt"
+        ids_file.write_text(f"{found}\n{gone}\n", encoding="utf-8")
+        proc = subprocess.run(self.run_tests._shard_command(ids_file), capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", cwd=REPO_ROOT, timeout=120, check=False)
+        self.assertEqual(proc.returncode, 1, proc.stderr)
+        self.assertIn(gone, proc.stderr)
+        (result,) = [json.loads(line[len(self.run_tests.RESULT_PREFIX):]) for line in proc.stdout.splitlines()
+                     if line.startswith(self.run_tests.RESULT_PREFIX)]
+        self.assertEqual((result["run"], result["listed"], result["missing"]), (1, 2, [gone]))
+
+    def test_the_runner_fails_a_shard_that_did_not_get_or_find_its_whole_list(self):
+        """The parent checks each summary against the ids it dealt: a list the child read short, or ids it did not
+        find, fail the run even if the child exited 0."""
+        self.run_tests._discover_ids.side_effect = lambda pattern: ["tests.test_x.T.test_a", "tests.test_x.T.test_b"]
+        for gap in ({"listed": 1, "missing": []}, {"listed": 2, "missing": ["tests.test_x.T.test_b"]}):
+            def fake_launch(ids, timeout, gap=gap):
+                return 0, {"run": 1, "failures": 0, "errors": 0, "skipped": 0, **gap}, "", None, 0.1
+
+            with mock.patch.object(self.run_tests, "_launch", side_effect=fake_launch):
+                code, out, err = self.run_main("-j", "1")
+            self.assertEqual(code, 1, gap)
+            self.assertIn("===== shard 1/1 did not run its whole list", err)
+            self.assertTrue(out.rstrip().endswith("FAILED"), out)
 
     def test_a_shard_that_hangs_after_its_tests_finished_is_not_blamed_on_its_last_test(self):
         summary = '{"run": 2, "failures": 0, "errors": 0, "skipped": 0}'
@@ -297,10 +354,11 @@ class RunTestsTimeoutTest(unittest.TestCase):
     def test_default_timeout_scales_below_four_shards_and_zero_turns_it_off(self):
         seen = []
 
-        def fake_launch(index, count, pattern, timeout):
+        def fake_launch(ids, timeout):
             seen.append(timeout)
-            return 0, {"run": 1, "failures": 0, "errors": 0, "skipped": 0}, "", None
+            return 0, {"run": 1, "failures": 0, "errors": 0, "skipped": 0}, "", None, 0.1
 
+        self.run_tests._discover_ids.side_effect = lambda pattern: [f"tests.test_x.T.test_{n}" for n in range(8)]
         with mock.patch.object(self.run_tests, "_launch", side_effect=fake_launch):
             for argv in (["-j", "8"], ["-j", "4"], ["-j", "2"], ["-j", "1"], ["-j", "1", "--timeout", "0"],
                          ["-j", "1", "--timeout", "90"]):
@@ -308,12 +366,147 @@ class RunTestsTimeoutTest(unittest.TestCase):
         self.assertEqual(seen, [600] * 8 + [600] * 4 + [1200] * 2 + [2400, None, 90])
 
 
+class RunTestsBalanceTest(unittest.TestCase):
+    """scripts/run_tests.py deals the tests into shards by recorded time (spec F2): longest first, each to the
+    least-loaded shard; a test with no recorded time counts as the median; with no usable cache, round-robin."""
+
+    def setUp(self):
+        self.IDS = [f"tests.test_x.T.test_{name}" for name in "abcdefg"]
+        self.run_tests = load_run_tests(self, self.IDS)
+
+    def loads(self, shards, times):
+        return [round(sum(times[test_id] for test_id in shard), 3) for shard in shards]
+
+    def test_longest_first_to_the_least_loaded_shard(self):
+        times = dict(zip(self.IDS, [1.0, 9.0, 4.0, 4.0, 3.0, 2.0, 8.0]))
+        shards = self.run_tests.balance(self.IDS, times, 3)
+        # b 9 -> s0; g 8 -> s1; c 4 -> s2; d 4 -> s2; e 3 -> s1 (8 = 8, the lower index); f 2 -> s2; a 1 -> s0
+        self.assertEqual(self.loads(shards, times), [10.0, 11.0, 10.0])
+        self.assertEqual(shards[0], [self.IDS[0], self.IDS[1]])
+        self.assertEqual(sorted(test_id for shard in shards for test_id in shard), self.IDS,
+                         "every test in exactly one shard")
+        for shard in shards:
+            self.assertEqual(shard, sorted(shard), "a shard runs its tests in id order, a class's tests together")
+
+    def test_a_test_with_no_recorded_time_counts_as_the_median(self):
+        times = {self.IDS[0]: 10.0, self.IDS[1]: 1.0, self.IDS[2]: 2.0, self.IDS[3]: 3.0}
+        self.assertEqual(self.run_tests.median(times.values()), 2.5)
+        shards = self.run_tests.balance(self.IDS[:6], times, 2)
+        weights = {**{test_id: 2.5 for test_id in self.IDS[4:6]}, **times}
+        self.assertEqual(self.loads(shards, weights), [11.0, 10.0])
+        self.assertEqual(shards[0], [self.IDS[0], self.IDS[1]])
+
+    def test_the_median_of_no_times_is_zero(self):
+        self.assertEqual(self.run_tests.median([]), 0.0)
+        self.assertEqual(self.run_tests.median([3.0, 1.0, 2.0]), 2.0)
+
+    def test_no_cache_is_round_robin_by_id(self):
+        for times in (None, {}):
+            self.assertEqual(self.run_tests.balance(self.IDS, times, 3), [self.IDS[0::3], self.IDS[1::3],
+                                                                          self.IDS[2::3]])
+
+    def test_the_same_cache_always_gives_the_same_shards(self):
+        times = {test_id: 1.0 for test_id in self.IDS}  # all ties: the order must still be fixed
+        first = self.run_tests.balance(self.IDS, times, 3)
+        self.assertEqual(self.run_tests.balance(list(reversed(self.IDS)), dict(reversed(times.items())), 3), first)
+        self.assertEqual(first, [self.IDS[0::3], self.IDS[1::3], self.IDS[2::3]])
+
+    def test_more_shards_than_tests_leaves_none_empty(self):
+        self.assertEqual(self.run_tests.balance(self.IDS[:2], None, 5), [[self.IDS[0]], [self.IDS[1]]])
+        self.assertEqual(self.run_tests.balance([], None, 5), [[]])
+
+    def test_the_cache_is_one_file_per_platform_in_the_checkout(self):
+        path = self.run_tests.times_path
+        self.assertEqual(path("wsl"), self.run_tests.TIMES_DIR / ".test-times-wsl.json")
+        self.assertNotEqual(path("wsl"), path("windows"))
+        ignored = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+        self.assertIn(".test-times-*.json", ignored, "the cache is never committed (and so never released)")
+
+    def test_cache_write_then_read(self):
+        path = self.run_tests.times_path("wsl")
+        self.run_tests.write_times(path, {"a": 1.25, "b": 2.0}, keep=None)
+        self.assertEqual(self.run_tests.read_times(path), {"a": 1.25, "b": 2.0})
+        self.run_tests.write_times(path, {"b": 3.0, "c": 0.5}, keep=None)  # a -k run: the others stay
+        self.assertEqual(self.run_tests.read_times(path), {"a": 1.25, "b": 3.0, "c": 0.5})
+        self.run_tests.write_times(path, {"c": 0.75}, keep={"b", "c"})  # a full run: tests gone are dropped
+        self.assertEqual(self.run_tests.read_times(path), {"b": 3.0, "c": 0.75})
+        self.assertEqual(sorted(p.name for p in path.parent.iterdir()), [path.name], "no temp file left")
+
+    def test_a_missing_or_corrupt_cache_reads_as_none(self):
+        path = self.run_tests.times_path("wsl")
+        self.assertIsNone(self.run_tests.read_times(path))
+        for data in (b"{not json", b"[1, 2]", b'{"version": 1, "times": [1]}', b'{"version": 99, "times": {}}',
+                     b"\xff\xfe\x00"):
+            path.write_bytes(data)
+            self.assertIsNone(self.run_tests.read_times(path), data)
+        path.write_text(json.dumps({"version": 1, "times": {"a": 1.0, "b": "slow", "c": -1, "d": float("inf"),
+                                                            "e": True}}), encoding="utf-8")
+        self.assertEqual(self.run_tests.read_times(path), {"a": 1.0}, "only the usable entries")
+
+    def test_a_cache_that_cannot_be_written_is_ignored(self):
+        path = self.run_tests.TIMES_DIR / "missing-folder" / ".test-times-wsl.json"
+        self.run_tests.write_times(path, {"a": 1.0}, keep=None)  # no exception
+        self.assertFalse(path.exists())
+
+    def run_main(self, *argv, durations=None):
+        """main() with each shard faked: it 'runs' its ids, reports durations (default 1 s each) and the shard
+        took the sum of them."""
+        durations = durations or {}
+        seen = []
+
+        def fake_launch(ids, timeout):
+            seen.append(list(ids))
+            times = {test_id: durations.get(test_id, 1.0) for test_id in ids}
+            summary = {"run": len(ids), "failures": 0, "errors": 0, "skipped": 0, "times": times}
+            return 0, summary, "", None, sum(times.values())
+
+        out = io.StringIO()
+        with mock.patch.object(self.run_tests, "host_kind", return_value="wsl"), \
+                mock.patch.object(self.run_tests, "_launch", side_effect=fake_launch), \
+                redirect_stdout(out), redirect_stderr(io.StringIO()):
+            code = self.run_tests.main(list(argv))
+        return code, out.getvalue(), seen
+
+    def test_a_run_records_its_times_and_the_next_run_is_balanced_by_them(self):
+        durations = dict(zip(self.IDS, [1.0, 9.0, 4.0, 4.0, 3.0, 2.0, 8.0]))
+        code, out, seen = self.run_main("-j", "3", durations=durations)
+        self.assertEqual(code, 0)
+        self.assertEqual(seen, [self.IDS[0::3], self.IDS[1::3], self.IDS[2::3]], "no cache yet: round-robin")
+        self.assertIn("round-robin", out)
+        self.assertEqual(self.run_tests.read_times(self.run_tests.times_path("wsl")), durations)
+        code, out, seen = self.run_main("-j", "3", durations=durations)
+        self.assertEqual(sorted(seen), sorted(self.run_tests.balance(self.IDS, durations, 3)))
+        self.assertIn("Shard times: fastest 10.0 s, slowest 11.0 s (balanced by recorded test times)", out)
+        self.assertIn("Ran 7 tests in ", out)
+
+    def test_a_k_run_uses_the_cache_and_keeps_the_other_tests_times(self):
+        cache = {test_id: 1.0 for test_id in self.IDS}
+        cache[self.IDS[0]] = 5.0
+        self.run_tests.write_times(self.run_tests.times_path("wsl"), cache, keep=None)
+        code, _, seen = self.run_main("-j", "2", "-k", "test_a", durations={self.IDS[0]: 6.0})
+        self.assertEqual((code, seen), (0, [[self.IDS[0]]]))
+        self.assertEqual(self.run_tests.read_times(self.run_tests.times_path("wsl")), {**cache, self.IDS[0]: 6.0})
+
+    def test_a_corrupt_cache_falls_back_to_round_robin_silently(self):
+        self.run_tests.times_path("wsl").write_text("{corrupt", encoding="utf-8")
+        code, out, seen = self.run_main("-j", "2")
+        self.assertEqual((code, seen), (0, [self.IDS[0::2], self.IDS[1::2]]))
+        self.assertNotIn("corrupt", out.lower())
+        self.assertEqual(len(self.run_tests.read_times(self.run_tests.times_path("wsl"))), len(self.IDS))
+
+    def test_verbose_shards_prints_each_shards_time(self):
+        code, out, _ = self.run_main("-j", "2", "--verbose-shards")
+        self.assertEqual(code, 0)
+        self.assertIn("shard 1/2: 4.0 s, 4 tests", out)
+        self.assertIn("shard 2/2: 3.0 s, 3 tests", out)
+
+
 class RunTestsWindowsTest(unittest.TestCase):
     """scripts/run_tests.py --windows and --all (spec F1): from WSL the suite also runs under the native Windows
     Python in the same checkout through cmd.exe. The cmd.exe call (_relay) is faked here: no test starts Windows."""
 
     def setUp(self):
-        self.run_tests = load_script("run_tests")
+        self.run_tests = load_run_tests(self, ["tests.test_x.T.test_a", "tests.test_x.T.test_b"])
         self.calls = []
         self.codes = {"wsl": 0, "windows": 0}
         self.windows_starts = True
@@ -361,6 +554,15 @@ class RunTestsWindowsTest(unittest.TestCase):
         self.assertEqual(call["env"]["PYTHONIOENCODING"], "utf-8")
         self.assertRegex(Path(call["cwd"]).as_posix(), r"^/mnt/[a-z](/|$)", "a Windows-drive cwd: no UNC warning")
         self.assertIn("windows output", out)
+
+    def test_verbose_shards_is_passed_on_to_the_windows_run_and_both_sides_of_all(self):
+        self.run_main("--windows", "--verbose-shards")
+        self.assertTrue(self.windows_line().endswith('"--verbose-shards"'), self.windows_line())
+        self.calls.clear()
+        self.run_main("--all", "-j", "2", "--verbose-shards")
+        wsl, = [c for c in self.calls if not c["windows"]]
+        self.assertEqual(wsl["command"][-3:], ["-j", "2", "--verbose-shards"])
+        self.assertTrue(self.windows_line().endswith('"-j" "2" "--verbose-shards"'), self.windows_line())
 
     def test_windows_without_flags_lets_the_windows_side_pick_its_shards(self):
         self.assertEqual(self.run_main("--windows")[0], 0)
@@ -436,14 +638,15 @@ class RunTestsWindowsTest(unittest.TestCase):
     def test_windows_on_native_windows_is_the_normal_run(self):
         seen = []
 
-        def fake_launch(index, count, pattern, timeout):
-            seen.append((count, pattern))
-            return 0, {"run": 1, "failures": 0, "errors": 0, "skipped": 0}, "", None
+        def fake_launch(ids, timeout):
+            seen.append(ids)
+            return 0, {"run": 1, "failures": 0, "errors": 0, "skipped": 0}, "", None, 0.1
 
         with mock.patch.object(self.run_tests, "_launch", side_effect=fake_launch):
-            code, out, _ = self.run_main("--windows", "-j", "2", "-k", "x", host="windows")
+            code, out, _ = self.run_main("--windows", "-j", "2", "-k", "test_", host="windows")
         self.assertEqual(code, 0)
-        self.assertEqual(seen, [(2, "x"), (2, "x")])
+        self.run_tests._discover_ids.assert_called_once_with("test_")
+        self.assertEqual(sorted(seen), [["tests.test_x.T.test_a"], ["tests.test_x.T.test_b"]])
         self.assertEqual(self.calls, [])
         self.assertTrue(out.rstrip().endswith("OK"))
 
