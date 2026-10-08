@@ -28,6 +28,9 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 
 ### Changed
 
+- **Docs**
+  - New screenshots of every tool: the README shows the tool menu, the general settings and each tool's review
+    screen, and each tool's guide shows its review screen, its confirm or progress window and its results.
 - **The app**
   - `q` quits from any screen and any popup: the game version and account pickers, the help, the changelog, the
     settings, the warnings and every "are you sure?" window, not only the tool menu, reviews and results. On the

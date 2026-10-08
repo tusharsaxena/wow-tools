@@ -49,7 +49,7 @@ screenshots you've already copied aren't counted. Your choice is remembered for 
 
 **_The Screenshot Organizer review screen_**
 
-![The Screenshot Organizer review screen](assets/screenshot-05-screenshot-organizer-main.png)
+![The Screenshot Organizer review screen](assets/screenshots/screenshot-organizer/review.png)
 
 **On the right** is the list of screenshots waiting to be sorted:
 
@@ -106,17 +106,23 @@ If you change the settings, press `r` to scan again with them.
 
 ## Organizing
 
-When you press **Organize** and confirm, a progress window shows the file it's working on:
+When you press **Organize**, it asks you to confirm, showing how many screenshots go where:
+
+**_Confirming a run_**
+
+![The Organize confirmation: how many screenshots, the destination, and the journal for Undo](assets/screenshots/screenshot-organizer/organize-confirm.png)
+
+Once you confirm, a progress window shows the file it's working on:
 
 **_Organizing in progress_**
 
-![Organizing in progress](assets/screenshot-06-screenshot-organizer-in-progress.png)
+![Organizing in progress](assets/screenshots/screenshot-organizer/organize-progress.png)
 
 Then the results screen shows a summary and every screenshot with what happened to it and where it went:
 
 **_The results of a run_**
 
-![The results of a run](assets/screenshot-07-screenshot-organizer-summary.png)
+![The results of a run](assets/screenshots/screenshot-organizer/result.png)
 
 From here, `r` scans again, `f` picks another game version, `t` goes back to the tool menu, and `q` quits.
 

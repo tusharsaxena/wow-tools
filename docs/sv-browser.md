@@ -20,6 +20,10 @@ Once you've read it, you can tick **Don't show this warning again for this tool*
 before **I understand**: the popup is then never shown again (the red line and the confirms' warning stay), until
 you tick **Show the USE AT YOUR OWN RISK warning** in the tool's [settings](#settings).
 
+**_The USE AT YOUR OWN RISK warning_**
+
+![The USE AT YOUR OWN RISK warning (shown here with the Ace3 Profile Manager's text; the wording differs per tool), with Back and I understand buttons](assets/screenshots/suite/risk-warning.png)
+
 What it does guarantee: every byte you didn't change stays exactly as it was, your whole `WTF` folder and every file
 it changes are backed up before anything is written, and **Undo last change** puts the files back.
 
@@ -27,8 +31,6 @@ it changes are backed up before anything is written, and **Undo last change** pu
 > `WTF` folder every time you log out or type `/reload`. Anything this tool changed while the game was open would be
 > overwritten. That's why **Apply** and **Undo** refuse to run while WoW is running (browsing, searching and a
 > **Dry run** work any time).
-
-<!-- screenshots: disclaimer popup, review screen (Browse), search popup, review screen (Results), apply confirm, result -->
 
 ## What it shows
 
@@ -64,6 +66,10 @@ other files such as `Config.wtf`, and anything reached through a link (a symlink
    **Undo last change** (`z`) on the review screen.
 
 ## The review screen
+
+**_The Saved Variables Browser review screen, Browse view_**
+
+![The Saved Variables Browser review screen in the Browse view](assets/screenshots/sv-browser/review.png)
 
 **On the right** is the tree. It has two views; **View** (`v`) switches between them, and the screen's sub-title
 names the one you're on.
@@ -156,6 +162,10 @@ does leaving the screen: they haven't been written, and leaving throws them away
 
 ### Edit value
 
+**_Editing a value_**
+
+![The Edit value popup: the current value, its type and the new value](assets/screenshots/sv-browser/edit-value.png)
+
 The popup names the key and its value now (**Now:**), and has a type list (String, Number or Boolean) and the new value: a text
 box for a string or a number, a checkbox for a boolean. The type may change (a number can become a string). **OK**
 (or `Enter`) checks what you typed and stages it; a problem shows under the box until you change it.
@@ -215,7 +225,15 @@ its key but never by its value.
 
 The popup opens with your last search filled in, so narrowing it is quick.
 
+**_The search popup_**
+
+![The Search popup: a value to find (Contains), with every flavor, account and character in scope](assets/screenshots/sv-browser/search.png)
+
 ### Results
+
+**_Search results_**
+
+![The Results view: every hit of a search, ticked, under its file](assets/screenshots/sv-browser/search-results.png)
 
 The search reads every file in scope (several at once, with a progress window), and switches the tree to the
 **Results** view: game version → account → **Account-wide** or `Realm/Name` → file → one line per hit,
@@ -234,6 +252,10 @@ files, and how long it took.
 - A **new search** replaces the results and their ticks; what is staged stays.
 
 ## Editing the results in bulk
+
+**_Editing the results in bulk_**
+
+![The bulk edit popup: replace only the matched text in every ticked result](assets/screenshots/sv-browser/bulk-edit.png)
 
 In the **Results** view, **Edit value** (`e`) and **Rename key** (`k`) work on **every ticked result**, or on the
 highlighted one when none is ticked. They open the same popups as in Browse, titled with the count ("Edit 37
@@ -271,6 +293,10 @@ Then the confirm counts the edits and files per game version, lists each file un
 (`ACCT1 › Account-wide › ElvUI.lua: 2 edits`), and shows in red: array entries that will move down, and the USE AT
 YOUR OWN RISK warning. **Yes** is selected, in red.
 
+**_The Apply confirm_**
+
+![The Apply the pending changes? confirm: the edit and file counts, the warning in red, and each file under its game version](assets/screenshots/sv-browser/apply-confirm.png)
+
 A progress window then shows each step. For each game version the tool:
 
 1. **Checks every file again.** If a file changed since the tool read it (you logged a character out with the tool
@@ -289,6 +315,10 @@ If anything goes wrong while writing, every file already written in that game ve
 run stops. With **All flavors** the game versions are changed one after another; if one runs into a problem, the
 versions after it aren't touched, and the versions before it keep their changes (Undo puts them back).
 
+**_An Apply in progress_**
+
+![The Applying the changes progress window, backing up the WTF folder](assets/screenshots/sv-browser/apply-progress.png)
+
 After a real Apply the staged edits are gone, and the review reads the files again when you leave the
 results screen.
 
@@ -299,6 +329,10 @@ version in memory. It writes nothing at all: no zip, no journal. It works while 
 has a **Back to review** button (`Esc`) that takes you back with your staged edits still there.
 
 ## The results screen
+
+**_The results of an Apply_**
+
+![The Apply results: the backups and journal, then every changed file with its number of edits](assets/screenshots/sv-browser/apply-result.png)
 
 The top table sums up the run: game versions, files changed (or that would change), edits written (or checked),
 files skipped, put back or failed, the backup folder, the `WTF` backup, the zip of the

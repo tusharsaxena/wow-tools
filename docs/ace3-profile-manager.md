@@ -19,7 +19,9 @@ edits, and **Undo last change** puts them back.
 > would be overwritten. That's why **Apply** and **Undo** refuse to run while WoW is running (a **Dry run** works
 > any time).
 
-<!-- screenshots: review screen, popup, result -->
+**_The USE AT YOUR OWN RISK warning_**
+
+![The USE AT YOUR OWN RISK warning shown when you open the Ace3 Profile Manager, with Back and I understand buttons](assets/screenshots/suite/risk-warning.png)
 
 ## How it works
 
@@ -64,6 +66,10 @@ changes and a very long name highlighted, it shows only the pending changes so t
 
 ## The review screen
 
+**_The Ace3 Profile Manager review screen, By addon_**
+
+![The Ace3 Profile Manager review screen in the By addon view](assets/screenshots/ace3-profile-manager/review.png)
+
 **On the right** is a tree of every addon that keeps Ace3 profiles. It has two views; press `v` (or tick the box
 on the left) to switch between them.
 
@@ -83,6 +89,10 @@ game version → account → character → one line per addon, `Addon: Profile`
 
 This is the view for "what does this character use everywhere?". Ticking a line here picks that character in
 that addon.
+
+**_The By character view_**
+
+![The Ace3 Profile Manager review screen in the By character view](assets/screenshots/ace3-profile-manager/review-by-character.png)
 
 **Under the tree** are the guidance line (see [How it works](#how-it-works)) and the **action bar**:
 
@@ -186,6 +196,10 @@ profile with the same name in Bartender4 are two different profiles.
 | `k` | **Copy a profile** | Copies the highlighted profile, settings and all, under a new name. Nobody uses the copy until you assign it |
 | `o` | **Remove leftover characters** | Ticks every character tagged "no character folder" that the tree shows, then removes the ticked ones from the addon's list. No need to tick them first |
 
+**_Assigning a profile_**
+
+![The Assign a profile popup: the characters that move under each addon, the profile list and a box for a new name](assets/screenshots/ace3-profile-manager/assign-popup.png)
+
 A profile name can be up to 100 characters. Names are case-sensitive, as in the game ("healer" and "Healer" are two
 profiles), and you can't rename or copy onto a name the addon already has.
 
@@ -201,6 +215,10 @@ addon, `x` opens them all). **No** keeps the ticks, so you can see what it would
 of them, narrow the tree first with the filter (`/`): **Leftovers** ticks only the ones shown (leftover characters
 you ticked yourself and then hid are included too, and the popup says so). With none shown (the **Leftover
 characters** box unticked, say) it says "No leftover characters are shown." and does nothing.
+
+**_Removing leftover characters_**
+
+![The Remove leftover characters popup, listing the addons and how many characters each loses](assets/screenshots/ace3-profile-manager/leftovers-confirm.png)
 
 ### Quick actions
 
@@ -328,6 +346,10 @@ If anything goes wrong while writing, every file already written in that game ve
 the run stops. With **All flavors**, the game versions are changed one after another; if one runs into a problem,
 the versions after it aren't touched, and the versions before it keep their changes (Undo puts them back).
 
+**_An Apply in progress_**
+
+![The Applying the changes progress window, backing up the WTF folder](assets/screenshots/ace3-profile-manager/apply-progress.png)
+
 ## Dry run
 
 A **Dry run** (`y`) does everything Apply does except writing: it rechecks every file and builds and checks each
@@ -335,6 +357,10 @@ new version in memory. It writes nothing at all: no zip, no journal. It works wh
 screen has a **Back to review** button (`Esc`) that takes you back with your pending changes still there.
 
 ## The results screen
+
+**_The results of an Apply_**
+
+![The Apply results: the backups and journal, then every change with its result](assets/screenshots/ace3-profile-manager/apply-result.png)
 
 The top table sums up the run: how many files were changed, skipped or put back, where the `WTF` backup and the
 zip of the original files are, and the journal. The table below lists each change, by game version, account and
