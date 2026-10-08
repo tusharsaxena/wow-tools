@@ -11,6 +11,9 @@ EVENTS: dict[str, EventSpec] = {
     "svb.started": EventSpec("info", "The Saved Variables Browser opened on a flavor (or All flavors)."),
     "svb.disclaimer_accepted": EventSpec("info", "The USE AT YOUR OWN RISK warning was accepted (I understand): it is not shown again this session."),
     "svb.disclaimer_declined": EventSpec("info", "The USE AT YOUR OWN RISK warning was declined (Back): nothing was scanned."),
+    "svb.risk_warning_changed": EventSpec("info", "The USE AT YOUR OWN RISK warning was turned off (its Don't show "
+                                                   "this warning again box) or back on in the settings (shown, "
+                                                   "source)."),
     "svb.scan_completed": EventSpec("info", "The SavedVariables files were listed, with counts (flavors, accounts, files, bytes, seconds)."),
     "svb.file_unreadable": EventSpec("warning", "A SavedVariables file or folder could not be read or is not readable Lua; it is shown in red and never changed or searched."),
     "svb.search_started": EventSpec("info", "A search started (key and value text, modes, scope, files in scope)."),

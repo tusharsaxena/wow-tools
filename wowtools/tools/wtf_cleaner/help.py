@@ -12,7 +12,8 @@ up, and deletes the ones you leave ticked. **Close WoW first**: it rewrites thes
 
 1. **Pick a game version**, or **All flavors**; then an account, or **All accounts**.
 2. Read the **USE AT YOUR OWN RISK** warning: **I understand** goes on, **Back** returns to the game versions. Once
-   you press **I understand** it is not asked again until you restart the app.
+   you press **I understand** it is not asked again until you restart the app. Tick **Don't show this warning again
+   for this tool** (`Tab`, `Space`) to stop it for good; the tool's settings (`s`) turn it back on.
 3. The **review** lists the files suggested for removal: game version → account → character → addon → files.
    Everything starts ticked ("remove this"): untick what you want to keep.
 4. **Dry run** (`y`) to see what would happen; nothing is deleted.

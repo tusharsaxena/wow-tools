@@ -24,9 +24,13 @@ if TYPE_CHECKING:
     from wowtools.ui.suite_app import WowToolsApp
 
 
+RISK_WARNING_EVENT = "svb.risk_warning_changed"
+
+
 class SvBrowserSettingsScreen(ToolSettingsScreen):
     FORM_TITLE = f"{TITLE} settings"
     FIRST_FIELD = "backup-dir"
+    TICKS = True
 
     def load(self, tool_cfg: Config) -> SvBrowserSettings:
         return load_settings(tool_cfg)
@@ -36,6 +40,7 @@ class SvBrowserSettingsScreen(ToolSettingsScreen):
                     "was). Leave empty to use <WoW folder>/wow-tools/sv-browser")
         yield self.folder_input(self.settings.backup_dir, id="backup-dir",
                                 placeholder=folder_hint(resolve_root(SvBrowserSettings(), self.wow_path)))
+        yield self.risk_warning_box()
 
     def save(self) -> bool:
         backup_dir = self.folder_value("backup-dir")
@@ -45,7 +50,10 @@ class SvBrowserSettingsScreen(ToolSettingsScreen):
                 self._error(problem)
                 return False
         stored = load_settings(self.tool_cfg)  # keeps the remembered flavor choice
-        save_settings(self.tool_cfg, replace(stored, backup_dir=backup_dir), source=self.source)
+        skip = self.risk_warning_skipped()
+        save_settings(self.tool_cfg, replace(stored, backup_dir=backup_dir, skip_risk_warning=skip),
+                      source=self.source)
+        self.log_risk_warning(RISK_WARNING_EVENT, stored.skip_risk_warning, skip)
         return True
 
 
@@ -58,6 +66,7 @@ class SvBrowserFlow(ToolFlow):
     SETTINGS_SCREEN = SvBrowserSettingsScreen
     DISCLAIMER = DISCLAIMER_POPUP
     DISCLAIMER_EVENTS = ("svb.disclaimer_accepted", "svb.disclaimer_declined")
+    RISK_WARNING_EVENT = RISK_WARNING_EVENT
 
     def __init__(self, app: WowToolsApp, tool_cfg: Config, *,
                  wow_check: Callable[[], list[str] | None] | None = None) -> None:

@@ -171,10 +171,12 @@ the marker and shows `leave_notice()`.
 `app.py` holds `AceProfilesFlow` (`FLOW`: `require_install` → `ProfileSettingsScreen` on the tool's first open →
 `FlavorScreen(include_all=True, last=last_flavor_choice)` → `AccountScreen` for one flavor with several accounts
 (`last_account`) → the shared `ui.disclaimer.DisclaimerScreen` with `report.DISCLAIMER` (`ToolFlow.ask_disclaimer`, once
-per app session, L4; `ace.disclaimer_accepted` / `_declined`; Back returns to the flavor picker) →
+per app session, L4; `ace.disclaimer_accepted` / `_declined`; Back returns to the flavor picker; never with
+`skip_risk_warning`, set by its "Don't show this warning again" box and the settings form,
+`ace.risk_warning_changed`, L8) →
 `ProfileReviewScreen`; `unlocked`, the addons unlocked this session, lives on the flow) and
-`ProfileSettingsScreen` (backup folder, a `#blacklist-summary` line and **Edit blacklist…**, which opens the
-`BlacklistScreen` and keeps its answer until Save; `validate_backup_dir` errors inline). `s` opens the shared WoW-folder settings, then this tool's (not while a `ProfileSettingsScreen` or a `BlacklistScreen` is on the stack: two Saves would overwrite each other).
+`ProfileSettingsScreen` (backup folder, a `#blacklist-summary` line, **Edit blacklist…**, which opens the
+`BlacklistScreen` and keeps its answer until Save, and the show-the-risk-warning box; `validate_backup_dir` errors inline). `s` opens the shared WoW-folder settings, then this tool's (not while a `ProfileSettingsScreen` or a `BlacklistScreen` is on the stack: two Saves would overwrite each other).
 
 - `ProfileReviewScreen` (`review_screen.py`): `TreeFilter`, `SvRecoveryActions`, `RunActions` and `ReviewBase`,
   `two_pane_css`, with two mixins of its own (F-007): `staging_actions.ProfileStagingActions` (Delete, Assign, Rename,

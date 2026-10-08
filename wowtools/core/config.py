@@ -35,6 +35,9 @@ MIN_PARALLELISM = 1
 MAX_PARALLELISM = 8
 # The per-tool keys these replaced: ignored when read, removed when a tool saves its settings.
 RETIRED_TOOL_KEYS = ("keep_backups", "keep_snapshots", "keep_journals")
+# A tool's own setting (WTF Cleaner, Ace3 Profile Manager, SV Browser): true = never show its USE AT YOUR OWN RISK
+# popup (spec 2026-10-07-feedback-bars-leftovers L8). Its "Don't show this warning again" box sets it.
+SKIP_RISK_WARNING = "skip_risk_warning"
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 

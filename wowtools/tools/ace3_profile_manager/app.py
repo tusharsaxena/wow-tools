@@ -31,11 +31,13 @@ if TYPE_CHECKING:
     from wowtools.ui.suite_app import WowToolsApp
 
 TITLE = "Ace3 Profile Manager"
+RISK_WARNING_EVENT = "ace.risk_warning_changed"
 
 
 class ProfileSettingsScreen(ToolSettingsScreen):
     FORM_TITLE = f"{TITLE} settings"
     FIRST_FIELD = "backup-dir"
+    TICKS = True
 
     def __init__(self, tool_cfg: Config, wow_path: Path | None, *, source: str) -> None:
         super().__init__(tool_cfg, wow_path, source=source)
@@ -52,6 +54,7 @@ class ProfileSettingsScreen(ToolSettingsScreen):
         yield Label("Blacklist: addons whose profiles are shown but never changed, per flavor")
         yield Static(Text(blacklist_summary(self.blacklist)), id="blacklist-summary")
         yield action_button("Edit blacklist…", "navigate", id="edit-blacklist")
+        yield self.risk_warning_box()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:  # Save and Cancel: ToolSettingsScreen's handler
         if event.button.id == "edit-blacklist":
@@ -80,8 +83,10 @@ class ProfileSettingsScreen(ToolSettingsScreen):
                 return False
         blacklist = unique_pairs(self.blacklist)
         stored = load_settings(self.tool_cfg)  # keeps the remembered flavor and account choices
-        save_settings(self.tool_cfg, replace(stored, backup_dir=backup_dir, blacklist=blacklist),
-                      source=self.source)
+        skip = self.risk_warning_skipped()
+        save_settings(self.tool_cfg, replace(stored, backup_dir=backup_dir, blacklist=blacklist,
+                                             skip_risk_warning=skip), source=self.source)
+        self.log_risk_warning(RISK_WARNING_EVENT, stored.skip_risk_warning, skip)
         if blacklist != stored.blacklist:
             log_event("ace.blacklist_changed", pairs=format_blacklist(blacklist))
         return True
@@ -102,6 +107,7 @@ class AceProfilesFlow(ToolFlow):
     SETTINGS_SCREEN = ProfileSettingsScreen
     DISCLAIMER = DISCLAIMER
     DISCLAIMER_EVENTS = ("ace.disclaimer_accepted", "ace.disclaimer_declined")
+    RISK_WARNING_EVENT = RISK_WARNING_EVENT
     SETTINGS_BLOCKERS = (BlacklistScreen,)
 
     def __init__(self, app: WowToolsApp, tool_cfg: Config, *,

@@ -26,6 +26,9 @@ if TYPE_CHECKING:
     from wowtools.ui.suite_app import WowToolsApp
 
 
+RISK_WARNING_EVENT = "clean.risk_warning_changed"
+
+
 class CleanerSettingsScreen(ToolSettingsScreen):
     FORM_TITLE = "WTF Cleaner settings"
     DEFAULT_CSS = ToolSettingsScreen.DEFAULT_CSS + """
@@ -56,6 +59,7 @@ class CleanerSettingsScreen(ToolSettingsScreen):
                            self.settings.backup_before_delete, id="sw_backup", compact=True)
         yield Label("Cleaned-files zips to keep per game version (0 keeps all; they hold what Clean deleted)")
         yield Input(str(self.settings.keep_cleaned), type="integer", id="keep_cleaned")
+        yield self.risk_warning_box()
 
     def save(self) -> bool:
         try:
@@ -81,10 +85,13 @@ class CleanerSettingsScreen(ToolSettingsScreen):
                 self._error(problem)
                 return False
         stored = load_settings(self.tool_cfg)  # keeps the remembered flavor and account choices
+        skip = self.risk_warning_skipped()
         save_settings(self.tool_cfg, replace(stored, criteria=criteria,
                                              backup_before_delete=self.query_one("#sw_backup", Ka0sCheckbox).value,
-                                             backup_dir=backup_dir, keep_cleaned=keep_cleaned),
+                                             backup_dir=backup_dir, keep_cleaned=keep_cleaned,
+                                             skip_risk_warning=skip),
                       source=self.source)
+        self.log_risk_warning(RISK_WARNING_EVENT, stored.skip_risk_warning, skip)
         return True
 
 
@@ -97,6 +104,7 @@ class WtfCleanerFlow(ToolFlow):
     SETTINGS_SCREEN = CleanerSettingsScreen
     DISCLAIMER = DISCLAIMER
     DISCLAIMER_EVENTS = ("clean.disclaimer_accepted", "clean.disclaimer_declined")
+    RISK_WARNING_EVENT = RISK_WARNING_EVENT
 
     def __init__(self, app: WowToolsApp, tool_cfg: Config, *,
                  wow_check: Callable[[], list[str] | None] | None = None,

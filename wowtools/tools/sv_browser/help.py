@@ -18,7 +18,8 @@ edit a value, rename a key, delete a key, or find values and edit them in bulk.
 
 1. **Pick a game version**, or **All flavors**.
 2. Read the warning: **I understand** goes on, **Back** returns to the game versions. Once you press **I
-   understand** it is not asked again until you restart the app.
+   understand** it is not asked again until you restart the app. Tick **Don't show this warning again for this
+   tool** (`Tab`, `Space`) to stop it for good; the tool's settings (`s`) turn it back on.
 3. The **review** lists every SavedVariables file: game version, account, **Account-wide** or realm and character,
    then the file and its size. Nothing is read until you open a file; opening a file shows its SavedVariables, and
    opening a table shows its keys (a table with more than 500 shows the first 500 and how many more). A file that is

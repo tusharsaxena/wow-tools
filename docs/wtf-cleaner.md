@@ -22,7 +22,9 @@ ones you leave ticked. If you regret it later, you can undo the clean.
    `Esc` goes back to the game versions, `t` to the tool menu.
 5. Read the **USE AT YOUR OWN RISK** warning: the cleaner deletes files, so it asks you to accept that first.
    **I understand** goes on; **Back** returns to the game versions. It's asked once each time you start the app,
-   not every time you open the tool.
+   not every time you open the tool. Tick **Don't show this warning again for this tool** (`Tab` to it, `Space` to
+   tick) before **I understand** to stop it for good; **Show the USE AT YOUR OWN RISK warning** in the cleaner's
+   [settings](#settings) turns it back on.
 6. The cleaner scans and shows you the review screen. Look through the list and untick anything you want to
    keep.
 7. Press **Dry run** (`y`) if you'd like to see what would happen without deleting anything.
@@ -308,11 +310,13 @@ in `config\wtf-cleaner.cfg`.
 | Zip the files before deleting | on | Keep a zip of everything a clean removes (recommended) |
 | Cleaned-files zips to keep | 0 | How many `cleaned\cleaned-…zip` files to keep per game version; `0` keeps them all. Older ones are removed after a clean. The zip of the last clean is always kept, so **Undo last clean** is unaffected. A removed zip of an older clean can only be restored by hand from its WTF backup (`backup\backup-…zip`) while that is still kept |
 | Backup folder | empty | Where zips and backups go. Empty means `<WoW folder>\wow-tools\wtf-cleaner`. It must be a full path, and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
+| Show the USE AT YOUR OWN RISK warning | on | Ask you to accept the warning after you pick a game version (once each time you start the app). Off when you ticked **Don't show this warning again for this tool** on it |
 
 The file itself uses these names, if you edit it by hand: `max_age_days`, `criterion_not_installed`,
 `criterion_not_enabled`, `criterion_older_than`, `criterion_stray_copies`, `criterion_orphan_backups`,
 `backup_before_delete`, `keep_cleaned`, `backup_dir`, `blacklist` (see [The blacklist](#the-blacklist); it has no row
-on the settings screen, `b` on the review edits it), `last_account` and `last_flavor_choice`. Close the app before
+on the settings screen, `b` on the review edits it), `skip_risk_warning` (`true` means the warning isn't shown),
+`last_account` and `last_flavor_choice`. Close the app before
 editing the file, or your change may be overwritten. Comments you add to the file aren't kept (the app rewrites it
 when it saves a setting or the game version you pick).
 

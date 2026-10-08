@@ -236,17 +236,22 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 | File | Holds |
 |---|---|
 | `config\wow-tools.cfg` | Shared by every tool (`[general]`): your WoW folder, how many backups to keep per game version (`keep_backups`, 10; 0 keeps all) and journals per tool (`keep_journals`, 10), how many game versions to work on at once (`parallelism`, 2, from 1 to 8; also how many files a Saved Variables Browser search reads at once; use 1 on a hard drive or a WSL `/mnt` folder, where working on several at once is slower), plus update and log options |
-| `config\wtf-cleaner.cfg` | The WTF Cleaner's settings, including how many zips of cleaned files to keep per game version (`keep_cleaned`, 0 keeps all; the one retention setting a tool has of its own) and the blacklist of addons (each in one game version) it never cleans (`blacklist`, set with `b` on the review) |
+| `config\wtf-cleaner.cfg` | The WTF Cleaner's settings, including how many zips of cleaned files to keep per game version (`keep_cleaned`, 0 keeps all; the one retention setting a tool has of its own) and the blacklist of addons (each in one game version) it never cleans (`blacklist`, set with `b` on the review) and whether to show the USE AT YOUR OWN RISK warning (`skip_risk_warning`) |
 | `config\screenshot-organizer.cfg` | The Screenshot Organizer's settings |
 | `config\interface-backup.cfg` | Interface Backup's settings |
-| `config\ace3-profile-manager.cfg` | The Ace3 Profile Manager's settings (`[ace3_profile_manager]`): backup folder and the blacklist of addons (each in one game version) it never changes |
-| `config\sv-browser.cfg` | The Saved Variables Browser's settings (`[sv_browser]`): backup folder |
+| `config\ace3-profile-manager.cfg` | The Ace3 Profile Manager's settings (`[ace3_profile_manager]`): backup folder, the blacklist of addons (each in one game version) it never changes and whether to show the USE AT YOUR OWN RISK warning (`skip_risk_warning`) |
+| `config\sv-browser.cfg` | The Saved Variables Browser's settings (`[sv_browser]`): backup folder and whether to show the USE AT YOUR OWN RISK warning (`skip_risk_warning`) |
 
 The easiest way to change them is to press `s` in the app: the first screen is the shared one (WoW folder, backups and
 journals to keep, game versions (and search files) to work on at once), then the tool's own. You can also open the
 files in Notepad while the app is closed. Comments you add to these files aren't kept: the app rewrites a file
 whenever it saves anything (a setting from `s`, the game version you pick, an update check, the WTF Cleaner's
-blacklist), so keep your notes somewhere else. The guides list every setting.
+blacklist, **Don't show this warning again**), so keep your notes somewhere else. The guides list every setting.
+
+The WTF Cleaner, the Ace3 Profile Manager and the Saved Variables Browser ask you to accept a USE AT YOUR OWN RISK
+warning once each time you start the app. Tick **Don't show this warning again for this tool** on it to stop it for
+that tool (saved as `skip_risk_warning = true` in its file); **Show the USE AT YOUR OWN RISK warning** in the tool's
+settings (`s`) turns it back on.
 
 ## Undo and run journals
 

@@ -92,12 +92,13 @@ back that flavor's written files; Undo snapshots up to `parallelism` flavors at 
 
 ## Screens
 
-`app.py` holds `SvBrowserFlow` (`FLOW`: `require_install` → `SvBrowserSettingsScreen` (backup folder only) on the
-tool's first open → `FlavorScreen(include_all=True, last=last_flavor_choice)` → the shared
+`app.py` holds `SvBrowserFlow` (`FLOW`: `require_install` → `SvBrowserSettingsScreen` (backup folder, show the
+risk warning) on the tool's first open → `FlavorScreen(include_all=True, last=last_flavor_choice)` → the shared
 `ui.disclaimer.DisclaimerScreen` with `report.DISCLAIMER_POPUP` (`ToolFlow.ask_disclaimer`: **I understand** focused,
 **Back**/Esc back to the picker, `svb.disclaimer_accepted` / `_declined`) → `SvReviewScreen` (`svb.started`)). No
 account picker. An accept is remembered on the app (`disclaimers_accepted`, L4), so the warning is asked once per app
-session, not on a second open of the tool, a new flavor pick or a rescan.
+session, not on a second open of the tool, a new flavor pick or a rescan, and never once `skip_risk_warning` is true
+(L8: the popup's "Don't show this warning again" box, or the settings form's box; `svb.risk_warning_changed`).
 
 - `SvReviewScreen` (`review_screen.py`): `SvEditActions` (`edit_actions.py`, F-007: Edit value, Rename key, Delete
   key and Unstage, and the bulk edits on the results), `TreeFilter`, `SvRecoveryActions`, `RunActions` and

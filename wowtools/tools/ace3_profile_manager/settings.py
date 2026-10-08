@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from wowtools.core.blacklist import Pair, format_blacklist, parse_blacklist
-from wowtools.core.config import Config
+from wowtools.core.config import SKIP_RISK_WARNING, Config
 from wowtools.core.journal import tool_root
 from wowtools.core.migrate import merge_folder_logged
 from wowtools.tools.ace3_profile_manager.events import TOOL_NAME
@@ -24,6 +24,7 @@ class ProfileSettings:
     blacklist: list[Pair] = field(default_factory=list)
     last_flavor_choice: str | None = None  # "" = All flavors, else a flavor folder; None = never chosen
     last_account: str | None = None  # None (stored as empty) = all accounts
+    skip_risk_warning: bool = False  # never show the USE AT YOUR OWN RISK popup (L8)
     # Snapshots and journals to keep are global: Config.keep_backups / keep_journals ([general]).
 
 
@@ -32,7 +33,8 @@ def load_settings(cfg: Config) -> ProfileSettings:
     return ProfileSettings(cfg.get_path(SECTION, "backup_dir"),
                            parse_blacklist(cfg.get(SECTION, "blacklist") or ""),
                            None if choice is None else choice.strip(),
-                           (cfg.get(SECTION, "last_account") or "").strip() or None)
+                           (cfg.get(SECTION, "last_account") or "").strip() or None,
+                           cfg.get_bool(SECTION, SKIP_RISK_WARNING, False))
 
 
 def save_settings(cfg: Config, settings: ProfileSettings, *, source: str = "settings") -> None:
@@ -40,6 +42,7 @@ def save_settings(cfg: Config, settings: ProfileSettings, *, source: str = "sett
     cfg.remove_retired(SECTION, source=source)
     cfg.set(SECTION, "blacklist", format_blacklist(settings.blacklist), source=source)
     cfg.set(SECTION, "last_account", settings.last_account or "", source=source)
+    cfg.set(SECTION, SKIP_RISK_WARNING, settings.skip_risk_warning, source=source)
     if settings.last_flavor_choice is not None:
         cfg.set(SECTION, "last_flavor_choice", settings.last_flavor_choice, source=source)
     cfg.save()

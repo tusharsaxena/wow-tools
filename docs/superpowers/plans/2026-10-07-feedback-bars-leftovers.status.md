@@ -15,7 +15,7 @@ go-ahead.
 | L6 | nothing blocks before the scan box (Screenshot Organizer + audit) | done | (this commit) | Evidence: the user's log (Windows) has 4.4 s between the flavor pick (08:35:00.605) and `shots.scan_started` (08:35:05.028) on the first open only, then 0.13 s of scan: `ShotReviewScreen.on_mount` ran `_refresh_undo` (`latest_undoable`) and `action_rescan` -> `validate_dest` (`install.flavors()` and `resolve()` of the destination, the first touch of drive H:) on the UI thread before the scan box. Fix: the scan box (label "Checking the destination folder", Organize / Dry run / Undo off) is shown first; the scan worker runs `validate_dest`, `latest_undoable`, then the scan ("Reading Screenshots folders"); a refused destination comes back as `_dest_refused` with today's UI. The WTF Cleaner had the same: `latest_undoable` on mount and after every scan, and `read_marker` on the backup folder on mount, on the UI thread. 5 tests in `tests/test_scan_box_first.py` (written first, all 5 failed first; 5 more from the L6 review, L6-e): each check held on an `Event` gate while the scan box is asserted shown, then the normal tree; the refused destination still gives the error state and no scan. STD-7.20 sentence and Enforced by, both internals, CHANGELOG. Full suite 1821 tests OK (2 skipped), ruff clean, events check OK |
 | LR3 | review of L6, green gate, push, CI | done | (this commit) | Review of L6 with the rest of the branch: the scan box first in both tools, the workers' Undo lookups, the recovery notice gate, STD-7.20, internals and CHANGELOG agree. Fix: `latest_undoable` (core `journal`) never raises: L6 moved it into the scan and run workers (the WTF Cleaner's scan worker and both tools' run workers call it outside a `try`), where an unlistable journal folder (`iterdir` raising `OSError`) would have ended the worker with an error; it now offers nothing. Test first (`test_latest_undoable_never_raises_on_a_folder_it_cannot_list`, failed first); architecture `journal` row. Full suite 1827 tests OK (2 skipped), ruff clean, events check OK |
 | L7 | `q` quits from any screen | done | (this commit) | Why q did nothing on the flavor picker: `q` was bound per screen (the menu `app.quit`, each review `leave('quit')`, each result `choose('quit')`, the lock warning; the help and the changelog bound it to Back) and the pickers, settings, warnings, blacklist and popups had none. Now `Ka0sApp.key_q` -> `action_quit` (busy: refused with the `ui.quit_refused` notice; work staged on a review in the stack: its `discard_question()` asks first; else `exit()`, the path suite.run follows with session.end and the lock release). Reviews bind `q` to `app.quit` (footer kept); `ReviewBase.discard_question` / `action_leave` replace the Ace3 and SV Browser `action_leave` copies; help and changelog no longer close on q. 4 tests in `tests/test_quit_key.py` (written first, failed first: every screen of every tool, menu / changelog / help / settings at BASE and LARGE, filter and settings field type q, busy refused, staged asks once and No keeps it); help and changelog tests now close with Esc / h. STD-8.11, architecture, README and suite help keys, CHANGELOG, `ui.quit_refused` description and events.md. Review fixes L7-e (`DiscardScreen`, no flag, 5 more tests, `QuitBindingsTest`). Full suite 1837 tests OK (2 skipped), ruff clean, events check OK |
-| L8 | "Don't show this again" on the risk popup | todo | | |
+| L8 | "Don't show this again" on the risk popup | done | (this commit) | `DisclaimerScreen` gets a `DontShowCheckbox` "Don't show this warning again for this tool" (`ChoiceScreen.extras()`; Tab reaches it, Space ticks, Enter on it presses I understand; I understand with it ticked dismisses `ACCEPT_DONT_SHOW`). `ToolFlow.ask_disclaimer` skips when `[SECTION] skip_risk_warning` (`core.config.SKIP_RISK_WARNING`) is true and saves it on a ticked accept (atomic `Config.save`); Back/Esc never save. The three settings forms get "Show the USE AT YOUR OWN RISK warning" (`ToolSettingsScreen.risk_warning_box()`, last field; all fit at 120x30); each tool's `skip_risk_warning` setting field. Events `clean.` / `ace.` / `svb.risk_warning_changed` (shown, source) registered, events.md regenerated. 6 tests in `DontShowAgainTest` (`tests/test_risk_disclaimer.py`, written first, failed first; the failed-write one after); WTF keyboard settings test takes the new box. Help (3), guides (3), README settings, architecture, internals (3), CHANGELOG. Full suite 1843 tests OK (2 skipped), ruff clean, events check OK |
 | L9 | one toast anchor and stack | todo | | |
 | L10 | long warning lists collapse | todo | | |
 | LR4 | review of L7-L10, green gate, push, CI | todo | | |
@@ -170,3 +170,35 @@ go-ahead.
   `choose('quit')` or `choose('lock-quit')` (it failed when the help's q-as-Back was put back); STD-8.11's Enforced
   by names it. Rejected in part: the WTF Cleaner's blacklist is the review's `b` toggle, not a screen, so there is
   nothing more to walk; the lock warning was covered by `test_suite_app` and is now in `test_quit_key` too.
+
+- L8-a: the box reads "Don't show this warning again for this tool" and sits between the text and the buttons;
+  **I understand** keeps the focus, so Enter answers as before; Enter on the box itself also presses **I
+  understand** (`DontShowCheckbox`; Space ticks), so a ticked box never needs a second key. The popup dismisses
+  with `ACCEPT_DONT_SHOW` and the flow saves: the screen writes nothing.
+- L8-b: the popup's save is `tool_cfg.set(SECTION, skip_risk_warning, True)` then `Config.save()`, the same atomic
+  write the tools' `save_settings` end with (configparser: unknown keys kept, comments dropped, as today); not
+  `save_if_exists`: an explicit choice is kept even when the first-run settings were cancelled (the file is then
+  created and that form is not asked again). The key is read generically by `ToolFlow` (`get_bool`, default
+  false); each tool's settings dataclass also carries it, so a settings Save (or the WTF Cleaner's `b`) keeps it.
+- L8-c: one registered event per tool, `<ns>.risk_warning_changed` (`shown`, `source`: `disclaimer`, `settings` or
+  `wizard`), logged only when the value changes (STD-6.3; `config.changed` is logged as well). A toast after the
+  tick says how to turn it back on; a failed write logs `error` (`<ns>.risk_warning`) and a warning toast, and the
+  review still opens (it is accepted for the session).
+- L8-d: the "Show the USE AT YOUR OWN RISK warning" box fits on all three settings forms at 120x30
+  (`test_settings_forms_fit_at_base_and_keep_a_readable_width` and `test_settings_screens_open_at_the_title_and_fit`
+  pass with it), so no hand edit is needed; it is the last field (ticked = shown), and the SV Browser and Ace3
+  forms now set `TICKS`. `save_settings` always writes `skip_risk_warning` (false included). The guides still name
+  the key for a hand edit. Turning the popup off leaves the red `⚠ USE AT YOUR OWN RISK` line and the SV Browser's
+  Apply / Undo confirm warning as they are.
+- L8-e (review of L8, four findings; 1 and 3 are one bug): (1/3) a failed save of the popup's box left
+  `skip_risk_warning = true` in the in-memory `Config`, so a later write of the same config (a flavor pick's
+  `save_if_exists`, a blacklist edit, a settings Save) saved it after the user was told it was not saved, and
+  `config.changed` was logged for a change that did not happen. `_skip_risk_warning` now sets the key without
+  logging, puts the previous value back (or removes the key) when `save()` raises, and logs `config.changed` only
+  after the write. (2) Enter on the box skipped the popup's Enter guard: `EnterGuard.too_soon()` now holds the
+  guard's check (the buttons' `action_guard_press` uses it), and `DontShowCheckbox.action_accept` calls it too, so
+  Enter on the box is ignored for `CONFIRM_GUARD` after the popup opens, as on the buttons; Space still ticks it at
+  once (a tick answers nothing). (4) the two internals lines over 120 columns are re-wrapped. Tests written first
+  and failing first: the failed-save test asserts the key is still false in memory and on disk after a later save
+  of the same config, and that no `config.changed` is logged; a new test presses Enter on the box at once (ignored)
+  and after the guard (accepted). Rejected: none.

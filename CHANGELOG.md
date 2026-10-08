@@ -15,6 +15,11 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 - **Every tool**
   - `t` goes back to the tool menu from the game version and account pickers too, as it does on the review and
     results screens. `Esc` still works as before.
+- **WTF Cleaner**, **Ace3 Profile Manager** and **Saved Variables Browser**
+  - The **USE AT YOUR OWN RISK** warning has a **Don't show this warning again for this tool** box (`Tab` to it,
+    `Space` to tick, `Enter` still means **I understand**). Ticked with **I understand**, the warning is never
+    shown again for that tool; **Back** never saves it. **Show the USE AT YOUR OWN RISK warning** in the tool's
+    settings (`s`) turns it back on.
 
 ### Changed
 

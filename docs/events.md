@@ -86,6 +86,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `clean.locked` | error | A real clean stopped before the WTF backup: selected files are locked by another program. |
 | `clean.marker_left` | warning | clean-in-progress.json could not be removed (another program held it) after a clean that finished, a clean stopped before deleting or restored, or Dismiss on the unfinished-clean notice (stage); the next start shows that notice again and a clean is refused until the marker is gone. |
 | `clean.probe_recovered` | warning | A real clean renamed back a SavedVariables file left as <name>.wowtools-lockcheck by an interrupted lock check. |
+| `clean.risk_warning_changed` | info | The USE AT YOUR OWN RISK warning was turned off (its Don't show this warning again box) or back on in the settings (shown, source). |
 | `clean.started` | info | A clean (or dry run) started. |
 | `clean.undo_completed` | info | Undo last clean finished (logged at warning if any file was skipped or failed). |
 | `clean.undo_failed` | error | Undo: a file could not be put back (no zip holds it, or the size did not match). |
@@ -195,6 +196,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ace.probe_recovered` | warning | A SavedVariables file left as <name>.wowtools-lockcheck by an interrupted lock check was renamed back. |
 | `ace.recovery_done` | info | The user chose what to do about an unfinished Apply (put back or leave); logged at warning with marker_left when its crash marker could not be removed (the next scan offers it again). |
 | `ace.recovery_offered` | warning | A marker from an Apply that did not finish was found by a scan (on opening or a rescan), or Apply was pressed while it is there. |
+| `ace.risk_warning_changed` | info | The USE AT YOUR OWN RISK warning was turned off (its Don't show this warning again box) or back on in the settings (shown, source). |
 | `ace.rollback_failed` | error | A file could not be put back after a failure; restore it from the zip the message names. |
 | `ace.rolled_back` | warning | After a failure, the files this run had already written were put back. |
 | `ace.scan_completed` | info | A scan finished, with counts (files, databases, profiles, characters, leftover characters, seconds). |
@@ -241,6 +243,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `svb.probe_recovered` | warning | A SavedVariables file left as <name>.wowtools-lockcheck by an interrupted lock check was renamed back. |
 | `svb.recovery_done` | info | The user chose what to do about an unfinished Apply (put back or leave); logged at warning with marker_left when its crash marker could not be removed (the next scan offers it again). |
 | `svb.recovery_offered` | warning | A marker from an Apply that did not finish was found by a scan (on opening or a rescan), or Apply was pressed while it is there. |
+| `svb.risk_warning_changed` | info | The USE AT YOUR OWN RISK warning was turned off (its Don't show this warning again box) or back on in the settings (shown, source). |
 | `svb.rollback_failed` | error | A file could not be put back after a failure; restore it from the zip the message names. |
 | `svb.rolled_back` | warning | After a failure, the files this run had already written were put back. |
 | `svb.scan_completed` | info | The SavedVariables files were listed, with counts (flavors, accounts, files, bytes, seconds). |

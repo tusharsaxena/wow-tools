@@ -16,6 +16,9 @@ throw errors, reset itself to its defaults or quietly lose that setting. The too
 So the tool asks you to accept this the first time you open it after starting the app (**I understand**, or **Back**
 to the game versions; **Back** doesn't count, so it asks again next time), shows `⚠ USE AT YOUR OWN RISK` in red at
 the top of its left panel the whole time, and repeats the warning in red on every **Apply** and **Undo** confirm.
+Once you've read it, you can tick **Don't show this warning again for this tool** (`Tab` to it, `Space` to tick)
+before **I understand**: the popup is then never shown again (the red line and the confirms' warning stay), until
+you tick **Show the USE AT YOUR OWN RISK warning** in the tool's [settings](#settings).
 
 What it does guarantee: every byte you didn't change stays exactly as it was, your whole `WTF` folder and every file
 it changes are backed up before anything is written, and **Undo last change** puts the files back.
@@ -402,9 +405,11 @@ work on at once; then this tool's). The tool's settings are saved in `config\sv-
 | Setting | Starts as | What it means |
 |---|---|---|
 | Backup folder | empty | Where the `WTF` backups and the zips of edited files go: they're put in its `sv-browser` folder. Empty means `<WoW folder>\wow-tools`. It must be a full path (such as `D:\WoW backups`), and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
+| Show the USE AT YOUR OWN RISK warning | on | Ask you to accept the warning after you pick a game version (once each time you start the app). Off when you ticked **Don't show this warning again for this tool** on it |
 
-The file itself uses these names under `[sv_browser]`, if you edit it by hand: `backup_dir` and `last_flavor_choice`
-(the game version you picked last time; empty means **All flavors**). Close the app before editing the file, or your
+The file itself uses these names under `[sv_browser]`, if you edit it by hand: `backup_dir`, `skip_risk_warning`
+(`true` means the warning isn't shown) and `last_flavor_choice` (the game version you picked last time; empty means
+**All flavors**). Close the app before editing the file, or your
 change may be overwritten. Comments you add to the file aren't kept (the app rewrites it when it saves a setting or
 the game version you pick).
 

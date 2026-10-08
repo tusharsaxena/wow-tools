@@ -1175,24 +1175,26 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertTrue(settings.query(ButtonRow))
             self.assertTrue(settings.query(NavHint))
             self.assertFalse(settings.query("Switch"))
-            expected = ["max_age", "backup_dir", *[f"sw_{n}" for n in CRITERIA], "sw_backup", "keep_cleaned", "save"]
+            expected = ["max_age", "backup_dir", *[f"sw_{n}" for n in CRITERIA], "sw_backup", "keep_cleaned",
+                        "sw_risk_warning", "save"]
             order = [settings.focused.id]
             for _ in expected[1:]:
                 await pilot.press("down")
                 order.append(settings.focused.id)
             self.assertEqual(order, expected)
-            for name in (*[f"sw_{n}" for n in CRITERIA], "sw_backup"):
+            for name in (*[f"sw_{n}" for n in CRITERIA], "sw_backup", "sw_risk_warning"):
                 self.assertIsInstance(settings.query_one(f"#{name}"), Ka0sCheckbox)
-            await pilot.press("up", "up")  # back to the backup toggle
+            await pilot.press("up", "up", "up")  # back to the backup toggle
             self.assertEqual(settings.focused.id, "sw_backup")
             self.assertTrue(settings.focused.value)
             await pilot.press("space")
             self.assertFalse(settings.focused.value)
-            await pilot.press("down", "down", "enter")
+            await pilot.press("down", "down", "down", "enter")
             await pilot.pause()
             self.assertIsInstance(app.screen, FlavorScreen)
         saved = load_settings(Config(cfg.path.parent / "wtf-cleaner.cfg").load())
         self.assertFalse(saved.backup_before_delete)
+        self.assertFalse(saved.skip_risk_warning)
         self.assertEqual(Config(cfg.path).load().wow_path, self.root)
 
     async def test_arrow_keys_stay_with_tree(self):

@@ -279,11 +279,19 @@ class EnterGuard:
         """Swallow Enter/Space on a button while the popup is new or the key keeps repeating (each one swallowed
         restarts the wait); otherwise let the key through (the button, the button row or the detail tree acts on it
         as usual)."""
-        now = monotonic()
-        if isinstance(getattr(self, "focused", None), Button) and now - self.opened_at < CONFIRM_GUARD:
-            self.opened_at = now
+        if isinstance(getattr(self, "focused", None), Button) and self.too_soon():
             return
         raise SkipAction()
+
+    def too_soon(self) -> bool:
+        """True (and the wait starts again) while the popup is new or a key keeps repeating: an Enter that would
+        answer the popup is ignored then. action_guard_press uses it for the buttons; another widget whose Enter
+        answers the popup (the USE AT YOUR OWN RISK popup's box) calls it too."""
+        now = monotonic()
+        if now - self.opened_at < CONFIRM_GUARD:
+            self.opened_at = now
+            return True
+        return False
 
 
 GUARD_BINDING = Binding("enter,space", "guard_press", show=False, priority=True)
@@ -363,7 +371,7 @@ class ChoiceScreen(EnterGuard, ModalScreen[str | None]):
     wants (the WTF Cleaner's Remind me next time, the Ace3 Put the originals back, the lock's Quit unless the lock
     is stale). Like ConfirmScreen, Enter/Space do nothing for CONFIRM_GUARD seconds after it opens. With `escape`
     Esc dismisses with None (the question comes back later); without it Esc does nothing and a button must be
-    pressed. `hint` (optional) is a NavHint line under the buttons."""
+    pressed. `hint` (optional) is a NavHint line under the buttons; extras() adds widgets above the buttons."""
 
     DEFAULT_CSS = f"""
     ChoiceScreen {{ align: center middle; }}
@@ -389,11 +397,16 @@ class ChoiceScreen(EnterGuard, ModalScreen[str | None]):
         with Vertical(id="choice-box"):
             yield Static(Text(self.title_text), id="choice-title")
             yield Static(Text(self.message_text), id="choice-message")
+            yield from self.extras()
             with ButtonRow(id="choice-buttons"):
                 for choice_id, label, kind, *key in self.choices:
                     yield action_button(label, kind, *key, id=choice_id)
             if self.hint:
                 yield NavHint(self.hint)
+
+    def extras(self) -> Iterable[Widget]:
+        """Widgets between the message and the buttons (none; the risk popup's checkbox, ui.disclaimer)."""
+        return ()
 
     def on_mount(self) -> None:
         self.start_guard()

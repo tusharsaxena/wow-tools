@@ -49,7 +49,9 @@ changes and a very long name highlighted, it shows only the pending changes so t
    `Esc` goes back to the game versions, `t` to the tool menu.
 5. Read the **USE AT YOUR OWN RISK** warning: the tool rewrites your addons' profiles, so it asks you to accept
    that first. **I understand** goes on; **Back** returns to the game versions. It's asked once each time you start
-   the app, not every time you open the tool.
+   the app, not every time you open the tool. Tick **Don't show this warning again for this tool** (`Tab` to it,
+   `Space` to tick) before **I understand** to stop it for good; **Show the USE AT YOUR OWN RISK warning** in the
+   tool's [settings](#settings) turns it back on.
 6. The tool reads every addon's settings file and shows the review screen. Nothing is ticked yet.
 7. Tick the profiles or characters you want to change, and press a button in the action bar under the tree, or its
    key: `d` deletes profiles, `p` moves characters to another profile, `e` renames a profile, `k` copies one, `o`
@@ -413,9 +415,11 @@ tool's settings). The tool's settings are saved in
 |---|---|---|
 | Backup folder | empty | Where the `WTF` backups and the zips of edited files go: they're put in its `ace3-profile-manager` folder. Empty means `<WoW folder>\wow-tools`. It must be a full path (such as `D:\WoW backups`), and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
 | Blacklist | none | Addons, each in one game version, that are shown but never changed. **Edit blacklist…** opens the [blacklist screen](#the-blacklist); the line above it counts them |
+| Show the USE AT YOUR OWN RISK warning | on | Ask you to accept the warning after you pick a game version (once each time you start the app). Off when you ticked **Don't show this warning again for this tool** on it |
 
 The file itself uses these names, if you edit it by hand: `backup_dir`, `blacklist` (pairs such as `_retail_:ElvUI,
-_classic_era_:Questie`), `last_flavor_choice` (the game version you picked last time; empty means **All flavors**) and
+_classic_era_:Questie`), `skip_risk_warning` (`true` means the warning isn't shown), `last_flavor_choice` (the
+game version you picked last time; empty means **All flavors**) and
 `last_account` (empty means all accounts). Close the app before editing the file, or your change may be overwritten.
 Comments you add to the file aren't kept (the app rewrites it when it saves a setting or the game version you pick).
 
