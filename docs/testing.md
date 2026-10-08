@@ -23,11 +23,11 @@ rows are ways to run the suite while you work.
 
 | Command | What it does |
 |---|---|
-| **gate** `python3 scripts/run_tests.py --all` | From WSL: the WSL suite and the native Windows suite at the same time, half the CPUs each (or `-j N` each), each printed under its own `===== WSL (-j N) =====` / `===== Windows (-j N) =====` heading, then `WSL: OK, Windows: OK, in T s` and `OK` or `FAILED`. Exit code 0 only if both passed. About 200 s on the 16-CPU WSL `/mnt/d` machine with balanced shards (265 to 280 s before them), about what the two runs take one after the other (about 100 s each): the machine is CPU-bound. With no Windows Python, the plain run below is the gate and CI covers Windows before the merge ([below](#windows-from-wsl)). |
-| `python3 scripts/run_tests.py` | The whole suite in parallel: one shard per CPU (at most 16), one process per shard, the tests dealt by recorded time ([below](#balanced-shards)). Exit code 0 only if every shard passed. About 100 s on WSL `/mnt/d` (145 s round-robin). |
-| `python3 scripts/run_tests.py --windows` | From WSL: the whole suite under the native Windows Python, in the same checkout, its output streamed as it comes; exit code that run's. About 100 s (140 s round-robin). On native Windows it is the plain run; on Linux that is not WSL both `--windows` and `--all` fail with a message. |
+| **gate** `python3 scripts/run_tests.py --all` | From WSL: the WSL suite and the native Windows suite at the same time, each with half the default shards (12 each on 16 CPUs; or `-j N` each), each printed under its own `===== WSL (-j N) =====` / `===== Windows (-j N) =====` heading, then `WSL: OK, Windows: OK, in T s` and `OK` or `FAILED`. Exit code 0 only if both passed. About 175 s on the 16-CPU WSL `/mnt/d` machine (200 s at 8 shards each, 265 to 280 s before balanced shards), about what the two runs take one after the other (about 90 s and 80 s): the machine is CPU-bound. With no Windows Python, the plain run below is the gate and CI covers Windows before the merge ([below](#windows-from-wsl)). |
+| `python3 scripts/run_tests.py` | The whole suite in parallel: 1.5 shards per CPU (at most 24; [below](#shard-count)), one process per shard, the tests dealt by recorded time ([below](#balanced-shards)). Exit code 0 only if every shard passed. About 90 s on WSL `/mnt/d` (100 s at one shard per CPU, 145 s round-robin). |
+| `python3 scripts/run_tests.py --windows` | From WSL: the whole suite under the native Windows Python, in the same checkout, its output streamed as it comes; exit code that run's. About 80 s (100 s at one shard per CPU, 140 s round-robin). On native Windows it is the plain run; on Linux that is not WSL both `--windows` and `--all` fail with a message. |
 | `python3 scripts/run_tests.py -k TEXT` | Only the tests whose id (`tests.test_wtf_app.SomeTest.test_name`) contains `TEXT`, e.g. `-k sv_browser` or `-k test_look_and_feel`. |
-| `python3 scripts/run_tests.py -j N` | `N` shards instead of one per CPU. |
+| `python3 scripts/run_tests.py -j N` | `N` shards instead of the default 1.5 per CPU. |
 | `python3 scripts/run_tests.py --verbose-shards` | Also a line per shard before the summary: `shard i/N: T s, K tests, planned P s` (the time the cache predicted for it). Passed on with `--windows`, and to both sides of `--all`. |
 | `python3 scripts/run_tests.py --timeout S` | Kill and fail a shard still running after `S` seconds (`0`: no limit). The default is 600 s per shard at `-j 4` or more, and proportionally more below that (1200 s at `-j 2`, 2400 s at `-j 1`; a one-shard run takes about 15 minutes on WSL `/mnt/d`). |
 | `python3 -m unittest discover -s tests -t . -v` | The same tests, serially and verbose, in one process. Use it to read a failure's full output in order. |
@@ -67,6 +67,20 @@ Measured 2026-10-09 on the 16-CPU WSL `/mnt/d` machine, 16 shards, median of 3 r
 | `--windows` (Python 3.14) | 138.6 s (shards 58 to 139 s) | 97.3 s (shards 91 to 97 s) |
 | `--all` (-j 8 each) | 269 to 283 s | 201.6 s (one run; shards 181 to 198 s) |
 
+### Shard count
+
+The default shard count was chosen by measurement (spec F3): 1.5 shards per CPU, at most 24 (`MAX_DEFAULT_JOBS`),
+and `--all` gives each side half of that. The tests spend much of their time waiting (pilots, workers, file I/O),
+so more shards than CPUs pay, up to a point: 2 per CPU were no faster than 1.5, and the cap keeps a big machine from
+starting dozens of Textual processes. Measured 2026-10-09 on the 16-CPU WSL `/mnt/d` machine with balanced shards,
+median of 3 runs each (the runner's own `Ran N tests in T s`; 1962 to 1965 tests), shards of the median run:
+
+| Run | One per CPU | 1.5 per CPU | 2 per CPU |
+|---|---|---|---|
+| WSL `run_tests.py` (-j 16 / 24 / 32) | 100.9 s (shards 96 to 98 s) | 87.5 s, 13 % faster (shards 80 to 85 s) | 87.3 s (shards 70 to 84 s) |
+| `--windows` (Python 3.14; -j 16 / 24 / 32) | 99.6 s (shards 92 to 99 s) | 78.0 s, 22 % faster (shards 73 to 78 s) | 78.1 s (shards 70 to 78 s) |
+| `--all` (-j 8 / 12 / 16 each) | 197.9 s (WSL shards 187 to 194 s, Windows 180 to 186 s) | 176.5 s, 11 % faster (WSL 160 to 173 s, Windows 149 to 154 s) | 177.9 s (WSL 150 to 174 s, Windows 143 to 152 s) |
+
 ### Windows from WSL
 
 `--windows` and `--all` reach Windows through `cmd.exe` (spec F1): the runner turns the checkout into a Windows path
@@ -100,8 +114,10 @@ read-only permissions and a 20-minute timeout per job ([STD-10.2](standards.md#1
 
 1. `python -m compileall -q wowtools scripts tests` (byte-compile: catches syntax newer than the interpreter).
 2. `python scripts/gen_event_docs.py --check`.
-3. `python scripts/run_tests.py --timeout 900`: 900 s per shard, not the 600 s default, since a slow Windows runner
-   has taken 594 s for one of its four shards; a hang still fails with its test's name inside the 20 minutes.
+3. `python scripts/run_tests.py --timeout 900`: no `-j`, so the [default shard count](#shard-count) applies:
+   6 shards on a 4-vCPU runner (4 before spec F3; 1.5 per CPU was measured only on the 16-CPU machine, so CI's
+   timings are checked again at F4). 900 s per shard, not the 600 s default, since a slow Windows runner has taken
+   594 s for one shard (of 4); a hang still fails with its test's name inside the 20 minutes.
 
 Ruff is not part of CI (the suite stays stdlib-only); run it locally.
 
@@ -156,7 +172,7 @@ Cleaner's tests predate that rule: its logic tests are `test_cleaner.py`, `test_
 |---|---|
 | `test_suite.py`, `test_suite_app.py` | `wowtools/suite.py` (start-up, the instance lock, renamed-tool migration on start, the update at start) and `WowToolsApp` (menu, setup, opening tools) |
 | `test_updater_check.py`, `test_updater_apply.py` | `core/updater.py`: the release check (fake openers, never the network) and applying an update |
-| `test_release_scripts.py` | `scripts/build_release.py`, the hashed vendor lock, `scripts/run_tests.py`'s per-shard timeout, its `--windows` / `--all` runs (the `cmd.exe` call is faked) and its shards balanced by recorded time (the cache in a temp folder) |
+| `test_release_scripts.py` | `scripts/build_release.py`, the hashed vendor lock, `scripts/run_tests.py`'s per-shard timeout, its `--windows` / `--all` runs (the `cmd.exe` call is faked) its shards balanced by recorded time (the cache in a temp folder) and its default shard count (and that this page's CI section names it for a 4-vCPU runner) |
 | `test_release_contents.py` | The release manifest (STD-11.5): every tracked path is in a table of [releasing.md](releasing.md#what-a-release-contains), `.gitattributes` export-ignores the "stays out" table, `git archive` of `HEAD` holds exactly the "ships" table, no shipped Markdown file links to a file that does not ship (needs git; skips without it), the updater's `RELEASE_SHIPS` / `RELEASE_STAYS_OUT` are the two tables entry for entry, and its `MANAGED_DIRS` / `MANAGED_FILES` are the top-level "ships" names |
 | `test_launcher.py` | `wow-tools.cmd` stays safe to replace while it runs (Windows-only parts skip elsewhere) |
 | `test_quit_key.py`, `test_tool_menu_key.py`, `test_toast_stack.py` | The suite-wide walks: `q` and `t` from every screen and popup, toasts above the bars (see [below](#the-suite-wide-key-and-toast-walks)) |

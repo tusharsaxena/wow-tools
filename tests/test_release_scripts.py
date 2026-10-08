@@ -501,6 +501,47 @@ class RunTestsBalanceTest(unittest.TestCase):
         self.assertIn("shard 2/2: 3.0 s, 3 tests", out)
 
 
+class RunTestsShardCountTest(unittest.TestCase):
+    """scripts/run_tests.py's default shard count was chosen by measurement (spec F3): 1.5 shards per CPU, at most
+    MAX_DEFAULT_JOBS, since the tests spend much of their time waiting (pilots, workers, file I/O)."""
+
+    def setUp(self):
+        self.IDS = [f"tests.test_x.T.test_{index:02d}" for index in range(40)]
+        self.run_tests = load_run_tests(self, self.IDS)
+
+    def test_the_default_is_one_and_a_half_shards_per_cpu_with_a_cap(self):
+        default_jobs = self.run_tests.default_jobs
+        self.assertEqual(self.run_tests.MAX_DEFAULT_JOBS, 24)
+        self.assertEqual([default_jobs(cpus) for cpus in (1, 2, 3, 4, 8, 16, 32, 64)], [1, 3, 4, 6, 12, 24, 24, 24])
+
+    def test_no_cpu_count_counts_as_two_cpus(self):
+        with mock.patch.object(self.run_tests.os, "cpu_count", return_value=None):
+            self.assertEqual(self.run_tests.default_jobs(), 3)
+
+    def test_the_plain_run_deals_the_default_number_of_shards(self):
+        seen = []
+
+        def fake_launch(ids, timeout):
+            seen.append(ids)
+            return 0, {"run": len(ids), "failures": 0, "errors": 0, "skipped": 0, "listed": len(ids)}, "", None, 0.1
+
+        out = io.StringIO()
+        with mock.patch.object(self.run_tests.os, "cpu_count", return_value=16), \
+                mock.patch.object(self.run_tests, "_launch", side_effect=fake_launch), redirect_stdout(out):
+            code = self.run_tests.main([])
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertEqual(len(seen), 24)
+        self.assertIn("across 24 processes", out.getvalue())
+
+    def test_the_ci_shard_count_in_the_docs_is_the_default_on_a_4_vcpu_runner(self):
+        """CI passes no -j, so a 4-vCPU GitHub runner runs default_jobs(4) shards; testing.md names that number."""
+        shards = self.run_tests.default_jobs(4)
+        testing = (REPO_ROOT / "docs" / "testing.md").read_text(encoding="utf-8")
+        self.assertIn(f"{shards} shards on a 4-vCPU runner", testing)
+        workflow = (REPO_ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+        self.assertNotIn("four shards", workflow + testing)
+
+
 class RunTestsWindowsTest(unittest.TestCase):
     """scripts/run_tests.py --windows and --all (spec F1): from WSL the suite also runs under the native Windows
     Python in the same checkout through cmd.exe. The cmd.exe call (_relay) is faked here: no test starts Windows."""
@@ -650,14 +691,14 @@ class RunTestsWindowsTest(unittest.TestCase):
         self.assertEqual(self.calls, [])
         self.assertTrue(out.rstrip().endswith("OK"))
 
-    def test_all_runs_both_suites_on_half_the_cpus_each_with_labelled_summaries(self):
+    def test_all_runs_both_suites_on_half_the_default_shards_each_with_labelled_summaries(self):
         with mock.patch.object(self.run_tests.os, "cpu_count", return_value=16):
             code, out, _ = self.run_main("--all", "-k", "tree")
         self.assertEqual(code, 0)
         wsl, = [c for c in self.calls if not c["windows"]]
-        self.assertEqual(wsl["command"][-4:], ["-j", "8", "-k", "tree"])
+        self.assertEqual(wsl["command"][-4:], ["-j", "12", "-k", "tree"], "16 CPUs: 24 shards, 12 a side (F3)")
         self.assertNotIn("--all", wsl["command"])
-        self.assertIn('"-j" "8" "-k" "tree"', self.windows_line())
+        self.assertIn('"-j" "12" "-k" "tree"', self.windows_line())
         self.assertIn("===== WSL", out)
         self.assertIn("===== Windows", out)
         self.assertLess(out.index("wsl output"), out.index("===== Windows"))

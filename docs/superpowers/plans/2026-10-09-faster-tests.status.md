@@ -8,7 +8,7 @@ Branch: `build/faster-tests`. Resume at the first task not marked `done`. Never 
 | F0 | spec, plan, ledger | done | (this commit) | baseline: WSL ~100-120 s, native Windows 3.14 149 s (1925 tests, 79 skipped) |
 | F1 | `--windows` and `--all` | done | (this commit) | 20 new tests in `test_release_scripts.py` (`RunTestsWindowsTest`, cmd.exe faked). After the review fixes (F1g) `--all` ran 1945 tests: WSL 0 failures, 2 skipped; Windows 0 failures, 79 skipped; 283 s. Before them: full suite 1940 tests: WSL 0 failures, 2 skipped; Windows 3.14 0 failures, 79 skipped. Wall times: plain WSL 148 s; `--windows` 141 s (and 147 s); `--all` (-j 8 each) 269 s, 279 s; `--all -j 16` 264 s. Back to back the two runs take about 289 s, so `--all` saves only about 10-25 s: the machine is CPU-bound, and halving the shards makes the round-robin's slowest shard the limit (F2/F3 to tune). Ctrl+C checked by hand on `--windows` and `--all`: no python.exe/py.exe or WSL runner left |
 | F2 | balanced shards | done | (this commit) | 14 new tests in `test_release_scripts.py` (`RunTestsBalanceTest`; the cache in a temp folder, discovery and shards faked) plus the shard child's id-list test. Full suite 1959 tests: WSL 0 failures, 2 skipped; Windows 3.14 0 failures, 79 skipped; `--all` both OK. 16 shards, median of 3, round-robin before / balanced after: WSL 143.5 s (142.7, 143.5, 147.9; shards 62-144 s) / 99.8 s (99.7, 99.8, 102.1; shards 87-97 s, about 10 s apart); `--windows` 138.6 s (138.0, 138.6, 138.9; shards 58-139 s) / 97.3 s (96.6, 97.3, 104.7; shards 91-97 s in the median run, as everywhere here; the 104 s shard was the 104.7 s run's). Re-measured with the F2f fixes: `--windows` 99.7 s (99.4, 99.7, 99.8; median run's shards 91-99 s), 1962 tests, 0 failures, 79 skipped. `--all` (-j 8 each): 269-283 s (F1) / 201.6 s (one run; shards 181-198 s). The parent's discovery adds about 3 s; the cache files are about 185 KB each |
-| F3 | shard count by measurement | todo | | |
+| F3 | shard count by measurement | done | (this commit) | Default now 1.5 shards per CPU, at most 24 (`default_jobs`, `MAX_DEFAULT_JOBS`); `--all` gives each side half (12 on 16 CPUs). 3 new tests (`RunTestsShardCountTest`) and the `--all` default test updated. Median of 3 runs (runner's `Ran N tests in T s`), balanced shards, 16 CPUs, 1x / 1.5x / 2x CPUs: WSL -j 16/24/32 100.9 s (100.6, 100.9, 102.7) / 87.5 s (86.7, 87.5, 89.2; 13 % faster) / 87.3 s (86.4, 87.3, 88.6); `--windows` -j 16/24/32 99.6 s (98.4, 99.6, 100.2) / 78.0 s (77.1, 78.0, 89.0; 22 % faster) / 78.1 s (76.8, 78.1, 78.2); `--all` -j 8/12/16 each 197.9 s (196.0, 197.9, 199.7) / 176.5 s (176.0, 176.5, 178.1; 11 % faster) / 177.9 s (175.6, 177.9, 179.1). Gate with the new defaults: `--all` (12 each) 1965 tests: WSL 0 failures, 2 skipped; Windows 3.14 0 failures, 79 skipped; 175.1 s. Plain WSL run 1965 tests, 24 shards, 90.3 s, 0 failures, 2 skipped |
 | F4/F5 | two-job CI; when CI is checked | todo | | |
 | FR | review, gate, push, CI once | todo | | |
 
@@ -60,3 +60,17 @@ Branch: `build/faster-tests`. Resume at the first task not marked `done`. Never 
   `run` == the ids: a class whose `setUpClass` skips or fails rightly runs fewer tests. The `--windows` shard spread
   now reads the median run's in both documents (91-97 s; the ledger had mixed runs). CLAUDE.md's gate timings follow
   testing.md (`--all` about 3.5 min, the plain run about 100 s).
+- F3a: the default is 1.5 shards per CPU (`cpus * 3 // 2`, two CPUs if `os.cpu_count()` is unknown), at least 1,
+  capped at 24 (`MAX_DEFAULT_JOBS`): 1.5x was 13 % (WSL), 22 % (Windows) and 11 % (`--all`) faster than one shard
+  per CPU, and 2x was no faster than 1.5x anywhere, so the cap sits at 1.5x this 16-CPU machine rather than letting
+  a bigger one start dozens of Textual processes. `--all` without -j gives each side `default_jobs() // 2` (12 here),
+  not half the CPUs; the per-shard timeout rule (600 s at -j 4 or more) is unchanged. No CHANGELOG line (developer
+  tooling, as F1f). Measured with `-j` given explicitly, so every run used the same code; the three new tests landed
+  mid-way through the `--all -j 12` runs (1962 then 1965 tests).
+- F3b: review fixes. CI passes no -j, so a 4-vCPU GitHub runner now runs 6 shards (`default_jobs(4)`), not 4:
+  testing.md's CI step and the `tests.yml` comment no longer say "four shards" and name the new count, and a test
+  (`RunTestsShardCountTest`) pins testing.md's number to `default_jobs(4)`. 1.5 per CPU is unmeasured on a 4-vCPU
+  runner (the one that needed settle timeouts above 10 s); its timings are checked at F4/FR, and the 900 s timeout
+  only gains headroom from smaller shards. Not changed: the measurement caveat (three tests landing mid-way through
+  the `--all -j 12` runs, and `Ran N tests in T s` including the parent's ~3 s discovery) is already in F3a and
+  F2b; both affect every column alike and the 11-22 % gains are far past the 10 % bar.

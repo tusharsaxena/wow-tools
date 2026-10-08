@@ -33,6 +33,6 @@ jobs:
       - name: Event docs are current
         run: python scripts/gen_event_docs.py --check
       - name: Tests
-        # A slow Windows runner has taken 594 s for one of four shards; 900 s still fails a hang with its test's name
-        # well inside the job's 20 minutes.
+        # No -j: the default shard count (6 on a 4-vCPU runner; docs/testing.md). A slow Windows runner has taken
+        # 594 s for one shard; 900 s still fails a hang with its test's name well inside the job's 20 minutes.
         run: python scripts/run_tests.py --timeout 900

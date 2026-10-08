@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the test suite in parallel: the tests are dealt into shards by recorded time, one process per shard.
 
-    python3 scripts/run_tests.py            # one shard per CPU (at most 16)
+    python3 scripts/run_tests.py            # 1.5 shards per CPU (at most 24; spec F3)
     python3 scripts/run_tests.py -j 4       # four shards
     python3 scripts/run_tests.py -k tree    # only tests whose id contains "tree"
     python3 scripts/run_tests.py --timeout 0  # no per-shard time limit
@@ -22,8 +22,8 @@ round-robin by id. Each shard gets its explicit list of test ids in a temp file.
 
 --windows runs the suite in this same checkout under the native Windows Python through cmd.exe (`py -3`, or the
 command in WOWTOOLS_WINDOWS_PYTHON), passing -k, -j and --timeout through and returning its exit code; on native
-Windows it is the normal run, on Linux that is not WSL an error. --all runs both suites at once, half the CPUs each
-unless -j is given (then each gets -j), and passes only if both pass.
+Windows it is the normal run, on Linux that is not WSL an error. --all runs both suites at once, each with half the
+default shards unless -j is given (then each gets -j), and passes only if both pass.
 """
 from __future__ import annotations
 
@@ -60,6 +60,16 @@ SUMMARY_RE = re.compile(r"^Ran \d+ tests in ", re.MULTILINE)  # the last-but-one
 PID_WAIT = 10  # Ctrl+C before a Windows runner announced its pid: seconds to wait for the pid line
 TIMES_DIR = ROOT  # where the per-platform test-time caches live (tests point it at a temp folder)
 TIMES_VERSION = 1
+# The default shard count, chosen by measurement (spec F3; docs/testing.md): 1.5 shards per CPU, at most 24. The
+# tests spend much of their time waiting (pilots, workers, file I/O), so on 16 CPUs 24 shards beat 16 by 13 % (WSL)
+# and 22 % (Windows), and --all at 12 a side beat 8 a side by 11 %; 2 shards per CPU were no faster than 1.5.
+MAX_DEFAULT_JOBS = 24
+
+
+def default_jobs(cpus: int | None = None) -> int:
+    """Shards for a run without -j: 1.5 per CPU (os.cpu_count(), two if unknown), at least 1, at most 24."""
+    cpus = (os.cpu_count() or 2) if cpus is None else cpus
+    return max(1, min(cpus * 3 // 2, MAX_DEFAULT_JOBS))
 
 
 def default_timeout(jobs: int) -> float:
@@ -497,7 +507,8 @@ def _print_shard_times(shards: list[list[str]], outcomes: list, recorded: dict[s
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Run the wow-tools tests in parallel.")
-    parser.add_argument("-j", "--jobs", type=int, help="number of shards (default one per CPU, at most 16)")
+    parser.add_argument("-j", "--jobs", type=int,
+                        help=f"number of shards (default 1.5 per CPU, at most {MAX_DEFAULT_JOBS})")
     parser.add_argument("-k", dest="pattern", help="only run tests whose id contains this text")
     parser.add_argument("--timeout", type=float,
                         help=f"seconds each shard may run before it is killed and failed (default {DEFAULT_TIMEOUT}, "
@@ -507,8 +518,8 @@ def main(argv: list[str]) -> int:
                        help=f"from WSL: run the suite under the native Windows Python ({DEFAULT_WINDOWS_PYTHON}, or "
                             f"${WINDOWS_PYTHON_ENV}) through cmd.exe")
     where.add_argument("--all", action="store_true",
-                       help="from WSL: run the WSL and the Windows suites at the same time, half the CPUs each "
-                            "unless -j is given; passes only if both pass")
+                       help="from WSL: run the WSL and the Windows suites at the same time, half the default shards "
+                            "each unless -j is given; passes only if both pass")
     parser.add_argument("--verbose-shards", action="store_true",
                         help="also print each shard's time, test count and planned time")
     parser.add_argument("--shard-file", help=argparse.SUPPRESS)
@@ -530,7 +541,7 @@ def main(argv: list[str]) -> int:
             try:
                 if args.windows:
                     return _run_windows(_passthrough(jobs, args.pattern, args.timeout, args.verbose_shards))
-                return _run_all(jobs or max(1, (os.cpu_count() or 2) // 2), args.pattern, args.timeout,
+                return _run_all(jobs or max(1, default_jobs() // 2), args.pattern, args.timeout,
                                 args.verbose_shards)
             except ValueError as error:
                 print(error, file=sys.stderr)
@@ -542,7 +553,7 @@ def main(argv: list[str]) -> int:
                 return 2
         # Native Windows: --windows (and --all) is the normal run.
 
-    jobs = max(1, args.jobs if args.jobs is not None else min(os.cpu_count() or 2, 16))
+    jobs = max(1, args.jobs) if args.jobs is not None else default_jobs()
     timeout = default_timeout(jobs) if args.timeout is None else (args.timeout if args.timeout > 0 else None)
     started = time.monotonic()
     ids = _discover_ids(args.pattern)
