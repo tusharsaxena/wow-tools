@@ -110,8 +110,8 @@ the blacklist: highlight the addon's line in the tree, or one of its files, and 
 confirms it ("ElkBuffBars (Retail) is now on the blacklist.").
 
 - A blacklisted addon stays in the tree, greyed out and tagged **blacklisted**, so you can still see what the rules
-  would suggest. It has no tick: `Space`, `a` and `n` skip it, and it's left out of the rule counts, the bottom
-  bar, the confirmation, **Clean** and **Dry run**.
+  would suggest. Its lines show `⊘` where the tick goes, its files too. It has no tick: `Space`, `a` and `n` skip
+  it, and it's left out of the rule counts, the bottom bar, the confirmation, **Clean** and **Dry run**.
 - An addon is blacklisted in one game version: blacklisting ElkBuffBars in Retail leaves ElkBuffBars in Classic
   Era to the rules. With **All flavors**, `b` works on the game version of the line you're on.
 - `b` on a blacklisted addon takes it off again. Either way it's saved at once.

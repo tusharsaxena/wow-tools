@@ -28,9 +28,10 @@ from wowtools.core.sv_undo import UndoError, UndoResult
 from wowtools.ui.dialogs import BUSY_STYLE, DiscardScreen, ProgressScreen, TwoPaneFocus
 from wowtools.ui.widgets import WrapButtonRow
 
-__all__ = ["BLACKLIST_BINDING", "BLACKLIST_KEY", "BLACKLIST_NO_TARGET", "ActionBar", "BarTree", "BlacklistAction",
-           "ButtonActions", "NotTicked", "Preflight", "ReviewBase", "ReviewTree", "RunActions",
-           "ScheduledRebuild", "SvRecoveryActions", "TickActions", "TickModel", "blacklist_toast"]
+__all__ = ["BLACKLISTED_MARK", "BLACKLISTED_STYLE", "BLACKLIST_BINDING", "BLACKLIST_KEY", "BLACKLIST_NO_TARGET",
+           "ActionBar", "BarTree", "BlacklistAction", "ButtonActions", "NotTicked", "Preflight", "ReviewBase",
+           "ReviewTree", "RunActions", "ScheduledRebuild", "SvRecoveryActions", "TickActions", "TickModel",
+           "blacklist_toast", "blacklisted_mark"]
 
 WowCheck = Callable[[], "list[str] | None"]
 
@@ -388,6 +389,15 @@ BLACKLIST_KEY = "b"
 # Shown on no footer: a screen that wants `b` listed binds its own Binding(BLACKLIST_KEY, "blacklist", ..., show=True).
 BLACKLIST_BINDING = Binding(BLACKLIST_KEY, "blacklist", "Blacklist", show=False)
 BLACKLIST_NO_TARGET = "Highlight an addon (or something inside one) first."
+# L15: what a blacklisted row shows in the tick column instead of a tick mark (it is never ticked), in the muted
+# style of the row, in every tool with a blacklist.
+BLACKLISTED_MARK = "⊘"
+BLACKLISTED_STYLE = "dim"
+
+
+def blacklisted_mark() -> tuple[str, str]:
+    """(mark, style) for a blacklisted row's tick column: the same shape as ui.dialogs.tick_mark's."""
+    return f"{BLACKLISTED_MARK} ", BLACKLISTED_STYLE
 
 
 def blacklist_toast(flavor: str, addon: str, listed: bool) -> str:

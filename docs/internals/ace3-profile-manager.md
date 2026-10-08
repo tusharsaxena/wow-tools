@@ -199,7 +199,9 @@ per app session, L4; `ace.disclaimer_accepted` / `_declined`; Back returns to th
   Everyone → Default still take every tick (falling back to the highlighted node only with no tick at all), and
   their popup (a toast for the two that stage at once) says how many ticks are hidden. Labels and tags come from `report.profile_rows` and
   `char_tags`. Ticks are `("p", DbKey, profile)` and `("c", DbKey, char)`; groups tick their descendants; locked
-  addons, deleted profiles, removed characters and notes are read-only. `#summary` is `report.selection_text` plus
+  addons, deleted profiles, removed characters and notes are read-only. Every row of a locked addon (in both views)
+  is in `TreeBuilder.held` and shows the shared blacklist mark (`ui.review.blacklisted_mark()`, `⊘`, dim, L15) in
+  place of a tick mark; an unlocked one takes ticks again. `#summary` is `report.selection_text` plus
   the hidden-ticks line.
   The scan, the running-WoW preflight, Apply/dry run, Undo and recovery each run in a worker; the jobs set
   `app.busy` and run inside `activity.running()`.

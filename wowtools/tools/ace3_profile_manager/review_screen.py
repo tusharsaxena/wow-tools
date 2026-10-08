@@ -46,7 +46,7 @@ from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                 UnfinishedRunScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.review import (BLACKLIST_BINDING, ActionBar, BarTree, BlacklistAction, ReviewBase, RunActions,
-                                SvRecoveryActions, TickModel, WowCheck)
+                                SvRecoveryActions, TickModel, WowCheck, blacklisted_mark)
 from wowtools.ui.toasts import TOAST_FLOOR, StackTip, TipRack
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, TreeFilter, hidden_by_filter
 from wowtools.ui.warnings_view import (WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost,
@@ -419,6 +419,8 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
         if builder is None or data is None:
             return Text("")
         body = builder.bodies.get(id(data), Text(""))
+        if id(data) in builder.held:  # a locked (blacklisted) addon's row: never ticked (L15)
+            return Text.assemble(blacklisted_mark(), body)
         keys = builder.keys.get(id(data), ())
         if not keys:
             return Text.assemble("  ", body)

@@ -132,7 +132,7 @@ Lines in the tree carry small tags that tell you what's going on:
 | **missing** | profile | A character points at it, but the profile has no settings saved yet. The addon creates it, with its defaults, the next time that character logs in |
 | **no character folder** | character | The character has no folder in the `WTF` folder of that account any more: you deleted or renamed it, or moved it to another realm. A leftover |
 | **spec profiles** | character | The addon switches this character's profile by talent spec (LibDualSpec, see the [FAQ](#faq)) |
-| **blacklisted** | addon | It's on your [blacklist](#the-blacklist): shown greyed out, can't be ticked or changed |
+| **blacklisted** | addon | It's on your [blacklist](#the-blacklist): shown greyed out with `⊘` where the tick goes, can't be ticked or changed |
 | **unlocked** | addon | A blacklisted addon you unlocked for this session (`u`) |
 
 ### Pending changes
@@ -221,7 +221,8 @@ highlighted one when nothing is ticked.
 ### The blacklist
 
 Some addons you never want touched. Put them on the blacklist: they stay in the tree, greyed out, so you can still
-see their profiles, but they can't be ticked or changed.
+see their profiles, but they can't be ticked or changed. Each of their lines shows `⊘` where the tick goes, in both
+views (By addon and By character).
 
 An addon is blacklisted in one game version: blacklisting ElvUI in Retail leaves ElvUI in Classic Era free to
 change.

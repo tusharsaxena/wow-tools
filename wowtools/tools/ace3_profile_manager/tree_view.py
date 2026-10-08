@@ -1,6 +1,7 @@
 """Build the review screen's tree (By addon or By character) from a scan and the pending changes, with the Show
 boxes and the tree filter (ui.tree_filter's TextFilter) applied. Every node is built up front (a whole install has well under a thousand), and the builder
-records, per node, the tick keys it covers and the text of its label (the screen adds the tick mark)."""
+records, per node, the tick keys it covers, the text of its label (the screen adds the tick mark) and whether it is a
+row of a locked (blacklisted) addon (the screen shows the blacklist mark there instead)."""
 from __future__ import annotations
 
 from collections.abc import Callable, Hashable
@@ -52,8 +53,8 @@ def ident(data) -> Hashable:
 
 class TreeBuilder:
     """Fills a Tree. `keys` and `bodies` are keyed by id(node.data): the tick keys a node covers (empty for a
-    read-only or locked node) and its label without the tick mark. `locked` and `blacklisted` take the file's
-    flavor folder and its addon."""
+    read-only or locked node) and its label without the tick mark; `held` the nodes of a locked addon's rows (the
+    blacklist mark, L15). `locked` and `blacklisted` take the file's flavor folder and its addon."""
 
     def __init__(self, scan: ScanResult, staging: Staging, filters: Filters, *, scope_label: str,
                  locked: Callable[[str, str], bool], blacklisted: Callable[[str, str], bool],
@@ -69,6 +70,7 @@ class TreeBuilder:
         self.warning_style = warning_style
         self.keys: dict[int, tuple] = {}
         self.bodies: dict[int, Text] = {}
+        self.held: set[int] = set()
         self._own: set[int] = set()  # nodes whose keys are their own (a profile), not the union of their children
         # The filter opens every group it leaves, so its matches show; what the user opens and closes then is not
         # remembered (the tree goes back to how it was when the filter is cleared).
@@ -76,8 +78,11 @@ class TreeBuilder:
         self._path: tuple[str, ...] = ()  # the labels above the node being built (flavor, account): the filter's
 
     # --- nodes -----------------------------------------------------------------------------------
-    def _add(self, parent: TreeNode, data, body: Text, keys: tuple | None = None, *, leaf: bool = False) -> TreeNode:
+    def _add(self, parent: TreeNode, data, body: Text, keys: tuple | None = None, *, leaf: bool = False,
+             held: bool = False) -> TreeNode:
         self.bodies[id(data)] = body
+        if held:
+            self.held.add(id(data))
         if keys is not None:
             self.keys[id(data)] = keys
             self._own.add(id(data))
@@ -175,11 +180,12 @@ class TreeBuilder:
             body.append(" · blacklisted", style=self.warning_style)
         elif self.blacklisted(file.flavor.folder, addon):
             body.append(" · unlocked", style=self.warning_style)
-        node = self._add(parent, ("addon", addon_file), body)
+        node = self._add(parent, ("addon", addon_file), body, held=locked)
         several = len(addon_file.dbs) > 1
         for state in self._states(addon_file):
             if several:
-                db_node = self._add(node, ("db", state.key), Text(state.key.sv_name, style="dim" if locked else ""))
+                db_node = self._add(node, ("db", state.key), Text(state.key.sv_name, style="dim" if locked else ""),
+                                    held=locked)
                 self._profiles(db_node, state, locked)
                 self._drop_if_empty(db_node)
             else:
@@ -198,16 +204,17 @@ class TreeBuilder:
             if not chars and not self.text_filter.matches(*context):
                 continue
             if row.deleted:
-                node = self._add(parent, ("deleted", key, row.name), Text(row.label, style="dim"))
+                node = self._add(parent, ("deleted", key, row.name), Text(row.label, style="dim"), held=locked)
             else:
                 node = self._add(parent, ("profile", key, row.name), Text(row.label, style=style),
-                                 () if locked else (("p", key, row.name),))
+                                 () if locked else (("p", key, row.name),), held=locked)
             for char in chars:
                 if char.removed:
-                    self._add(node, ("removed", key, char.char), Text(char.label, style="dim"), leaf=True)
+                    self._add(node, ("removed", key, char.char), Text(char.label, style="dim"), leaf=True,
+                              held=locked)
                 else:
                     self._add(node, ("char", key, char.char), Text(char.label, style=style),
-                              () if locked else (("c", key, char.char),), leaf=True)
+                              () if locked else (("c", key, char.char),), leaf=True, held=locked)
             if not node.children:
                 node.allow_expand = False
 
@@ -246,9 +253,10 @@ class TreeBuilder:
         tags = [t for t in char_tags(state, char) if t != LEFTOVER_TAG]
         body = Text(" · ".join([f"{name}: {shown}", *tags]), style="dim" if locked or removed else "")
         if removed:
-            self._add(parent, ("removed", key, char), body, leaf=True)
+            self._add(parent, ("removed", key, char), body, leaf=True, held=locked)
         else:
-            self._add(parent, ("pair", key, char), body, () if locked else (("c", key, char),), leaf=True)
+            self._add(parent, ("pair", key, char), body, () if locked else (("c", key, char),), leaf=True,
+                      held=locked)
 
 
 def counts(ticked: set[tuple]) -> tuple[int, int]:

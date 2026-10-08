@@ -9,6 +9,7 @@ from textual.widgets import Button, DataTable, Input, Static, Tree
 
 from tests.fixtures import BASE, TuiTestCase, accept_disclaimer, build_ace_tree, make_config, settle, submit_filter
 from wowtools.core.backup import BackupEntry, create_backup
+from wowtools.core.blacklist import toggle_pair
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
@@ -28,6 +29,7 @@ from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.dialogs import LISTED_ID, ConfirmScreen, InfoScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
+from wowtools.ui.review import BLACKLISTED_MARK
 from wowtools.ui.suite_app import WowToolsApp
 from wowtools.ui.tree_filter import FILTER_HINT
 from wowtools.ui.widgets import action_kind
@@ -253,6 +255,112 @@ class ReviewTest(AceAppBase):
             await settle(app, pilot)
             self.assertFalse(review.locked("_retail_", "ElvUI"))
             self.assertIn("unlocked", "\n".join(labels(tree)))
+
+    async def test_blacklisted_rows_show_the_blacklist_mark(self):
+        """L15: every row of a blacklisted (locked) addon shows the shared ⊘ in the tick column, dim like the row,
+        By addon and By character; Space never ticks one; unlocked (u), its rows take tick marks again."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.highlight_addon(app, pilot, review, "ElvUI")
+            await pilot.press("b")
+            await settle(app, pilot)
+            tree = review.query_one("#profiles", Tree)
+
+            def file_of(node):
+                kind = node.data[0]
+                if kind == "addon":
+                    return node.data[1].file
+                return review.staging.state(node.data[1]).file if kind in ("db", "profile", "char", "pair") else None
+
+            def rows(locked):
+                out, stack = [], [tree.root]
+                while stack:
+                    node = stack.pop()
+                    stack.extend(node.children)
+                    file = node.data and file_of(node)
+                    if file and ((file.flavor.folder, file.addon) == ("_retail_", "ElvUI")) == locked:
+                        out.append(node)
+                return out
+
+            for view in ("addon", "character"):
+                if view == "character":
+                    await pilot.press("v")
+                    await settle(app, pilot)
+                tree.root.expand_all()
+                await settle(app, pilot)
+                held = rows(locked=True)
+                self.assertTrue(held, view)
+                for node in held:
+                    label = node.label
+                    self.assertTrue(label.plain.startswith(f"{BLACKLISTED_MARK} "), (view, label.plain))
+                    self.assertTrue(any(s.start == 0 and "dim" in str(s.style) for s in label.spans), label.spans)
+                    tree.move_cursor(node)
+                    await pilot.press("space")
+                    await settle(app, pilot)
+                    self.assertEqual(review.ticked, set())  # locked: nothing to tick
+                for node in rows(locked=False):
+                    self.assertNotIn(BLACKLISTED_MARK, node.label.plain)
+            await pilot.press("v")  # back to By addon, then unlock: the mark goes
+            await settle(app, pilot)
+            await self.highlight_addon(app, pilot, review, "ElvUI")
+            await pilot.press("u")
+            await settle(app, pilot)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            self.assertFalse(any(BLACKLISTED_MARK in line for line in labels(tree)))
+
+    async def test_deleted_and_removed_rows_of_a_locked_addon_show_the_blacklist_mark(self):
+        """L15: a deleted profile and a removed leftover character are rows of their addon too: locked, they show
+        the ⊘ (By addon and By character's removed pair); unlocked, they show no mark at all."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            key = next(k for k, st in review.staging.states.items() if "Gone - Realm1" in st.leftovers)
+            self.assertTrue(review.staging.delete({key: ["Backup"]}, "Default").ok)
+            self.assertTrue(review.staging.remove_leftovers({key: ["Gone - Realm1"]}).ok)
+            review.refresh_view()
+            await settle(app, pilot)
+            tree = review.query_one("#profiles", Tree)
+
+            def shown(kinds):
+                tree.root.expand_all()
+                return [n for n in walk(tree.root) if n.data and n.data[0] in kinds and n.data[1] == key]
+
+            for view in ("addon", "character"):
+                if view == "character":
+                    await pilot.press("v")
+                    await settle(app, pilot)
+                tree.root.expand_all()
+                await settle(app, pilot)
+                kinds = ("deleted", "removed") if view == "addon" else ("removed",)
+                rows = shown(kinds)
+                self.assertEqual({n.data[0] for n in rows}, set(kinds), view)
+                for node in rows:  # not locked: read-only rows, no mark
+                    self.assertTrue(node.label.plain.startswith("  "), (view, node.label.plain))
+                    self.assertNotIn(BLACKLISTED_MARK, node.label.plain)
+            await pilot.press("v")
+            await settle(app, pilot)
+            # Lock KickCD with its changes still staged (b and the blacklist screen drop them first, so only the
+            # builder's own marking is under test here).
+            flavor = review.staging.state(key).file.flavor.folder
+            review.settings.blacklist, _ = toggle_pair(review.settings.blacklist, flavor, "KickCD", [flavor])
+            self.assertTrue(review.locked(flavor, "KickCD"))
+            for view in ("addon", "character"):
+                if view == "character":
+                    await pilot.press("v")
+                    await settle(app, pilot)
+                review.refresh_view()
+                await settle(app, pilot)
+                tree.root.expand_all()
+                await settle(app, pilot)
+                kinds = ("deleted", "removed") if view == "addon" else ("removed",)
+                rows = shown(kinds)
+                self.assertEqual({n.data[0] for n in rows}, set(kinds), view)
+                for node in rows:
+                    label = node.label
+                    self.assertTrue(label.plain.startswith(f"{BLACKLISTED_MARK} "), (view, label.plain))
+                    self.assertTrue(any(s.start == 0 and "dim" in str(s.style) for s in label.spans), label.spans)
 
     async def test_b_locks_the_pair_in_its_flavor_only(self):
         """Feedback round 1: b blacklists (Retail, ElvUI); Classic Era's Questie stays tickable."""

@@ -161,7 +161,8 @@ set, `clean.risk_warning_changed`, L8). `review_screen.py` holds:
   flavors, a node per flavor, a "not scanned" leaf for a flavor whose scan failed). `wow_check` covers every
   flavor (`core.process.wow_check_for(list)` lists the processes once). Blacklisted items (`Proposal.blacklisted`)
   stay in the tree, greyed and tagged "blacklisted", with no tick keys (`_paths` gives none, so Space / `a` / `n`
-  skip them) and no tick mark; group rows count and mark the cleanable items only. `b` is the shared
+  skip them) and the shared blacklist mark (`ui.review.blacklisted_mark()`, `⊘`, dim, L15) in place of a tick mark;
+  group rows count and mark the cleanable items only. `b` is the shared
   `BlacklistAction` (`BLACKLIST_BINDING`, not in the footer: the left-pane hint names it): `blacklist_target` maps an
   item or file row to (its flavor folder, from `_item_flavor`, rebuilt per rebuild, so All flavors toggles per flavor;
   the addon), `toggle_blacklist` reloads the settings, applies `toggle_pair` over every flavor folder of the install,

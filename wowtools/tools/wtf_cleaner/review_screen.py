@@ -39,7 +39,8 @@ from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceScreen, ConfirmScreen,
                                 ProgressScreen, relabel_branch, two_pane_css)
-from wowtools.ui.review import BLACKLIST_BINDING, BLACKLIST_KEY, BlacklistAction, ReviewBase, ReviewTree, TickModel
+from wowtools.ui.review import (BLACKLIST_BINDING, BLACKLIST_KEY, BlacklistAction, ReviewBase, ReviewTree, TickModel,
+                               blacklisted_mark)
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TreeFilter
 from wowtools.ui.warnings_view import (WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost,
                                        scan_warning_items)
@@ -518,12 +519,14 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
 
     @staticmethod
     def _blacklisted_label(data, now: float) -> Text:
-        """A blacklisted addon's row (or one of its files): greyed, no tick mark, tagged on the addon row."""
+        """A blacklisted addon's row (or one of its files): greyed, the blacklist mark (⊘) in place of a tick mark,
+        tagged on the addon row."""
+        mark = blacklisted_mark()
         if data[0] == "file":
             sv = data[2]
-            return Text.assemble("  ", sv.name, f"  {human_size(sv.size)} · {age_days(sv.mtime, now)}d", style="dim")
+            return Text.assemble(mark, sv.name, f"  {human_size(sv.size)} · {age_days(sv.mtime, now)}d", style="dim")
         item = data[1]
-        return Text.assemble("  ", (item.addon, "bold"), "  ", ("blacklisted", f"not dim {WARNING_STYLE}"),
+        return Text.assemble(mark, (item.addon, "bold"), "  ", ("blacklisted", f"not dim {WARNING_STYLE}"),
                              f"  {plural(len(item.files), 'file')} · {human_size(item.total_size)}", style="dim")
 
     def _refresh_labels(self, node=None) -> None:

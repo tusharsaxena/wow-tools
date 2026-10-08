@@ -12,6 +12,9 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
   - Before the first scan they ask you to accept a **USE AT YOUR OWN RISK** warning, like the Saved Variables
     Browser: it says what the tool deletes or rewrites, that a backup and Undo are there, and to close WoW first.
     **I understand** goes on, **Back** returns to the game versions. It's asked once each time you start the app.
+- **WTF Cleaner** and **Ace3 Profile Manager**
+  - A blacklisted addon's lines show `⊘` where the tick goes, greyed like the line, so you can see at a glance why
+    they have no tick. In the Ace3 Profile Manager that's in both views, By addon and By character.
 - **Every tool**
   - `t` goes back to the tool menu from any screen and any popup, like `q` quits: the game version and account
     pickers, the help, the settings, the warnings and every "are you sure?" window, not only reviews and results.

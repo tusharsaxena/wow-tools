@@ -535,8 +535,9 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   *Enforced by:* `tests/test_warnings_view.py::test_every_review_opens_its_warnings`,
   `tests/test_warnings_view.py::test_no_warnings_no_button`.
 - **STD-7.12 SHOULD** A tool whose review targets addons offers `b` through the shared `BlacklistAction`, its list in
-  `[<section>] blacklist` in the `core/blacklist.py` pair format ([B1][wb], [B3][wb]).
-  *Why:* one key and one message. Out of scope by B3: Screenshot Organizer, Interface Backup, SV Browser.
+  `[<section>] blacklist` in the `core/blacklist.py` pair format ([B1][wb], [B3][wb]). Its blacklisted rows show
+  the shared `ui.review.blacklisted_mark()` (`⊘`, dim) in the tick column, never a tick mark (L15).
+  *Why:* one key, one message and one mark. Out of scope by B3: Screenshot Organizer, Interface Backup, SV Browser.
   *Enforced by:* `tests/test_structure.py::test_blacklist_helpers_and_key_are_shared`.
 - **STD-7.13 MUST** A tool that stages changes before writing shows a `#pending` line, enables Apply/Dry run only
   while something is pending, and asks a destructive confirm before Rescan or any way out drops pending work

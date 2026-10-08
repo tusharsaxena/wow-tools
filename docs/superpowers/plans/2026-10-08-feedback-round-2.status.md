@@ -9,7 +9,7 @@ go-ahead.
 | R0 | spec, plan, ledger | done | (this commit) | written 2026-10-08 09:58 while round 1's workflow ran |
 | L11 | `t` from any screen | done | (this commit) | `WowToolsApp.key_t` -> `action_tool_menu`; q's busy and staged-work logic shared (`refused_while_busy`, `ask_before_leaving`); new event `ui.tool_menu_refused`; STD-8.11 extended; tests/test_tool_menu_key.py (9 tests, every screen of every tool at BASE and LARGE); full suite 1872 tests OK (2 skipped) |
 | L14 | one "Run journal" row | done | (this commit) | cause: a clean across flavors (`multi_summary_rows`) named the shared journal on top and again in every flavor block (`summary_rows`); now once on top with the Undo note, blocks pass `journal=False`; the top note is `MULTI_UNDO_NOTE` (L14-c); the other four tools already have one journal row (Ace3/SV Browser guard test added); tests in test_wtf_app.py and test_ace_report.py; full suite 1875 tests OK (2 skipped) |
-| L15 | blacklist mark | todo | | |
+| L15 | blacklist mark | done | (this commit) | `BLACKLISTED_MARK` (`⊘`), `BLACKLISTED_STYLE` (dim) and `blacklisted_mark()` in `ui/review.py`; WTF Cleaner addon and file rows, Ace3 every row of a locked addon in both views (`TreeBuilder.held`); help, guides, internals, architecture, STD-7.12, CHANGELOG; tests in test_wtf_app.py, test_ace_app.py, test_docs.py, test_structure.py; full suite 1879 tests OK (2 skipped) |
 | L16 | Interface Backup `backup/` folder | todo | | |
 | LR5 | review L11-L16, push, CI | todo | | |
 | S1 | merge docs/screenshots | todo | | branch pushed at 3b6da86 |
@@ -65,3 +65,23 @@ go-ahead.
   characters so `journal/<name>` plus the note fits at 120x30 with the default backup folder (a longer "puts the
   deleted files back" scrolled sideways; a test pins the fit). The internals paragraph that grew past 120 columns
   is rewrapped.
+- **L15-a** The mark is one constant pair in `ui/review.py`, next to `BlacklistAction`: `BLACKLISTED_MARK` (`⊘`)
+  and `BLACKLISTED_STYLE` (`dim`, the muted style both trees already give a blacklisted row), returned as
+  `blacklisted_mark()` in the `(mark, style)` shape of `ui.dialogs.tick_mark`. `test_structure` pins its one home
+  and that both review screens use it.
+- **L15-b** The Ace3 blacklist screen keeps its ticks: there a tick is the blacklisted state and Space toggles it,
+  so a `⊘` in its tick column would hide what Space changes. Its explanation line names the mark instead ("the
+  review shows them marked ⊘, never ticked or changed").
+  This departs from the spec's L15 row, which lists the blacklist screen among the places that show the mark;
+  the review flagged it and it stays open for the user to confirm (keep the ticks, or show the mark there too).
+- **L15-c** Which rows: in the WTF Cleaner the blacklisted addon's item row and its file rows (group rows still
+  count and mark the cleanable items only); in the Ace3 Profile Manager every row of a locked addon (addon,
+  database, profile, character; By character its pair rows), recorded in `TreeBuilder.held`. A group that is not
+  itself blacklisted (an account, a By character character whose every row is locked) keeps a blank tick column.
+  An addon unlocked with `u` is not locked, so its rows take tick marks again.
+- **L15-d** STD-7.12 (SHOULD) now also names the shared mark; no MUST changed.
+- **L15-e** Review fixes: both new Textual tests run at `BASE` (120x30, STD-10.5), not the files' local
+  `(140, 50)`. A new Ace3 test covers the read-only rows of a locked addon: a deleted profile and a removed
+  leftover character (By addon) and the removed pair (By character) show the mark when locked and no mark when
+  not. In the app `b` and the blacklist screen drop a locked addon's staged changes first, so the test locks it
+  through the settings with the changes still staged, to pin the tree builder's own marking.

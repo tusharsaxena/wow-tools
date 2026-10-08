@@ -172,6 +172,22 @@ class DocsTest(unittest.TestCase):
         for needle in ("`core/blacklist.py`", "`BlacklistAction`", "`WarningsScreen`"):
             self.assertIn(needle, standards)
 
+    def test_blacklist_mark_is_named(self):
+        """L15: the in-app help, the guides and the Ace3 blacklist screen of both blacklist tools name the mark a
+        blacklisted row shows in the tick column, and the changelog says it."""
+        from wowtools.tools.ace3_profile_manager.blacklist_screen import EXPLANATION
+        from wowtools.tools.ace3_profile_manager.help import HELP as ACE_HELP
+        from wowtools.tools.wtf_cleaner.help import HELP as WTF_HELP
+        from wowtools.ui.review import BLACKLISTED_MARK
+        self.assertIn(f"`{BLACKLISTED_MARK}` where the tick goes", WTF_HELP)
+        self.assertIn(f"`{BLACKLISTED_MARK}` where the tick goes", ACE_HELP)
+        self.assertIn(BLACKLISTED_MARK, EXPLANATION)
+        for name in ("wtf-cleaner", "ace3-profile-manager"):
+            guide = (REPO_ROOT / "docs" / f"{name}.md").read_text(encoding="utf-8")
+            self.assertIn(f"`{BLACKLISTED_MARK}` where the tick goes", guide, name)
+        changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertIn(f"`{BLACKLISTED_MARK}` where the tick goes", changelog)
+
     def test_config_comments_are_not_kept(self):
         """F-013: a save rewrites the config files through configparser, which drops comments; the README's settings
         section and the WTF Cleaner guide's hand-edited blacklist say so."""

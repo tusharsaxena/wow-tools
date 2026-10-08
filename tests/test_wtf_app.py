@@ -35,7 +35,7 @@ from wowtools.tools.wtf_cleaner.undo import UndoResult
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
-from wowtools.ui.review import BLACKLIST_NO_TARGET
+from wowtools.ui.review import BLACKLIST_NO_TARGET, BLACKLISTED_MARK
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.widgets import ButtonRow, Ka0sCheckbox, NavHint, action_kind
@@ -538,6 +538,7 @@ class BlacklistKeyTest(AppTestCase):
                     self.assertTrue(row.data[1].blacklisted)
                     self.assertIn("blacklisted", str(row.label))
                     self.assertFalse(str(row.label).startswith(("✔", "◩", "✘")), str(row.label))
+                    self.assertTrue(str(row.label).startswith(BLACKLISTED_MARK), str(row.label))
                 self.assertNotIn("Uninstalled", {i.addon for i in review.proposal.items})
                 self.assertIn("4 items · 5 files", review.summary_text)
                 self.assertIn("(0 files)", review.query_one("#crit_not_installed", Ka0sCheckbox).label.plain)
@@ -576,6 +577,29 @@ class BlacklistKeyTest(AppTestCase):
             self.assertFalse(paths & review.unchecked)
             await pilot.press("a")
             self.assertNotIn("Uninstalled", {i.addon for i in review._selection()})
+
+    async def test_blacklisted_rows_show_the_blacklist_mark(self):
+        """L15: an addon row and its file rows show the shared ⊘ in the tick column, dim like the row; a row that
+        is not blacklisted keeps its tick mark."""
+        self.tool_cfg.set("wtf_cleaner", "blacklist", "_retail_:Uninstalled", log=False)
+        self.tool_cfg.save()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            tree.root.expand_all()
+            await pilot.pause()
+            rows = [n for n in _walk(tree.root) if n.data and n.data[0] in ("item", "file")]
+            held = [n for n in rows if n.data[1].blacklisted]
+            self.assertTrue(any(n.data[0] == "item" for n in held) and any(n.data[0] == "file" for n in held))
+            for node in held:
+                label = node.label
+                self.assertTrue(label.plain.startswith(f"{BLACKLISTED_MARK} "), label.plain)
+                self.assertTrue(any(s.start == 0 and "dim" in str(s.style) for s in label.spans), label.spans)
+            for node in rows:
+                if not node.data[1].blacklisted:
+                    self.assertTrue(node.label.plain.startswith(("✔", "◩", "✘")), node.label.plain)
+                    self.assertNotIn(BLACKLISTED_MARK, node.label.plain)
 
     async def test_blacklisted_addon_is_left_out_of_the_confirm_and_the_dry_run(self):
         app = self.make_app()
