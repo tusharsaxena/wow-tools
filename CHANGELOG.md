@@ -29,6 +29,9 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 ### Changed
 
 - **Docs**
+  - The release zip holds only what you need to run the app and read about it: the program, its libraries, the
+    launchers, the README, the changelog, the license and the five guides with their pictures. The developer
+    documentation, tests and scripts stay on GitHub, and the README no longer has a section for developers.
   - New screenshots of every tool: the README shows the tool menu, the general settings, the USE AT YOUR OWN RISK
     warning and each tool's review screen, and each tool's guide shows its review screen, its confirm or progress window
     and its results.

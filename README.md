@@ -3,7 +3,7 @@
 ![Version](https://img.shields.io/badge/Version-0.1.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-yellow)
 ![Platforms](https://img.shields.io/badge/Platforms-Windows_%7C_macOS_%7C_Linux-purple)
-![Tests](https://img.shields.io/badge/Tests-1907_passing%2C_2_skipped-green)
+![Tests](https://img.shields.io/badge/Tests-1925_passing%2C_2_skipped-green)
 ![License](https://img.shields.io/badge/License-MIT-orange)
 
 Ka0s WoW Tools is a small set of World of Warcraft helpers that run ***outside*** the game and tidy up the files WoW
@@ -251,15 +251,17 @@ If you'd rather update anyway in that case, add `allow_unverified_updates = true
 [Your settings](#your-settings)).
 
 Updating never touches your settings, logs or backups, or files you put directly in the app's folder (notes, say).
-The app's own folders (`wowtools`, `vendor`, `scripts` and `docs`) are replaced as a whole, so don't keep your own
+The app's own folders (`wowtools`, `vendor` and `docs`) are replaced as a whole, so don't keep your own
 files in them. If an update fails partway, the app puts the old version back.
 
 The app keeps a copy of the version you replaced in the `.update-backup` folder, two at most: the one this update made
 and the newest other one. Before it deletes an older copy, it moves any files you had added inside the app's own
 folders out of that copy to `update-leftovers\<version>\` in the app's folder, at the same path they had. A file you
 edited stays behind. That folder can also get one of the app's own files that the old version had and later versions
-dropped, though never a bundled library's. Look through it and delete what you don't need. If a file can't be moved,
-that copy isn't deleted, and the next update tries again.
+dropped, though never a bundled library's or a developer document's. Anything in `docs\internals`,
+`docs\superpowers` or `docs\ideas` counts as a developer document, a file you put there too, and is deleted with
+the copy. Look through it and delete what you don't need. If a file can't be moved, that copy isn't deleted, and
+the next update tries again.
 
 If you cloned with git, the update is a fast-forward to the new version. It stops if you've edited the app's own
 files, but files you added yourself (notes, say) don't get in its way. It never waits for a password: if git
@@ -346,12 +348,6 @@ If you use WSL (Linux inside Windows), the same folder works from both sides. Ru
 - Attach that day's `logfile-<date>.log` and `events-<date>.log` to your report.
 
 The logs list every step the app took, so they usually show what went wrong.
-
-## Developing
-
-Start with [CLAUDE.md](CLAUDE.md), the index of the developer docs: [standards](docs/standards.md),
-[architecture and the documentation map](docs/architecture.md#documentation-map), [testing](docs/testing.md) and
-[common tasks](docs/common-tasks.md).
 
 ## Issues and feature requests
 

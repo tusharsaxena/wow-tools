@@ -30,7 +30,7 @@ def make_install(root: Path, version: str) -> None:
     (root / "docs").mkdir()
     (root / "docs" / f"only-in-{version}.md").write_text("doc\n")
     (root / "README.md").write_text(f"readme {version}\n")
-    (root / "requirements.txt").write_text("textual\n")
+    (root / "LICENSE").write_text(f"licence {version}\n")
 
 
 def make_zipball(path: Path, version: str) -> None:
@@ -38,9 +38,8 @@ def make_zipball(path: Path, version: str) -> None:
         zf.writestr(f"{TOP}/wowtools/__init__.py", f'__version__ = "{version}"\n')
         zf.writestr(f"{TOP}/vendor/lib.py", f"# {version}\n")
         zf.writestr(f"{TOP}/docs/only-in-{version}.md", "doc\n")
-        zf.writestr(f"{TOP}/scripts/x.py", "print('x')\n")
         zf.writestr(f"{TOP}/README.md", f"readme {version}\n")
-        zf.writestr(f"{TOP}/requirements.txt", "textual\n")
+        zf.writestr(f"{TOP}/LICENSE", f"licence {version}\n")
 
 
 def git(cwd: Path, *args: str) -> None:
@@ -95,7 +94,7 @@ class ZipUpdateTest(unittest.TestCase):
         self.assertIn("0.2.0", self.version_on_disk())
         self.assertEqual((self.root / "README.md").read_text(), "readme 0.2.0\n")
         self.assertFalse((self.root / "docs" / "only-in-0.1.0.md").exists())
-        self.assertTrue((self.root / "scripts" / "x.py").exists())
+        self.assertEqual((self.root / "LICENSE").read_text(), "licence 0.2.0\n")
         self.assertEqual((self.root / "config" / "wow-tools.cfg").read_text(), "[general]\n")
         self.assertFalse((self.root / "wtf-cleaner.sh").exists())  # retired wrapper removed, but backed up
         self.assertTrue((self.root / ".update-backup" / "0.1.0" / "wtf-cleaner.sh").exists())
@@ -104,6 +103,102 @@ class ZipUpdateTest(unittest.TestCase):
         self.assertIn("0.1.0", (self.root / ".update-backup" / "0.1.0" / "wowtools" / "__init__.py").read_text())
         applied = next(r for r in records if r["event"] == "update.applied")["data"]
         self.assertEqual((applied["from"], applied["to"], applied["method"]), ("0.1.0", "0.2.0", "zip"))
+
+    def test_developer_file_names_in_the_install_are_the_users(self):
+        # P1 review: no release ships scripts/, requirements.txt, requirements.lock or .gitattributes, so in a zip
+        # install they are the user's: an update must neither back them up nor delete them.
+        mine = {"scripts/tool.py": "mine\n", "requirements.txt": "rich\n", "requirements.lock": "lock\n",
+                ".gitattributes": "* text\n"}
+        for rel, text in mine.items():
+            (self.root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (self.root / rel).write_text(text)
+        make_zipball(self.zipball, "0.2.0")
+        apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        self.assertIn("0.2.0", self.version_on_disk())
+        backup = self.root / ".update-backup" / "0.1.0"
+        for rel, text in mine.items():
+            self.assertEqual((self.root / rel).read_text(), text, rel)
+            self.assertFalse((backup / rel).exists(), rel)
+
+    def full_repo_install(self):
+        """The install as a full-repo zip (a GitHub "Download ZIP" of a branch) would leave it: developer docs inside
+        docs/, developer folders and files at the top, plus a doc the user added. Returns the developer docs."""
+        dev_docs = ["docs/standards.md", "docs/events.md", "docs/internals/wtf-cleaner.md",
+                    "docs/superpowers/specs/x-design.md", "docs/ideas/idea.md", "docs/assets/ka0s-logo.png"]
+        for rel in [*dev_docs, "tests/test_x.py", "scripts/run_tests.py", ".github/workflows/ci.yml", "CLAUDE.md"]:
+            (self.root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (self.root / rel).write_text(f"dev {rel}\n")
+        (self.root / "docs" / "my-notes.md").write_text("my notes\n")
+        return dev_docs
+
+    def update_to(self, version, current):
+        make_zipball(self.zipball, version)
+        apply_update(ReleaseInfo.from_version(version), root=self.root, current=current, download=self.download)
+
+    def test_full_repo_install_updates_to_the_trimmed_release(self):
+        # P2 (spec P6): the developer docs a full-repo zip left in docs/ are removed and backed up like any replaced
+        # program file; the top-level developer names no release ships stay untouched (P2-a: they can only be
+        # the user's); config/ and logs/ are untouched.
+        dev_docs = self.full_repo_install()
+        self.update_to("0.2.0", "0.1.0")
+        self.assertIn("0.2.0", self.version_on_disk())
+        backup = self.root / ".update-backup" / "0.1.0"
+        for rel in dev_docs:
+            self.assertFalse((self.root / rel).exists(), rel)
+            self.assertEqual((backup / rel).read_text(), f"dev {rel}\n", rel)
+        self.assertEqual((backup / "docs" / "my-notes.md").read_text(), "my notes\n")
+        for rel in ("tests/test_x.py", "scripts/run_tests.py", ".github/workflows/ci.yml", "CLAUDE.md"):
+            self.assertEqual((self.root / rel).read_text(), f"dev {rel}\n", rel)
+            self.assertFalse((backup / rel).exists(), rel)
+        self.assertEqual((self.root / "config" / "wow-tools.cfg").read_text(), "[general]\n")
+        self.assertTrue((self.root / "logs" / "events-2026-09-27.jsonl").exists())
+
+    def test_developer_docs_of_a_pruned_backup_are_not_carried(self):
+        # P2: when the backup of the full-repo install is pruned, the user's doc goes to update-leftovers/ (#7) but
+        # the developer docs no release ships are deleted with it: they were never the user's.
+        dev_docs = self.full_repo_install()
+        for version, current in (("0.2.0", "0.1.0"), ("0.3.0", "0.2.0"), ("0.4.0", "0.3.0")):
+            self.update_to(version, current)
+        self.assertEqual(sorted(p.name for p in (self.root / ".update-backup").iterdir()), ["0.2.0", "0.3.0"])
+        leftovers = self.root / "update-leftovers" / "0.1.0"
+        self.assertEqual((leftovers / "docs" / "my-notes.md").read_text(), "my notes\n")
+        for rel in dev_docs:
+            self.assertFalse((leftovers / rel).exists(), rel)
+        self.assertFalse((self.root / "update-leftovers" / "0.2.0").exists())
+
+    def test_a_pruned_backup_drops_everything_under_a_developer_docs_folder(self):
+        # P2-d (P2 review): a folder entry of the manifest (docs/internals/, docs/superpowers/, docs/ideas/) covers
+        # every file under it, so a file the user put there goes with the pruned backup, as the README says; a
+        # user file anywhere else in docs/ is still carried (#7).
+        self.full_repo_install()
+        mine = ["docs/internals/notes.md", "docs/superpowers/my-plan.md", "docs/ideas/my-idea.md"]
+        for rel in mine:
+            (self.root / rel).write_text("mine\n")
+        for version, current in (("0.2.0", "0.1.0"), ("0.3.0", "0.2.0"), ("0.4.0", "0.3.0")):
+            self.update_to(version, current)
+        leftovers = self.root / "update-leftovers" / "0.1.0"
+        self.assertEqual((leftovers / "docs" / "my-notes.md").read_text(), "my notes\n")
+        for rel in mine:
+            self.assertFalse((leftovers / rel).exists(), rel)
+            self.assertFalse((self.root / rel).exists(), rel)
+
+    def test_a_failed_update_of_a_full_repo_install_restores_everything(self):
+        dev_docs = self.full_repo_install()
+        before = self.tree_digest()
+        make_zipball(self.zipball, "0.2.0")
+        real_copy = updater._copy
+
+        def failing_copy(src, dst):
+            if TOP in str(src) and src.name == "vendor":
+                raise OSError("disk full")
+            real_copy(src, dst)
+
+        with patch.object(updater, "_copy", failing_copy), self.assertRaises(UpdateError):
+            apply_update(ReleaseInfo.from_version("0.2.0"), root=self.root, current="0.1.0", download=self.download)
+        after = {k: v for k, v in self.tree_digest().items() if not k.startswith(".update-backup/")}
+        self.assertEqual(after, before)
+        for rel in dev_docs:
+            self.assertTrue((self.root / rel).exists(), rel)
 
     def test_zip_with_matching_checksum_applies(self):
         make_zipball(self.zipball, "0.2.0")
@@ -202,7 +297,7 @@ class ZipUpdateTest(unittest.TestCase):
         backup = self.root / ".update-backup" / version
         make_install(backup, version)
         (backup / "README.md").unlink()
-        (backup / "requirements.txt").unlink()
+        (backup / "LICENSE").unlink()
         (backup / "wowtools" / "__pycache__").mkdir()
         (backup / "wowtools" / "__pycache__" / "x.cpython-312.pyc").write_bytes(b"pyc")
         (backup / "docs" / "my-guide.md").write_text("my guide\n")
