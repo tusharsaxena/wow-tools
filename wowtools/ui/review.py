@@ -25,7 +25,7 @@ from wowtools.core.sv_apply import Marker
 from wowtools.core.sv_events import SvTool
 from wowtools.core.sv_report import leave_notice, recovered_notice
 from wowtools.core.sv_undo import UndoError, UndoResult
-from wowtools.ui.dialogs import BUSY_STYLE, ProgressScreen, TwoPaneFocus
+from wowtools.ui.dialogs import BUSY_STYLE, DiscardScreen, ProgressScreen, TwoPaneFocus
 from wowtools.ui.widgets import WrapButtonRow
 
 __all__ = ["BLACKLIST_BINDING", "BLACKLIST_KEY", "BLACKLIST_NO_TARGET", "ActionBar", "BarTree", "BlacklistAction",
@@ -363,10 +363,21 @@ class ReviewBase(TickActions, Preflight, ScheduledRebuild, ButtonActions, TwoPan
         """The selection is frozen while the running-programs check runs (a screen may freeze it longer)."""
         return self._checking
 
+    def discard_question(self) -> tuple[str, str] | None:
+        """(title, body) of the question leaving this review asks first, when that would drop work staged and not
+        yet written; None leaves at once. Asked by action_leave and by the app's quit (q from any screen)."""
+        return None
+
     def action_leave(self, choice: str) -> None:
-        """Dismiss with `choice` ("flavors", "tools", "quit"), never while a run is going on."""
-        if not self.app.busy:
+        """Dismiss with `choice` ("flavors", "tools", "quit"), never while a run is going on; with work staged
+        (discard_question) only once the user says so."""
+        if self.app.busy:
+            return
+        question = self.discard_question()
+        if question is None:
             self.dismiss(choice)
+            return
+        self.app.push_screen(DiscardScreen(*question), lambda ok: self.dismiss(choice) if ok else None)
 
     def show_scan_box(self, scanning: bool, label: str = "") -> None:
         """While scanning, the tree is replaced by an empty progress bar and `label`; after it, the tree is back."""

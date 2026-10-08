@@ -129,7 +129,7 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         WARNINGS_BINDING,
         Binding("f", "leave('flavors')", "Flavors"),
         Binding("t", "leave('tools')", "Tools"),
-        Binding("q", "leave('quit')", "Quit"),
+        Binding("q", "app.quit", "Quit"),
         Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),

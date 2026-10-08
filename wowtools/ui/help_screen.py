@@ -19,7 +19,7 @@ from wowtools.ui.branding import TERMS, BottomBar
 from wowtools.ui.widgets import NavHint
 
 README_URL = "https://github.com/tusharsaxena/wow-tools#readme"
-HELP_HINT = "↑↓ PgUp PgDn scroll · Esc/q/h back"
+HELP_HINT = "↑↓ PgUp PgDn scroll · Esc/h back"
 
 
 def suite_help() -> str:
@@ -59,7 +59,7 @@ tool here (`↑` `↓`, then `Enter`); leaving a tool brings you back to this me
 | `c` | The changelog (on this menu) |
 | `u` | Install an update, when the bottom bar offers one |
 | `h` | This help, or a tool's help on any of its screens |
-| `q` | Quit |
+| `q` | Quit, from any screen (typed as a letter in a text box; with changes staged it asks first) |
 
 A button shows its own key under its name (**Clean** over `(w)`); the bottom row lists the keys no button has.
 
@@ -94,7 +94,7 @@ colour of what it does.
 
 
 class HelpScreen(Screen[None]):
-    """`title` over one scrollable Markdown pane holding `text`. Esc, q or h dismisses it."""
+    """`title` over one scrollable Markdown pane holding `text`. Esc or h dismisses it (q quits, as everywhere)."""
 
     DEFAULT_CSS = """
     HelpScreen #help-title { color: $accent; text-style: bold; padding: 0 2; margin-top: 1; }
@@ -103,7 +103,7 @@ class HelpScreen(Screen[None]):
     HelpScreen #help-body Markdown { margin: 0; padding: 0 1; }
     HelpScreen NavHint { padding: 0 2; margin: 0; }
     """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape,q,h", "close", "Back")]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape,h", "close", "Back")]
 
     def __init__(self, title: str, text: str) -> None:
         super().__init__()

@@ -52,7 +52,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `session.start` | info | The launcher or a tool started. |
 | `session.waiting_for_worker` | warning | The app closed while a clean, organize or undo was still running; the lock is kept until it finishes. |
 | `ui.item_toggled` | debug | The user ticked or unticked a single item. |
-| `ui.quit_refused` | info | Ctrl+Q was pressed while a run was in progress and was refused. |
+| `ui.quit_refused` | info | q or Ctrl+Q was pressed while a run was in progress and was refused. |
 | `ui.selection` | info | The user made a choice in the TUI or CLI. |
 | `update.applied` | info | The suite was updated. |
 | `update.available` | info | A newer suite release exists. |

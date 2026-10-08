@@ -19,7 +19,7 @@ from wowtools.core.updater import (ReleaseInfo, UpdateError, apply_update, check
                                    persist_check_state)
 from wowtools.tools import TOOLS
 from wowtools.ui.branding import update_key_free, update_notice
-from wowtools.ui.dialogs import GUARD_BINDING, EnterGuard
+from wowtools.ui.dialogs import GUARD_BINDING, DiscardScreen, EnterGuard
 from wowtools.ui.theme import KA0S_THEME, TITLE_GOLD, TITLE_TEXT, TITLE_TOOL, action_variables
 from wowtools.ui.widgets import ACTION_CSS, NAV_BINDINGS, ButtonRow, NavHint, action_button
 
@@ -155,14 +155,34 @@ class Ka0sApp(App):
             pass
         super()._handle_exception(error)
 
+    async def key_q(self) -> None:
+        """q quits from every screen and popup (L7, STD-8.11). A key method, not an app binding: Textual leaves the
+        app's (non-priority) bindings out under a modal screen, while a key no binding took still reaches the app
+        here, popup or not. A focused text box types the letter (it stops the key first); a screen that binds q
+        itself (the menu's and a review's `app.quit`, a result's Quit, the lock warning's Quit) handles it first."""
+        await self.action_quit()
+
     async def action_quit(self) -> None:
-        """Ctrl+Q (Textual's priority binding). Refused while a clean, organize or undo is running: quitting
-        would end the session and release the lock while the worker thread is still changing files."""
+        """q on any screen (key_q) and Ctrl+Q (Textual's priority binding). Refused while a clean, organize or
+        undo is running: quitting would end the session and release the lock while the worker thread is still
+        changing files. A screen on the stack with work that would be dropped (a review with staged changes:
+        `discard_question()`) asks first, from that screen or any screen over it; while such a question is open
+        (a DiscardScreen: this one, or the review's own on leaving) q asks nothing more. The open question is read
+        from the stack, never kept in a flag, so a popup closed without an answer cannot silence q. Quitting is
+        `exit()`, the path every way out takes: suite.run logs session.end and releases the lock once the app has
+        returned."""
         if self.busy:
             log_event("ui.quit_refused")
             self.notify("A run is in progress. Wait for it to finish before quitting.", severity="warning")
             return
-        await super().action_quit()
+        if any(isinstance(screen, DiscardScreen) for screen in self.screen_stack):
+            return  # a "discard the staged work?" question is open (q's own or a leave's): it is answered first
+        question = next((q for screen in reversed(self.screen_stack)
+                         if (q := getattr(screen, "discard_question", lambda: None)()) is not None), None)
+        if question is None:
+            await super().action_quit()
+            return
+        self.push_screen(DiscardScreen(*question), lambda ok: self.exit() if ok else None)
 
     def _check_update(self) -> None:
         """Worker thread. The config is changed and saved on the UI thread only (see _persist_update_state)."""

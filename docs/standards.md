@@ -668,6 +668,14 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   its key run the same `action_<name>`.
   *Why:* a button and its key never drift.
   *Enforced by:* `tests/test_ui_review.py::test_buttons_dispatch_by_id`.
+- **STD-8.11 MUST** `q` quits from every screen and popup through the one app-level handler (`Ka0sApp.key_q` ->
+  `action_quit`, the same `exit()` every way out takes); no screen binds `q` to anything but quitting. A focused
+  text box types it; while `app.busy` it is refused with the `ui.quit_refused` notice; a review with work staged
+  asks first (`discard_question()`, in a `DiscardScreen`), from the review or any screen over it, and `q` while
+  such a question is open asks nothing more. Esc keeps its own meaning.
+  *Why:* one key always gets the user out, wherever they are (L7).
+  *Enforced by:* `tests/test_quit_key.py` (every screen of every tool at BASE and LARGE, popups over popups, and
+  `QuitBindingsTest`, which reads the `BINDINGS` of every screen and widget class in `wowtools/`).
 
 ## 9. Help and docs
 

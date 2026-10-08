@@ -153,7 +153,7 @@ class ToolMenuScreen(Screen[None]):
         self.app.open_tool(event.option.id or "")
 
     def action_changelog(self) -> None:
-        """Spec D3: the changelog, over the menu; Esc or q comes back here."""
+        """Spec D3: the changelog, over the menu; Esc comes back here (q quits, L7)."""
         log_event("ui.selection", screen="tool_menu", control="changelog", value="open")
         self.app.push_screen(ChangelogScreen())
 

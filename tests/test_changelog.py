@@ -1,5 +1,5 @@
 """core/changelog.py (spec D2: CHANGELOG.md parsed into entries, newest first) and the changelog screen (spec D3:
-c on the tool menu, versions on the left, notes on the right, Esc/q back)."""
+c on the tool menu, versions on the left, notes on the right, Esc back; q quits, as everywhere)."""
 from __future__ import annotations
 
 import tempfile
@@ -196,8 +196,8 @@ class ChangelogScreenTest(TuiTestCase):
         self.assertIsInstance(app.screen, ChangelogScreen)
         return app.screen
 
-    async def test_c_on_the_menu_opens_the_real_changelog_and_esc_q_go_back(self):
-        for key in ("escape", "q"):
+    async def test_c_on_the_menu_opens_the_real_changelog_and_esc_goes_back(self):
+        for key in ("escape",):  # q quits from the changelog too (L7, tests/test_quit_key.py)
             with self.subTest(key=key):
                 app = self.make_app()
                 async with app.run_test(size=BASE) as pilot:
@@ -294,7 +294,7 @@ class ChangelogScreenTest(TuiTestCase):
             app.action_settings()
             await settle(app, pilot)
             self.assertIsInstance(app.screen, ChangelogScreen)
-            await pilot.press("q")
+            await pilot.press("escape")
             await settle(app, pilot)
             await pilot.press("s")  # back on the menu, s works again
             await settle(app, pilot)

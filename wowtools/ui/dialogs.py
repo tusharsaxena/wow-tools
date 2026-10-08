@@ -346,6 +346,15 @@ class ConfirmScreen(EnterGuard, TreeKeys, ModalScreen[bool]):
         self.dismiss(value)
 
 
+class DiscardScreen(ConfirmScreen):
+    """The question asked before leaving or quitting would drop work staged and not yet written
+    (ReviewBase.discard_question): a destructive ConfirmScreen the app's quit recognises, so q while one is open
+    asks nothing more (L7-e)."""
+
+    def __init__(self, title: str, body: str) -> None:
+        super().__init__(title, body, kind="destructive")
+
+
 class ChoiceScreen(EnterGuard, ModalScreen[str | None]):
     """A warning to act on (an earlier run did not finish, ...): a title in the warning colour, a message and one
     button per choice, given as (id, label, action kind) or (id, label, action kind, key): the key a binding of

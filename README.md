@@ -134,7 +134,7 @@ The app opens in a terminal window. You drive it with the keyboard:
 | `Esc` | Go back |
 | `t` | Back to the tool menu, from a tool's game version or account picker, review or results |
 | `s` | Settings |
-| `q` | Quit |
+| `q` | Quit, from any screen (typed as a letter in a text box; with changes staged it asks first) |
 
 Every button shows its key under its name (**Clean** over `(w)`, **Dry run** over `(y)`), so pressing that key does
 the same as clicking the button. The row along the bottom lists the other keys of the screen, the ones no button

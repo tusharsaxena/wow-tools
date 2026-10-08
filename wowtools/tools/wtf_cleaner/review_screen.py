@@ -112,7 +112,7 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         WARNINGS_BINDING,
         Binding("f", "leave('flavors')", "Flavors"),
         Binding("t", "leave('tools')", "Tools"),
-        Binding("q", "leave('quit')", "Quit"),
+        Binding("q", "app.quit", "Quit"),
         Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("1", "criterion(0)", CRITERION_SHORT["not_installed"], show=False),
         Binding("2", "criterion(1)", CRITERION_SHORT["not_enabled"], show=False),

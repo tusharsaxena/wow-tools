@@ -14,7 +14,7 @@ go-ahead.
 | LR2 | review of L4-L5, green gate, push, CI | done | (this commit) | Review of L4-L5 with the rest of the branch: the shared disclaimer gate, the three tools' texts and events, the `t` key on both pickers, help, guides, internals, README and CHANGELOG agree; no stale "each time you open the tool" text or old `sv_browser.popups` disclaimer left. Fix: `sv_browser/popups.py` module docstring re-wrapped (a short line left by the move) and its `ui.dialogs` import joined on one line. CI run 37672520492 failed on windows / 3.10 only: `test_preflight_runs_in_a_worker` took 1.8 s for a 1.0 s bound; the WTF preflight and Undo worker tests now bound at 4.0 s, under the held check's 5 s (which a check on the UI thread would wait out). CI run 37674160141 failed on windows / 3.10 only, all tests OK: shard 1/4 took 594 s and passed the 600 s per-shard timeout while exiting; CI now runs `run_tests.py --timeout 900` (testing.md CI steps say why), the local default is unchanged. Full suite 1816 tests OK (2 skipped), ruff clean, events check OK |
 | L6 | nothing blocks before the scan box (Screenshot Organizer + audit) | done | (this commit) | Evidence: the user's log (Windows) has 4.4 s between the flavor pick (08:35:00.605) and `shots.scan_started` (08:35:05.028) on the first open only, then 0.13 s of scan: `ShotReviewScreen.on_mount` ran `_refresh_undo` (`latest_undoable`) and `action_rescan` -> `validate_dest` (`install.flavors()` and `resolve()` of the destination, the first touch of drive H:) on the UI thread before the scan box. Fix: the scan box (label "Checking the destination folder", Organize / Dry run / Undo off) is shown first; the scan worker runs `validate_dest`, `latest_undoable`, then the scan ("Reading Screenshots folders"); a refused destination comes back as `_dest_refused` with today's UI. The WTF Cleaner had the same: `latest_undoable` on mount and after every scan, and `read_marker` on the backup folder on mount, on the UI thread. 5 tests in `tests/test_scan_box_first.py` (written first, all 5 failed first; 5 more from the L6 review, L6-e): each check held on an `Event` gate while the scan box is asserted shown, then the normal tree; the refused destination still gives the error state and no scan. STD-7.20 sentence and Enforced by, both internals, CHANGELOG. Full suite 1821 tests OK (2 skipped), ruff clean, events check OK |
 | LR3 | review of L6, green gate, push, CI | done | (this commit) | Review of L6 with the rest of the branch: the scan box first in both tools, the workers' Undo lookups, the recovery notice gate, STD-7.20, internals and CHANGELOG agree. Fix: `latest_undoable` (core `journal`) never raises: L6 moved it into the scan and run workers (the WTF Cleaner's scan worker and both tools' run workers call it outside a `try`), where an unlistable journal folder (`iterdir` raising `OSError`) would have ended the worker with an error; it now offers nothing. Test first (`test_latest_undoable_never_raises_on_a_folder_it_cannot_list`, failed first); architecture `journal` row. Full suite 1827 tests OK (2 skipped), ruff clean, events check OK |
-| L7 | `q` quits from any screen | todo | | |
+| L7 | `q` quits from any screen | done | (this commit) | Why q did nothing on the flavor picker: `q` was bound per screen (the menu `app.quit`, each review `leave('quit')`, each result `choose('quit')`, the lock warning; the help and the changelog bound it to Back) and the pickers, settings, warnings, blacklist and popups had none. Now `Ka0sApp.key_q` -> `action_quit` (busy: refused with the `ui.quit_refused` notice; work staged on a review in the stack: its `discard_question()` asks first; else `exit()`, the path suite.run follows with session.end and the lock release). Reviews bind `q` to `app.quit` (footer kept); `ReviewBase.discard_question` / `action_leave` replace the Ace3 and SV Browser `action_leave` copies; help and changelog no longer close on q. 4 tests in `tests/test_quit_key.py` (written first, failed first: every screen of every tool, menu / changelog / help / settings at BASE and LARGE, filter and settings field type q, busy refused, staged asks once and No keeps it); help and changelog tests now close with Esc / h. STD-8.11, architecture, README and suite help keys, CHANGELOG, `ui.quit_refused` description and events.md. Review fixes L7-e (`DiscardScreen`, no flag, 5 more tests, `QuitBindingsTest`). Full suite 1837 tests OK (2 skipped), ruff clean, events check OK |
 | L8 | "Don't show this again" on the risk popup | todo | | |
 | L9 | one toast anchor and stack | todo | | |
 | L10 | long warning lists collapse | todo | | |
@@ -134,3 +134,39 @@ go-ahead.
   keeps the Undo; `r r` during a held destination check runs one check and gives one toast; a failed WTF scan
   with nothing undoable drops a stale Undo; a marker read while the help is shown opens the notice on return.
   Full suite 1826 tests OK (2 skipped), ruff clean, events check OK.
+
+- L7-a: `q` is a key method on the app (`Ka0sApp.key_q`), not an app `Binding`: Textual leaves the app's
+  non-priority bindings out of the chain under a modal screen (`Screen._modal_binding_chain`), so a binding would
+  not reach the popups; a priority binding would take the letter from text boxes and from the screens that bind `q`
+  themselves. A key no binding took still bubbles to the app's `key_q`, popup or not, and an `Input` stops it first.
+  It is shown on no footer: the menu and the reviews keep their own visible `q` (`app.quit`), the results their
+  Quit button, so no footer gains a key (D17).
+- L7-b: kept per-screen `q`s, all of which quit: the menu and the reviews (`app.quit`, for the footer), the result
+  screens (`choose('quit')`: the Quit button's key, logged, and a review whose dry run kept staged work asks first
+  through `_after_result`), the lock warning (`lock-quit`: logs the lock choice). Removed: the reviews'
+  `leave('quit')` (busy was silent there; now the notice), the help's and the changelog's q-as-Back (spec D3 / D18,
+  superseded by L7; Esc and h still close them; hints "Esc/h back", "Esc back").
+- L7-c: staged work is the only safety kept: `ReviewBase.discard_question()` (None by default; Ace3 pending changes,
+  SV Browser staged edits) is asked by `action_leave` and by `action_quit` for any screen in the stack, so `q` on
+  the help, a confirm or a popup over such a review asks the same question; a second `q` while it is open does
+  nothing (`_quit_asking`). Ctrl+Q (Textual's priority binding to the same `action_quit`) now asks too. Settings
+  forms and the Ace3 blacklist screen have no `discard_question` and quit at once (L7 lists them as screens q quits).
+- L7-d: no new event: the refusal keeps `ui.quit_refused` (its description now names q), and the quit itself is
+  `session.end`, as before.
+- L7-e (review of L7, six findings; 1 and 4 are one bug): (1/4) `q` over the review's own "Leave and discard ...?"
+  question (`action_leave`: f, t, Esc, or a result's Quit after a dry run) pushed a second, identical question.
+  Both questions are now a `DiscardScreen` (ui/dialogs, a destructive `ConfirmScreen`), and `action_quit` asks
+  nothing while one is in the stack: the open question is answered first (Yes leaves as asked, then `q` quits); it
+  is not turned into the quit question, so the answer always does what its title says. (2) `_quit_asking` is gone:
+  the stack check above replaces it, so a question closed without `dismiss()` (pop_screen) cannot silence `q` and
+  Ctrl+Q for the session; L7-c's flag is superseded. (3) tests added, written first (the 8 leave-question cases
+  failed first): q over the leave question on both tools for f / t / Esc / the result's Quit (one question, no
+  exit, No keeps the work, q asks again after), q after a quit question removed by pop_screen, q on a confirm over
+  the warnings and over the help, on the update offer and on the Ace3 `TargetScreen` and SV Browser
+  `EditValueScreen` with focus on a closed `NavSelect` (BASE and LARGE), and q on the lock warning; the walk of
+  every tool's screens now runs at BASE and LARGE (two test methods). (5) the architecture paragraph is re-wrapped
+  to 120 columns and names `DiscardScreen`; the `dialogs` row lists it. (6) `QuitBindingsTest` imports every
+  `wowtools` module and checks the own `BINDINGS` of every screen and widget class: a `q` may only be `app.quit`,
+  `choose('quit')` or `choose('lock-quit')` (it failed when the help's q-as-Back was put back); STD-8.11's Enforced
+  by names it. Rejected in part: the WTF Cleaner's blacklist is the review's `b` toggle, not a screen, so there is
+  nothing more to walk; the lock warning was covered by `test_suite_app` and is now in `test_quit_key` too.

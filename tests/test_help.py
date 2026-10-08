@@ -1,6 +1,6 @@
 """The help screen (spec D18): h on the tool menu shows the suite's help, h on any screen of a tool shows that tool's,
-never over a popup; Esc, q or h goes back to the screen as it was. Every tool has help that names each button of its
-screens and links to a guide that exists in the repo."""
+never over a popup; Esc or h goes back to the screen as it was (q quits). Every tool has help that names each button
+of its screens and links to a guide that exists in the repo."""
 from __future__ import annotations
 
 import re
@@ -126,9 +126,9 @@ class HelpScreenTest(TuiTestCase):
             await settle(app, pilot)  # the footer recomposes after a refresh: one pause may come before it (C4)
             self.assertIsInstance(app.screen, ToolMenuScreen)
             self.assertIn("h", {key.key for key in app.screen.query(FooterKey)})  # "h Help" in the footer
-            for close in ("escape", "q", "h"):
+            for close in ("escape", "h"):  # q quits from the help too (L7, tests/test_quit_key.py)
                 await self.assert_help(app, pilot, suite_help(), close=close)
-            self.assertIsInstance(app.screen, ToolMenuScreen)  # q closed the help, it did not quit
+            self.assertIsInstance(app.screen, ToolMenuScreen)
             app.push_screen(ChangelogScreen())
             await settle(app, pilot)
             await self.assert_help(app, pilot, suite_help())

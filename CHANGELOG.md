@@ -18,6 +18,12 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 
 ### Changed
 
+- **The app**
+  - `q` quits from any screen and any popup: the game version and account pickers, the help, the changelog, the
+    settings, the warnings and every "are you sure?" window, not only the tool menu, reviews and results. On the
+    help and the changelog `q` used to go back; `Esc` still does. Typing `q` in a text box still types it, a run
+    that is writing files still has to finish first, and with changes staged but not applied it asks first.
+    While any "discard your changes?" question is open, `q` waits for your answer instead of asking again.
 - **Ace3 Profile Manager**
   - **Leftovers** (`o`) is now one press: it ticks every leftover character the tree shows, then asks to remove
     them, listing them under each addon. There's no need to tick them first. **No** keeps the ticks; with none

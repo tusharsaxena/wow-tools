@@ -171,7 +171,7 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
         Binding("v", "switch_view", "View", show=False),
         Binding("f", "leave('flavors')", "Flavors"),
         Binding("t", "leave('tools')", "Tools"),
-        Binding("q", "leave('quit')", "Quit"),
+        Binding("q", "app.quit", "Quit"),
         Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
@@ -1129,17 +1129,12 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
         self._mark_stale()
 
     # --- leaving -------------------------------------------------------------------------------
-    def action_leave(self, choice: str) -> None:
-        """Leaving drops the staged edits: ask first (D12)."""
-        if self.app.busy:
-            return
+    def discard_question(self) -> tuple[str, str] | None:
+        """Leaving or quitting drops the staged edits: ask first (D12)."""
         if not self.pending:
-            self.dismiss(choice)
-            return
-        self.app.push_screen(ConfirmScreen("Leave and discard the staged edits?",
-                                           f"{self._pending_words().capitalize()} not applied yet will be dropped; "
-                                           "nothing has been written.", kind="destructive"),
-                             lambda ok: self.dismiss(choice) if ok else None)
+            return None
+        return ("Leave and discard the staged edits?",
+                f"{self._pending_words().capitalize()} not applied yet will be dropped; nothing has been written.")
 
 
 def _under(nodes: list[ModelNode]) -> tuple[int, ...]:

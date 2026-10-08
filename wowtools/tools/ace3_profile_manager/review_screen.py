@@ -174,7 +174,7 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
         WARNINGS_BINDING,
         Binding("f", "leave('flavors')", "Flavors"),
         Binding("t", "leave('tools')", "Tools"),
-        Binding("q", "leave('quit')", "Quit"),
+        Binding("q", "app.quit", "Quit"),
         Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
@@ -925,14 +925,10 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
         self._scan()
 
     # --- leaving -------------------------------------------------------------------------------
-    def action_leave(self, choice: str) -> None:
-        if self.app.busy:
-            return
+    def discard_question(self) -> tuple[str, str] | None:
+        """Leaving or quitting drops the pending changes: ask first."""
         pending = self.staging.summary().total if self.staging is not None else 0
         if not pending:
-            self.dismiss(choice)
-            return
-        self.app.push_screen(ConfirmScreen("Leave and discard the pending changes?",
-                                           f"{plural(pending, 'pending change')} not applied yet will be dropped; "
-                                           "nothing has been written.", kind="destructive"),
-                             lambda ok: self.dismiss(choice) if ok else None)
+            return None
+        return ("Leave and discard the pending changes?",
+                f"{plural(pending, 'pending change')} not applied yet will be dropped; nothing has been written.")
