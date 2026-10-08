@@ -3,7 +3,7 @@
 ![Version](https://img.shields.io/badge/Version-0.1.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-yellow)
 ![Platforms](https://img.shields.io/badge/Platforms-Windows_%7C_macOS_%7C_Linux-purple)
-![Tests](https://img.shields.io/badge/Tests-1918_passing%2C_2_skipped-green)
+![Tests](https://img.shields.io/badge/Tests-1925_passing%2C_2_skipped-green)
 ![License](https://img.shields.io/badge/License-MIT-orange)
 
 Ka0s WoW Tools is a small set of World of Warcraft helpers that run ***outside*** the game and tidy up the files WoW

@@ -9,7 +9,7 @@ go-ahead.
 | P0 | guidelines, spec, plan, ledger | done | (this commit) | user review 2026-10-08: requirements.txt and events.md stay out; README "Developing" removed |
 | P1 | manifest enforcement + README + standard | done | (this commit) | `.gitattributes` export-ignores the 22 "stays out" paths; `tests/test_release_contents.py` (10 tests) + `test_the_zip_leaves_out_export_ignored_paths`; README "Developing" removed; STD-11.5; `build_release.py` run on a throwaway `v0.1.0` tag in a temp clone: one `wow-tools-v0.1.0/` folder, 1095 files, only the ships table; full suite 1918 tests, 0 failures, 2 skipped |
 | P2 | updater matches the manifest | done | (this commit) | P1 review dropped `scripts`, `requirements.txt`, `requirements.lock`, `.gitattributes` from `MANAGED_*` (P2-a); this commit: `RELEASE_SHIPS` / `RELEASE_STAYS_OUT` in `core/updater.py` mirror the two tables (checked by `test_the_updaters_manifest_is_the_one_in_releasing_md`), `MANAGED_*` derived from them, `DEVELOPER_PATHS` never carried into `update-leftovers/`; 3 zip-update tests (full-repo install to trimmed release, pruned backup, rollback); full suite 1925 tests, 0 failures, 2 skipped |
-| PR | review, push, CI | todo | | before merge: user confirms P2-e (top-level developer names left in place, narrowing spec P6) |
+| PR | review, push, CI | done | (this commit) | whole-branch review: no defect found; README test badge 1918 -> 1925; release archive of HEAD: 1095 files (`wowtools/` 136, `vendor/` 918, `docs/` 36: five guides + 31 screenshots, launchers, `LICENSE`, `CHANGELOG.md`, `README.md`); full suite 1925 tests, 0 failures, 2 skipped; before merge: user confirms P2-e (top-level developer names left in place, narrowing spec P6) |
 
 ## Decisions taken during the build
 
