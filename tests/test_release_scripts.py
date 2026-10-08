@@ -68,6 +68,21 @@ class BuildReleaseTest(unittest.TestCase):
         self.assertIn("wow-tools-v0.2.0/wowtools/__init__.py", names)
         self.assertTrue(all(n.startswith("wow-tools-v0.2.0/") for n in names))
 
+    def test_the_zip_leaves_out_export_ignored_paths(self):
+        """STD-11.5: the zip is a git archive of the tag, so .gitattributes' export-ignore lines (the "Stays out"
+        table of docs/releasing.md) keep the developer files out of it."""
+        (self.repo / "tests").mkdir()
+        (self.repo / "tests" / "test_x.py").write_text("# test\n")
+        (self.repo / "CLAUDE.md").write_text("dev\n")
+        (self.repo / ".gitattributes").write_text("/tests export-ignore\n/CLAUDE.md export-ignore\n"
+                                                  "/.gitattributes export-ignore\n")
+        self.retag(CHANGELOG)
+        zip_path, _ = self.build_release.build(self.repo, "0.2.0", self.out)
+        with zipfile.ZipFile(zip_path) as zf:
+            names = sorted(n for n in zf.namelist() if not n.endswith("/"))
+        self.assertEqual(names, [f"wow-tools-v0.2.0/{p}" for p in
+                                 ("CHANGELOG.md", "README.md", "vendor/lib.py", "wowtools/__init__.py")])
+
     def test_refuses_a_missing_tag(self):
         with self.assertRaises(SystemExit) as ctx:
             self.build_release.build(self.repo, "0.3.0", self.out)

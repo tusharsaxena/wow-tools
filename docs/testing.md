@@ -112,6 +112,7 @@ Cleaner's tests predate that rule: its logic tests are `test_cleaner.py`, `test_
 | `test_suite.py`, `test_suite_app.py` | `wowtools/suite.py` (start-up, the instance lock, renamed-tool migration on start, the update at start) and `WowToolsApp` (menu, setup, opening tools) |
 | `test_updater_check.py`, `test_updater_apply.py` | `core/updater.py`: the release check (fake openers, never the network) and applying an update |
 | `test_release_scripts.py` | `scripts/build_release.py`, the hashed vendor lock and `scripts/run_tests.py`'s per-shard timeout |
+| `test_release_contents.py` | The release manifest (STD-11.5): every tracked path is in a table of [releasing.md](releasing.md#what-a-release-contains), `.gitattributes` export-ignores the "stays out" table, `git archive` of `HEAD` holds exactly the "ships" table, no shipped Markdown file links to a file that does not ship (needs git; skips without it), and the updater's `MANAGED_DIRS` / `MANAGED_FILES` are the top-level "ships" names |
 | `test_launcher.py` | `wow-tools.cmd` stays safe to replace while it runs (Windows-only parts skip elsewhere) |
 | `test_quit_key.py`, `test_tool_menu_key.py`, `test_toast_stack.py` | The suite-wide walks: `q` and `t` from every screen and popup, toasts above the bars (see [below](#the-suite-wide-key-and-toast-walks)) |
 

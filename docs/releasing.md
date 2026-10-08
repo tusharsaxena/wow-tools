@@ -1,7 +1,7 @@
 # Releasing
 
 Part of the developer docs: see the [Documentation map](architecture.md#documentation-map); the rules are STD-11.1,
-STD-11.2 and STD-12.3 in [standards.md](standards.md).
+STD-11.2, STD-11.5 and STD-12.3 in [standards.md](standards.md).
 
 The updater reads the latest **published, non-prerelease** GitHub Release of `tusharsaxena/wow-tools`,
 and its tag must be `vX.Y.Z` matching `wowtools/__init__.py`. Git installs fast-forward to the tag. Zip installs
@@ -61,10 +61,13 @@ Files that are never in git (`config/`, `logs/`, `dist/`, caches) are never in a
 
 ### The release manifest
 
-The two tables above are the manifest. `.gitattributes` marks every "stays out" path `export-ignore`, so
-`git archive` (and `scripts/build_release.py`) leaves them out, and a test builds an archive of `HEAD` and checks its
-file list against the "ships" table. A new top-level file or folder fails that test until it is added to one of the
-two tables.
+The two tables above are the manifest (STD-11.5). `.gitattributes` marks every "stays out" path `export-ignore`
+(one `/<path> export-ignore` line each, a folder without its trailing slash), so `git archive` (and
+`scripts/build_release.py`) leaves them out. `tests/test_release_contents.py` parses the two tables and checks that
+every tracked path is in one of them, that the `export-ignore` lines are exactly the "stays out" table, that an
+archive of `HEAD` holds exactly the "ships" paths, and that no shipped Markdown file links (a link or an image) to a
+path that does not ship. A new file or folder fails that test until it is added to one of the two tables (and, if
+it stays out, to `.gitattributes`). The README and the guides link developer docs only on GitHub, if at all.
 
 ## Steps
 

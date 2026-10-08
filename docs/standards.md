@@ -819,6 +819,19 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   *Why:* one `vendor/` runs unchanged on Windows, Linux and WSL.
   *Enforced by:* `tests/test_release_scripts.py::test_unpinned_requirement_is_refused`,
   `tests/test_release_scripts.py::test_package_without_a_pure_wheel_is_refused`.
+- **STD-11.5 MUST** Ship in the release zip exactly the manifest in
+  [releasing.md](releasing.md#what-a-release-contains): every tracked path is in its "Ships" or its "Stays out"
+  table, `.gitattributes` marks each "Stays out" path `export-ignore` (one `/<path> export-ignore` line each, nothing
+  else), no shipped Markdown file links to a path that does not ship, and a zip update manages (backs up, replaces,
+  deletes) only the top-level "Ships" names ([P2, P5, P6, P7][rc]).
+  *Why:* the zip is for players: what the app reads at run time and the user docs, with no developer files and no
+  dead links; a new file is left out until the manifest names it; a name no release ships is the user's file.
+  *Enforced by:* `tests/test_release_contents.py::test_every_tracked_path_is_in_one_table`,
+  `tests/test_release_contents.py::test_gitattributes_export_ignores_exactly_the_stays_out_table`,
+  `tests/test_release_contents.py::test_the_archive_holds_only_what_ships`,
+  `tests/test_release_contents.py::test_no_shipped_markdown_links_to_a_path_that_does_not_ship`,
+  `tests/test_release_contents.py::test_the_updater_manages_exactly_what_ships`,
+  `tests/test_release_scripts.py::test_the_zip_leaves_out_export_ignored_paths`.
 
 ## 12. Process
 
@@ -869,6 +882,7 @@ The accepted exceptions to the rules above. A deviation not listed here is not a
 | STD-8.9 | SV Browser adds Search (`S`) in its own button row above the four action buttons. | `s` is the suite's settings key. | [D22][svb] |
 
 [polish]: superpowers/specs/2026-10-05-suite-polish-design.md
+[rc]: superpowers/specs/2026-10-08-release-contents-design.md
 [svb]: superpowers/specs/2026-10-06-sv-browser-design.md
 [wb]: superpowers/specs/2026-10-07-warnings-and-blacklist-design.md
 [ace]: superpowers/specs/2026-10-04-ace-profiles-design.md

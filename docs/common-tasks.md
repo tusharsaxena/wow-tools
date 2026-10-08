@@ -48,11 +48,12 @@ The full walk-through is [adding-a-tool.md](adding-a-tool.md); the test side is
 5. Docs: `docs/<tool id>.md` (the guide), a README row and guide link and its config file under "Your settings",
    a `CHANGELOG.md` bullet, a row in the [architecture.md](architecture.md) Documentation map and Config schema,
    `docs/internals/<tool id>.md`, and in `CLAUDE.md` the tool line plus its links in the Documentation index's
-   `docs/internals/` and User guide rows.
+   `docs/internals/` and User guide rows, and the guide in the "Ships" table of
+   [releasing.md](releasing.md#what-a-release-contains).
 
 **Rules:** all of sections 1 to 10 apply; start with STD-3.1 to STD-3.6 (package and registry), STD-2.1/2.2 (shared
 library), STD-6.2/6.3 (events), STD-7.1 to STD-7.11 (the review), STD-9.1/9.2 (help and guide), STD-10.8 (meta-test
-tables). Then [the green gate](#the-green-gate).
+tables), STD-11.5 (the release manifest). Then [the green gate](#the-green-gate).
 
 ## 2. Add a setting to a tool
 
@@ -232,9 +233,10 @@ Worked example: commit `8d6a1a8` (`orphan_backups`, rule 5).
    every file STD-10.8 lists), `tool_options` keys, test file names;
    `tests/test_migrate.py::test_every_rename_points_at_a_registered_tool` checks the new line.
 5. Docs: rename `docs/<old>.md` and `docs/internals/<old>.md`, then fix every link (README, `GUIDE_URL` in `help.py`,
-   architecture, `CLAUDE.md`) and the strings `tests/test_docs.py` pins; a `CHANGELOG.md` bullet.
+   architecture, `CLAUDE.md`) and the strings `tests/test_docs.py` pins; rename the guide in the "Ships" table of
+   [releasing.md](releasing.md#what-a-release-contains); a `CHANGELOG.md` bullet.
 
-**Rules:** STD-3.1, STD-3.7, STD-9.6. Then [the green gate](#the-green-gate).
+**Rules:** STD-3.1, STD-3.7, STD-9.6, STD-11.5. Then [the green gate](#the-green-gate).
 
 ## 11. Update the vendored libraries
 
@@ -251,4 +253,4 @@ bump `__version__` in `wowtools/__init__.py`, add the `## [X.Y.Z] - YYYY-MM-DD` 
 `vX.Y.Z`, push, run `python3 scripts/build_release.py`, and publish the zip and `SHA256SUMS` with `gh release create`.
 The README version badge must match `__version__` (`tests/test_docs.py`).
 
-**Rules:** STD-9.4, STD-11.1, STD-11.2, STD-12.3. Then [the green gate](#the-green-gate).
+**Rules:** STD-9.4, STD-11.1, STD-11.2, STD-11.5, STD-12.3. Then [the green gate](#the-green-gate).

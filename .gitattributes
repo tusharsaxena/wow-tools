@@ -3,3 +3,28 @@
 *.cmd text eol=crlf
 vendor/** -diff linguist-vendored
 vendor/** -text
+
+# The release zip (git archive, scripts/build_release.py, GitHub's source archives) leaves these out: the "Stays out"
+# table of docs/releasing.md, one line per path (STD-11.5, tests/test_release_contents.py).
+/tests export-ignore
+/scripts export-ignore
+/.github export-ignore
+/docs/standards.md export-ignore
+/docs/architecture.md export-ignore
+/docs/internals export-ignore
+/docs/testing.md export-ignore
+/docs/common-tasks.md export-ignore
+/docs/adding-a-tool.md export-ignore
+/docs/releasing.md export-ignore
+/docs/vendoring.md export-ignore
+/docs/events.md export-ignore
+/docs/superpowers export-ignore
+/reviews export-ignore
+/docs/ideas export-ignore
+/docs/assets/ka0s-logo.png export-ignore
+/CLAUDE.md export-ignore
+/ruff.toml export-ignore
+/requirements.txt export-ignore
+/requirements.lock export-ignore
+/.gitignore export-ignore
+/.gitattributes export-ignore

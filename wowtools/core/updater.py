@@ -176,9 +176,11 @@ def check_for_update(cfg: Config, *, current: str = __version__, now: datetime |
 
 
 # --- applying an update ---------------------------------------------------------------------
-MANAGED_DIRS = ("wowtools", "vendor", "scripts", "docs")
-MANAGED_FILES = ("wow-tools.cmd", "wow-tools.sh", "requirements.txt", "requirements.lock", ".gitattributes",
-                 "LICENSE")
+# The program's top-level names: the "Ships" table of docs/releasing.md (STD-11.5), root *.md files aside
+# (`_shipped_names` takes those from the release). A zip install's other names (scripts/, requirements.txt...) are
+# the user's, since no release ships them; tests/test_release_contents.py keeps the two in step.
+MANAGED_DIRS = ("wowtools", "vendor", "docs")
+MANAGED_FILES = ("wow-tools.cmd", "wow-tools.sh", "LICENSE")
 # Program files earlier versions shipped that no longer exist; a zip update removes them (and backs them up).
 RETIRED_FILES = ("wtf-cleaner.cmd", "wtf-cleaner.sh")
 BACKUP_DIR_NAME = ".update-backup"
@@ -433,11 +435,11 @@ def _managed_files(root: Path) -> set[str]:
 def _carry_user_files(backup: Path, root: Path, live: set[str]) -> bool:
     """Move the user's files out of an old .update-backup/<version> folder before it is pruned (#7).
 
-    A user file is one in the backup's managed folders (wowtools, vendor, scripts, docs) with no file at the same
+    A user file is one in the backup's managed folders (wowtools, vendor, docs) with no file at the same
     path in the live install (`live`) and not listed as installed by one of the backup's own vendored libraries
     (`_vendored_files`: every vendor/*.dist-info folder and the files its RECORD lists, so a library a later release
-    bumped, renamed or trimmed leaves nothing behind). The app's own folders have no manifest, so a wowtools, scripts
-    or docs file that version had and a later release dropped is carried too: harmless, and it is better to keep one
+    bumped, renamed or trimmed leaves nothing behind). The app's own folders have no manifest, so a wowtools or docs
+    file that version had and a later release dropped is carried too: harmless, and it is better to keep one
     file too many than to lose one. A file the user edited, or one whose path the live install also has, is not
     carried. Each one goes to <root>/update-leftovers/<version>/<same path> (never back into the
     managed folders: the next update would replace them, and a stray module there could be imported); a name already

@@ -38,6 +38,7 @@ class DocsTest(unittest.TestCase):
             self.assertTrue((REPO_ROOT / guide).is_file(), guide)
         self.assertIn("## version history", readme.lower())
         self.assertNotIn("## For developers", readme)
+        self.assertNotIn("## Developing", readme)  # spec P4: the release zip has no developer docs to link to
 
     def test_every_image_link_resolves_and_screenshots_live_per_tool(self):
         docs = [REPO_ROOT / "README.md", *sorted((REPO_ROOT / "docs").glob("*.md"))]
