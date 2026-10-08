@@ -37,10 +37,11 @@ ones you leave ticked. If you regret it later, you can undo the clean.
 
 ![The USE AT YOUR OWN RISK warning (shown here with the Ace3 Profile Manager's text; the wording differs per tool), with Back and I understand buttons](assets/screenshots/suite/risk-warning.png)
 
-The cleaner deletes addon settings files by the rules you tick, and it can't know what an addon still needs: a
-deleted file takes that addon's settings with it. So before the first scan it shows this warning. In the
-cleaner's wording: a backup zip of your `WTF` folder is made first and **Undo last clean** puts the files back, but
-you're responsible for what you clean; close WoW before you clean; every **Clean** and **Undo** asks again.
+The cleaner deletes addon settings files by the rules you tick. It can't know what an addon still needs, and a
+deleted file takes that addon's settings with it, so it shows this warning before the first scan. The warning says
+that a backup zip of your `WTF` folder is made first and **Undo last clean** puts the files back, but you're
+responsible for what you clean. It also tells you to close WoW first, and reminds you that every **Clean** and
+**Undo** asks again.
 
 - It comes after you pick a game version and, when that version has more than one account, an account, just
   before the first scan. The popup opens over the tool menu.
@@ -76,8 +77,7 @@ see [Scan warnings](#scan-warnings).
 ### The five rules
 
 The left panel lists the rules under **Criteria (keys 1-5)**. A file is suggested if **any** ticked rule matches
-it. All five are on to start with, and each has its own
-colour, used in the list too:
+it. All five are on to start with. Each has its own colour, and the list uses it too:
 
 | Rule | Suggests | Example |
 |---|---|---|
@@ -90,9 +90,8 @@ colour, used in the list too:
 When an addon matches rule 1, 2 or 3, all of its files go: `Auctionator.lua`, `Auctionator.lua.bak` and any stray
 copies. Rules 4 and 5 suggest only the extra files of an addon that is otherwise kept.
 
-Each rule shows how many files it matches, for example `1 Not installed (672 files)`. Press `1` to `5`
-to switch a rule on or off. To change the age limit, type a number of days in the **Max age** box and press
-Enter.
+Each rule shows how many files it matches, for example `1 Not installed (672 files)`. Press `1` to `5` to switch
+a rule on or off. To change the age limit, type a number of days in the **Max age** box and press Enter.
 
 ### What the cleaner never touches
 
@@ -113,11 +112,11 @@ folder it looked in) and the others carry on.
 - **All flavors**: every game version is scanned (up to `parallelism` at once, see Settings), each with all its
   accounts.
 
-"Not enabled" is decided per account: an addon counts as enabled for an account's files (its account-wide
-settings and every one of its characters' settings) if *any* character of *that* account has it switched on. An
-addon you only use on your main account does not keep your second account's settings for it: those are
-suggested. Within one account a character's own settings are kept while
-any character of the account uses the addon, so switching an addon off on one alt never suggests that alt's file.
+"Not enabled" is decided per account. An addon counts as enabled for an account's files (its account-wide
+settings and every one of its characters' settings) if *any* character of *that* account has it switched on. So an
+addon you only use on your main account doesn't protect your second account's settings for it; those are
+suggested. Within one account, a character's own settings are kept as long as any character of the account uses the
+addon. Switching an addon off on one alt never suggests that alt's file.
 
 A character that has never changed its addon list counts as having every addon enabled, because that's what WoW
 does.
@@ -181,13 +180,14 @@ keeps it.
 
 ### Filtering the tree
 
-`/` puts you in the filter box on the left. Type part of a name: an account, a character, an addon or a file (upper or
-lower case doesn't matter), then press `Enter` or click the **Filter** button beside the box (typing alone changes
-nothing, so a big tree isn't rebuilt on every key). The tree keeps the matching lines and the groups they're in, and
-opens an addon when one of its files matches; a matching account or addon keeps everything in it. The filter works on
-top of the rules. A game version that wasn't scanned stays only while its name matches, and a filter that matches
-nothing says so in the tree. An empty box, applied, shows everything again; `Esc` in the box clears the filter and goes
-back to the tree.
+`/` puts you in the filter box on the left. Type part of a name (an account, a character, an addon or a file; upper
+or lower case doesn't matter), then press `Enter` or click the **Filter** button beside the box. Typing alone changes
+nothing, so a big tree isn't rebuilt on every key.
+
+The tree keeps the matching lines and the groups they're in, and opens an addon when one of its files matches. A
+matching account or addon keeps everything in it. The filter works on top of the rules. A game version that wasn't
+scanned stays only while its name matches, and if nothing matches, the tree says so. Apply an empty box to see
+everything again; `Esc` in the box clears the filter and goes back to the tree.
 
 The filter only changes what you see. `a` and `n` tick and untick what it shows; a file it hides keeps its tick and
 is still cleaned. When that's the case, the bottom bar and the confirmation say so ("12 selected files are hidden
@@ -195,12 +195,14 @@ by the filter").
 
 ### Scan warnings
 
-When the scan couldn't read something (a folder, a settings file, a line of an `AddOns.txt`) it carries on without
-it and counts it. The count shows as a button at the right end of the bottom bar, **⚠ 4 scan warnings (!)**: click
-it or press `!` to open the **warnings view**. It lists every warning, grouped by game version, each with where it
-is (the path inside that game version's folder) and what went wrong; the line on the left shows the highlighted one
-in full. `/` filters the list, `x` / `c` expand and collapse it, `h` opens the help, **Back** (`Esc`) returns
-to the review, and `t` goes to the tool menu. With no warnings, there's no button. The log still has them too.
+When the scan can't read something (a folder, a settings file, a line of an `AddOns.txt`), it carries on without
+it and counts it. The count shows as a button at the right end of the bottom bar, **⚠ 4 scan warnings (!)**. Click
+it or press `!` to open the **warnings view**.
+
+The view lists every warning by game version, with where it is (the path inside that game version's folder) and
+what went wrong. The line on the left shows the highlighted one in full. `/` filters the list, `x` / `c` expand and
+collapse it, `h` opens the help, **Back** (`Esc`) returns to the review, and `t` goes to the tool menu. With no
+warnings there's no button. The warnings are in the log too.
 
 ## Cleaning
 
@@ -220,23 +222,23 @@ Once you do, a progress window shows each step and the file it's working on:
 
 Before anything is deleted, the cleaner:
 
-1. **Starts a journal**, a short record used by **Undo last clean**. If it can't write the journal, nothing is
+1. Starts a journal, a short record that **Undo last clean** uses. If it can't write the journal, nothing is
    deleted.
-2. **Checks that no other program has the files open.** The Raider.IO client and the WeakAuras Companion are
+2. Checks that no other program has the files open. The Raider.IO client and the WeakAuras Companion are
    known to lock these files. If any file is locked, the clean stops with nothing deleted and tells you which
    ones. Close that program and try again. (It checks by renaming each file to `<name>.wowtools-lockcheck` and
    straight back. If the app is closed in that split second, the next clean puts the file back first, and the
    scan warns about it until then.)
-3. **Backs up your whole `WTF` folder** into a zip file and checks the zip. If the backup fails, nothing is
+3. Backs up your whole `WTF` folder into a zip file and checks the zip. If the backup fails, nothing is
    deleted.
-4. **Zips the files it's about to remove** and checks that zip too. If it fails, nothing is deleted.
+4. Zips the files it's about to remove and checks that zip too. If that fails, nothing is deleted.
 
-Then it deletes the files, and finally it compares your `WTF` folder against the backup to make sure only the
-right files are gone.
+Then it deletes the files. Last, it compares your `WTF` folder against the backup to make sure only the right files
+are gone.
 
-With **All flavors**, the game versions are cleaned one after another, and each gets the lock check, the backup
-and the zip steps; one journal covers the whole run. If one version runs into a problem, the cleaner stops there,
-and the versions after it aren't touched.
+With **All flavors**, the game versions are cleaned one after another. Each gets its own lock check, backup and
+zip, and one journal covers the whole run. If one version runs into a problem, the cleaner stops there and doesn't
+touch the versions after it.
 
 ### The results screen
 
@@ -246,20 +248,22 @@ and the versions after it aren't touched.
 
 The top table sums up the clean: how many files were deleted, where the zips are, whether the final check
 passed, and the run journal (what **Undo last clean** uses). With All flavors there's a block for each game
-version, and the run journal is named once, at the top. The table below lists every file with what
-happened to it, its account, character, addon, size and why it was suggested.
+version, and the run journal is named once, at the top. The table below lists every file: what happened to it,
+its account, character, addon and size, and why it was suggested.
 
 From here, `r` (**Rescan**) scans again, `f` (**Other flavor**) picks another game version, `t` (**Tools**) goes
 back to the tool menu, and `q` (**Quit**) quits. `Esc`, like `r`, goes back to the review and scans again.
 
 ### Dry run
 
-A **Dry run** checks that WoW is running (and warns you), checks the files again and, unless
-**Zip the files to clean before deleting them** is turned off in settings, writes the zip of the files it *would* remove
-(named `dryrun-…zip`, so you can tell it from a real clean's zip). It takes no WTF backup, does no lock check, writes no
-journal and deletes nothing. It shows you the same results screen. When in doubt, do a dry run first. Since dry runs
-tend to be repeated, only the newest few dry-run zips of each game version are kept (the same number as WTF backups, 10
-unless you change it).
+A **Dry run** checks whether WoW is running (and warns you if it is) and checks the files again. Unless
+**Zip the files to clean before deleting them** is turned off in settings, it also writes the zip of the files it
+*would* remove, named `dryrun-…zip` so you can tell it from a real clean's zip. It takes no WTF backup, does no lock
+check, writes no journal and deletes nothing, and it ends on the same results screen. When in doubt, do a dry run
+first.
+
+People tend to run several dry runs, so only the newest few dry-run zips of each game version are kept (the same
+number as WTF backups, 10 unless you change it).
 
 ## Undo last clean
 
@@ -267,9 +271,9 @@ Changed your mind? **Undo last clean** (`z`, the violet button) puts back every 
 deleted. It asks first and tells you when that clean ran and how many files it removed.
 
 - Files come back from the zip the cleaner made before deleting, or from the backup of your whole `WTF` folder.
-- If a file with the same name has appeared since (WoW may have written a new one), it's **left alone**. Undo never
+- If a file with the same name has appeared since (WoW may have written a new one), Undo leaves it alone. It never
   overwrites anything.
-- Undo only goes back **one clean**. After you undo, the button stays greyed out until your next clean.
+- Undo only goes back one clean. After you undo, the button stays greyed out until your next clean.
 
 Close WoW before you undo.
 
@@ -352,19 +356,21 @@ on the settings screen, `b` on the review edits it), `skip_risk_warning` (`true`
 editing the file, or your change may be overwritten. Comments you add to the file aren't kept (the app rewrites it
 when it saves a setting or the game version you pick).
 
-Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the first
-screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all), `keep_journals` (10)
-and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]` in
-`config\wow-tools.cfg`. With **All flavors**, the scan reads up to `parallelism` game versions at once. A clean (and a
-dry run) still does one game version after another: they share one safety marker, and the clean stops at the first game
-version that fails. The WTF backups and the dry-run zips both follow `keep_backups`. The cleaned-files zips are the one
+Three settings are shared by every tool: how many backups and journals to keep, and how many game versions to work
+on at once. They're on the first screen `s` opens (the one with your WoW folder), saved under `[general]` in
+`config\wow-tools.cfg` as `keep_backups` (10; `0` keeps all), `keep_journals` (10) and `parallelism` (2, from 1 to
+8; use 1 on a hard drive or a WSL `/mnt` folder).
+
+With **All flavors**, the scan reads up to `parallelism` game versions at once. A clean (and a dry run) still does
+one game version after another, because they share one safety marker and the clean stops at the first game version
+that fails. The WTF backups and the dry-run zips both follow `keep_backups`. The cleaned-files zips are the
 exception: they follow the cleaner's own `keep_cleaned`.
 
 ## FAQ
 
 | Question | Answer |
 |----------|--------|
-| What is a SavedVariables file? | The file an addon keeps its settings in, such as `Details.lua`. WoW writes them to the `WTF` folder when you log out. They're safe to delete for addons you no longer use; the addon simply starts with default settings if you ever install it again. |
+| What is a SavedVariables file? | The file an addon keeps its settings in, such as `Details.lua`. WoW writes them to the `WTF` folder when you log out. They're safe to delete for addons you no longer use; the addon starts with default settings if you ever install it again. |
 | Will it delete settings for addons I still use? | Not with the usual rules. Rule 1 only suggests addons that aren't installed, and rule 2 only addons switched off on every character of that account. Rule 3 (older than the age limit) can catch an addon you still have but rarely load, so look through the list and untick anything you want to keep. |
 | Does it check whether WoW is running? | Yes, before every clean, for the game versions you're cleaning, and it warns you if WoW is open. This works on Windows, WSL, Mac and Linux. |
 | Does it touch my keybindings, macros or UI layout? | No. It only ever looks at addon settings files. Blizzard's own settings, keybindings, macros, chat setup, UI layout and your list of enabled addons are never touched. |
@@ -383,7 +389,7 @@ exception: they follow the cleaner's own `keep_cleaned`.
 | "files are locked by another program" | Close the Raider.IO client or the WeakAuras Companion, then clean again. Nothing was deleted. |
 | A warning about a `.wowtools-lockcheck` file | The app was closed during a lock check and left a settings file renamed. The next clean renames it back (a clean of one account only fixes that account's files). To fix it now, close WoW and remove `.wowtools-lockcheck` from the end of the name. If the original file is there too, the leftover is an old copy you can delete. |
 | "Refusing to scan" | That game version has no addons installed, so there's nothing safe to suggest. |
-| "The clean stopped unexpectedly" | Something went wrong that the cleaner didn't expect. Press `r` to scan again and see what's left. If settings you wanted are missing, **Undo last clean** (`z`) or the WTF backup puts them back. Then follow [Reporting a bug](../README.md#reporting-a-bug); the details are in the log. |
+| "The clean stopped unexpectedly" | The cleaner hit an error it didn't expect. Press `r` to scan again and see what's left. If settings you wanted are missing, **Undo last clean** (`z`) or the WTF backup puts them back. Then follow [Reporting a bug](../README.md#reporting-a-bug); the details are in the log. |
 | "Backup folder not allowed" | The backup folder in settings is a relative path, your WoW folder, or inside a game version's `WTF`, `Interface` or `Screenshots` folder (a backup inside `WTF` would be zipped into every later backup). Press `s` and pick another folder, or leave it empty for the default. Nothing was cleaned. |
 | "An earlier clean did not finish" | See [If a clean was interrupted](#if-a-clean-was-interrupted). |
 | **Undo last clean** is greyed out | There's nothing to undo: you haven't cleaned yet, or you already undid the last clean. |

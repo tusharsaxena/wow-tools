@@ -12,8 +12,8 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
   - Before the first scan they ask you to accept a **USE AT YOUR OWN RISK** warning, like the Saved Variables
     Browser: it says what the tool deletes or rewrites, that a backup and Undo are there, and to close WoW first.
     **I understand** goes on, **Back** returns to the game versions. It's asked once each time you start the app.
-  - A blacklisted addon's lines show `⊘` where the tick goes, greyed like the line, so you can see at a glance why
-    they have no tick. In the Ace3 Profile Manager that's in both views, By addon and By character.
+  - A blacklisted addon's lines show `⊘` where the tick goes, greyed like the line, so you can see why they have no
+    tick. In the Ace3 Profile Manager that's in both views, By addon and By character.
 - **Every tool**
   - `t` goes back to the tool menu from any screen and any popup, like `q` quits: the game version and account
     pickers, the help, the changelog, the settings, the warnings, the USE AT YOUR OWN RISK warning (it asks again
@@ -60,9 +60,9 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 - **Interface Backup**
   - Backups and safety backups now go into a `backup` folder inside `interface-backup`, next to `journal`, instead
     of sitting loose beside it. Zips made by an earlier version are moved there once, the first time you open
-    the review; one that can't be moved (its name is already taken there, or the move fails) stays where it is,
-    is still listed, restored and cleaned up as before, and the log says so once per session (the move is tried
-    again each time the review scans). **Undo** of an earlier restore finds its safety backup in the new folder.
+    the review. A zip that can't be moved (its name is already taken there, or the move fails) stays where it is
+    and is listed, restored and cleaned up as before. The log says so once per session, and the move is tried
+    again each time the review scans. **Undo** of an earlier restore finds its safety backup in the new folder.
 - **Saved Variables Browser**
   - The **USE AT YOUR OWN RISK** warning is asked once each time you start the app, no longer every time you open
     the tool. **Back** still doesn't count: it asks again next time.
@@ -70,9 +70,9 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 ### Fixed
 
 - **Screenshot Organizer**
-  - The Screenshot Organizer shows its scan progress at once after you pick the game version, starting with
-    "Checking the destination folder": a slow or sleeping destination drive no longer freezes the screen for a
-    few seconds with nothing on it. A destination that isn't allowed is reported as before.
+  - The scan progress shows as soon as you pick the game version, starting with "Checking the destination
+    folder". A slow or sleeping destination drive no longer freezes an empty screen for a few seconds. A
+    destination that isn't allowed is reported as before.
 - **The app**
   - Messages that pop up at the bottom right now start at the same place on every screen, just above the bars at
     the bottom (and above the action bar under a tree), and several stack upward without covering each other. The
@@ -94,11 +94,10 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
   - When your WoW folder's path has letters like é or ü and WoW is running, an Apply or Undo now refuses with the
     usual "WoW is running" message instead of stopping with an unexpected error.
   - Every file the app writes in place (a SavedVariables file, a settings file, an unfinished-change reminder) is
-    now flushed to the disk before it replaces the old one, so a power cut or a system crash right after an
-    Apply, an Undo or a settings change leaves the old file or the new one, never an empty file. Each Undo
-    journal line and each safety backup zip is flushed to the disk the same way before the change it covers,
-    and so is a screenshot copied to another drive before its original is deleted, and a file a WTF Cleaner
-    Undo puts back.
+    now flushed to the disk before it replaces the old one. A power cut or a system crash right after an Apply,
+    an Undo or a settings change leaves the old file or the new one, never an empty file. Each Undo journal line
+    and each safety backup zip is flushed the same way before the change it covers. So is a screenshot copied to
+    another drive, before its original is deleted, and a file a WTF Cleaner Undo puts back.
   - The README, every tool's guide and the message about a release with no checksum now say that comments you
     add to a settings file in `config` aren't kept: the app rewrites the file whenever it saves a setting or the
     game version you pick. Edit these files with the app closed.
@@ -146,10 +145,10 @@ The first version: five tools in one app.
     the first settings screen.
   - `x` expands and `c` collapses every line of a tree, on every tree screen.
   - `/` filters every tree: type part of a name (an addon, a file, a date, a profile…), press `Enter` or the
-    **Filter** button beside the box, and the tree keeps the matching lines and the groups they're in (typing alone
-    doesn't rebuild the tree, so big trees stay quick). `a` / `n` tick or untick only what the filter shows; ticks it hides
-    stay, and the bottom line and the "are you sure?" window say how many. A group's tick mark counts what the
-    filter shows, and a filter that matches nothing says so. `Esc` in the filter box clears it.
+    **Filter** button beside the box, and the tree keeps the matching lines and the groups they're in. Typing
+    alone doesn't rebuild the tree, so big trees stay quick. `a` / `n` tick or untick only what the filter shows;
+    ticks it hides stay, and the bottom line and the "are you sure?" window say how many. A group's tick mark
+    counts what the filter shows, and a filter that matches nothing says so. `Esc` in the filter box clears it.
   - **Rescan** is lime on every screen, so it stands out from the grey buttons that only move between screens.
   - The title bar of every screen reads **Ka0s WoW Tools** in bold gold, then the tool's name in bold cyan, then the
     game version and view in bold white.
@@ -165,8 +164,9 @@ The first version: five tools in one app.
     only the keys no button has, so it stays short; while a popup is open it is empty, since the popup's buttons
     say what to press.
   - Every "are you sure?" window opens on **Yes**, coloured by what it does (red when it deletes, overwrites, undoes
-    or drops pending changes, a backup that deletes older ones included); Enter and Space wait a quarter of a
-    second after it opens and are ignored while a held key repeats, `y` / `n` / `Esc` answer at once. The update offer's "Update now" waits the same way.
+    or drops pending changes, a backup that deletes older ones included). Enter and Space wait a quarter of a
+    second after it opens and are ignored while a held key repeats; `y` / `n` / `Esc` answer at once. The update
+    offer's "Update now" waits the same way.
   - The bottom row of every screen shows the version, and says when a new one is out and how to get it (on the
     Ace3 Profile Manager's review, where `u` unlocks an addon, it points you to the tool menu).
   - The tool menu shows the version under the banner (and the new one, once found), and the terms of use along
@@ -180,7 +180,7 @@ The first version: five tools in one app.
   - The progress window keeps one size from start to finish in every tool: the job, an overall bar when several
     game versions are worked on ("1 of 3 game versions"), a row per game version being worked on (label, step and
     its own bar) and the current file; long text is cut short with "…" instead of wrapping.
-  - Scan warnings have a screen of their own, so you never have to read the logs for them: when a scan couldn't
+  - Scan warnings have a screen of their own, so you don't have to read the logs for them. When a scan couldn't
     read something, a **⚠ N scan warnings (!)** button sits at the right end of the bottom bar (the review screens
     of every tool and Interface Backup's restore screen). Click it or press `!` to open the warnings view: every
     warning grouped by game version, each with where it is and what went wrong, with the `/` filter, `x` / `c`, `h`
@@ -221,8 +221,7 @@ The first version: five tools in one app.
   - Deletes, renames and copies profiles, moves characters between them and removes characters that no longer
     exist.
   - A blacklist (per game version, picked from a tree, or `b` on an addon in the review) keeps addons out of its
-    reach. When the filter hides ticked
-    addons, **Save** says how many and asks first.
+    reach. When the filter hides ticked addons, **Save** says how many and asks first.
   - Changes wait as **pending changes** until you apply them; an action bar and a guidance line under the tree say
     what to do next.
   - Edits only the lines that change in each settings file, after backing up the whole `WTF` folder and every file

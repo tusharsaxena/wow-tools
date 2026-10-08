@@ -14,7 +14,7 @@ refuse while it runs.
 
 1. **Pick a game version**, or **All flavors**; then, if that version has several accounts, an account or **All
    accounts**.
-2. Read the **USE AT YOUR OWN RISK** warning: **I understand** goes on, **Back** returns to the game versions. Once
+2. Read the **USE AT YOUR OWN RISK** warning. **I understand** goes on, **Back** returns to the game versions. Once
    you press **I understand** it is not asked again until you restart the app. Tick **Don't show this warning again
    for this tool** (`Tab`, `Space`) to stop it for good; the tool's settings (`s`) turn it back on.
 3. The **review** shows a tree: game version → account → addon → profile → its characters. `v` switches to **By
@@ -22,7 +22,7 @@ refuse while it runs.
 4. **Tick** profiles or characters (`Space`), or just highlight one, and press an action below the tree. Each
    change is **pending**: the tree shows it at once (`✘ deleted`, `was Healer`), but no file is touched.
 5. **Dry run** (`y`) checks every pending change without writing anything.
-6. **Apply** (`w`), read the summary, press **Yes**. The **results** list every change.
+6. Press **Apply** (`w`), read the summary and press **Yes**. The **results** list every change.
 
 ## The action bar (under the tree)
 
@@ -51,7 +51,7 @@ refuse while it runs.
 The **Show** boxes narrow the tree (only addons with 2+ profiles, only unused profiles, leftover characters,
 blacklisted addons). `a` / `n` tick / untick everything shown, `/` reaches the filter box (type, then **Filter** or
 `Enter` filters the tree; `Esc` clears it), `x` / `c` expand / collapse it all. A blacklisted addon's lines are
-greyed, with `⊘` where the tick goes: they can't be ticked. `u` unlocks a blacklisted addon for this session,
+greyed, with `⊘` where the tick goes, and can't be ticked. `u` unlocks a blacklisted addon for this session,
 `←` `→` switch panes, `Tab` or `↓` on the last line reach the action bar. `f` or `Esc` picks another game version,
 `t` goes back to the tool menu, `s` opens the settings, `q` quits (leaving with pending changes asks first). On
 the results: **Rescan** (`r`), **Other flavor** (`f`), **Tools** (`t`), **Quit** (`q`).
@@ -67,7 +67,7 @@ wrong. **Back** (`Esc`) returns to the review.
 - Before writing, Apply checks no file changed since the scan and no program has one open, zips your **whole `WTF`
   folder** and the files it edits, then writes only the lines that change and reads each file back.
 - It never touches the settings inside a profile, other addon data, or Blizzard's files.
-- **Undo last change** goes back one Apply, and leaves alone a file saved again since.
+- **Undo last change** goes back one Apply. It leaves alone any file saved again since.
 
 ## Settings (`s`)
 

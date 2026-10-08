@@ -13,20 +13,22 @@ doesn't. It shows you the raw data an addon saved and lets you change any value 
 doesn't expect (text where it wants a number, a colour that is out of range, a key it never reads), the addon may
 throw errors, reset itself to its defaults or quietly lose that setting. The tool can't warn you about that.
 
-So the tool asks you to accept this the first time you pick a game version in it after starting the app, before the scan
-(the popup opens over the tool menu): **I understand**, or **Back** to the game versions; **Back** doesn't count, so it
-asks again next time. It also shows `⚠ USE AT YOUR OWN RISK` in red at the top of its left panel the whole time, and
-repeats the warning in red on every **Apply** and **Undo** confirm. Once you've read it, you can tick
-**Don't show this warning again for this tool** (`Tab` to it, `Space` to tick) before **I understand**: the popup is
-then never shown again (the red line and the confirms' warning stay), until you tick
-**Show the USE AT YOUR OWN RISK warning** in the tool's [settings](#settings).
+So the first time you pick a game version in this tool after starting the app, it asks you to accept the risk before
+the scan. The popup opens over the tool menu. **I understand** goes on. **Back** returns to the game versions and
+doesn't count, so you're asked again next time. The tool also shows `⚠ USE AT YOUR OWN RISK` in red at the top of its
+left panel the whole time, and repeats the warning in red on every **Apply** and **Undo** confirm.
+
+Once you've read it, you can tick **Don't show this warning again for this tool** (`Tab` to it, `Space` to tick)
+before you press **I understand**. The popup then stays hidden until you tick
+**Show the USE AT YOUR OWN RISK warning** in the tool's [settings](#settings). The red line and the warning on the
+confirms stay either way.
 
 **_The USE AT YOUR OWN RISK warning_**
 
 ![The USE AT YOUR OWN RISK warning (shown here with the Ace3 Profile Manager's text; the wording differs per tool), with Back and I understand buttons](assets/screenshots/suite/risk-warning.png)
 
-What it does guarantee: every byte you didn't change stays exactly as it was, your whole `WTF` folder and every file
-it changes are backed up before anything is written, and **Undo last change** puts the files back.
+What the tool does promise: every byte you didn't change stays exactly as it was. Before it writes anything, it backs
+up your whole `WTF` folder and every file it is about to change, and **Undo last change** puts those files back.
 
 > **Close WoW first.** WoW keeps every addon's settings in memory while you play and writes them all back to the
 > `WTF` folder every time you log out or type `/reload`. Anything this tool changed while the game was open would be
@@ -96,9 +98,9 @@ variables → keys
 **Results**: the hits of your last search; see [Search](#search) and [Editing the results in
 bulk](#editing-the-results-in-bulk).
 
-**Under the tree** is the action bar. It works on the highlighted key (in **Results**, **Edit value** and **Rename key**
-work on every ticked result; see [Editing the results in bulk](#editing-the-results-in-bulk)); a button that can't act
-on it is greyed out.
+**Under the tree** is the action bar. Its buttons work on the highlighted key, and a button that can't act on it is
+greyed out. In **Results**, **Edit value** and **Rename key** work on every ticked result instead; see
+[Editing the results in bulk](#editing-the-results-in-bulk).
 
 | Button | Key | Does |
 |---|---|---|
@@ -121,12 +123,11 @@ count what is waiting (`Staged: 3 edits in 2 files`, and after a search `Results
 (`312 files in 2 flavors`).
 
 **Warnings**: when the scan skipped a folder, or a file couldn't be read (when you opened it in the tree, or a search
-went through it), a **⚠ N warnings (!)** button sits at the right end of the bottom bar: click it or press `!` to open
-the **warnings view**. It lists every warning, grouped by game version, each with the file or folder (inside that game
-version's folder) and what went wrong; the line on the left shows the highlighted one in full. `/` filters the list, `x`
-/ `c` expand and collapse it, `h` opens the help, **Back** (`Esc`) returns to the review, and `t` goes to the tool
-menu. With no warnings there's
-no button. The log still has them too.
+went through it), a **⚠ N warnings (!)** button sits at the right end of the bottom bar. Click it or press `!` to open
+the **warnings view**. It lists every warning by game version, each with the file or folder (inside that game
+version's folder) and what went wrong, and the line on the left shows the highlighted one in full. `/` filters the
+list, `x` / `c` expand and collapse it, `h` opens the help, **Back** (`Esc`) returns to the review, and `t` goes to the
+tool menu. With no warnings there's no button. The warnings are in the log too.
 
 ### The filter
 
@@ -207,8 +208,8 @@ A confirm names the key (and for a table, how many entries go with it). **Yes** 
 
 ## Search
 
-**Search** (`S`, that's Shift+S; `s` is settings) opens the search popup. It only finds: what to change is chosen
-afterwards, on the results. Fill in what you need and press **Find** (or `Enter`):
+**Search** (`S`, that's Shift+S; `s` is settings) opens the search popup. It only finds things; you choose what to
+change afterwards, on the results. Fill in what you need and press **Find** (or `Enter`):
 
 | Field | What it means |
 |---|---|
@@ -323,14 +324,13 @@ versions after it aren't touched, and the versions before it keep their changes 
 
 ![The Applying the changes progress window, backing up the WTF folder](assets/screenshots/sv-browser/apply-progress.png)
 
-After a real Apply the staged edits are gone, and the review reads the files again when you leave the
-results screen.
+After a real Apply the staged edits are gone, and the review reads the files again when you leave the results screen.
 
 ## Dry run
 
 A **Dry run** (`y`) does everything Apply does except writing: it rechecks every file and builds and checks each new
-version in memory. It writes nothing at all: no zip, no journal. It works while WoW is running. Its results screen
-has a **Back to review** button (`Esc`) that takes you back with your staged edits still there.
+version in memory. It writes nothing at all, not even a zip or a journal, so it works while WoW is running. Its
+results screen has a **Back to review** button (`Esc`) that takes you back with your staged edits still there.
 
 ## The results screen
 
@@ -339,8 +339,8 @@ has a **Back to review** button (`Esc`) that takes you back with your staged edi
 ![The Apply results: the backups and journal, then every changed file with its number of edits](assets/screenshots/sv-browser/apply-result.png)
 
 The top table sums up the run: game versions, files changed (or that would change), edits written (or checked),
-files skipped, put back or failed, the backup folder, the `WTF` backup, the zip of the
-original files and the journal. The table below has one line per file: game version, account, account-wide or
+files skipped, put back or failed, the backup folder, the `WTF` backup, the zip of the original files and the
+journal. The table below has one line per file: game version, account, account-wide or
 character, file, how many edits, and what happened ("changed", "would change", "skipped", "put back", "failed"),
 with the reason when there is one.
 
@@ -349,17 +349,17 @@ Apply was refused before it wrote anything, **Back to review** keeps your staged
 
 ## Undo last change
 
-Changed your mind? **Undo last change** (`z`, the violet button) puts back every file the most recent Apply changed,
-from the zip of the original files. It asks first, naming when that change ran and in which game versions, with the
-USE AT YOUR OWN RISK warning. Close WoW first: Undo refuses while it's running, just like Apply.
+**Undo last change** (`z`, the violet button) puts back every file the most recent Apply changed, from the zip of
+the original files. It asks first: the confirm names when that change ran and in which game versions, and repeats
+the USE AT YOUR OWN RISK warning. Close WoW first: like Apply, Undo refuses while the game is running.
 
 - A file is put back only if it's still exactly what the tool wrote. If WoW (or anything else) saved it since, it's
   **left as it is** and marked "changed since the change was made". Undo never overwrites settings saved after the
   change.
 - Before it puts anything back, Undo backs up your whole `WTF` folder again, so the undo itself can be undone by hand.
 - Undo only goes back **one** change: after you undo, the button stays greyed out until your next Apply.
-- Anything staged that you haven't applied is dropped when the Undo runs (the confirm says how much). If
-  the Undo is refused before it starts (WoW running, say), it stays.
+- Anything staged that you haven't applied is dropped when the Undo runs (the confirm says how much). If the Undo is
+  refused before it starts (WoW running, say), your staged edits stay.
 
 ## The safety net
 
@@ -447,9 +447,8 @@ work on at once; then this tool's). The tool's settings are saved in `config\sv-
 
 The file itself uses these names under `[sv_browser]`, if you edit it by hand: `backup_dir`, `skip_risk_warning`
 (`true` means the warning isn't shown) and `last_flavor_choice` (the game version you picked last time; empty means
-**All flavors**). Close the app before editing the file, or your
-change may be overwritten. Comments you add to the file aren't kept (the app rewrites it when it saves a setting or
-the game version you pick).
+**All flavors**). Close the app before editing the file, or the app may overwrite your change. Comments you add to the
+file aren't kept: the app rewrites it whenever it saves a setting or the game version you pick.
 
 How many backups and journals to keep is shared by every tool: `keep_backups` (10; `0` keeps all) and
 `keep_journals` (10) under `[general]` in `config\wow-tools.cfg`, on the first screen `s` opens. So is

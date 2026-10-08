@@ -50,11 +50,12 @@ When the scan skipped something it could not read, the bottom line of the review
 
 ## Safety
 
-- Every zip is checked after it is written. Only the newest backups per game version are kept (as many as
-  the shared settings say, 10 by default; `0` keeps them all), and old ones go only after the new zip checks out.
-- Before every restore, a **safety backup** of the folders as they are now is taken, so you can undo the restore.
-  A safety backup is listed under **Backups** and can be restored too.
-- A folder is swapped in one rename once the new copy is complete: never left half-copied. Links are kept.
+- The app checks every zip after writing it. It keeps the newest backups of each game version (as many as the
+  shared settings say, 10 by default; `0` keeps them all) and deletes old ones only after the new zip checks out.
+- Before every restore, the app takes a **safety backup** of the folders as they are now, so you can undo the
+  restore. Safety backups are listed under **Backups** and can be restored too.
+- A folder is swapped in one rename, and only once the new copy is complete, so it is never left half-copied.
+  Links are kept.
 - **Undo last restore** goes back one restore, from its safety backup.
 - Backups go to `<WoW folder>\\wow-tools\\interface-backup\\backup` unless you pick another **Backup folder** (`s`).
 

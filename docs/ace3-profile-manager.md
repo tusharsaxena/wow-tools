@@ -6,29 +6,30 @@ Many addons (ElvUI, Bartender4, HandyNotes and hundreds more) are built on a lib
 their settings in **profiles**. A profile is a named set of settings, such as "Default", "Healer" or
 "Kaelys - Mug'thol". Each character uses one profile, and several characters can share one.
 
-Over the years those profiles pile up: profiles nobody uses any more, characters you deleted long ago, every alt on
-its own copy of the same setup. In game you can only tidy them one addon and one character at a time.
+Over the years those profiles pile up. Some nobody uses any more, some belong to characters you deleted long ago,
+and every alt may have its own copy of the same setup. In game you can only tidy them one addon and one character at
+a time.
 
 The Ace3 Profile Manager reads your `WTF` folder, shows each addon's profiles and which characters use them, and
 lets you delete, rename and copy profiles, move characters to another profile and remove characters that no longer
-exist. You line up every change first; nothing is written until you press **Apply**. It backs up every file it
+exist. You line up every change first, and nothing is written until you press **Apply**. It backs up every file it
 edits, and **Undo last change** puts them back.
 
 > **Close WoW first.** Addons keep their profiles in the game's memory while you play, and WoW writes them back to
 > the `WTF` folder every time you log out or type `/reload`. Anything this tool changed while the game was open
-> would be overwritten. That's why **Apply** and **Undo** refuse to run while WoW is running (a **Dry run** works
-> any time).
+> would be overwritten, so **Apply** and **Undo** refuse to run while WoW is running. A **Dry run** works any
+> time.
 
 ## How it works
 
-Nothing you do on the review screen touches a file until you press **Apply**. In four steps:
+Nothing you do on the review screen touches a file until you press **Apply**. A change takes four steps:
 
 1. **Tick** the profiles or characters you want to change (`Space`), or just highlight one.
 2. **Pick an action** in the bar under the tree: **Assign**, **Rename**, **Copy**, **Everyone → Default**,
    **Delete**, **Only Default**, **Leftovers**, **Blacklist…** or **More…** (most buttons also have a key). While a
    button is selected, a box above the bar's hint line says what it would do with what you've ticked or highlighted.
 3. **Check the pending changes in the tree.** Each action shows its result in the tree straight away, marked so you
-   can tell (`✘ deleted`, `was Healer` and so on), but it's only *pending*: nothing has been written yet. Make as
+   can tell (`✘ deleted`, `was Healer` and so on). It's only *pending*, and nothing has been written yet. Make as
    many as you like; **Discard** (`Backspace`) drops them all.
 4. **Apply** (`w`) writes the pending changes, after backing everything up. **Dry run** (`y`) only checks them.
 
@@ -45,7 +46,7 @@ changes and a very long name highlighted, it shows only the pending changes so t
 3. **Pick a game version**, or **All flavors** to see every version at once. `t` or `Esc` goes back to the tool menu.
 4. If you picked one version that has more than one WoW account, **pick an account**, or **All accounts**.
    `Esc` goes back to the game versions, `t` to the tool menu.
-5. Read the **USE AT YOUR OWN RISK** warning: the tool rewrites your addons' profiles, so it asks you to accept
+5. Read the **USE AT YOUR OWN RISK** warning. The tool rewrites your addons' profiles, so it asks you to accept
    that first. **I understand** goes on; **Back** returns to the game versions. It's asked once each time you start
    the app, not every time you open the tool. Tick **Don't show this warning again for this tool** (`Tab` to it,
    `Space` to tick) before **I understand** to stop it for good; **Show the USE AT YOUR OWN RISK warning** in the
@@ -60,7 +61,7 @@ changes and a very long name highlighted, it shows only the pending changes so t
    key: `d` deletes profiles, `p` moves characters to another profile, `e` renames a profile, `k` copies one, `o`
    removes leftover characters, `D` (Shift+D) keeps only "Default", `E` (Shift+E) moves everyone to "Default", and
    `m` opens the quick actions. Each change becomes a **pending change**: the tree shows the result straight away,
-   but no file is touched yet. Make as many changes as you like.
+   but no file is touched yet. You can make as many changes as you like.
 8. Press **Dry run** (`y`) if you'd like every change checked without writing anything.
 9. Press **Apply** (`w`), read the summary, and press **Yes**.
 10. The results screen lists every change and what happened to it.
@@ -129,16 +130,16 @@ selected button), so they never cover either.
 it or press `!` to open the **warnings view**. It lists every warning, grouped by game version, each with the file or
 folder (inside that game version's folder) and what went wrong; the line on the left shows the highlighted one in full.
 `/` filters the list, `x` / `c` expand and collapse it, `h` opens the help, and **Back** (`Esc`) returns to the review.
-With no warnings there's no button. The log still has them too.
+With no warnings there's no button. The warnings are in the log too.
 
 ### Tags
 
-Lines in the tree carry small tags that tell you what's going on:
+A line in the tree can carry one of these tags:
 
 | Tag | On | Means |
 |---|---|---|
 | **Default** | profile | The profile called "Default", the one most addons start every character on |
-| **unused** | profile | No character uses it. A good candidate for deleting |
+| **unused** | profile | No character uses it, which makes it a good one to delete |
 | **empty** | profile | It holds no settings of its own: the addon uses its built-in defaults for it |
 | **missing** | profile | A character points at it, but the profile has no settings saved yet. The addon creates it, with its defaults, the next time that character logs in |
 | **no character folder** | character | The character has no folder in the `WTF` folder of that account any more: you deleted or renamed it, or moved it to another realm. A leftover |
@@ -166,7 +167,7 @@ pending changes asks first too, and so does leaving the screen.
 
 | Filter | Shows |
 |---|---|
-| **Only addons with 2+ profiles** | Only the addons (databases) with at least two profiles: the ones worth tidying |
+| **Only addons with 2+ profiles** | Only the addons (databases) with at least two profiles, which are the ones worth tidying |
 | **Only unused profiles** | Only profiles no character uses (By addon view) |
 | **Leftover characters** (on) | Characters tagged "no character folder". Untick to hide them |
 | **Blacklisted addons** (on) | Addons on your blacklist. Untick to hide them |
@@ -196,7 +197,7 @@ profile with the same name in Bartender4 are two different profiles.
 | `p` | **Assign a profile** | Moves the ticked characters to a profile you pick from the list, or to a new name you type. The popup lists the characters under each addon behind one line, such as **12 character assignments (Space or click to expand)**, opened the same way |
 | `e` | **Rename a profile** | Renames the highlighted profile. Its characters follow it |
 | `k` | **Copy a profile** | Copies the highlighted profile, settings and all, under a new name. Nobody uses the copy until you assign it |
-| `o` | **Remove leftover characters** | Ticks every character tagged "no character folder" that the tree shows, then removes the ticked ones from the addon's list. No need to tick them first |
+| `o` | **Remove leftover characters** | Ticks every character tagged "no character folder" that the tree shows, then removes the ticked ones from the addon's list. You don't need to tick them first |
 
 **_Assigning a profile_**
 
@@ -205,18 +206,19 @@ profile with the same name in Bartender4 are two different profiles.
 A profile name can be up to 100 characters. Names are case-sensitive, as in the game ("healer" and "Healer" are two
 profiles), and you can't rename or copy onto a name the addon already has.
 
-If a change can't be made in some of the ticked addons (a blacklisted addon, say), it's made in the others and a
-**Not done** box lists the ones it skipped, every one of them: one line, **⚠ N databases not changed**, that opens to
+If a change can't be made in some of the ticked addons (a blacklisted addon, say), it's made in the others. A
+**Not done** box then lists every one it skipped under one line, **⚠ N databases not changed**. That line opens to
 each reason once, with the game version and account under it, then the addons (with the database when the addon has
-several, and the character for a character's own file). Anything else worth knowing about a change (for example, that an
-addon will create "Default" itself at its next login) opens a **Notes** box after it, listed the same way under
-**N notes**; one or two notes show at once, a longer list opens with `Space`. **Leftovers** is one press: it ticks every
-leftover character the tree shows (what the View, the Show boxes and the filter let through), then asks first, listing
-the characters it will remove under each addon (`Space` opens an addon, `x` opens them all). **No** keeps the ticks, so
-you can see what it would have removed. To remove only some of them, narrow the tree first with the filter (`/`):
-**Leftovers** ticks only the ones shown (leftover characters you ticked yourself and then hid are included too, and the
-popup says so). With none shown (the **Leftover characters** box unticked, say) it says "No leftover characters are
-shown." and does nothing.
+several, and the character for a character's own file). Anything else worth knowing about a change (for example, that
+an addon will create "Default" itself at its next login) opens a **Notes** box after it, listed the same way under
+**N notes**. One or two notes show at once; a longer list opens with `Space`.
+
+**Leftovers** is one press. It ticks every leftover character the tree shows (what the View, the Show boxes and the
+filter let through), then asks first, listing the characters it will remove under each addon (`Space` opens an addon,
+`x` opens them all). **No** keeps the ticks, so you can see what it would have removed. To remove only some of them,
+narrow the tree first with the filter (`/`), since **Leftovers** ticks only the ones shown. Leftover characters you
+ticked yourself and then hid are included too, and the popup says so. With none shown (the **Leftover characters**
+box unticked, say) it says "No leftover characters are shown." and does nothing.
 
 **_Removing leftover characters_**
 
@@ -240,9 +242,9 @@ highlighted one when nothing is ticked.
 
 ### The blacklist
 
-Some addons you never want touched. Put them on the blacklist: they stay in the tree, greyed out, so you can still
-see their profiles, but they can't be ticked or changed. Each of their lines shows `⊘` where the tick goes, in both
-views (By addon and By character).
+Some addons you never want touched. Put them on the blacklist and they stay in the tree, greyed out, so you can
+still see their profiles, but they can't be ticked or changed. Each of their lines shows `⊘` where the tick goes, in
+both views (By addon and By character).
 
 An addon is blacklisted in one game version: blacklisting ElvUI in Retail leaves ElvUI in Classic Era free to
 change.
@@ -410,8 +412,7 @@ another. The journals always stay in your WoW folder, even if you pick another b
 
 - Only the newest 10 **WTF backups** (`snapshots`) of each game version are kept (you can change this in the shared
   settings, the first screen `s` opens; `0` keeps them all).
-  One is taken before each change, each Undo and each recovery. They're a safety net in case something goes badly
-  wrong.
+  One is taken before each change, each Undo and each recovery, in case something goes badly wrong.
 - Only the newest 10 **journals** are kept (also a shared setting). An `edited` zip is deleted along with the last
   journal that needs it.
 - To put files back by hand (an older change, say): close WoW, open the `edited\edited-…zip`, and extract it
@@ -438,8 +439,8 @@ then sees the change finished and only removes the reminder: no file is changed,
 If the reminder still can't be removed (after **Put the originals back** or **Leave as is**), a notice says so and
 the message comes back at the next scan; close the other program and choose again.
 
-**Put the originals back** finds the files in the WoW folder set in the app, never in the folder the change was
-started from, so it works when you run the app from the other system (Windows or WSL). If that change's game
+**Put the originals back** looks for the files in the WoW folder set in the app, never in the folder the change was
+started from. That way it works when you run the app from the other system (Windows or WSL). If that change's game
 version (for example `_retail_`) is not a folder in your WoW folder (you changed the WoW folder since, say), it is
 refused with "`<game version>` is not in the WoW folder `<path>`. Nothing was changed." and the message is offered
 again: set the WoW folder the change was made in (press `s`), then choose again.
@@ -477,7 +478,7 @@ marker, and Apply stops at the first game version that fails. The WTF backups (`
 | Why is a profile "missing"? | A character points at a profile that has no settings saved. That's normal: the addon creates it, with its defaults, when that character next logs in. Moving characters to a new name you typed does the same. |
 | I removed a leftover character and it came back. | Logging in on that character (or a new character with the same name and realm) makes the addon add it again. "No character folder" means WoW has no folder for it in that account right now; if you still play it, leave it alone. |
 | What is LibDualSpec, and why "spec profiles"? | Some addons can switch your profile automatically when you change talent spec, using a library called LibDualSpec. For a character with that switched on, the spec setting wins at login, so assigning it another profile here may not stick. Renaming or deleting a profile updates its spec settings too, as the game would. Turn spec switching off in the addon's own options if you want a fixed profile. |
-| Can I delete "Default"? | Yes, but most addons put every new character on "Default", and recreate it with its defaults when one logs in. The confirm warns you. **Only Default** is usually what you want instead. |
+| Can I delete "Default"? | Yes, but most addons put every new character on "Default" and recreate it with its defaults when one logs in. The confirm warns you. You probably want **Only Default** instead. |
 | Are my settings inside a profile safe? | Yes. The tool never changes what's in a profile: a renamed profile keeps its settings exactly, and a copy is an exact copy. |
 | Can I copy a profile to another addon, account or game version? | No. Profiles belong to one addon on one account; copying works within the same addon only. |
 | What's the difference between Dry run and Apply? | A **Dry run** checks every pending change and shows the results without writing anything. **Apply** writes them, after backing everything up. |

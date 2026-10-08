@@ -13,9 +13,9 @@ up, and deletes the ones you leave ticked. **Close WoW first**: it rewrites thes
 1. **Pick a game version**, or **All flavors**; if that version has more than one account, then an account or
    **All accounts**.
 2. Read the **USE AT YOUR OWN RISK** warning (before the first scan): **I understand** goes on, **Back** or `Esc`
-   returns to the game versions. Once
-   you press **I understand** it is not asked again until you restart the app. Tick **Don't show this warning again
-   for this tool** (`Tab`, `Space`) to stop it for good; the tool's settings (`s`) turn it back on.
+   returns to the game versions. Once you press **I understand**, it isn't asked again until you restart the app.
+   Tick **Don't show this warning again for this tool** (`Tab`, `Space`) to stop it for good; the tool's settings
+   (`s`) turn it back on.
 3. The **review** lists the files suggested for removal: game version → account → character → addon → files.
    Everything starts ticked ("remove this"): untick what you want to keep.
 4. **Dry run** (`y`) to see what would happen; nothing is deleted.
@@ -58,13 +58,14 @@ screen or popup, not while a clean runs), `s` opens the settings, `q` quits. On 
 ## Blacklist
 
 An addon you never want cleaned goes on the **blacklist**: highlight its line (or one of its files) and press `b`.
-Its lines stay in the tree, greyed, with `⊘` where the tick goes and marked *blacklisted*, but are never ticked,
-counted or cleaned, in that game version only. `b` on it again takes it off. The list is `blacklist` in
-`config\\wtf-cleaner.cfg` (`_retail_:ElkBuffBars, ...`; a name without a game version means every one).
+Its lines stay in the tree, greyed, with `⊘` where the tick goes and marked *blacklisted*. They're never ticked,
+counted or cleaned. The blacklist applies to that game version only, and `b` on the addon again takes it off.
+The list is `blacklist` in `config\\wtf-cleaner.cfg` (`_retail_:ElkBuffBars, ...`; a name without a game version
+means every one).
 
 ## Warnings
 
-When the scan could not read something (a folder, a file, a line of an `AddOns.txt`), the bottom line shows
+When the scan can't read something (a folder, a file, a line of an `AddOns.txt`), the bottom line shows
 **⚠ N scan warnings (!)**: click it or press `!` to list them by game version, each with where it is and what
 went wrong. **Back** (`Esc`) returns to the review.
 

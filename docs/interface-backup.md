@@ -53,9 +53,10 @@ Unless you change it in settings, the backup folder is `<your WoW folder>\wow-to
 
 Earlier versions put the zips straight into `interface-backup`. The first time you open the review, they're moved into
 its `backup` folder. A zip that can't be moved (one of the same name is already in `backup`, or the move fails) stays
-where it is and the log says so, once per session; it's still listed, restored and cleaned up like the others, and the
-move is tried again each time the review scans (opening it, or `r`). With a name already in `backup`, Backups lists two
-zips of that name: look at both, then move or delete the old one in `interface-backup` yourself.
+where it is, and the log says so once per session. It's still listed, restored and cleaned up like the others. The
+app tries the move again each time the review scans (when you open it, or press `r`). If the name was already taken in
+`backup`, Backups lists two zips with that name: look at both, then move or delete the old one in `interface-backup`
+yourself.
 
 `<flavor>` is the game version (`retail`, `classic_era` and so on). For example:
 `backup-retail-20261004-201530.zip`. If two backups start in the same second, the second gets `-2` added before
@@ -122,13 +123,14 @@ or "all backups"), the buttons and the keys.
 up"). When a backup is highlighted, it names that backup in full, with its date and time; otherwise it says how
 to pick one. It also warns when a restore is blocked.
 
-**Filter**: `/` puts you in the filter box on the left. Type part of a name: a game version, a link, a warning or a
-backup's date and time (`2026-10-04`); upper or lower case doesn't matter. Then press `Enter` or click the **Filter**
-button beside the box (typing alone changes nothing). The tree keeps the matching lines and the game versions they're
-in, and opens a **Backups** (or **Links**) line when something in it matches. A game version stays shown, and tickable,
-while anything in it matches. An empty box, applied, shows everything again; `Esc` in the box clears the filter. The
-filter only changes what you see: `a` and `n` act on the game versions shown, and a ticked one it hides is still backed
-up; the bottom bar and the confirmation say so ("1 selected flavor is hidden by the filter").
+To filter the tree, press `/` to reach the filter box on the left. Type part of a name: a game version, a link, a
+warning or a backup's date and time (`2026-10-04`). Upper or lower case doesn't matter. Then press `Enter` or click the
+**Filter** button beside the box; typing alone changes nothing. The tree keeps the matching lines and the game versions
+they're in, and opens a **Backups** (or **Links**) line when something in it matches. A game version stays shown, and
+tickable, while anything in it matches. Applying an empty box shows everything again, and `Esc` in the box clears the
+filter. The filter only changes what you see. `a` and `n` act on the game versions shown, but a ticked one the filter
+hides is still backed up, and the bottom bar and the confirmation tell you ("1 selected flavor is hidden by the
+filter").
 
 On Windows you see file counts and sizes. From WSL, Mac or Linux the review shows file counts only: reading
 every file's size there takes a disk round trip per file, and an `Interface` folder can hold tens of thousands of
@@ -168,9 +170,8 @@ When the scan skipped something it couldn't read, a **⚠ N scan warnings (!)** 
 bottom bar: click it or press `!` to open the **warnings view**. It lists every warning, grouped by game version,
 each with its part (`Interface` or `WTF`) and what went wrong; the line on the left shows the highlighted one in
 full. `/` filters the list, `x` / `c` expand and collapse it, `h` opens the help, **Back** (`Esc`) returns to the
-review, `t` goes to the tool menu and `q` quits. With no
-warnings there's no button. The log still has them too. The
-restore screen has the same button for its own scan of the game version.
+review, `t` goes to the tool menu and `q` quits. With no warnings there's no button. The warnings are in the log
+too. The restore screen has the same button for its own scan of the game version.
 
 ## Backing up
 
@@ -196,9 +197,9 @@ old backups") and the file it's working on. For each game version, the app:
 3. Gives the zip its real name.
 4. Only then deletes that game version's oldest backups beyond the number you keep.
 
-If anything goes wrong, the temporary zip is deleted and that game version is marked **Failed**; the others
-still go ahead (several may be backed up at once, see Settings). An unexpected error is that game version's
-**Failed** too; it doesn't stop the rest. A backup never changes anything in your game folders.
+If anything goes wrong, the temporary zip is deleted and that game version is marked **Failed**. The others still go
+ahead (several may be backed up at once, see Settings). An unexpected error also marks only that game version
+**Failed**, and the rest carry on. A backup never changes anything in your game folders.
 
 A file that disappears while it's being zipped (WoW or an addon updater deleted it) is left out, and the results
 say how many. A file that's locked by another program stops that game version's backup; close the program and
@@ -386,15 +387,14 @@ never follows a link:
 - **If `Interface` or `WTF` is itself a link** (you moved the whole folder to another drive, say), it's left out
   of backups, shown as "link, skipped", and the restore screen won't tick it. A game version whose folders are
   both links has nothing to back up: it has no tick, and its line says why. To restore such a folder, close WoW,
-  open the zip, and extract its
-  `Interface` (or `WTF`) folder into the place the link points at. Extracting adds and overwrites files but
-  doesn't remove extra ones.
+  open the zip, and extract its `Interface` (or `WTF`) folder into the place the link points at. Extracting adds and
+  overwrites files but doesn't remove extra ones.
 
 ## If a restore was interrupted
 
 If the app is closed in the middle of a restore (a power cut, or you closed the window), or an old copy couldn't
 be deleted, folders called `Interface.restoring`, `Interface.replaced`, `WTF.restoring` or `WTF.replaced` can be
-left next to the real ones in the game version's folder. The app **never repairs them on its own**. Instead the
+left next to the real ones in the game version's folder. The app never repairs them on its own. Instead the
 review screen shows each one, in amber, under its game version ("Left from an interrupted restore: …"), the bottom
 bar says "Restore blocked for …", and **restores and undos of that game version are blocked** until you deal
 with it.
@@ -438,10 +438,10 @@ you add to the file aren't kept (the app rewrites it when it saves a setting or 
 Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the first
 screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all), `keep_journals` (10)
 and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]` in
-`config\wow-tools.cfg`. Backing up several game versions works on up to `parallelism` of them at once (each gets its own
-zip, and one failing never stops the others), and so does reading their folders; the progress window shows a row for
-each one being backed up. A restore is always one game version. Restore journals follow `keep_journals`, and each keeps
-its safety backup.
+`config\wow-tools.cfg`. When you back up several game versions, up to `parallelism` of them are zipped at once, and
+their folders are read the same way. Each gets its own zip, one failing never stops the others, and the progress
+window shows a row for each one being backed up. A restore is always one game version. Restore journals follow
+`keep_journals`, and each keeps its safety backup.
 
 If you move the backup folder, move the zips in its `interface-backup\backup` folder along with it, or the app
 won't find them. Undo needs the safety backup in the folder the settings name.

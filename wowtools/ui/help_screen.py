@@ -38,12 +38,12 @@ tool here (`↑` `↓`, then `Enter`); leaving a tool brings you back to this me
 1. **Pick a game version** (a *flavor*: Retail, Classic, ...) or **All flavors**, and, in tools that ask, an account
    when there are several.
    The three tools that edit addon settings (WTF Cleaner, Ace3 Profile Manager, Saved Variables Browser) then ask
-   you to accept a **USE AT YOUR OWN RISK** warning before the first scan, once per session; its **Don't show this
-   warning again** box turns it off, the tool's settings turn it back on.
+   you to accept a **USE AT YOUR OWN RISK** warning before the first scan, once per session. Its **Don't show this
+   warning again** box turns it off, and the tool's settings turn it back on.
 2. **Review** what the tool found: a tree on the right, filters and buttons on the left. Untick what to leave alone.
 3. **Dry run** shows what would happen and changes nothing (where the tool has one).
 4. Press the tool's main button, read the summary and confirm. Files are **backed up first**.
-5. The **results** screen lists every file and what happened to it. Changed your mind? **Undo** the last run.
+5. The **results** screen lists every file and what happened to it. **Undo** reverses the last run.
 
 ## Keys
 
