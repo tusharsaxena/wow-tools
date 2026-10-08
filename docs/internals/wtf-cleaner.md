@@ -152,7 +152,10 @@ L4; `clean.disclaimer_accepted` / `_declined`; Back returns to the flavor picker
   matches; the summary and the confirm's alerts say how many ticked files it hides), the Clean /
   Dry run / Rescan buttons and **Undo last clean** (violet, key `z`, last in the same row; disabled when nothing is
   undoable, while scanning and while busy; its confirm (Yes red) names the clean's time, flavors and file
-  count). `flavors` is one `Flavor` (root = the flavor, accounts below) or a list (root = All
+  count). What Undo offers (`self.undoable`) is looked up by the scan, clean and undo workers, never on the UI
+  thread, and the crash marker in the backup folder is read in its own worker on mount, whose answer opens
+  `RecoveryScreen` once the review is the screen shown and idle (L6: the scan box shows before any disk access).
+  `flavors` is one `Flavor` (root = the flavor, accounts below) or a list (root = All
   flavors, a node per flavor, a "not scanned" leaf for a flavor whose scan failed). `wow_check` covers every
   flavor (`core.process.wow_check_for(list)` lists the processes once). Blacklisted items (`Proposal.blacklisted`)
   stay in the tree, greyed and tagged "blacklisted", with no tick keys (`_paths` gives none, so Space / `a` / `n`

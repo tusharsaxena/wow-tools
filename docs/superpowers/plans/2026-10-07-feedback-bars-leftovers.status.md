@@ -12,7 +12,7 @@ go-ahead.
 | L4 | shared risk disclaimer, once per session (WTF, Ace3, SVB) | done | (this commit) | `ui/disclaimer.py` `DisclaimerScreen(text, title)` (moved out of `sv_browser/popups.py`), `ToolFlow.ask_disclaimer(then, **data)` with the flow's `DISCLAIMER` / `DISCLAIMER_EVENTS`, `WowToolsApp.disclaimers_accepted` (by `SECTION`). WTF and Ace3 ask after the flavor and account picks; events `clean.disclaimer_*`, `ace.disclaimer_*` registered, events.md regenerated. 5 tests in `tests/test_risk_disclaimer.py` (written first; first open of each tool, not again in the session, Back/Esc does not count, per tool, WTF after the account pick); SV Browser's "each time the tool is opened" test now checks it is not asked again; WTF/Ace3/suite open helpers accept it (`accept_disclaimer`). Help, guides, internals, testing.md, architecture, README FAQ, CHANGELOG updated. Full suite 1811 tests OK (2 skipped), ruff clean, events check OK |
 | L5 | `t` back to tools on the pickers | done | (this commit) | `FlavorScreen` and `AccountScreen` bind `t` ("Tools", action `tool_menu`) next to Esc (now labelled "Back"): the flavor picker dismisses with `None` as Esc does, the account picker with `account_screen.TOOLS`, which `ToolFlow.pick_account` turns into `close()`; Esc on it still goes back to the flavor picker. Hints name `t tools`. 5 tests in `tests/test_picker_keys.py` (written first, failed first: t on every tool's flavor picker and on both account pickers goes to the tool menu, Esc unchanged, footer lists `t` and Esc, hint names t). Suite help keys table (`t` row), the five guides' pick steps, architecture rows, CHANGELOG updated. Full suite 1816 tests OK (2 skipped), ruff clean, events check OK |
 | LR2 | review of L4-L5, green gate, push, CI | done | (this commit) | Review of L4-L5 with the rest of the branch: the shared disclaimer gate, the three tools' texts and events, the `t` key on both pickers, help, guides, internals, README and CHANGELOG agree; no stale "each time you open the tool" text or old `sv_browser.popups` disclaimer left. Fix: `sv_browser/popups.py` module docstring re-wrapped (a short line left by the move) and its `ui.dialogs` import joined on one line. CI run 37672520492 failed on windows / 3.10 only: `test_preflight_runs_in_a_worker` took 1.8 s for a 1.0 s bound; the WTF preflight and Undo worker tests now bound at 4.0 s, under the held check's 5 s (which a check on the UI thread would wait out). CI run 37674160141 failed on windows / 3.10 only, all tests OK: shard 1/4 took 594 s and passed the 600 s per-shard timeout while exiting; CI now runs `run_tests.py --timeout 900` (testing.md CI steps say why), the local default is unchanged. Full suite 1816 tests OK (2 skipped), ruff clean, events check OK |
-| L6 | nothing blocks before the scan box (Screenshot Organizer + audit) | todo | | |
+| L6 | nothing blocks before the scan box (Screenshot Organizer + audit) | done | (this commit) | Evidence: the user's log (Windows) has 4.4 s between the flavor pick (08:35:00.605) and `shots.scan_started` (08:35:05.028) on the first open only, then 0.13 s of scan: `ShotReviewScreen.on_mount` ran `_refresh_undo` (`latest_undoable`) and `action_rescan` -> `validate_dest` (`install.flavors()` and `resolve()` of the destination, the first touch of drive H:) on the UI thread before the scan box. Fix: the scan box (label "Checking the destination folder", Organize / Dry run / Undo off) is shown first; the scan worker runs `validate_dest`, `latest_undoable`, then the scan ("Reading Screenshots folders"); a refused destination comes back as `_dest_refused` with today's UI. The WTF Cleaner had the same: `latest_undoable` on mount and after every scan, and `read_marker` on the backup folder on mount, on the UI thread. 5 tests in `tests/test_scan_box_first.py` (written first, all 5 failed first; 5 more from the L6 review, L6-e): each check held on an `Event` gate while the scan box is asserted shown, then the normal tree; the refused destination still gives the error state and no scan. STD-7.20 sentence and Enforced by, both internals, CHANGELOG. Full suite 1821 tests OK (2 skipped), ruff clean, events check OK |
 | LR3 | review of L6, green gate, push, CI | todo | | |
 | LR | review, green gate, push | done | (this commit) | Whole-branch review: code, docs, help and CHANGELOG agree with L1-L3 and STD-7.25; fixes: the new import and docstring lines in the four reviews and `warnings_view` re-wrapped to 120 columns (STD-1.10), the internals line for Leftovers re-wrapped. Full suite 1806 tests OK (2 skipped), ruff clean, events check OK |
 
@@ -94,3 +94,38 @@ go-ahead.
   tools"); it now reads "t/Esc tools", as the help's "Esc/q/h back" does. The account picker keeps "t tools · Esc
   back to flavors": there the two keys differ. The footer keeps one key per action ("t Tools  Esc Back", L5-a).
   The picker-keys test's 122-column setup line is wrapped (STD-1.10).
+
+- L6-a: the Screenshot Organizer and the WTF Cleaner keep what Undo offers in `self.undoable`, as Interface Backup,
+  Ace3 and the SV Browser already did: the scan worker finds it, and so do the run / clean / undo workers after a
+  run (passed to `_job_done` / `_cleaned` / `_undone` and their failure handlers), so `_refresh_undo` reads no
+  disk. `z` acts on `self.undoable` (no lookup on the UI thread), as in the other three tools; a run stopped
+  partway gets its "Undo can put back" text from the worker's lookup.
+- L6-b: the Screenshot Organizer's scan worker checks the destination before the Undo lookup and the scan, so the
+  label reads "Checking the destination folder" first, then "Reading Screenshots folders" (`_scan_progress(0, 0,
+  ...)`, the bar pulsing). An exception in the check or the lookup is a failed scan ("The scan failed: ..."),
+  never a crash; before, it would have raised on the UI thread.
+- L6-c: the WTF Cleaner's crash-marker read moves to its own worker (group `recovery`), not into the scan worker,
+  so the "An earlier clean did not finish" notice still appears at once on open (while the scan runs) and only on
+  open, never on a rescan; its answer is dropped once the review was left.
+- L6-d (audit, no change needed): Interface Backup, Ace3 (review and blacklist) and the SV Browser already show
+  the scan box first and look up the Undo journal and the marker in the scan worker; the Interface Backup restore
+  screen loads in a worker; their `on_screen_resume` and `action_rescan` read only the config (`load_settings`,
+  path joins such as `resolve_root` / `resolve_journal_dir`). The steps between the flavor pick and the review
+  push touch no user folder except `ToolFlow.pick_account` (`flavor.accounts()`, one listing of the flavor's
+  `WTF\Account`, on the WoW drive the flavor picker just listed): left as is. Checks on a user's action (the WTF
+  Cleaner's and Interface Backup's backup-folder check before a clean, a backup or a restore) are outside L6.
+- L6-e (review of L6, all six findings accepted, 1 and 3 are one bug): (1/3) the Screenshot Organizer's
+  `_scan_failed` takes the worker's `undoable` and sets it, as the WTF Cleaner's does; the worker starts it at
+  `None`, so a check or lookup that raised offers nothing, and a scan that raised after the lookup keeps what it
+  found. (2) `ShotReviewScreen.action_rescan` is refused while `_scanning`, as in the WTF Cleaner and Interface
+  Backup: one scan worker at a time, so no superseded worker can deliver `_scanned` / `_dest_refused` (a stale
+  plan, a second toast). The Rescan button stays enabled, as in those tools (the action is the guard); saving a
+  new destination during the check still needs `r` after it, as before L6. (5) The WTF Cleaner's `_scan_failed`
+  assigns `undoable` as found, `None` included. (4) The WTF Cleaner's recovery notice is kept
+  (`_pending_recovery`) until the review is the screen shown, not busy and not in its running-programs check
+  (`_offer_recovery`, from `_marker_read`, `on_screen_resume` and the end of the check), never over a confirm, the
+  progress popup, the help or the settings. (6) 5 tests, written first (the 4 behaviour ones failed first): an
+  undoable journal enables Undo once the held worker ends and `z` opens its confirm (both tools); a failed scan
+  keeps the Undo; `r r` during a held destination check runs one check and gives one toast; a failed WTF scan
+  with nothing undoable drops a stale Undo; a marker read while the help is shown opens the notice on return.
+  Full suite 1826 tests OK (2 skipped), ruff clean, events check OK.

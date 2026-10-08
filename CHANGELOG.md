@@ -28,6 +28,10 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 
 ### Fixed
 
+- **Screenshot Organizer**
+  - The Screenshot Organizer shows its scan progress at once after you pick the game version, starting with
+    "Checking the destination folder": a slow or sleeping destination drive no longer freezes the screen for a
+    few seconds with nothing on it. A destination that isn't allowed is reported as before.
 - **The app**
   - Scanning or rescanning no longer moves the bars under the tree to the top of the pane: the Ace3 Profile
     Manager's guide and action bar, and the Saved Variables Browser's action bar, stay at the bottom while the scan
@@ -53,6 +57,8 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
     add to a settings file in `config` aren't kept: the app rewrites the file whenever it saves a setting or the
     game version you pick. Edit these files with the app closed.
 - **WTF Cleaner**
+  - Looking up the clean **Undo** can put back, and the "An earlier clean did not finish" check, no longer hold
+    the screen before the scan shows.
   - A file WoW rewrites while a clean is backing up the WTF folder is now kept (shown as changed since the scan)
     instead of deleted, so its newer data is never lost.
   - When another program (a virus scanner or OneDrive) keeps the cleaner from removing its marker file after a

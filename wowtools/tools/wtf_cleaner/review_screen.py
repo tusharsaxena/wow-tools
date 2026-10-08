@@ -152,6 +152,8 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         self._scanning = False
         self._log_next_build = False  # the first rebuild after a scan logs proposal.built
         self._checking = False  # the running-programs check before a confirm is in a worker
+        self.undoable: Path | None = None  # the clean Undo puts back, found by the scan, clean and undo workers
+        self._pending_recovery: tuple[Marker, Path] | None = None  # read while another screen was shown
         # what b saw (row ident -> expanded, the highlighted row's ident), put back by the rebuild it schedules
         self._kept_view: tuple[dict[tuple, bool], tuple | None] | None = None
 
@@ -184,7 +186,7 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
     def on_mount(self) -> None:
         self.sub_title = f"WTF Cleaner · {self._scope()}"
         self.query_one("#proposal", Tree).focus()
-        self._refresh_undo()
+        # The scan box first (L6): the Undo lookup runs in the scan worker, the crash-marker read in its own worker
         self.action_rescan()
         self._check_recovery()
 
@@ -194,13 +196,34 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
 
     # --- recovery notice (spec A.4.5: never restores on its own) -------------------------------------
     def _check_recovery(self) -> None:
+        """Read the crash marker in a worker (the backup folder may be on a drive not touched yet this session),
+        then offer the recovery notice."""
         backup_dir = resolve_backup_dir(self.settings, self.cfg.wow_path)
-        marker = read_marker(backup_dir)
-        if marker is None or backup_dir is None:
+        if backup_dir is None:
+            return
+        self.run_worker(lambda: self.app.call_from_thread(self._marker_read, read_marker(backup_dir), backup_dir),
+                        thread=True, exclusive=True, group="recovery")
+
+    def _marker_read(self, marker: Marker | None, backup_dir: Path) -> None:
+        if marker is None or not self.is_attached:
             return
         log_event("recovery.incomplete_clean", flavor=marker.flavor, started=marker.started,
                   snapshot=str(marker.snapshot), files=len(marker.files))
+        self._pending_recovery = (marker, backup_dir)
+        self._offer_recovery()
+
+    def _offer_recovery(self) -> None:
+        """The recovery notice opens only over the review itself, never over a confirm, a run's progress popup,
+        the help or the settings (the read ends in a worker, after the user may have opened one), nor during the
+        running-programs check: kept until the review is shown again (on_screen_resume, _checking_changed)."""
+        if self._pending_recovery is None or not self.is_attached or self.app.screen is not self \
+                or self._checking or getattr(self.app, "busy", False):
+            return
+        (marker, backup_dir), self._pending_recovery = self._pending_recovery, None
         self.app.push_screen(RecoveryScreen(marker, backup_dir), self._recovery_chosen)
+
+    def on_screen_resume(self) -> None:
+        self._offer_recovery()
 
     def _recovery_chosen(self, choice: str | None) -> None:
         log_event("ui.selection", screen="recovery", control="recovery", value=choice or "remind")
@@ -218,8 +241,9 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         self.settings = load_settings(self.tool_cfg)
         self.scans = []
         self._show_scan_progress(True)
-        parallelism = self.cfg.parallelism  # read here: the config is the UI thread's
-        self.run_worker(lambda: self._scan_worker(parallelism), thread=True, exclusive=True, group="scan")
+        parallelism, journal_dir = self.cfg.parallelism, self._journal_dir()  # read here: the config is the UI's
+        self.run_worker(lambda: self._scan_worker(parallelism, journal_dir), thread=True, exclusive=True,
+                        group="scan")
 
     def _show_scan_progress(self, scanning: bool) -> None:
         """While scanning, the tree is replaced by a progress bar and the folder being read."""
@@ -233,31 +257,40 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         return resolve_journal_dir(self.cfg.wow_path)
 
     def _refresh_undo(self) -> None:
-        """Undo last clean is offered only when there is a clean to undo, and never while scanning or busy."""
+        """Undo last clean is offered only when there is a clean to undo, and never while scanning or busy. Reads
+        no disk: self.undoable comes from the last scan, clean or undo worker."""
+        if not self.is_attached:
+            return
         busy = self._scanning or getattr(self.app, "busy", False)
-        self.query_one("#btn-undo", Button).disabled = busy or latest_undoable(self._journal_dir()) is None
+        self.query_one("#btn-undo", Button).disabled = busy or self.undoable is None
 
-    def _scan_worker(self, parallelism: int = 1) -> None:
+    def _scan_worker(self, parallelism: int = 1, journal_dir: Path | None = None) -> None:
         def progress(current: int, total: int, label: str) -> None:
             self.app.call_from_thread(self._scan_progress, current, total, label)
 
         # All flavors: up to `parallelism` scanned at once, their counts added up in the one bar
         scans = scan_flavors(self.flavors, account=self.account, progress=progress, parallelism=parallelism)
+        undoable = latest_undoable(journal_dir)
         if not any(s.result for s in scans):
             message = scans[0].error or "" if not self.multi else "No flavor could be scanned. " + " ".join(
                 f"{s.flavor.display_name}: {s.error}" for s in scans)
-            self.app.call_from_thread(self._scan_failed, message)
+            self.app.call_from_thread(self._scan_failed, message, undoable)
             return
-        self.app.call_from_thread(self._scanned, scans)
+        self.app.call_from_thread(self._scanned, scans, undoable)
 
-    def _scan_failed(self, message: str) -> None:
+    def _scan_failed(self, message: str, undoable: Path | None = None) -> None:
+        if not self.is_attached:
+            return
+        self.undoable = undoable  # the worker's lookup, as found: None when nothing is undoable any more
         self._show_scan_progress(False)
         self.summary_text = message
         self.query_one("#summary", SummaryLine).show_one_line(message)
         self.notify(message, title="Scan failed", severity="error", timeout=15)
 
-    def _scanned(self, scans: list[FlavorScan]) -> None:
-        self.scans = scans
+    def _scanned(self, scans: list[FlavorScan], undoable: Path | None = None) -> None:
+        if not self.is_attached:
+            return
+        self.scans, self.undoable = scans, undoable
         self._log_next_build = True
         self._show_scan_progress(False)
         self._update_criterion_labels()
@@ -671,6 +704,8 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         tick/untick keys are ignored (ticks_frozen)."""
         for widget in [*self.query(Ka0sCheckbox), *self.query("#max_age")]:
             widget.disabled = self._checking
+        if not self._checking:
+            self.call_after_refresh(self._offer_recovery)  # a confirm the check led to is pushed first
 
     def _show_confirm(self, plan: list[tuple[Flavor, list[ProposalItem]]], dry_run: bool,
                       running: list[str] | None, lockers: list[str] | None) -> None:
@@ -740,30 +775,36 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
 
     def _clean_worker(self, plan: list[tuple[Flavor, list[ProposalItem]]], backup: bool, backup_dir: Path | None,
                       dry_run: bool, progress_screen: CleanProgressScreen) -> None:
-        # Runs in a worker thread: progress lands on the screen's board (locked), which the UI thread draws.
+        # Runs in a worker thread: progress lands on the screen's board (locked), which the UI thread draws. The
+        # clean Undo would now put back is looked up here too, never on the UI thread.
+        journal_dir = self._journal_dir()
         try:
             with activity.running():
                 result = execute_flavors(plan, dry_run=dry_run, backup=backup, backup_dir=backup_dir,
                                          account=self.account, keep_backups=self.cfg.keep_backups,
                                          progress=progress_screen.report, on_flavor=progress_screen.start_unit,
-                                         journal_dir=self._journal_dir(),
+                                         journal_dir=journal_dir,
                                          keep_journals=self.cfg.keep_journals,
                                          keep_cleaned=self.settings.keep_cleaned)
         except Exception as exc:  # noqa: BLE001 - anything unexpected is shown and logged, never a crash
             log_exception("clean", exc)
-            self.app.call_from_thread(self._clean_crashed, exc, dry_run, backup_dir if backup else None)
+            self.app.call_from_thread(self._clean_crashed, exc, dry_run, backup_dir if backup else None,
+                                      latest_undoable(journal_dir))
             return
         progress_screen.finish_all()  # the run ended: the board ends at m of m
+        undoable = latest_undoable(journal_dir)
         stopped = result.stopped
         if stopped is not None and isinstance(stopped.error, CleanError):
             log_exception("clean", stopped.error)
         if stopped is not None and not result.done:
-            self.app.call_from_thread(self._clean_failed, stopped.error, result)
+            self.app.call_from_thread(self._clean_failed, stopped.error, result, undoable)
             return
-        self.app.call_from_thread(self._cleaned, result)
+        self.app.call_from_thread(self._cleaned, result, undoable)
 
-    def _clean_failed(self, exc: Exception, result: MultiCleanResult | None = None) -> None:
+    def _clean_failed(self, exc: Exception, result: MultiCleanResult | None = None,
+                      undoable: Path | None = None) -> None:
         self.app.busy = False
+        self.undoable = undoable
         self._close_progress()
         self._refresh_undo()
         message = f"Nothing was deleted: {exc}" if nothing_deleted(exc) else str(exc)
@@ -773,10 +814,12 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
                 message += f"\nNot started: {', '.join(r.flavor.display_name for r in result.not_started)}."
         self.notify(message, title="Clean stopped", severity="error", timeout=20)
 
-    def _clean_crashed(self, exc: Exception, dry_run: bool, backup_dir: Path | None) -> None:
+    def _clean_crashed(self, exc: Exception, dry_run: bool, backup_dir: Path | None,
+                       undoable: Path | None = None) -> None:
         """An error execute_flavors() does not handle. Unlike _clean_failed, nothing is known about what was
         deleted, so the message never claims "Nothing was deleted" for a real clean."""
         self.app.busy = False
+        self.undoable = undoable
         self._close_progress()
         self._refresh_undo()
         what = "simulation" if dry_run else "clean"
@@ -790,8 +833,9 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
             message += f"\nCheck the result with Rescan (r). If files are missing, {restore} can put them back."
         self.notify(message, title="Clean stopped", severity="error", timeout=30)
 
-    def _cleaned(self, result: MultiCleanResult) -> None:
+    def _cleaned(self, result: MultiCleanResult, undoable: Path | None = None) -> None:
         self.app.busy = False
+        self.undoable = undoable
         self._close_progress()
         self._refresh_undo()
         self.unchecked.clear()
@@ -817,7 +861,7 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         if self.app.busy or self._scanning or self._checking:
             return
         log_event("ui.selection", screen="review", control="undo", value=True)
-        path = latest_undoable(self._journal_dir())
+        path = self.undoable  # found by the last scan, clean or undo worker
         if path is None:
             self.notify("Nothing to undo.")
             self._refresh_undo()
@@ -860,24 +904,27 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
                         group="clean")
 
     def _undo_worker(self, path: Path, wow_root: Path, progress_screen: CleanProgressScreen) -> None:
+        journal_dir = self._journal_dir()
         try:
             with activity.running():
                 result = undo_clean(path, wow_root=wow_root, progress=progress_screen.report)
         except Exception as exc:  # noqa: BLE001 - e.g. an unreadable journal: shown, never a crash
             log_exception("clean.undo", exc)
-            self.app.call_from_thread(self._undo_failed, exc)
+            self.app.call_from_thread(self._undo_failed, exc, latest_undoable(journal_dir))
             return
         progress_screen.finish_all()
-        self.app.call_from_thread(self._undone, result)
+        self.app.call_from_thread(self._undone, result, latest_undoable(journal_dir))
 
-    def _undo_failed(self, exc: Exception) -> None:
+    def _undo_failed(self, exc: Exception, undoable: Path | None = None) -> None:
         self.app.busy = False
+        self.undoable = undoable
         self._close_progress()
         self._refresh_undo()
         self.notify(f"{type(exc).__name__}: {exc}", title="Undo stopped", severity="error", timeout=20)
 
-    def _undone(self, result: UndoResult) -> None:
+    def _undone(self, result: UndoResult, undoable: Path | None = None) -> None:
         self.app.busy = False
+        self.undoable = undoable
         self._close_progress()
         self._refresh_undo()
         self.app.push_screen(ResultScreen(result), self._after_result)

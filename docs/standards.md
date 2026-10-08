@@ -572,10 +572,13 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   *Enforced by:* `tests/test_ui_base.py::test_ctrl_q_is_refused_while_busy`,
   `tests/test_ui_review.py::test_leave_waits_for_a_run`.
 - **STD-7.20 MUST** Run scans, preflight checks and runs in thread workers and apply their answers on the UI thread,
-  dropping answers that arrive after the screen was left; show the shared scan box while scanning.
-  *Why:* the UI never freezes on disk work.
+  dropping answers that arrive after the screen was left; show the shared scan box while scanning. A review shows
+  its scan box before any disk access; checks that touch the disk (a destination check, the Undo lookup, a crash
+  marker) run in the worker (L6).
+  *Why:* the UI never freezes on disk work, and a slow or sleeping drive never leaves a blank screen.
   *Enforced by:* `tests/test_ui_review.py::test_preflight_answer_is_dropped_once_the_screen_is_left`,
-  `tests/test_ui_review.py::test_scan_box_stands_in_for_the_tree`.
+  `tests/test_ui_review.py::test_scan_box_stands_in_for_the_tree`,
+  `tests/test_scan_box_first.py` (each check held on a gate while the scan box is asserted visible).
 - **STD-7.21 MUST** Run independent per-flavor or per-file work through `core.parallel.run_units` with
   `Config.parallelism`, never a private pool; results equal at parallelism 1 and N; one failing unit never stops the
   others ([D10][polish]).

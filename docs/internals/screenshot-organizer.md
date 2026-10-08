@@ -135,7 +135,12 @@ copy mode; `validate_dest` errors show inline). `review_screen.py` holds:
   matches flavor, year, month, day (`2024-01-02`) and file names on the plan, day and Already filed files included,
   and opens a day whose files match) and the flavor → year → month → day → file tree (day files load on expand; read-only
   Conflicts and Skipped nodes; in copy mode an Already filed node, unticked, that `a` leaves alone) and the Organize / Dry run / Rescan / Undo last run buttons. It uses the
-  shared `ConfirmScreen`;
+  shared `ConfirmScreen`. On mount and on Rescan it shows the scan box first ("Checking the destination folder",
+  Organize, Dry run and Undo off); the scan worker then runs `validate_dest` (it lists the flavors and resolves the
+  destination, the first touch of its drive in a session) and `latest_undoable`, then the scan ("Reading
+  Screenshots folders"). A refused destination comes back as `_dest_refused`: an empty tree, the reason in the
+  bottom line, Organize and Dry run off and the "Destination not allowed" toast, no scan (L6). The run worker looks
+  `latest_undoable` up again after a run, so `self.undoable` (what Undo offers) is never read on the UI thread;
 - `ShotProgressScreen`, a `ProgressScreen` (ids `shots-*`): one unnamed row (stage and bar) and the current file for a run, dry run or undo;
 - `ShotResultScreen`, a `ResultBase`: a summary table (with a "Target folder" row) plus a per-file `DataTable` whose Target column
   names each folder inside it.
