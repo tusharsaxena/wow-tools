@@ -831,6 +831,7 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   `tests/test_release_contents.py::test_the_archive_holds_only_what_ships`,
   `tests/test_release_contents.py::test_no_shipped_markdown_links_to_a_path_that_does_not_ship`,
   `tests/test_release_contents.py::test_the_updater_manages_exactly_what_ships`,
+  `tests/test_release_contents.py::test_the_updaters_manifest_is_the_one_in_releasing_md`,
   `tests/test_release_scripts.py::test_the_zip_leaves_out_export_ignored_paths`.
 
 ## 12. Process

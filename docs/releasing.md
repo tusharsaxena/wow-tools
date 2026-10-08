@@ -69,6 +69,16 @@ archive of `HEAD` holds exactly the "ships" paths, and that no shipped Markdown 
 path that does not ship. A new file or folder fails that test until it is added to one of the two tables (and, if
 it stays out, to `.gitattributes`). The README and the guides link developer docs only on GitHub, if at all.
 
+A zip update works from the same manifest. This file does not ship, so `wowtools/core/updater.py` holds the two
+tables as `RELEASE_SHIPS` and `RELEASE_STAYS_OUT`, and `test_the_updaters_manifest_is_the_one_in_releasing_md`
+checks that they match the tables entry for entry: change a table, change its constant. The updater replaces the
+top-level "ships" names (`MANAGED_DIRS` / `MANAGED_FILES`, derived from `RELEASE_SHIPS`). The "stays out" paths
+inside those folders (`DEVELOPER_PATHS`: `docs/standards.md`, `docs/superpowers/` ...) are replaced with their
+folder, so an install made from a full-repo zip loses them on its next update, kept in `.update-backup` like
+any other replaced file, and they are never carried into `update-leftovers/` as files the user added. A top-level
+"stays out" name (`scripts/`, `tests/`, `CLAUDE.md` ...) is never touched: no release ships it, so in a zip
+install it can only be the user's.
+
 ## Steps
 
 1. Make sure `main`/`master` is green: the `tests` workflow on GitHub Actions (`.github/workflows/tests.yml`)

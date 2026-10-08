@@ -176,11 +176,29 @@ def check_for_update(cfg: Config, *, current: str = __version__, now: datetime |
 
 
 # --- applying an update ---------------------------------------------------------------------
-# The program's top-level names: the "Ships" table of docs/releasing.md (STD-11.5), root *.md files aside
-# (`_shipped_names` takes those from the release). A zip install's other names (scripts/, requirements.txt...) are
-# the user's, since no release ships them; tests/test_release_contents.py keeps the two in step.
-MANAGED_DIRS = ("wowtools", "vendor", "docs")
-MANAGED_FILES = ("wow-tools.cmd", "wow-tools.sh", "LICENSE")
+# The release manifest: the "Ships" and "Stays out" tables of docs/releasing.md (STD-11.5), entry for entry (a
+# folder ends in "/"). docs/releasing.md does not ship, so the updater carries them here;
+# tests/test_release_contents.py keeps the two in step.
+RELEASE_SHIPS = (
+    "wowtools/", "vendor/", "wow-tools.sh", "wow-tools.cmd", "LICENSE", "CHANGELOG.md", "README.md",
+    "docs/wtf-cleaner.md", "docs/screenshot-organizer.md", "docs/interface-backup.md",
+    "docs/ace3-profile-manager.md", "docs/sv-browser.md", "docs/assets/screenshots/",
+)
+RELEASE_STAYS_OUT = (
+    "tests/", "scripts/", ".github/",
+    "docs/standards.md", "docs/architecture.md", "docs/internals/", "docs/testing.md", "docs/common-tasks.md",
+    "docs/adding-a-tool.md", "docs/releasing.md", "docs/vendoring.md", "docs/events.md",
+    "docs/superpowers/", "reviews/", "docs/ideas/", "docs/assets/ka0s-logo.png",
+    "CLAUDE.md", "ruff.toml", "requirements.txt", "requirements.lock", ".gitignore", ".gitattributes",
+)
+# The program's top-level names, from RELEASE_SHIPS, root *.md files aside (`_shipped_names` takes those from the
+# release). A zip install's other names (scripts/, requirements.txt...) are the user's, since no release ships them.
+MANAGED_DIRS = tuple(dict.fromkeys(entry.split("/", 1)[0] for entry in RELEASE_SHIPS if "/" in entry))
+MANAGED_FILES = tuple(entry for entry in RELEASE_SHIPS if "/" not in entry and not entry.endswith(".md"))
+# The "Stays out" paths inside the managed folders (docs/standards.md, docs/superpowers/...): a full-repo zip left
+# them there, an update replaces them with the folder, and they are never carried as the user's files (P2). A
+# folder entry (docs/internals/, docs/superpowers/, docs/ideas/) covers every file under it, a user's too (P2-d).
+DEVELOPER_PATHS = tuple(entry for entry in RELEASE_STAYS_OUT if entry.split("/", 1)[0] in MANAGED_DIRS)
 # Program files earlier versions shipped that no longer exist; a zip update removes them (and backs them up).
 RETIRED_FILES = ("wtf-cleaner.cmd", "wtf-cleaner.sh")
 BACKUP_DIR_NAME = ".update-backup"
@@ -438,14 +456,17 @@ def _carry_user_files(backup: Path, root: Path, live: set[str]) -> bool:
     A user file is one in the backup's managed folders (wowtools, vendor, docs) with no file at the same
     path in the live install (`live`) and not listed as installed by one of the backup's own vendored libraries
     (`_vendored_files`: every vendor/*.dist-info folder and the files its RECORD lists, so a library a later release
-    bumped, renamed or trimmed leaves nothing behind). The app's own folders have no manifest, so a wowtools or docs
-    file that version had and a later release dropped is carried too: harmless, and it is better to keep one
-    file too many than to lose one. A file the user edited, or one whose path the live install also has, is not
-    carried. Each one goes to <root>/update-leftovers/<version>/<same path> (never back into the
-    managed folders: the next update would replace them, and a stray module there could be imported); a name already
-    taken gets " (2)", " (3)"... Returns False, after logging update.backup_kept, when a move failed: the caller
-    then keeps the folder."""
-    leftovers = sorted(_managed_files(backup) - live - _vendored_files(backup))
+    bumped, renamed or trimmed leaves nothing behind), and not a developer path of the release manifest
+    (`DEVELOPER_PATHS`: the docs/standards.md, docs/superpowers/... a full-repo zip had, and any file at all under
+    a folder entry such as docs/ideas/, a user's included; P2, P2-d). Apart from those, the
+    app's own folders have no file list, so a wowtools or docs file that version had and a later release dropped is
+    carried too: harmless, and it is better to keep one file too many than to lose one. A file the user edited, or
+    one whose path the live install also has, is not carried. Each one goes to
+    <root>/update-leftovers/<version>/<same path> (never back into the managed folders: the next update would
+    replace them, and a stray module there could be imported); a name already taken gets " (2)", " (3)"... Returns
+    False, after logging update.backup_kept, when a move failed: the caller then keeps the folder."""
+    leftovers = sorted(rel for rel in _managed_files(backup) - live - _vendored_files(backup)
+                       if not _is_developer_path(rel))
     if not leftovers:
         return True
     dest_root = root / LEFTOVERS_DIR_NAME / backup.name
@@ -463,6 +484,12 @@ def _carry_user_files(backup: Path, root: Path, live: set[str]) -> bool:
         return False
     log_event("update.leftovers_kept", version=backup.name, folder=str(dest_root), files=moved)
     return True
+
+
+def _is_developer_path(rel: str) -> bool:
+    """A path the release manifest keeps out (`DEVELOPER_PATHS`): a folder entry covers everything under it, so a
+    file the user put in docs/ideas/ counts as the repository's too (P2-d)."""
+    return any(rel.startswith(entry) if entry.endswith("/") else rel == entry for entry in DEVELOPER_PATHS)
 
 
 def _vendored_files(root: Path) -> set[str]:

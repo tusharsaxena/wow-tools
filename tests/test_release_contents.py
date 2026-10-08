@@ -131,6 +131,15 @@ class ManifestTablesTest(unittest.TestCase):
         self.assertEqual(set(updater.MANAGED_DIRS), {entry.split("/", 1)[0] for entry in manifest_table("Ships")
                                                      if "/" in entry})
 
+    def test_the_updaters_manifest_is_the_one_in_releasing_md(self):
+        """The updater cannot read docs/releasing.md at run time (it does not ship), so it carries the two tables as
+        constants; they must be the tables, entry for entry (P2)."""
+        self.assertEqual(list(updater.RELEASE_SHIPS), manifest_table("Ships"),
+                         "RELEASE_SHIPS in wowtools/core/updater.py must list the 'Ships' table of docs/releasing.md")
+        self.assertEqual(list(updater.RELEASE_STAYS_OUT), manifest_table("Stays out"),
+                         "RELEASE_STAYS_OUT in wowtools/core/updater.py must list the 'Stays out' table of "
+                         "docs/releasing.md")
+
     def test_no_entry_is_in_both_tables(self):
         ships, stays_out = manifest_table("Ships"), manifest_table("Stays out")
         for a in ships:

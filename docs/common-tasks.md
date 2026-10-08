@@ -49,7 +49,7 @@ The full walk-through is [adding-a-tool.md](adding-a-tool.md); the test side is
    a `CHANGELOG.md` bullet, a row in the [architecture.md](architecture.md) Documentation map and Config schema,
    `docs/internals/<tool id>.md`, and in `CLAUDE.md` the tool line plus its links in the Documentation index's
    `docs/internals/` and User guide rows, and the guide in the "Ships" table of
-   [releasing.md](releasing.md#what-a-release-contains).
+   [releasing.md](releasing.md#what-a-release-contains) and in `RELEASE_SHIPS` (`wowtools/core/updater.py`).
 
 **Rules:** all of sections 1 to 10 apply; start with STD-3.1 to STD-3.6 (package and registry), STD-2.1/2.2 (shared
 library), STD-6.2/6.3 (events), STD-7.1 to STD-7.11 (the review), STD-9.1/9.2 (help and guide), STD-10.8 (meta-test
@@ -234,7 +234,8 @@ Worked example: commit `8d6a1a8` (`orphan_backups`, rule 5).
    `tests/test_migrate.py::test_every_rename_points_at_a_registered_tool` checks the new line.
 5. Docs: rename `docs/<old>.md` and `docs/internals/<old>.md`, then fix every link (README, `GUIDE_URL` in `help.py`,
    architecture, `CLAUDE.md`) and the strings `tests/test_docs.py` pins; rename the guide in the "Ships" table of
-   [releasing.md](releasing.md#what-a-release-contains); a `CHANGELOG.md` bullet.
+   [releasing.md](releasing.md#what-a-release-contains) and in `RELEASE_SHIPS` (`wowtools/core/updater.py`); a
+   `CHANGELOG.md` bullet.
 
 **Rules:** STD-3.1, STD-3.7, STD-9.6, STD-11.5. Then [the green gate](#the-green-gate).
 

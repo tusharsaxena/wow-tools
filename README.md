@@ -258,8 +258,10 @@ The app keeps a copy of the version you replaced in the `.update-backup` folder,
 and the newest other one. Before it deletes an older copy, it moves any files you had added inside the app's own
 folders out of that copy to `update-leftovers\<version>\` in the app's folder, at the same path they had. A file you
 edited stays behind. That folder can also get one of the app's own files that the old version had and later versions
-dropped, though never a bundled library's. Look through it and delete what you don't need. If a file can't be moved,
-that copy isn't deleted, and the next update tries again.
+dropped, though never a bundled library's or a developer document's. Anything in `docs\internals`,
+`docs\superpowers` or `docs\ideas` counts as a developer document, a file you put there too, and is deleted with
+the copy. Look through it and delete what you don't need. If a file can't be moved, that copy isn't deleted, and
+the next update tries again.
 
 If you cloned with git, the update is a fast-forward to the new version. It stops if you've edited the app's own
 files, but files you added yourself (notes, say) don't get in its way. It never waits for a password: if git
