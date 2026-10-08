@@ -65,3 +65,5 @@ go-ahead.
   removal instead.
 - P2-f: no `CHANGELOG.md` line. No zip install of a published release exists yet, so no player can notice the
   change; the README "Updates" sentence on `update-leftovers` now says it never gets a developer document.
+- **P2-e (user, 2026-10-09)** Kept as built: a zip update leaves top-level developer paths (`scripts/`, `tests/`,
+  `.github/`, `CLAUDE.md` ...) alone, since no release shipped them and a file there can only be the player's.
