@@ -30,7 +30,7 @@ Modules in `tools/interface_backup/` (all UI-free except `app.py`, `review_scree
 `backup-<flavor>-<stamp>[-N].zip` and `pre-restore-<flavor>-<stamp>[-N].zip` in `zips_dir(root)` =
 `<root>/backup` (L16), `list_backups` newest first, `read_parts` (the manifest's parts only, never raises),
 `prune_backups`, `prune_safety`, `move_old_zips`, `zip_now_at`), `scanner`, `backup`,
-`restore`, `undo`, `journal` and `report` (labels, stage titles, rows and dialog texts). `<flavor>` is the flavor's
+`restore`, `undo` and `report` (labels, stage titles, rows and dialog texts). `<flavor>` is the flavor's
 short name.
 
 ### The backup folder
@@ -192,9 +192,10 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
 
 `restore_screen.py` holds:
 
-- `RestoreScreen(info, flavor, *, disk_usage)`: `FilterBox` (the filter alone: nothing to tick; `LOG_SCREEN`
-  `ibackup_restore`, `filter_changed` redraws the plan through it; the notes are never filtered), `TwoPaneFocus`
-  and `ButtonActions`, `two_pane_css(width=46)` (two buttons only, and
+- `RestoreScreen(info, flavor, *, disk_usage)`: `WarningsHost` (the `!` key, `WARNINGS_BINDING`, and the bottom
+  bar's **⚠ N scan warnings (!)** button for its own scan), `FilterBox` (the filter alone: nothing to tick;
+  `LOG_SCREEN` `ibackup_restore`, `filter_changed` redraws the plan through it; the notes are never filtered),
+  `TwoPaneFocus` and `ButtonActions`, `two_pane_css(width=46)` (two buttons only, and
   the tree's root and effect titles fit at 120 columns). Left: "Backup" (flavor, kind and date; size, parts
   and files once read; "made …" when the manifest's date differs), "Restore" with an `Interface` and a `WTF`
   `Ka0sCheckbox` (`#part-Interface`, `#part-WTF`; disabled for a part the backup lacks or that is a link; both off

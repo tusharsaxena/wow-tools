@@ -213,12 +213,12 @@ it: a test (`tests/<file>.py::<test>`) or *review*. Decision IDs (D9, D17, W1, B
   *Why:* Undo finds the latest run in a fixed place even after the backup folder changes.
   *Enforced by:* `tests/test_journal.py::test_journal_dir`,
   `tests/test_sv_browser_apply.py::test_a_backup_folder_puts_the_zips_there_and_the_journal_under_wow`.
-- **STD-4.9 MUST** Validate a folder a tool writes into with `core.install.validate_output_dir`
-  (`validate_backup_dir` for a backup folder setting; Screenshot Organizer's `validate_dest` for its destination): a
-  full path, not the WoW folder, not inside any flavor's WTF, Interface or Screenshots. Validate when the form saves
-  (show `_error`, return `False`) and again before every run writes to it.
-  *Why:* backups inside what they protect get swept up or deleted with it; the cfg can be hand-edited.
-  *Enforced by:* `tests/test_core_shared.py::test_backup_folder_rules`, `tests/test_ui_review.py::test_backup_dir_refused`,
+- **STD-4.9 MUST** Validate a folder a tool writes into with `core.install.validate_output_dir` (`validate_backup_dir`
+  for a backup folder setting; Screenshot Organizer's `validate_dest` for its destination): a full path, not the WoW
+  folder, not inside any flavor's WTF, Interface or Screenshots. Validate when the form saves (show `_error`, return
+  `False`) and again before every run writes to it. *Why:* backups inside what they protect get swept up or deleted with
+  it; the cfg can be hand-edited. *Enforced by:* `tests/test_core_shared.py::test_backup_folder_rules`,
+  `tests/test_ui_review.py::test_backup_dir_refused`,
   `tests/test_interface_backup_app.py::test_settings_refuse_folder_inside_wtf`.
 - **STD-4.10 SHOULD** Remember the flavor picker's last choice as `last_flavor_choice` in the tool's section (`""` =
   All flavors, absent = never chosen) and `last_account` where the tool picks accounts; the settings form's `save()`
@@ -435,10 +435,10 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   *Enforced by:* `tests/test_events.py::test_unregistered_event_raises_when_strict`,
   `tests/test_events.py::test_level_can_only_be_raised`.
 - **STD-6.2 MUST** A tool's `events.py` defines `TOOL_NAME` and `EVENTS: dict[str, EventSpec]` and calls
-  `register_events(TOOL_NAME, EVENTS)`; a SavedVariables tool also defines `SV_TOOL = SvTool(TOOL_NAME, "<prefix>")`
-  and registers `**sv_events(SV_TOOL.prefix)` ([D20][svb]).
-  *Why:* `TOOL_NAME` keys the tool's log and journal folders; pipeline events stay per tool.
-  *Enforced by:* `tests/test_sv_browser_skeleton.py::test_tool_events_and_the_shared_pipeline_under_svb`.
+  `register_events(TOOL_NAME, EVENTS)`; a SavedVariables tool also defines `SV_TOOL = SvTool(TOOL_NAME, "<prefix>")` and
+  registers `**sv_events(SV_TOOL.prefix)` ([D20][svb]). *Why:* `TOOL_NAME` keys the tool's log and journal folders;
+  pipeline events stay per tool. *Enforced by:*
+  `tests/test_sv_browser_skeleton.py::test_tool_events_and_the_shared_pipeline_under_svb`.
 - **STD-6.3 MUST** Prefix every new tool's event names with its own namespace (`shots.`, `ibackup.`, `ace.`, `svb.`).
   *Why:* one global registry; a name registered twice with a different spec raises.
   *Enforced by:* `tests/test_events.py::test_register_conflicting_spec_raises`,
@@ -452,11 +452,10 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   `journal_pruned`, `undo_*`).
   *Why:* one reader can query any tool's log the same way.
   *Enforced by:* review.
-- **STD-6.6 MUST** Tool and UI code logs through `log_event(name, **data)` and `log_exception(where, exc)` only;
-  never the `logging` module, a hand-opened log file or `print`. Pass `dry_run=` where dry runs matter. (The terminal
-  entry points `__main__.py`, `suite.py` and `core/updater.py`'s CLI print user messages to stdout/stderr, and the
-  sink-failure warning of STD-6.8 goes to stderr.)
-  *Why:* one sink writes both log files with the shared envelope.
+- **STD-6.6 MUST** Tool and UI code logs through `log_event(name, **data)` and `log_exception(where, exc)` only; never
+  the `logging` module, a hand-opened log file or `print`. Pass `dry_run=` where dry runs matter. (The terminal entry
+  points `__main__.py`, `suite.py` and `core/updater.py`'s CLI print user messages to stdout/stderr, and the
+  sink-failure warning of STD-6.8 goes to stderr.) *Why:* one sink writes both log files with the shared envelope.
   *Enforced by:* `tests/test_events.py::test_record_has_envelope_fields_and_registry_level`, review.
 - **STD-6.7 SHOULD** Call `log_exception` with `where` = `<prefix>.<stage>` (`ace.scan`, `shots.ui`, `svb.load`).
   *Why:* locates the failure without a per-tool error event.
@@ -637,7 +636,9 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   *Why:* 28 warnings printed as lines pushed Yes and No off the Ace3 Dry run confirm, and the same sentence 28
   times hides which addons it concerns (user feedback 2026-10-08, spec L10).
   *Enforced by:* `tests/test_counted_list.py` (300 warnings at 120x30 and 160x45 on a confirm and an info popup:
-  Yes/No or OK on screen and the popup unscrolled, collapsed and expanded; the count on the row; the grouping),
+  Yes/No or OK on screen and the popup unscrolled, collapsed and expanded; the count on the row; the grouping; the
+  Ace3 Delete / Assign target popup with 300 databases, `TargetPopupTest`),
+  `tests/test_ace_app.py::StagingTest::test_delete_and_assign_list_their_databases_in_a_counted_tree`,
   `tests/test_ace_app.py::PopupFeedbackTest::test_apply_warnings_collapse_behind_a_counted_row`,
   `tests/test_ace_app.py::PopupFeedbackTest::test_notes_open_a_popup_grouped_by_message`,
   `tests/test_ace_app.py::PopupFeedbackTest::test_refusals_open_a_popup_listing_every_one`,
@@ -651,10 +652,9 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   *Why:* one colour per kind of action; an unknown kind raises.
   *Enforced by:* `tests/test_structure.py::test_every_button_is_built_with_an_action_kind`,
   `tests/test_ui_base.py::test_action_button_kinds`.
-- **STD-8.2 MUST** Button colours live only in `ui/theme.py` `ACTION_COLOURS` (one readable, distinct colour per kind, in
-  step with `ACTION_VARIANTS`).
-  *Why:* readable, distinguishable, clear of the WTF criterion hues.
-  *Enforced by:* `tests/test_ui_base.py::test_every_kind_has_a_readable_colour_and_a_variant`,
+- **STD-8.2 MUST** Button colours live only in `ui/theme.py` `ACTION_COLOURS` (one readable, distinct colour per kind,
+  in step with `ACTION_VARIANTS`). *Why:* readable, distinguishable, clear of the WTF criterion hues. *Enforced by:*
+  `tests/test_ui_base.py::test_every_kind_has_a_readable_colour_and_a_variant`,
   `tests/test_ui_base.py::test_button_colours_keep_clear_of_the_wtf_criterion_colours`.
 - **STD-8.3 MUST** The same label has the same kind everywhere (Clean/Apply/Delete destructive, Organize/Assign/Update
   now overwrite, Back up create, Undo... revert, Dry run simulate, Save/OK confirm, Rescan refresh, Other flavor/Tools
@@ -729,11 +729,12 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   `tests/test_docs.py::test_guides_filter_on_submit_and_risk_banner`.
 - **STD-9.3 SHOULD** Follow the shared skeletons. Help: intro, how to use it (step by step), the buttons and keys,
   Warnings, Safety, then **Full guide:** last; Settings where the tool has settings beyond the backup folder. The
-  section names vary (Interface Backup splits the steps into Making / Restoring a backup; Ace3 and SV Browser name
-  their keys by pane), and Screenshot Organizer puts Settings before Warnings. Guide: Step by step, The review screen (keys table), the run, Dry run, results, Undo last
-  ..., where backups go, interrupted runs, Settings, FAQ, Troubleshooting.
-  *Why:* every tool's help and guide read alike.
-  *Enforced by:* `tests/test_docs.py::test_ace3_profile_manager_guide_and_readme`,
+  section names and order vary: Interface Backup splits the steps into Making / Restoring a backup; Ace3 and SV Browser
+  name their keys by pane and put Settings after Safety (SV Browser its Keys too); Screenshot Organizer puts Settings
+  before Warnings; the WTF Cleaner adds a Blacklist section and leaves its settings to the guide. Guide: Step by step,
+  The review screen (keys table), the run, Dry run, results, Undo last ..., where backups go, interrupted runs,
+  Settings, FAQ, Troubleshooting. *Why:* every tool's help and guide read alike. *Enforced by:*
+  `tests/test_docs.py::test_ace3_profile_manager_guide_and_readme`,
   `tests/test_docs.py::test_sv_browser_guide_readme_and_notes`, review.
 - **STD-9.4 MUST** Keep the README user-facing: the menu's terms of use word for word under `## Terms of use`, a
   version badge matching `__version__`, a `## Version history` link to `CHANGELOG.md`, no `## For developers`
@@ -783,10 +784,12 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   *Why:* an unregistered event fails the test; tests stay off `logs/`.
   *Enforced by:* `tests/test_events.py::test_capture_events_swaps_global_log`.
 - **STD-10.8 MUST** Add a new tool to every per-tool meta-test table: `TOOLS` and `RUN_ACTION` (and
-  `DESTRUCTIVE_REVIEWS`, `PREPARE` as needed) in `tests/test_look_and_feel.py`, `RUN_ACTION`/`PREPARE` in `tests/test_help.py`, a builder in
-  `tests/fixtures.py`.
-  *Why:* the meta-tests only check tools they list.
-  *Enforced by:* review.
+  `DESTRUCTIVE_REVIEWS`, `PREPARE` as needed) in `tests/test_look_and_feel.py`, `RUN_ACTION`/`PREPARE` in
+  `tests/test_help.py`, `ACCOUNT_TOOLS` (if it has an account picker), `RUN_ACTION` and `PREPARE` in
+  `tests/test_quit_key.py`, `tests/test_tool_menu_key.py` and `tests/test_toast_stack.py` (they index `RUN_ACTION[name]`
+  for every tool: a tool left out fails with a `KeyError`); `ACCOUNT_TOOLS` in `tests/test_picker_keys.py`; and, for a
+  tool with the USE AT YOUR OWN RISK popup, `TOOLS` and `RISK_EVENTS` in `tests/test_risk_disclaimer.py`; and a builder
+  in `tests/fixtures.py`. *Why:* the meta-tests only check tools they list. *Enforced by:* review.
 - **STD-10.9 SHOULD** Name tests `tests/test_<tool>_<module>.py` (`test_<tool>_app.py` for the TUI); put suite-wide
   rules in the meta-tests (`test_structure`, `test_look_and_feel`, `test_help`, `test_docs`, `test_events`).
   *Why:* `-k <tool>` works and every rule has an obvious home.
@@ -808,10 +811,10 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   *Why:* zip installs verify against `SHA256SUMS`; git installs must fast-forward.
   *Enforced by:* `tests/test_release_scripts.py::test_refuses_a_tag_without_a_changelog_entry_for_its_version`,
   `tests/test_release_scripts.py::test_refuses_a_tag_whose_version_differs`, review.
-- **STD-11.3 MUST NOT** Edit `vendor/` by hand: change `requirements.txt`, run `python3 scripts/update_vendor.py --lock`,
-  then `python3 scripts/update_vendor.py`, and commit all three together ([vendoring.md](vendoring.md)).
-  *Why:* `vendor/` is installed with `--require-hashes` from the lock.
-  *Enforced by:* `tests/test_release_scripts.py::test_committed_lock_matches_requirements`.
+- **STD-11.3 MUST NOT** Edit `vendor/` by hand: change `requirements.txt`, run
+  `python3 scripts/update_vendor.py --lock`, then `python3 scripts/update_vendor.py`, and commit all three together
+  ([vendoring.md](vendoring.md)). *Why:* `vendor/` is installed with `--require-hashes` from the lock. *Enforced by:*
+  `tests/test_release_scripts.py::test_committed_lock_matches_requirements`.
 - **STD-11.4 MUST** Vendor only pure-Python packages, each pinned with `==` (transitive ones too) and 3.10-compatible.
   *Why:* one `vendor/` runs unchanged on Windows, Linux and WSL.
   *Enforced by:* `tests/test_release_scripts.py::test_unpinned_requirement_is_refused`,
@@ -833,9 +836,8 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   *Why:* the user approves each gate and tags when ready.
   *Enforced by:* review.
 - **STD-12.4 MUST NOT** Edit a dated spec or plan in `docs/superpowers/` once its branch is merged, or any bundle in
-  `reviews/`; cite their decision IDs instead, and record build-time choices under "Decisions taken during the build" in the ledger.
-  *Why:* later sessions can trace why the code looks the way it does.
-  *Enforced by:* review.
+  `reviews/`; cite their decision IDs instead, and record build-time choices under "Decisions taken during the build" in
+  the ledger. *Why:* later sessions can trace why the code looks the way it does. *Enforced by:* review.
 - **STD-12.5 SHOULD** End a build with a whole-branch review task (review, fix, full suite, ruff, events check), and
   after the merge delete the branches, stashes and worktrees the run created.
   *Why:* the review rows found real bugs before every merge.

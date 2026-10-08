@@ -555,6 +555,34 @@ class ReviewTest(AceAppBase):
 
 class StagingTest(AceAppBase):
 
+    async def test_delete_and_assign_list_their_databases_in_a_counted_tree(self):
+        """L12 (spec L10, STD-7.26): the Delete and Assign popups list the addons behind one collapsed, counted
+        row, never as lines of the body: Delete one leaf per profile, Assign one per character."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            await pilot.press("a")
+            await settle(app, pilot)
+            for key, noun in (("d", "profile"), ("p", "character assignment")):
+                with self.subTest(key=key):
+                    await pilot.press(key)
+                    await settle(app, pilot)
+                    screen = app.screen
+                    self.assertIsInstance(screen, TargetScreen)
+                    tree = screen.query_one(f"#{LISTED_ID}", Tree)
+                    (top,) = tree.root.children
+                    self.assertFalse(top.is_expanded)
+                    self.assertRegex(str(top.label), rf"^\d+ {noun}s? \(Space or click to expand\)$")
+                    addons = [str(node.label).rsplit(" (", 1)[0] for node in top.children]
+                    self.assertTrue(addons)
+                    body = str(screen.query_one(".popup-body").render())
+                    self.assertFalse(any(f"{addon}:" in body for addon in addons), body)
+                    for selector in ("#ok", "#cancel"):
+                        self.assertTrue(screen.region.contains_region(screen.query_one(selector).region))
+                    screen.dismiss(None)
+                    await settle(app, pilot)
+            self.assertIs(app.screen, review)
+
     async def test_delete_to_default(self):
         app = self.make_app()
         async with app.run_test(size=(140, 50)) as pilot:

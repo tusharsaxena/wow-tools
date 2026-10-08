@@ -12,12 +12,12 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
   - Before the first scan they ask you to accept a **USE AT YOUR OWN RISK** warning, like the Saved Variables
     Browser: it says what the tool deletes or rewrites, that a backup and Undo are there, and to close WoW first.
     **I understand** goes on, **Back** returns to the game versions. It's asked once each time you start the app.
-- **WTF Cleaner** and **Ace3 Profile Manager**
   - A blacklisted addon's lines show `⊘` where the tick goes, greyed like the line, so you can see at a glance why
     they have no tick. In the Ace3 Profile Manager that's in both views, By addon and By character.
 - **Every tool**
   - `t` goes back to the tool menu from any screen and any popup, like `q` quits: the game version and account
-    pickers, the help, the settings, the warnings and every "are you sure?" window, not only reviews and results.
+    pickers, the help, the changelog, the settings, the warnings, the USE AT YOUR OWN RISK warning (it asks again
+    next time) and every "are you sure?" window, not only reviews and results.
     Typing `t` in a text box still types it, a run that is writing files has to finish first, and with changes
     staged but not applied it asks first. On the tool menu it does nothing. `Esc` still works as before.
 - **WTF Cleaner**, **Ace3 Profile Manager** and **Saved Variables Browser**
@@ -29,8 +29,14 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 ### Changed
 
 - **Docs**
-  - New screenshots of every tool: the README shows the tool menu, the general settings and each tool's review
-    screen, and each tool's guide shows its review screen, its confirm or progress window and its results.
+  - New screenshots of every tool: the README shows the tool menu, the general settings, the USE AT YOUR OWN RISK
+    warning and each tool's review screen, and each tool's guide shows its review screen, its confirm or progress window
+    and its results.
+  - The README, every guide and the in-app help now match the app: when the USE AT YOUR OWN RISK warning appears
+    (after you pick a game version and account, before the first scan), what a WTF Cleaner **Dry run** does and
+    skips, `t` and `Esc` on every screen, the settings as the settings screen names them, and where the backups
+    go. The WTF Cleaner guide has a section on the warning, and the help on the tool menu explains it and the
+    **lime** Rescan button.
 - **The app**
   - `q` quits from any screen and any popup: the game version and account pickers, the help, the changelog, the
     settings, the warnings and every "are you sure?" window, not only the tool menu, reviews and results. On the
@@ -48,21 +54,21 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
   - **Leftovers** (`o`) is now one press: it ticks every leftover character the tree shows, then asks to remove
     them, listing them under each addon. There's no need to tick them first. **No** keeps the ticks; with none
     shown it says so and changes nothing.
+  - The **Delete** and **Assign** windows list what they change under one line, such as **12 profiles (Space or
+    click to expand)**, instead of one line per addon (82 addons made a long list to scroll past). Open it to see
+    each addon with its profiles or characters; the profile list, the name box and the buttons stay on screen.
 - **Interface Backup**
   - Backups and safety backups now go into a `backup` folder inside `interface-backup`, next to `journal`, instead
     of sitting loose beside it. Zips made by an earlier version are moved there once, the first time you open
     the review; one that can't be moved (its name is already taken there, or the move fails) stays where it is,
-    is still listed, restored and cleaned up as before, and the log says so once (the move is tried again each
-    time the review opens). **Undo** of an earlier restore finds its safety backup in the new folder.
+    is still listed, restored and cleaned up as before, and the log says so once per session (the move is tried
+    again each time the review scans). **Undo** of an earlier restore finds its safety backup in the new folder.
 - **Saved Variables Browser**
   - The **USE AT YOUR OWN RISK** warning is asked once each time you start the app, no longer every time you open
     the tool. **Back** still doesn't count: it asks again next time.
 
 ### Fixed
 
-- **WTF Cleaner**
-  - The result of a clean across several game versions names the run journal once, above the game versions, with
-    the hint that **Undo last clean** puts the files back. It was listed again in every game version's block.
 - **Screenshot Organizer**
   - The Screenshot Organizer shows its scan progress at once after you pick the game version, starting with
     "Checking the destination folder": a slow or sleeping destination drive no longer freezes the screen for a
@@ -97,6 +103,8 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
     add to a settings file in `config` aren't kept: the app rewrites the file whenever it saves a setting or the
     game version you pick. Edit these files with the app closed.
 - **WTF Cleaner**
+  - The result of a clean across several game versions names the run journal once, above the game versions, with
+    the hint that **Undo last clean** puts the files back. It was listed again in every game version's block.
   - Looking up the clean **Undo** can put back, and the "An earlier clean did not finish" check, no longer hold
     the screen before the scan shows.
   - A file WoW rewrites while a clean is backing up the WTF folder is now kept (shown as changed since the scan)

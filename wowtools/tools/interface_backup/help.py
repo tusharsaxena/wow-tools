@@ -34,17 +34,19 @@ restore.**
 | **Rescan** | `r` | Scans again (after changing settings, say) |
 | **Undo last restore** | `z` | Puts back the folders the last restore replaced |
 
-`Space` ticks or unticks a game version (or opens a line), `a` / `n` tick / untick every game version shown, `/`
+`Space` ticks or unticks a game version (`Enter` opens a line), `a` / `n` tick / untick every game version shown, `/`
 reaches the filter box (type, then **Filter** or `Enter` filters the tree; a hidden ticked version is still backed
 up), `x` / `c` expand / collapse it all, `←` `→` switch panes. `f` or `Esc` picks another game version, `t` goes
-back to the tool menu, `s` opens the settings, `q` quits. On the results: **Rescan** (`r`), **Restore** (`e`),
-**Other flavor** (`f`), **Tools** (`t`), **Quit** (`q`).
+back to the tool menu and `q` quits (from any screen or popup, not while a backup or restore runs), `s` opens the
+settings. On the backup results: **Rescan** (`r`), **Restore** (`e`), **Other flavor** (`f`), **Tools** (`t`),
+**Quit** (`q`); on the restore results, **Undo** (`z`) comes first and there is no **Restore**. On both, `Esc` goes
+back to the review and scans again.
 
 ## Warnings
 
 When the scan skipped something it could not read, the bottom line of the review and of the restore screen shows
-**⚠ N scan warnings**: click it or press `!` (the **Warnings** button) to list them by game version, each with
-its folder (`Interface` or `WTF`) and what went wrong. **Back** (`Esc`) returns.
+**⚠ N scan warnings (!)**: click it or press `!` to list them by game version, each with its folder (`Interface` or
+`WTF`) and what went wrong. **Back** (`Esc`) returns.
 
 ## Safety
 

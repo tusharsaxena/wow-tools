@@ -198,3 +198,51 @@ class CountedTreePopupTest(TuiTestCase):
         async with app.run_test(size=BASE) as pilot:
             await pilot.pause()
             self.assertFalse(screen.query(f"#{LISTED_ID}"))
+
+
+class TargetPopupTest(TuiTestCase):
+    """The Ace3 Delete and Assign popups (TargetScreen) list their databases behind one counted row too (L12, spec
+    L10): with 300 databases at 120x30 and 160x45 the Select, the name box, OK and Cancel stay on screen, x opens the
+    tree (it scrolls, the popup does not) and a letter typed in the name box is typed, not a tree key."""
+
+    @staticmethod
+    def screen():
+        from wowtools.tools.ace3_profile_manager.popups import TargetScreen
+        entries = [Listed(f"Addon{i:03}", item=f"Char{j} - Realm") for i in range(300) for j in range(2)]
+        return TargetScreen("Assign a profile", "Move these characters to the profile chosen below:",
+                            ["Default", "Healer"], listed=entries, noun="character assignment")
+
+    async def test_target_popup_keeps_its_fields_and_buttons_on_screen(self):
+        for size in (BASE, LARGE):
+            with self.subTest(size=size):
+                screen = self.screen()
+                app = Host(screen)
+                async with app.run_test(size=size) as pilot:
+                    await pilot.pause()
+                    box = screen.query_one(".popup-box")
+                    tree = screen.query_one(f"#{LISTED_ID}", Tree)
+                    (top,) = tree.root.children
+                    self.assertEqual(str(top.label), "600 character assignments (Space or click to expand)")
+                    self.assertNotIn(WARNING_MARK, top.label.plain)
+                    self.assertEqual(labels(top.children)[:2], ["Addon000 (2)", "Addon001 (2)"])
+                    self.assertNotIn("Addon000", str(screen.query_one(".popup-body").render()))
+
+                    def shown(screen=screen, box=box) -> None:
+                        self.assertEqual(box.max_scroll_y, 0, "the popup itself scrolls")
+                        for selector in ("#target", "#new-name", "#ok", "#cancel"):
+                            widget = screen.query_one(selector)
+                            self.assertTrue(box.region.contains_region(widget.region), selector)
+                            self.assertTrue(screen.region.contains_region(widget.region), selector)
+                    self.assertEqual(tree.region.height, 1)
+                    shown()
+                    await pilot.press("x")
+                    await pilot.pause()
+                    self.assertTrue(top.is_expanded)
+                    self.assertGreater(tree.max_scroll_y, 0)
+                    shown()
+                    screen.query_one("#new-name").focus()
+                    await pilot.press("x", "c")
+                    await pilot.pause()
+                    self.assertEqual(screen.query_one("#new-name").value, "xc")
+                    self.assertTrue(top.is_expanded)
+                    self.assertEqual(app.results, [])

@@ -3,7 +3,7 @@
 ![Version](https://img.shields.io/badge/Version-0.1.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-yellow)
 ![Platforms](https://img.shields.io/badge/Platforms-Windows_%7C_macOS_%7C_Linux-purple)
-![Tests](https://img.shields.io/badge/Tests-1709%2F1709_passing-green)
+![Tests](https://img.shields.io/badge/Tests-1907_passing%2C_2_skipped-green)
 ![License](https://img.shields.io/badge/License-MIT-orange)
 
 Ka0s WoW Tools is a small set of World of Warcraft helpers that run ***outside*** the game and tidy up the files WoW
@@ -43,7 +43,8 @@ The tool menu shows these terms along its bottom. They say in plain words what t
 software comes with no warranty.
 
 The tools that delete or edit your settings (the WTF Cleaner, the Ace3 Profile Manager and the Saved Variables
-Browser) also ask you to accept a USE AT YOUR OWN RISK warning when you open them.
+Browser) also show a USE AT YOUR OWN RISK warning after you pick a game version (and, in the WTF Cleaner and the Ace3
+Profile Manager, an account), before the first scan, once each time you start the app unless you turned it off.
 
 **_The USE AT YOUR OWN RISK warning_**
 
@@ -80,7 +81,8 @@ anything, a window asks you to confirm. More pictures of every screen are in eac
 You need the following:
 
 1. **World of Warcraft**, duh!
-2. **Python 3.10 or newer.** Python is a free program language and interpreter which runs these tools. You install it once.
+2. **Python 3.10 or newer.** Python is a free program language and interpreter which runs these tools. You install it
+   once.
 
 ### Installing Python
 
@@ -151,28 +153,28 @@ The app opens in a terminal window. You drive it with the keyboard:
 | `c` (tool menu) | What's new: the changelog |
 | `h` | Help: on the tool menu, what each tool does and the keys every tool shares; in a tool, how to use that tool, with a link to its guide |
 | `Esc` | Go back |
-| `t` | Back to the tool menu, from any screen (typed as a letter in a text box; with changes staged it asks first) |
+| `t` | Back to the tool menu, from any screen (typed as a letter in a text box; with changes staged it asks first; waits while a run writes files) |
 | `s` | Settings |
 | `q` | Quit, from any screen (typed as a letter in a text box; with changes staged it asks first) |
 
-Every button shows its key under its name (**Clean** over `(w)`, **Dry run** over `(y)`), so pressing that key does
-the same as clicking the button. The row along the bottom lists the other keys of the screen, the ones no button
-has (`Space`, `a`, `n`, `/`, `x`, `c`, `s`, `h`, ...), so you don't have to remember them. While a window such as
-"are you sure?" is open, that row is empty: the window's own buttons say what to press. A mouse works too. While a tool is
-changing or writing files (a clean, a sort, a backup, a restore, a profile change, a Saved Variables edit or an undo), the app won't quit until it has
-finished.
+Every button shows its key under its name (**Clean** over `(w)`, **Dry run** over `(y)`), so pressing that key does the
+same as clicking the button. The row along the bottom lists the other keys of the screen, the ones no button has
+(`Space`, `a`, `n`, `/`, `x`, `c`, `s`, `h`, ...), so you don't have to remember them. While a window such as "are you
+sure?" is open, that row is empty: the window's own buttons say what to press. A mouse works too. While a tool is
+changing or writing files (a clean, a sort, a backup, a restore, a profile change, a Saved Variables edit or an undo),
+the app won't quit or go back to the tool menu until it has finished.
 
-Buttons are coloured by what they do, the same in every tool: **red** deletes, **amber** overwrites or changes
-files, **green** adds something new (a backup, an Ace3 profile copy), **violet** undoes, **cyan** is a dry run
-that changes nothing, **blue** confirms (Save, OK), **lime** reads the files again (Rescan), **grey** moves between screens, and
+Buttons are coloured by what they do, the same in every tool: **red** deletes, **amber** overwrites or changes files,
+**green** adds something new (a backup, an Ace3 profile copy), **violet** undoes, **cyan** is a dry run that changes
+nothing, **blue** confirms (Save, OK), **lime** reads the files again (Rescan), **grey** moves between screens, and
 **dim grey** backs out (Cancel, Back, Quit).
 
-Every "are you sure?" window opens with **Yes** selected, coloured the same way: red when it deletes, overwrites,
-undoes or throws away pending changes, cyan for a dry run, blue for a plain save (the Ace3 blacklist, when the
-filter hides some of your ticks). A backup's is red whenever you've set a number of backups to keep (any older ones
-beyond it are deleted), and green only when you keep them all (0). So read it before you press Enter.
-For a quarter of a second after it opens, Enter and Space do nothing there, and a key you are still holding is
-ignored until you let it go, so it can't answer for you (the update offer's **Update now** waits the same way). `y` answers Yes, `n` or `Esc` No.
+Every "are you sure?" window opens with **Yes** selected, coloured the same way: red when it deletes, overwrites, undoes
+or throws away pending changes, cyan for a dry run, blue for a plain save (the Ace3 blacklist, when the filter hides
+some of your ticks). A backup's is red whenever you've set a number of backups to keep (any older ones beyond it are
+deleted), and green only when you keep them all (0). So read it before you press Enter. For a quarter of a second after
+it opens, Enter and Space do nothing there, and a key you are still holding is ignored until you let it go, so it can't
+answer for you (the update offer's **Update now** waits the same way). `y` answers Yes, `n` or `Esc` No.
 
 ### Terminal size
 
@@ -185,12 +187,12 @@ scrolls, so the terms of use and the keys at the bottom stay in view).
 
 The first time you open a tool, it asks for two things:
 
-1. **Your World of Warcraft folder.** This is the folder that holds `_retail_`, `_classic_` and so on, for
-   example `C:\Program Files (x86)\World of Warcraft`. The app looks in the usual places and suggests what it
-   finds (this can take a few seconds; you can type the folder meanwhile). You only answer this once; every tool shares it.
-   The same screen asks how many backups to keep per game version (10; 0 keeps them all), how many journals
-   each tool keeps (10) and how many game versions to work on at once (2; the Saved Variables Browser's search also reads that many
-   files at once; use 1 on a hard drive or a WSL `/mnt` folder). All three apply to every tool.
+1. **Your World of Warcraft folder.** This is the folder that holds `_retail_`, `_classic_` and so on, for example
+   `C:\Program Files (x86)\World of Warcraft`. The app looks in the usual places and suggests what it finds (this can
+   take a few seconds; you can type the folder meanwhile). You only answer this once; every tool shares it. The same
+   screen asks how many backups to keep per game version (10; 0 keeps them all), how many journals each tool keeps (10)
+   and how many game versions to work on at once (2; the Saved Variables Browser's search also reads that many files at
+   once; use 1 on a hard drive or a WSL `/mnt` folder). All three apply to every tool.
 
    **_The general settings, asked for the first time and on `s` Settings_**
 
@@ -199,7 +201,9 @@ The first time you open a tool, it asks for two things:
 2. **That tool's settings.** Each guide explains them. If you're not sure, keep the suggested values.
 
 Then you pick which version of the game to work on, or **All flavors** for every version at once. ("Flavor" is
-WoW's word for a game version such as Retail or Classic.)
+WoW's word for a game version such as Retail or Classic.) The WTF Cleaner and the Ace3 Profile Manager then ask
+which account, when that version has more than one; those two and the Saved Variables Browser then show the USE AT
+YOUR OWN RISK warning (see [Terms of use](#terms-of-use)) before the first scan.
 
 ## Tool guides
 
@@ -217,16 +221,17 @@ Each tool has its own guide, with pictures, that walks through every screen:
 
 ## Updates
 
-When it starts, the app checks for a new version (at most once a day). If there is one, the bottom bar says so (at its right
-end, next to the version you have), and so does the line under the banner on the tool menu; press `u` to install it. On the Ace3 Profile Manager's review `u` unlocks an
-addon, so there (and while a text box has focus, where `u` types the letter) the bar tells you to press `u` on the
-tool menu instead. Before it tells you about a version, and again when you press `u`, the app asks GitHub; if that version has been
-withdrawn, the app says there is no update and the notice goes away. A small window stays up while it downloads and installs, then the app closes so you can start the
-new version. To turn the check off, set `check_for_updates = false` under `[general]` in `config\wow-tools.cfg`. To have
-new versions installed automatically, set `auto_update = true` (it starts as `false`): the app then installs an update
-when it starts, before the tool menu opens, and closes so you can start the new version. This only works while
-`check_for_updates` is on, and never while another copy of the app is running. You can also update from a terminal
-in the app's folder:
+When it starts, the app checks for a new version (at most once a day). If there is one, the bottom bar says so (at its
+right end, next to the version you have), and so does the line under the banner on the tool menu; press `u` to install
+it. On the Ace3 Profile Manager's review `u` unlocks an addon, so there (and while a text box has focus, where `u` types
+the letter) the bar tells you to press `u` on the tool menu instead. Before it tells you about a version, and again when
+you press `u`, the app asks GitHub; if that version has been withdrawn, the app says there is no update and the notice
+goes away. A small window stays up while it downloads and installs, then the app closes so you can start the new
+version. To turn the check off, set `check_for_updates = false` under `[general]` in `config\wow-tools.cfg`. To have new
+versions installed automatically, set `auto_update = true` (it starts as `false`): the app then installs an update when
+it starts, before the tool menu opens, and closes so you can start the new version. This only works while
+`check_for_updates` is on, and never while another copy of the app is running. You can also update from a terminal in
+the app's folder:
 
 - `wow-tools update --check` (on Windows `wow-tools.cmd update --check`, on Mac and Linux
   `./wow-tools.sh update --check`) tells you whether an update is available.
@@ -269,20 +274,21 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 The easiest way to change them is to press `s` in the app: the first screen is the shared one (WoW folder, backups and
 journals to keep, game versions (and search files) to work on at once), then the tool's own. You can also open the
 files in Notepad while the app is closed. Comments you add to these files aren't kept: the app rewrites a file
-whenever it saves anything (a setting from `s`, the game version you pick, an update check, the WTF Cleaner's
+whenever it saves anything (a setting from `s`, the game version you pick and the account, an update check, a tool's
 blacklist, **Don't show this warning again**), so keep your notes somewhere else. The guides list every setting.
 
 The WTF Cleaner, the Ace3 Profile Manager and the Saved Variables Browser ask you to accept a USE AT YOUR OWN RISK
-warning once each time you start the app. Tick **Don't show this warning again for this tool** on it to stop it for
-that tool (saved as `skip_risk_warning = true` in its file); **Show the USE AT YOUR OWN RISK warning** in the tool's
-settings (`s`) turns it back on.
+warning once each time you start the app, after you pick a game version (and account) and before the first scan. Tick
+**Don't show this warning again for this tool** on it to stop it for that tool (saved as `skip_risk_warning = true` in
+its file); **Show the USE AT YOUR OWN RISK warning** in the tool's settings (`s`) turns it back on.
 
 ## Undo and run journals
 
-Every tool that changes files keeps a short record of what it did, called a **journal**, so it can undo its last
-run: the WTF Cleaner's last clean, the Screenshot Organizer's last sort, Interface Backup's last restore, the Ace3
-Profile Manager's last change and the Saved Variables Browser's last Apply. Journals are kept in your WoW folder, under `wow-tools\<tool name>\journal` (for
-example `wow-tools\ace3-profile-manager\journal`). Each tool's guide explains its undo.
+Every tool that changes files keeps a short record of what it did, called a **journal**, so it can undo its last run:
+the WTF Cleaner's last clean, the Screenshot Organizer's last sort, Interface Backup's last restore, the Ace3 Profile
+Manager's last change and the Saved Variables Browser's last Apply. Journals are kept in your WoW folder, under
+`wow-tools\<tool name>\journal` (for example `wow-tools\ace3-profile-manager\journal`). Each tool's guide explains its
+undo.
 
 ## Logs
 
@@ -299,7 +305,7 @@ If you use WSL (Linux inside Windows), the same folder works from both sides. Ru
 
 | Question | Answer |
 |----------|--------|
-| Is it safe? Can I lose anything? | Every tool shows you what it will do and asks before it changes anything. The WTF Cleaner backs up your whole `WTF` folder and zips every file before deleting it, the Screenshot Organizer never overwrites a file, Interface Backup takes a safety backup of your folders before every restore, and the Ace3 Profile Manager and the Saved Variables Browser back up your whole `WTF` folder and every file they edit before changing anything. Each can undo its last run (Interface Backup: its last restore). If you're unsure, press **Dry run** in the WTF Cleaner, the Screenshot Organizer, the Ace3 Profile Manager or the Saved Variables Browser first: it shows what would happen without changing anything. The Saved Variables Browser is the exception to "safe": it lets you change any value an addon saved, knows nothing about what the addon expects, and so is use at your own risk. The WTF Cleaner, the Ace3 Profile Manager and the Saved Variables Browser each ask you to accept a **USE AT YOUR OWN RISK** warning the first time you open them after starting the app, unless you ticked **Don't show this warning again for this tool** on it. |
+| Is it safe? Can I lose anything? | Every tool shows you what it will do and asks before it changes anything. The WTF Cleaner backs up your whole `WTF` folder and zips every file before deleting it, the Screenshot Organizer never overwrites a file, Interface Backup takes a safety backup of your folders before every restore, and the Ace3 Profile Manager and the Saved Variables Browser back up your whole `WTF` folder and every file they edit before changing anything. Each can undo its last run (Interface Backup: its last restore). If you're unsure, press **Dry run** in the WTF Cleaner, the Screenshot Organizer, the Ace3 Profile Manager or the Saved Variables Browser first: it shows what would happen without changing anything. The Saved Variables Browser is the exception to "safe": it lets you change any value an addon saved, knows nothing about what the addon expects, and so is use at your own risk. The WTF Cleaner, the Ace3 Profile Manager and the Saved Variables Browser each ask you to accept a **USE AT YOUR OWN RISK** warning the first time you pick a game version in them after starting the app (before anything is scanned), unless you ticked **Don't show this warning again for this tool** on it. |
 | Does it change the game itself? | No. It never touches the game program. The WTF Cleaner and the Screenshot Organizer only work on files the game leaves in your WoW folder: addon settings in `WTF` and pictures in `Screenshots`. Interface Backup only reads your `Interface` and `WTF` folders to back them up; they change only when you restore a backup (or undo a restore) and confirm it. The Ace3 Profile Manager only changes the profile lists in addon settings files in `WTF`, and the Saved Variables Browser only the values and keys you edit in them, each only when you apply and confirm. |
 | Do I need to close WoW? | Close it before you clean with the WTF Cleaner: WoW rewrites those files when you log out and can bring deleted ones back. Close it before an Interface Backup restore or undo too; a backup works with the game open but may miss your latest settings. The WTF Cleaner and Interface Backup warn you if WoW is running. The Ace3 Profile Manager and the Saved Variables Browser refuse to apply or undo a change while WoW is running, since the game would overwrite it. The Screenshot Organizer doesn't mind if the game is open. |
 | Do I need to install anything besides Python? | No. Everything else the app needs comes in the download. |
@@ -308,9 +314,9 @@ If you use WSL (Linux inside Windows), the same folder works from both sides. Ru
 | A tool says "⚠ 4 scan warnings". What do I do? | Click it, or press `!`: the warnings view lists each place the scan couldn't read (a folder or file it had no permission for, say), by game version, with what went wrong. The tool carried on without them. You don't need to open the logs. |
 | How do I keep an addon out of a tool's reach? | In the WTF Cleaner or the Ace3 Profile Manager, highlight the addon in the review's tree and press `b`: it goes on that tool's blacklist (for that game version) and is never cleaned or changed. Press `b` on it again to take it off. Each tool keeps its own list. |
 | Can I work on all my game versions at once? | Yes. Pick **All flavors** at the top of the list, in any tool. |
-| Where are my settings, backups and logs? | Settings are in the app's `config` folder and logs in its `logs` folder. Backups and undo journals are in your WoW folder, under `wow-tools`. See [Your settings](#your-settings) and the guides. |
+| Where are my settings, backups and logs? | Settings are in the app's `config` folder and logs in its `logs` folder. Undo journals are in your WoW folder, under `wow-tools`, and so are backups, unless you set a backup folder in that tool's settings: then they're under that folder. See [Your settings](#your-settings) and the guides. |
 | How do I update? | The app tells you on its bottom bar when a new version is out; press `u`. See [Updates](#updates). |
-| How do I uninstall it? | Delete the app's folder. If you also want the backups and undo journals gone, delete the `wow-tools` folder inside your WoW folder. Nothing else is installed anywhere. |
+| How do I uninstall it? | Delete the app's folder. If you also want the backups and undo journals gone, delete the `wow-tools` folder inside your WoW folder (and, if you set one, each tool's folder under the backup folder you set in its settings). Nothing else is installed anywhere. |
 
 ## Troubleshooting
 

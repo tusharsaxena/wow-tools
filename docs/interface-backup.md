@@ -36,6 +36,8 @@ as they are, so you can undo the restore too.
 4. Press **Restore** (`o`), read the summary, and press **Yes** (selected, in red).
 5. The results screen shows what happened to each folder. If you don't like the result, press **Undo** (`z`).
 
+`t` goes back to the tool menu and `q` quits from any screen, except while a backup or restore is running.
+
 ## Where your backups go
 
 Unless you change it in settings, the backup folder is `<your WoW folder>\wow-tools`. Zips go into the
@@ -49,10 +51,10 @@ Unless you change it in settings, the backup folder is `<your WoW folder>\wow-to
   journal\journal-<YYYYMMDD-HHMMSS>.jsonl        the record Undo uses
 ```
 
-Earlier versions put the zips straight into `interface-backup`. The first time you open the review, they're moved
-into its `backup` folder. A zip that can't be moved (one of the same name is already in `backup`, or the move
-fails) stays where it is and the log says so, once; it's still listed, restored and cleaned up like the others,
-and the move is tried again each time the review opens. With a name already in `backup`, Backups lists two
+Earlier versions put the zips straight into `interface-backup`. The first time you open the review, they're moved into
+its `backup` folder. A zip that can't be moved (one of the same name is already in `backup`, or the move fails) stays
+where it is and the log says so, once per session; it's still listed, restored and cleaned up like the others, and the
+move is tried again each time the review scans (opening it, or `r`). With a name already in `backup`, Backups lists two
 zips of that name: look at both, then move or delete the old one in `interface-backup` yourself.
 
 `<flavor>` is the game version (`retail`, `classic_era` and so on). For example:
@@ -64,8 +66,9 @@ Inside a zip you find the `Interface` and `WTF` folders, exactly as they are in 
 small `manifest.json` that lists every file. The app uses the manifest to check the zip before it restores
 anything.
 
-- After each backup, only the newest 10 **backups** of that game version are kept (you can change this in the
-  shared settings, the first screen `s` opens; `0` keeps every backup). Older ones are deleted, and only after the new zip has been checked.
+- After each backup, only the newest 10 **backups** of that game version are kept (you can change this in the shared
+  settings, the first screen `s` opens; `0` keeps every backup). Older ones are deleted, and only after the new zip has
+  been checked.
 - A **safety backup** is kept as long as the journal of its restore is kept: the newest 10 restores, unless you
   change the journals to keep in the shared settings. They don't count towards the backups to keep.
 - Files in that folder that the app didn't make are never touched.
@@ -103,10 +106,10 @@ up: no Interface or WTF folder"), and its backups only when it has some. Under i
 | ⚠ **Scan warnings (N)** | Places the app couldn't read, so they're not backed up. Open the line to see them, or press `!` for the [warnings view](#scan-warnings) |
 | **Backups (N)** | The game version's backups. Safety backups are counted apart: "Backups (2 + 1 safety)". Open the line to list them, newest first |
 
-Each backup's line says **backup** or **safety** (a safety backup, taken before a restore), the date and time,
-what the zip holds and its size, for example `backup 2026-10-04 20:15:30 · Interface, WTF · 84.2 MB`. What the zip holds fills in a moment after you open the
-list ("…" until then): "Interface, WTF", "Interface", "WTF", "none" (a safety backup taken when the restored
-folder didn't exist yet), or "?" when the zip can't be read.
+Each backup's line says **backup** or **safety** (a safety backup, taken before a restore), the date and time, what the
+zip holds and its size, for example `backup 2026-10-04 20:15:30 · Interface, WTF · 84.2 MB`. What the zip holds fills in
+a moment after you open the list ("…" until then): "Interface, WTF", "Interface", "WTF", "none" (a safety backup taken
+when the restored folder didn't exist yet), or "?" when the zip can't be read.
 
 Every game version starts ticked, meaning "back this up". Ticks are on game versions only: a backup always holds
 a version's whole `Interface` and `WTF` folders. A game version with nothing to back up (no `Interface` or `WTF`
@@ -119,14 +122,13 @@ or "all backups"), the buttons and the keys.
 up"). When a backup is highlighted, it names that backup in full, with its date and time; otherwise it says how
 to pick one. It also warns when a restore is blocked.
 
-**Filter**: `/` puts you in the filter box on the left. Type part of a name: a game version, a link, a warning
-or a backup's date and time (`2026-10-04`); upper or lower case doesn't matter. Then press `Enter` or click the
-**Filter** button beside the box (typing alone changes nothing). The tree keeps the matching lines
-and the game versions they're in, and opens a **Backups** (or **Links**) line when something in it matches. A game
-version stays shown, and tickable, while anything in it matches. An empty box, applied, shows everything again;
-`Esc` in the box clears the filter. The filter only changes what you see: `a` and `n` act on the game versions shown, and a
-ticked one it hides is still backed up; the bottom bar and the confirmation say so ("1 selected flavor is hidden
-by the filter").
+**Filter**: `/` puts you in the filter box on the left. Type part of a name: a game version, a link, a warning or a
+backup's date and time (`2026-10-04`); upper or lower case doesn't matter. Then press `Enter` or click the **Filter**
+button beside the box (typing alone changes nothing). The tree keeps the matching lines and the game versions they're
+in, and opens a **Backups** (or **Links**) line when something in it matches. A game version stays shown, and tickable,
+while anything in it matches. An empty box, applied, shows everything again; `Esc` in the box clears the filter. The
+filter only changes what you see: `a` and `n` act on the game versions shown, and a ticked one it hides is still backed
+up; the bottom bar and the confirmation say so ("1 selected flavor is hidden by the filter").
 
 On Windows you see file counts and sizes. From WSL, Mac or Linux the review shows file counts only: reading
 every file's size there takes a disk round trip per file, and an `Interface` folder can hold tens of thousands of
@@ -147,10 +149,10 @@ files. The backup itself works the same, and the results screen shows the sizes.
 | `r` | **Rescan**: scan again |
 | `z` | **Undo last restore** (asks first; **Yes** is selected, in red) |
 | `f` or `Esc` | Pick another game version |
-| `t` | Back to the tool menu |
+| `t` | Back to the tool menu (from any screen or popup; not while a backup or restore is running) |
 | `s` | Settings |
 | `h` | Help: this tool's keys and steps, with a link to this guide |
-| `q` | Quit |
+| `q` | Quit (from any screen; not while a backup or restore is running) |
 | `←` `→` | Jump between the tree and the left panel |
 | `Tab` | Move to the next control |
 
@@ -163,9 +165,10 @@ If you change the settings, press `r` to scan again with them.
 ### Scan warnings
 
 When the scan skipped something it couldn't read, a **⚠ N scan warnings (!)** button sits at the right end of the
-bottom bar: click it or press `!` to open the **warnings view**. It lists every warning, grouped by game version, each with its part
-(`Interface` or `WTF`) and what went wrong; the line on the left shows the highlighted one in full. `/` filters the
-list, `x` / `c` expand and collapse it, `h` opens the help, and **Back** (`Esc`) returns to the review. With no
+bottom bar: click it or press `!` to open the **warnings view**. It lists every warning, grouped by game version,
+each with its part (`Interface` or `WTF`) and what went wrong; the line on the left shows the highlighted one in
+full. `/` filters the list, `x` / `c` expand and collapse it, `h` opens the help, **Back** (`Esc`) returns to the
+review, `t` goes to the tool menu and `q` quits. With no
 warnings there's no button. The log still has them too. The
 restore screen has the same button for its own scan of the game version.
 
@@ -212,9 +215,9 @@ their size, the zips' total size, the folder they're in, and how many old backup
 has a row per game version: **Backed up** or **Failed**, the zip's name (or the reason), the number of files,
 their size, the zip's size and how many old backups were removed.
 
-From here, `r` scans again, `e` goes back to the review screen with the backup you just made highlighted (press
-`e` or `Enter` there to restore it), `f` picks another game version, `t` goes back to the tool menu, and `q`
-quits.
+From here, `r` (or `Esc`) goes back to the review and scans again, `e` goes back to the review screen with the
+newest backup highlighted (after several game versions, the last one made; the filter is cleared; press `e` or
+`Enter` there to restore it), `f` picks another game version, `t` goes back to the tool menu, and `q` quits.
 
 ## Restoring
 
@@ -239,9 +242,10 @@ to the folders as they were before an older restore.
 
 The restore screen has the same shape as the review screen.
 
-**On the left**, under a red `⚠ USE AT YOUR OWN RISK` line (a restore overwrites your folders) and **Backup**, are
-the game version, the kind of backup ("Backup", or "Safety backup (before a restore)") and its date, then its
-size, what it holds and how many files (and when the zip itself says it was made, if that differs). Under **Restore** are two boxes, **Interface** and **WTF**, both ticked to start with:
+**On the left**, under a red `⚠ USE AT YOUR OWN RISK` line (a restore overwrites your folders) and **Backup**, are the
+game version, the kind of backup ("Backup", or "Safety backup (before a restore)") and its date, then its size, what it
+holds and how many files (and when the zip itself says it was made, if that differs). Under **Restore** are two boxes,
+**Interface** and **WTF**, both ticked to start with:
 
 - A folder the backup doesn't hold says "(not in this backup)" and can't be ticked.
 - A folder that is itself a link says "(link: restore by hand)" and can't be ticked. See
@@ -266,9 +270,9 @@ worked out again each time you tick or untick a box ("Comparing the backup with 
 The first two start open, the others open with `Enter` or `Space`. The warnings are in amber. If nothing would be
 lost, the tree says so: "Nothing on disk would be lost".
 
-**At the bottom** a bar sums it up: "Restore Interface and WTF of Retail from 2026-10-04 20:15:30 · 312 removed ·
-4 newer · needs 120.0 MB, 30.5 GB free". When its scan of the game version couldn't read something, a **⚠ N scan
-warnings (!)** button at the right end opens the [warnings view](#scan-warnings) (`!` too).
+**At the bottom** a bar sums it up: "Restore Interface and WTF of Retail from 2026-10-04 20:15:30 · 312 removed · 4
+newer · needs 120.0 MB, 30.5 GB free". When its scan of the game version couldn't read something, a
+**⚠ N scan warnings (!)** button at the right end opens the [warnings view](#scan-warnings) (`!` too).
 
 | Key | Does |
 |---|---|
@@ -277,8 +281,11 @@ warnings (!)** button at the right end opens the [warnings view](#scan-warnings)
 | `/` | Filter the tree (only what you see: the restore is the same) |
 | `x` / `c` | Expand every line of the tree / collapse them all |
 | `b` or `Esc` | Back to the review screen |
+| `!` | Open the [scan warnings](#scan-warnings) (only while there are any) |
 | `s` | Settings |
 | `h` | Help: this tool's keys and steps, with a link to this guide |
+| `t` | Back to the tool menu (not while the restore is running) |
+| `q` | Quit (not while the restore is running) |
 | `←` `→` | Jump between the tree and the left panel |
 | `↑` `↓` `Tab` | Move between the boxes and buttons |
 
@@ -323,7 +330,7 @@ swapped out in one rename only after the new one is complete.
 ![The restore results: the backup restored from, the safety backup and the journal](assets/screenshots/interface-backup/restore-result.png)
 
 The top table says which game version, whether the restore finished, the zip it restored from, the safety
-backup's zip, the folder both zips are in, and the journal's name. The table below has a row per folder:
+backup's zip, the folder (or folders) the zips are in, and the journal's name. The table below has a row per folder:
 
 | Outcome | Means |
 |---|---|
@@ -332,9 +339,9 @@ backup's zip, the folder both zips are in, and the journal's name. The table bel
 | **Left as it was** | The folder couldn't be replaced, so it was put back as it was. The Details column says why |
 | **Failed** | Something went wrong and the folder may not be exactly as it was. The Details column says what's where |
 
-From here, `z` undoes this restore (only shown when it replaced a folder that Undo can put back), `r` scans
-again, `f` picks another game version, `t` goes back to the tool menu, and `q` quits. An undo has the same results
-screen, without `z`.
+From here, `z` undoes this restore (only shown when it replaced a folder that Undo can put back), `r` (or `Esc`) goes
+back to the review and scans again, `f` picks another game version, `t` goes back to the tool menu, and `q` quits. An
+undo has the same results screen, without `z`.
 
 ## Undo
 
@@ -354,8 +361,8 @@ and which game version. **Yes** is selected, in red.
 - Undo only goes back **one restore**. After you undo, the button stays greyed out until your next restore. To go
   back further, restore an older restore's safety backup from the game version's **Backups** (its line starts
   with **safety**).
-- If no folder could be put back (WoW had files locked, say), the undo doesn't count: close WoW and press **Undo
-  last restore** again.
+- If no folder could be put back (WoW had files locked, say), the undo doesn't count: close WoW and press
+  **Undo last restore** again.
 
 Before it changes anything, Undo checks that the safety backup is still there and reads back every file in it. If
 something's wrong, it says why and changes nothing.
@@ -415,8 +422,8 @@ how you want them, restore a backup or the restore's safety backup from the game
 
 ## Settings
 
-Press `s` in the tool (you get the shared settings first: WoW folder, backups and journals to keep; then this
-tool's settings). The tool's settings are saved in
+Press `s` in the tool (you get the shared settings first: WoW folder, backups and journals to keep, game versions
+to work on at once; then this tool's settings). The tool's settings are saved in
 `config\interface-backup.cfg`.
 
 | Setting | Starts as | What it means |
@@ -428,13 +435,13 @@ picked last time; empty means **All flavors**). The backup folder is checked aga
 case the file was edited by hand. Close the app before editing the file, or your change may be overwritten. Comments
 you add to the file aren't kept (the app rewrites it when it saves a setting or the game version you pick).
 
-Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
-first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),
-`keep_journals` (10) and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]`
-in `config\wow-tools.cfg`. Backing up several game versions works on up to `parallelism` of them at once (each gets its own
-zip, and one failing never stops the others), and so does reading their folders; the progress window shows a row
-for each one being backed up. A restore is always one game version. Restore journals follow `keep_journals`, and each keeps its
-safety backup.
+Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the first
+screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all), `keep_journals` (10)
+and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]` in
+`config\wow-tools.cfg`. Backing up several game versions works on up to `parallelism` of them at once (each gets its own
+zip, and one failing never stops the others), and so does reading their folders; the progress window shows a row for
+each one being backed up. A restore is always one game version. Restore journals follow `keep_journals`, and each keeps
+its safety backup.
 
 If you move the backup folder, move the zips in its `interface-backup\backup` folder along with it, or the app
 won't find them. Undo needs the safety backup in the folder the settings name.
@@ -472,7 +479,7 @@ won't find them. Undo needs the safety backup in the folder the settings name.
 | A folder's outcome is **Restored (old copy left)** | Delete the `.replaced` folder the Details column names. Until you do, restores of that game version are blocked. |
 | "Restore stopped" | Something unexpected happened part-way. The message says what's where. If a folder was replaced, **Undo** (`z`) puts it back; if Undo isn't possible, the safety backup named in the message holds your folders as they were. Then follow [Reporting a bug](../README.md#reporting-a-bug). |
 | **Undo last restore** is greyed out | There's nothing to undo: you haven't restored yet, or no restore since the last undo changed anything. |
-| "Nothing was changed": "the restore's safety backup is gone" | The safety zip was deleted or moved. Put it back in the backup folder, or restore from another backup. |
+| "Nothing was changed": "the restore's safety backup is gone" | The safety zip was deleted or moved. Put it back in the `interface-backup\backup` folder of your backup folder, or restore from another backup. |
 | "Nothing was changed": "the restore's safety backup is not in the backup folder" | The backup folder setting changed since that restore. Change it back in settings (`s`), or restore the safety backup from its folder by hand. |
 | "Nothing was changed": "the restore journal is not for a flavor of the configured WoW folder" | The WoW folder setting changed since that restore. Change it back in settings (`s`). |
 | "Backup folder not allowed" | The backup folder in settings is a relative path, your WoW folder, or inside a game version's `WTF`, `Interface` or `Screenshots` folder (a backup inside `Interface` would be zipped into every later backup). Press `s` and pick another folder, or leave it empty for the default. |

@@ -32,7 +32,8 @@ You choose this with the **destination folder** setting:
 | A folder you pick | `<that folder>\<game version folder>\<year>\<month>\<day>` | `H:\Media\Screenshots\World of Warcraft\_retail_\2019\07\31\WoWScrnShot_073119_232713.jpg` |
 
 - File names are never changed.
-- The date comes from the file name WoW gives each screenshot, `WoWScrnShot_MMDDYY_HHMMSS.jpg`.
+- The date comes from the file name WoW gives each screenshot, `WoWScrnShot_MMDDYY_HHMMSS.jpg` (or .png / .tga, if
+  you switched WoW to those; upper or lower case doesn't matter).
 - The destination folder doesn't need to exist yet; it's created the first time.
 - It can't be your WoW folder itself, or inside a game version's `Screenshots`, `WTF` or `Interface` folder.
 - The organizer only adds dated folders and screenshots there. It never touches anything else in that folder,
@@ -42,8 +43,10 @@ You choose this with the **destination folder** setting:
 
 The list shows every game version in your WoW folder, with **All flavors** at the top. Next to each one you see
 how many screenshots are waiting to be sorted. The counts take a moment to appear ("counting…"), but you can
-pick straight away. A version you've never taken a screenshot in says "no Screenshots folder". In copy mode,
-screenshots you've already copied aren't counted. Your choice is remembered for next time.
+pick straight away. The count is a quick estimate by name: in move mode it includes possible duplicates and
+conflicts, and in copy mode it leaves out every screenshot whose name is already in its dated folder (copies you've
+made, and conflicts). A version you've never taken a screenshot in says "no Screenshots folder"; so does one whose
+`Screenshots` folder (or a dated folder in it) couldn't be read. Your choice is remembered for next time.
 
 ## The review screen
 
@@ -64,14 +67,14 @@ Open a day to see its screenshots. A game version with nothing to do says why: "
 **At the bottom** a bar totals what's ticked, plus possible duplicates, conflicts and skipped files (all
 explained below).
 
-**Unreadable folders**: when a game version's `Screenshots` folder couldn't be read, its screenshots can't be sorted
-and its line in the tree says "could not be read (see Warnings)". A dated folder that couldn't be read is also listed
-as a warning, but its screenshots are still offered for sorting (the scan treats that folder as empty). Either way a
-**⚠ N unreadable folders (!)** button sits at the right
-end of the bottom bar: click it or press `!` to open the **warnings view**. It lists every warning, grouped by game version, each with the folder
-and what went wrong; the line on the left shows the highlighted one in full. `/` filters the list, `x` / `c` expand
-and collapse it, `h` opens the help, and **Back** (`Esc`) returns to the review. With no warnings there's no button.
-The log still has them too.
+**Unreadable folders**: when a game version's `Screenshots` folder couldn't be read, its screenshots can't be sorted and
+its line in the tree says "could not be read (see Warnings)". A dated folder that couldn't be read is also listed as a
+warning, but its screenshots are still offered for sorting (the scan treats that folder as empty). Either way a
+**⚠ N unreadable folders (!)** button sits at the right end of the bottom bar: click it or press `!` to open the
+**warnings view**. It lists every warning, grouped by game version, each with the folder and what went wrong; the line
+on the left shows the highlighted one in full. `/` filters the list, `x` / `c` expand and collapse it, `h` opens the
+help, **Back** (`Esc`) returns to the review, and `t` goes to the tool menu. With no warnings there's no button. The log
+still has them too.
 
 **Filter**: `/` puts you in the filter box on the left. Type part of a name: a game version, a year, a date
 such as `2024-01-02`, or a file name (upper or lower case doesn't matter), then press `Enter` or click the
@@ -124,7 +127,8 @@ Then the results screen shows a summary and every screenshot with what happened 
 
 ![The results of a run](assets/screenshots/screenshot-organizer/result.png)
 
-From here, `r` scans again, `f` picks another game version, `t` goes back to the tool menu, and `q` quits.
+From here, `r` (**Rescan**) scans again, `f` (**Other flavor**) picks another game version, `t` (**Tools**) goes
+back to the tool menu, and `q` (**Quit**) quits. `Esc` goes back to the review (and scans again).
 
 ### Dry run
 
@@ -162,7 +166,7 @@ Turn on **Copy instead of move** in settings to copy screenshots into the dated 
 Next time you scan, the originals you've already copied aren't "waiting" any more. When a file of the same name and
 size is already in its dated folder, the review screen lists it under "Already filed" for that game
 version, unticked, and the game version list doesn't count it. You can still tick it by hand (`a` leaves these
-alone); the run then compares the two files and says "Already filed" or "Conflict".
+alone); the run then compares the two files and says "Already filed" or "Conflict (kept both)".
 
 ## Undo last run
 
@@ -201,11 +205,11 @@ The file itself uses these names, if you edit it by hand: `dest_dir`, `copy_mode
 app before editing the file, or your change may be overwritten. Comments you add to the file aren't kept (the app
 rewrites it when it saves a setting or the game version you pick).
 
-Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
-first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),
-`keep_journals` (10) and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]`
-in `config\wow-tools.cfg`. The flavor picker counts the screenshots waiting in up to `parallelism` game versions at once; filing
-them is one run with one journal.
+Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the first
+screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all), `keep_journals` (10)
+and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]` in
+`config\wow-tools.cfg`. The game version list counts the screenshots waiting in up to `parallelism` game versions at
+once; filing them is one run with one journal.
 
 > Older versions called this tool `screenshots`. The app renames its old settings file, log folder and
 > `wow-tools\screenshots` folder to the new `screenshot-organizer` names automatically, and never overwrites

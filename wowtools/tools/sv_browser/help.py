@@ -74,8 +74,8 @@ the results; what is staged stays.
 ## Warnings
 
 When the scan skipped a folder, or a file could not be read (opened in the tree or searched), the bottom line
-shows **⚠ N warnings**: click it or press `!` (the **Warnings** button) to list them by game version, each with the
-file or folder and what went wrong. **Back** (`Esc`) returns to the review.
+shows **⚠ N warnings (!)**: click it or press `!` to list them by game version, each with the file or folder and
+what went wrong. **Back** (`Esc`) returns to the review.
 
 ## Safety
 
@@ -90,16 +90,18 @@ file or folder and what went wrong. **Back** (`Esc`) returns to the review.
 
 ## Keys
 
-`/` reaches the filter box: type, then **Filter** or `Enter` filters what has been opened (in the results: every
-hit), `x` opens everything down to the files and `c` closes it all, `←` `→` switch panes, `Tab` or `↓` on the last
-line reach the buttons under the tree. `f` or `Esc` picks another game version, `t` goes back to the tool menu, `s`
-opens the settings, `q` quits (leaving with something staged asks first). On the results: **Rescan**
-(`r`), **Other flavor** (`f`), **Tools** (`t`), **Quit** (`q`).
+`/` reaches the filter box: type, then **Filter** or `Enter` filters what has been opened (in the results: every hit),
+`x` opens everything down to the files and `c` closes it all, `←` `→` switch panes, `Tab` or `↓` on the last line reach
+the buttons under the tree. `f` or `Esc` picks another game version, `t` goes back to the tool menu (from any screen or
+popup), `s` opens the settings, `q` quits (leaving with something staged asks first). On the results: **Rescan** (`r`),
+**Other flavor** (`f`), **Tools** (`t`), **Quit** (`q`).
 
 ## Settings (`s`)
 
-- **Backup folder**: where the zips go (`snapshots` for the whole `WTF` folder, `edited` for each changed file as it
-  was). Empty means `<WoW folder>\\wow-tools\\sv-browser`. How many are kept is a shared setting.
+- **Backup folder**: the zips go in its `sv-browser` folder (`snapshots` for the whole `WTF` folder, `edited` for
+  each changed file as it was). Empty means `<WoW folder>\\wow-tools`. How many are kept is a shared setting.
+- **Show the USE AT YOUR OWN RISK warning**: on by default; off once you tick **Don't show this warning again for
+  this tool** on the popup.
 
 **Full guide:** [{GUIDE_URL}]({GUIDE_URL})
 """

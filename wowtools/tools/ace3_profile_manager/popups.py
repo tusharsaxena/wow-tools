@@ -2,7 +2,7 @@
 assignment, a new profile name (rename and copy, on the shared text prompt), and the quick actions menu."""
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import ClassVar
 
 from rich.text import Text
@@ -14,9 +14,20 @@ from textual.widgets import Button, Input, OptionList, Select, Static
 from textual.widgets.option_list import Option
 
 from wowtools.core.events import log_event
+from wowtools.core.text import Listed
 from wowtools.tools.ace3_profile_manager.model import DEFAULT
 from wowtools.tools.ace3_profile_manager.ops import valid_name
-from wowtools.ui.dialogs import ACCENT, TextPromptScreen, popup_css, show_error
+from wowtools.ui.dialogs import (
+    ACCENT,
+    POPUP_TREE_CSS,
+    TREE_BINDINGS,
+    CountedTree,
+    TextPromptScreen,
+    TreeKeys,
+    detail_hint,
+    popup_css,
+    show_error,
+)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, NavSelect, action_button
 
 # The quick actions, and every review key the footer and the action bar have no room for (each label names its key),
@@ -45,19 +56,29 @@ ACTIONS_ROWS = len(ACTIONS) + 2 * len(ACTION_GROUPS) - 1  # every action, a head
 HEADING_STYLE = ACCENT  # a group heading in the quick actions menu, like a section heading in the left pane
 
 
-class TargetScreen(ModalScreen[str | None]):
+class TargetScreen(TreeKeys, ModalScreen[str | None]):
     """Choose the profile that characters move to (delete, assign): a list of the profiles there are (preselected:
     `default` when it is one of them, else the first), or a new name typed below it (which wins when not blank).
     With no profile to offer only the new name is asked for. ↑/↓ move between the list, the name and the buttons
-    (Enter or Space opens the list). Dismisses with the name, or None."""
+    (Enter or Space opens the list). `listed` is what the change takes, one entry per database's profile or
+    character (Listed(addon, item=...)), shown under the body as one collapsed, counted row (CountedTree, `noun`
+    what one entry is called), never as lines of the body, so the fields and buttons stay on screen however many
+    databases there are (STD-7.26, L12). Dismisses with the name, or None."""
 
-    DEFAULT_CSS = popup_css("TargetScreen", list_rows=ACTIONS_ROWS)  # its Select's dropdown is an OptionList
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
+    # Its Select's dropdown is an OptionList. The counted tree gets less height than a confirm's (30vh, not 40vh):
+    # with the Select and the name box too, an open tree still leaves OK and Cancel on screen at 120x30.
+    DEFAULT_CSS = (popup_css("TargetScreen", list_rows=ACTIONS_ROWS)
+                   + f"TargetScreen .popup-tree {{ {POPUP_TREE_CSS} max-height: 30vh; }}")
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS, *TREE_BINDINGS]
 
-    def __init__(self, title: str, body: str, targets: list[str], default: str = DEFAULT) -> None:
+    def __init__(self, title: str, body: str, targets: list[str], default: str = DEFAULT, *,
+                 listed: Sequence[Listed] = (), noun: str = "profile", nouns: str | None = None) -> None:
         super().__init__()
         self.title_text = title
         self.body_text = body
+        self.listed = list(listed)
+        self.noun = noun
+        self.nouns = nouns
         self.targets = list(dict.fromkeys(targets))
         self.default = default if default in self.targets else (self.targets[0] if self.targets else "")
 
@@ -65,6 +86,8 @@ class TargetScreen(ModalScreen[str | None]):
         with Vertical(classes="popup-box"):
             yield Static(Text(self.title_text), classes="title")
             yield Static(Text(self.body_text), classes="popup-body")
+            if self.listed:
+                yield CountedTree(self.listed, self.noun, self.nouns, alert=False)
             if self.targets:
                 yield NavSelect([(Text(name), name) for name in self.targets], value=self.default, allow_blank=False,
                              id="target", compact=True)
@@ -74,7 +97,7 @@ class TargetScreen(ModalScreen[str | None]):
             with ButtonRow(classes="popup-buttons"):
                 yield action_button("OK", "confirm", id="ok")
                 yield action_button("Cancel", "cancel", "escape", id="cancel")
-            yield NavHint("↑↓/Tab move · Enter/Space open the list · ←→ buttons")
+            yield NavHint(f"{detail_hint(None, self.listed)}↑↓/Tab move · Enter/Space open the list · ←→ buttons")
 
     def on_mount(self) -> None:
         self.query_one("#target" if self.targets else "#new-name").focus()

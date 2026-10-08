@@ -230,7 +230,9 @@ per app session, L4; `ace.disclaimer_accepted` / `_declined`; Back returns to th
   (`ConfirmScreen`, kind `confirm`, saying how many). It
   dismisses with the new pair list (or `None`); pairs of flavors it does not show are kept, and a legacy `"*"`
   pair is saved as explicit pairs (for the hidden flavors too).
-- `popups.py`: `TargetScreen` (delete and assign: a target `Select` plus a new-name `Input`), `NameScreen` (rename
+- `popups.py`: `TargetScreen` (delete and assign: a target `Select` plus a new-name `Input`; what the change takes,
+  one `Listed(addon, item=profile or character)` per database entry, is its `listed=`, one collapsed, counted
+  `CountedTree` row under the body, never body lines, STD-7.26, L12), `NameScreen` (rename
   and copy, with live validation) and `ActionsScreen` (the `m` menu: every key the footer
   and the action bar hide, under the `ACTION_GROUPS` headings Selection and Modification), styled with the shared `popup_css`; `NameScreen` is the shared `TextPromptScreen` checked with `valid_name`. Apply and Undo use `ConfirmScreen` (`report.apply_confirm`/`undo_confirm`; alerts
   in red; Yes red for Apply and Undo, cyan for a dry run). `apply_confirm`'s warnings are `Listed` entries (one per

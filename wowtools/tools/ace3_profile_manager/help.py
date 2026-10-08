@@ -12,7 +12,8 @@ refuse while it runs.
 
 ## Step by step
 
-1. **Pick a game version**, or **All flavors**; then an account, or **All accounts**.
+1. **Pick a game version**, or **All flavors**; then, if that version has several accounts, an account or **All
+   accounts**.
 2. Read the **USE AT YOUR OWN RISK** warning: **I understand** goes on, **Back** returns to the game versions. Once
    you press **I understand** it is not asked again until you restart the app. Tick **Don't show this warning again
    for this tool** (`Tab`, `Space`) to stop it for good; the tool's settings (`s`) turn it back on.
@@ -57,9 +58,9 @@ the results: **Rescan** (`r`), **Other flavor** (`f`), **Tools** (`t`), **Quit**
 
 ## Warnings
 
-When the scan could not read a file (or skipped a folder), the bottom line shows **⚠ N scan warnings**, and the
-tree lists them too: click it or press `!` (the **Warnings** button) to see them by game version, each with the
-file and what went wrong. **Back** (`Esc`) returns to the review.
+When the scan could not read a file (or skipped a folder), the bottom line shows **⚠ N scan warnings (!)**, and
+the tree lists them too: click it or press `!` to see them by game version, each with the file and what went
+wrong. **Back** (`Esc`) returns to the review.
 
 ## Safety
 
@@ -75,6 +76,8 @@ file and what went wrong. **Back** (`Esc`) returns to the review.
 - **Edit blacklist…** (or **Blacklist…** on the review) opens the blacklist: tick the addons to leave alone, in
   every game version. **Select none** (`n`) unticks them all, **Save** keeps the list, **Cancel** (`Esc`) drops
   the edits.
+- **Show the USE AT YOUR OWN RISK warning**: off once you tick **Don't show this warning again for this tool**; tick
+  it to see the warning again.
 
 **Full guide:** [{GUIDE_URL}]({GUIDE_URL})
 """

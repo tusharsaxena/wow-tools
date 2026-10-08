@@ -179,8 +179,11 @@ class HelpScreenTest(TuiTestCase):
                     self.assertIsInstance(app.screen, ResultBase)
                     labels |= {b.label_text for b in app.screen.query(ActionButton)}
                     await self.assert_help(app, pilot, text)
-                    for label in sorted(labels - {"Save", "Cancel"}):  # the forms' own buttons
+                    # The forms' own buttons; and the bottom line's warnings button, whose "Warnings" label is only
+                    # a placeholder: it shows "⚠ N warnings (!)", so the help names it by `!` (L12).
+                    for label in sorted(labels - {"Save", "Cancel", "Warnings"}):
                         self.assertIn(f"**{label}**", text)
+                    self.assertIn("`!`", text)
 
     async def test_h_on_the_account_picker_opens_the_tool_help(self):
         """The account picker (a game version with two accounts) is a tool screen too."""

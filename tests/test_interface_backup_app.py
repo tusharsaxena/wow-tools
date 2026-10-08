@@ -880,6 +880,9 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertIsInstance(app.screen, HelpScreen)
             self.assertEqual(app.screen.text, TOOLS["interface-backup"].help())
             for button in screen.query(ActionButton):
+                if button.id == WARNINGS_BUTTON_ID:  # shown as "⚠ N scan warnings (!)": the help names `!` (L12)
+                    self.assertIn("`!`", app.screen.text)
+                    continue
                 self.assertIn(f"**{button.label_text}**", app.screen.text)
             await pilot.press("escape")
             await settle(app, pilot)

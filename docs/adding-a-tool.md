@@ -99,7 +99,10 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
      `ConfirmScreen(title, body, alerts, kind=..., groups=...)` (it opens on Yes, so `kind` colours Yes by what it
      does: `"destructive"` for anything that deletes, overwrites, undoes or drops pending work, `"simulate"` for a
      dry run, `"create"` when it only adds files; every call names its kind, `tests/test_structure.py` checks it;
-     Enter/Space wait `CONFIRM_GUARD` after it opens; `groups` lists long details in a tree), `InfoScreen(title, groups)` for notes too long for a notification,
+     Enter/Space wait `CONFIRM_GUARD` after it opens; `groups` lists a fixed set of details in a tree; a list that can
+     grow, such as warnings, notes or refusals, goes in `listed=`, `core.text.Listed` entries shown as one collapsed,
+     counted `CountedTree` row, never in `alerts` or body lines, [STD-7.26](standards.md#7-ui-look-and-feel)),
+     `InfoScreen(title, groups, listed=...)` for notes too long for a notification,
      `ChoiceScreen(title, message, choices, default=...)` for a warning with a choice of buttons (an unfinished
      run; `default` is the safe choice the user most likely wants), and a
      subclass of `ProgressScreen` with your own `ID_PREFIX`, `STAGE_TITLES` and `SIMULATED_STAGE`, opened with a
@@ -153,7 +156,12 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
    `test_screenshot_organizer_app.py` for the TUI; `tests/fixtures.py` has `build_screenshot_tree()`). Use temp folders, `tests.fixtures.TuiTestCase` as the base for TUI tests, `capture_events()` for logging
    assertions
    and `WowToolsApp(..., tool_options={"screenshot-organizer": {...}}).run_test()` for the TUI (open the tool from the menu
-   with Enter). Never touch a real install.
+   with Enter). Never touch a real install. Then add the tool to every per-tool meta-test table
+   ([STD-10.8](standards.md#10-testing)): `TOOLS`, `RUN_ACTION`, `DESTRUCTIVE_REVIEWS` and `PREPARE` in
+   `tests/test_look_and_feel.py`; `RUN_ACTION` and `PREPARE` in `tests/test_help.py`; `ACCOUNT_TOOLS`, `RUN_ACTION`
+   and `PREPARE` in `tests/test_quit_key.py`, `tests/test_tool_menu_key.py` and `tests/test_toast_stack.py` (a tool
+   left out fails there with a `KeyError`); `ACCOUNT_TOOLS` in `tests/test_picker_keys.py`; and `TOOLS` and
+   `RISK_EVENTS` in `tests/test_risk_disclaimer.py` if it shows the USE AT YOUR OWN RISK popup.
 5. **Docs**: write a user guide, `docs/<tool name>.md` (for example `docs/screenshot-organizer.md`), in the same
    plain style as the other guides, with screenshots in `docs/assets/screenshots/<tool name>/` (shared screens such as
    the tool menu live in `docs/assets/screenshots/suite/`), its settings and its troubleshooting.

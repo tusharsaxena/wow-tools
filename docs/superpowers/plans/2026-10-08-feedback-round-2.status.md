@@ -13,7 +13,7 @@ go-ahead.
 | L16 | Interface Backup `backup/` folder | done | (this commit) | zips in `<root>/backup` (`catalog.ZIPS_SUBDIR`, `zips_dir`); `move_old_zips` in the review scan worker, `rename_no_replace`, new event `ibackup.zips_moved` (warning when a taken or failed name is left); listing and pruning span both places; Undo finds an older run's safety zip by name (`zip_now_at`); `core.fsutil.free_name(also=)`; guide, help, internals, architecture, CHANGELOG; tests/test_interface_backup_folder.py (17) plus an app test; full suite 1897 tests OK (2 skipped); review fixes L16-f to L16-i (folder tests 22, two app tests) |
 | LR5 | review L11-L16, push, CI | done | (this commit) | `git diff 044ec76...HEAD` reviewed with the branch: no fix needed (each task's own review fixes already in; events, CHANGELOG, help, guides, STD rows consistent; remaining guide wording on `t` is L12's); full suite 1904 tests OK (2 skipped), ruff clean, events.md in sync |
 | S1 | merge docs/screenshots | done | 44b2412 | merged origin/docs/screenshots (3b6da86) with `--no-ff`; one conflict, CHANGELOG [Unreleased] (kept this branch's Added and Changed, the screenshots' Docs line under Changed); README, guides, adding-a-tool and test_docs.py merged clean; follow-up 74966e3: the README risk-warning line names the WTF Cleaner too; every image link resolves (test_docs); full suite 1905 tests OK (2 skipped), ruff clean, events.md in sync |
-| L12 | docs and help in sync | todo | | |
+| L12 | docs and help in sync | done | (this commit) | 79 audit items checked against the code; code gap fixed first (test first): the Ace3 Delete and Assign popups (`TargetScreen`) list their databases in one collapsed, counted `CountedTree` row (`listed=`), not body lines (L12-a); README (risk-warning timing, badge 1907 tests, `t` busy, first-time account and risk steps, config rewrites, backup places), CHANGELOG (merged duplicate headings, `t` list, L16 once per session, Docs line), the five guides and helps (WTF risk-warning section, Dry run, rules/Criteria, settings names and order, results `Esc`, `t` everywhere, IB restore keys, SO .png/.tga and counts, SV settings), the suite help (lime, `!`, Esc on the menu, the risk step), standards STD-10.8/9.3/7.26, testing, common-tasks, adding-a-tool, architecture, internals; the hidden "Warnings" label is no longer named in the help (L12-b); left for the user: screenshots (L12-c) and CLAUDE.md (L12-d); full suite 1907 tests OK (2 skipped), ruff clean, events.md in sync |
 | L13 | humanize | todo | | |
 | LRF | whole-branch review, CI | todo | | |
 | M | merge (user go-ahead), cleanup | todo | | |
@@ -119,3 +119,27 @@ go-ahead.
   folder setting itself may be a link), so `move_old_zips` no longer refuses it. STD-5.5 is about the folders
   being scanned, backed up or restored (Interface, WTF), not the destination the user chose. A link to something
   that is not a folder still leaves every zip in place, reported as failed.
+- **L12-a** The Ace3 Delete and Assign popups (`TargetScreen`) take `listed=` like `ConfirmScreen` / `InfoScreen`:
+  one `Listed(addon, item=...)` per database entry (Delete: each profile with "(N characters move)"; Assign: each
+  character), shown as one neutral (no ⚠) collapsed `CountedTree` row under the body, counted as "N profiles" /
+  "N character assignments" (a character in two addons is two assignments). The summary sentence and the hidden-tick
+  line stay plain text. The tree gets 30vh, not a confirm's 40vh, so with the Select and the name box an open tree
+  still leaves OK and Cancel on screen at 120x30. `TreeKeys` gives `x` / `c` (typed as letters in the name box).
+  Rename and Copy (`NameScreen`) have one-line bodies: no change. Tests: `TargetPopupTest` (300 databases at BASE
+  and LARGE) and `StagingTest::test_delete_and_assign_list_their_databases_in_a_counted_tree`.
+- **L12-b** The bottom line's warnings button reads "⚠ N warnings (!)"; its "Warnings" label is a placeholder no
+  user sees, so the helps no longer say "(the **Warnings** button)". `tests/test_help.py`,
+  `tests/test_warnings_view.py` and the Interface Backup restore help test now require `` `!` `` for that button
+  instead of `**Warnings**`.
+- **L12-c** Screenshots are the user's to retake (agents never touch `docs/assets/new/`): `suite/risk-warning.png`
+  lacks the Don't show this warning again box (the popup does still open over the tool menu, as the code shows, so
+  its placement is right); `interface-backup/review.png`, `backup-result.png`, `restore-result.png` (and probably
+  `undo-result.png`) show the zip folder without `\backup` (pre-L16); `ace3-profile-manager/assign-popup.png` shows
+  the old plain list (pre-L12-a). The alt texts describe the app, not the stale pictures, except the risk warning's,
+  which waits for the new picture before naming the box.
+- **L12-d** `CLAUDE.md` is not edited by an agent: its common-tasks row still lists only some recipes and it has no
+  row for `docs/ideas/` (audit items 77, 78); `docs/architecture.md`'s recipe list is fixed. Left for the user.
+  Also left: the Saved Variables Browser settings form label still says the folder "holds snapshots/ and edited/"
+  (a code string; the help and guide now say the zips go in its `sv-browser` folder), and the Screenshot Organizer
+  still shows an unreadable folder as "no Screenshots folder" (the guide says so; telling them apart is a code
+  change).

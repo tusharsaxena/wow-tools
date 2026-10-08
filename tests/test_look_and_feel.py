@@ -1075,7 +1075,7 @@ class LookAndFeelTest(TuiTestCase):
 
     async def test_ace_popups_show_everything_at_base(self):
         """At BASE the quick actions menu lists every action without scrolling, and a target popup shows a
-        12-line body whole (one line per addon of a delete) with its buttons and hint, with room around it."""
+        12-line body whole with its buttons and hint, with room around it."""
         body = "\n".join(f"Addon{i}: Default, Healer (1 character move)" for i in range(12))
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:

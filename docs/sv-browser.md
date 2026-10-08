@@ -13,12 +13,13 @@ doesn't. It shows you the raw data an addon saved and lets you change any value 
 doesn't expect (text where it wants a number, a colour that is out of range, a key it never reads), the addon may
 throw errors, reset itself to its defaults or quietly lose that setting. The tool can't warn you about that.
 
-So the tool asks you to accept this the first time you open it after starting the app (**I understand**, or **Back**
-to the game versions; **Back** doesn't count, so it asks again next time), shows `⚠ USE AT YOUR OWN RISK` in red at
-the top of its left panel the whole time, and repeats the warning in red on every **Apply** and **Undo** confirm.
-Once you've read it, you can tick **Don't show this warning again for this tool** (`Tab` to it, `Space` to tick)
-before **I understand**: the popup is then never shown again (the red line and the confirms' warning stay), until
-you tick **Show the USE AT YOUR OWN RISK warning** in the tool's [settings](#settings).
+So the tool asks you to accept this the first time you pick a game version in it after starting the app, before the scan
+(the popup opens over the tool menu): **I understand**, or **Back** to the game versions; **Back** doesn't count, so it
+asks again next time. It also shows `⚠ USE AT YOUR OWN RISK` in red at the top of its left panel the whole time, and
+repeats the warning in red on every **Apply** and **Undo** confirm. Once you've read it, you can tick
+**Don't show this warning again for this tool** (`Tab` to it, `Space` to tick) before **I understand**: the popup is
+then never shown again (the red line and the confirms' warning stay), until you tick
+**Show the USE AT YOUR OWN RISK warning** in the tool's [settings](#settings).
 
 **_The USE AT YOUR OWN RISK warning_**
 
@@ -76,7 +77,8 @@ names the one you're on.
 
 **Browse** (the usual view):
 
-game version → account → **Account-wide**, or realm → character → the file and its size (`ElvUI.lua  12.4 KB`) → variables → keys
+game version → account → **Account-wide**, or realm → character → the file and its size (`ElvUI.lua  12.4 KB`) →
+variables → keys
 
 - Nothing is read until you open a file, so the scan is quick even with thousands of files. Opening a file reads it
   and shows its variables; opening a table shows its keys. A big file takes a moment: a dim "Reading…" line shows
@@ -91,11 +93,12 @@ game version → account → **Account-wide**, or realm → character → the fi
   rest of the file is still there to read, but an edit staged anywhere in that file stops **Apply** before anything
   is written ("not readable Lua").
 
-**Results**: the hits of your last search; see [Search](#search) and [Editing the results in bulk](#editing-the-results-in-bulk).
+**Results**: the hits of your last search; see [Search](#search) and [Editing the results in
+bulk](#editing-the-results-in-bulk).
 
-**Under the tree** is the action bar. It works on the highlighted key (in **Results**, **Edit value** and **Rename
-key** work on every ticked result; see [Editing the results in bulk](#editing-the-results-in-bulk)); a button that
-can't act on it is greyed out.
+**Under the tree** is the action bar. It works on the highlighted key (in **Results**, **Edit value** and **Rename key**
+work on every ticked result; see [Editing the results in bulk](#editing-the-results-in-bulk)); a button that can't act
+on it is greyed out.
 
 | Button | Key | Does |
 |---|---|---|
@@ -110,19 +113,20 @@ back to the tree.
 
 **On the left** are the red `⚠ USE AT YOUR OWN RISK` line, the filter box with its **Filter** button, the lines that
 count what is waiting (`Staged: 3 edits in 2 files`, and after a search `Results: 120 hits in 14 files` and
-`Ticked: 120 results`), **Search** on a row of its own, then **Apply**, **Dry run**, **Rescan** and **Undo last
-change**.
+`Ticked: 120 results`), **Search** on a row of its own, then **Apply**, **Dry run**, **Rescan** and
+**Undo last change**.
 
 **At the bottom** a bar names the highlighted line in full
 (`Selected: Retail › ACCT1 › Account-wide › ElvUI.lua › ElvDB › font = "Expressway"`) and counts the files found
 (`312 files in 2 flavors`).
 
-**Warnings**: when the scan skipped a folder, or a file couldn't be read (when you opened it in the tree, or a
-search went through it), a **⚠ N warnings (!)** button sits at the right end of the bottom bar:
-click it or press `!` to open the **warnings view**. It lists every warning, grouped by game version, each with the file or
-folder (inside that game version's folder) and what went wrong; the line on the left shows the highlighted one in
-full. `/` filters the list, `x` / `c` expand and collapse it, `h` opens the help, and **Back** (`Esc`) returns to
-the review. With no warnings there's no button. The log still has them too.
+**Warnings**: when the scan skipped a folder, or a file couldn't be read (when you opened it in the tree, or a search
+went through it), a **⚠ N warnings (!)** button sits at the right end of the bottom bar: click it or press `!` to open
+the **warnings view**. It lists every warning, grouped by game version, each with the file or folder (inside that game
+version's folder) and what went wrong; the line on the left shows the highlighted one in full. `/` filters the list, `x`
+/ `c` expand and collapse it, `h` opens the help, **Back** (`Esc`) returns to the review, and `t` goes to the tool
+menu. With no warnings there's
+no button. The log still has them too.
 
 ### The filter
 
@@ -166,9 +170,9 @@ does leaving the screen: they haven't been written, and leaving throws them away
 
 ![The Edit value popup: the current value, its type and the new value](assets/screenshots/sv-browser/edit-value.png)
 
-The popup names the key and its value now (**Now:**), and has a type list (String, Number or Boolean) and the new value: a text
-box for a string or a number, a checkbox for a boolean. The type may change (a number can become a string). **OK**
-(or `Enter`) checks what you typed and stages it; a problem shows under the box until you change it.
+The popup names the key and its value now (**Now:**), and has a type list (String, Number or Boolean) and the new value:
+a text box for a string or a number, a checkbox for a boolean. The type may change (a number can become a string).
+**OK** (or `Enter`) checks what you typed and stages it; a problem shows under the box until you change it.
 
 - A **number** must be one Lua reads back as exactly that number: `12`, `-0.5`, `1e3`. `inf`, `nan` and integers
   past 2^53 are refused.
@@ -185,8 +189,8 @@ anything else a text key as you typed it (`["[5]"]` is the text `[5]`). New keys
 WoW writes them. Refused:
 
 - an empty key;
-- a key the table **already has** (by Lua's rules, so `[1]` and `[1.0]` are the same key, and `["1"]` is another), counting
-  the edits already staged in that table;
+- a key the table **already has** (by Lua's rules, so `[1]` and `[1.0]` are the same key, and `["1"]` is another),
+  counting the edits already staged in that table;
 - a **top-level** variable (`ElvDB`): the addon looks it up by that name, so it can't be renamed;
 - an **array entry**: it has no written key to rename.
 
@@ -390,8 +394,8 @@ if you pick another backup folder.
   on the first screen `s` opens (`0` keeps them all).
 - Only the newest 10 **journals** are kept: `keep_journals`, also shared. An `edited` zip is deleted along with the
   last journal that needs it.
-- To put files back by hand (an older change, say): close WoW, open the `edited\edited-…zip`, and extract it **into
-  the game version's folder** (for example `World of Warcraft\_retail_`), keeping the folders. You can ignore
+- To put files back by hand (an older change, say): close WoW, open the `edited\edited-…zip`, and extract it
+  **into the game version's folder** (for example `World of Warcraft\_retail_`), keeping the folders. You can ignore
   `manifest.json`.
 
 ### If a change was interrupted
@@ -481,7 +485,8 @@ once, and how many game versions Undo backs up at once. Apply still does one gam
 | `Tab` | Move to the next control |
 
 Leaving with `f`, `Esc`, `t` or `q` while something is staged asks first (ticks alone don't). In the popups,
-`Enter` presses **OK** or **Find**, `Space` ticks a checkbox and `Esc` cancels.
+`Enter` presses **OK** or **Find**, `Space` ticks a checkbox and `Esc` cancels. `t` goes back to the tool menu from
+any popup or screen (in a text box it types the letter; with changes staged it asks first; not while a run writes).
 
 ## FAQ
 

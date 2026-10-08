@@ -22,14 +22,36 @@ ones you leave ticked. If you regret it later, you can undo the clean.
    `Esc` goes back to the game versions, `t` to the tool menu.
 5. Read the **USE AT YOUR OWN RISK** warning: the cleaner deletes files, so it asks you to accept that first.
    **I understand** goes on; **Back** returns to the game versions. It's asked once each time you start the app,
-   not every time you open the tool. Tick **Don't show this warning again for this tool** (`Tab` to it, `Space` to
-   tick) before **I understand** to stop it for good; **Show the USE AT YOUR OWN RISK warning** in the cleaner's
-   [settings](#settings) turns it back on.
+   not every time you open the tool. See [The USE AT YOUR OWN RISK warning](#the-use-at-your-own-risk-warning).
 6. The cleaner scans and shows you the review screen. Look through the list and untick anything you want to
    keep.
 7. Press **Dry run** (`y`) if you'd like to see what would happen without deleting anything.
 8. Press **Clean** (`w`), read the summary, and press **Yes**.
 9. The results screen lists every file and what happened to it.
+
+`t` goes back to the tool menu from any screen or popup (not while a clean is running), and `q` quits.
+
+## The USE AT YOUR OWN RISK warning
+
+**_The USE AT YOUR OWN RISK warning_**
+
+![The USE AT YOUR OWN RISK warning (shown here with the Ace3 Profile Manager's text; the wording differs per tool), with Back and I understand buttons](assets/screenshots/suite/risk-warning.png)
+
+The cleaner deletes addon settings files by the rules you tick, and it can't know what an addon still needs: a
+deleted file takes that addon's settings with it. So before the first scan it shows this warning. In the
+cleaner's wording: a backup zip of your `WTF` folder is made first and **Undo last clean** puts the files back, but
+you're responsible for what you clean; close WoW before you clean; every **Clean** and **Undo** asks again.
+
+- It comes after you pick a game version and, when that version has more than one account, an account, just
+  before the first scan. The popup opens over the tool menu.
+- **I understand** goes on. It's remembered until you close the app, so the warning is asked once each time you
+  start it, not every time you open the tool.
+- **Back** (or `Esc`) goes back to the game versions (not the account list). It doesn't count: the warning is
+  asked again next time. `t` closes the tool without answering, so it's asked again too.
+- Tick **Don't show this warning again for this tool** (`Tab` to it, `Space` to tick; `Enter` on the box presses
+  **I understand**) before **I understand** to stop it for good. **Show the USE AT YOUR OWN RISK warning** in the
+  cleaner's [settings](#settings) turns it back on.
+- Whatever you choose, the red `⚠ USE AT YOUR OWN RISK` line stays on the review's left panel.
 
 ## The review screen
 
@@ -45,7 +67,7 @@ Everything starts ticked, meaning "remove this". Untick an addon, a character or
 An account or game version with nothing to remove says "nothing to clean".
 
 **On the left** are a red `⚠ USE AT YOUR OWN RISK` line (a clean deletes files), the rules that decide what gets
-suggested, the age limit, and the buttons.
+suggested (under **Criteria (keys 1-5)**), the age limit (**Max age in days**), and the buttons.
 
 **At the bottom** a bar totals what's ticked (items, files and size) and names any game version that couldn't be
 scanned. When the scan couldn't read something, a **⚠ N scan warnings (!)** button sits at the right end of the bar:
@@ -53,7 +75,8 @@ see [Scan warnings](#scan-warnings).
 
 ### The five rules
 
-A file is suggested if **any** ticked rule matches it. All five are on to start with, and each has its own
+The left panel lists the rules under **Criteria (keys 1-5)**. A file is suggested if **any** ticked rule matches
+it. All five are on to start with, and each has its own
 colour, used in the list too:
 
 | Rule | Suggests | Example |
@@ -149,7 +172,7 @@ keeps it.
 | `r` | Scan again |
 | `z` | **Undo last clean** (asks first; **Yes** is selected, in red) |
 | `f` or `Esc` | Pick another game version |
-| `t` | Back to the tool menu |
+| `t` | Back to the tool menu (from any screen or popup; not while a clean is running) |
 | `s` | Settings |
 | `h` | Help: this tool's keys and steps, with a link to this guide |
 | `q` | Quit |
@@ -158,13 +181,13 @@ keeps it.
 
 ### Filtering the tree
 
-`/` puts you in the filter box on the left. Type part of a name: an account, a character, an addon or a file
-(upper or lower case doesn't matter), then press `Enter` or click the **Filter** button beside the box (typing alone
-changes nothing, so a big tree isn't rebuilt on every key). The tree keeps the matching lines and the groups they're in, and opens an
-addon when one of its files matches; a matching account or addon keeps everything in it. The filter works on top
-of the rules. A game version that wasn't scanned stays only while its name matches, and a filter that matches
-nothing says so in the tree. An empty box, applied, shows everything again; `Esc` in the box clears the filter and
-goes back to the tree.
+`/` puts you in the filter box on the left. Type part of a name: an account, a character, an addon or a file (upper or
+lower case doesn't matter), then press `Enter` or click the **Filter** button beside the box (typing alone changes
+nothing, so a big tree isn't rebuilt on every key). The tree keeps the matching lines and the groups they're in, and
+opens an addon when one of its files matches; a matching account or addon keeps everything in it. The filter works on
+top of the rules. A game version that wasn't scanned stays only while its name matches, and a filter that matches
+nothing says so in the tree. An empty box, applied, shows everything again; `Esc` in the box clears the filter and goes
+back to the tree.
 
 The filter only changes what you see. `a` and `n` tick and untick what it shows; a file it hides keeps its tick and
 is still cleaned. When that's the case, the bottom bar and the confirmation say so ("12 selected files are hidden
@@ -176,8 +199,8 @@ When the scan couldn't read something (a folder, a settings file, a line of an `
 it and counts it. The count shows as a button at the right end of the bottom bar, **⚠ 4 scan warnings (!)**: click
 it or press `!` to open the **warnings view**. It lists every warning, grouped by game version, each with where it
 is (the path inside that game version's folder) and what went wrong; the line on the left shows the highlighted one
-in full. `/` filters the list, `x` / `c` expand and collapse it, `h` opens the help, and **Back** (`Esc`) returns
-to the review. With no warnings, there's no button. The log still has them too.
+in full. `/` filters the list, `x` / `c` expand and collapse it, `h` opens the help, **Back** (`Esc`) returns
+to the review, and `t` goes to the tool menu. With no warnings, there's no button. The log still has them too.
 
 ## Cleaning
 
@@ -211,8 +234,9 @@ Before anything is deleted, the cleaner:
 Then it deletes the files, and finally it compares your `WTF` folder against the backup to make sure only the
 right files are gone.
 
-With **All flavors**, the game versions are cleaned one after another, and each gets all the steps above. If one
-version runs into a problem, the cleaner stops there, and the versions after it aren't touched.
+With **All flavors**, the game versions are cleaned one after another, and each gets the lock check, the backup
+and the zip steps; one journal covers the whole run. If one version runs into a problem, the cleaner stops there,
+and the versions after it aren't touched.
 
 ### The results screen
 
@@ -220,19 +244,22 @@ version runs into a problem, the cleaner stops there, and the versions after it 
 
 ![The results of a clean](assets/screenshots/wtf-cleaner/result.png)
 
-The top table sums up the clean: how many files were deleted, where the zips are, and whether the final check
-passed. With All flavors there's a block for each game version. The table below lists every file with what
+The top table sums up the clean: how many files were deleted, where the zips are, whether the final check
+passed, and the run journal (what **Undo last clean** uses). With All flavors there's a block for each game
+version, and the run journal is named once, at the top. The table below lists every file with what
 happened to it, its account, character, addon, size and why it was suggested.
 
-From here, `r` scans again, `f` picks another game version, `t` goes back to the tool menu, and `q` quits.
+From here, `r` (**Rescan**) scans again, `f` (**Other flavor**) picks another game version, `t` (**Tools**) goes
+back to the tool menu, and `q` (**Quit**) quits. `Esc`, like `r`, goes back to the review and scans again.
 
 ### Dry run
 
-A **Dry run** does everything a clean does except the deleting. Unless **Zip the files before deleting** is turned
-off in settings, it still writes the zip of the files it *would* remove (named `dryrun-…zip`, so you can tell it
-from a real clean's zip). It shows you the same results screen. When in doubt, do a dry run first. Since dry runs
-tend to be repeated, only the newest few dry-run zips of each game version are kept (the same number as WTF
-backups, 10 unless you change it).
+A **Dry run** checks that WoW is running (and warns you), checks the files again and, unless
+**Zip the files to clean before deleting them** is turned off in settings, writes the zip of the files it *would* remove
+(named `dryrun-…zip`, so you can tell it from a real clean's zip). It takes no WTF backup, does no lock check, writes no
+journal and deletes nothing. It shows you the same results screen. When in doubt, do a dry run first. Since dry runs
+tend to be repeated, only the newest few dry-run zips of each game version are kept (the same number as WTF backups, 10
+unless you change it).
 
 ## Undo last clean
 
@@ -267,20 +294,20 @@ gets `-2` added before `.zip`, so no backup ever replaces another.
 - The **cleaned** zips are all kept, unless you set **Cleaned-files zips to keep** in the cleaner's settings (see
   [Settings](#settings)). Then, after each clean that deleted something, only the newest that many of the game
   version are kept (any account, counting the one that clean just made). A dry run never removes them.
-- Only the newest 10 **backups** of each game version are kept (you can change this in the shared settings, the
-  first screen `s` opens; `0` keeps them all).
-- Only the newest 10 **dry-run** zips of each game version are kept (the same setting). Dry-run zips made by
-  older versions of the app are named `cleaned-…` like real ones, so they're kept unless you set **Cleaned-files
-  zips to keep**, which counts and removes them like real cleaned zips.
+- After each clean that deleted something, only the newest 10 **backups** of each game version are kept (you can
+  change this in the shared settings, the first screen `s` opens; `0` keeps them all).
+- Only the newest 10 **dry-run** zips of each game version are kept (the same setting). Dry-run zips made by older
+  versions of the app are named `cleaned-…` like real ones, so they're kept unless you set
+  **Cleaned-files zips to keep**, which counts and removes them like real cleaned zips.
 - Only the newest 10 **journals** are kept (also a shared setting).
 
 ## Restoring a backup
 
 **Undo last clean** is the easy way. To restore by hand instead (for example an older clean):
 
-- **Some files from a clean:** close WoW, open the `cleaned\cleaned-…zip`, and extract it **into the game
-  version's folder** (for example `World of Warcraft\_retail_`), keeping the folders. The files land back where
-  they were. You can ignore `manifest.json`.
+- **Some files from a clean:** close WoW, open the `cleaned\cleaned-…zip`, and extract it
+  **into the game version's folder** (for example `World of Warcraft\_retail_`), keeping the folders. The files land
+  back where they were. You can ignore `manifest.json`.
 - **The whole WTF folder:** the same, with a `backup\backup-…zip`. This puts back the whole folder exactly as it
   was before that clean, so only do it if something is really missing.
 
@@ -310,12 +337,12 @@ in `config\wtf-cleaner.cfg`.
 
 | Setting | Starts as | What it means |
 |---|---|---|
-| Max age in days | 90 | The age limit for rule 3 |
-| The five rules | all on | Which rules are on when the review screen opens |
-| Zip the files before deleting | on | Keep a zip of everything a clean removes (recommended) |
-| Cleaned-files zips to keep | 0 | How many `cleaned\cleaned-…zip` files to keep per game version; `0` keeps them all. Older ones are removed after a clean. The zip of the last clean is always kept, so **Undo last clean** is unaffected. A removed zip of an older clean can only be restored by hand from its WTF backup (`backup\backup-…zip`) while that is still kept |
+| Propose SavedVariables older than this many days | 90 | The age limit for rule 3 (**Max age in days** on the review) |
 | Backup folder | empty | Where zips and backups go. Empty means `<WoW folder>\wow-tools\wtf-cleaner`. It must be a full path, and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
-| Show the USE AT YOUR OWN RISK warning | on | Ask you to accept the warning after you pick a game version (once each time you start the app). Off when you ticked **Don't show this warning again for this tool** on it |
+| Propose SavedVariables when: (the five rules) | all on | Which rules are on when the review screen opens. Each box has the rule's long name: **Addon is not installed**, **Addon is installed but not enabled on any character of its account**, **SavedVariables are older than the age limit**, **Hand-made copies** and **`<Addon>.lua.bak` with no `<Addon>.lua` next to it** |
+| Zip the files to clean before deleting them (recommended) | on | Keep a zip of everything a clean removes |
+| Cleaned-files zips to keep | 0 | How many `cleaned\cleaned-…zip` files to keep per game version; `0` keeps them all. Older ones are removed after a clean. The zip of the last clean is always kept, so **Undo last clean** is unaffected. A removed zip of an older clean can only be restored by hand from its WTF backup (`backup\backup-…zip`) while that is still kept |
+| Show the USE AT YOUR OWN RISK warning | on | Ask you to accept the warning after you pick a game version (and account) (once each time you start the app). Off when you ticked **Don't show this warning again for this tool** on it |
 
 The file itself uses these names, if you edit it by hand: `max_age_days`, `criterion_not_installed`,
 `criterion_not_enabled`, `criterion_older_than`, `criterion_stray_copies`, `criterion_orphan_backups`,
@@ -325,13 +352,13 @@ on the settings screen, `b` on the review edits it), `skip_risk_warning` (`true`
 editing the file, or your change may be overwritten. Comments you add to the file aren't kept (the app rewrites it
 when it saves a setting or the game version you pick).
 
-Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
-first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),
-`keep_journals` (10) and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]`
-in `config\wow-tools.cfg`. With **All flavors**, the scan reads up to `parallelism` game versions at once. A clean (and a dry run)
-still does one game version after another: they share one safety marker, and the clean stops at the first game
-version that fails. The WTF backups and the dry-run zips both follow
-`keep_backups`. The cleaned-files zips are the one exception: they follow the cleaner's own `keep_cleaned`.
+Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the first
+screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all), `keep_journals` (10)
+and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]` in
+`config\wow-tools.cfg`. With **All flavors**, the scan reads up to `parallelism` game versions at once. A clean (and a
+dry run) still does one game version after another: they share one safety marker, and the clean stops at the first game
+version that fails. The WTF backups and the dry-run zips both follow `keep_backups`. The cleaned-files zips are the one
+exception: they follow the cleaner's own `keep_cleaned`.
 
 ## FAQ
 
@@ -341,7 +368,7 @@ version that fails. The WTF backups and the dry-run zips both follow
 | Will it delete settings for addons I still use? | Not with the usual rules. Rule 1 only suggests addons that aren't installed, and rule 2 only addons switched off on every character of that account. Rule 3 (older than the age limit) can catch an addon you still have but rarely load, so look through the list and untick anything you want to keep. |
 | Does it check whether WoW is running? | Yes, before every clean, for the game versions you're cleaning, and it warns you if WoW is open. This works on Windows, WSL, Mac and Linux. |
 | Does it touch my keybindings, macros or UI layout? | No. It only ever looks at addon settings files. Blizzard's own settings, keybindings, macros, chat setup, UI layout and your list of enabled addons are never touched. |
-| What's the difference between a Dry run and Clean? | A **Dry run** does every step except deleting, so you can see the full results first. **Clean** deletes the ticked files after backing them up. |
+| What's the difference between a Dry run and Clean? | A **Dry run** checks the files and, unless zipping is off, writes the zip of what it would remove; it takes no WTF backup, writes no journal and deletes nothing, so you can see the full results first. **Clean** deletes the ticked files after backing them up. |
 | Can I clean one account only? | Yes. Pick a single game version; if it has more than one account, the next screen lets you pick one. |
 | How much space do the backups take? | Each WTF backup is a zip of your whole `WTF` folder, so it depends on how big that folder is (zipping shrinks these text files a lot). Only the newest 10 per game version are kept (you can change that in the shared settings; `0` keeps them all), and the same number of dry-run zips. The zips of cleaned files are kept until you delete them, unless you set **Cleaned-files zips to keep** in the cleaner's settings. |
 | How do I stop it suggesting an addon I still want? | Highlight the addon in the review and press `b`: it goes on the [blacklist](#the-blacklist) for that game version and is never ticked or cleaned again until you press `b` on it once more. |

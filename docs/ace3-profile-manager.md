@@ -19,10 +19,6 @@ edits, and **Undo last change** puts them back.
 > would be overwritten. That's why **Apply** and **Undo** refuse to run while WoW is running (a **Dry run** works
 > any time).
 
-**_The USE AT YOUR OWN RISK warning_**
-
-![The USE AT YOUR OWN RISK warning shown when you open the Ace3 Profile Manager, with Back and I understand buttons](assets/screenshots/suite/risk-warning.png)
-
 ## How it works
 
 Nothing you do on the review screen touches a file until you press **Apply**. In four steps:
@@ -54,6 +50,11 @@ changes and a very long name highlighted, it shows only the pending changes so t
    the app, not every time you open the tool. Tick **Don't show this warning again for this tool** (`Tab` to it,
    `Space` to tick) before **I understand** to stop it for good; **Show the USE AT YOUR OWN RISK warning** in the
    tool's [settings](#settings) turns it back on.
+
+   **_The USE AT YOUR OWN RISK warning_**
+
+   ![The USE AT YOUR OWN RISK warning, shown after you pick a game version (and account), before the scan, with Back and I understand buttons](assets/screenshots/suite/risk-warning.png)
+
 6. The tool reads every addon's settings file and shows the review screen. Nothing is ticked yet.
 7. Tick the profiles or characters you want to change, and press a button in the action bar under the tree, or its
    key: `d` deletes profiles, `p` moves characters to another profile, `e` renames a profile, `k` copies one, `o`
@@ -123,12 +124,12 @@ selected button), so they never cover either.
 **At the bottom** a bar counts what's ticked and what's pending, for example
 `Selected: 3 profiles · 8 characters · 6 pending changes in 2 files`.
 
-**Scan warnings**: when the scan couldn't read a settings file (or skipped a folder), the tree lists it under **Scan
-warnings** at the bottom, and a **⚠ N scan warnings (!)** button sits at the right end of the bottom bar:
-click it or press `!` to open the **warnings view**. It lists every warning, grouped by game version, each with the file or
-folder (inside that game version's folder) and what went wrong; the line on the left shows the highlighted one in
-full. `/` filters the list, `x` / `c` expand and collapse it, `h` opens the help, and **Back** (`Esc`) returns to
-the review. With no warnings there's no button. The log still has them too.
+**Scan warnings**: when the scan couldn't read a settings file (or skipped a folder), the tree lists it under
+**Scan warnings** at the bottom, and a **⚠ N scan warnings (!)** button sits at the right end of the bottom bar: click
+it or press `!` to open the **warnings view**. It lists every warning, grouped by game version, each with the file or
+folder (inside that game version's folder) and what went wrong; the line on the left shows the highlighted one in full.
+`/` filters the list, `x` / `c` expand and collapse it, `h` opens the help, and **Back** (`Esc`) returns to the review.
+With no warnings there's no button. The log still has them too.
 
 ### Tags
 
@@ -179,7 +180,8 @@ The filter and the Show boxes only change what you see. `a` and `n` tick and unt
 hide stays, and **Delete**, **Assign**, **Leftovers**, **Only Default** and **Everyone → Default** still take it.
 When that's the case, the bottom bar says how many and what hides them ("2 selected items are hidden by the filter",
 "... by the Show boxes"), and the window an action opens counts only the ones it takes ("2 selected profiles are
-hidden by the filter: they are included"). By character has no profile rows, so profile ticks are "hidden by the
+hidden by the filter: they are included"). Only **Default** and **Everyone → Default** open no window: they say
+it in a message instead. By character has no profile rows, so profile ticks are "hidden by the
 view" there, and `n` unticks them too.
 
 ## The changes you can make
@@ -190,31 +192,31 @@ profile with the same name in Bartender4 are two different profiles.
 
 | Key | Change | What it does |
 |---|---|---|
-| `d` | **Delete profiles** | Deletes the ticked profiles. Their characters have to go somewhere, so a popup asks which profile they move to: "Default" to start with, or any other profile of that addon. If you're deleting every profile, "Default" included, you type a name instead |
-| `p` | **Assign a profile** | Moves the ticked characters to a profile you pick from the list, or to a new name you type |
+| `d` | **Delete profiles** | Deletes the ticked profiles. Their characters have to go somewhere, so a popup asks which profile they move to: "Default" to start with, or any other profile of that addon. If you're deleting every profile, "Default" included, you type a name instead. The popup lists the profiles under one line, such as **3 profiles (Space or click to expand)**: `Tab` to it, `Space` opens it, then each addon (`x` opens them all) |
+| `p` | **Assign a profile** | Moves the ticked characters to a profile you pick from the list, or to a new name you type. The popup lists the characters under each addon behind one line, such as **12 character assignments (Space or click to expand)**, opened the same way |
 | `e` | **Rename a profile** | Renames the highlighted profile. Its characters follow it |
 | `k` | **Copy a profile** | Copies the highlighted profile, settings and all, under a new name. Nobody uses the copy until you assign it |
 | `o` | **Remove leftover characters** | Ticks every character tagged "no character folder" that the tree shows, then removes the ticked ones from the addon's list. No need to tick them first |
 
 **_Assigning a profile_**
 
-![The Assign a profile popup: the characters that move under each addon, the profile list and a box for a new name](assets/screenshots/ace3-profile-manager/assign-popup.png)
+![The Assign a profile popup: one line counting the characters that move (it opens to each addon and its characters), the profile list and a box for a new name](assets/screenshots/ace3-profile-manager/assign-popup.png)
 
 A profile name can be up to 100 characters. Names are case-sensitive, as in the game ("healer" and "Healer" are two
 profiles), and you can't rename or copy onto a name the addon already has.
 
 If a change can't be made in some of the ticked addons (a blacklisted addon, say), it's made in the others and a
-**Not done** box lists the ones it skipped, every one of them: one line, **⚠ N databases not changed**, that opens
-to each reason once, with the game version and account under it, then the addons (with the database when the
-addon has several, and the character for a character's own file). Anything else worth knowing about a change (for
-example, that an addon will create "Default" itself at its next login) opens a **Notes** box after it, listed the
-same way under **N notes**; one or two notes show at once, a longer list opens with `Space`.
-**Leftovers** is one press: it ticks every leftover character the tree shows (what the View, the Show boxes and
-the filter let through), then asks first, listing the characters it will remove under each addon (`Space` opens an
-addon, `x` opens them all). **No** keeps the ticks, so you can see what it would have removed. To remove only some
-of them, narrow the tree first with the filter (`/`): **Leftovers** ticks only the ones shown (leftover characters
-you ticked yourself and then hid are included too, and the popup says so). With none shown (the **Leftover
-characters** box unticked, say) it says "No leftover characters are shown." and does nothing.
+**Not done** box lists the ones it skipped, every one of them: one line, **⚠ N databases not changed**, that opens to
+each reason once, with the game version and account under it, then the addons (with the database when the addon has
+several, and the character for a character's own file). Anything else worth knowing about a change (for example, that an
+addon will create "Default" itself at its next login) opens a **Notes** box after it, listed the same way under
+**N notes**; one or two notes show at once, a longer list opens with `Space`. **Leftovers** is one press: it ticks every
+leftover character the tree shows (what the View, the Show boxes and the filter let through), then asks first, listing
+the characters it will remove under each addon (`Space` opens an addon, `x` opens them all). **No** keeps the ticks, so
+you can see what it would have removed. To remove only some of them, narrow the tree first with the filter (`/`):
+**Leftovers** ticks only the ones shown (leftover characters you ticked yourself and then hid are included too, and the
+popup says so). With none shown (the **Leftover characters** box unticked, say) it says "No leftover characters are
+shown." and does nothing.
 
 **_Removing leftover characters_**
 
@@ -410,9 +412,10 @@ another. The journals always stay in your WoW folder, even if you pick another b
   settings, the first screen `s` opens; `0` keeps them all).
   One is taken before each change, each Undo and each recovery. They're a safety net in case something goes badly
   wrong.
-- Only the newest 10 **journals** are kept (also a shared setting). An `edited` zip is deleted along with the last journal that needs it.
-- To put files back by hand (an older change, say): close WoW, open the `edited\edited-…zip`, and extract it **into
-  the game version's folder** (for example `World of Warcraft\_retail_`), keeping the folders. You can ignore
+- Only the newest 10 **journals** are kept (also a shared setting). An `edited` zip is deleted along with the last
+  journal that needs it.
+- To put files back by hand (an older change, say): close WoW, open the `edited\edited-…zip`, and extract it
+  **into the game version's folder** (for example `World of Warcraft\_retail_`), keeping the folders. You can ignore
   `manifest.json`.
 
 ## If a change was interrupted
@@ -451,7 +454,7 @@ tool's settings). The tool's settings are saved in
 |---|---|---|
 | Backup folder | empty | Where the `WTF` backups and the zips of edited files go: they're put in its `ace3-profile-manager` folder. Empty means `<WoW folder>\wow-tools`. It must be a full path (such as `D:\WoW backups`), and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
 | Blacklist | none | Addons, each in one game version, that are shown but never changed. **Edit blacklist…** opens the [blacklist screen](#the-blacklist); the line above it counts them |
-| Show the USE AT YOUR OWN RISK warning | on | Ask you to accept the warning after you pick a game version (once each time you start the app). Off when you ticked **Don't show this warning again for this tool** on it |
+| Show the USE AT YOUR OWN RISK warning | on | Ask you to accept the warning after you pick a game version (and account) (once each time you start the app). Off when you ticked **Don't show this warning again for this tool** on it |
 
 The file itself uses these names, if you edit it by hand: `backup_dir`, `blacklist` (pairs such as `_retail_:ElvUI,
 _classic_era_:Questie`), `skip_risk_warning` (`true` means the warning isn't shown), `last_flavor_choice` (the
@@ -459,11 +462,11 @@ game version you picked last time; empty means **All flavors**) and
 `last_account` (empty means all accounts). Close the app before editing the file, or your change may be overwritten.
 Comments you add to the file aren't kept (the app rewrites it when it saves a setting or the game version you pick).
 
-Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the
-first screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all),
-`keep_journals` (10) and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]`
-in `config\wow-tools.cfg`. Undo backs up the WTF folder of up to `parallelism` game versions at once (a row each in the progress
-window) before it puts anything back. Apply still does one game version after another: they share one crash
+Backups and journals to keep, and game versions to work on at once, are shared by every tool: they're on the first
+screen `s` opens (the one with your WoW folder), and saved as `keep_backups` (10; `0` keeps all), `keep_journals` (10)
+and `parallelism` (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder) under `[general]` in
+`config\wow-tools.cfg`. Undo backs up the WTF folder of up to `parallelism` game versions at once (a row each in the
+progress window) before it puts anything back. Apply still does one game version after another: they share one crash
 marker, and Apply stops at the first game version that fails. The WTF backups (`snapshots`) follow `keep_backups`.
 
 ## FAQ

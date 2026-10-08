@@ -12,7 +12,7 @@ from textual.widgets import Tree
 
 from wowtools.core.events import log_event
 from wowtools.core.install import flavor_name
-from wowtools.core.text import plural
+from wowtools.core.text import Listed, plural
 from wowtools.tools.ace3_profile_manager.model import DEFAULT
 from wowtools.tools.ace3_profile_manager.ops import DbKey, OpResult, Staging, listed, valid_name
 from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
@@ -87,18 +87,17 @@ class ProfileStagingActions:
         if not selection:
             self.notify("Tick or highlight a profile first")
             return
-        lines = []
-        for key, names in selection.items():
-            state = self.staging.state(key)
-            moved = sum(len(state.users(n)) for n in names)
-            lines.append(f"{self._addon_name(key)}: {', '.join(names)} ({plural(moved, 'character')} move)")
-        body = "\n".join(["Delete these profiles and move their characters to the profile chosen below:", *lines,
+        entries = [Listed(self._addon_name(key),
+                          item=f"{name} ({plural(len(self.staging.state(key).users(name)), 'character')} move)")
+                   for key, names in selection.items() for name in names]
+        body = "\n".join(["Delete these profiles and move their characters to the profile chosen below:",
                           *self._hidden_line("p", "profile")])
 
         def done(target: str | None) -> None:
             if target is not None and self.staging is not None:
                 self._staged(self.staging.delete(selection, target))
-        self.app.push_screen(TargetScreen("Delete profiles", body, self._targets(selection, selection)), done)
+        self.app.push_screen(TargetScreen("Delete profiles", body, self._targets(selection, selection),
+                                          listed=entries, noun="profile"), done)
 
     def action_assign(self) -> None:
         if not self._ready():
@@ -108,14 +107,14 @@ class ProfileStagingActions:
         if not selection:
             self.notify("Tick or highlight a character first")
             return
-        lines = [f"{self._addon_name(key)}: {plural(len(chars), 'character')}" for key, chars in selection.items()]
-        body = "\n".join(["Move these characters to the profile chosen below:", *lines,
-                          *self._hidden_line("c", "character")])
+        entries = [Listed(self._addon_name(key), item=char) for key, chars in selection.items() for char in chars]
+        body = "\n".join(["Move these characters to the profile chosen below:", *self._hidden_line("c", "character")])
 
         def done(target: str | None) -> None:
             if target is not None and self.staging is not None:
                 self._staged(self.staging.assign(selection, target))
-        self.app.push_screen(TargetScreen("Assign a profile", body, self._targets(selection)), done)
+        self.app.push_screen(TargetScreen("Assign a profile", body, self._targets(selection), listed=entries,
+                                          noun="character assignment"), done)
 
     def _highlighted_profile(self) -> tuple[DbKey, str] | None:
         node = self.query_one("#profiles", Tree).cursor_node

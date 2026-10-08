@@ -141,10 +141,11 @@ In `cleaner.execute`:
 ## Screens
 
 The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfCleanerFlow` (`FLOW`) and
-`CleanerSettingsScreen` (criteria, max age, backup on/off, cleaned-files zips to keep, backup folder, show the risk
-warning). The flow shows `FlavorScreen` with `include_all=True` and `last=last_flavor_choice`; All flavors skips the
-account screen. Before the review it asks `ToolFlow.ask_disclaimer` (the shared `ui.disclaimer.DisclaimerScreen` with
-`report.DISCLAIMER`, once per app session, L4; `clean.disclaimer_accepted` / `_declined`; Back returns to the flavor
+`CleanerSettingsScreen` (in screen order: max age, backup folder, the five criteria, zip the files before deleting
+on/off, cleaned-files zips to keep, show the risk warning). The flow shows `FlavorScreen` with `include_all=True`
+and `last=last_flavor_choice`; All flavors skips the account screen. Before the review it asks
+`ToolFlow.ask_disclaimer` (the shared `ui.disclaimer.DisclaimerScreen` with `report.DISCLAIMER`, once per app
+session, L4; `clean.disclaimer_accepted` / `_declined`; Back returns to the flavor
 picker; never with `skip_risk_warning`, which its "Don't show this warning again" box and the settings form's box
 set, `clean.risk_warning_changed`, L8). `review_screen.py` holds:
 
