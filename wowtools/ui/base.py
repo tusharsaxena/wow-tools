@@ -18,6 +18,7 @@ from wowtools.core.events import log_event, log_exception
 from wowtools.core.updater import (ReleaseInfo, UpdateError, apply_update, check_for_update,
                                    persist_check_state)
 from wowtools.tools import TOOLS
+from wowtools.ui import toasts
 from wowtools.ui.branding import update_key_free, update_notice
 from wowtools.ui.dialogs import GUARD_BINDING, DiscardScreen, EnterGuard
 from wowtools.ui.theme import KA0S_THEME, TITLE_GOLD, TITLE_TEXT, TITLE_TOOL, action_variables
@@ -87,8 +88,9 @@ class Ka0sApp(App):
 
     TITLE = "Ka0s WoW Tools"
     # The footer leaves out the command palette's key (Ctrl+P still opens it; nothing documents it): at 120x30 the
-    # review screens need that room for their own keys. ACTION_CSS colours every button by its action kind.
-    CSS = "Footer FooterKey.-command-palette { display: none; }" + ACTION_CSS
+    # review screens need that room for their own keys. ACTION_CSS colours every button by its action kind;
+    # TIP_LAYER_CSS gives every screen the layer of the toast stack's tip (ui.toasts).
+    CSS = "Footer FooterKey.-command-palette { display: none; }" + ACTION_CSS + toasts.TIP_LAYER_CSS
     BINDINGS: ClassVar[list[Binding]] = [Binding("u", "update", "Update", show=False)]
     release: reactive[ReleaseInfo | None] = reactive(None)
 
@@ -116,6 +118,7 @@ class Ka0sApp(App):
     def on_mount(self) -> None:
         self.register_theme(KA0S_THEME)
         self.theme = "ka0s"
+        toasts.install(self)  # one toast anchor and stack on every screen (STD-7.24)
         if self._check_updates and self.cfg.check_for_updates:
             self.run_worker(self._check_update, thread=True, group="update-check")
         self.after_mount()

@@ -63,22 +63,6 @@ class ActionBar(WrapButtonRow):
 
     BINDINGS: ClassVar[list[Binding]] = [Binding("up", "screen.focus_tree", "Tree", show=False)]
 
-    def on_mount(self) -> None:
-        """A screen that keeps its toasts above the bar (place_toasts) moves them after every layout: the bar moves
-        and wraps onto more or fewer rows as the screen settles or is resized."""
-        place = getattr(self.screen, "place_toasts", None)
-        if place is not None:
-            self.screen.screen_layout_refresh_signal.subscribe(self, lambda _screen: place())
-
-
-def lift_toasts(screen: Screen, above: int) -> None:
-    """Show the screen's notifications (Textual's toast rack, docked at the bottom) `above` rows up from the
-    bottom, so a toast never covers an action bar or the lines under it."""
-    margin = (0, 0, max(above, 1), 0)
-    for toasts in screen.query("#textual-toastrack"):
-        if tuple(toasts.styles.margin) != margin:  # setting it lays the screen out again
-            toasts.styles.margin = margin
-
 
 class NotTicked:
     """The keys not in `ticked`, as tick_mark's `unchecked` collection (without listing every key)."""

@@ -46,7 +46,8 @@ from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                 UnfinishedRunScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.review import (BLACKLIST_BINDING, ActionBar, BarTree, BlacklistAction, ReviewBase, RunActions,
-                                SvRecoveryActions, TickModel, WowCheck, lift_toasts)
+                                SvRecoveryActions, TickModel, WowCheck)
+from wowtools.ui.toasts import TOAST_FLOOR, StackTip, TipRack
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, TreeFilter, hidden_by_filter
 from wowtools.ui.warnings_view import (WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost,
                                        scan_warning_items)
@@ -104,15 +105,9 @@ class ProfileRecoveryScreen(UnfinishedRunScreen):
         super().__init__(recovery_text(marker), marker)
 
 
-class ActionTip(Static):
-    """What the focused action bar button would do now, in a toast-like box just above the bar (see
-    ProfileReviewScreen._place_overlays): above the guidance line over the bar. Shown only while a button of the
-    bar has focus."""
-
-    def on_resize(self) -> None:
-        place = getattr(self.screen, "_place_overlays", None)
-        if place is not None:
-            place()  # its height is known now: the toasts go above it
+class ActionTip(StackTip):
+    """What the focused action bar button would do now: the lowest box of the toast stack (ui.toasts), just above
+    the guidance line over the bar, with the toasts above it. Shown only while a button of the bar has focus."""
 
 
 class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistActions, BlacklistAction, TreeFilter,
@@ -141,11 +136,6 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
     ProfileReviewScreen #profiles { height: 1fr; }
     ProfileReviewScreen #guide { height: auto; color: $text-muted; padding: 0 1; }
     ProfileReviewScreen #tree-actions { padding: 0 1; }
-    ProfileReviewScreen { layers: default action-tip; }
-    ProfileReviewScreen #tip-rack { layer: action-tip; dock: bottom; width: 1fr; height: auto; align: right bottom;
-                                    visibility: hidden; display: none; overflow-y: scroll; }
-    ProfileReviewScreen #action-tip { visibility: visible; width: 60; max-width: 50%; height: auto; padding: 1 1;
-                                      background: $panel-lighten-1; border-left: outer $accent; }
     """
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("space", "toggle", "Tick/untick", priority=True),
@@ -240,11 +230,11 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
                     yield ProgressBar(id="scan-progress", show_eta=False)
                     yield Static("", id="scan-label")
                 yield BarTree(Text(self.scope_label), id="profiles")
-                yield Static(Text(self.guide_text), id="guide")
+                yield Static(Text(self.guide_text), id="guide", classes=TOAST_FLOOR)  # toasts stay above it
                 with ActionBar(id="tree-actions"):
                     for button_id, label, kind, _, key in TREE_ACTIONS:
                         yield action_button(label, kind, key, id=button_id, compact=True)
-        with Vertical(id="tip-rack"):
+        with TipRack(id="tip-rack"):
             yield ActionTip("", id="action-tip")
         yield SummaryBar(Text(self.summary_text))
         yield BottomBar()
@@ -254,7 +244,6 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
         self.query_one("#scan-box").display = False
         self.query_one("#profiles", Tree).focus()
         self._refresh_buttons()
-        self.call_after_refresh(self._place_overlays)
         self._scan()
 
     # --- panes (←/→): TwoPaneFocus ------------------------------------------------------------------
@@ -498,7 +487,6 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
         if text != self.guide_text or shown != self._guide_shown:
             self.guide_text, self._guide_shown = text, shown
             guide.update(Text(shown))
-            self.call_after_refresh(self._place_overlays)  # it may now take another number of rows
 
     def _shortened_guidance(self, kind, name: str, profiles: int, chars: int, total: int, locked: str) -> str:
         """The guidance with the node's (or locked addon's) name shortened with "…" until the guide fits in
@@ -518,9 +506,8 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
 
     def on_resize(self) -> None:
         self.call_after_refresh(self._update_guide)  # once the guide has its new width
-        self.call_after_refresh(self._place_overlays)  # the action bar may take another number of rows
 
-    # --- the action tip, and where toasts go -----------------------------------------------------------
+    # --- the action tip (the toast stack's lowest box, ui.toasts) -------------------------------------------------
     def on_descendant_focus(self, event) -> None:
         super().on_descendant_focus(event)
         self._update_tip()
@@ -536,7 +523,8 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
         return next((name for button_id, _, _, name, _ in TREE_ACTIONS if button_id == focused.id), None)
 
     def _update_tip(self) -> None:
-        """Show what the focused action bar button would do now (or hide the tip), then place it and the toasts."""
+        """Show what the focused action bar button would do now (or hide the tip); ui.toasts places it and the
+        toasts after the layout this causes."""
         if not self.is_attached:
             return
         action = self._focused_action()
@@ -548,21 +536,6 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
                 label = f"{label} ({key_text(key)})"
             self.query_one("#action-tip", Static).update(Text.assemble((label, "bold"), "\n",
                                                                        self.action_tip(action)))
-        self.call_after_refresh(self._place_overlays)
-
-    def _place_overlays(self) -> None:
-        """The tip sits just above the guidance line over the action bar, and toasts just above the tip (or the
-        guidance line), so neither covers the line or the bar."""
-        if not self.is_attached:
-            return
-        top = next((w.region.y for w in (self.query_one("#guide"), self.query_one("#tree-actions"))
-                    if w.display and w.region.height), None)
-        above = max(self.size.height - top, 1) if top is not None else 1
-        rack = self.query_one("#tip-rack")
-        rack.styles.margin = (0, 0, above, 0)
-        if rack.display:
-            above += self.query_one("#action-tip").outer_size.height  # the rack is invisible and reports no size
-        lift_toasts(self, above)
 
     def action_tip(self, action: str) -> str:
         """What an action bar button would do with the ticks (or the highlighted node) as they are now."""

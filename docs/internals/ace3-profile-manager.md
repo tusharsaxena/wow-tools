@@ -210,8 +210,8 @@ per app session, L4; `ace.disclaimer_accepted` / `_declined`; Back returns to th
   `TREE_ACTIONS`, staged changes first (amber; Copy green, it only adds a profile), then staged deletes (red), then the rest (Assign, Rename, Copy,
   Everyone → Default (E), Delete, Only Default (D), Leftovers, Blacklist…, More…, Discard: three rows at 120x30, two at 160x45), each button doing what
   its key does. The focused button's `ActionTip` (`action_tip()`: what it would do with the ticks or the
-  highlighted node now) sits on its own `action-tip` layer just above the guidance line over the bar, and
-  `_place_overlays()` keeps Textual's toast rack above the tip (or the guidance line). With nothing ticked, Delete and Assign act on the
+  highlighted node now) is a `ui.toasts.StackTip` in a `TipRack`: the lowest box of the shared toast stack, just
+  above the guidance line over the bar (`#guide` has the `TOAST_FLOOR` class), with the toasts above it. With nothing ticked, Delete and Assign act on the
   highlighted node, but never on the root, a flavor or an account (`GROUP_KINDS`). The guide follows the cursor, the ticks and the pending
   changes. Discard is Backspace (`x`/`c` are expand and collapse all); `b` toggles the highlighted addon's
   (flavor, addon) pair through the shared `BlacklistAction` (`ui/review.py`; `core/blacklist.toggle_pair`) and saves at once; **Blacklist…** (`action_edit_blacklist`) opens

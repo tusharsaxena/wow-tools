@@ -187,7 +187,8 @@ pilot`, and press keys through `pilot`. Injected callables replace anything slow
 `tool_options`, e.g. `WowToolsApp(..., tool_options={"wtf-cleaner": {"wow_check": ..., "locker_check": list}})`.
 
 Pass `notifications=True` to `run_test` when a test asserts on toasts: Textual's `run_test` defaults to
-`notifications=False` and then shows none (see `test_ace_app.py` and `test_sv_browser_app.py`).
+`notifications=False` and then shows none (see `test_toast_stack.py`, `test_ace_app.py` and
+`test_sv_browser_app.py`).
 
 ### Sizes
 

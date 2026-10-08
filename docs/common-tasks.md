@@ -153,10 +153,12 @@ uses `FilterBox` instead of `TreeFilter` (Interface Backup's restore screen).
 5. Tests: `tests/test_look_and_feel.py::test_every_tree_screen_has_the_filter_box` and
    `test_review_tree_expands_and_collapses_all` reach every tool's review through `TOOLS`; a tree screen they do not
    open (like the restore screen) needs the same checks in the tool's own tests. Check it at `BASE` and `TINY`.
-   A screen with a scan box goes in `test_bars_keep_their_place_while_a_scan_runs` (STD-7.25).
+   A screen with a scan box goes in `test_bars_keep_their_place_while_a_scan_runs` (STD-7.25). A new screen goes
+   in the walk of `tests/test_toast_stack.py`: toasts are placed for it (`ui/toasts.py`); a row toasts must stay
+   above that is not a bar gets the `TOAST_FLOOR` class (STD-7.24).
 6. Help and guide: the screen's buttons in `help.py`, the `**Filter**` button and the keys in the guide.
 
-**Rules:** STD-7.4, STD-7.6 to STD-7.9, STD-7.11, STD-7.23, STD-7.25, STD-8.5, STD-8.7. Then [the green gate](#the-green-gate).
+**Rules:** STD-7.4, STD-7.6 to STD-7.9, STD-7.11, STD-7.23 to STD-7.25, STD-8.5, STD-8.7. Then [the green gate](#the-green-gate).
 
 ## 7. Add a shared helper (the two-tool rule)
 

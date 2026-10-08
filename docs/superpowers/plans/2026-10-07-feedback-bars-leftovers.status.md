@@ -16,7 +16,7 @@ go-ahead.
 | LR3 | review of L6, green gate, push, CI | done | (this commit) | Review of L6 with the rest of the branch: the scan box first in both tools, the workers' Undo lookups, the recovery notice gate, STD-7.20, internals and CHANGELOG agree. Fix: `latest_undoable` (core `journal`) never raises: L6 moved it into the scan and run workers (the WTF Cleaner's scan worker and both tools' run workers call it outside a `try`), where an unlistable journal folder (`iterdir` raising `OSError`) would have ended the worker with an error; it now offers nothing. Test first (`test_latest_undoable_never_raises_on_a_folder_it_cannot_list`, failed first); architecture `journal` row. Full suite 1827 tests OK (2 skipped), ruff clean, events check OK |
 | L7 | `q` quits from any screen | done | (this commit) | Why q did nothing on the flavor picker: `q` was bound per screen (the menu `app.quit`, each review `leave('quit')`, each result `choose('quit')`, the lock warning; the help and the changelog bound it to Back) and the pickers, settings, warnings, blacklist and popups had none. Now `Ka0sApp.key_q` -> `action_quit` (busy: refused with the `ui.quit_refused` notice; work staged on a review in the stack: its `discard_question()` asks first; else `exit()`, the path suite.run follows with session.end and the lock release). Reviews bind `q` to `app.quit` (footer kept); `ReviewBase.discard_question` / `action_leave` replace the Ace3 and SV Browser `action_leave` copies; help and changelog no longer close on q. 4 tests in `tests/test_quit_key.py` (written first, failed first: every screen of every tool, menu / changelog / help / settings at BASE and LARGE, filter and settings field type q, busy refused, staged asks once and No keeps it); help and changelog tests now close with Esc / h. STD-8.11, architecture, README and suite help keys, CHANGELOG, `ui.quit_refused` description and events.md. Review fixes L7-e (`DiscardScreen`, no flag, 5 more tests, `QuitBindingsTest`). Full suite 1837 tests OK (2 skipped), ruff clean, events check OK |
 | L8 | "Don't show this again" on the risk popup | done | (this commit) | `DisclaimerScreen` gets a `DontShowCheckbox` "Don't show this warning again for this tool" (`ChoiceScreen.extras()`; Tab reaches it, Space ticks, Enter on it presses I understand; I understand with it ticked dismisses `ACCEPT_DONT_SHOW`). `ToolFlow.ask_disclaimer` skips when `[SECTION] skip_risk_warning` (`core.config.SKIP_RISK_WARNING`) is true and saves it on a ticked accept (atomic `Config.save`); Back/Esc never save. The three settings forms get "Show the USE AT YOUR OWN RISK warning" (`ToolSettingsScreen.risk_warning_box()`, last field; all fit at 120x30); each tool's `skip_risk_warning` setting field. Events `clean.` / `ace.` / `svb.risk_warning_changed` (shown, source) registered, events.md regenerated. 6 tests in `DontShowAgainTest` (`tests/test_risk_disclaimer.py`, written first, failed first; the failed-write one after); WTF keyboard settings test takes the new box. Help (3), guides (3), README settings, architecture, internals (3), CHANGELOG. Full suite 1843 tests OK (2 skipped), ruff clean, events check OK |
-| L9 | one toast anchor and stack | todo | | |
+| L9 | one toast anchor and stack | done | (this commit) | Why they overlapped: the toasts were placed per screen (`ui/review.py` `lift_toasts`, called by the SV Browser's `place_toasts` and the Ace3 `_place_overlays`; every other screen kept Textual's rack one row up, over the bottom line), and the Ace3 `#tip-rack`'s `auto` height was a row short of a tip that wraps at its scrollbar-narrowed width, so the tip hung over the guide and under the toasts. Now `ui/toasts.py`: `install(app)` (from `Ka0sApp.on_mount`) subscribes to `screen_change_signal` and to each shown screen's `screen_layout_refresh_signal`; `place_toasts` puts the rack on `toast_floor` (top of `BottomBar`, `SummaryBar`, `Footer`, `ActionBar`, `.toast-floor`; a popup without bars uses the screen under it); `TipRack` / `StackTip` (Ace3 `ActionTip`) are the stack's lowest box, the rack sized to the tip. Removed: `lift_toasts`, `ActionBar.on_mount`, SV Browser `place_toasts`, Ace3 `_place_overlays`, `ActionTip.on_resize` and the screen's `layers` CSS. Tests first in `tests/test_toast_stack.py` (failed first: the WTF Cleaner review's toasts covered the bottom line): 3 toasts on every screen of every tool (+ the Ace3 tip) at BASE and LARGE, menu / changelog / help / setup, one right edge, lowest box on the bars, no overlap, no bar covered; `OneHelperTest` (only `ui/toasts.py` names the rack). STD-7.24 is now a MUST for this (folded, not a new ID); architecture `toasts` and `base` rows, Ace3 internals, tree-screen recipe, testing.md, CHANGELOG. No new event. Full suite 1848 tests OK (2 skipped), ruff clean, events check OK. Review fixes L9-e (toasts clear a popup's own controls, `PopupStackTest`, STD-7.24 citations): full suite 1849 tests OK (2 skipped), ruff clean, events check OK |
 | L10 | long warning lists collapse | todo | | |
 | LR4 | review of L7-L10, green gate, push, CI | todo | | |
 | LR | review, green gate, push | done | (this commit) | Whole-branch review: code, docs, help and CHANGELOG agree with L1-L3 and STD-7.25; fixes: the new import and docstring lines in the four reviews and `warnings_view` re-wrapped to 120 columns (STD-1.10), the internals line for Leftovers re-wrapped. Full suite 1806 tests OK (2 skipped), ruff clean, events check OK |
@@ -202,3 +202,41 @@ go-ahead.
   and failing first: the failed-save test asserts the key is still false in memory and on disk after a later save
   of the same config, and that no `config.changed` is logged; a new test presses Enter on the box at once (ignored)
   and after the guard (accepted). Rejected: none.
+
+- L9-a: STD-7.24 is rewritten as the MUST (it was the SHOULD "lift toasts above an `ActionBar`" with the per-screen
+  `place_toasts`), not a new STD-7.26: same subject, same ID, the SV Browser test it named still enforces part of
+  it. The new test file is named in its Enforced by.
+- L9-b: the anchor is the top of the screen's lowest bars, found by type (`BottomBar`, `SummaryBar`, `Footer`,
+  `ActionBar`) plus the `TOAST_FLOOR` class for a row that is not a bar (the Ace3 guidance line over its action
+  bar). The left pane's `#actions` button row is not a floor: it sits left of the toasts (toasts are at most half
+  the width, at the right). A popup without bars (confirm, risk popup, update offer) takes the anchor of the screen
+  under it, so toasts do not jump when it opens; a popup's own buttons may still sit under a tall stack at 120x30,
+  as with Textual's default.
+- L9-c: the tip joins the stack as its lowest box: it sits on the floor and the toasts start one row above it
+  (`GAP`, the row Textual leaves between toasts). It keeps its own `toast-tip` layer (`TIP_LAYER_CSS`, on every
+  screen through `Ka0sApp.CSS`), so it never takes room from the layout; the shared `TipRack` gets an explicit height
+  equal to its tip's, because its `auto` height was measured a row short at 120x30.
+- L9-d: placement runs from the app, not the screens: `screen_change_signal` (every push, pop and switch) and each
+  shown screen's layout refresh (a bar that wraps, a tip shown or hidden, a resize, a toast mounted), subscribed
+  once per screen with the app as subscriber (running even before the screen has started). A margin is set only
+  when it changes, so a placement never loops. When three toasts and the tip are taller than the space above the
+  bars (120x30 on the Ace3 review), Textual's rack scrolls the oldest toast's top out of sight, as before.
+- L9-e (review of the L9 commit, folded into it): (1) accepted, and L9-b's "a popup's own buttons may still sit
+  under a tall stack" is withdrawn: toasts covered Yes/No, OK/Cancel and the prompt field on the popups. A popup's
+  floor is now the higher of the bars under it and the top of its own highest control (`CONTROL_SELECTOR`:
+  `Button`, `Input`, `TextArea`, `Checkbox`, `Switch`, `Select`, `RadioSet`, `OptionList`) that reaches into the
+  toasts' column (the right 60 columns, at most half the width, left of the rack's 2-column gutter); only the shown
+  popup counts (one under it cannot be pressed). Detail trees are not controls: they are read, and a popup tree as
+  a floor would leave the stack no room. On the tallest popups at 120x30 (Quick actions, Search) that leaves 7-8
+  rows, so the rack scrolls the older toasts out of sight and the newest stays whole (L9-d). (2) accepted:
+  `PopupStackTest` pushes every other popup over the menu at 120x30 and 160x45 (the generic and each tool's
+  progress screen, the text prompt, Ace3 Name / Target / Quick actions, SV Rename key / Edit value / Search /
+  search progress, Notes, the confirm, the unfinished-run and both recovery warnings, the lock, the update offer
+  and its progress) and the discard question over a prompt; `assert_stack` now also checks, on any popup, that no
+  toast covers one of its controls (found by type in the test) and that the stack starts above the highest one in
+  the toasts' column. Written first and failing first (the risk popup's box, the prompt's field). (3) and (5), one
+  finding: the three `STD-7.26` citations read `STD-7.24`. (4) kept, explained: the anchor is per screen by the
+  spec's own words ("just above the screen's bottom bars and action bars"), the same on every screen with the same
+  bars; a popup's anchor differs because what it must not cover differs (now its controls too). The test pins
+  one right edge on every screen of a size and the bottom of each stack against that screen's bars and controls.
+  To confirm with the user: whether "the same anchor" meant one fixed height instead.

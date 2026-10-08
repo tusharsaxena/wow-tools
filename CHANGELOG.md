@@ -44,6 +44,11 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
     "Checking the destination folder": a slow or sleeping destination drive no longer freezes the screen for a
     few seconds with nothing on it. A destination that isn't allowed is reported as before.
 - **The app**
+  - Messages that pop up at the bottom right now start at the same place on every screen, just above the bars at
+    the bottom (and above the action bar under a tree), and several stack upward without covering each other. The
+    Ace3 Profile Manager's "what this button would do" box is the lowest of that stack, so a message no longer
+    lands on top of it. On a popup they start above its buttons, text box, tick box or list, so a message never
+    covers what you're about to press or type into.
   - Scanning or rescanning no longer moves the bars under the tree to the top of the pane: the Ace3 Profile
     Manager's guide and action bar, and the Saved Variables Browser's action bar, stay at the bottom while the scan
     runs. When a scan fails, its message takes one line at the bottom (the notice shows it in full), so a long

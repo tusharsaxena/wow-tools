@@ -596,10 +596,20 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   *Enforced by:* `tests/test_look_and_feel.py::test_tiny_terminal_still_works`,
   `tests/test_look_and_feel.py::test_popups_keep_a_readable_width_at_large`,
   `tests/test_look_and_feel.py::test_settings_forms_fit_at_base_and_keep_a_readable_width`.
-- **STD-7.24 SHOULD** A screen with an `ActionBar` under its tree lifts toasts above it (`place_toasts` with
-  `lift_toasts`).
-  *Why:* a toast must not cover the controls being pressed.
-  *Enforced by:* `tests/test_sv_browser_app.py::test_toasts_sit_above_the_action_bar`.
+- **STD-7.24 MUST** Every toast on every screen starts from one anchor, bottom right just above the screen's bars,
+  and several stack upward without overlapping; one shared helper places them (`ui/toasts.py`, installed by
+  `Ka0sApp`), and no screen places its own. The bars are the bottom bar, the bottom line, an `ActionBar` and any
+  widget with the `TOAST_FLOOR` class (the Ace3 guidance line); a popup takes the anchor of the screen under it,
+  raised above its own controls (`CONTROL_SELECTOR`: buttons, fields, boxes, lists) in the toasts' column, so a
+  toast never covers a popup's buttons or field. A toast-like tip (`StackTip` in a `TipRack`: the Ace3 action tip)
+  is the stack's lowest box, with the toasts above it.
+  *Why:* a toast must not cover the controls being pressed, nor the tip read with them; toasts that start at a
+  different height on each screen, or a tip and a toast that overlap, read as a broken layout (user feedback
+  2026-10-07 and 2026-10-08, spec L9).
+  *Enforced by:* `tests/test_toast_stack.py` (three toasts, and the Ace3 tip, on every screen of every tool and on
+  every popup, a popup over a popup too, at 120x30 and 160x45: one right edge, the lowest box on the bars or the
+  popup's controls, no overlap, no bar or popup control covered; only `ui/toasts.py` names the toast rack),
+  `tests/test_sv_browser_app.py::test_toasts_sit_above_the_action_bar`.
 - **STD-7.25 MUST** A screen's bottom bars and button rows keep their place whatever stands in for the tree (scan
   progress, an empty or failed scan, a load): the stand-in takes the tree's space (`two_pane_css` gives `#scan-box`
   `height: 1fr`, as the tree has), so the rows under the tree (the Ace3 guide and action bar, the Saved Variables

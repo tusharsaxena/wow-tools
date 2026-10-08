@@ -51,8 +51,7 @@ from wowtools.tools.sv_browser.undo import (UndoError, UndoResult, leave, pendin
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                  UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
-from wowtools.ui.review import (ActionBar, BarTree, ReviewBase, RunActions, SvRecoveryActions, TickModel, WowCheck,
-                                lift_toasts)
+from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, SvRecoveryActions, TickModel, WowCheck
 from wowtools.ui.tree_filter import (FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TextFilter,
                                      TreeFilter)
 from wowtools.ui.warnings_view import (WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost,
@@ -244,13 +243,6 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
         self.query_one("#browse", Tree).focus()
         self._refresh_buttons()
         self._scan()
-
-    def place_toasts(self) -> None:
-        """Toasts go just above the action bar under the tree, so they never cover it or the lines under it (the
-        bar calls this after every layout)."""
-        if self.is_attached:
-            bar = self.query_one("#tree-actions").region
-            lift_toasts(self, self.size.height - bar.y if bar.height else 1)
 
     def _set_sub_title(self) -> None:
         self.sub_title = f"{TITLE} · {self.scope_label} · {self.view}"
