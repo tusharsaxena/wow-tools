@@ -13,19 +13,27 @@ doesn't. It shows you the raw data an addon saved and lets you change any value 
 doesn't expect (text where it wants a number, a colour that is out of range, a key it never reads), the addon may
 throw errors, reset itself to its defaults or quietly lose that setting. The tool can't warn you about that.
 
-So the tool asks you to accept this each time you open it from the tool menu (**I understand**, or **Back** to the
-game versions), shows `⚠ USE AT YOUR OWN RISK` in red at the top of its left panel the whole time, and repeats the
-warning in red on every **Apply** and **Undo** confirm.
+So the first time you pick a game version in this tool after starting the app, it asks you to accept the risk before
+the scan. The popup opens over the tool menu. **I understand** goes on. **Back** returns to the game versions and
+doesn't count, so you're asked again next time. The tool also shows `⚠ USE AT YOUR OWN RISK` in red at the top of its
+left panel the whole time, and repeats the warning in red on every **Apply** and **Undo** confirm.
 
-What it does guarantee: every byte you didn't change stays exactly as it was, your whole `WTF` folder and every file
-it changes are backed up before anything is written, and **Undo last change** puts the files back.
+Once you've read it, you can tick **Don't show this warning again for this tool** (`Tab` to it, `Space` to tick)
+before you press **I understand**. The popup then stays hidden until you tick
+**Show the USE AT YOUR OWN RISK warning** in the tool's [settings](#settings). The red line and the warning on the
+confirms stay either way.
+
+**_The USE AT YOUR OWN RISK warning_**
+
+![The USE AT YOUR OWN RISK warning (shown here with the Ace3 Profile Manager's text; the wording differs per tool), with Back and I understand buttons](assets/screenshots/suite/risk-warning.png)
+
+What the tool does promise: every byte you didn't change stays exactly as it was. Before it writes anything, it backs
+up your whole `WTF` folder and every file it is about to change, and **Undo last change** puts those files back.
 
 > **Close WoW first.** WoW keeps every addon's settings in memory while you play and writes them all back to the
 > `WTF` folder every time you log out or type `/reload`. Anything this tool changed while the game was open would be
 > overwritten. That's why **Apply** and **Undo** refuse to run while WoW is running (browsing, searching and a
 > **Dry run** work any time).
-
-<!-- screenshots: disclaimer popup, review screen (Browse), search popup, review screen (Results), apply confirm, result -->
 
 ## What it shows
 
@@ -48,7 +56,7 @@ other files such as `Config.wtf`, and anything reached through a link (a symlink
 2. **The first time only:** check the settings (see [Settings](#settings)) and press **Save**. The suggested value
    is fine for most people.
 3. **Pick a game version**, or **All flavors** to see every version at once. There is no account picker: the tree
-   shows every account.
+   shows every account. `t` or `Esc` goes back to the tool menu.
 4. Read the warning and press **I understand** (or **Back** to pick again).
 5. The review screen lists every SavedVariables file. Open a file to see its variables, and open a table to see its
    keys.
@@ -62,12 +70,17 @@ other files such as `Config.wtf`, and anything reached through a link (a symlink
 
 ## The review screen
 
+**_The Saved Variables Browser review screen, Browse view_**
+
+![The Saved Variables Browser review screen in the Browse view](assets/screenshots/sv-browser/review.png)
+
 **On the right** is the tree. It has two views; **View** (`v`) switches between them, and the screen's sub-title
 names the one you're on.
 
 **Browse** (the usual view):
 
-game version → account → **Account-wide**, or realm → character → the file and its size (`ElvUI.lua  12.4 KB`) → variables → keys
+game version → account → **Account-wide**, or realm → character → the file and its size (`ElvUI.lua  12.4 KB`) →
+variables → keys
 
 - Nothing is read until you open a file, so the scan is quick even with thousands of files. Opening a file reads it
   and shows its variables; opening a table shows its keys. A big file takes a moment: a dim "Reading…" line shows
@@ -82,11 +95,12 @@ game version → account → **Account-wide**, or realm → character → the fi
   rest of the file is still there to read, but an edit staged anywhere in that file stops **Apply** before anything
   is written ("not readable Lua").
 
-**Results**: the hits of your last search; see [Search](#search) and [Editing the results in bulk](#editing-the-results-in-bulk).
+**Results**: the hits of your last search; see [Search](#search) and [Editing the results in
+bulk](#editing-the-results-in-bulk).
 
-**Under the tree** is the action bar. It works on the highlighted key (in **Results**, **Edit value** and **Rename
-key** work on every ticked result; see [Editing the results in bulk](#editing-the-results-in-bulk)); a button that
-can't act on it is greyed out.
+**Under the tree** is the action bar. Its buttons work on the highlighted key, and a button that can't act on it is
+greyed out. In **Results**, **Edit value** and **Rename key** work on every ticked result instead; see
+[Editing the results in bulk](#editing-the-results-in-bulk).
 
 | Button | Key | Does |
 |---|---|---|
@@ -101,19 +115,19 @@ back to the tree.
 
 **On the left** are the red `⚠ USE AT YOUR OWN RISK` line, the filter box with its **Filter** button, the lines that
 count what is waiting (`Staged: 3 edits in 2 files`, and after a search `Results: 120 hits in 14 files` and
-`Ticked: 120 results`), **Search** on a row of its own, then **Apply**, **Dry run**, **Rescan** and **Undo last
-change**.
+`Ticked: 120 results`), **Search** on a row of its own, then **Apply**, **Dry run**, **Rescan** and
+**Undo last change**.
 
 **At the bottom** a bar names the highlighted line in full
 (`Selected: Retail › ACCT1 › Account-wide › ElvUI.lua › ElvDB › font = "Expressway"`) and counts the files found
 (`312 files in 2 flavors`).
 
-**Warnings**: when the scan skipped a folder, or a file couldn't be read (when you opened it in the tree, or a
-search went through it), a **⚠ N warnings (!)** button sits at the right end of the bottom bar:
-click it or press `!` to open the **warnings view**. It lists every warning, grouped by game version, each with the file or
-folder (inside that game version's folder) and what went wrong; the line on the left shows the highlighted one in
-full. `/` filters the list, `x` / `c` expand and collapse it, `h` opens the help, and **Back** (`Esc`) returns to
-the review. With no warnings there's no button. The log still has them too.
+**Warnings**: when the scan skipped a folder, or a file couldn't be read (when you opened it in the tree, or a search
+went through it), a **⚠ N warnings (!)** button sits at the right end of the bottom bar. Click it or press `!` to open
+the **warnings view**. It lists every warning by game version, each with the file or folder (inside that game
+version's folder) and what went wrong, and the line on the left shows the highlighted one in full. `/` filters the
+list, `x` / `c` expand and collapse it, `h` opens the help, **Back** (`Esc`) returns to the review, and `t` goes to the
+tool menu. With no warnings there's no button. The warnings are in the log too.
 
 ### The filter
 
@@ -153,9 +167,13 @@ does leaving the screen: they haven't been written, and leaving throws them away
 
 ### Edit value
 
-The popup names the key and its value now (**Now:**), and has a type list (String, Number or Boolean) and the new value: a text
-box for a string or a number, a checkbox for a boolean. The type may change (a number can become a string). **OK**
-(or `Enter`) checks what you typed and stages it; a problem shows under the box until you change it.
+**_Editing a value_**
+
+![The Edit value popup: the current value, its type and the new value](assets/screenshots/sv-browser/edit-value.png)
+
+The popup names the key and its value now (**Now:**), and has a type list (String, Number or Boolean) and the new value:
+a text box for a string or a number, a checkbox for a boolean. The type may change (a number can become a string).
+**OK** (or `Enter`) checks what you typed and stages it; a problem shows under the box until you change it.
 
 - A **number** must be one Lua reads back as exactly that number: `12`, `-0.5`, `1e3`. `inf`, `nan` and integers
   past 2^53 are refused.
@@ -172,8 +190,8 @@ anything else a text key as you typed it (`["[5]"]` is the text `[5]`). New keys
 WoW writes them. Refused:
 
 - an empty key;
-- a key the table **already has** (by Lua's rules, so `[1]` and `[1.0]` are the same key, and `["1"]` is another), counting
-  the edits already staged in that table;
+- a key the table **already has** (by Lua's rules, so `[1]` and `[1.0]` are the same key, and `["1"]` is another),
+  counting the edits already staged in that table;
 - a **top-level** variable (`ElvDB`): the addon looks it up by that name, so it can't be renamed;
 - an **array entry**: it has no written key to rename.
 
@@ -190,8 +208,8 @@ A confirm names the key (and for a table, how many entries go with it). **Yes** 
 
 ## Search
 
-**Search** (`S`, that's Shift+S; `s` is settings) opens the search popup. It only finds: what to change is chosen
-afterwards, on the results. Fill in what you need and press **Find** (or `Enter`):
+**Search** (`S`, that's Shift+S; `s` is settings) opens the search popup. It only finds things; you choose what to
+change afterwards, on the results. Fill in what you need and press **Find** (or `Enter`):
 
 | Field | What it means |
 |---|---|
@@ -212,7 +230,15 @@ its key but never by its value.
 
 The popup opens with your last search filled in, so narrowing it is quick.
 
+**_The search popup_**
+
+![The Search popup: a value to find (Contains), with every flavor, account and character in scope](assets/screenshots/sv-browser/search.png)
+
 ### Results
+
+**_Search results_**
+
+![The Results view: every hit of a search, ticked, under its file](assets/screenshots/sv-browser/search-results.png)
 
 The search reads every file in scope (several at once, with a progress window), and switches the tree to the
 **Results** view: game version → account → **Account-wide** or `Realm/Name` → file → one line per hit,
@@ -231,6 +257,10 @@ files, and how long it took.
 - A **new search** replaces the results and their ticks; what is staged stays.
 
 ## Editing the results in bulk
+
+**_Editing the results in bulk_**
+
+![The bulk edit popup: replace only the matched text in every ticked result](assets/screenshots/sv-browser/bulk-edit.png)
 
 In the **Results** view, **Edit value** (`e`) and **Rename key** (`k`) work on **every ticked result**, or on the
 highlighted one when none is ticked. They open the same popups as in Browse, titled with the count ("Edit 37
@@ -268,6 +298,10 @@ Then the confirm counts the edits and files per game version, lists each file un
 (`ACCT1 › Account-wide › ElvUI.lua: 2 edits`), and shows in red: array entries that will move down, and the USE AT
 YOUR OWN RISK warning. **Yes** is selected, in red.
 
+**_The Apply confirm_**
+
+![The Apply the pending changes? confirm: the edit and file counts, the warning in red, and each file under its game version](assets/screenshots/sv-browser/apply-confirm.png)
+
 A progress window then shows each step. For each game version the tool:
 
 1. **Checks every file again.** If a file changed since the tool read it (you logged a character out with the tool
@@ -286,20 +320,27 @@ If anything goes wrong while writing, every file already written in that game ve
 run stops. With **All flavors** the game versions are changed one after another; if one runs into a problem, the
 versions after it aren't touched, and the versions before it keep their changes (Undo puts them back).
 
-After a real Apply the staged edits are gone, and the review reads the files again when you leave the
-results screen.
+**_An Apply in progress_**
+
+![The Applying the changes progress window, backing up the WTF folder](assets/screenshots/sv-browser/apply-progress.png)
+
+After a real Apply the staged edits are gone, and the review reads the files again when you leave the results screen.
 
 ## Dry run
 
 A **Dry run** (`y`) does everything Apply does except writing: it rechecks every file and builds and checks each new
-version in memory. It writes nothing at all: no zip, no journal. It works while WoW is running. Its results screen
-has a **Back to review** button (`Esc`) that takes you back with your staged edits still there.
+version in memory. It writes nothing at all, not even a zip or a journal, so it works while WoW is running. Its
+results screen has a **Back to review** button (`Esc`) that takes you back with your staged edits still there.
 
 ## The results screen
 
+**_The results of an Apply_**
+
+![The Apply results: the backups and journal, then every changed file with its number of edits](assets/screenshots/sv-browser/apply-result.png)
+
 The top table sums up the run: game versions, files changed (or that would change), edits written (or checked),
-files skipped, put back or failed, the backup folder, the `WTF` backup, the zip of the
-original files and the journal. The table below has one line per file: game version, account, account-wide or
+files skipped, put back or failed, the backup folder, the `WTF` backup, the zip of the original files and the
+journal. The table below has one line per file: game version, account, account-wide or
 character, file, how many edits, and what happened ("changed", "would change", "skipped", "put back", "failed"),
 with the reason when there is one.
 
@@ -308,17 +349,17 @@ Apply was refused before it wrote anything, **Back to review** keeps your staged
 
 ## Undo last change
 
-Changed your mind? **Undo last change** (`z`, the violet button) puts back every file the most recent Apply changed,
-from the zip of the original files. It asks first, naming when that change ran and in which game versions, with the
-USE AT YOUR OWN RISK warning. Close WoW first: Undo refuses while it's running, just like Apply.
+**Undo last change** (`z`, the violet button) puts back every file the most recent Apply changed, from the zip of
+the original files. It asks first: the confirm names when that change ran and in which game versions, and repeats
+the USE AT YOUR OWN RISK warning. Close WoW first: like Apply, Undo refuses while the game is running.
 
 - A file is put back only if it's still exactly what the tool wrote. If WoW (or anything else) saved it since, it's
   **left as it is** and marked "changed since the change was made". Undo never overwrites settings saved after the
   change.
 - Before it puts anything back, Undo backs up your whole `WTF` folder again, so the undo itself can be undone by hand.
 - Undo only goes back **one** change: after you undo, the button stays greyed out until your next Apply.
-- Anything staged that you haven't applied is dropped when the Undo runs (the confirm says how much). If
-  the Undo is refused before it starts (WoW running, say), it stays.
+- Anything staged that you haven't applied is dropped when the Undo runs (the confirm says how much). If the Undo is
+  refused before it starts (WoW running, say), your staged edits stay.
 
 ## The safety net
 
@@ -353,8 +394,8 @@ if you pick another backup folder.
   on the first screen `s` opens (`0` keeps them all).
 - Only the newest 10 **journals** are kept: `keep_journals`, also shared. An `edited` zip is deleted along with the
   last journal that needs it.
-- To put files back by hand (an older change, say): close WoW, open the `edited\edited-…zip`, and extract it **into
-  the game version's folder** (for example `World of Warcraft\_retail_`), keeping the folders. You can ignore
+- To put files back by hand (an older change, say): close WoW, open the `edited\edited-…zip`, and extract it
+  **into the game version's folder** (for example `World of Warcraft\_retail_`), keeping the folders. You can ignore
   `manifest.json`.
 
 ### If a change was interrupted
@@ -402,11 +443,12 @@ work on at once; then this tool's). The tool's settings are saved in `config\sv-
 | Setting | Starts as | What it means |
 |---|---|---|
 | Backup folder | empty | Where the `WTF` backups and the zips of edited files go: they're put in its `sv-browser` folder. Empty means `<WoW folder>\wow-tools`. It must be a full path (such as `D:\WoW backups`), and it can't be your WoW folder itself or inside a game version's `WTF`, `Interface` or `Screenshots` folder |
+| Show the USE AT YOUR OWN RISK warning | on | Ask you to accept the warning after you pick a game version (once each time you start the app). Off when you ticked **Don't show this warning again for this tool** on it |
 
-The file itself uses these names under `[sv_browser]`, if you edit it by hand: `backup_dir` and `last_flavor_choice`
-(the game version you picked last time; empty means **All flavors**). Close the app before editing the file, or your
-change may be overwritten. Comments you add to the file aren't kept (the app rewrites it when it saves a setting or
-the game version you pick).
+The file itself uses these names under `[sv_browser]`, if you edit it by hand: `backup_dir`, `skip_risk_warning`
+(`true` means the warning isn't shown) and `last_flavor_choice` (the game version you picked last time; empty means
+**All flavors**). Close the app before editing the file, or the app may overwrite your change. Comments you add to the
+file aren't kept: the app rewrites it whenever it saves a setting or the game version you pick.
 
 How many backups and journals to keep is shared by every tool: `keep_backups` (10; `0` keeps all) and
 `keep_journals` (10) under `[general]` in `config\wow-tools.cfg`, on the first screen `s` opens. So is
@@ -442,7 +484,8 @@ once, and how many game versions Undo backs up at once. Apply still does one gam
 | `Tab` | Move to the next control |
 
 Leaving with `f`, `Esc`, `t` or `q` while something is staged asks first (ticks alone don't). In the popups,
-`Enter` presses **OK** or **Find**, `Space` ticks a checkbox and `Esc` cancels.
+`Enter` presses **OK** or **Find**, `Space` ticks a checkbox and `Esc` cancels. `t` goes back to the tool menu from
+any popup or screen (in a text box it types the letter; with changes staged it asks first; not while a run writes).
 
 ## FAQ
 
@@ -459,7 +502,7 @@ Leaving with `f`, `Esc`, `t` or `q` while something is staged asks first (ticks 
 | Can I replace a number with text? | Yes: **Edit value** and pick **String** as the type. In a bulk edit after a value **Contains** search, pick **Whole value** first: **Replace only the matched text** works inside strings only. |
 | What's the difference between Dry run and Apply? | A **Dry run** checks every staged edit and shows the results without writing anything. **Apply** writes them, after backing everything up. |
 | Can I undo a change from last week? | **Undo last change** only goes back to the most recent change. For an older one, unzip its `edited` zip by hand; see [Where your backups go](#where-your-backups-go). |
-| Why does it ask me to accept the warning every time? | Because this tool can do damage no other tool in the app can. It asks once each time you open it from the tool menu (not when you pick another game version or rescan). |
+| Why does it ask me to accept the warning? | Because it can break an addon in ways it can't warn you about. It asks once each time you start the app: not again when you open the tool a second time, pick another game version or rescan. The WTF Cleaner and the Ace3 Profile Manager ask the same way, each for itself. |
 | Does it work on a Mac? | Yes. The "WoW is running" check works there too, so Apply and Undo wait until you close WoW. |
 
 ## Troubleshooting

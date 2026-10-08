@@ -22,7 +22,7 @@ from wowtools.core.install import Flavor
 from wowtools.core.journal import now_iso
 from wowtools.core.parallel import run_units, workers_for
 from wowtools.core.paths import to_stored
-from wowtools.tools.interface_backup.catalog import BACKUP, new_backup_path, prune_backups
+from wowtools.tools.interface_backup.catalog import BACKUP, new_backup_path, prune_backups, zips_dir
 from wowtools.tools.interface_backup.scanner import PARTS, SAMPLE, FlavorScan
 
 Progress = Callable[[str, int, int, str], None]
@@ -245,7 +245,7 @@ def back_up_all(scans: list[FlavorScan], root: Path, *, keep: int, progress: Pro
     others; an unexpected error is that flavor's "failed" outcome too (before, it stopped the whole run). Outcomes come back in the order of `scans`.
     on_flavor(display name) runs in the flavor's thread before it starts (its progress reports then come from that
     thread, a ProgressScreen puts them in that flavor's row) and on_flavor_done(display name) once it ended."""
-    log_event("ibackup.backup_started", flavors=[s.flavor.folder for s in scans], dest=to_stored(root),
+    log_event("ibackup.backup_started", flavors=[s.flavor.folder for s in scans], dest=to_stored(zips_dir(root)),
               workers=workers_for(parallelism, len(scans)))
     announce, ended = safe_progress(on_flavor), safe_progress(on_flavor_done)
 

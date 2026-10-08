@@ -29,7 +29,7 @@ from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, TreeFilter
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-EXPLANATION = "Ticked addons are blacklisted: their profiles are shown but never changed."
+EXPLANATION = "Ticked addons are blacklisted: the review shows them marked ⊘, never ticked or changed."
 NAV_HINT = review_hint() + "a all · " + FILTER_HINT + TREE_HINT.removesuffix(" · ")
 Key = tuple[str, str]  # (flavor folder, addon), casefolded
 

@@ -1,5 +1,5 @@
 """The changelog (spec D3): every version in CHANGELOG.md on the left, newest first, and the highlighted version's
-notes on the right. Opened with c from the tool menu; Esc or q goes back to it."""
+notes on the right. Opened with c from the tool menu; Esc goes back to it (q quits)."""
 from __future__ import annotations
 
 from typing import ClassVar
@@ -23,7 +23,7 @@ from wowtools.ui.widgets import LIST_CURSOR_BACKGROUND, LIST_NAME_STYLE, NAV_BIN
 VERSIONS_WIDTH = 36  # the left pane: a version, its date and the "current" mark on one row
 CURRENT_MARK = "current"
 YANKED_MARK = "yanked"
-CHANGELOG_HINT = "↑↓ version · →/Tab notes · ← versions · Esc/q back"
+CHANGELOG_HINT = "↑↓ version · →/Tab notes · ← versions · Esc back"
 
 
 def version_name(entry: ChangelogEntry) -> str:
@@ -64,7 +64,7 @@ class ChangelogScreen(TwoPaneFocus, Screen[None]):
     ChangelogScreen #notes:focus {{ background-tint: $foreground 4%; }}
     """
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("escape,q", "close", "Back"),
+        Binding("escape", "close", "Back"),
         Binding("left", "focus_filters", "Versions", show=False),
         Binding("right", "focus_tree", "Notes", show=False),
         *NAV_BINDINGS,

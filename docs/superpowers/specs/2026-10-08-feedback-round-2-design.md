@@ -1,0 +1,16 @@
+# Feedback round 2: design
+
+Date: 2026-10-08. Branch: `fix/feedback-2026-10-07-b` (the same branch as round 1; round 1's records are
+`2026-10-07-feedback-bars-leftovers*`, decisions L1-L10). Plan: `../plans/2026-10-08-feedback-round-2.md`, ledger
+`../plans/2026-10-08-feedback-round-2.status.md`.
+
+## Decisions
+
+| # | Topic | Decision |
+|---|---|---|
+| L11 | `t` from any screen | User feedback 2026-10-08: like `q` (L7), `t` goes back to the tool menu from every screen and popup, one app-wide binding. A focused text input types `t`; while `app.busy` it refuses with the same notice; leaving a review with pending (unapplied) changes keeps today's guard; on the tool menu `t` does nothing. Esc keeps its meaning. Folded into L7's STD-8 rule; a test presses `t` on every screen. |
+| L14 | WTF Cleaner result: "Run journal" twice | User screenshot 2026-10-08: the WTF Cleaner result summary shows a "Run journal" row above the flavor heading and again with the Undo hint. Find why, keep one row (the one with the Undo hint), test first; check the other tools' result screens for the same duplication. |
+| L15 | Blacklist mark | User feedback 2026-10-08 (screenshot: ElkBuffBars and TargetNameplateIndicator rows have a blank tick column). Blacklisted rows show a shared mark `⊘` in the tick column (one constant in `ui/`), in the row's muted blacklisted colour, in every tool with a blacklist (WTF Cleaner review; Ace3 review, By addon and By character, and its blacklist screen). Help/legend text names it; tests pin it. |
+| L16 | Interface Backup `backup/` folder | User feedback 2026-10-08 (screenshot of `wow-tools/interface-backup/` with 22 loose zips next to `journal/`). New backups and pre-restore safety zips go to `<root>/interface-backup/backup/` (root = the WoW folder's `wow-tools`, or the user's backup folder setting), like the WTF Cleaner's `backup/`. Existing zips in the old place are moved into `backup/` once with `rename_no_replace` (a registered event; a name already taken is left in place and reported); until moved, listing, restore and pruning still see them; pre-restore zips keep their never-pruned rule. Undo of an older run whose journal names the old path finds the zip in `backup/` by name. Guide, internals, CHANGELOG. Tests: the move (incl. a taken name), restore from a moved zip, Undo of an older run. |
+| L12 | Docs and help in sync | User request 2026-10-08: every user doc (README, the five guides, CHANGELOG) and dev doc (standards, architecture, internals, testing, common-tasks, adding-a-tool, CLAUDE.md index) and every in-app help screen (each tool's `help.py`, the suite help) checked against the code: keys, buttons, settings, screens, events, file paths. Fix drift. Includes: the WTF Cleaner guide gains a section on the risk popup (with `screenshots/suite/risk-warning.png`), where the risk popup actually appears (code decides), and the Assign/Rename/Copy popups' long lists use L10's collapsed tree (code change if they do not). |
+| L13 | Humanize | User request 2026-10-08: apply the `humanize` skill's rules to all user-facing text (README, the five guides, CHANGELOG, help screen content): remove AI-writing tells, vary rhythm, keep the existing plain guide style (not chatty), keep every fact and every string tests/test_docs.py pins. Dev docs excluded. |

@@ -55,7 +55,8 @@ read-only permissions and a 20-minute timeout per job ([STD-10.2](standards.md#1
 
 1. `python -m compileall -q wowtools scripts tests` (byte-compile: catches syntax newer than the interpreter).
 2. `python scripts/gen_event_docs.py --check`.
-3. `python scripts/run_tests.py`.
+3. `python scripts/run_tests.py --timeout 900`: 900 s per shard, not the 600 s default, since a slow Windows runner
+   has taken 594 s for one of its four shards; a hang still fails with its test's name inside the 20 minutes.
 
 Ruff is not part of CI (the suite stays stdlib-only); run it locally.
 
@@ -99,6 +100,10 @@ Cleaner's tests predate that rule: its logic tests are `test_cleaner.py`, `test_
 | `test_ui_widgets.py` | `action_button` and keys on buttons |
 | `test_dialogs.py`, `test_progress_popup.py` | `ui/dialogs.py`; the progress popup and its `ProgressBoard` |
 | `test_flavor_screen.py` | `ui/flavor_screen.py` |
+| `test_counted_list.py` | `CountedTree` (spec L10, STD-7.26): long lists in popups behind one counted row |
+| `test_picker_keys.py` | The flavor and account pickers' keys in every tool |
+| `test_risk_disclaimer.py` | The USE AT YOUR OWN RISK popup (`ui/disclaimer.py`) and its don't-show box in the three tools that show it |
+| `test_scan_box_first.py` | A review shows its scan progress box at once, before any slow check (spec L6) |
 
 ### Suite, updater and release
 
@@ -108,6 +113,7 @@ Cleaner's tests predate that rule: its logic tests are `test_cleaner.py`, `test_
 | `test_updater_check.py`, `test_updater_apply.py` | `core/updater.py`: the release check (fake openers, never the network) and applying an update |
 | `test_release_scripts.py` | `scripts/build_release.py`, the hashed vendor lock and `scripts/run_tests.py`'s per-shard timeout |
 | `test_launcher.py` | `wow-tools.cmd` stays safe to replace while it runs (Windows-only parts skip elsewhere) |
+| `test_quit_key.py`, `test_tool_menu_key.py`, `test_toast_stack.py` | The suite-wide walks: `q` and `t` from every screen and popup, toasts above the bars (see [below](#the-suite-wide-key-and-toast-walks)) |
 
 ### Per tool
 
@@ -115,7 +121,7 @@ Cleaner's tests predate that rule: its logic tests are `test_cleaner.py`, `test_
 |---|---|
 | WTF Cleaner | `test_wtf_app.py`, `test_wtf_journal.py`, `test_wtf_multi.py`, `test_wtf_undo.py`, `test_cleaner.py`, `test_rules.py`, `test_safety.py`, `test_scanner.py` |
 | Screenshot Organizer | `test_screenshot_organizer_{app,naming,organizer,planner,report,settings,undo}.py` |
-| Interface Backup | `test_interface_backup_{app,backup,catalog,report,restore,scanner,settings,undo}.py` |
+| Interface Backup | `test_interface_backup_{app,backup,catalog,folder,report,restore,scanner,settings,undo}.py` |
 | Ace3 Profile Manager | `test_ace_{app,compile,editor,journal,model,multi,ops,report,scanner,settings,undo}.py` |
 | Saved Variables Browser | `test_sv_browser_{app,apply,bulk,compile,edit,model,ops,run_ui,scanner,search,search_ui,skeleton}.py` |
 
@@ -143,18 +149,18 @@ builders stamp on files.
 
 ### Config
 
-`make_config(directory, wow_root, **general)` saves a `wow-tools.cfg` that points at a fixture tree, picks
-`_retail_` as the last flavor and turns update checks off, so no test reaches the network
-([STD-10.4](standards.md#10-testing)). Extra keyword arguments go into `[general]`. A tool's own settings go into
-`<config_dir>/<tool>.cfg` through `Config(...).set(section, key, value, log=False)` and `save()`.
+`make_config(directory, wow_root, **general)` saves a `wow-tools.cfg` that points at a fixture tree, picks `_retail_` as
+the last flavor and turns update checks off, so no test reaches the network ([STD-10.4](standards.md#10-testing)). Extra
+keyword arguments go into `[general]`. A tool's own settings go into `<config_dir>/<tool>.cfg` through
+`Config(...).set(section, key, value, log=False)` and `save()`.
 
 ### Helpers
 
 | Helper | Use |
 |---|---|
-| `await settle(app, pilot, timeout=10.0)` | Wait until workers are done, no rebuild or message is pending and every visible footer has recomposed. Call it after anything that starts work and before asserting. Past the timeout it fails, naming what was still busy |
+| `await settle(app, pilot, timeout=30.0)` | Wait until workers are done, no rebuild or message is pending and every visible footer has recomposed. Call it after anything that starts work and before asserting. Past the timeout it fails, naming what was still busy (30 s: a loaded Windows CI runner needed more than 10 s after a clean) |
 | `submit_filter(screen, text)` | Put text in a tree screen's filter box and submit it (typing alone never filters, spec D40); `settle` after it |
-| `await accept_disclaimer(app, pilot)` | Accept the Saved Variables Browser's USE AT YOUR OWN RISK screen if it is showing (spec D2) |
+| `await accept_disclaimer(app, pilot)` | Accept the USE AT YOUR OWN RISK popup (`ui.disclaimer`, L4: WTF Cleaner, Ace3 Profile Manager, Saved Variables Browser) if it is showing |
 | `stage_sv_edit(review)` | Stage one value edit on a Saved Variables Browser review, so Apply and Dry run have something to do |
 | `await footer_keys(screen, pilot, wanted)` | The keys a screen's footer lists, once it lists every key in `wanted` (or the timeout passes) |
 | `assert_keys_on_buttons(test, screen)` | Spec D17 on one screen: a button shows its action's key, a shown key works there, and the footer lists none of them |
@@ -186,7 +192,8 @@ pilot`, and press keys through `pilot`. Injected callables replace anything slow
 `tool_options`, e.g. `WowToolsApp(..., tool_options={"wtf-cleaner": {"wow_check": ..., "locker_check": list}})`.
 
 Pass `notifications=True` to `run_test` when a test asserts on toasts: Textual's `run_test` defaults to
-`notifications=False` and then shows none (see `test_ace_app.py` and `test_sv_browser_app.py`).
+`notifications=False` and then shows none (see `test_toast_stack.py`, `test_ace_app.py` and
+`test_sv_browser_app.py`).
 
 ### Sizes
 
@@ -199,13 +206,14 @@ Pass `notifications=True` to `run_test` when a test asserts on toasts: Textual's
 | `LARGE` | 160x45 | The window maximized: screens grow, popups and forms keep a readable width |
 | `TINY` | 80x24 | Not a design target; it only has to keep working |
 
-Some older tool tests use a roomier local size (`SIZE = (140, 50)` in `test_screenshot_organizer_app.py`) where the
-test is not about layout.
+Some older tests use a roomier local size (`SIZE = (140, 50)` in `test_screenshot_organizer_app.py` and
+`test_scan_box_first.py`) where the test is not about layout.
 
 ## The meta-tests
 
-These five files check rules across the whole suite, mostly by reading the source or by opening every tool's
-screens. A rule they enforce is listed in [standards.md](standards.md) with the test as its *Enforced by*.
+These five files check rules across the whole suite, mostly by reading the source or by opening every tool's screens;
+the [suite-wide key and toast walks](#the-suite-wide-key-and-toast-walks) open every screen too. A rule they enforce is
+listed in [standards.md](standards.md) with the test as its *Enforced by*.
 
 ### tests/test_structure.py
 
@@ -293,6 +301,13 @@ lowered; a conflicting registration raises; every registered level is valid; the
 each line on disk at once, day rollover, per-tool folders, pruning, I/O failures disable the sink without raising);
 and `capture_events()` swapping the global log ([STD-10.7](standards.md#10-testing)).
 
+### The suite-wide key and toast walks
+
+`tests/test_quit_key.py` (`q` quits from every screen and popup, STD-8.11), `tests/test_tool_menu_key.py` (`t` goes
+back to the tool menu the same way, L11) and `tests/test_toast_stack.py` (toasts stack above the bars, STD-7.24) walk
+every screen of every tool at `BASE` and `LARGE`. Each has its own `ACCOUNT_TOOLS`, `RUN_ACTION` and `PREPARE`
+tables, which a new tool must join (STD-10.8).
+
 ## Adding tests for a new tool
 
 The full checklist for a new tool is [adding-a-tool.md](adding-a-tool.md). For the tests
@@ -308,8 +323,12 @@ The full checklist for a new tool is [adding-a-tool.md](adding-a-tool.md). For t
    assert.
 4. **The meta-test tables.** In `tests/test_look_and_feel.py`: add the tool to `TOOLS` and `RUN_ACTION`, to
    `DESTRUCTIVE_REVIEWS` if its review can destroy data, and to `PREPARE` if its run needs staged changes. In
-   `tests/test_help.py`: `RUN_ACTION` and `PREPARE`. `test_help.py`'s text checks and `test_docs.py`'s README check
-   pick a new tool up from the registry on their own.
+   `tests/test_help.py`: `RUN_ACTION` and `PREPARE`. The suite-wide walks: `ACCOUNT_TOOLS` (if it has an account
+   picker), `RUN_ACTION` and `PREPARE` in `tests/test_quit_key.py`, `tests/test_tool_menu_key.py` and
+   `tests/test_toast_stack.py` (they index `RUN_ACTION[name]` for every tool: a tool left out fails with a `KeyError`);
+   `ACCOUNT_TOOLS` in `tests/test_picker_keys.py`; and, for a tool with the USE AT YOUR OWN RISK popup, `TOOLS` and
+   `RISK_EVENTS` in `tests/test_risk_disclaimer.py`. `test_help.py`'s text checks and `test_docs.py`'s README check pick
+   a new tool up from the registry on their own.
 5. **Docs needles.** If the tool's guide has required sections, add a test for them to `tests/test_docs.py`.
 6. **Events.** Register the tool's events in `<tool>/events.py` and run `python3 scripts/gen_event_docs.py`.
 

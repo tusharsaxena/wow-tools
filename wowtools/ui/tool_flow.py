@@ -1,6 +1,6 @@
 """ToolFlow: how a tool runs inside the suite app. Each tool has its own screens, workflow and config file; the
 steps every tool takes the same way (first-run settings, the `s` key, remembering the flavor and account picked,
-picker notes worked out in the background, leaving the review) live here. Spec D9."""
+picker notes worked out in the background, the USE AT YOUR OWN RISK popup, leaving the review) live here. Spec D9."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -8,9 +8,11 @@ from typing import TYPE_CHECKING, ClassVar, TypeVar
 
 from textual.screen import Screen
 
-from wowtools.core.config import Config
+from wowtools.core.config import SKIP_RISK_WARNING, Config
+from wowtools.core.events import log_event, log_exception
 from wowtools.core.install import Flavor, WowInstall
-from wowtools.ui.account_screen import AccountScreen
+from wowtools.ui.account_screen import TOOLS, AccountScreen
+from wowtools.ui.disclaimer import ACCEPT, ACCEPT_DONT_SHOW, DisclaimerScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.settings_form import ToolSettingsScreen
 from wowtools.ui.setup_screen import SetupScreen
@@ -20,6 +22,8 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 SETTINGS_SAVED = "Settings saved. Press r on the review screen to rescan with them."
+RISK_WARNING_OFF = "The USE AT YOUR OWN RISK warning is off for this tool. Turn it back on in its settings (s)."
+RISK_WARNING_NOT_SAVED = "Could not save \"Don't show this warning again\": it will be shown next time."
 
 
 class ToolFlow:
@@ -29,7 +33,9 @@ class ToolFlow:
     (SETTINGS_SCREEN, while config/<tool>.cfg does not exist yet), then calls _pick_flavor(), which a subclass
     implements. open_settings() (the `s` key) opens the shared WoW-folder settings, then SETTINGS_SCREEN.
     _after_review() handles the review's "flavors" / "tools" / "quit". SECTION is the tool's config section, where
-    remember_flavor() and pick_account() keep the last choices.
+    remember_flavor() and pick_account() keep the last choices. A tool with DISCLAIMER (its USE AT YOUR OWN RISK
+    text) and DISCLAIMER_EVENTS (its registered accepted and declined events) calls ask_disclaimer() before its first
+    scan; its RISK_WARNING_EVENT is logged when the popup's "Don't show this warning again" box turns it off.
     self.cfg is the shared suite config (WoW folder, updates, logging); self.tool_cfg is the tool's own file.
     """
 
@@ -38,6 +44,9 @@ class ToolFlow:
     # Screens besides SETTINGS_SCREEN that `s` never opens a second settings stack over (their Saves would
     # overwrite each other).
     SETTINGS_BLOCKERS: ClassVar[tuple[type[Screen], ...]] = ()
+    DISCLAIMER: ClassVar[str] = ""
+    DISCLAIMER_EVENTS: ClassVar[tuple[str, str]] = ("", "")  # (accepted, declined)
+    RISK_WARNING_EVENT: ClassVar[str] = ""  # (shown, source): the tool's skip_risk_warning setting changed (L8)
 
     def __init__(self, app: WowToolsApp, tool_cfg: Config) -> None:
         self.app = app
@@ -115,8 +124,8 @@ class ToolFlow:
 
     def pick_account(self, flavor: Flavor, then: Callable[[str | None], None]) -> None:
         """A flavor with several accounts: the account picker, highlighting [SECTION] last_account. A choice is
-        remembered there and passed to then() (None for all accounts); Esc goes back to the flavor picker. With
-        one account (or none) then(None) runs at once."""
+        remembered there and passed to then() (None for all accounts); Esc goes back to the flavor picker, `t` to
+        the tool menu (L5). With one account (or none) then(None) runs at once."""
         if len(flavor.accounts()) <= 1:
             then(None)
             return
@@ -126,6 +135,9 @@ class ToolFlow:
             if choice is None:
                 self._pick_flavor()
                 return
+            if choice == TOOLS:
+                self.close()
+                return
             account = choice or None
             if self.tool_cfg.get(self.SECTION, "last_account", "") != (account or ""):
                 self.tool_cfg.set(self.SECTION, "last_account", account or "", source="picker")
@@ -133,6 +145,53 @@ class ToolFlow:
             then(account)
 
         self.app.push_screen(AccountScreen(self.cfg, flavor, last), chosen)
+
+    def ask_disclaimer(self, then: Callable[[], None], **data: object) -> None:
+        """The USE AT YOUR OWN RISK popup (L4) with DISCLAIMER, then then(). Shown at most once per tool per app
+        session: I understand is remembered in the app's `disclaimers_accepted` (by SECTION), and then() runs at once
+        when it is there, or when the tool's [SECTION] skip_risk_warning is true (L8). I understand with the
+        "Don't show this warning again" box ticked saves that setting (an atomic write of the tool's config file)
+        and logs RISK_WARNING_EVENT. Back or Esc logs the declined event and goes back to the flavor picker, and is
+        neither remembered nor saved. `data` goes into the accepted and declined events."""
+        if (not self.DISCLAIMER or self.SECTION in self.app.disclaimers_accepted
+                or self.tool_cfg.get_bool(self.SECTION, SKIP_RISK_WARNING, False)):
+            then()
+            return
+        accepted, declined = self.DISCLAIMER_EVENTS
+
+        def answered(answer: str | None) -> None:
+            if answer not in (ACCEPT, ACCEPT_DONT_SHOW):  # Back or Esc: nothing is read, nothing saved
+                log_event(declined, **data)
+                self._pick_flavor()
+                return
+            self.app.disclaimers_accepted.add(self.SECTION)
+            log_event(accepted, **data)
+            if answer == ACCEPT_DONT_SHOW:
+                self._skip_risk_warning()
+            then()
+
+        self.app.push_screen(DisclaimerScreen(self.DISCLAIMER), answered)
+
+    def _skip_risk_warning(self) -> None:
+        """Save [SECTION] skip_risk_warning = true (the popup's box was ticked): the popup is not shown again until
+        the tool's settings form turns it back on. A failed write is logged and said, and the change is undone in
+        memory too (a later save of the same config must not write it); the session goes on."""
+        previous = self.tool_cfg.get(self.SECTION, SKIP_RISK_WARNING)
+        self.tool_cfg.set(self.SECTION, SKIP_RISK_WARNING, True, log=False)
+        try:
+            self.tool_cfg.save()
+        except OSError as exc:
+            if previous is None:
+                self.tool_cfg.remove(self.SECTION, SKIP_RISK_WARNING, log=False)
+            else:
+                self.tool_cfg.set(self.SECTION, SKIP_RISK_WARNING, previous, log=False)
+            log_exception(f"{self.RISK_WARNING_EVENT.partition('.')[0]}.risk_warning", exc)
+            self.app.notify(RISK_WARNING_NOT_SAVED, severity="warning")
+            return
+        log_event("config.changed", section=self.SECTION, key=SKIP_RISK_WARNING, old=previous,
+                  new=self.tool_cfg.get(self.SECTION, SKIP_RISK_WARNING), source="disclaimer")
+        log_event(self.RISK_WARNING_EVENT, shown=False, source="disclaimer")
+        self.app.notify(RISK_WARNING_OFF)
 
     def fill_notes(self, picker: FlavorScreen, work: Callable[[], T], ready: Callable[[T], None], *,
                    group: str = "notes") -> None:

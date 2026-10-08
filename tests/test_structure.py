@@ -250,6 +250,15 @@ class StructureTest(unittest.TestCase):
         from wowtools.tools.ace3_profile_manager.review_screen import ProfileReviewScreen
         from wowtools.ui.review import BlacklistAction
         self.assertTrue(issubclass(ProfileReviewScreen, BlacklistAction))
+        # L15: the blacklisted rows' tick-column mark is one constant, used by both review trees
+        assigned = {(rel(p), t.id) for p in modules("wowtools") for node in ast.walk(tree(p))
+                    if isinstance(node, ast.Assign) for t in node.targets
+                    if isinstance(t, ast.Name) and t.id in ("BLACKLISTED_MARK", "BLACKLISTED_STYLE")}
+        self.assertEqual(assigned, {("wowtools/ui/review.py", "BLACKLISTED_MARK"),
+                                    ("wowtools/ui/review.py", "BLACKLISTED_STYLE")})
+        for tool in ("wtf_cleaner", "ace3_profile_manager"):
+            path = REPO / "wowtools" / "tools" / tool / "review_screen.py"
+            self.assertIn("blacklisted_mark()", path.read_text(encoding="utf-8"), tool)
 
     def test_lock_refusal_and_progress_close_are_shared(self):
         """Functionality two tools need lives in the shared library: the lock refusal (core/svfiles.py: the probe

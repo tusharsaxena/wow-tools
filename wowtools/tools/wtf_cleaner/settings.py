@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from wowtools.core.blacklist import Pair, format_blacklist, parse_blacklist
-from wowtools.core.config import Config
+from wowtools.core.config import SKIP_RISK_WARNING, Config
 from wowtools.core.journal import TOOLS_SUBDIR
 from wowtools.tools.wtf_cleaner.events import TOOL_NAME
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, Criteria
@@ -29,6 +29,7 @@ class CleanerSettings:
     # (flavor folder, addon) pairs never cleaned (spec B2): `flavor:Addon, ...`, a bare name = every flavor. Edited
     # with b on the review (or by hand); the settings form has no row for it.
     blacklist: list[Pair] = field(default_factory=list)
+    skip_risk_warning: bool = False  # never show the USE AT YOUR OWN RISK popup (L8)
 
 
 def load_settings(cfg: Config) -> CleanerSettings:
@@ -40,7 +41,8 @@ def load_settings(cfg: Config) -> CleanerSettings:
                            (cfg.get(SECTION, "last_account") or "").strip() or None,
                            None if choice is None else choice.strip(),
                            max(0, cfg.get_int(SECTION, "keep_cleaned", 0)),
-                           parse_blacklist(cfg.get(SECTION, "blacklist") or ""))
+                           parse_blacklist(cfg.get(SECTION, "blacklist") or ""),
+                           cfg.get_bool(SECTION, SKIP_RISK_WARNING, False))
 
 
 def save_settings(cfg: Config, settings: CleanerSettings, *, source: str = "settings") -> None:
@@ -52,6 +54,7 @@ def save_settings(cfg: Config, settings: CleanerSettings, *, source: str = "sett
     cfg.set_path(SECTION, "backup_dir", settings.backup_dir, source=source)
     cfg.set(SECTION, "last_account", settings.last_account or "", source=source)
     cfg.set(SECTION, "blacklist", format_blacklist(settings.blacklist), source=source)
+    cfg.set(SECTION, SKIP_RISK_WARNING, settings.skip_risk_warning, source=source)
     cfg.remove_retired(SECTION, source=source)
     if settings.last_flavor_choice is not None:
         cfg.set(SECTION, "last_flavor_choice", settings.last_flavor_choice, source=source)

@@ -132,7 +132,7 @@ class WarningsViewToolsTest(TuiTestCase):
                     self.assertIsInstance(app.screen, HelpScreen)
                     text = TOOLS[tool].help()
                     self.assertEqual(app.screen.text, text)
-                    for label in ("**Warnings**", "**Back**", "`!`"):
+                    for label in ("## Warnings", "**Back**", "`!`"):
                         self.assertIn(label, text)
                     await pilot.press("escape")
                     await settle(app, pilot)

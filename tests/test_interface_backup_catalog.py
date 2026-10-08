@@ -28,6 +28,7 @@ class CatalogTest(unittest.TestCase):
     def test_new_path_and_collision(self):
         first = new_backup_path(self.root, "retail", NOW)
         self.assertEqual(first.name, "backup-retail-20261004-153012.zip")
+        first.parent.mkdir()
         first.write_bytes(b"z")
         self.assertEqual(new_backup_path(self.root, "retail", NOW).name, "backup-retail-20261004-153012-2.zip")
         self.assertEqual(new_backup_path(self.root, "retail", NOW, kind="pre-restore").name,

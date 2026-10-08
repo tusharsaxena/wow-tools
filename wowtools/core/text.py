@@ -1,9 +1,21 @@
-"""Plain-text helpers every tool's report module uses: counted nouns and file sizes. UI-free; a flavor's display
-name is install.flavor_name()."""
+"""Plain-text helpers every tool's report module uses: counted nouns, file sizes and Listed (one entry of a list a
+popup shows collapsed). UI-free; a flavor's display name is install.flavor_name()."""
 from __future__ import annotations
+
+from typing import NamedTuple
 
 MISSING = "—"  # a size that is not known
 _UNITS = ("KB", "MB", "GB", "TB")
+
+
+class Listed(NamedTuple):
+    """One entry of a list that can grow (warnings, notes, refusals, skipped items), as a popup shows it behind one
+    counted tree row (ui.dialogs.CountedTree, STD-7.26): the message (a sentence, the same for every entry it
+    concerns, so it is shown once), where (flavor · account; "" for none) and the item (an addon, a file; "" for
+    none)."""
+    message: str
+    where: str = ""
+    item: str = ""
 
 
 def plural(n: int, word: str, words: str | None = None) -> str:

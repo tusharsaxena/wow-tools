@@ -10,10 +10,17 @@ from wowtools.core.install import flavor_name
 from wowtools.core.sv_report import (DETAIL_COLUMNS, STAGE_TITLES, UNDO_COLUMNS,  # noqa: F401 - re-exported
                                      apply_detail_rows, apply_summary_rows, recovery_text, undo_confirm,
                                      undo_detail_rows, undo_summary_rows)
-from wowtools.core.text import plural
+from wowtools.core.text import Listed, plural
 from wowtools.tools.ace3_profile_manager.model import DEFAULT
-from wowtools.tools.ace3_profile_manager.ops import CopyOf, DbState, Original, Summary
+from wowtools.tools.ace3_profile_manager.ops import CopyOf, DbState, Original, Summary, listed
 
+# The USE AT YOUR OWN RISK popup's text (ui.disclaimer, L4), shown before the first scan of a session.
+DISCLAIMER = ("This tool edits the AceDB profile data inside addon SavedVariables: it renames, copies and deletes "
+              "profiles and moves or removes characters. It can't know how each addon uses its profiles; a wrong "
+              "change can reset an addon's settings. Every file it changes is backed up first and Undo puts them "
+              "back, but you are responsible for what you change."
+              "\n\nClose WoW before you apply anything: it rewrites every SavedVariables file when you log out. "
+              "Every Apply and Undo asks again.")
 DELETED = "✘ deleted"
 REMOVED = "✘ removed"
 NO_PENDING = "No pending changes"
@@ -156,7 +163,9 @@ def guidance(node_kind: str | None, node_name: str, ticked_profiles: int, ticked
     return "\n".join(lines) or STEPS
 
 
-def apply_confirm(summary: Summary, states: list[DbState], *, dry_run: bool) -> tuple[str, str, list[str]]:
+def apply_confirm(summary: Summary, states: list[DbState], *, dry_run: bool) -> tuple[str, str, list[Listed]]:
+    """(title, body, warnings) of the Apply / Dry run confirm: the summary lines, and one Listed per addon warning,
+    which the confirm shows behind one counted tree row (spec L10)."""
     title = "Dry run" if dry_run else "Apply the pending changes?"
     flavors = sorted({flavor_name(s.file.flavor.folder) for s in states})
     lines = [f"{pending_text(summary)} in {plural(summary.files, 'file')} ({', '.join(flavors)})."]
@@ -165,17 +174,16 @@ def apply_confirm(summary: Summary, states: list[DbState], *, dry_run: bool) -> 
     else:
         lines.append("A backup of the whole WTF folder and of every file changed is taken first. Undo (z) puts "
                      "the files back.")
-    alerts = []
+    warnings: list[Listed] = []
     for state in states:
         changes = state.changes()
-        addon = state.file.addon
         if DEFAULT in changes.deleted:
-            alerts.append(f'{addon}: the "Default" profile will be deleted.')
+            warnings.append(listed(state, 'The "Default" profile will be deleted.', states))
         targets = {new for _, _, new in changes.reassigned}
         for name in sorted(t for t in targets if not state.exists(t)):
-            alerts.append(f'{addon}: "{name}" does not exist yet; the addon creates it at the next login with its '
-                          f"defaults.")
+            warnings.append(listed(state, f'"{name}" does not exist yet; the addon creates it at the next login '
+                                          f"with its defaults.", states))
         if any(state.db.lds_enabled(c) for c, _, _ in changes.reassigned):
-            alerts.append(f"{addon}: LibDualSpec switches some of these characters' profile by spec; it will "
-                          f"override the change at login.")
-    return title, "\n".join(lines), alerts
+            warnings.append(listed(state, "LibDualSpec switches some of these characters' profile by spec; it "
+                                          "will override the change at login.", states))
+    return title, "\n".join(lines), warnings

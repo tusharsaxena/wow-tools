@@ -1,8 +1,9 @@
 """The Ace3 review's staging actions (F-007, decision R5), mixed into ProfileReviewScreen: delete, assign, rename,
 copy, remove leftovers, only Default, everyone to Default, the quick actions menu (m) and discard. Each picks its
-target from the ticks (else the highlighted node), asks in a popup, and stages the change on the review's Staging
-(ops.py): nothing is written until Apply. The screen supplies `staging`, `ticked`, `idle`, wow_folder_changed(),
-selected_profiles() / selected_chars(), _tick_keys(), _hidden_line(), refresh_view() and _refresh_labels()."""
+target from the ticks (else the highlighted node; Leftovers first ticks every leftover character shown), asks in a
+popup, and stages the change on the review's Staging (ops.py): nothing is written until Apply. The screen supplies
+`staging`, `ticked`, `idle`, wow_folder_changed(), selected_profiles() / selected_chars(), _tick_keys(),
+_hidden_line(), refresh_view() and _refresh_labels()."""
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
@@ -11,9 +12,9 @@ from textual.widgets import Tree
 
 from wowtools.core.events import log_event
 from wowtools.core.install import flavor_name
-from wowtools.core.text import plural
+from wowtools.core.text import Listed, plural
 from wowtools.tools.ace3_profile_manager.model import DEFAULT
-from wowtools.tools.ace3_profile_manager.ops import DbKey, OpResult, Staging, valid_name
+from wowtools.tools.ace3_profile_manager.ops import DbKey, OpResult, Staging, listed, valid_name
 from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
 from wowtools.tools.ace3_profile_manager.report import NO_PENDING, pending_text
 from wowtools.ui.dialogs import ConfirmScreen, InfoScreen
@@ -58,37 +59,25 @@ class ProfileStagingActions:
         return names
 
     def _staged(self, result: OpResult) -> None:
-        """After an operation: say what was refused and noted (one notification each, however many databases),
-        clear the ticks of the databases it changed and show the new pending changes."""
+        """After an operation: clear the ticks of the databases it changed, show the new pending changes, then what
+        was refused ("Not done") and noted ("Notes"), each one popup however many databases, its list one counted
+        row grouped by reason or message, then where, then the database (spec L10)."""
         assert self.staging is not None
-        if result.refused:
-            lines = [f"{self._addon_name(key)}: {reason}" for key, reason in result.refused]
-            self.notify(self._lines(lines), title=f"Not done ({len(lines)})", severity="warning", timeout=15)
+        states = list(self.staging.states.values())
+        refused = [listed(self.staging.state(key), reason, states) for key, reason in result.refused]
+        notes = list(result.notes)
         changed = set(result.applied)
         self.ticked = {k for k in self.ticked if k[1] not in changed}
         self.refresh_view()
-        if result.notes:
-            self.app.push_screen(InfoScreen("Notes", self._notes_by_message(result.notes)))
 
-    @staticmethod
-    def _notes_by_message(notes: list[str]) -> dict[str, list[str]]:
-        """Notes ("<addon>: <message>") grouped by message, with the addons it concerns under it."""
-        groups: dict[str, list[str]] = {}
-        for note in dict.fromkeys(notes):
-            addon, sep, message = note.partition(": ")
-            if not sep:
-                groups.setdefault(note, [])
-                continue
-            message = message.rstrip(".")
-            groups.setdefault(message[:1].upper() + message[1:], []).append(addon)
-        return groups
-
-    @staticmethod
-    def _lines(lines: list[str], most: int = 8) -> str:
-        shown = lines[:most]
-        if len(lines) > most:
-            shown.append(f"… and {len(lines) - most} more")
-        return "\n".join(shown)
+        def show_notes(_: object = None) -> None:
+            if notes:
+                self.app.push_screen(InfoScreen("Notes", listed=notes, noun="note", alert=False))
+        if refused:
+            self.app.push_screen(InfoScreen("Not done", listed=refused, noun="database not changed",
+                                            nouns="databases not changed"), show_notes)
+        else:
+            show_notes()
 
     def action_delete(self) -> None:
         if not self._ready():
@@ -98,18 +87,17 @@ class ProfileStagingActions:
         if not selection:
             self.notify("Tick or highlight a profile first")
             return
-        lines = []
-        for key, names in selection.items():
-            state = self.staging.state(key)
-            moved = sum(len(state.users(n)) for n in names)
-            lines.append(f"{self._addon_name(key)}: {', '.join(names)} ({plural(moved, 'character')} move)")
-        body = "\n".join(["Delete these profiles and move their characters to the profile chosen below:", *lines,
+        entries = [Listed(self._addon_name(key),
+                          item=f"{name} ({plural(len(self.staging.state(key).users(name)), 'character')} move)")
+                   for key, names in selection.items() for name in names]
+        body = "\n".join(["Delete these profiles and move their characters to the profile chosen below:",
                           *self._hidden_line("p", "profile")])
 
         def done(target: str | None) -> None:
             if target is not None and self.staging is not None:
                 self._staged(self.staging.delete(selection, target))
-        self.app.push_screen(TargetScreen("Delete profiles", body, self._targets(selection, selection)), done)
+        self.app.push_screen(TargetScreen("Delete profiles", body, self._targets(selection, selection),
+                                          listed=entries, noun="profile"), done)
 
     def action_assign(self) -> None:
         if not self._ready():
@@ -119,14 +107,14 @@ class ProfileStagingActions:
         if not selection:
             self.notify("Tick or highlight a character first")
             return
-        lines = [f"{self._addon_name(key)}: {plural(len(chars), 'character')}" for key, chars in selection.items()]
-        body = "\n".join(["Move these characters to the profile chosen below:", *lines,
-                          *self._hidden_line("c", "character")])
+        entries = [Listed(self._addon_name(key), item=char) for key, chars in selection.items() for char in chars]
+        body = "\n".join(["Move these characters to the profile chosen below:", *self._hidden_line("c", "character")])
 
         def done(target: str | None) -> None:
             if target is not None and self.staging is not None:
                 self._staged(self.staging.assign(selection, target))
-        self.app.push_screen(TargetScreen("Assign a profile", body, self._targets(selection)), done)
+        self.app.push_screen(TargetScreen("Assign a profile", body, self._targets(selection), listed=entries,
+                                          noun="character assignment"), done)
 
     def _highlighted_profile(self) -> tuple[DbKey, str] | None:
         node = self.query_one("#profiles", Tree).cursor_node
@@ -173,24 +161,26 @@ class ProfileStagingActions:
         self.app.push_screen(NameScreen("Copy a profile", body, f"{name} copy", self._name_check(key)), done)
 
     def action_remove_leftovers(self) -> None:
+        """Tick every leftover character shown (as More… → "Tick all leftover characters" does), then ask to remove
+        exactly the ticked leftovers (decision L1). No keeps the ticks."""
         if not self._ready():
             return
         assert self.staging is not None
         staging = self.staging
+        if not self._tick_leftovers():
+            return
         selection = {key: [c for c in chars if c in staging.state(key).leftovers]
                      for key, chars in self.selected_chars().items()}
         selection = {key: chars for key, chars in selection.items() if chars}
-        if not selection:
-            self.notify("Tick or highlight a leftover character first")
-            return
         groups = {self._addon_name(key): chars for key, chars in selection.items()}
         body = "These characters have no folder in WTF any more. Remove their entries from these addons:"
 
         def done(ok: bool | None) -> None:
             if ok and self.staging is not None:
                 self._staged(self.staging.remove_leftovers(selection))
-        self.app.push_screen(ConfirmScreen("Remove leftover characters?", body, tuple(self._hidden_line(
-            "c", "leftover character", lambda k: k[2] in staging.state(k[1]).leftovers)), kind="destructive", groups=groups), done)
+        hidden = self._hidden_line("c", "leftover character", lambda k: k[2] in staging.state(k[1]).leftovers)
+        self.app.push_screen(ConfirmScreen("Remove leftover characters?", body, tuple(hidden), kind="destructive",
+                                           groups=groups), done)
 
     def _databases(self) -> list[DbKey]:
         """The databases of the ticked keys, else of the highlighted node's addon or database."""
@@ -204,17 +194,23 @@ class ProfileStagingActions:
             return [data[1]]
         return []
 
-    def _tick_leftovers(self) -> None:
+    def _shown_leftovers(self) -> set[tuple]:
+        """The tick keys of the leftover characters the tree shows (the View, the Show boxes and the filter)."""
         assert self.staging is not None
         staging = self.staging
         visible = self._tick_keys(self.query_one("#profiles", Tree).root)
-        leftovers = {k for k in visible if k[0] == "c" and k[2] in staging.state(k[1]).leftovers}
+        return {k for k in visible if k[0] == "c" and k[2] in staging.state(k[1]).leftovers}
+
+    def _tick_leftovers(self) -> bool:
+        """Tick every leftover character shown; False (and a notice) when none is shown."""
+        leftovers = self._shown_leftovers()
         if not leftovers:
             self.notify("No leftover characters are shown.")
-            return
+            return False
         self.ticked.update(leftovers)
         log_event("ui.selection", screen="ace_review", control="tick_leftovers", value=len(leftovers))
         self._refresh_labels()
+        return True
 
     def action_more(self) -> None:
         if not self._ready():

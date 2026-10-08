@@ -1,5 +1,5 @@
 """The WTF Cleaner inside the suite app: (first run: settings) → flavor (or All flavors) → account (one flavor
-only) → review → confirm → result."""
+only) → the USE AT YOUR OWN RISK warning (once per app session) → review → confirm → result."""
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
@@ -12,7 +12,7 @@ from textual.widgets import Input, Label
 
 from wowtools.core.config import Config
 from wowtools.core.install import Flavor, WowInstall, validate_backup_dir
-from wowtools.tools.wtf_cleaner.report import CRITERION_LABELS
+from wowtools.tools.wtf_cleaner.report import CRITERION_LABELS, DISCLAIMER
 from wowtools.tools.wtf_cleaner.review_screen import ReviewScreen
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, Criteria
 from wowtools.tools.wtf_cleaner.settings import (SECTION, CleanerSettings, load_settings, resolve_backup_dir,
@@ -24,6 +24,9 @@ from wowtools.ui.widgets import Ka0sCheckbox
 
 if TYPE_CHECKING:
     from wowtools.ui.suite_app import WowToolsApp
+
+
+RISK_WARNING_EVENT = "clean.risk_warning_changed"
 
 
 class CleanerSettingsScreen(ToolSettingsScreen):
@@ -56,6 +59,7 @@ class CleanerSettingsScreen(ToolSettingsScreen):
                            self.settings.backup_before_delete, id="sw_backup", compact=True)
         yield Label("Cleaned-files zips to keep per game version (0 keeps all; they hold what Clean deleted)")
         yield Input(str(self.settings.keep_cleaned), type="integer", id="keep_cleaned")
+        yield self.risk_warning_box()
 
     def save(self) -> bool:
         try:
@@ -81,19 +85,26 @@ class CleanerSettingsScreen(ToolSettingsScreen):
                 self._error(problem)
                 return False
         stored = load_settings(self.tool_cfg)  # keeps the remembered flavor and account choices
+        skip = self.risk_warning_skipped()
         save_settings(self.tool_cfg, replace(stored, criteria=criteria,
                                              backup_before_delete=self.query_one("#sw_backup", Ka0sCheckbox).value,
-                                             backup_dir=backup_dir, keep_cleaned=keep_cleaned),
+                                             backup_dir=backup_dir, keep_cleaned=keep_cleaned,
+                                             skip_risk_warning=skip),
                       source=self.source)
+        self.log_risk_warning(RISK_WARNING_EVENT, stored.skip_risk_warning, skip)
         return True
 
 
 class WtfCleanerFlow(ToolFlow):
     """The cleaner's own workflow. Its settings live in config/wtf-cleaner.cfg; the WoW folder and the last
-    flavor are shared suite settings."""
+    flavor are shared suite settings. The USE AT YOUR OWN RISK warning (L4) comes after the flavor and account picks
+    until it is accepted once in the app session (ToolFlow.ask_disclaimer)."""
 
     SECTION = SECTION
     SETTINGS_SCREEN = CleanerSettingsScreen
+    DISCLAIMER = DISCLAIMER
+    DISCLAIMER_EVENTS = ("clean.disclaimer_accepted", "clean.disclaimer_declined")
+    RISK_WARNING_EVENT = RISK_WARNING_EVENT
 
     def __init__(self, app: WowToolsApp, tool_cfg: Config, *,
                  wow_check: Callable[[], list[str] | None] | None = None,
@@ -127,6 +138,10 @@ class WtfCleanerFlow(ToolFlow):
         self.pick_account(flavor, lambda account: self._review(flavor, account))
 
     def _review(self, flavors: Flavor | list[Flavor], account: str | None) -> None:
+        folders = [f.folder for f in (flavors if isinstance(flavors, list) else [flavors])]
+        self.ask_disclaimer(lambda: self._open_review(flavors, account), flavors=folders, account=account)
+
+    def _open_review(self, flavors: Flavor | list[Flavor], account: str | None) -> None:
         self.app.push_screen(ReviewScreen(self.cfg, self.tool_cfg, flavors, account=account,
                                           wow_check=self._wow_check, locker_check=self._locker_check),
                              self._after_review)

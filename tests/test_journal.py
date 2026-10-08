@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from unittest import mock
 
 from tests.fixtures import record_fsyncs
 from wowtools.core import journal as journal_mod
@@ -115,6 +116,12 @@ class JournalTest(unittest.TestCase):
                           "journal-20260101-000000.jsonl"])
         self.assertEqual(list_journals(None), [])
         self.assertEqual(list_journals(self.dir / "missing"), [])
+
+    def test_latest_undoable_never_raises_on_a_folder_it_cannot_list(self):
+        # Run in the scan and run workers (L6): an unlistable journal folder offers nothing, never a crash
+        self.write("journal-20260101-000000.jsonl", {"version": 1}, {"action": "a"})
+        with mock.patch.object(Path, "iterdir", side_effect=PermissionError("denied")):
+            self.assertIsNone(latest_undoable(self.dir))
 
     def test_latest_undoable_skips_empty_and_never_reaches_past_an_undone_run(self):
         entry = {"action": "a"}

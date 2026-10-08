@@ -52,8 +52,9 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `session.start` | info | The launcher or a tool started. |
 | `session.waiting_for_worker` | warning | The app closed while a clean, organize or undo was still running; the lock is kept until it finishes. |
 | `ui.item_toggled` | debug | The user ticked or unticked a single item. |
-| `ui.quit_refused` | info | Ctrl+Q was pressed while a run was in progress and was refused. |
+| `ui.quit_refused` | info | q or Ctrl+Q was pressed while a run was in progress and was refused. |
 | `ui.selection` | info | The user made a choice in the TUI or CLI. |
+| `ui.tool_menu_refused` | info | t was pressed while a run was in progress and was refused: the tool menu waits for the run to finish. |
 | `update.applied` | info | The suite was updated. |
 | `update.available` | info | A newer suite release exists. |
 | `update.backup_kept` | warning | An old .update-backup folder was not pruned because a file the user had added could not be moved out of it; the next update tries again. |
@@ -78,12 +79,15 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `blacklist.changed` | info | b on the review put a (flavor, addon) pair on the blacklist or took it off (flavor, addon, blacklisted); a blacklisted addon is never cleaned. |
 | `clean.check_failed` | warning | The post-clean check found problems; see the WTF backup it names. |
 | `clean.completed` | info | A clean finished (logged at warning if any file failed). |
+| `clean.disclaimer_accepted` | info | The USE AT YOUR OWN RISK warning was accepted (I understand): it is not shown again this session. |
+| `clean.disclaimer_declined` | info | The USE AT YOUR OWN RISK warning was declined (Back): nothing was scanned. |
 | `clean.flavors_stopped` | warning | A clean of several flavors stopped at one flavor; the flavors after it were not started. |
 | `clean.journal_failed` | error | The run journal could not be written; the clean stopped before deleting anything. |
 | `clean.journal_pruned` | info | Older clean journals were deleted to keep the newest N (keep_journals). |
 | `clean.locked` | error | A real clean stopped before the WTF backup: selected files are locked by another program. |
 | `clean.marker_left` | warning | clean-in-progress.json could not be removed (another program held it) after a clean that finished, a clean stopped before deleting or restored, or Dismiss on the unfinished-clean notice (stage); the next start shows that notice again and a clean is refused until the marker is gone. |
 | `clean.probe_recovered` | warning | A real clean renamed back a SavedVariables file left as <name>.wowtools-lockcheck by an interrupted lock check. |
+| `clean.risk_warning_changed` | info | The USE AT YOUR OWN RISK warning was turned off (its Don't show this warning again box) or back on in the settings (shown, source). |
 | `clean.started` | info | A clean (or dry run) started. |
 | `clean.undo_completed` | info | Undo last clean finished (logged at warning if any file was skipped or failed). |
 | `clean.undo_failed` | error | Undo: a file could not be put back (no zip holds it, or the size did not match). |
@@ -162,6 +166,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ibackup.undo_completed` | info | Undo of a restore finished, with totals. |
 | `ibackup.undo_failed` | error | Undo was refused or failed on a part. |
 | `ibackup.undo_started` | info | Undo of a restore journal started. |
+| `ibackup.zips_moved` | info | Zips an older version left in interface-backup/ were moved into its backup/ folder: count, and names left in place (taken or failed: warning, logged the first time a name is left only). |
 
 ## `ace3-profile-manager` events
 
@@ -171,6 +176,8 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ace.apply_started` | info | Apply (or a dry run) of the pending changes started. |
 | `ace.backup_failed` | error | The zip of the original files failed; nothing was changed. |
 | `ace.blacklist_changed` | info | A (flavor, addon) pair was added to or removed from the blacklist (flavor, addon, blacklisted), or the whole list was saved from the blacklist screen (pairs). |
+| `ace.disclaimer_accepted` | info | The USE AT YOUR OWN RISK warning was accepted (I understand): it is not shown again this session. |
+| `ace.disclaimer_declined` | info | The USE AT YOUR OWN RISK warning was declined (Back): nothing was scanned. |
 | `ace.dry_run_completed` | info | A dry run finished. |
 | `ace.earlier_unfinished` | error | Apply was refused: an earlier Apply did not finish (its crash marker is there); nothing was changed. |
 | `ace.file_changed` | warning | A file changed since the scan; its changes were skipped. |
@@ -191,6 +198,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `ace.probe_recovered` | warning | A SavedVariables file left as <name>.wowtools-lockcheck by an interrupted lock check was renamed back. |
 | `ace.recovery_done` | info | The user chose what to do about an unfinished Apply (put back or leave); logged at warning with marker_left when its crash marker could not be removed (the next scan offers it again). |
 | `ace.recovery_offered` | warning | A marker from an Apply that did not finish was found by a scan (on opening or a rescan), or Apply was pressed while it is there. |
+| `ace.risk_warning_changed` | info | The USE AT YOUR OWN RISK warning was turned off (its Don't show this warning again box) or back on in the settings (shown, source). |
 | `ace.rollback_failed` | error | A file could not be put back after a failure; restore it from the zip the message names. |
 | `ace.rolled_back` | warning | After a failure, the files this run had already written were put back. |
 | `ace.scan_completed` | info | A scan finished, with counts (files, databases, profiles, characters, leftover characters, seconds). |
@@ -217,7 +225,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `svb.apply_started` | info | Apply (or a dry run) of the pending changes started. |
 | `svb.backup_failed` | error | The zip of the original files failed; nothing was changed. |
 | `svb.bulk_staged` | info | A bulk Edit value or Rename key on the search results was staged (edits staged, results already holding it, results left out and why). |
-| `svb.disclaimer_accepted` | info | The USE AT YOUR OWN RISK warning was accepted (I understand). |
+| `svb.disclaimer_accepted` | info | The USE AT YOUR OWN RISK warning was accepted (I understand): it is not shown again this session. |
 | `svb.disclaimer_declined` | info | The USE AT YOUR OWN RISK warning was declined (Back): nothing was scanned. |
 | `svb.dry_run_completed` | info | A dry run finished. |
 | `svb.earlier_unfinished` | error | Apply was refused: an earlier Apply did not finish (its crash marker is there); nothing was changed. |
@@ -237,6 +245,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `svb.probe_recovered` | warning | A SavedVariables file left as <name>.wowtools-lockcheck by an interrupted lock check was renamed back. |
 | `svb.recovery_done` | info | The user chose what to do about an unfinished Apply (put back or leave); logged at warning with marker_left when its crash marker could not be removed (the next scan offers it again). |
 | `svb.recovery_offered` | warning | A marker from an Apply that did not finish was found by a scan (on opening or a rescan), or Apply was pressed while it is there. |
+| `svb.risk_warning_changed` | info | The USE AT YOUR OWN RISK warning was turned off (its Don't show this warning again box) or back on in the settings (shown, source). |
 | `svb.rollback_failed` | error | A file could not be put back after a failure; restore it from the zip the message names. |
 | `svb.rolled_back` | warning | After a failure, the files this run had already written were put back. |
 | `svb.scan_completed` | info | The SavedVariables files were listed, with counts (flavors, accounts, files, bytes, seconds). |

@@ -42,16 +42,16 @@ class FakeApp:
 class WorkerApp(FakeApp):
     """Leaves a file-changing worker running when run() returns, as a quit during a clean would."""
 
-    started = None
+    finished = None  # when the worker's work was done, still inside running(): the lock must outlast it
 
     def run(self):
         def work():
             with activity.running():
                 time.sleep(0.2)
+                WorkerApp.finished = time.monotonic()
 
         entered = threading.Event()
         thread = threading.Thread(target=lambda: (entered.set(), work()))
-        WorkerApp.started = time.monotonic()
         thread.start()
         entered.wait()
         time.sleep(0.02)  # let the worker enter running()
@@ -155,7 +155,10 @@ class SuiteTest(unittest.TestCase):
             code, _, _ = self.run_suite([], app_factory=WorkerApp)
         self.assertEqual(code, 0)
         self.assertTrue(activity.wait_idle(0))
-        self.assertGreaterEqual(released[-1] - WorkerApp.started, 0.2)
+        # ordered against the worker's own end, not 0.2 s after a start: on Windows time.sleep(0.2) measured with
+        # time.monotonic() (15.6 ms ticks) can read 0.187 s (CI run 37735746007)
+        self.assertIsNotNone(WorkerApp.finished)
+        self.assertGreaterEqual(released[-1], WorkerApp.finished)
         end = [r for r in self.records() if r["event"] == "session.end"][-1]
         self.assertIs(end["data"]["waited_for_worker"], True)
 

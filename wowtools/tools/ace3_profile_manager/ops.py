@@ -14,8 +14,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from wowtools.core.events import log_event
+from wowtools.core.install import flavor_name
 from wowtools.core.luasv import Field, Table, encode_string, line_start, newline_of, splice
 from wowtools.core.svfiles import SvFile
+from wowtools.core.text import Listed, plural
 from wowtools.tools.ace3_profile_manager.model import DEFAULT, AceDb
 from wowtools.tools.ace3_profile_manager.scanner import ScanResult
 
@@ -170,11 +172,34 @@ class DbState:
                 self.module_only[original] = new
 
 
+def where_of(state: DbState) -> str:
+    """Where a database is, as a popup's list groups it (spec L10): "Retail · ACCOUNT1"."""
+    return f"{flavor_name(state.file.flavor.folder)} · {state.file.account}"
+
+
+def item_of(state: DbState, states: Iterable[DbState] = ()) -> str:
+    """One database, as an item of a popup's list (spec L10): the addon, with its database when another of `states`
+    is in the same file ("ElvUI (ElvPrivateDB)") and its character when the file is a character's ("PerChar
+    [Realm1/Kaelys]"), so two databases under one where never look the same."""
+    name = state.file.addon
+    if any(other.key.path == state.key.path and other.key != state.key for other in states):
+        name += f" ({state.key.sv_name})"
+    if state.file.character is not None:
+        name += f" [{state.file.owner}]"
+    return name
+
+
+def listed(state: DbState, message: str, states: Iterable[DbState] = ()) -> Listed:
+    """A note, warning or refusal about one database, as a popup lists it (spec L10): the message, where and the
+    database (item_of, against `states`)."""
+    return Listed(message, where_of(state), item_of(state, states))
+
+
 @dataclass
 class OpResult:
     applied: list[DbKey] = field(default_factory=list)
     refused: list[tuple[DbKey, str]] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)
+    notes: list[Listed] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -264,7 +289,7 @@ class Staging:
                 state._drop_module_only(name)
                 state._move_users(name, target)
             if not state.exists(target) and state.users(target):
-                result.notes.append(f'{state.file.addon}: "{target}" {CREATED_AT_LOGIN}.')
+                result.notes.append(listed(state, f'"{target}" {CREATED_AT_LOGIN}.', self.states.values()))
             return None
         return self._each(selection, result, apply, "delete")
 
@@ -282,10 +307,11 @@ class Staging:
             for char in chars:
                 state.keys[char] = target
             if not state.exists(target):
-                result.notes.append(f'{state.file.addon}: "{target}" {CREATED_AT_LOGIN}.')
+                result.notes.append(listed(state, f'"{target}" {CREATED_AT_LOGIN}.', self.states.values()))
             if any(state.db.lds_enabled(c) for c in chars):
-                result.notes.append(f"{state.file.addon}: LibDualSpec switches the profile by spec for some of "
-                                    f"these characters; it will override this at login.")
+                result.notes.append(listed(state, "LibDualSpec switches the profile by spec for some of these "
+                                                  "characters; it will override this at login.",
+                                           self.states.values()))
             return None
         return self._each(selection, result, apply, "assign")
 
@@ -329,8 +355,8 @@ class Staging:
             chars = [c for c in selection[state.key] if c in state.leftovers and state.keys.get(c) is not None]
             skipped = [c for c in selection[state.key] if c not in state.leftovers]
             if skipped:
-                result.notes.append(f"{state.file.addon}: {len(skipped)} character(s) have a folder in WTF and "
-                                    f"were kept.")
+                item = f"{item_of(state, self.states.values())}: {plural(len(skipped), 'character')}"
+                result.notes.append(Listed("Characters that have a folder in WTF were kept.", where_of(state), item))
             if not chars:
                 return "no leftover characters selected here"
             for char in chars:

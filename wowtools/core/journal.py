@@ -198,8 +198,13 @@ def list_journals(folder: Path | None) -> list[Path]:
 
 def latest_undoable(folder: Path | None, reader: Callable[[Path], Journal] = read_journal) -> Path | None:
     """The newest journal that has entries and was not undone. Only that journal is ever offered: this never
-    reaches back past an undone run."""
-    for path in list_journals(folder):
+    reaches back past an undone run. Never raises: run in the scan and run workers, a folder that cannot be listed
+    offers nothing."""
+    try:
+        paths = list_journals(folder)
+    except OSError:  # e.g. no permission to list the folder: nothing offered, never a crash
+        return None
+    for path in paths:
         try:
             journal = reader(path)
         except (OSError, ValueError, TypeError):  # unreadable: never offered, and never a crash

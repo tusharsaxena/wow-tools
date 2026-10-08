@@ -2,7 +2,8 @@
 Cancel, the hint), Esc to cancel, and the shared folder-field handling. Spec D9.
 
 A tool screen sets FORM_TITLE, FIRST_FIELD (the id focused at the start) and TICKS (the form has checkboxes, so the
-hint names Space/Enter tick), and implements load(), fields() and save()."""
+hint names Space/Enter tick), and implements load(), fields() and save(). A tool with the USE AT YOUR OWN RISK popup
+yields risk_warning_box() last in fields() and saves risk_warning_skipped() (spec L8)."""
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -17,11 +18,15 @@ from textual.widget import Widget
 from textual.widgets import Button, Header, Input, Static
 
 from wowtools.core.config import Config
+from wowtools.core.events import log_event
 from wowtools.core.install import WowInstall
 from wowtools.core.paths import to_native, to_stored
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import settings_css
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, FormScroll, NavHint, action_button
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, FormScroll, Ka0sCheckbox, NavHint, action_button
+
+SHOW_RISK_WARNING_ID = "sw_risk_warning"
+SHOW_RISK_WARNING_LABEL = "Show the USE AT YOUR OWN RISK warning"
 
 
 def settings_hint(ticks: bool) -> str:
@@ -106,6 +111,21 @@ class ToolSettingsScreen(Screen[bool]):
         line = self.query_one("#settings-error", Static)
         line.update(Text(text))
         line.set_class(bool(text), "-shown")  # no empty row above the buttons until there is an error
+
+    def risk_warning_box(self) -> Ka0sCheckbox:
+        """The "Show the USE AT YOUR OWN RISK warning" box (L8): ticked unless the tool's skip_risk_warning
+        setting (self.settings.skip_risk_warning) is on. Set TICKS with it."""
+        return Ka0sCheckbox(SHOW_RISK_WARNING_LABEL, not self.settings.skip_risk_warning, id=SHOW_RISK_WARNING_ID,
+                            compact=True)
+
+    def risk_warning_skipped(self) -> bool:
+        """The skip_risk_warning value the form saves: True when the box is not ticked."""
+        return not self.query_one(f"#{SHOW_RISK_WARNING_ID}", Ka0sCheckbox).value
+
+    def log_risk_warning(self, event: str, was_skipped: bool, skipped: bool) -> None:
+        """Log the tool's registered `event` (shown, source) when Save changed skip_risk_warning."""
+        if skipped != was_skipped:
+            log_event(event, shown=not skipped, source=self.source)
 
     @staticmethod
     def folder_input(value: Path | None, *, placeholder: str, id: str) -> Input:

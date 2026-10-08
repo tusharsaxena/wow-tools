@@ -141,8 +141,13 @@ In `cleaner.execute`:
 ## Screens
 
 The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfCleanerFlow` (`FLOW`) and
-`CleanerSettingsScreen` (criteria, max age, backup on/off, cleaned-files zips to keep, backup folder). The flow shows `FlavorScreen` with
-`include_all=True` and `last=last_flavor_choice`; All flavors skips the account screen. `review_screen.py` holds:
+`CleanerSettingsScreen` (in screen order: max age, backup folder, the five criteria, zip the files before deleting
+on/off, cleaned-files zips to keep, show the risk warning). The flow shows `FlavorScreen` with `include_all=True`
+and `last=last_flavor_choice`; All flavors skips the account screen. Before the review it asks
+`ToolFlow.ask_disclaimer` (the shared `ui.disclaimer.DisclaimerScreen` with `report.DISCLAIMER`, once per app
+session, L4; `clean.disclaimer_accepted` / `_declined`; Back returns to the flavor
+picker; never with `skip_risk_warning`, which its "Don't show this warning again" box and the settings form's box
+set, `clean.risk_warning_changed`, L8). `review_screen.py` holds:
 
 - `ReviewScreen(cfg, tool_cfg, flavors, *, account, wow_check, locker_check)`: a `TreeFilter` and `ReviewBase`; tree,
   the shared `RiskBanner` (D37) above the criteria, the `FilterBar` (filter box and **Filter** button) under the max age (it narrows the proposal on top of the criteria: the tree is built
@@ -150,11 +155,15 @@ The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfC
   matches; the summary and the confirm's alerts say how many ticked files it hides), the Clean /
   Dry run / Rescan buttons and **Undo last clean** (violet, key `z`, last in the same row; disabled when nothing is
   undoable, while scanning and while busy; its confirm (Yes red) names the clean's time, flavors and file
-  count). `flavors` is one `Flavor` (root = the flavor, accounts below) or a list (root = All
+  count). What Undo offers (`self.undoable`) is looked up by the scan, clean and undo workers, never on the UI
+  thread, and the crash marker in the backup folder is read in its own worker on mount, whose answer opens
+  `RecoveryScreen` once the review is the screen shown and idle (L6: the scan box shows before any disk access).
+  `flavors` is one `Flavor` (root = the flavor, accounts below) or a list (root = All
   flavors, a node per flavor, a "not scanned" leaf for a flavor whose scan failed). `wow_check` covers every
   flavor (`core.process.wow_check_for(list)` lists the processes once). Blacklisted items (`Proposal.blacklisted`)
   stay in the tree, greyed and tagged "blacklisted", with no tick keys (`_paths` gives none, so Space / `a` / `n`
-  skip them) and no tick mark; group rows count and mark the cleanable items only. `b` is the shared
+  skip them) and the shared blacklist mark (`ui.review.blacklisted_mark()`, `⊘`, dim, L15) in place of a tick mark;
+  group rows count and mark the cleanable items only. `b` is the shared
   `BlacklistAction` (`BLACKLIST_BINDING`, not in the footer: the left-pane hint names it): `blacklist_target` maps an
   item or file row to (its flavor folder, from `_item_flavor`, rebuilt per rebuild, so All flavors toggles per flavor;
   the addon), `toggle_blacklist` reloads the settings, applies `toggle_pair` over every flavor folder of the install,
@@ -169,6 +178,9 @@ The WTF Cleaner's own screens live in `tools/wtf_cleaner/`. `app.py` holds `WtfC
 `result_screen.py` holds `ResultScreen(result, flavor=None)`, a `ResultBase`: a summary table plus a per-file `DataTable`. With a
 `MultiCleanResult` it shows Done / Stopped / Not started rows after a stop, one block of summary rows per finished
 flavor, and a Flavor column (`report.MULTI_RESULT_COLUMNS`). Zips are named inside the backup folder (`cleaned/<name>`, `backup/<name>`), which has a "Backup folder" row of its own. A real clean adds a "Run journal" row: inside the backup folder when it is there (the default one holds
-`journal/`), else its name after a "Journal folder" row, so both fit at 120x30 for the default install path. The per-file table puts Reasons before
+`journal/`), else its name after a "Journal folder" row, so both fit at 120x30 for the default install path; it
+carries the Undo note (`UNDO_NOTE`). Several flavors share one journal: `multi_summary_rows` names it once, above
+the flavor blocks, which leave it out (`summary_rows(result, journal=False)`, L14). That row comes before any file
+is named, so its note says what Undo restores (`MULTI_UNDO_NOTE`). The per-file table puts Reasons before
 Size and File, so why each file goes shows at 120x30. With an
 `UndoResult` it is titled "undo result" and shows `report.undo_summary_rows` and `report.UNDO_COLUMNS`.

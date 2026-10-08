@@ -46,9 +46,11 @@ from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                 UnfinishedRunScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.review import (BLACKLIST_BINDING, ActionBar, BarTree, BlacklistAction, ReviewBase, RunActions,
-                                SvRecoveryActions, TickModel, WowCheck, lift_toasts)
+                                SvRecoveryActions, TickModel, WowCheck, blacklisted_mark)
+from wowtools.ui.toasts import TOAST_FLOOR, StackTip, TipRack
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, TreeFilter, hidden_by_filter
-from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost, scan_warning_items
+from wowtools.ui.warnings_view import (WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost,
+                                       scan_warning_items)
 from wowtools.ui.widgets import (NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button,
                                  key_text, wrap_items)
 
@@ -60,7 +62,8 @@ GROUP_KINDS = ("root", "flavor", "account")  # nodes too broad to stand for a se
 # The action bar under the tree: (id, label, kind of action, action, key), staged changes first (amber; Copy is green: it
 # only adds a profile), then staged deletes (red), then the rest; a staging button takes the colour of the action it
 # stages (spec D12).
-# Each button does what its key does; one with nothing to act on stays enabled and says what to tick or highlight.
+# Each button does what its key does; one with nothing to act on stays enabled and says why (what to tick or
+# highlight; Leftovers, which ticks for itself, says no leftover character is shown).
 # The focused button's tip (action_tip) says what it would do now. The bar's buttons are compact: each shows its key
 # after its label on its one row ("Delete (d)"); two rows per button would take the tree two or three rows at 120x30
 # (D17). The labels are short enough for two rows at 160x45 (and three at 120x30): tests/test_look_and_feel.py.
@@ -102,15 +105,9 @@ class ProfileRecoveryScreen(UnfinishedRunScreen):
         super().__init__(recovery_text(marker), marker)
 
 
-class ActionTip(Static):
-    """What the focused action bar button would do now, in a toast-like box just above the bar (see
-    ProfileReviewScreen._place_overlays): above the guidance line over the bar. Shown only while a button of the
-    bar has focus."""
-
-    def on_resize(self) -> None:
-        place = getattr(self.screen, "_place_overlays", None)
-        if place is not None:
-            place()  # its height is known now: the toasts go above it
+class ActionTip(StackTip):
+    """What the focused action bar button would do now: the lowest box of the toast stack (ui.toasts), just above
+    the guidance line over the bar, with the toasts above it. Shown only while a button of the bar has focus."""
 
 
 class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistActions, BlacklistAction, TreeFilter,
@@ -139,11 +136,6 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
     ProfileReviewScreen #profiles { height: 1fr; }
     ProfileReviewScreen #guide { height: auto; color: $text-muted; padding: 0 1; }
     ProfileReviewScreen #tree-actions { padding: 0 1; }
-    ProfileReviewScreen { layers: default action-tip; }
-    ProfileReviewScreen #tip-rack { layer: action-tip; dock: bottom; width: 1fr; height: auto; align: right bottom;
-                                    visibility: hidden; display: none; overflow-y: scroll; }
-    ProfileReviewScreen #action-tip { visibility: visible; width: 60; max-width: 50%; height: auto; padding: 1 1;
-                                      background: $panel-lighten-1; border-left: outer $accent; }
     """
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("space", "toggle", "Tick/untick", priority=True),
@@ -172,7 +164,7 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
         WARNINGS_BINDING,
         Binding("f", "leave('flavors')", "Flavors"),
         Binding("t", "leave('tools')", "Tools"),
-        Binding("q", "leave('quit')", "Quit"),
+        Binding("q", "app.quit", "Quit"),
         Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
@@ -238,11 +230,11 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
                     yield ProgressBar(id="scan-progress", show_eta=False)
                     yield Static("", id="scan-label")
                 yield BarTree(Text(self.scope_label), id="profiles")
-                yield Static(Text(self.guide_text), id="guide")
+                yield Static(Text(self.guide_text), id="guide", classes=TOAST_FLOOR)  # toasts stay above it
                 with ActionBar(id="tree-actions"):
                     for button_id, label, kind, _, key in TREE_ACTIONS:
                         yield action_button(label, kind, key, id=button_id, compact=True)
-        with Vertical(id="tip-rack"):
+        with TipRack(id="tip-rack"):
             yield ActionTip("", id="action-tip")
         yield SummaryBar(Text(self.summary_text))
         yield BottomBar()
@@ -252,7 +244,6 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
         self.query_one("#scan-box").display = False
         self.query_one("#profiles", Tree).focus()
         self._refresh_buttons()
-        self.call_after_refresh(self._place_overlays)
         self._scan()
 
     # --- panes (←/→): TwoPaneFocus ------------------------------------------------------------------
@@ -359,7 +350,7 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
             return
         self._show_scan_progress(False)
         self.summary_text = message
-        self.query_one("#summary", Static).update(Text(message))
+        self.query_one("#summary", SummaryLine).show_one_line(message)
         self.notify(message, title="Scan failed", severity="error", timeout=15)
         self._refresh_buttons()
 
@@ -428,6 +419,8 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
         if builder is None or data is None:
             return Text("")
         body = builder.bodies.get(id(data), Text(""))
+        if id(data) in builder.held:  # a locked (blacklisted) addon's row: never ticked (L15)
+            return Text.assemble(blacklisted_mark(), body)
         keys = builder.keys.get(id(data), ())
         if not keys:
             return Text.assemble("  ", body)
@@ -496,7 +489,6 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
         if text != self.guide_text or shown != self._guide_shown:
             self.guide_text, self._guide_shown = text, shown
             guide.update(Text(shown))
-            self.call_after_refresh(self._place_overlays)  # it may now take another number of rows
 
     def _shortened_guidance(self, kind, name: str, profiles: int, chars: int, total: int, locked: str) -> str:
         """The guidance with the node's (or locked addon's) name shortened with "…" until the guide fits in
@@ -516,9 +508,8 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
 
     def on_resize(self) -> None:
         self.call_after_refresh(self._update_guide)  # once the guide has its new width
-        self.call_after_refresh(self._place_overlays)  # the action bar may take another number of rows
 
-    # --- the action tip, and where toasts go -----------------------------------------------------------
+    # --- the action tip (the toast stack's lowest box, ui.toasts) -------------------------------------------------
     def on_descendant_focus(self, event) -> None:
         super().on_descendant_focus(event)
         self._update_tip()
@@ -534,7 +525,8 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
         return next((name for button_id, _, _, name, _ in TREE_ACTIONS if button_id == focused.id), None)
 
     def _update_tip(self) -> None:
-        """Show what the focused action bar button would do now (or hide the tip), then place it and the toasts."""
+        """Show what the focused action bar button would do now (or hide the tip); ui.toasts places it and the
+        toasts after the layout this causes."""
         if not self.is_attached:
             return
         action = self._focused_action()
@@ -546,21 +538,6 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
                 label = f"{label} ({key_text(key)})"
             self.query_one("#action-tip", Static).update(Text.assemble((label, "bold"), "\n",
                                                                        self.action_tip(action)))
-        self.call_after_refresh(self._place_overlays)
-
-    def _place_overlays(self) -> None:
-        """The tip sits just above the guidance line over the action bar, and toasts just above the tip (or the
-        guidance line), so neither covers the line or the bar."""
-        if not self.is_attached:
-            return
-        top = next((w.region.y for w in (self.query_one("#guide"), self.query_one("#tree-actions"))
-                    if w.display and w.region.height), None)
-        above = max(self.size.height - top, 1) if top is not None else 1
-        rack = self.query_one("#tip-rack")
-        rack.styles.margin = (0, 0, above, 0)
-        if rack.display:
-            above += self.query_one("#action-tip").outer_size.height  # the rack is invisible and reports no size
-        lift_toasts(self, above)
 
     def action_tip(self, action: str) -> str:
         """What an action bar button would do with the ticks (or the highlighted node) as they are now."""
@@ -601,13 +578,12 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
                         '"Default".')
             return f'In {addons(keys)}: move every character to "Default". The other profiles stay.'
         if action == "remove_leftovers":
-            chars = {k: [c for c in names if c in staging.state(k).leftovers]
-                     for k, names in self.selected_chars().items()}
-            chars = {k: names for k, names in chars.items() if names}
-            if not chars:
-                return "Tick or highlight leftover characters first (More… ticks them all)."
-            return (f"Remove {plural(sum(map(len, chars.values())), 'leftover character')} (no folder in WTF any "
-                    f"more) from {addons(chars)}.")
+            shown = self._shown_leftovers()
+            if not shown:
+                return "No leftover characters are shown."
+            keys = sorted({k[1] for k in shown}, key=lambda k: (str(k.path), k.sv_name))
+            return (f"Tick the {plural(len(shown), 'leftover character')} shown (no folder in WTF any more), then "
+                    f"ask to remove them from {addons(keys)}.")
         if action == "edit_blacklist":
             return "Choose the addons this tool never changes, in every game version."
         if action == "more":
@@ -788,9 +764,9 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
             self.notify(NO_PENDING)
             return
         states = self.staging.changed()
-        title, body, alerts = apply_confirm(self.staging.summary(), states, dry_run=dry_run)
-        self.app.push_screen(ConfirmScreen(title, body, (*alerts, *extra),
-                                           kind="simulate" if dry_run else "destructive"),
+        title, body, warnings = apply_confirm(self.staging.summary(), states, dry_run=dry_run)
+        self.app.push_screen(ConfirmScreen(title, body, tuple(extra), kind="simulate" if dry_run else "destructive",
+                                           listed=warnings),
                              lambda ok: self._apply_confirmed(ok, dry_run))
 
     def _apply_confirmed(self, ok: bool | None, dry_run: bool) -> None:
@@ -924,14 +900,10 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
         self._scan()
 
     # --- leaving -------------------------------------------------------------------------------
-    def action_leave(self, choice: str) -> None:
-        if self.app.busy:
-            return
+    def discard_question(self) -> tuple[str, str] | None:
+        """Leaving or quitting drops the pending changes: ask first."""
         pending = self.staging.summary().total if self.staging is not None else 0
         if not pending:
-            self.dismiss(choice)
-            return
-        self.app.push_screen(ConfirmScreen("Leave and discard the pending changes?",
-                                           f"{plural(pending, 'pending change')} not applied yet will be dropped; "
-                                           "nothing has been written.", kind="destructive"),
-                             lambda ok: self.dismiss(choice) if ok else None)
+            return None
+        return ("Leave and discard the pending changes?",
+                f"{plural(pending, 'pending change')} not applied yet will be dropped; nothing has been written.")

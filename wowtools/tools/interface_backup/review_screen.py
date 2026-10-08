@@ -26,7 +26,7 @@ from wowtools.core.journal import Journal
 from wowtools.core.paths import to_stored
 from wowtools.core.process import wow_check_for
 from wowtools.tools.interface_backup.backup import BackupOutcome, back_up_all
-from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups, read_parts
+from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups, move_old_zips, read_parts, zips_dir
 from wowtools.tools.interface_backup.journal import latest_undoable, read_restore_journal, resolve_journal_dir
 from wowtools.tools.interface_backup.report import (BACKUP_RESULT_COLUMNS, PARTS_PENDING, STAGE_TITLES, backup_confirm,
                                                     backup_detail, backup_result_rows, backup_summary_rows, backup_text,
@@ -43,7 +43,7 @@ from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, 
 from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TreeFilter
-from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost
+from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
@@ -129,7 +129,7 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         WARNINGS_BINDING,
         Binding("f", "leave('flavors')", "Flavors"),
         Binding("t", "leave('tools')", "Tools"),
-        Binding("q", "leave('quit')", "Quit"),
+        Binding("q", "app.quit", "Quit"),
         Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
@@ -198,7 +198,7 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
     def _show_settings(self) -> None:
         root = self._root()
         keep = self.cfg.keep_backups
-        self.query_one("#folder-label", Static).update(Text(to_stored(root) if root else "?"))
+        self.query_one("#folder-label", Static).update(Text(to_stored(zips_dir(root)) if root else "?"))
         self.query_one("#keep-label", Static).update(Text("all backups" if keep == 0 else
                                                           f"newest {keep} per flavor"))
 
@@ -282,6 +282,7 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
             # Flavors are read up to `parallelism` at once; each report names its flavor (the bar has no total).
             scans = scan_flavors(flavors, with_stats=CHEAP_STATS, progress=progress,
                                  parallelism=parallelism)
+            move_old_zips(root)  # once: an older version's zips into backup/ (L16); never raises, logged
             backups = list_backups(root, {f.short_name for f in flavors})  # never raises
             undoable = latest_undoable(journal_dir)
         except Exception as exc:  # noqa: BLE001 - shown to the user, never a crash
@@ -297,7 +298,7 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
             return
         self._show_scan_progress(False)
         self.summary_text = message
-        self._set_summary(message)
+        self.query_one("#summary", SummaryLine).show_one_line(message)
         self.notify(message, title="Scan failed", severity="error", timeout=15)
         self._refresh_buttons()
 

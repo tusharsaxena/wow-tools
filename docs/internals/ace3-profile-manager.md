@@ -80,7 +80,10 @@ Code: `ops.py`. `Staging` holds a `DbState` per database (`DbKey(path, sv_name)`
 profile, or removed), `profiles` (name → `Original(name)` or `CopyOf(name)`), `module_only` (profiles that exist
 only in a namespace: they change only when a delete or rename names them), the LibDualSpec specs and the
 leftovers. Operations change only this model and return `OpResult` (`applied` keys, `refused` with a reason per
-database, `notes`). A locked (blacklisted, not unlocked) addon is refused; `drop_locked()` resets one that became
+database, `notes`: `core.text.Listed(message, where, item)` from `listed(state, message, states)`: the where
+from `where_of(state)`, "Retail · ACCOUNT", the item from `item_of(state, states)`, the addon with its database
+when another of `states` is in the same file and its character for a character's file, so no two items under one
+where look the same). A locked (blacklisted, not unlocked) addon is refused; `drop_locked()` resets one that became
 locked, and `changed()`/`summary()` never include one. `DbState.changes()` lists deleted, renamed, copied,
 reassigned and removed entries; `Summary` counts them for the left pane and the confirm.
 
@@ -170,15 +173,20 @@ the marker and shows `leave_notice()`.
 
 `app.py` holds `AceProfilesFlow` (`FLOW`: `require_install` → `ProfileSettingsScreen` on the tool's first open →
 `FlavorScreen(include_all=True, last=last_flavor_choice)` → `AccountScreen` for one flavor with several accounts
-(`last_account`) → `ProfileReviewScreen`; `unlocked`, the addons unlocked this session, lives on the flow) and
-`ProfileSettingsScreen` (backup folder, a `#blacklist-summary` line and **Edit blacklist…**, which opens the
-`BlacklistScreen` and keeps its answer until Save; `validate_backup_dir` errors inline). `s` opens the shared WoW-folder settings, then this tool's (not while a `ProfileSettingsScreen` or a `BlacklistScreen` is on the stack: two Saves would overwrite each other).
+(`last_account`) → the shared `ui.disclaimer.DisclaimerScreen` with `report.DISCLAIMER` (`ToolFlow.ask_disclaimer`, once
+per app session, L4; `ace.disclaimer_accepted` / `_declined`; Back returns to the flavor picker; never with
+`skip_risk_warning`, set by its "Don't show this warning again" box and the settings form,
+`ace.risk_warning_changed`, L8) →
+`ProfileReviewScreen`; `unlocked`, the addons unlocked this session, lives on the flow) and
+`ProfileSettingsScreen` (backup folder, a `#blacklist-summary` line, **Edit blacklist…**, which opens the
+`BlacklistScreen` and keeps its answer until Save, and the show-the-risk-warning box; `validate_backup_dir` errors inline). `s` opens the shared WoW-folder settings, then this tool's (not while a `ProfileSettingsScreen` or a `BlacklistScreen` is on the stack: two Saves would overwrite each other).
 
 - `ProfileReviewScreen` (`review_screen.py`): `TreeFilter`, `SvRecoveryActions`, `RunActions` and `ReviewBase`,
   `two_pane_css`, with two mixins of its own (F-007): `staging_actions.ProfileStagingActions` (Delete, Assign, Rename,
   Copy, Leftovers, Only Default, Everyone → Default, the `m` menu and Discard: each picks its target, asks in a popup
-  and stages) and `blacklist_actions.ProfileBlacklistActions` (the `BlacklistAction` hooks, **Blacklist…**, `u` and
-  dropping a locked addon's pending changes and ticks). Left pane `#filters`, one control
+  and stages; Leftovers first ticks every leftover character shown, `_tick_leftovers`, decision L1) and
+  `blacklist_actions.ProfileBlacklistActions` (the `BlacklistAction` hooks, **Blacklist…**, `u` and dropping a
+  locked addon's pending changes and ticks). Left pane `#filters`, one control
   per row: the shared `RiskBanner` (D37), the View pair under a "View" heading (By addon / By character), the Show boxes under a "Show" heading, the
   shared `FilterBar` (its box id `#search`, `FILTER_SELECTOR`), the `#pending` line (`report.pending_text`, "N pending changes" or `NO_PENDING`) and the
   action row **Apply** (destructive), **Dry run**, **Rescan**, **Undo last change** (revert). Right:
@@ -191,7 +199,9 @@ the marker and shows `leave_notice()`.
   Everyone → Default still take every tick (falling back to the highlighted node only with no tick at all), and
   their popup (a toast for the two that stage at once) says how many ticks are hidden. Labels and tags come from `report.profile_rows` and
   `char_tags`. Ticks are `("p", DbKey, profile)` and `("c", DbKey, char)`; groups tick their descendants; locked
-  addons, deleted profiles, removed characters and notes are read-only. `#summary` is `report.selection_text` plus
+  addons, deleted profiles, removed characters and notes are read-only. Every row of a locked addon (in both views)
+  is in `TreeBuilder.held` and shows the shared blacklist mark (`ui.review.blacklisted_mark()`, `⊘`, dim, L15) in
+  place of a tick mark; an unlocked one takes ticks again. `#summary` is `report.selection_text` plus
   the hidden-ticks line.
   The scan, the running-WoW preflight, Apply/dry run, Undo and recovery each run in a worker; the jobs set
   `app.busy` and run inside `activity.running()`.
@@ -205,8 +215,8 @@ the marker and shows `leave_notice()`.
   `TREE_ACTIONS`, staged changes first (amber; Copy green, it only adds a profile), then staged deletes (red), then the rest (Assign, Rename, Copy,
   Everyone → Default (E), Delete, Only Default (D), Leftovers, Blacklist…, More…, Discard: three rows at 120x30, two at 160x45), each button doing what
   its key does. The focused button's `ActionTip` (`action_tip()`: what it would do with the ticks or the
-  highlighted node now) sits on its own `action-tip` layer just above the guidance line over the bar, and
-  `_place_overlays()` keeps Textual's toast rack above the tip (or the guidance line). With nothing ticked, Delete and Assign act on the
+  highlighted node now) is a `ui.toasts.StackTip` in a `TipRack`: the lowest box of the shared toast stack, just
+  above the guidance line over the bar (`#guide` has the `TOAST_FLOOR` class), with the toasts above it. With nothing ticked, Delete and Assign act on the
   highlighted node, but never on the root, a flavor or an account (`GROUP_KINDS`). The guide follows the cursor, the ticks and the pending
   changes. Discard is Backspace (`x`/`c` are expand and collapse all); `b` toggles the highlighted addon's
   (flavor, addon) pair through the shared `BlacklistAction` (`ui/review.py`; `core/blacklist.toggle_pair`) and saves at once; **Blacklist…** (`action_edit_blacklist`) opens
@@ -220,10 +230,16 @@ the marker and shows `leave_notice()`.
   (`ConfirmScreen`, kind `confirm`, saying how many). It
   dismisses with the new pair list (or `None`); pairs of flavors it does not show are kept, and a legacy `"*"`
   pair is saved as explicit pairs (for the hidden flavors too).
-- `popups.py`: `TargetScreen` (delete and assign: a target `Select` plus a new-name `Input`), `NameScreen` (rename
+- `popups.py`: `TargetScreen` (delete and assign: a target `Select` plus a new-name `Input`; what the change takes,
+  one `Listed(addon, item=profile or character)` per database entry, is its `listed=`, one collapsed, counted
+  `CountedTree` row under the body, never body lines, STD-7.26, L12), `NameScreen` (rename
   and copy, with live validation) and `ActionsScreen` (the `m` menu: every key the footer
   and the action bar hide, under the `ACTION_GROUPS` headings Selection and Modification), styled with the shared `popup_css`; `NameScreen` is the shared `TextPromptScreen` checked with `valid_name`. Apply and Undo use `ConfirmScreen` (`report.apply_confirm`/`undo_confirm`; alerts
-  in red; Yes red for Apply and Undo, cyan for a dry run).
+  in red; Yes red for Apply and Undo, cyan for a dry run). `apply_confirm`'s warnings are `Listed` entries (one per
+  addon warning), shown as the confirm's `listed` (one collapsed, counted `CountedTree` row, L10, STD-7.26); the
+  staging actions' `_staged` shows `result.refused` as a "Not done" `InfoScreen` (`listed` from `ops.listed`,
+  noun "database not changed"), then the Notes popup, an `InfoScreen` with `listed=result.notes, noun="note",
+  alert=False` (no ⚠; one or two notes start open, `open_short`).
 - `ProfileProgressScreen(title, dry_run=, first_stage=, flavors=)` (ids `ace-*`, `report.STAGE_TITLES`; Apply feeds `report_unit`, a row per flavor in turn) and `ProfileRecoveryScreen` (the shared `UnfinishedRunScreen`: Put the originals
   back / Leave as is; Esc leaves the marker for the next scan). The review's apply, undo and recovery runs go through
   the shared `RunActions` (`ui/review.py`); the recovery flow itself (offer, Leave as is, Put the originals back, the

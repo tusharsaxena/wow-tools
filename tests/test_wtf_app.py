@@ -13,7 +13,7 @@ from unittest.mock import patch
 from textual.app import App
 from textual.widgets import Button, DataTable, Input, OptionList, ProgressBar, Static, Tree
 
-from tests.fixtures import BASE, TuiTestCase, build_wow_tree, make_config, settle, submit_filter
+from tests.fixtures import BASE, TuiTestCase, accept_disclaimer, build_wow_tree, make_config, settle, submit_filter
 from wowtools.core import activity
 from wowtools.core.backup import BackupError
 from wowtools.core.config import Config
@@ -35,7 +35,7 @@ from wowtools.tools.wtf_cleaner.undo import UndoResult
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
-from wowtools.ui.review import BLACKLIST_NO_TARGET
+from wowtools.ui.review import BLACKLIST_NO_TARGET, BLACKLISTED_MARK
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.widgets import ButtonRow, Ka0sCheckbox, NavHint, action_kind
@@ -89,6 +89,7 @@ class AppTestCase(TuiTestCase):
         await pilot.press("enter")
         await pilot.pause()
         await settle(app, pilot)
+        await accept_disclaimer(app, pilot)
         review = app.screen
         self.assertIsInstance(review, ReviewScreen)
         self.assertIsNotNone(review.proposal)
@@ -537,6 +538,7 @@ class BlacklistKeyTest(AppTestCase):
                     self.assertTrue(row.data[1].blacklisted)
                     self.assertIn("blacklisted", str(row.label))
                     self.assertFalse(str(row.label).startswith(("✔", "◩", "✘")), str(row.label))
+                    self.assertTrue(str(row.label).startswith(BLACKLISTED_MARK), str(row.label))
                 self.assertNotIn("Uninstalled", {i.addon for i in review.proposal.items})
                 self.assertIn("4 items · 5 files", review.summary_text)
                 self.assertIn("(0 files)", review.query_one("#crit_not_installed", Ka0sCheckbox).label.plain)
@@ -575,6 +577,29 @@ class BlacklistKeyTest(AppTestCase):
             self.assertFalse(paths & review.unchecked)
             await pilot.press("a")
             self.assertNotIn("Uninstalled", {i.addon for i in review._selection()})
+
+    async def test_blacklisted_rows_show_the_blacklist_mark(self):
+        """L15: an addon row and its file rows show the shared ⊘ in the tick column, dim like the row; a row that
+        is not blacklisted keeps its tick mark."""
+        self.tool_cfg.set("wtf_cleaner", "blacklist", "_retail_:Uninstalled", log=False)
+        self.tool_cfg.save()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            tree.root.expand_all()
+            await pilot.pause()
+            rows = [n for n in _walk(tree.root) if n.data and n.data[0] in ("item", "file")]
+            held = [n for n in rows if n.data[1].blacklisted]
+            self.assertTrue(any(n.data[0] == "item" for n in held) and any(n.data[0] == "file" for n in held))
+            for node in held:
+                label = node.label
+                self.assertTrue(label.plain.startswith(f"{BLACKLISTED_MARK} "), label.plain)
+                self.assertTrue(any(s.start == 0 and "dim" in str(s.style) for s in label.spans), label.spans)
+            for node in rows:
+                if not node.data[1].blacklisted:
+                    self.assertTrue(node.label.plain.startswith(("✔", "◩", "✘")), node.label.plain)
+                    self.assertNotIn(BLACKLISTED_MARK, node.label.plain)
 
     async def test_blacklisted_addon_is_left_out_of_the_confirm_and_the_dry_run(self):
         app = self.make_app()
@@ -691,6 +716,7 @@ class RecoveryDialogTest(AppTestCase):
         await pilot.press("enter")  # all accounts
         await pilot.pause()
         await settle(app, pilot)
+        await accept_disclaimer(app, pilot)
         self.assertIsInstance(app.screen, RecoveryScreen)
         self.assertIn(str(self.snapshot), app.screen.message_text)
         return app.screen
@@ -772,6 +798,7 @@ class AccountScopeFlowTest(AppTestCase):
             await pilot.press("down", "down", "enter")
             await pilot.pause()
             await settle(app, pilot)
+            await accept_disclaimer(app, pilot)
             review = app.screen
             self.assertIsInstance(review, ReviewScreen)
             self.assertEqual(review.account, "ACCT2")
@@ -809,6 +836,7 @@ class AccountScopeFlowTest(AppTestCase):
             await pilot.press("enter")
             await pilot.pause()
             await settle(app, pilot)
+            await accept_disclaimer(app, pilot)
             review = app.screen
             self.assertIsInstance(review, ReviewScreen)
             self.assertIsNone(review.account)
@@ -1064,18 +1092,38 @@ class KeyboardNavigationTest(AppTestCase):
         names its folder and the next its file."""
         from wowtools.core.install import Flavor
         from wowtools.tools.wtf_cleaner.multi import FlavorRun, MultiCleanResult
-        from wowtools.tools.wtf_cleaner.result_screen import multi_summary_rows
+        from wowtools.tools.wtf_cleaner.result_screen import MULTI_UNDO_NOTE, multi_summary_rows
         flavor = Flavor("_retail_", self.root / "_retail_")
         journal = self.root / "wow-tools" / "wtf-cleaner" / "journal" / "journal-20261004-153304.jsonl"
         for folder, expected in (
                 (self.backup_dir, [("Journal folder", to_stored(journal.parent), False),
-                                   ("Run journal", journal.name, False)]),
-                (self.root / "wow-tools" / "wtf-cleaner", [("Run journal", str(Path("journal", journal.name)), False)])):
+                                   ("Run journal", f"{journal.name} {MULTI_UNDO_NOTE}", False)]),
+                (self.root / "wow-tools" / "wtf-cleaner",
+                 [("Run journal", f"{Path('journal', journal.name)} {MULTI_UNDO_NOTE}", False)])):
             clean = CleanResult(dry_run=False, backup_path=folder / "cleaned" / "cleaned-retail-x.zip",
                                 journal_path=journal)
             result = MultiCleanResult(dry_run=False, runs=[FlavorRun(flavor, [], result=clean)], journal_path=journal)
             rows = multi_summary_rows(result)
             self.assertEqual(rows[:len(expected)], expected)  # on top, before the flavor's block
+
+    def test_multi_summary_shows_the_run_journal_once(self):
+        """L14: one journal for every flavor of the run, so one "Run journal" row (the one with the Undo hint) and
+        at most one "Journal folder" row: the flavor blocks do not repeat them."""
+        from wowtools.core.install import Flavor
+        from wowtools.tools.wtf_cleaner.multi import FlavorRun, MultiCleanResult
+        from wowtools.tools.wtf_cleaner.result_screen import MULTI_UNDO_NOTE, multi_summary_rows
+        journal = self.root / "wow-tools" / "wtf-cleaner" / "journal" / "journal-20261004-153304.jsonl"
+        runs = []
+        for folder in ("_retail_", "_classic_"):
+            clean = CleanResult(dry_run=False, backup_path=self.backup_dir / "cleaned" / f"cleaned-{folder}x.zip",
+                                journal_path=journal)
+            runs.append(FlavorRun(Flavor(folder, self.root / folder), [], result=clean))
+        for done in (runs[:1], runs):
+            rows = multi_summary_rows(MultiCleanResult(dry_run=False, runs=done, journal_path=journal))
+            items = [item for item, _, _ in rows]
+            self.assertEqual(items.count("Run journal"), 1, rows)
+            self.assertEqual(items.count("Journal folder"), 1, rows)
+            self.assertTrue({item: value for item, value, _ in rows}["Run journal"].endswith(MULTI_UNDO_NOTE))
 
     async def test_real_clean_result_names_the_journal_inside_the_default_backup_folder(self):
         """With no backup folder set, the default one (<WoW>/wow-tools/wtf-cleaner) holds journal/: the journal
@@ -1171,24 +1219,26 @@ class KeyboardNavigationTest(AppTestCase):
             self.assertTrue(settings.query(ButtonRow))
             self.assertTrue(settings.query(NavHint))
             self.assertFalse(settings.query("Switch"))
-            expected = ["max_age", "backup_dir", *[f"sw_{n}" for n in CRITERIA], "sw_backup", "keep_cleaned", "save"]
+            expected = ["max_age", "backup_dir", *[f"sw_{n}" for n in CRITERIA], "sw_backup", "keep_cleaned",
+                        "sw_risk_warning", "save"]
             order = [settings.focused.id]
             for _ in expected[1:]:
                 await pilot.press("down")
                 order.append(settings.focused.id)
             self.assertEqual(order, expected)
-            for name in (*[f"sw_{n}" for n in CRITERIA], "sw_backup"):
+            for name in (*[f"sw_{n}" for n in CRITERIA], "sw_backup", "sw_risk_warning"):
                 self.assertIsInstance(settings.query_one(f"#{name}"), Ka0sCheckbox)
-            await pilot.press("up", "up")  # back to the backup toggle
+            await pilot.press("up", "up", "up")  # back to the backup toggle
             self.assertEqual(settings.focused.id, "sw_backup")
             self.assertTrue(settings.focused.value)
             await pilot.press("space")
             self.assertFalse(settings.focused.value)
-            await pilot.press("down", "down", "enter")
+            await pilot.press("down", "down", "down", "enter")
             await pilot.pause()
             self.assertIsInstance(app.screen, FlavorScreen)
         saved = load_settings(Config(cfg.path.parent / "wtf-cleaner.cfg").load())
         self.assertFalse(saved.backup_before_delete)
+        self.assertFalse(saved.skip_risk_warning)
         self.assertEqual(Config(cfg.path).load().wow_path, self.root)
 
     async def test_arrow_keys_stay_with_tree(self):
@@ -1345,7 +1395,9 @@ class PreflightWorkerTest(AppTestCase):
             started = time.monotonic()
             await pilot.press("w")
             await pilot.pause()
-            self.assertLess(time.monotonic() - started, 1.0)
+            # A check on the UI thread would hold the press for slow_check's whole 5 s; a slow CI runner (Windows,
+            # Python 3.10) took 1.8 s for the worker's press, so the bound sits between the two.
+            self.assertLess(time.monotonic() - started, 4.0)
             self.assertIs(app.screen, review)
             self.assertIn("Checking for running programs", str(review.query_one("#summary", Static).render()))
             await pilot.press("w")  # ignored while the check runs
@@ -1380,7 +1432,7 @@ class PreflightWorkerTest(AppTestCase):
             started = time.monotonic()
             await pilot.press("z")
             await pilot.pause()
-            self.assertLess(time.monotonic() - started, 1.0)
+            self.assertLess(time.monotonic() - started, 4.0)  # under slow_check's 5 s (see the preflight test)
             self.assertIs(app.screen, review)
             await pilot.press("z")  # ignored while the check runs
             release.set()
@@ -1484,6 +1536,7 @@ class AllFlavorsTest(AppTestCase):
         await pilot.press("enter")
         await pilot.pause()
         await settle(app, pilot)
+        await accept_disclaimer(app, pilot)
         review = app.screen
         self.assertIsInstance(review, ReviewScreen)  # no account picker with All flavors
         self.assertIsNotNone(review.proposal)
@@ -1548,6 +1601,7 @@ class AllFlavorsTest(AppTestCase):
             await pilot.press("enter")
             await pilot.pause()
             await settle(app, pilot)
+            await accept_disclaimer(app, pilot)
             self.assertIsInstance(app.screen, ReviewScreen)
         self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).last_flavor_choice, "_classic_era_")
         self.assertEqual(Config(self.cfg.path).load().last_flavor, "_classic_era_")
@@ -1616,6 +1670,7 @@ class AllFlavorsTest(AppTestCase):
             await pilot.press("enter")
             await pilot.pause()
             await settle(app, pilot)
+            await accept_disclaimer(app, pilot)
             review = app.screen
             self.assertIsInstance(review, ReviewScreen)
             self.assertIsNone(review.proposal)
@@ -1695,11 +1750,30 @@ class AllFlavorsTest(AppTestCase):
             summary = screen.query_one("#result-summary", DataTable)
             values = [str(summary.get_row_at(i)[1]) for i in range(summary.row_count)]
             self.assertEqual(values.count("passed"), 2)
+            items = [str(summary.get_row_at(i)[0]) for i in range(summary.row_count)]
+            self.assertEqual(items.count("Run journal"), 1, items)  # L14: once, above the flavor blocks
+            self.assertLess(items.index("Run journal"), items.index("Classic Era"))
+            # above every flavor block no file is named yet, so the note names what Undo puts back
+            self.assertIn("restores deleted files", values[items.index("Run journal")])
         self.assertEqual(len(list(self.backup_dir.glob("backup/backup-classic_era-*.zip"))), 1)
         self.assertEqual(len(list(self.backup_dir.glob("backup/backup-retail-*.zip"))), 1)
         self.assertFalse((self.era_sv / "Gone.lua").exists())
         self.assertFalse((self.sv / "Uninstalled.lua").exists())
         self.assertFalse((self.backup_dir / MARKER_NAME).exists())
+
+    async def test_multi_flavor_journal_row_fits_at_base(self):
+        """L14: with the default backup folder the shared journal row reads journal/<name> plus the Undo note,
+        the longest summary value; it still fits at 120x30 with no sideways scroll."""
+        self.tool_cfg.remove("wtf_cleaner", "backup_dir", log=False)
+        self.tool_cfg.save()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_all(app, pilot)
+            await self.run_mode(app, pilot, "w")
+            summary = app.screen.query_one("#result-summary", DataTable)
+            rows = {str(summary.get_row_at(i)[0]): str(summary.get_row_at(i)[1]) for i in range(summary.row_count)}
+            self.assertTrue(rows["Run journal"].startswith(str(Path("journal", ""))), rows)
+            self.assertEqual(summary.max_scroll_x, 0)
 
     async def test_backup_error_in_first_flavor_stops_before_the_second(self):
         calls = []

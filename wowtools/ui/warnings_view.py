@@ -1,10 +1,12 @@
 """The warnings view every tool shares (spec W1, W2): what a scan could not read or skipped, on a screen of its own
 instead of only in the log, which nobody reads.
 
-- `SummaryBar`: a screen's bottom line (#summary) with the compact **Warnings** button at its right end, shown only
-  while there are warnings ("⚠ 4 scan warnings (!)"): a click or its key, `!` (WARNINGS_KEY), opens the view. The
-  button takes no focus (the bottom line is not a row of controls) and carries its key (spec D17), so the footer
-  never lists it.
+- `SummaryLine`: the bottom line's text (#summary); `show_one_line` keeps a failed scan's message on one row
+  (ellipsis), so a long error never moves the bars above it (STD-7.25); the next `update` wraps again.
+- `SummaryBar`: a screen's bottom line (#summary, a `SummaryLine`) with the compact **Warnings** button at its right
+  end, shown only while there are warnings ("⚠ 4 scan warnings (!)"): a click or its key, `!` (WARNINGS_KEY), opens
+  the view. The button takes no focus (the bottom line is not a row of controls) and carries its key (spec D17),
+  so the footer never lists it.
 - `WarningsHost`: the mixin a screen showing warnings takes: `warning_items()` (what it collected), `refresh_warnings()`
   (call it where the screen updates its bottom line), `action_show_warnings()` (bind WARNINGS_BINDING).
 - `WarningsScreen`: the view, in the two-pane look: a count, the `/` filter and Back (Esc) on the left; on the right
@@ -24,6 +26,7 @@ from textual.containers import Horizontal, Vertical
 from textual.content import Content
 from textual.screen import Screen
 from textual.widget import Widget
+from textual.visual import VisualType
 from textual.widgets import Button, Header, Static, Tree
 
 from wowtools.core.events import log_event
@@ -79,9 +82,30 @@ def warnings_label(count: int, noun: str) -> str:
     return f"⚠ {plural(count, noun)}"
 
 
+class SummaryLine(Static):
+    """The text of a screen's bottom line (#summary). It wraps, so a warning at its end (selected items hidden by
+    the filter, flavors not scanned) is read in full; `show_one_line` shows a failed scan's (or a refused folder's)
+    message on one row, cut with an ellipsis, so a long error with a WoW path never pushes the rows under the tree
+    up (STD-7.25). The whole message is in the notice and the log. The next `update` wraps again."""
+
+    ONE_LINE: ClassVar[str] = "-one-line"
+    DEFAULT_CSS = """
+    SummaryLine.-one-line { text-wrap: nowrap; text-overflow: ellipsis; }
+    """
+
+    def update(self, content: VisualType = "", *, layout: bool = True) -> None:
+        self.remove_class(self.ONE_LINE)
+        super().update(content, layout=layout)
+
+    def show_one_line(self, message: str) -> None:
+        """Show `message` on one row (ellipsis when it is wider than the line)."""
+        super().update(Text(message))
+        self.add_class(self.ONE_LINE)
+
+
 class SummaryBar(Horizontal):
-    """A screen's bottom line: the #summary Static (what the screen says about the selection) and, at its right end,
-    the Warnings button (hidden until `show_count` has a count)."""
+    """A screen's bottom line: the #summary `SummaryLine` (what the screen says about the selection) and, at its
+    right end, the Warnings button (hidden until `show_count` has a count)."""
 
     DEFAULT_CSS = """
     SummaryBar { height: auto; width: 100%; background: $surface; }
@@ -94,7 +118,7 @@ class SummaryBar(Horizontal):
         self._text = text
 
     def compose(self) -> ComposeResult:
-        yield Static(self._text, id="summary")
+        yield SummaryLine(self._text, id="summary")
         button = action_button("Warnings", "navigate", WARNINGS_KEY, id=WARNINGS_BUTTON_ID, compact=True)
         button.can_focus = False  # the bottom line is not a row of controls: a click or `!` presses it
         button.display = False

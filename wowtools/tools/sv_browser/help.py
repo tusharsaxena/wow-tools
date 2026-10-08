@@ -17,17 +17,18 @@ edit a value, rename a key, delete a key, or find values and edit them in bulk.
 ## Step by step
 
 1. **Pick a game version**, or **All flavors**.
-2. Read the warning: **I understand** goes on, **Back** returns to the game versions. It is asked each time you open
-   the tool from the menu.
+2. Read the warning: **I understand** goes on, **Back** returns to the game versions. Once you press **I
+   understand** it is not asked again until you restart the app. Tick **Don't show this warning again for this
+   tool** (`Tab`, `Space`) to stop it for good; the tool's settings (`s`) turn it back on.
 3. The **review** lists every SavedVariables file: game version, account, **Account-wide** or realm and character,
-   then the file and its size. Nothing is read until you open a file; opening a file shows its SavedVariables, and
-   opening a table shows its keys (a table with more than 500 shows the first 500 and how many more). A file that is
-   not readable Lua shows in red and is never changed.
+   then the file and its size. Nothing is read until you open a file. Opening a file shows its SavedVariables, and
+   opening a table shows its keys (a table with more than 500 shows the first 500 and how many more). A file that
+   is not readable Lua shows in red and is never changed.
 4. **Stage** changes with the buttons under the tree, or **Search** and edit the results in bulk. Nothing is
-   written yet: a staged key shows its new value (✎), its new name (→) or ✗ deleted, and the left pane counts what
+   written yet. A staged key shows its new value (✎), its new name (→) or ✗ deleted, and the left pane counts what
    is staged.
-5. **Dry run** (`y`) checks everything without writing. **Apply** (`w`), read the summary and the warning, press
-   **Yes**. The **results** list every file.
+5. **Dry run** (`y`) checks everything without writing. To write, press **Apply** (`w`), read the summary and the
+   warning, and press **Yes**. The **results** list every file.
 
 ## Under the tree (the highlighted key; in the results, the ticked results)
 
@@ -56,11 +57,11 @@ table already has is refused.
 
 **Search** finds values in every file in scope, by **key** (Exact or Contains), by **value** (Whole value, or
 Contains for text inside strings), or both (a hit then matches both), with **Match case** off by default. Numbers and
-booleans match by their written text, as a whole value only; a key whose value is a table is never a hit. Narrow it
-to one game version, account, character (or **Account-wide only**) or addon file. **Find** searches; each hit shows
-as `path = value` in the **Results** view (game version, account, owner, file), all ticked: `Space` ticks one or a
-group, `a` and `n` tick or untick what the filter shows. The results stop at 10,000 hits (narrow the search for
-more).
+booleans match by their written text, as a whole value only, and a key whose value is a table is never a hit. You can
+narrow it to one game version, account, character (or **Account-wide only**) or addon file. **Find** searches. Each
+hit shows as `path = value` in the **Results** view (game version, account, owner, file), and every hit starts
+ticked: `Space` ticks one or a group, `a` and `n` tick or untick what the filter shows. The results stop at 10,000
+hits; narrow the search to see more.
 
 In the results, **Edit value** and **Rename key** act on every ticked result (or the highlighted one when none is
 ticked): one popup ("Edit 37 values"), then one staged edit per result, marked as in browsing. After a value
@@ -73,32 +74,36 @@ the results; what is staged stays.
 ## Warnings
 
 When the scan skipped a folder, or a file could not be read (opened in the tree or searched), the bottom line
-shows **⚠ N warnings**: click it or press `!` (the **Warnings** button) to list them by game version, each with the
-file or folder and what went wrong. **Back** (`Esc`) returns to the review.
+shows **⚠ N warnings (!)**: click it or press `!` to list them by game version, each with the file or folder and
+what went wrong. **Back** (`Esc`) returns to the review.
 
 ## Safety
 
 - Before writing, Apply checks that no file changed since it was read and no program has one open, zips your
   **whole `WTF` folder** and every file it changes, writes only the bytes that change, then reads each file back and
   checks it. If anything fails, the files it wrote are put back.
-- Every Apply has a **journal**. **Undo last change** puts the files back, and leaves alone a file saved again
-  since (by WoW).
+- Every Apply has a **journal**. **Undo last change** puts the files back, but leaves alone any file WoW has saved
+  again since.
 - If an Apply was cut short (a crash, a power cut), the next scan offers **Put the originals back** or **Leave as
   is**.
 - The result shows the backup folder, the `WTF` backup, the zip of the original files and the journal.
 
 ## Keys
 
-`/` reaches the filter box: type, then **Filter** or `Enter` filters what has been opened (in the results: every
-hit), `x` opens everything down to the files and `c` closes it all, `←` `→` switch panes, `Tab` or `↓` on the last
-line reach the buttons under the tree. `f` or `Esc` picks another game version, `t` goes back to the tool menu, `s`
-opens the settings, `q` quits (leaving with something staged asks first). On the results: **Rescan**
-(`r`), **Other flavor** (`f`), **Tools** (`t`), **Quit** (`q`).
+`/` reaches the filter box. Type, then press **Filter** or `Enter` to filter what has been opened (in the results,
+every hit). `x` opens everything down to the files and `c` closes it all. `←` `→` switch panes, and `Tab`, or `↓` on
+the last line, reaches the buttons under the tree.
+
+`f` or `Esc` picks another game version, `t` goes back to the tool menu (from any screen or popup), `s` opens the
+settings and `q` quits. Leaving with something staged asks first. The results screen has **Rescan** (`r`),
+**Other flavor** (`f`), **Tools** (`t`) and **Quit** (`q`).
 
 ## Settings (`s`)
 
-- **Backup folder**: where the zips go (`snapshots` for the whole `WTF` folder, `edited` for each changed file as it
-  was). Empty means `<WoW folder>\\wow-tools\\sv-browser`. How many are kept is a shared setting.
+- **Backup folder**: the zips go in its `sv-browser` folder (`snapshots` for the whole `WTF` folder, `edited` for
+  each changed file as it was). Empty means `<WoW folder>\\wow-tools`. How many are kept is a shared setting.
+- **Show the USE AT YOUR OWN RISK warning**: on by default; off once you tick **Don't show this warning again for
+  this tool** on the popup.
 
 **Full guide:** [{GUIDE_URL}]({GUIDE_URL})
 """

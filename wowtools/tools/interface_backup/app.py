@@ -14,7 +14,7 @@ from textual.widgets import Input, Label, Static
 from wowtools.core.config import Config
 from wowtools.core.install import Flavor, validate_backup_dir
 from wowtools.core.paths import to_stored
-from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups
+from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups, zips_dir
 from wowtools.tools.interface_backup.report import picker_note
 from wowtools.tools.interface_backup.review_screen import BackupReviewScreen
 from wowtools.tools.interface_backup.settings import (SECTION, BackupSettings, load_settings, resolve_backup_root,
@@ -40,7 +40,8 @@ class BackupSettingsScreen(ToolSettingsScreen):
         return load_settings(tool_cfg)
 
     def fields(self) -> Iterable[Widget]:
-        yield Label("Backup folder. Zips go to <backup folder>\\interface-backup\\backup-<flavor>-<date>.zip. "
+        yield Label("Backup folder. Zips go to "
+                    "<backup folder>\\interface-backup\\backup\\backup-<flavor>-<date>.zip. "
                     "Leave it empty to use <WoW folder>\\wow-tools.")
         yield self.folder_input(self.settings.backup_dir, id="backup_dir",
                                 placeholder="Empty = <WoW folder>\\wow-tools")
@@ -59,7 +60,8 @@ class BackupSettingsScreen(ToolSettingsScreen):
         root = resolve_backup_root(BackupSettings(self.folder_value("backup_dir")),
                                    install.root if install is not None else None)
         self.query_one("#destination", Static).update(
-            Text(f"Zips go to: {to_stored(root)}" if root is not None else "Zips go to: (set the WoW folder first)"))
+            Text(f"Zips go to: {to_stored(zips_dir(root))}" if root is not None
+                 else "Zips go to: (set the WoW folder first)"))
 
     def save(self) -> bool:
         folder = self.folder_value("backup_dir")

@@ -41,7 +41,10 @@ The full walk-through is [adding-a-tool.md](adding-a-tool.md); the test side is
 2. `wowtools/tools/__init__.py`: one `Tool(name, title, description, module, section)` line in `TOOLS`.
 3. `python3 scripts/gen_event_docs.py`, commit `docs/events.md`.
 4. `tests/fixtures.py` (a builder), `tests/test_<package>_*.py`, and the meta-test tables: `TOOLS`, `RUN_ACTION`,
-   `DESTRUCTIVE_REVIEWS`, `PREPARE` in `tests/test_look_and_feel.py`; `RUN_ACTION`, `PREPARE` in `tests/test_help.py`.
+   `DESTRUCTIVE_REVIEWS`, `PREPARE` in `tests/test_look_and_feel.py`; `RUN_ACTION`, `PREPARE` in `tests/test_help.py`;
+   `ACCOUNT_TOOLS`, `RUN_ACTION`, `PREPARE` in `tests/test_quit_key.py`, `tests/test_tool_menu_key.py` and
+   `tests/test_toast_stack.py`; `ACCOUNT_TOOLS` in `tests/test_picker_keys.py`; `TOOLS`, `RISK_EVENTS` in
+   `tests/test_risk_disclaimer.py` for a tool with the USE AT YOUR OWN RISK popup (STD-10.8).
 5. Docs: `docs/<tool id>.md` (the guide), a README row and guide link and its config file under "Your settings",
    a `CHANGELOG.md` bullet, a row in the [architecture.md](architecture.md) Documentation map and Config schema,
    `docs/internals/<tool id>.md`, and in `CLAUDE.md` the tool line plus its links in the Documentation index's
@@ -126,7 +129,9 @@ Example: the Screenshot Organizer review's Undo (`btn-undo`, `z`).
    non-priority. Do not take a suite or shared review key (STD-8.9).
 4. Leave the key out of the screen's hint (`NavHint`) and every guide or status line; the button shows it and the
    footer drops it.
-5. A confirm it opens names its `kind` (`ConfirmScreen(..., kind="destructive")`).
+5. A confirm it opens names its `kind` (`ConfirmScreen(..., kind="destructive")`); a list in it that can grow
+   (warnings, notes, refusals, skipped items) goes in `listed=` as `core.text.Listed` entries, never in `alerts`
+   (STD-7.26).
 6. `wowtools/tools/<package>/help.py`: name the button as `**Label**` (`tests/test_help.py` checks every button the
    tool's screens show), and the guide's keys table in `docs/<tool id>.md`.
 7. Tests: the action in `tests/test_<package>_app.py`; a new label/kind pair the spec fixes goes into the `expected`
@@ -153,9 +158,13 @@ uses `FilterBox` instead of `TreeFilter` (Interface Backup's restore screen).
 5. Tests: `tests/test_look_and_feel.py::test_every_tree_screen_has_the_filter_box` and
    `test_review_tree_expands_and_collapses_all` reach every tool's review through `TOOLS`; a tree screen they do not
    open (like the restore screen) needs the same checks in the tool's own tests. Check it at `BASE` and `TINY`.
+   A screen with a scan box goes in `test_bars_keep_their_place_while_a_scan_runs` (STD-7.25). A new screen goes
+   in the walk of `tests/test_toast_stack.py`: toasts are placed for it (`ui/toasts.py`); a row toasts must stay
+   above that is not a bar gets the `TOAST_FLOOR` class (STD-7.24).
 6. Help and guide: the screen's buttons in `help.py`, the `**Filter**` button and the keys in the guide.
 
-**Rules:** STD-7.4, STD-7.6 to STD-7.9, STD-7.11, STD-7.23, STD-8.5, STD-8.7. Then [the green gate](#the-green-gate).
+**Rules:** STD-7.4, STD-7.6 to STD-7.9, STD-7.11, STD-7.23 to STD-7.25, STD-8.5, STD-8.7. Then [the green
+gate](#the-green-gate).
 
 ## 7. Add a shared helper (the two-tool rule)
 
@@ -219,8 +228,9 @@ Worked example: commit `8d6a1a8` (`orphan_backups`, rule 5).
 3. A folder named after the tool inside a folder the user chose is not moved by `core/migrate.py`: the tool moves
    it itself when it opens (the Ace3 Profile Manager's `settings.migrate_backup_root()` with
    `merge_folder_logged()`).
-4. Tests: the per-tool tables (`TOOLS`, `RUN_ACTION`, `PREPARE`, `DESTRUCTIVE_REVIEWS`), `tool_options` keys, test
-   file names; `tests/test_migrate.py::test_every_rename_points_at_a_registered_tool` checks the new line.
+4. Tests: the per-tool tables (`TOOLS`, `RUN_ACTION`, `PREPARE`, `DESTRUCTIVE_REVIEWS`, `ACCOUNT_TOOLS`, `RISK_EVENTS`;
+   every file STD-10.8 lists), `tool_options` keys, test file names;
+   `tests/test_migrate.py::test_every_rename_points_at_a_registered_tool` checks the new line.
 5. Docs: rename `docs/<old>.md` and `docs/internals/<old>.md`, then fix every link (README, `GUIDE_URL` in `help.py`,
    architecture, `CLAUDE.md`) and the strings `tests/test_docs.py` pins; a `CHANGELOG.md` bullet.
 

@@ -25,12 +25,13 @@ from wowtools.core.sv_apply import Marker
 from wowtools.core.sv_events import SvTool
 from wowtools.core.sv_report import leave_notice, recovered_notice
 from wowtools.core.sv_undo import UndoError, UndoResult
-from wowtools.ui.dialogs import BUSY_STYLE, ProgressScreen, TwoPaneFocus
+from wowtools.ui.dialogs import BUSY_STYLE, DiscardScreen, ProgressScreen, TwoPaneFocus
 from wowtools.ui.widgets import WrapButtonRow
 
-__all__ = ["BLACKLIST_BINDING", "BLACKLIST_KEY", "BLACKLIST_NO_TARGET", "ActionBar", "BarTree", "BlacklistAction",
-           "ButtonActions", "NotTicked", "Preflight", "ReviewBase", "ReviewTree", "RunActions",
-           "ScheduledRebuild", "SvRecoveryActions", "TickActions", "TickModel", "blacklist_toast"]
+__all__ = ["BLACKLISTED_MARK", "BLACKLISTED_STYLE", "BLACKLIST_BINDING", "BLACKLIST_KEY", "BLACKLIST_NO_TARGET",
+           "ActionBar", "BarTree", "BlacklistAction", "ButtonActions", "NotTicked", "Preflight", "ReviewBase",
+           "ReviewTree", "RunActions", "ScheduledRebuild", "SvRecoveryActions", "TickActions", "TickModel",
+           "blacklist_toast", "blacklisted_mark"]
 
 WowCheck = Callable[[], "list[str] | None"]
 
@@ -62,22 +63,6 @@ class ActionBar(WrapButtonRow):
     """The action bar under a review's tree (BarTree). ↑ goes back to the tree, from any of its rows."""
 
     BINDINGS: ClassVar[list[Binding]] = [Binding("up", "screen.focus_tree", "Tree", show=False)]
-
-    def on_mount(self) -> None:
-        """A screen that keeps its toasts above the bar (place_toasts) moves them after every layout: the bar moves
-        and wraps onto more or fewer rows as the screen settles or is resized."""
-        place = getattr(self.screen, "place_toasts", None)
-        if place is not None:
-            self.screen.screen_layout_refresh_signal.subscribe(self, lambda _screen: place())
-
-
-def lift_toasts(screen: Screen, above: int) -> None:
-    """Show the screen's notifications (Textual's toast rack, docked at the bottom) `above` rows up from the
-    bottom, so a toast never covers an action bar or the lines under it."""
-    margin = (0, 0, max(above, 1), 0)
-    for toasts in screen.query("#textual-toastrack"):
-        if tuple(toasts.styles.margin) != margin:  # setting it lays the screen out again
-            toasts.styles.margin = margin
 
 
 class NotTicked:
@@ -363,10 +348,24 @@ class ReviewBase(TickActions, Preflight, ScheduledRebuild, ButtonActions, TwoPan
         """The selection is frozen while the running-programs check runs (a screen may freeze it longer)."""
         return self._checking
 
+    def discard_question(self) -> tuple[str, str] | None:
+        """(title, body) of the question leaving this review asks first, when that would drop work staged and not
+        yet written; None leaves at once. Asked by action_leave and by the app's quit (q from any screen)."""
+        return None
+
     def action_leave(self, choice: str) -> None:
-        """Dismiss with `choice` ("flavors", "tools", "quit"), never while a run is going on."""
-        if not self.app.busy:
+        """Dismiss with `choice` ("flavors", "tools", "quit"), never while a run is going on; with work staged
+        (discard_question) only once the user says so. While a run writes, `t` says why it waits (as the app's
+        own t does, L11); the other ways out stay silent."""
+        if self.app.busy:
+            if choice == "tools":
+                self.app.refused_while_busy("ui.tool_menu_refused", "going back to the tool menu")
+            return
+        question = self.discard_question()
+        if question is None:
             self.dismiss(choice)
+            return
+        self.app.push_screen(DiscardScreen(*question), lambda ok: self.dismiss(choice) if ok else None)
 
     def show_scan_box(self, scanning: bool, label: str = "") -> None:
         """While scanning, the tree is replaced by an empty progress bar and `label`; after it, the tree is back."""
@@ -390,6 +389,15 @@ BLACKLIST_KEY = "b"
 # Shown on no footer: a screen that wants `b` listed binds its own Binding(BLACKLIST_KEY, "blacklist", ..., show=True).
 BLACKLIST_BINDING = Binding(BLACKLIST_KEY, "blacklist", "Blacklist", show=False)
 BLACKLIST_NO_TARGET = "Highlight an addon (or something inside one) first."
+# L15: what a blacklisted row shows in the tick column instead of a tick mark (it is never ticked), in the muted
+# style of the row, in every tool with a blacklist.
+BLACKLISTED_MARK = "⊘"
+BLACKLISTED_STYLE = "dim"
+
+
+def blacklisted_mark() -> tuple[str, str]:
+    """(mark, style) for a blacklisted row's tick column: the same shape as ui.dialogs.tick_mark's."""
+    return f"{BLACKLISTED_MARK} ", BLACKLISTED_STYLE
 
 
 def blacklist_toast(flavor: str, addon: str, listed: bool) -> str:

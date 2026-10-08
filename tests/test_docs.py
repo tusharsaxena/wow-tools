@@ -39,6 +39,20 @@ class DocsTest(unittest.TestCase):
         self.assertIn("## version history", readme.lower())
         self.assertNotIn("## For developers", readme)
 
+    def test_every_image_link_resolves_and_screenshots_live_per_tool(self):
+        docs = [REPO_ROOT / "README.md", *sorted((REPO_ROOT / "docs").glob("*.md"))]
+        for doc in docs:
+            for target in re.findall(r"!\[[^\]]*\]\(([^)\s]+)\)", doc.read_text(encoding="utf-8")):
+                if target.startswith(("http://", "https://")):
+                    continue
+                self.assertTrue((doc.parent / target).is_file(), f"{doc.name}: {target}")
+                if target.endswith(".png") and "ka0s-logo" not in target:
+                    self.assertIn("assets/screenshots/", target, f"{doc.name}: {target}")
+        for tool in TOOLS.values():
+            guide = (REPO_ROOT / "docs" / f"{tool.name}.md").read_text(encoding="utf-8")
+            self.assertIn(f"](assets/screenshots/{tool.name}/", guide)
+            self.assertNotIn("<!-- screenshots:", guide)
+
     def test_version_badge_and_changelog_match_the_version(self):
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn(f"badge/Version-{__version__}-blue", readme)
@@ -74,7 +88,8 @@ class DocsTest(unittest.TestCase):
                        "## Dry run", "## Undo last change", "changed since", "snapshots\\snapshot-<flavor>-",
                        "edited\\edited-<flavor>-<account>-", "journal\\journal-", "edit-in-progress.json",
                        "Put the originals back", "## Settings", "keep_backups", "## FAQ", "LibDualSpec",
-                       "missing", "no character folder", "## Troubleshooting", "<!-- screenshots:",
+                       "missing", "no character folder", "## Troubleshooting",
+                       "](assets/screenshots/ace3-profile-manager/",
                        "## How it works", "pending change", "guidance line", "action bar", "Blacklist…",
                        "blacklist screen"):
             self.assertIn(needle, guide)
@@ -99,7 +114,7 @@ class DocsTest(unittest.TestCase):
                        "snapshots\\snapshot-<flavor>-", "edited\\edited-<flavor>-all-", "journal\\journal-",
                        "edit-in-progress.json", "keep_backups", "keep_journals", "config\\sv-browser.cfg",
                        "## Settings", "## Keys on the review screen", "## FAQ", "## Troubleshooting",
-                       "<!-- screenshots:", "I understand", "Unstage", "Back to review"):
+                       "](assets/screenshots/sv-browser/", "I understand", "Unstage", "Back to review"):
             self.assertIn(needle, guide)
         self.assertNotIn("still being built", guide)
         for gone in ("## Search and replace", "Replace with", "Find only", "New value", "staged and ticked",
@@ -171,6 +186,22 @@ class DocsTest(unittest.TestCase):
         standards = (REPO_ROOT / "docs" / "standards.md").read_text(encoding="utf-8")
         for needle in ("`core/blacklist.py`", "`BlacklistAction`", "`WarningsScreen`"):
             self.assertIn(needle, standards)
+
+    def test_blacklist_mark_is_named(self):
+        """L15: the in-app help, the guides and the Ace3 blacklist screen of both blacklist tools name the mark a
+        blacklisted row shows in the tick column, and the changelog says it."""
+        from wowtools.tools.ace3_profile_manager.blacklist_screen import EXPLANATION
+        from wowtools.tools.ace3_profile_manager.help import HELP as ACE_HELP
+        from wowtools.tools.wtf_cleaner.help import HELP as WTF_HELP
+        from wowtools.ui.review import BLACKLISTED_MARK
+        self.assertIn(f"`{BLACKLISTED_MARK}` where the tick goes", WTF_HELP)
+        self.assertIn(f"`{BLACKLISTED_MARK}` where the tick goes", ACE_HELP)
+        self.assertIn(BLACKLISTED_MARK, EXPLANATION)
+        for name in ("wtf-cleaner", "ace3-profile-manager"):
+            guide = (REPO_ROOT / "docs" / f"{name}.md").read_text(encoding="utf-8")
+            self.assertIn(f"`{BLACKLISTED_MARK}` where the tick goes", guide, name)
+        changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertIn(f"`{BLACKLISTED_MARK}` where the tick goes", changelog)
 
     def test_config_comments_are_not_kept(self):
         """F-013: a save rewrites the config files through configparser, which drops comments; the README's settings

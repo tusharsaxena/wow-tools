@@ -17,8 +17,8 @@ from wowtools.core.svfiles import SvScanWarning
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import TREE_HINT
 from wowtools.ui.tree_filter import FILTER_HINT, NO_MATCH_TEXT
-from wowtools.ui.warnings_view import (WARNINGS_BINDING, WARNINGS_BUTTON_ID, SummaryBar, WarningItem, WarningsHost,
-                                       WarningsScreen, scan_warning_items, warnings_label, where_text)
+from wowtools.ui.warnings_view import (WARNINGS_BINDING, WARNINGS_BUTTON_ID, SummaryBar, SummaryLine, WarningItem,
+                                       WarningsHost, WarningsScreen, scan_warning_items, warnings_label, where_text)
 from wowtools.ui.widgets import NavHint, action_kind
 
 ITEMS = [WarningItem("WTF/Account/A/SavedVariables", "cannot read folder: denied", "Retail"),
@@ -93,6 +93,21 @@ class WarningsViewTest(TuiTestCase):
             screen.set_items([])
             await settle(app, pilot)
             self.assertFalse(button.display)
+
+    async def test_a_failure_stays_on_one_row_and_the_next_update_wraps_again(self):
+        """STD-7.25: a failed scan's message never grows the bottom line (it is cut with an ellipsis); the next
+        update wraps as before, so a warning at the end of the selection line is read in full."""
+        app = HostApp()
+        async with app.run_test(size=BASE) as pilot:
+            await settle(app, pilot)
+            line = app.screen.query_one("#summary", SummaryLine)
+            long = "The scan failed: " + "/World of Warcraft/_retail_/WTF" * 12
+            line.show_one_line(long)
+            await settle(app, pilot)
+            self.assertEqual(line.region.height, 1)
+            line.update(long)
+            await settle(app, pilot)
+            self.assertGreater(line.region.height, 1)
 
     async def test_key_and_click_open_the_view_and_esc_returns(self):
         for how in ("key", "click"):

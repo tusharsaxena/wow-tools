@@ -51,12 +51,11 @@ from wowtools.tools.sv_browser.undo import (UndoError, UndoResult, leave, pendin
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                  UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
-from wowtools.ui.review import (ActionBar, BarTree, ReviewBase, RunActions, SvRecoveryActions, TickModel, WowCheck,
-                                lift_toasts)
+from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, SvRecoveryActions, TickModel, WowCheck
 from wowtools.ui.tree_filter import (FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TextFilter,
                                      TreeFilter)
-from wowtools.ui.warnings_view import (WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost, scan_warning_items,
-                                       where_text)
+from wowtools.ui.warnings_view import (WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost,
+                                       scan_warning_items, where_text)
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, RiskBanner, action_button
 
 READING = "Reading…"
@@ -171,7 +170,7 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
         Binding("v", "switch_view", "View", show=False),
         Binding("f", "leave('flavors')", "Flavors"),
         Binding("t", "leave('tools')", "Tools"),
-        Binding("q", "leave('quit')", "Quit"),
+        Binding("q", "app.quit", "Quit"),
         Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
         Binding("right", "focus_tree", "Tree", show=False),
@@ -244,13 +243,6 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
         self.query_one("#browse", Tree).focus()
         self._refresh_buttons()
         self._scan()
-
-    def place_toasts(self) -> None:
-        """Toasts go just above the action bar under the tree, so they never cover it or the lines under it (the
-        bar calls this after every layout)."""
-        if self.is_attached:
-            bar = self.query_one("#tree-actions").region
-            lift_toasts(self, self.size.height - bar.y if bar.height else 1)
 
     def _set_sub_title(self) -> None:
         self.sub_title = f"{TITLE} · {self.scope_label} · {self.view}"
@@ -382,7 +374,7 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
             return
         self.show_scan_box(False)
         self.summary_text = message
-        self.query_one("#summary", Static).update(Text(message))
+        self.query_one("#summary", SummaryLine).show_one_line(message)
         self.notify(message, title="Scan failed", severity="error", timeout=15)
         self._refresh_buttons()
 
@@ -1129,17 +1121,12 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
         self._mark_stale()
 
     # --- leaving -------------------------------------------------------------------------------
-    def action_leave(self, choice: str) -> None:
-        """Leaving drops the staged edits: ask first (D12)."""
-        if self.app.busy:
-            return
+    def discard_question(self) -> tuple[str, str] | None:
+        """Leaving or quitting drops the staged edits: ask first (D12)."""
         if not self.pending:
-            self.dismiss(choice)
-            return
-        self.app.push_screen(ConfirmScreen("Leave and discard the staged edits?",
-                                           f"{self._pending_words().capitalize()} not applied yet will be dropped; "
-                                           "nothing has been written.", kind="destructive"),
-                             lambda ok: self.dismiss(choice) if ok else None)
+            return None
+        return ("Leave and discard the staged edits?",
+                f"{self._pending_words().capitalize()} not applied yet will be dropped; nothing has been written.")
 
 
 def _under(nodes: list[ModelNode]) -> tuple[int, ...]:

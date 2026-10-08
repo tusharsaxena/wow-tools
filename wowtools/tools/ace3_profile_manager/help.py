@@ -12,13 +12,17 @@ refuse while it runs.
 
 ## Step by step
 
-1. **Pick a game version**, or **All flavors**; then an account, or **All accounts**.
-2. The **review** shows a tree: game version → account → addon → profile → its characters. `v` switches to **By
+1. **Pick a game version**, or **All flavors**; then, if that version has several accounts, an account or **All
+   accounts**.
+2. Read the **USE AT YOUR OWN RISK** warning. **I understand** goes on, **Back** returns to the game versions. Once
+   you press **I understand** it is not asked again until you restart the app. Tick **Don't show this warning again
+   for this tool** (`Tab`, `Space`) to stop it for good; the tool's settings (`s`) turn it back on.
+3. The **review** shows a tree: game version → account → addon → profile → its characters. `v` switches to **By
    character**. Nothing is ticked yet.
-3. **Tick** profiles or characters (`Space`), or just highlight one, and press an action below the tree. Each
+4. **Tick** profiles or characters (`Space`), or just highlight one, and press an action below the tree. Each
    change is **pending**: the tree shows it at once (`✘ deleted`, `was Healer`), but no file is touched.
-4. **Dry run** (`y`) checks every pending change without writing anything.
-5. **Apply** (`w`), read the summary, press **Yes**. The **results** list every change.
+5. **Dry run** (`y`) checks every pending change without writing anything.
+6. Press **Apply** (`w`), read the summary and press **Yes**. The **results** list every change.
 
 ## The action bar (under the tree)
 
@@ -30,7 +34,7 @@ refuse while it runs.
 | **Everyone → Default** | `E` | Moves every character of the ticked addons to "Default" |
 | **Delete** | `d` | Deletes the ticked profiles; you pick where their characters go |
 | **Only Default** | `D` | Deletes every profile but "Default" and moves everyone onto it |
-| **Leftovers** | `o` | Removes ticked characters whose folder no longer exists |
+| **Leftovers** | `o` | Ticks every shown character whose folder no longer exists, then asks to remove them |
 | **Blacklist…** | | Edits the blacklist: addons shown but never changed (`b` toggles the highlighted one) |
 | **More…** | `m` | Quick actions, and every key the bottom row doesn't show |
 | **Discard** | `Backspace` | Drops every pending change |
@@ -46,23 +50,24 @@ refuse while it runs.
 
 The **Show** boxes narrow the tree (only addons with 2+ profiles, only unused profiles, leftover characters,
 blacklisted addons). `a` / `n` tick / untick everything shown, `/` reaches the filter box (type, then **Filter** or
-`Enter` filters the tree; `Esc` clears it), `x` / `c` expand / collapse it all, `u` unlocks a blacklisted addon for
-this session, `←` `→` switch panes, `Tab` or `↓` on the last line reach the action bar. `f` or `Esc` picks another
-game version, `t` goes back to the tool menu, `s` opens the settings, `q` quits (leaving with pending changes asks
-first). On the results: **Rescan** (`r`), **Other flavor** (`f`), **Tools** (`t`), **Quit** (`q`).
+`Enter` filters the tree; `Esc` clears it), `x` / `c` expand / collapse it all. A blacklisted addon's lines are
+greyed, with `⊘` where the tick goes, and can't be ticked. `u` unlocks a blacklisted addon for this session,
+`←` `→` switch panes, `Tab` or `↓` on the last line reach the action bar. `f` or `Esc` picks another game version,
+`t` goes back to the tool menu, `s` opens the settings, `q` quits (leaving with pending changes asks first). On
+the results: **Rescan** (`r`), **Other flavor** (`f`), **Tools** (`t`), **Quit** (`q`).
 
 ## Warnings
 
-When the scan could not read a file (or skipped a folder), the bottom line shows **⚠ N scan warnings**, and the
-tree lists them too: click it or press `!` (the **Warnings** button) to see them by game version, each with the
-file and what went wrong. **Back** (`Esc`) returns to the review.
+When the scan could not read a file (or skipped a folder), the bottom line shows **⚠ N scan warnings (!)**, and
+the tree lists them too: click it or press `!` to see them by game version, each with the file and what went
+wrong. **Back** (`Esc`) returns to the review.
 
 ## Safety
 
 - Before writing, Apply checks no file changed since the scan and no program has one open, zips your **whole `WTF`
   folder** and the files it edits, then writes only the lines that change and reads each file back.
 - It never touches the settings inside a profile, other addon data, or Blizzard's files.
-- **Undo last change** goes back one Apply, and leaves alone a file saved again since.
+- **Undo last change** goes back one Apply. It leaves alone any file saved again since.
 
 ## Settings (`s`)
 
@@ -71,6 +76,8 @@ file and what went wrong. **Back** (`Esc`) returns to the review.
 - **Edit blacklist…** (or **Blacklist…** on the review) opens the blacklist: tick the addons to leave alone, in
   every game version. **Select none** (`n`) unticks them all, **Save** keeps the list, **Cancel** (`Esc`) drops
   the edits.
+- **Show the USE AT YOUR OWN RISK warning**: off once you tick **Don't show this warning again for this tool**; tick
+  it to see the warning again.
 
 **Full guide:** [{GUIDE_URL}]({GUIDE_URL})
 """

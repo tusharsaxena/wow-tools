@@ -1,12 +1,11 @@
-"""The Saved Variables Browser's popups (spec §5), styled like ConfirmScreen (ui.dialogs.popup_css): the USE AT YOUR
-OWN RISK warning (D2), a warning ChoiceScreen the flow shows before the review scans; Edit value (D5, D10: a type
-select, then a text field or a checkbox), Rename key (the shared text prompt) and Delete key (a destructive
-confirm, with D5's array-shift warning) and Search (D6-D9, D38: the key and value texts, their modes, Match case and
-the scope; it only finds: Find checks them with the search's own rules and dismisses with a SearchSpec). Edit value
-and Rename key also serve the bulk edit of the search results (D39: titled with the count; Edit value then may offer
-"Replace only the matched text"). The edit popups check what is typed with the checks they are given (the review
-passes the staging's own, ops.Staging.*_problem) and dismiss with the value, the key text or the answer; the review
-stages it."""
+"""The Saved Variables Browser's popups (spec §5), styled like ConfirmScreen (ui.dialogs.popup_css; its USE AT YOUR
+OWN RISK warning, D2, is the shared ui.disclaimer popup): Edit value (D5, D10: a type select, then a text field or a
+checkbox), Rename key (the shared text prompt) and Delete key (a destructive confirm, with D5's array-shift warning)
+and Search (D6-D9, D38: the key and value texts, their modes, Match case and the scope; it only finds: Find checks
+them with the search's own rules and dismisses with a SearchSpec). Edit value and Rename key also serve the bulk edit
+of the search results (D39: titled with the count; Edit value then may offer "Replace only the matched text"). The
+edit popups check what is typed with the checks they are given (the review passes the staging's own,
+ops.Staging.*_problem) and dismiss with the value, the key text or the answer; the review stages it."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -24,20 +23,11 @@ from wowtools.core.svfiles import OWNER_ACCOUNT_WIDE
 from wowtools.core.text import plural
 from wowtools.tools.sv_browser.bulk import MATCHED, MODES, WHOLE
 from wowtools.tools.sv_browser.ops import SHIFT_WARNING, parse_key
-from wowtools.tools.sv_browser.report import DISCLAIMER
 from wowtools.tools.sv_browser.search import (KEY_CONTAINS, KEY_EXACT, REPLACE_BOOLEAN, REPLACE_NUMBER,
                                               REPLACE_STRING, VALUE_CONTAINS, VALUE_WHOLE, Replacement, SearchScope,
                                               SearchSpec, parse_replacement)
-from wowtools.ui.dialogs import (ChoiceScreen, ConfirmScreen, ProgressScreen, TextPromptScreen, popup_css,
-                                 show_error)
+from wowtools.ui.dialogs import ConfirmScreen, ProgressScreen, TextPromptScreen, popup_css, show_error
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, NavSelect, action_button
-
-ACCEPT, BACK = "accept", "back"
-DISCLAIMER_TITLE = "USE AT YOUR OWN RISK"
-# The warning body: the spec's D2 text after its first words (the title says them), then where it is said again.
-DISCLAIMER_TEXT = (DISCLAIMER.removeprefix(f"{DISCLAIMER_TITLE}. ")
-                   + "\n\nClose WoW before you apply anything: it rewrites every SavedVariables file when you log out."
-                   " Every Apply and Undo asks again.")
 
 VALUE_TYPES = ((REPLACE_STRING, "String"), (REPLACE_NUMBER, "Number"), (REPLACE_BOOLEAN, "Boolean"))
 NOT_TYPABLE = "It has line breaks or other characters that can't be typed here: type the whole new value."
@@ -53,17 +43,6 @@ class PopupCheckbox(Ka0sCheckbox):
 
     def action_pass_enter(self) -> None:
         raise SkipAction()
-
-
-class DisclaimerScreen(ChoiceScreen):
-    """D2: shown each time the tool is opened from the menu, after the flavor pick and before the first scan. "I
-    understand" (focused) goes on to the review; Back (or Esc, which dismisses with None) goes back to the flavor
-    picker."""
-
-    def __init__(self) -> None:
-        super().__init__(DISCLAIMER_TITLE, DISCLAIMER_TEXT,
-                         [(BACK, "Back", "cancel", "escape"), (ACCEPT, "I understand", "confirm")],
-                         default=ACCEPT, escape=True)
 
 
 class EditValueScreen(ModalScreen[Replacement | None]):

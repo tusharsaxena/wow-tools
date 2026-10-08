@@ -62,7 +62,7 @@ python3 scripts/gen_event_docs.py --check # docs/events.md matches the event reg
 | Developer | [docs/architecture.md](docs/architecture.md) | The hub: layers, core and UI modules, config schema, look and feel, documentation map |
 | Developer | [docs/internals/](docs/internals/) | One per tool: [wtf-cleaner](docs/internals/wtf-cleaner.md), [screenshot-organizer](docs/internals/screenshot-organizer.md), [interface-backup](docs/internals/interface-backup.md), [ace3-profile-manager](docs/internals/ace3-profile-manager.md), [sv-browser](docs/internals/sv-browser.md) |
 | Developer | [docs/testing.md](docs/testing.md) | The runner, CI, fixtures, Textual tests, the meta-tests |
-| Developer | [docs/common-tasks.md](docs/common-tasks.md) | Recipes: a setting, an event, a button, a tree screen, a shared helper, a rename, a release |
+| Developer | [docs/common-tasks.md](docs/common-tasks.md) | Recipes: a tool, a setting, a `[general]` setting, an event, a button, a tree screen, a shared helper, a WTF Cleaner criterion, a button colour, a rename, vendoring, a release |
 | Developer | [docs/adding-a-tool.md](docs/adding-a-tool.md) | Adding a tool step by step, and renaming one |
 | Developer | [docs/releasing.md](docs/releasing.md) | Version, `CHANGELOG.md` entry, tag, `scripts/build_release.py` assets |
 | Developer | [docs/vendoring.md](docs/vendoring.md) | `vendor/`, `requirements.lock` and `scripts/update_vendor.py` |

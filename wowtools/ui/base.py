@@ -1,6 +1,7 @@
 """Ka0sApp: theme, branding, background update check and the `u` update flow for every tool."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import ClassVar
 
 from textual.app import App, ComposeResult
@@ -18,10 +19,14 @@ from wowtools.core.events import log_event, log_exception
 from wowtools.core.updater import (ReleaseInfo, UpdateError, apply_update, check_for_update,
                                    persist_check_state)
 from wowtools.tools import TOOLS
+from wowtools.ui import toasts
 from wowtools.ui.branding import update_key_free, update_notice
-from wowtools.ui.dialogs import GUARD_BINDING, EnterGuard
+from wowtools.ui.dialogs import GUARD_BINDING, DiscardScreen, EnterGuard
 from wowtools.ui.theme import KA0S_THEME, TITLE_GOLD, TITLE_TEXT, TITLE_TOOL, action_variables
 from wowtools.ui.widgets import ACTION_CSS, NAV_BINDINGS, ButtonRow, NavHint, action_button
+
+
+BUSY_NOTICE = "A run is in progress. Wait for it to finish before {leaving}."
 
 
 class UpdateScreen(EnterGuard, ModalScreen[bool]):
@@ -87,8 +92,9 @@ class Ka0sApp(App):
 
     TITLE = "Ka0s WoW Tools"
     # The footer leaves out the command palette's key (Ctrl+P still opens it; nothing documents it): at 120x30 the
-    # review screens need that room for their own keys. ACTION_CSS colours every button by its action kind.
-    CSS = "Footer FooterKey.-command-palette { display: none; }" + ACTION_CSS
+    # review screens need that room for their own keys. ACTION_CSS colours every button by its action kind;
+    # TIP_LAYER_CSS gives every screen the layer of the toast stack's tip (ui.toasts).
+    CSS = "Footer FooterKey.-command-palette { display: none; }" + ACTION_CSS + toasts.TIP_LAYER_CSS
     BINDINGS: ClassVar[list[Binding]] = [Binding("u", "update", "Update", show=False)]
     release: reactive[ReleaseInfo | None] = reactive(None)
 
@@ -116,6 +122,7 @@ class Ka0sApp(App):
     def on_mount(self) -> None:
         self.register_theme(KA0S_THEME)
         self.theme = "ka0s"
+        toasts.install(self)  # one toast anchor and stack on every screen (STD-7.24)
         if self._check_updates and self.cfg.check_for_updates:
             self.run_worker(self._check_update, thread=True, group="update-check")
         self.after_mount()
@@ -155,14 +162,45 @@ class Ka0sApp(App):
             pass
         super()._handle_exception(error)
 
+    async def key_q(self) -> None:
+        """q quits from every screen and popup (L7, STD-8.11). A key method, not an app binding: Textual leaves the
+        app's (non-priority) bindings out under a modal screen, while a key no binding took still reaches the app
+        here, popup or not. A focused text box types the letter (it stops the key first); a screen that binds q
+        itself (the menu's and a review's `app.quit`, a result's Quit, the lock warning's Quit) handles it first."""
+        await self.action_quit()
+
     async def action_quit(self) -> None:
-        """Ctrl+Q (Textual's priority binding). Refused while a clean, organize or undo is running: quitting
-        would end the session and release the lock while the worker thread is still changing files."""
-        if self.busy:
-            log_event("ui.quit_refused")
-            self.notify("A run is in progress. Wait for it to finish before quitting.", severity="warning")
+        """q on any screen (key_q) and Ctrl+Q (Textual's priority binding). Refused while a clean, organize or
+        undo is running: quitting would end the session and release the lock while the worker thread is still
+        changing files. Work staged on a screen of the stack asks first (ask_before_leaving). Quitting is `exit()`,
+        the path every way out takes: suite.run logs session.end and releases the lock once the app has
+        returned."""
+        if self.refused_while_busy("ui.quit_refused", "quitting"):
             return
-        await super().action_quit()
+        self.ask_before_leaving(self.exit)
+
+    def refused_while_busy(self, event: str, leaving: str) -> bool:
+        """True (logged as `event`, with BUSY_NOTICE naming `leaving`) while a run writes (`busy`): q and t wait."""
+        if not self.busy:
+            return False
+        log_event(event)
+        self.notify(BUSY_NOTICE.format(leaving=leaving), severity="warning")
+        return True
+
+    def ask_before_leaving(self, leave: Callable[[], object]) -> None:
+        """Call leave() now, or once the user says yes when a screen on the stack has work leaving would drop (a
+        review with staged changes: `discard_question()`, the topmost one asked), from that screen or any screen
+        over it. While such a question is open (a DiscardScreen: one of these, or the review's own on leaving)
+        nothing more is asked. The open question is read from the stack, never kept in a flag, so a popup closed
+        without an answer cannot silence the key (q and t, L7 and L11)."""
+        if any(isinstance(screen, DiscardScreen) for screen in self.screen_stack):
+            return  # a "discard the staged work?" question is open: it is answered first
+        question = next((q for screen in reversed(self.screen_stack)
+                         if (q := getattr(screen, "discard_question", lambda: None)()) is not None), None)
+        if question is None:
+            leave()
+            return
+        self.push_screen(DiscardScreen(*question), lambda ok: leave() if ok else None)
 
     def _check_update(self) -> None:
         """Worker thread. The config is changed and saved on the UI thread only (see _persist_update_state)."""

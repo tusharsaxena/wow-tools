@@ -16,7 +16,7 @@ from wowtools.core.fsutil import (is_link, is_real_dir, make_link, remove_tree_n
 from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.journal import Journal, mark_undone
 from wowtools.core.paths import to_stored
-from wowtools.tools.interface_backup.catalog import SAFETY
+from wowtools.tools.interface_backup.catalog import SAFETY, zip_now_at, zips_dir
 from wowtools.tools.interface_backup.journal import read_restore_journal
 from wowtools.tools.interface_backup.restore import (ZIP_ERRORS, BackupContents, PartOutcome, Rename, RestoreError,
                                                      RestoreResult, RestoreStopped, SwapError, case_key, log_part,
@@ -102,8 +102,9 @@ def _check(journal_path: Path, wow_root: Path,
         _refuse(journal_path, "the restore journal is damaged: a removed link is not valid")
     safety = next((e for e in journal.entries if e.get("action") == "safety_backup"), None)
     zip_path = safety.get("zip") if safety is not None else None
-    if not isinstance(zip_path, Path) or not _same(zip_path.parent, root):
+    if not isinstance(zip_path, Path) or not any(_same(zip_path.parent, p) for p in (zips_dir(root), root)):
         _refuse(journal_path, "the restore's safety backup is not in the backup folder")
+    zip_path = zip_now_at(zip_path, root)  # an older run's zip, named in <root>, moved to <root>/backup (L16)
     if is_link(zip_path) or not zip_path.is_file():
         _refuse(journal_path, f"the restore's safety backup is gone: {zip_path.name}")
     leftovers = leftover_folders(flavor)
@@ -188,9 +189,11 @@ def undo_restore(journal_path: Path, *, wow_root: Path, root: Path, progress: Ca
     backup (or taken away again when the restore created it), and the links the restore removed from it are made
     again (a part where one cannot be made is `failed`, its reason naming the link). Guards first: the journal not
     undone, its flavor a flavor folder of wow_root, its parts Interface or WTF, its `link_removed` entries valid,
-    its safety backup in `root`, present and verified, no leftover folders; a refusal raises RestoreError with nothing changed. A part that fails is left as it was and
-    the next one goes on. The journal is marked undone unless every part was left as it was (then the same Undo
-    can be tried again). Stages: verify, extract, swap, cleanup. Raises RestoreStopped when it stopped part-way."""
+    its safety backup in `root`/backup (or `root`, an older run's: found in backup/ by name once moved), present
+    and verified, no leftover folders; a refusal raises RestoreError with nothing changed. A part that fails is
+    left as it was and the next one goes on. The journal is marked undone unless every part was left as it was
+    (then the same Undo can be tried again). Stages: verify, extract, swap, cleanup. Raises RestoreStopped when it
+    stopped part-way."""
     report = safe_progress(progress)
     flavor, contents, replaced, links = _check(journal_path, wow_root, root)
     zip_path = contents.path

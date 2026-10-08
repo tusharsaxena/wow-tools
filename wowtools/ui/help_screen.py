@@ -19,7 +19,7 @@ from wowtools.ui.branding import TERMS, BottomBar
 from wowtools.ui.widgets import NavHint
 
 README_URL = "https://github.com/tusharsaxena/wow-tools#readme"
-HELP_HINT = "↑↓ PgUp PgDn scroll · Esc/q/h back"
+HELP_HINT = "↑↓ PgUp PgDn scroll · Esc/h back"
 
 
 def suite_help() -> str:
@@ -35,12 +35,15 @@ tool here (`↑` `↓`, then `Enter`); leaving a tool brings you back to this me
 
 ## How every tool works
 
-1. **Pick a game version** (a *flavor*: Retail, Classic, ...) or **All flavors**, and an account when there are
-   several.
+1. **Pick a game version** (a *flavor*: Retail, Classic, ...) or **All flavors**, and, in tools that ask, an account
+   when there are several.
+   The three tools that edit addon settings (WTF Cleaner, Ace3 Profile Manager, Saved Variables Browser) then ask
+   you to accept a **USE AT YOUR OWN RISK** warning before the first scan, once per session. Its **Don't show this
+   warning again** box turns it off, and the tool's settings turn it back on.
 2. **Review** what the tool found: a tree on the right, filters and buttons on the left. Untick what to leave alone.
 3. **Dry run** shows what would happen and changes nothing (where the tool has one).
 4. Press the tool's main button, read the summary and confirm. Files are **backed up first**.
-5. The **results** screen lists every file and what happened to it. Changed your mind? **Undo** the last run.
+5. The **results** screen lists every file and what happened to it. **Undo** reverses the last run.
 
 ## Keys
 
@@ -53,12 +56,14 @@ tool here (`↑` `↓`, then `Enter`); leaving a tool brings you back to this me
 | `a` / `n` | Tick / untick everything the tree shows |
 | `/` | Filter a tree: type, then `Enter` or the **Filter** button filters it (`Esc` clears it) |
 | `x` / `c` | Expand / collapse every line of a tree |
-| `Esc` | Go back |
+| `!` | The warnings a scan collected, when the bottom line shows **⚠ N warnings** |
+| `Esc` | Go back (on this menu: quit) |
+| `t` | Back to the tool menu, from any screen (typed as a letter in a text box; with changes staged it asks first) |
 | `s` | Settings |
 | `c` | The changelog (on this menu) |
 | `u` | Install an update, when the bottom bar offers one |
 | `h` | This help, or a tool's help on any of its screens |
-| `q` | Quit |
+| `q` | Quit, from any screen (typed as a letter in a text box; with changes staged it asks first) |
 
 A button shows its own key under its name (**Clean** over `(w)`); the bottom row lists the keys no button has.
 
@@ -73,10 +78,10 @@ Everything is saved in the `config` folder.
 
 ## Button colours
 
-Buttons are coloured by what they do, the same in every tool: **red** deletes, **amber** overwrites or changes
-files, **green** only adds (a backup), **violet** undoes, **cyan** is a dry run, **blue** confirms, **grey** moves
-between screens or rescans, **dim grey** backs out. An "are you sure?" window opens with **Yes** selected, in the
-colour of what it does.
+Buttons are coloured by what they do, the same in every tool: **red** deletes, **amber** overwrites or changes files,
+**green** only adds (a backup), **violet** undoes, **cyan** is a dry run, **blue** confirms, **lime** reads the files
+again (Rescan), **grey** moves between screens, **dim grey** backs out. An "are you sure?" window opens with **Yes**
+selected, in the colour of what it does.
 
 ## Words
 
@@ -93,7 +98,7 @@ colour of what it does.
 
 
 class HelpScreen(Screen[None]):
-    """`title` over one scrollable Markdown pane holding `text`. Esc, q or h dismisses it."""
+    """`title` over one scrollable Markdown pane holding `text`. Esc or h dismisses it (q quits, as everywhere)."""
 
     DEFAULT_CSS = """
     HelpScreen #help-title { color: $accent; text-style: bold; padding: 0 2; margin-top: 1; }
@@ -102,7 +107,7 @@ class HelpScreen(Screen[None]):
     HelpScreen #help-body Markdown { margin: 0; padding: 0 1; }
     HelpScreen NavHint { padding: 0 2; margin: 0; }
     """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape,q,h", "close", "Back")]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape,h", "close", "Back")]
 
     def __init__(self, title: str, text: str) -> None:
         super().__init__()

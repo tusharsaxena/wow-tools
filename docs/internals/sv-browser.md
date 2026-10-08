@@ -92,11 +92,13 @@ back that flavor's written files; Undo snapshots up to `parallelism` flavors at 
 
 ## Screens
 
-`app.py` holds `SvBrowserFlow` (`FLOW`: `require_install` → `SvBrowserSettingsScreen` (backup folder only) on the
-tool's first open → `FlavorScreen(include_all=True, last=last_flavor_choice)` → `popups.DisclaimerScreen` (a warning `ChoiceScreen`: **I
-understand** focused, **Back**/Esc back to the picker, `svb.disclaimer_accepted` / `_declined`) → `SvReviewScreen`
-(`svb.started`)). No account picker. `accepted` lives on the flow, so the warning is asked once per opening of the
-tool from the menu, not on a new flavor pick or a rescan.
+`app.py` holds `SvBrowserFlow` (`FLOW`: `require_install` → `SvBrowserSettingsScreen` (backup folder, show the
+risk warning) on the tool's first open → `FlavorScreen(include_all=True, last=last_flavor_choice)` → the shared
+`ui.disclaimer.DisclaimerScreen` with `report.DISCLAIMER_POPUP` (`ToolFlow.ask_disclaimer`: **I understand** focused,
+**Back**/Esc back to the picker, `svb.disclaimer_accepted` / `_declined`) → `SvReviewScreen` (`svb.started`)). No
+account picker. An accept is remembered on the app (`disclaimers_accepted`, L4), so the warning is asked once per app
+session, not on a second open of the tool, a new flavor pick or a rescan, and never once `skip_risk_warning` is true
+(L8: the popup's "Don't show this warning again" box, or the settings form's box; `svb.risk_warning_changed`).
 
 - `SvReviewScreen` (`review_screen.py`): `SvEditActions` (`edit_actions.py`, F-007: Edit value, Rename key, Delete
   key and Unstage, and the bulk edits on the results), `TreeFilter`, `SvRecoveryActions`, `RunActions` and
@@ -135,7 +137,7 @@ tool from the menu, not on a new flavor pick or a rescan.
   (only while the review is the shown screen, else on resume), settled in the folder the marker was read from; the
   flow is the shared `SvRecoveryActions` (`recovery_screen` adds that Put back drops the staged edits,
   `recovery_root` is the marker's folder, `recovery_done` is `_mark_stale`).
-- `popups.py`: `DisclaimerScreen`, `SearchProgressScreen` (the search's and the table reads' progress popup),
+- `popups.py`: `SearchProgressScreen` (the search's and the table reads' progress popup),
   `EditValueScreen` (`title`; with `matched` a first `#edit-mode` select, Replace
   only the matched text / Whole value; a type `NavSelect`, then an `Input` or a `PopupCheckbox`), `RenameKeyScreen`
   (`title`), `delete_confirm`, `SearchScreen` (find only, D38: one labelled control per row, a blank row between

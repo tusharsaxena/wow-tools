@@ -16,6 +16,11 @@ from wowtools.tools.sv_browser.ops import Plan
 DISCLAIMER = ("USE AT YOUR OWN RISK. This tool edits addon SavedVariables directly. It knows nothing about what an "
               "addon expects; a wrong value can break an addon or lose its settings. Backups and Undo are made, but "
               "you are responsible for what you change.")
+# The USE AT YOUR OWN RISK popup's text (ui.disclaimer; D2, L4): DISCLAIMER after its first words (the popup's title
+# says them), then where it is said again.
+DISCLAIMER_POPUP = (DISCLAIMER.removeprefix("USE AT YOUR OWN RISK. ")
+                    + "\n\nClose WoW before you apply anything: it rewrites every SavedVariables file when you log "
+                      "out. Every Apply and Undo asks again.")
 FILE_COLUMNS = ("Flavor", "Account", "Owner", "File", "Edits", "Result")
 BROWSE, RESULTS = "Browse", "Results"  # the review tree's two views (v): the files, and the hits of the last search
 

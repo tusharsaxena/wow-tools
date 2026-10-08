@@ -7,13 +7,14 @@ from unittest.mock import patch
 
 from textual.widgets import Button, DataTable, Input, Static, Tree
 
-from tests.fixtures import BASE, TuiTestCase, build_ace_tree, make_config, settle, submit_filter
+from tests.fixtures import BASE, TuiTestCase, accept_disclaimer, build_ace_tree, make_config, settle, submit_filter
 from wowtools.core.backup import BackupEntry, create_backup
+from wowtools.core.blacklist import toggle_pair
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.core.sv_report import STALE_MARKER_TEXT
-from wowtools.core.text import plural
+from wowtools.core.text import Listed, plural
 from wowtools.tools.ace3_profile_manager import editor
 from wowtools.tools.ace3_profile_manager import review_screen as review_module
 from wowtools.tools.ace3_profile_manager.app import ProfileSettingsScreen
@@ -25,8 +26,10 @@ from wowtools.tools.ace3_profile_manager.review_screen import ProfileReviewScree
 from wowtools.tools.ace3_profile_manager.scanner import sha256_of
 from wowtools.tools.ace3_profile_manager.settings import load_settings
 from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult
-from wowtools.ui.dialogs import ConfirmScreen, InfoScreen
+from wowtools.ui.account_screen import AccountScreen
+from wowtools.ui.dialogs import LISTED_ID, ConfirmScreen, InfoScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
+from wowtools.ui.review import BLACKLISTED_MARK
 from wowtools.ui.suite_app import WowToolsApp
 from wowtools.ui.tree_filter import FILTER_HINT
 from wowtools.ui.widgets import action_kind
@@ -58,9 +61,10 @@ class AceAppBase(TuiTestCase):
         self.assertIsInstance(app.screen, FlavorScreen)
         app.screen.dismiss(choice)
         await settle(app, pilot)
-        if not isinstance(app.screen, ProfileReviewScreen):  # one flavor with several accounts: the picker
+        if isinstance(app.screen, AccountScreen):  # one flavor with several accounts: the picker
             app.screen.dismiss("")
             await settle(app, pilot)
+        await accept_disclaimer(app, pilot)
         self.assertIsInstance(app.screen, ProfileReviewScreen)
         return app.screen
 
@@ -251,6 +255,112 @@ class ReviewTest(AceAppBase):
             await settle(app, pilot)
             self.assertFalse(review.locked("_retail_", "ElvUI"))
             self.assertIn("unlocked", "\n".join(labels(tree)))
+
+    async def test_blacklisted_rows_show_the_blacklist_mark(self):
+        """L15: every row of a blacklisted (locked) addon shows the shared ⊘ in the tick column, dim like the row,
+        By addon and By character; Space never ticks one; unlocked (u), its rows take tick marks again."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.highlight_addon(app, pilot, review, "ElvUI")
+            await pilot.press("b")
+            await settle(app, pilot)
+            tree = review.query_one("#profiles", Tree)
+
+            def file_of(node):
+                kind = node.data[0]
+                if kind == "addon":
+                    return node.data[1].file
+                return review.staging.state(node.data[1]).file if kind in ("db", "profile", "char", "pair") else None
+
+            def rows(locked):
+                out, stack = [], [tree.root]
+                while stack:
+                    node = stack.pop()
+                    stack.extend(node.children)
+                    file = node.data and file_of(node)
+                    if file and ((file.flavor.folder, file.addon) == ("_retail_", "ElvUI")) == locked:
+                        out.append(node)
+                return out
+
+            for view in ("addon", "character"):
+                if view == "character":
+                    await pilot.press("v")
+                    await settle(app, pilot)
+                tree.root.expand_all()
+                await settle(app, pilot)
+                held = rows(locked=True)
+                self.assertTrue(held, view)
+                for node in held:
+                    label = node.label
+                    self.assertTrue(label.plain.startswith(f"{BLACKLISTED_MARK} "), (view, label.plain))
+                    self.assertTrue(any(s.start == 0 and "dim" in str(s.style) for s in label.spans), label.spans)
+                    tree.move_cursor(node)
+                    await pilot.press("space")
+                    await settle(app, pilot)
+                    self.assertEqual(review.ticked, set())  # locked: nothing to tick
+                for node in rows(locked=False):
+                    self.assertNotIn(BLACKLISTED_MARK, node.label.plain)
+            await pilot.press("v")  # back to By addon, then unlock: the mark goes
+            await settle(app, pilot)
+            await self.highlight_addon(app, pilot, review, "ElvUI")
+            await pilot.press("u")
+            await settle(app, pilot)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            self.assertFalse(any(BLACKLISTED_MARK in line for line in labels(tree)))
+
+    async def test_deleted_and_removed_rows_of_a_locked_addon_show_the_blacklist_mark(self):
+        """L15: a deleted profile and a removed leftover character are rows of their addon too: locked, they show
+        the ⊘ (By addon and By character's removed pair); unlocked, they show no mark at all."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            key = next(k for k, st in review.staging.states.items() if "Gone - Realm1" in st.leftovers)
+            self.assertTrue(review.staging.delete({key: ["Backup"]}, "Default").ok)
+            self.assertTrue(review.staging.remove_leftovers({key: ["Gone - Realm1"]}).ok)
+            review.refresh_view()
+            await settle(app, pilot)
+            tree = review.query_one("#profiles", Tree)
+
+            def shown(kinds):
+                tree.root.expand_all()
+                return [n for n in walk(tree.root) if n.data and n.data[0] in kinds and n.data[1] == key]
+
+            for view in ("addon", "character"):
+                if view == "character":
+                    await pilot.press("v")
+                    await settle(app, pilot)
+                tree.root.expand_all()
+                await settle(app, pilot)
+                kinds = ("deleted", "removed") if view == "addon" else ("removed",)
+                rows = shown(kinds)
+                self.assertEqual({n.data[0] for n in rows}, set(kinds), view)
+                for node in rows:  # not locked: read-only rows, no mark
+                    self.assertTrue(node.label.plain.startswith("  "), (view, node.label.plain))
+                    self.assertNotIn(BLACKLISTED_MARK, node.label.plain)
+            await pilot.press("v")
+            await settle(app, pilot)
+            # Lock KickCD with its changes still staged (b and the blacklist screen drop them first, so only the
+            # builder's own marking is under test here).
+            flavor = review.staging.state(key).file.flavor.folder
+            review.settings.blacklist, _ = toggle_pair(review.settings.blacklist, flavor, "KickCD", [flavor])
+            self.assertTrue(review.locked(flavor, "KickCD"))
+            for view in ("addon", "character"):
+                if view == "character":
+                    await pilot.press("v")
+                    await settle(app, pilot)
+                review.refresh_view()
+                await settle(app, pilot)
+                tree.root.expand_all()
+                await settle(app, pilot)
+                kinds = ("deleted", "removed") if view == "addon" else ("removed",)
+                rows = shown(kinds)
+                self.assertEqual({n.data[0] for n in rows}, set(kinds), view)
+                for node in rows:
+                    label = node.label
+                    self.assertTrue(label.plain.startswith(f"{BLACKLISTED_MARK} "), (view, label.plain))
+                    self.assertTrue(any(s.start == 0 and "dim" in str(s.style) for s in label.spans), label.spans)
 
     async def test_b_locks_the_pair_in_its_flavor_only(self):
         """Feedback round 1: b blacklists (Retail, ElvUI); Classic Era's Questie stays tickable."""
@@ -445,6 +555,34 @@ class ReviewTest(AceAppBase):
 
 class StagingTest(AceAppBase):
 
+    async def test_delete_and_assign_list_their_databases_in_a_counted_tree(self):
+        """L12 (spec L10, STD-7.26): the Delete and Assign popups list the addons behind one collapsed, counted
+        row, never as lines of the body: Delete one leaf per profile, Assign one per character."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            await pilot.press("a")
+            await settle(app, pilot)
+            for key, noun in (("d", "profile"), ("p", "character assignment")):
+                with self.subTest(key=key):
+                    await pilot.press(key)
+                    await settle(app, pilot)
+                    screen = app.screen
+                    self.assertIsInstance(screen, TargetScreen)
+                    tree = screen.query_one(f"#{LISTED_ID}", Tree)
+                    (top,) = tree.root.children
+                    self.assertFalse(top.is_expanded)
+                    self.assertRegex(str(top.label), rf"^\d+ {noun}s? \(Space or click to expand\)$")
+                    addons = [str(node.label).rsplit(" (", 1)[0] for node in top.children]
+                    self.assertTrue(addons)
+                    body = str(screen.query_one(".popup-body").render())
+                    self.assertFalse(any(f"{addon}:" in body for addon in addons), body)
+                    for selector in ("#ok", "#cancel"):
+                        self.assertTrue(screen.region.contains_region(screen.query_one(selector).region))
+                    screen.dismiss(None)
+                    await settle(app, pilot)
+            self.assertIs(app.screen, review)
+
     async def test_delete_to_default(self):
         app = self.make_app()
         async with app.run_test(size=(140, 50)) as pilot:
@@ -471,7 +609,11 @@ class StagingTest(AceAppBase):
             self.assertIsInstance(app.screen, NameScreen)
             app.screen.dismiss("Default")
             await settle(app, pilot)
-            self.assertEqual(review.staging.summary().total, 0)  # refused, notified
+            self.assertEqual(review.staging.summary().total, 0)  # refused, in the "Not done" popup
+            self.assertIsInstance(app.screen, InfoScreen)
+            self.assertEqual(app.screen.title_text, "Not done")
+            app.screen.dismiss(None)
+            await settle(app, pilot)
             await self.highlight(app, pilot, review, "profile", "Healer")
             await pilot.press("e")
             await settle(app, pilot)
@@ -1673,26 +1815,94 @@ class PopupFeedbackTest(AceAppBase):
             self.assertFalse(branch.is_expanded)
 
     async def test_notes_open_a_popup_grouped_by_message(self):
+        created = '"Default" will be created by the addon at its next login, with its defaults.'
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot)
             with patch.object(review, "notify") as notify:
-                review._staged(OpResult(notes=[
-                    'AddonA: "Default" will be created by the addon at its next login, with its defaults.',
-                    'AddonB: "Default" will be created by the addon at its next login, with its defaults.',
-                    "a note with no addon"]))
+                review._staged(OpResult(notes=[Listed(created, "Retail · ACCT1", "AddonA"),
+                                               Listed(created, "Retail · ACCT1", "AddonB"),
+                                               Listed("a note with no addon")]))
                 await settle(app, pilot)
             notify.assert_not_called()
             screen = app.screen
             self.assertIsInstance(screen, InfoScreen)
-            nodes = screen.query_one("#details", Tree).root.children
-            self.assertEqual([str(n.label) for n in nodes],
-                             ['"Default" will be created by the addon at its next login, with its defaults (2)',
-                              "a note with no addon"])
-            self.assertEqual([str(c.label) for c in nodes[0].children], ["AddonA", "AddonB"])
+            (top,) = screen.query_one(f"#{LISTED_ID}", Tree).root.children  # spec L10: one counted row
+            self.assertEqual(str(top.label), "3 notes (Space or click to collapse)")  # short, alone: open, no ⚠
+            self.assertTrue(top.is_expanded)
+            self.assertEqual([str(n.label) for n in top.children], [f"{created} (2)", "a note with no addon (1)"])
+            (where,) = top.children[0].children
+            self.assertEqual(str(where.label), "Retail · ACCT1 (2)")
+            self.assertEqual([str(c.label) for c in where.children], ["AddonA", "AddonB"])
             await pilot.press("enter")
             await settle(app, pilot)
             self.assertIs(app.screen, review)
+
+    async def test_refusals_open_a_popup_listing_every_one(self):
+        """L10 review: the "Not done" refusals are a counted tree in a popup, no longer a toast cut at 8 lines,
+        grouped by reason, then where, then the addon (with its database when its file has several); the notes
+        follow once it is closed."""
+        reason = "none of those profiles is in this database any more"
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            keys = list(review.staging.states)
+            with patch.object(review, "notify") as notify:
+                review._staged(OpResult(refused=[(k, reason) for k in keys], notes=[Listed("a note")]))
+                await settle(app, pilot)
+            notify.assert_not_called()
+            screen = app.screen
+            self.assertIsInstance(screen, InfoScreen)
+            self.assertEqual(screen.title_text, "Not done")
+            (top,) = screen.query_one(f"#{LISTED_ID}", Tree).root.children
+            self.assertEqual(str(top.label).split(" (")[0], f"⚠ {len(keys)} databases not changed")
+            (group,) = top.children
+            self.assertEqual(str(group.label), f"{reason} ({len(keys)})")
+            shown = [(str(where.label), str(leaf.label)) for where in group.children for leaf in where.children]
+            self.assertEqual(len(set(shown)), len(keys), shown)  # every database, each one apart
+            self.assertIn("ElvUI (ElvPrivateDB)", [item for _, item in shown])
+            for button_id in ("ok",):
+                self.assertTrue(screen.region.contains_region(screen.query_one(f"#{button_id}").region))
+            await pilot.press("enter")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, InfoScreen)
+            self.assertEqual(app.screen.title_text, "Notes")
+            app.screen.dismiss(None)
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+
+    async def test_apply_warnings_collapse_behind_a_counted_row(self):
+        """Spec L10: the Dry run / Apply confirm's warnings (one per addon) are one collapsed, counted tree row
+        grouped by message, then where, then addon; the body keeps only the summary lines."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            staging = review.staging
+            selection = {key: [c for c, p in state.keys.items() if p is not None]
+                         for key, state in staging.states.items()}
+            review._staged(staging.assign({k: chars for k, chars in selection.items() if chars}, "Nowhere"))
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, InfoScreen)  # the notes: "Nowhere" is created at the next login
+            app.screen.dismiss(None)
+            await settle(app, pilot)
+            _, _, warnings = review_module.apply_confirm(staging.summary(), staging.changed(), dry_run=True)
+            self.assertGreater(len(warnings), 3)
+            review.action_dry_run()
+            await settle(app, pilot)
+            screen = app.screen
+            self.assertIsInstance(screen, ConfirmScreen)
+            (top,) = screen.query_one(f"#{LISTED_ID}", Tree).root.children
+            self.assertEqual(str(top.label), f"⚠ {len(warnings)} warnings (Space or click to expand)")
+            self.assertFalse(top.is_expanded)
+            body = str(screen.query_one("#confirm-body").render())
+            self.assertNotIn("does not exist yet", body)
+            created = next(n for n in top.children if "does not exist yet" in str(n.label))
+            self.assertIn("Retail · ACCT1", [str(w.label).rsplit(" (", 1)[0] for w in created.children])
+            for button_id in ("yes", "no"):
+                button = screen.query_one(f"#{button_id}", Button)
+                self.assertTrue(screen.region.contains_region(button.region), button_id)
+            await pilot.press("n")
+            await settle(app, pilot)
 
     async def test_arrow_keys_reach_every_field_and_button(self):
         app = self.make_app()
@@ -1810,3 +2020,156 @@ class ActionBarFeedbackTest(AceAppBase):
             self.assertFalse(rack.display)
             self.assertLessEqual(review.query_one("#textual-toastrack").region.bottom, guide.y)  # above the guide
             self.assertLess(guide.y, bar.y)
+
+
+class OnePressLeftoversTest(AceAppBase):
+    """Decision L1: Leftovers (o) first ticks every leftover character shown, then confirms removing exactly the
+    ticked leftovers; No keeps the ticks; with none shown it says so and stages nothing."""
+
+    def shown_leftovers(self, review):
+        tree = review.query_one("#profiles", Tree)
+        return {k for k in review._tick_keys(tree.root)
+                if k[0] == "c" and k[2] in review.staging.state(k[1]).leftovers}
+
+    def confirm_chars(self, screen):
+        tree = screen.query_one("#details", Tree)
+        return sorted(str(c.label) for branch in tree.root.children for c in branch.children)
+
+    async def test_o_with_nothing_ticked_ticks_every_shown_leftover_and_confirms_them(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            shown = self.shown_leftovers(review)
+            self.assertTrue(shown)
+            self.assertFalse(review.ticked)
+            review.query_one("#profiles", Tree).focus()
+            with capture_events() as events:
+                await pilot.press("o")
+                await settle(app, pilot)
+            screen = app.screen
+            self.assertIsInstance(screen, ConfirmScreen)
+            self.assertIn("leftover", screen.title_text)
+            self.assertEqual(review.ticked, shown)
+            self.assertEqual(self.confirm_chars(screen), sorted(k[2] for k in shown))
+            self.assertIn(("tick_leftovers", len(shown)), [(e["data"].get("control"), e["data"].get("value"))
+                                                           for e in events if e["event"] == "ui.selection"])
+            screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertEqual(review.staging.summary().removed, len(shown))
+
+    async def test_clicking_leftovers_then_no_keeps_the_ticks_and_stages_nothing(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            shown = self.shown_leftovers(review)
+            await self.highlight(app, pilot, review, "profile", "Healer")  # not a leftover: still ticks them
+            review.query_one("#act-leftovers", Button).press()
+            await settle(app, pilot)
+            screen = app.screen
+            self.assertIsInstance(screen, ConfirmScreen)
+            self.assertEqual(self.confirm_chars(screen), sorted(k[2] for k in shown))
+            screen.dismiss(False)
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(review.ticked, shown)
+            self.assertEqual(review.staging.summary().total, 0)
+
+    async def test_with_the_leftover_show_box_off_it_says_so_and_stages_nothing(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            review.query_one("#show-leftovers").value = False
+            await settle(app, pilot)
+            self.assertFalse(self.shown_leftovers(review))
+            with patch.object(review, "notify") as notify:
+                review.query_one("#act-leftovers", Button).press()
+                await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual([c.args[0] for c in notify.call_args_list], ["No leftover characters are shown."])
+            self.assertFalse(review.ticked)
+            self.assertEqual(review.staging.summary().total, 0)
+
+    def add_second_leftover(self):
+        """A second leftover, "Ghost - Realm1", in another addon (HandyNotes_MapNotesDB), next to KickCDDB's "Gone"."""
+        path = self.root / "_retail_" / "WTF" / "Account" / "ACCT1" / "SavedVariables" / "HandyNotes.lua"
+        text = path.read_bytes().decode("utf-8")  # keeps the CRLF
+        old = '["Kaelys - Realm1"] = "Default",\r\n},\r\n["profiles"] = {\r\n["Default"] = {\r\n["notes"]'
+        self.assertIn(old, text)
+        path.write_bytes(text.replace(old, '["Ghost - Realm1"] = "Default",\r\n' + old).encode("utf-8"))
+
+    def ticked_leftover_names(self, review):
+        return sorted(k[2] for k in review.ticked if k[0] == "c")
+
+    async def test_it_ticks_every_shown_leftover_across_addons(self):
+        self.add_second_leftover()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            shown = self.shown_leftovers(review)
+            self.assertEqual(sorted(k[2] for k in shown), ["Ghost - Realm1", "Gone - Realm1"])
+            self.assertEqual(len({k[1] for k in shown}), 2)  # two databases
+            review.query_one("#profiles", Tree).focus()
+            await pilot.press("o")
+            await settle(app, pilot)
+            screen = app.screen
+            self.assertIsInstance(screen, ConfirmScreen)
+            self.assertEqual(review.ticked, shown)
+            self.assertEqual(self.confirm_chars(screen), ["Ghost - Realm1", "Gone - Realm1"])
+            self.assertEqual(len(screen.query_one("#details", Tree).root.children), 2)  # one branch per addon
+            screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertEqual(review.staging.summary().removed, 2)
+
+    async def test_with_the_filter_it_ticks_only_the_shown_leftovers(self):
+        self.add_second_leftover()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            submit_filter(review, "ghost")
+            await settle(app, pilot)
+            self.assertEqual([k[2] for k in self.shown_leftovers(review)], ["Ghost - Realm1"])
+            review.query_one("#act-leftovers", Button).press()
+            await settle(app, pilot)
+            screen = app.screen
+            self.assertIsInstance(screen, ConfirmScreen)
+            self.assertEqual(self.ticked_leftover_names(review), ["Ghost - Realm1"])
+            self.assertEqual(self.confirm_chars(screen), ["Ghost - Realm1"])
+            self.assertNotIn("they are included", screen.body_text)
+            screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertEqual(review.staging.summary().removed, 1)
+
+    async def test_a_ticked_leftover_hidden_by_the_filter_is_included_and_the_popup_says_so(self):
+        self.add_second_leftover()  # decision L1-b
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            submit_filter(review, "gone")
+            await settle(app, pilot)
+            review.query_one("#act-leftovers", Button).press()
+            await settle(app, pilot)
+            app.screen.dismiss(False)  # No keeps the tick on "Gone"
+            await settle(app, pilot)
+            self.assertEqual(self.ticked_leftover_names(review), ["Gone - Realm1"])
+            submit_filter(review, "ghost")  # "Gone" is now hidden, still ticked
+            await settle(app, pilot)
+            review.query_one("#act-leftovers", Button).press()
+            await settle(app, pilot)
+            screen = app.screen
+            self.assertIsInstance(screen, ConfirmScreen)
+            self.assertEqual(self.confirm_chars(screen), ["Ghost - Realm1", "Gone - Realm1"])
+            self.assertIn("they are included", screen.body_text)
+            screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertEqual(review.staging.summary().removed, 2)
+
+    async def test_the_tip_says_it_ticks_the_shown_leftovers(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            n = len(self.shown_leftovers(review))
+            tip = review.action_tip("remove_leftovers")
+            self.assertIn(f"Tick the {plural(n, 'leftover character')} shown", tip)
+            review.query_one("#show-leftovers").value = False
+            await settle(app, pilot)
+            self.assertEqual(review.action_tip("remove_leftovers"), "No leftover characters are shown.")

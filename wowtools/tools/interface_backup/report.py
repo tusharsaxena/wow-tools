@@ -10,7 +10,7 @@ from wowtools.core.journal import Journal
 from wowtools.core.paths import to_stored
 from wowtools.core.text import human_size, plural
 from wowtools.tools.interface_backup.backup import BackupOutcome, skip_reason
-from wowtools.tools.interface_backup.catalog import BackupInfo
+from wowtools.tools.interface_backup.catalog import BackupInfo, zips_dir
 from wowtools.tools.interface_backup.restore import PartOutcome, RestorePlan, RestoreResult
 from wowtools.tools.interface_backup.scanner import PARTS, SAMPLE, FlavorScan, PartScan
 
@@ -108,7 +108,7 @@ def backup_confirm(scans: list[FlavorScan], root: Path, keep: int, running: list
     lines = [plural(files, "file") + ("" if total is None else f" ({human_size(total)})") + " from "
              + ", ".join(s.flavor.display_name for s in chosen) + ".",
              *([f"Skipped: {', '.join(skipped)}."] if skipped else []),
-             f"Zips go to: {to_stored(root)}",
+             f"Zips go to: {to_stored(zips_dir(root))}",
              "Older backups are never deleted." if keep == 0 else
              f"The newest {keep} backups of each flavor are kept; older ones are deleted."]
     alerts = []
