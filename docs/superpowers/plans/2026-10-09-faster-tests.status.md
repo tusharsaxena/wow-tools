@@ -9,8 +9,8 @@ Branch: `build/faster-tests`. Resume at the first task not marked `done`. Never 
 | F1 | `--windows` and `--all` | done | (this commit) | 20 new tests in `test_release_scripts.py` (`RunTestsWindowsTest`, cmd.exe faked). After the review fixes (F1g) `--all` ran 1945 tests: WSL 0 failures, 2 skipped; Windows 0 failures, 79 skipped; 283 s. Before them: full suite 1940 tests: WSL 0 failures, 2 skipped; Windows 3.14 0 failures, 79 skipped. Wall times: plain WSL 148 s; `--windows` 141 s (and 147 s); `--all` (-j 8 each) 269 s, 279 s; `--all -j 16` 264 s. Back to back the two runs take about 289 s, so `--all` saves only about 10-25 s: the machine is CPU-bound, and halving the shards makes the round-robin's slowest shard the limit (F2/F3 to tune). Ctrl+C checked by hand on `--windows` and `--all`: no python.exe/py.exe or WSL runner left |
 | F2 | balanced shards | done | (this commit) | 14 new tests in `test_release_scripts.py` (`RunTestsBalanceTest`; the cache in a temp folder, discovery and shards faked) plus the shard child's id-list test. Full suite 1959 tests: WSL 0 failures, 2 skipped; Windows 3.14 0 failures, 79 skipped; `--all` both OK. 16 shards, median of 3, round-robin before / balanced after: WSL 143.5 s (142.7, 143.5, 147.9; shards 62-144 s) / 99.8 s (99.7, 99.8, 102.1; shards 87-97 s, about 10 s apart); `--windows` 138.6 s (138.0, 138.6, 138.9; shards 58-139 s) / 97.3 s (96.6, 97.3, 104.7; shards 91-97 s in the median run, as everywhere here; the 104 s shard was the 104.7 s run's). Re-measured with the F2f fixes: `--windows` 99.7 s (99.4, 99.7, 99.8; median run's shards 91-99 s), 1962 tests, 0 failures, 79 skipped. `--all` (-j 8 each): 269-283 s (F1) / 201.6 s (one run; shards 181-198 s). The parent's discovery adds about 3 s; the cache files are about 185 KB each |
 | F3 | shard count by measurement | done | (this commit) | Default now 1.5 shards per CPU, at most 24 (`default_jobs`, `MAX_DEFAULT_JOBS`); `--all` gives each side half (12 on 16 CPUs). 3 new tests (`RunTestsShardCountTest`) and the `--all` default test updated. Median of 3 runs (runner's `Ran N tests in T s`), balanced shards, 16 CPUs, 1x / 1.5x / 2x CPUs: WSL -j 16/24/32 100.9 s (100.6, 100.9, 102.7) / 87.5 s (86.7, 87.5, 89.2; 13 % faster) / 87.3 s (86.4, 87.3, 88.6); `--windows` -j 16/24/32 99.6 s (98.4, 99.6, 100.2) / 78.0 s (77.1, 78.0, 89.0; 22 % faster) / 78.1 s (76.8, 78.1, 78.2); `--all` -j 8/12/16 each 197.9 s (196.0, 197.9, 199.7) / 176.5 s (176.0, 176.5, 178.1; 11 % faster) / 177.9 s (175.6, 177.9, 179.1). Gate with the new defaults: `--all` (12 each) 1965 tests: WSL 0 failures, 2 skipped; Windows 3.14 0 failures, 79 skipped; 175.1 s. Plain WSL run 1965 tests, 24 shards, 90.3 s, 0 failures, 2 skipped |
-| F4/F5 | two-job CI; when CI is checked | todo | | |
-| FR | review, gate, push, CI once | todo | | |
+| F4/F5 | two-job CI; when CI is checked | done | (this commit) | `tests.yml` matrix is now `include`: `windows-latest` / 3.13 and `ubuntu-latest` / 3.10; fail-fast off, the 20-minute timeout, the steps and `--timeout 900` kept. 3 new tests (`CiWorkflowTest` in `test_release_scripts.py`: the two jobs, no doc says "four jobs", STD-10.2 names both). STD-1.1, STD-10.2, `CLAUDE.md`, `testing.md` (CI table and when CI is checked), `common-tasks.md` (gate and release recipe) and `releasing.md` step 1 updated. Gate: plain WSL run 1969 tests, 24 shards, 87.2 s, 0 failures, 2 skipped; `--all` (12 each) 172.7 s: WSL 1969 tests, 0 failures, 2 skipped (shards 161-169 s); Windows 3.14 1969 tests, 0 failures, 79 skipped (shards 146-153 s). CI not run or measured here (F5: checked once at FR) |
+| FR | review, gate, push, CI once | todo | | at the CI check: the Windows job's slowest round-robin shard (6 shards) against `--timeout 900`, and the job against its 20 minutes (F4/F5d) |
 
 ## Decisions taken during the build
 
@@ -74,3 +74,23 @@ Branch: `build/faster-tests`. Resume at the first task not marked `done`. Never 
   only gains headroom from smaller shards. Not changed: the measurement caveat (three tests landing mid-way through
   the `--all -j 12` runs, and `Ran N tests in T s` including the parent's ~3 s discovery) is already in F3a and
   F2b; both affect every column alike and the 11-22 % gains are far past the 10 % bar.
+- F4/F5a: the two jobs are listed with `include` (flow-style `- {os: ..., python: "..."}` entries, which
+  `CiWorkflowTest` reads with a regex: the suite stays stdlib-only, no YAML parser) rather than a cross-product with
+  `exclude`, so the file says exactly which jobs run. Windows gets 3.13 (the newest the users are likely to have;
+  3.14 runs locally through `--windows`) and Linux the 3.10 floor, so the floor is still checked on every push.
+- F4/F5b: the `tests.yml` shard comment keeps the 900 s timeout and now says the 594 s shard was "one shard of 4"
+  (before F3's 6 shards on a 4-vCPU runner); testing.md's "checked again at F4" became "when CI is next checked,
+  before the merge", since F5 forbids waiting on CI during the build. The 4-vCPU timings are read at FR.
+- F4/F5c: STD-10.2 carries the F5 rule (CI runs on every push, nobody waits for it during a build; checked once
+  before asking to merge into master and before a release); STD-10.1 already had the `--all` gate from F1.
+  STD-1.1's enforcer reads "CI (Linux / Python 3.10, Windows / Python 3.13)". No CHANGELOG line: CI is developer
+  tooling, not a user-noticeable change (STD-11.1, as F1f).
+- F4/F5d: review fixes, all five taken (two were the same STD-10.1 finding). CI deals its shards round-robin (a fresh
+  checkout has no gitignored `.test-times-*.json` and the workflow has no cache step): the `tests.yml` comment and
+  testing.md's CI step 3 now say so, and that the 594 s shard was round-robin; the Windows job's slowest shard at
+  6 round-robin shards is checked against 900 s and the job against 20 minutes at FR, when CI is checked (no CI run
+  here, F5). No cache step added: balancing CI is out of the spec's scope. STD-10.1 now points to STD-10.2 for when
+  CI is checked, as F5 lists both. `test_no_doc_still_claims_four_ci_jobs` matches only "four/4 (CI) jobs" and
+  "all four/4 (CI) jobs", with self-checks that "all four flavors" and similar pass. testing.md's
+  `test_release_scripts.py` row names `CiWorkflowTest` and gets its missing comma. Gate: `--all` (12 each) 171.5 s, 1971 tests: WSL 0 failures, 2 skipped; Windows 3.14 0 failures, 79 skipped. 2 new tests in `CiWorkflowTest`
+  (CI's round-robin named in the workflow and the CI section, no `actions/cache`; STD-10.1 names STD-10.2).

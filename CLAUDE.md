@@ -34,7 +34,9 @@ python3 scripts/gen_event_docs.py --check # docs/events.md matches the event reg
 ```
 
 Without a Windows Python (or off WSL), the first line is the plain `python3 scripts/run_tests.py` (WSL only, about
-90 s) and CI covers Windows before the merge. `--windows` runs only the Windows suite.
+90 s) and CI covers Windows before the merge. `--windows` runs only the Windows suite. CI (Windows / 3.13, Linux /
+3.10) runs on every push but is not waited on during a build: check it once before asking to merge into master, and
+before a release (STD-10.2).
 
 ## Hard rules
 

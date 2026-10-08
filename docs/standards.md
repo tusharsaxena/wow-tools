@@ -31,7 +31,7 @@ it: a test (`tests/<file>.py::<test>`) or *review*. Decision IDs (D9, D17, W1, B
 - **STD-1.1 MUST** Target Python 3.10 as the floor: no syntax or stdlib API newer than 3.10; the interpreter check in
   `core/bootstrap.py` stays the first thing the entry point runs.
   *Why:* users run whatever Python they have; an old one gets a readable refusal, not a crash.
-  *Enforced by:* `tests/test_bootstrap.py::test_rejects_old_python`, CI matrix (3.10 and 3.13).
+  *Enforced by:* `tests/test_bootstrap.py::test_rejects_old_python`, CI (Linux / Python 3.10, Windows / Python 3.13).
 - **STD-1.2 MUST** Start every module in `wowtools/`, `scripts/` and `tests/` with `from __future__ import annotations`
   (after the docstring, before any other import).
   *Why:* modern annotations (`X | None`, built-in generics) on 3.10.
@@ -759,11 +759,15 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   available), `ruff check --no-cache .` and `python3 scripts/gen_event_docs.py --check`
   ([testing.md](testing.md#the-green-gate)).
   *Why:* CI runs the same runner and events check; ruff runs only here; Windows failures show up before a push.
-  *Enforced by:* CI (tests, events check), review.
-- **STD-10.2 MUST** Stay green on the CI matrix: Linux and Windows, Python 3.10 and 3.13 (byte-compile,
-  `gen_event_docs.py --check`, `run_tests.py`).
-  *Why:* users run Windows and WSL; 3.10 is the floor.
-  *Enforced by:* `.github/workflows/tests.yml`.
+  When CI itself is checked (once before a merge into master and before a release, not during a build) is
+  STD-10.2.
+  *Enforced by:* the local gate, CI (tests, events check; see STD-10.2), review.
+- **STD-10.2 MUST** Stay green on CI's two jobs, Windows / Python 3.13 and Linux / Python 3.10 (byte-compile,
+  `gen_event_docs.py --check`, `run_tests.py`). CI runs on every push, but during a build nobody waits for it: it is
+  checked once before asking to merge into master, and before a release.
+  *Why:* users run Windows and WSL; 3.10 is the floor; the local gate already runs WSL and native Windows, so waiting
+  on CI at every step only adds time.
+  *Enforced by:* `.github/workflows/tests.yml`, `tests/test_release_scripts.py::CiWorkflowTest`.
 - **STD-10.3 MUST** Build every test's WoW install with a `tests/fixtures.py` builder in its own temp folder; never a
   real install, never shared files between tests.
   *Why:* hermetic tests; the parallel runner's shards must not collide.

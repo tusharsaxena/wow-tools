@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import re
 import shutil
 import signal
 import subprocess
@@ -540,6 +541,54 @@ class RunTestsShardCountTest(unittest.TestCase):
         self.assertIn(f"{shards} shards on a 4-vCPU runner", testing)
         workflow = (REPO_ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
         self.assertNotIn("four shards", workflow + testing)
+
+
+class CiWorkflowTest(unittest.TestCase):
+    """.github/workflows/tests.yml runs two jobs, Windows / 3.13 and Linux / 3.10 (spec F4), and the docs say so."""
+
+    JOBS = (("windows-latest", "3.13"), ("ubuntu-latest", "3.10"))
+
+    def test_the_workflow_runs_exactly_the_two_jobs_with_fail_fast_off(self):
+        workflow = (REPO_ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+        jobs = re.findall(r'^\s*-\s*\{os:\s*([\w.-]+),\s*python:\s*"([\d.]+)"\}\s*$', workflow, re.MULTILINE)
+        self.assertEqual(tuple(jobs), self.JOBS)
+        self.assertIn("include:", workflow)
+        self.assertIn("fail-fast: false", workflow)
+        self.assertNotRegex(workflow, r"^\s*(os|python):\s*\[", "no cross-product matrix")
+
+    def test_no_doc_still_claims_four_ci_jobs(self):
+        skip = {"superpowers", "reviews", "vendor", ".git"}
+        stale = re.compile(r"\b(four|4) (CI )?jobs\b|\ball (four|4) (CI )?jobs\b", re.IGNORECASE)
+        for unrelated in ("all four flavors", "all four tabs", "all 4 shards"):
+            self.assertNotRegex(unrelated, stale)
+        for claim in ("four jobs", "4 CI jobs", "all four jobs", "All 4 CI jobs"):
+            self.assertRegex(claim, stale)
+        docs = [REPO_ROOT / "CLAUDE.md", REPO_ROOT / "README.md", *(REPO_ROOT / "docs").rglob("*.md")]
+        for path in docs:
+            if skip & set(path.relative_to(REPO_ROOT).parts):
+                continue
+            with self.subTest(path=path.name):
+                self.assertNotRegex(path.read_text(encoding="utf-8"), stale)
+
+    def test_ci_docs_say_ci_deals_its_shards_round_robin(self):
+        """CI has no .test-times-*.json (gitignored, no cache step), so its shards are dealt round-robin (spec F2)."""
+        workflow = (REPO_ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+        testing = (REPO_ROOT / "docs" / "testing.md").read_text(encoding="utf-8")
+        ci_section = testing.split("\n## CI\n", 1)[1].split("\n## ", 1)[0]
+        self.assertNotIn("actions/cache", workflow)
+        self.assertIn("round-robin", workflow)
+        self.assertIn("round-robin", ci_section)
+
+    def test_std_10_1_points_to_std_10_2_for_when_ci_is_checked(self):
+        standards = (REPO_ROOT / "docs" / "standards.md").read_text(encoding="utf-8")
+        rule = standards.split("**STD-10.1 MUST**", 1)[1].split("- **STD-10.2", 1)[0]
+        self.assertIn("STD-10.2", rule)
+
+    def test_std_10_2_names_the_two_jobs(self):
+        standards = (REPO_ROOT / "docs" / "standards.md").read_text(encoding="utf-8")
+        rule = standards.split("**STD-10.2 MUST**", 1)[1].split("- **STD-10.3", 1)[0]
+        self.assertIn("Windows / Python 3.13", rule)
+        self.assertIn("Linux / Python 3.10", rule)
 
 
 class RunTestsWindowsTest(unittest.TestCase):

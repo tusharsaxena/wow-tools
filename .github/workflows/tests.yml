@@ -16,8 +16,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        python: ["3.10", "3.13"]
+        # Two jobs (spec F4): Windows on a recent Python, Linux on the floor. WSL and native Windows run locally in
+        # the green gate (run_tests.py --all); CI is checked once before a merge into master and before a release.
+        include:
+          - {os: windows-latest, python: "3.13"}
+          - {os: ubuntu-latest, python: "3.10"}
     defaults:
       run:
         shell: bash
@@ -33,6 +36,8 @@ jobs:
       - name: Event docs are current
         run: python scripts/gen_event_docs.py --check
       - name: Tests
-        # No -j: the default shard count (6 on a 4-vCPU runner; docs/testing.md). A slow Windows runner has taken
-        # 594 s for one shard; 900 s still fails a hang with its test's name well inside the job's 20 minutes.
+        # No -j: the default shard count (6 on a 4-vCPU runner; docs/testing.md). A fresh checkout has no
+        # .test-times-*.json (gitignored; no cache step), so CI deals its shards round-robin, never balanced. A slow
+        # Windows runner once took 594 s for one round-robin shard of 4; 900 s still fails a hang with its test's
+        # name well inside the job's 20 minutes (the 6-shard Windows job is checked against both at the merge).
         run: python scripts/run_tests.py --timeout 900

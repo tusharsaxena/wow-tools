@@ -103,21 +103,28 @@ The Windows suite skips about 79 POSIX- or WSL-only tests that the WSL suite run
 ## CI
 
 `.github/workflows/tests.yml` runs on every push, every pull request and by hand (`workflow_dispatch`), with
-read-only permissions and a 20-minute timeout per job ([STD-10.2](standards.md#10-testing)).
+read-only permissions and a 20-minute timeout per job ([STD-10.2](standards.md#10-testing)). The matrix is two
+jobs, listed with `include` (spec F4):
 
-| Matrix | Values |
-|---|---|
-| `os` | `ubuntu-latest`, `windows-latest` |
-| `python` | `3.10` (the floor), `3.13` |
+| Job | `os` | `python` |
+|---|---|---|
+| Windows | `windows-latest` | `3.13` |
+| Linux | `ubuntu-latest` | `3.10` (the floor) |
 
-`fail-fast` is off, so all four jobs finish. Each job runs, in bash:
+`fail-fast` is off, so both jobs finish. Nobody waits for CI during a build (spec F5): the local green gate already
+runs the WSL and native Windows suites. It is checked once before asking to merge into master, and before a
+release ([releasing.md](releasing.md#steps)). Each job runs, in bash:
 
 1. `python -m compileall -q wowtools scripts tests` (byte-compile: catches syntax newer than the interpreter).
 2. `python scripts/gen_event_docs.py --check`.
 3. `python scripts/run_tests.py --timeout 900`: no `-j`, so the [default shard count](#shard-count) applies:
    6 shards on a 4-vCPU runner (4 before spec F3; 1.5 per CPU was measured only on the 16-CPU machine, so CI's
-   timings are checked again at F4). 900 s per shard, not the 600 s default, since a slow Windows runner has taken
-   594 s for one shard (of 4); a hang still fails with its test's name inside the 20 minutes.
+   timings are checked when CI is next checked, before the merge). CI's shards are dealt round-robin, not
+   [balanced](#balanced-shards): each job starts from a fresh checkout, the `.test-times-*.json` files are
+   gitignored and the workflow has no cache step, so there are no recorded times (locally round-robin's slowest
+   shard took about 2.3 times its fastest). 900 s per shard, not the 600 s default, since a slow Windows runner has
+   taken 594 s for one round-robin shard (of 4); a hang still fails with its test's name inside the 20 minutes. The
+   Windows job's slowest shard at 6 shards is checked against 900 s and the job against 20 minutes before the merge.
 
 Ruff is not part of CI (the suite stays stdlib-only); run it locally.
 
@@ -172,7 +179,7 @@ Cleaner's tests predate that rule: its logic tests are `test_cleaner.py`, `test_
 |---|---|
 | `test_suite.py`, `test_suite_app.py` | `wowtools/suite.py` (start-up, the instance lock, renamed-tool migration on start, the update at start) and `WowToolsApp` (menu, setup, opening tools) |
 | `test_updater_check.py`, `test_updater_apply.py` | `core/updater.py`: the release check (fake openers, never the network) and applying an update |
-| `test_release_scripts.py` | `scripts/build_release.py`, the hashed vendor lock, `scripts/run_tests.py`'s per-shard timeout, its `--windows` / `--all` runs (the `cmd.exe` call is faked) its shards balanced by recorded time (the cache in a temp folder) and its default shard count (and that this page's CI section names it for a 4-vCPU runner) |
+| `test_release_scripts.py` | `scripts/build_release.py`, the hashed vendor lock, `scripts/run_tests.py`'s per-shard timeout, its `--windows` / `--all` runs (the `cmd.exe` call is faked), its shards balanced by recorded time (the cache in a temp folder) and its default shard count (and that this page's CI section names it for a 4-vCPU runner); and the CI workflow (`CiWorkflowTest`): exactly its two jobs, no doc still claiming the old CI matrix, CI's round-robin shards named in the workflow and this page, STD-10.2 naming both jobs and STD-10.1 pointing to it |
 | `test_release_contents.py` | The release manifest (STD-11.5): every tracked path is in a table of [releasing.md](releasing.md#what-a-release-contains), `.gitattributes` export-ignores the "stays out" table, `git archive` of `HEAD` holds exactly the "ships" table, no shipped Markdown file links to a file that does not ship (needs git; skips without it), the updater's `RELEASE_SHIPS` / `RELEASE_STAYS_OUT` are the two tables entry for entry, and its `MANAGED_DIRS` / `MANAGED_FILES` are the top-level "ships" names |
 | `test_launcher.py` | `wow-tools.cmd` stays safe to replace while it runs (Windows-only parts skip elsewhere) |
 | `test_quit_key.py`, `test_tool_menu_key.py`, `test_toast_stack.py` | The suite-wide walks: `q` and `t` from every screen and popup, toasts above the bars (see [below](#the-suite-wide-key-and-toast-walks)) |
