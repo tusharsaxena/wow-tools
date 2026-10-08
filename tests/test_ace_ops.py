@@ -56,7 +56,8 @@ class OpsTest(unittest.TestCase):
         k = self.key("HandyNotesDB")
         result = self.staging.delete({k: ["Kaelys - Realm1"]}, "Default")
         self.assertTrue(result.ok)
-        self.assertTrue(any("next login" in n for n in result.notes))
+        self.assertTrue(any("next login" in n.message for n in result.notes))
+        self.assertEqual({(n.where, n.item) for n in result.notes}, {("Retail · ACCT1", "HandyNotes (HandyNotesDB)")})
         self.assertTrue(self.st("HandyNotesDB").missing("Default"))
 
     def test_assign_and_noop(self):
@@ -132,6 +133,16 @@ class OpsTest(unittest.TestCase):
         result = staging.delete({k: ["Healer"]}, "Default")
         self.assertFalse(result.ok)
         self.assertIn("blacklisted", result.refused[0][1])
+
+    def test_listed_items_name_the_database_and_the_character(self):
+        """L10 review: two databases of one file, or a character's own file, never give two identical items."""
+        states = list(self.staging.states.values())
+        self.assertEqual(ops.listed(self.st("ElvDB"), "m", states).item, "ElvUI (ElvDB)")
+        self.assertEqual(ops.listed(self.st("ElvPrivateDB"), "m", states).item, "ElvUI (ElvPrivateDB)")
+        self.assertEqual(ops.listed(self.st("ElvDB"), "m").item, "ElvUI")  # alone in the list: the addon only
+        self.assertEqual(ops.listed(self.st("KickCDDB"), "m", states), ops.Listed("m", "Retail · ACCT1", "KickCD"))
+        perchar = next(s for s in states if s.file.character is not None)
+        self.assertEqual(ops.listed(perchar, "m", states).item, "PerChar [Realm1/Kaelys]")
 
     def test_lock_takes_the_files_flavor(self):
         """Feedback round 1: a blacklist pair is (flavor, addon); the lock is asked with the file's flavor."""

@@ -13,7 +13,7 @@ from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.core.sv_report import STALE_MARKER_TEXT
-from wowtools.core.text import plural
+from wowtools.core.text import Listed, plural
 from wowtools.tools.ace3_profile_manager import editor
 from wowtools.tools.ace3_profile_manager import review_screen as review_module
 from wowtools.tools.ace3_profile_manager.app import ProfileSettingsScreen
@@ -26,7 +26,7 @@ from wowtools.tools.ace3_profile_manager.scanner import sha256_of
 from wowtools.tools.ace3_profile_manager.settings import load_settings
 from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult
 from wowtools.ui.account_screen import AccountScreen
-from wowtools.ui.dialogs import ConfirmScreen, InfoScreen
+from wowtools.ui.dialogs import LISTED_ID, ConfirmScreen, InfoScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
 from wowtools.ui.tree_filter import FILTER_HINT
@@ -473,7 +473,11 @@ class StagingTest(AceAppBase):
             self.assertIsInstance(app.screen, NameScreen)
             app.screen.dismiss("Default")
             await settle(app, pilot)
-            self.assertEqual(review.staging.summary().total, 0)  # refused, notified
+            self.assertEqual(review.staging.summary().total, 0)  # refused, in the "Not done" popup
+            self.assertIsInstance(app.screen, InfoScreen)
+            self.assertEqual(app.screen.title_text, "Not done")
+            app.screen.dismiss(None)
+            await settle(app, pilot)
             await self.highlight(app, pilot, review, "profile", "Healer")
             await pilot.press("e")
             await settle(app, pilot)
@@ -1675,26 +1679,94 @@ class PopupFeedbackTest(AceAppBase):
             self.assertFalse(branch.is_expanded)
 
     async def test_notes_open_a_popup_grouped_by_message(self):
+        created = '"Default" will be created by the addon at its next login, with its defaults.'
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot)
             with patch.object(review, "notify") as notify:
-                review._staged(OpResult(notes=[
-                    'AddonA: "Default" will be created by the addon at its next login, with its defaults.',
-                    'AddonB: "Default" will be created by the addon at its next login, with its defaults.',
-                    "a note with no addon"]))
+                review._staged(OpResult(notes=[Listed(created, "Retail · ACCT1", "AddonA"),
+                                               Listed(created, "Retail · ACCT1", "AddonB"),
+                                               Listed("a note with no addon")]))
                 await settle(app, pilot)
             notify.assert_not_called()
             screen = app.screen
             self.assertIsInstance(screen, InfoScreen)
-            nodes = screen.query_one("#details", Tree).root.children
-            self.assertEqual([str(n.label) for n in nodes],
-                             ['"Default" will be created by the addon at its next login, with its defaults (2)',
-                              "a note with no addon"])
-            self.assertEqual([str(c.label) for c in nodes[0].children], ["AddonA", "AddonB"])
+            (top,) = screen.query_one(f"#{LISTED_ID}", Tree).root.children  # spec L10: one counted row
+            self.assertEqual(str(top.label), "3 notes (Space or click to collapse)")  # short, alone: open, no ⚠
+            self.assertTrue(top.is_expanded)
+            self.assertEqual([str(n.label) for n in top.children], [f"{created} (2)", "a note with no addon (1)"])
+            (where,) = top.children[0].children
+            self.assertEqual(str(where.label), "Retail · ACCT1 (2)")
+            self.assertEqual([str(c.label) for c in where.children], ["AddonA", "AddonB"])
             await pilot.press("enter")
             await settle(app, pilot)
             self.assertIs(app.screen, review)
+
+    async def test_refusals_open_a_popup_listing_every_one(self):
+        """L10 review: the "Not done" refusals are a counted tree in a popup, no longer a toast cut at 8 lines,
+        grouped by reason, then where, then the addon (with its database when its file has several); the notes
+        follow once it is closed."""
+        reason = "none of those profiles is in this database any more"
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            keys = list(review.staging.states)
+            with patch.object(review, "notify") as notify:
+                review._staged(OpResult(refused=[(k, reason) for k in keys], notes=[Listed("a note")]))
+                await settle(app, pilot)
+            notify.assert_not_called()
+            screen = app.screen
+            self.assertIsInstance(screen, InfoScreen)
+            self.assertEqual(screen.title_text, "Not done")
+            (top,) = screen.query_one(f"#{LISTED_ID}", Tree).root.children
+            self.assertEqual(str(top.label).split(" (")[0], f"⚠ {len(keys)} databases not changed")
+            (group,) = top.children
+            self.assertEqual(str(group.label), f"{reason} ({len(keys)})")
+            shown = [(str(where.label), str(leaf.label)) for where in group.children for leaf in where.children]
+            self.assertEqual(len(set(shown)), len(keys), shown)  # every database, each one apart
+            self.assertIn("ElvUI (ElvPrivateDB)", [item for _, item in shown])
+            for button_id in ("ok",):
+                self.assertTrue(screen.region.contains_region(screen.query_one(f"#{button_id}").region))
+            await pilot.press("enter")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, InfoScreen)
+            self.assertEqual(app.screen.title_text, "Notes")
+            app.screen.dismiss(None)
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+
+    async def test_apply_warnings_collapse_behind_a_counted_row(self):
+        """Spec L10: the Dry run / Apply confirm's warnings (one per addon) are one collapsed, counted tree row
+        grouped by message, then where, then addon; the body keeps only the summary lines."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            staging = review.staging
+            selection = {key: [c for c, p in state.keys.items() if p is not None]
+                         for key, state in staging.states.items()}
+            review._staged(staging.assign({k: chars for k, chars in selection.items() if chars}, "Nowhere"))
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, InfoScreen)  # the notes: "Nowhere" is created at the next login
+            app.screen.dismiss(None)
+            await settle(app, pilot)
+            _, _, warnings = review_module.apply_confirm(staging.summary(), staging.changed(), dry_run=True)
+            self.assertGreater(len(warnings), 3)
+            review.action_dry_run()
+            await settle(app, pilot)
+            screen = app.screen
+            self.assertIsInstance(screen, ConfirmScreen)
+            (top,) = screen.query_one(f"#{LISTED_ID}", Tree).root.children
+            self.assertEqual(str(top.label), f"⚠ {len(warnings)} warnings (Space or click to expand)")
+            self.assertFalse(top.is_expanded)
+            body = str(screen.query_one("#confirm-body").render())
+            self.assertNotIn("does not exist yet", body)
+            created = next(n for n in top.children if "does not exist yet" in str(n.label))
+            self.assertIn("Retail · ACCT1", [str(w.label).rsplit(" (", 1)[0] for w in created.children])
+            for button_id in ("yes", "no"):
+                button = screen.query_one(f"#{button_id}", Button)
+                self.assertTrue(screen.region.contains_region(button.region), button_id)
+            await pilot.press("n")
+            await settle(app, pilot)
 
     async def test_arrow_keys_reach_every_field_and_button(self):
         app = self.make_app()

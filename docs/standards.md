@@ -623,6 +623,24 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   *Enforced by:* `tests/test_look_and_feel.py::test_bars_keep_their_place_while_a_scan_runs` (a scan that is
   done and one that failed; an empty scan and a load show the tree itself, so they need no check of their own),
   `tests/test_ui_warnings.py::WarningsViewTest::test_a_failure_stays_on_one_row_and_the_next_update_wraps_again`.
+- **STD-7.26 MUST** In a confirm, notes or result popup, a list that can grow (warnings, notes, refusals, skipped
+  items) is never lines of the body: it is one collapsed, counted row of the shared `CountedTree` (`ui/dialogs.py`,
+  `ConfirmScreen`/`InfoScreen` `listed=`, entries `core.text.Listed(message, where, item)`): "⚠ 28 warnings (Space
+  or click to expand)", whose children group by message (each sentence once), then where (flavor · account), then
+  the items (no two alike under one where: name the database or character when an addon has several). The row
+  starts open only when it is the popup's whole content and fits in `DETAIL_ROWS` lines (one or two notes); a
+  neutral list (notes) has no ⚠. A list too long for a notification (the Ace3 "Not done" refusals) is such a popup,
+  never a toast cut short. Summary lines and alerts of a fixed number stay plain text above it; the tree scrolls
+  inside the popup and the buttons always stay on screen. Tab reaches it, Space, Enter or a click opens a row,
+  `x` / `c` open and close every row, as in every tree.
+  *Why:* 28 warnings printed as lines pushed Yes and No off the Ace3 Dry run confirm, and the same sentence 28
+  times hides which addons it concerns (user feedback 2026-10-08, spec L10).
+  *Enforced by:* `tests/test_counted_list.py` (300 warnings at 120x30 and 160x45 on a confirm and an info popup:
+  Yes/No or OK on screen and the popup unscrolled, collapsed and expanded; the count on the row; the grouping),
+  `tests/test_ace_app.py::PopupFeedbackTest::test_apply_warnings_collapse_behind_a_counted_row`,
+  `tests/test_ace_app.py::PopupFeedbackTest::test_notes_open_a_popup_grouped_by_message`,
+  `tests/test_ace_app.py::PopupFeedbackTest::test_refusals_open_a_popup_listing_every_one`,
+  `tests/test_ace_ops.py::OpsTest::test_listed_items_name_the_database_and_the_character`.
 
 ## 8. Keys and buttons
 

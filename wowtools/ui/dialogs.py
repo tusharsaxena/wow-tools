@@ -1,8 +1,9 @@
 """Dialogs and screen helpers shared by every tool: the yes/no confirmation, an information popup (both can list
-their details in a tree), a warning with a choice of buttons (and the unfinished-run one built on it), a text
-prompt (with popup_css and show_error, the look of a tool's own form popups), the progress modal of a run, tick marks
-and relabelling for review trees, the two-pane (filters + tree) focus moves, and theme colours with the Ka0s
-colours as a fallback. A tool's screens import these; no tool imports another tool's screens."""
+their details in a tree, and a list that can grow behind one counted row: CountedTree), a warning with a choice of
+buttons (and the unfinished-run one built on it), a text prompt (with popup_css and show_error, the look of a tool's
+own form popups), the progress modal of a run, tick marks and relabelling for review trees, the two-pane
+(filters + tree) focus moves, and theme colours with the Ka0s colours as a fallback. A tool's screens import these;
+no tool imports another tool's screens."""
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Hashable, Iterable, Sequence
@@ -20,7 +21,7 @@ from textual.widgets import Button, Input, ProgressBar, Static, Tree
 
 from wowtools.core.parallel import workers_for
 from wowtools.core.progress import PROGRESS_INTERVAL, BoardView, ProgressBoard, RowView
-from wowtools.core.text import plural
+from wowtools.core.text import Listed, plural
 from wowtools.ui.theme import KA0S_THEME
 from wowtools.ui.widgets import ACTION_VARIANTS, CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, NavHint, action_button
 
@@ -148,9 +149,79 @@ def detail_tree(groups: dict[str, list[str]]) -> Tree:
     return tree
 
 
-def detail_hint(groups: dict[str, list[str]] | None) -> str:
-    """The part of a popup's hint about its detail tree (none without one)."""
-    return f"↑↓/Tab move · Space open · {TREE_HINT}" if groups else ""
+def detail_hint(groups: dict[str, list[str]] | None, listed: Sequence[Listed] = ()) -> str:
+    """The part of a popup's hint about its detail tree or counted list (none without either)."""
+    return f"↑↓/Tab move · Space open · {TREE_HINT}" if groups or listed else ""
+
+
+LISTED_ID = "listed"
+WARNING_MARK = "⚠"
+EXPAND_TEXT = "(Space or click to expand)"
+COLLAPSE_TEXT = "(Space or click to collapse)"
+
+
+def _counted(label: str, count: int) -> Text:
+    return Text.assemble((label, "bold"), f" ({count})")
+
+
+class CountedTree(Tree):
+    """A list that can grow (warnings, notes, refusals, skipped items: core.text.Listed entries) in a popup, as one
+    collapsed, counted row ("⚠ 28 warnings (Space or click to expand)", spec L10, STD-7.26) whose children group by
+    message (each sentence shown once, with how many entries it has), then where (flavor · account), then the items,
+    first seen first; an entry repeated exactly is listed (and counted) once. A level an entry has nothing for (no
+    where, no item) is left out. The row starts closed, unless `open_short` and the whole list fits in DETAIL_ROWS
+    lines (a popup whose only content it is: the Ace3 Notes); once opened, the groups are open too when the whole
+    list fits. `alert` marks the row ⚠ in the alert colour (warnings, refusals); a neutral list (notes) is plain bold.
+    Space, Enter or a click opens and closes a row (auto_expand), x / c every row (TreeKeys). It takes the popup's
+    .popup-tree look, so it scrolls inside its share of the popup and the buttons stay on screen."""
+
+    def __init__(self, entries: Sequence[Listed], noun: str = "warning", nouns: str | None = None, *,
+                 alert: bool = True, open_short: bool = False, id: str = LISTED_ID) -> None:
+        super().__init__("", id=id, classes="popup-tree counted-tree")
+        self.show_root = False
+        self.auto_expand = True
+        entries = list(dict.fromkeys(entries))
+        count = plural(len(entries), noun, nouns)
+        self.count_text = f"{WARNING_MARK} {count}" if alert else count
+        self.count_style = ALERT_STYLE if alert else "bold"
+        groups: dict[str, dict[str, list[str]]] = {}
+        for entry in entries:
+            groups.setdefault(entry.message, {}).setdefault(entry.where, []).append(entry.item)
+        lines = len(groups) + sum(len(places) - ("" in places) + sum(map(len, places.values()))
+                                  for places in groups.values())
+        open_all = lines <= DETAIL_ROWS
+        opened = open_short and open_all
+        self.top = self.root.add(self._top_label(opened=opened), expand=opened)
+        for message, places in groups.items():
+            count = sum(map(len, places.values()))
+            items_here = [item for item in places.get("", []) if item]
+            if len(places) == 1 and "" in places and not items_here:
+                self.top.add_leaf(_counted(message, count))
+                continue
+            branch = self.top.add(_counted(message, count), expand=open_all)
+            for item in items_here:
+                branch.add_leaf(Text(item))
+            for where, items in places.items():
+                if not where:
+                    continue
+                shown = [item for item in items if item]
+                if not shown:
+                    branch.add_leaf(Text(where))
+                    continue
+                place = branch.add(_counted(where, len(items)), expand=open_all)
+                for item in shown:
+                    place.add_leaf(Text(item))
+
+    def _top_label(self, *, opened: bool) -> Text:
+        return Text.assemble((self.count_text, self.count_style), f" {COLLAPSE_TEXT if opened else EXPAND_TEXT}")
+
+    def on_tree_node_expanded(self, event: Tree.NodeExpanded) -> None:
+        if event.node is self.top:
+            self.top.set_label(self._top_label(opened=True))
+
+    def on_tree_node_collapsed(self, event: Tree.NodeCollapsed) -> None:
+        if event.node is self.top:
+            self.top.set_label(self._top_label(opened=False))
 
 
 # At 120x30 a confirm with a full detail tree shows its buttons and its two-line hint; a smaller window scrolls the box.
@@ -196,6 +267,9 @@ class TreeKeys:
     TREE_SELECTOR = "Tree"
 
     def _tree_for_keys(self) -> Tree | None:
+        focused = getattr(self, "focused", None)
+        if isinstance(focused, Tree) and focused.display:  # a popup with two trees: the one the user is in
+            return focused
         found = self.query(self.TREE_SELECTOR)
         tree = found.first(Tree) if found else None  # a popup's detail tree is optional
         return tree if tree is not None and tree.display else None  # hidden while a scan runs
@@ -303,7 +377,9 @@ class ConfirmScreen(EnterGuard, TreeKeys, ModalScreen[bool]):
     overwrites, puts files back or drops pending work, "simulate" for a dry run, "create" for a backup) and
     CONFIRM_GUARD: Enter and Space are ignored for that long after the popup opens (and while a held key repeats). `y` answers Yes, `n` and Esc
     No, at once. `alerts` are extra lines shown in red; `groups` ({label: items}) lists the details in a tree below
-    the body (detail_tree)."""
+    the body (detail_tree); `listed` is a list that can grow (warnings, notes, refusals, skipped items), shown below
+    that as one collapsed, counted row (CountedTree, `noun` what one entry is called), never as lines of the body,
+    so Yes and No stay on screen however long it is (STD-7.26)."""
 
     DEFAULT_CSS = f"""
     ConfirmScreen {{ align: center middle; }}
@@ -319,7 +395,8 @@ class ConfirmScreen(EnterGuard, TreeKeys, ModalScreen[bool]):
                                          *NAV_BINDINGS, *TREE_BINDINGS]
 
     def __init__(self, title: str, body: str, alerts: tuple[str, ...] = (), *, kind: str = "confirm",
-                 groups: dict[str, list[str]] | None = None) -> None:
+                 groups: dict[str, list[str]] | None = None, listed: Sequence[Listed] = (),
+                 noun: str = "warning") -> None:
         super().__init__()
         if kind not in ACTION_VARIANTS:
             raise ValueError(f"unknown action kind {kind!r}")
@@ -328,6 +405,8 @@ class ConfirmScreen(EnterGuard, TreeKeys, ModalScreen[bool]):
         self.alerts = alerts
         self.body_text = "\n".join([body, *alerts]) if alerts else body
         self.groups = groups
+        self.listed = list(listed)
+        self.noun = noun
 
     def compose(self) -> ComposeResult:
         with Vertical(id="confirm-box"):
@@ -335,13 +414,15 @@ class ConfirmScreen(EnterGuard, TreeKeys, ModalScreen[bool]):
             body = Text(self.body_text)
             for alert in self.alerts:
                 body.highlight_words([alert], style=ALERT_STYLE)
-            yield Static(body)
+            yield Static(body, id="confirm-body")
             if self.groups:
                 yield detail_tree(self.groups)
+            if self.listed:
+                yield CountedTree(self.listed, self.noun)
             with ButtonRow(id="confirm-buttons"):
                 yield action_button("Yes", self.kind, "y", id="yes")
                 yield action_button("No", "cancel", "n", id="no")
-            yield NavHint(f"{detail_hint(self.groups)}←→ choose · Enter/Space press · Esc no")
+            yield NavHint(f"{detail_hint(self.groups, self.listed)}←→ choose · Enter/Space press · Esc no")
 
     def on_mount(self) -> None:
         self.start_guard()
@@ -530,7 +611,9 @@ class TextPromptScreen(ModalScreen[str | None]):
 
 class InfoScreen(TreeKeys, ModalScreen[None]):
     """Something to read and acknowledge, in place of a notification too long for one: an optional body, then the
-    details in a tree (detail_tree), and an OK button."""
+    details in a tree (detail_tree) and/or a list that can grow behind one counted row (CountedTree: the Ace3
+    Notes and "Not done"; `alert` False for a neutral list, no ⚠), and an OK button. When the list is the popup's
+    only content and fits in DETAIL_ROWS lines, its row starts open, so a note or two is read at once."""
 
     DEFAULT_CSS = f"""
     InfoScreen {{ align: center middle; }}
@@ -543,21 +626,31 @@ class InfoScreen(TreeKeys, ModalScreen[None]):
     """
     BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "close", "Close"), *NAV_BINDINGS, *TREE_BINDINGS]
 
-    def __init__(self, title: str, groups: dict[str, list[str]], body: str = "") -> None:
+    def __init__(self, title: str, groups: dict[str, list[str]] | None = None, body: str = "", *,
+                 listed: Sequence[Listed] = (), noun: str = "warning", nouns: str | None = None,
+                 alert: bool = True) -> None:
         super().__init__()
         self.title_text = title
         self.groups = groups
         self.body_text = body
+        self.listed = list(listed)
+        self.noun = noun
+        self.nouns = nouns
+        self.alert = alert
 
     def compose(self) -> ComposeResult:
         with Vertical(id="info-box"):
             yield Static(Text(self.title_text), id="info-title")
             if self.body_text:
                 yield Static(Text(self.body_text), id="info-body")
-            yield detail_tree(self.groups)
+            if self.groups:
+                yield detail_tree(self.groups)
+            if self.listed:
+                yield CountedTree(self.listed, self.noun, self.nouns, alert=self.alert,
+                                  open_short=not self.body_text and not self.groups)
             with ButtonRow(id="info-buttons"):
                 yield action_button("OK", "confirm", "escape", id="ok")
-            yield NavHint(f"{detail_hint(self.groups)}Enter/Space OK")
+            yield NavHint(f"{detail_hint(self.groups, self.listed)}Enter/Space OK")
 
     def on_mount(self) -> None:
         self.query_one("#ok", Button).focus()

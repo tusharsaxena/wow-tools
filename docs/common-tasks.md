@@ -126,7 +126,9 @@ Example: the Screenshot Organizer review's Undo (`btn-undo`, `z`).
    non-priority. Do not take a suite or shared review key (STD-8.9).
 4. Leave the key out of the screen's hint (`NavHint`) and every guide or status line; the button shows it and the
    footer drops it.
-5. A confirm it opens names its `kind` (`ConfirmScreen(..., kind="destructive")`).
+5. A confirm it opens names its `kind` (`ConfirmScreen(..., kind="destructive")`); a list in it that can grow
+   (warnings, notes, refusals, skipped items) goes in `listed=` as `core.text.Listed` entries, never in `alerts`
+   (STD-7.26).
 6. `wowtools/tools/<package>/help.py`: name the button as `**Label**` (`tests/test_help.py` checks every button the
    tool's screens show), and the guide's keys table in `docs/<tool id>.md`.
 7. Tests: the action in `tests/test_<package>_app.py`; a new label/kind pair the spec fixes goes into the `expected`

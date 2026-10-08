@@ -14,7 +14,7 @@ from wowtools.core.events import log_event
 from wowtools.core.install import flavor_name
 from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager.model import DEFAULT
-from wowtools.tools.ace3_profile_manager.ops import DbKey, OpResult, Staging, valid_name
+from wowtools.tools.ace3_profile_manager.ops import DbKey, OpResult, Staging, listed, valid_name
 from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
 from wowtools.tools.ace3_profile_manager.report import NO_PENDING, pending_text
 from wowtools.ui.dialogs import ConfirmScreen, InfoScreen
@@ -59,37 +59,25 @@ class ProfileStagingActions:
         return names
 
     def _staged(self, result: OpResult) -> None:
-        """After an operation: say what was refused and noted (one notification each, however many databases),
-        clear the ticks of the databases it changed and show the new pending changes."""
+        """After an operation: clear the ticks of the databases it changed, show the new pending changes, then what
+        was refused ("Not done") and noted ("Notes"), each one popup however many databases, its list one counted
+        row grouped by reason or message, then where, then the database (spec L10)."""
         assert self.staging is not None
-        if result.refused:
-            lines = [f"{self._addon_name(key)}: {reason}" for key, reason in result.refused]
-            self.notify(self._lines(lines), title=f"Not done ({len(lines)})", severity="warning", timeout=15)
+        states = list(self.staging.states.values())
+        refused = [listed(self.staging.state(key), reason, states) for key, reason in result.refused]
+        notes = list(result.notes)
         changed = set(result.applied)
         self.ticked = {k for k in self.ticked if k[1] not in changed}
         self.refresh_view()
-        if result.notes:
-            self.app.push_screen(InfoScreen("Notes", self._notes_by_message(result.notes)))
 
-    @staticmethod
-    def _notes_by_message(notes: list[str]) -> dict[str, list[str]]:
-        """Notes ("<addon>: <message>") grouped by message, with the addons it concerns under it."""
-        groups: dict[str, list[str]] = {}
-        for note in dict.fromkeys(notes):
-            addon, sep, message = note.partition(": ")
-            if not sep:
-                groups.setdefault(note, [])
-                continue
-            message = message.rstrip(".")
-            groups.setdefault(message[:1].upper() + message[1:], []).append(addon)
-        return groups
-
-    @staticmethod
-    def _lines(lines: list[str], most: int = 8) -> str:
-        shown = lines[:most]
-        if len(lines) > most:
-            shown.append(f"… and {len(lines) - most} more")
-        return "\n".join(shown)
+        def show_notes(_: object = None) -> None:
+            if notes:
+                self.app.push_screen(InfoScreen("Notes", listed=notes, noun="note", alert=False))
+        if refused:
+            self.app.push_screen(InfoScreen("Not done", listed=refused, noun="database not changed",
+                                            nouns="databases not changed"), show_notes)
+        else:
+            show_notes()
 
     def action_delete(self) -> None:
         if not self._ready():

@@ -80,7 +80,10 @@ Code: `ops.py`. `Staging` holds a `DbState` per database (`DbKey(path, sv_name)`
 profile, or removed), `profiles` (name → `Original(name)` or `CopyOf(name)`), `module_only` (profiles that exist
 only in a namespace: they change only when a delete or rename names them), the LibDualSpec specs and the
 leftovers. Operations change only this model and return `OpResult` (`applied` keys, `refused` with a reason per
-database, `notes`). A locked (blacklisted, not unlocked) addon is refused; `drop_locked()` resets one that became
+database, `notes`: `core.text.Listed(message, where, item)` from `listed(state, message, states)`: the where
+from `where_of(state)`, "Retail · ACCOUNT", the item from `item_of(state, states)`, the addon with its database
+when another of `states` is in the same file and its character for a character's file, so no two items under one
+where look the same). A locked (blacklisted, not unlocked) addon is refused; `drop_locked()` resets one that became
 locked, and `changed()`/`summary()` never include one. `DbState.changes()` lists deleted, renamed, copied,
 reassigned and removed entries; `Summary` counts them for the left pane and the confirm.
 
@@ -228,7 +231,11 @@ per app session, L4; `ace.disclaimer_accepted` / `_declined`; Back returns to th
 - `popups.py`: `TargetScreen` (delete and assign: a target `Select` plus a new-name `Input`), `NameScreen` (rename
   and copy, with live validation) and `ActionsScreen` (the `m` menu: every key the footer
   and the action bar hide, under the `ACTION_GROUPS` headings Selection and Modification), styled with the shared `popup_css`; `NameScreen` is the shared `TextPromptScreen` checked with `valid_name`. Apply and Undo use `ConfirmScreen` (`report.apply_confirm`/`undo_confirm`; alerts
-  in red; Yes red for Apply and Undo, cyan for a dry run).
+  in red; Yes red for Apply and Undo, cyan for a dry run). `apply_confirm`'s warnings are `Listed` entries (one per
+  addon warning), shown as the confirm's `listed` (one collapsed, counted `CountedTree` row, L10, STD-7.26); the
+  staging actions' `_staged` shows `result.refused` as a "Not done" `InfoScreen` (`listed` from `ops.listed`,
+  noun "database not changed"), then the Notes popup, an `InfoScreen` with `listed=result.notes, noun="note",
+  alert=False` (no ⚠; one or two notes start open, `open_short`).
 - `ProfileProgressScreen(title, dry_run=, first_stage=, flavors=)` (ids `ace-*`, `report.STAGE_TITLES`; Apply feeds `report_unit`, a row per flavor in turn) and `ProfileRecoveryScreen` (the shared `UnfinishedRunScreen`: Put the originals
   back / Leave as is; Esc leaves the marker for the next scan). The review's apply, undo and recovery runs go through
   the shared `RunActions` (`ui/review.py`); the recovery flow itself (offer, Leave as is, Put the originals back, the

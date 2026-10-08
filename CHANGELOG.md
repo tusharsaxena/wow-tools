@@ -30,6 +30,13 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
     that is writing files still has to finish first, and with changes staged but not applied it asks first.
     While any "discard your changes?" question is open, `q` waits for your answer instead of asking again.
 - **Ace3 Profile Manager**
+  - The **Apply** and **Dry run** confirms no longer print one red line per addon warning (28 lines could push
+    **Yes** and **No** off the window): the warnings sit under one line, **⚠ 28 warnings (Space or click to
+    expand)**. Open it (`Tab` to it, then `Space`, `Enter` or a click) to see each warning once, with the game
+    version and account under it, then the addons; `x` opens everything and the list scrolls inside the window.
+    The **Notes** box after a change lists its notes the same way (one or two notes show at once), and what a
+    change could not do is a **Not done** box listed the same way, every addon in it (it was a notification cut
+    at 8 lines). Two databases of one addon, or a character's own file, are told apart in these lists.
   - **Leftovers** (`o`) is now one press: it ticks every leftover character the tree shows, then asks to remove
     them, listing them under each addon. There's no need to tick them first. **No** keeps the ticks; with none
     shown it says so and changes nothing.

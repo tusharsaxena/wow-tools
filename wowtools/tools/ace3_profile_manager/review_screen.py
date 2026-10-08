@@ -762,9 +762,9 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
             self.notify(NO_PENDING)
             return
         states = self.staging.changed()
-        title, body, alerts = apply_confirm(self.staging.summary(), states, dry_run=dry_run)
-        self.app.push_screen(ConfirmScreen(title, body, (*alerts, *extra),
-                                           kind="simulate" if dry_run else "destructive"),
+        title, body, warnings = apply_confirm(self.staging.summary(), states, dry_run=dry_run)
+        self.app.push_screen(ConfirmScreen(title, body, tuple(extra), kind="simulate" if dry_run else "destructive",
+                                           listed=warnings),
                              lambda ok: self._apply_confirmed(ok, dry_run))
 
     def _apply_confirmed(self, ok: bool | None, dry_run: bool) -> None:

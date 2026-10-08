@@ -190,8 +190,11 @@ A profile name can be up to 100 characters. Names are case-sensitive, as in the 
 profiles), and you can't rename or copy onto a name the addon already has.
 
 If a change can't be made in some of the ticked addons (a blacklisted addon, say), it's made in the others and a
-message lists the ones it skipped. Anything else worth knowing about a change (for example, that an addon will
-create "Default" itself at its next login) opens a **Notes** box, grouped by note with the addons under each.
+**Not done** box lists the ones it skipped, every one of them: one line, **⚠ N databases not changed**, that opens
+to each reason once, with the game version and account under it, then the addons (with the database when the
+addon has several, and the character for a character's own file). Anything else worth knowing about a change (for
+example, that an addon will create "Default" itself at its next login) opens a **Notes** box after it, listed the
+same way under **N notes**; one or two notes show at once, a longer list opens with `Space`.
 **Leftovers** is one press: it ticks every leftover character the tree shows (what the View, the Show boxes and
 the filter let through), then asks first, listing the characters it will remove under each addon (`Space` opens an
 addon, `x` opens them all). **No** keeps the ticks, so you can see what it would have removed. To remove only some
@@ -295,12 +298,18 @@ profiles.
 
 When you press **Apply**, the bottom bar says "Checking whether WoW is running…" for a moment. If WoW is running
 for a game version you're changing, it stops there and asks you to close it. Then a summary lists the pending changes,
-in which game versions, with alerts in red for anything worth a second look:
+in which game versions, with red alerts (WoW running, say) under it. Anything worth a second look about an addon
+sits under one red line, **⚠ N warnings (Space or click to expand)**, so a long list never pushes **Yes** and
+**No** off the window:
 
 - a "Default" profile is being deleted;
 - characters are moving to a profile that doesn't exist yet (the addon creates it with its defaults at the next
   login);
 - some of the characters switch profile by spec, which overrides the change at login.
+
+`Tab` to that line and press `Space` (or `Enter`, or click it) to open it: each warning is shown once, with the
+game version and account under it, then the addons (`x` opens everything, `c` closes it again; the list scrolls
+inside the window). The **Dry run** confirm shows them the same way.
 
 **Yes** is selected, in red. Once you press it, a progress window shows each step. For each game version the
 tool:
@@ -454,7 +463,7 @@ marker, and Apply stops at the first game version that fails. The WTF backups (`
 | My changes were undone after I played | WoW was running while you applied, or an addon synced its profiles back. Close WoW completely, apply again, then start the game. |
 | "files are locked by another program" | Close the Raider.IO client or the WeakAuras Companion, then apply again. Nothing was changed. |
 | An addon is missing from the tree | It doesn't use Ace3 profiles, its file is blacklisted and hidden (tick **Blacklisted addons** under **Show**), or a Show box or the filter hides it. If its file couldn't be read, it's listed under **Scan warnings** at the bottom of the tree and in the warnings view (`!`). |
-| "Not done" with a list of addons | The change couldn't be made in those addons (blacklisted, a name already taken, …); the message says why for each. It was made in the others. |
+| A "Not done" box with a list of addons | The change couldn't be made in those addons (blacklisted, a name already taken, …); the box says why for each. It was made in the others. |
 | A character keeps a profile I changed | It has **spec profiles**: LibDualSpec switches its profile by spec at login. See the [FAQ](#faq). |
 | "An earlier change did not finish" | See [If a change was interrupted](#if-a-change-was-interrupted). |
 | "Backup folder not allowed" | The backup folder in settings is a relative path, your WoW folder, or inside a game version's `WTF`, `Interface` or `Screenshots` folder. Press `s` and pick another folder, or leave it empty for the default. |

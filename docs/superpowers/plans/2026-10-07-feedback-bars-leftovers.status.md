@@ -17,7 +17,7 @@ go-ahead.
 | L7 | `q` quits from any screen | done | (this commit) | Why q did nothing on the flavor picker: `q` was bound per screen (the menu `app.quit`, each review `leave('quit')`, each result `choose('quit')`, the lock warning; the help and the changelog bound it to Back) and the pickers, settings, warnings, blacklist and popups had none. Now `Ka0sApp.key_q` -> `action_quit` (busy: refused with the `ui.quit_refused` notice; work staged on a review in the stack: its `discard_question()` asks first; else `exit()`, the path suite.run follows with session.end and the lock release). Reviews bind `q` to `app.quit` (footer kept); `ReviewBase.discard_question` / `action_leave` replace the Ace3 and SV Browser `action_leave` copies; help and changelog no longer close on q. 4 tests in `tests/test_quit_key.py` (written first, failed first: every screen of every tool, menu / changelog / help / settings at BASE and LARGE, filter and settings field type q, busy refused, staged asks once and No keeps it); help and changelog tests now close with Esc / h. STD-8.11, architecture, README and suite help keys, CHANGELOG, `ui.quit_refused` description and events.md. Review fixes L7-e (`DiscardScreen`, no flag, 5 more tests, `QuitBindingsTest`). Full suite 1837 tests OK (2 skipped), ruff clean, events check OK |
 | L8 | "Don't show this again" on the risk popup | done | (this commit) | `DisclaimerScreen` gets a `DontShowCheckbox` "Don't show this warning again for this tool" (`ChoiceScreen.extras()`; Tab reaches it, Space ticks, Enter on it presses I understand; I understand with it ticked dismisses `ACCEPT_DONT_SHOW`). `ToolFlow.ask_disclaimer` skips when `[SECTION] skip_risk_warning` (`core.config.SKIP_RISK_WARNING`) is true and saves it on a ticked accept (atomic `Config.save`); Back/Esc never save. The three settings forms get "Show the USE AT YOUR OWN RISK warning" (`ToolSettingsScreen.risk_warning_box()`, last field; all fit at 120x30); each tool's `skip_risk_warning` setting field. Events `clean.` / `ace.` / `svb.risk_warning_changed` (shown, source) registered, events.md regenerated. 6 tests in `DontShowAgainTest` (`tests/test_risk_disclaimer.py`, written first, failed first; the failed-write one after); WTF keyboard settings test takes the new box. Help (3), guides (3), README settings, architecture, internals (3), CHANGELOG. Full suite 1843 tests OK (2 skipped), ruff clean, events check OK |
 | L9 | one toast anchor and stack | done | (this commit) | Why they overlapped: the toasts were placed per screen (`ui/review.py` `lift_toasts`, called by the SV Browser's `place_toasts` and the Ace3 `_place_overlays`; every other screen kept Textual's rack one row up, over the bottom line), and the Ace3 `#tip-rack`'s `auto` height was a row short of a tip that wraps at its scrollbar-narrowed width, so the tip hung over the guide and under the toasts. Now `ui/toasts.py`: `install(app)` (from `Ka0sApp.on_mount`) subscribes to `screen_change_signal` and to each shown screen's `screen_layout_refresh_signal`; `place_toasts` puts the rack on `toast_floor` (top of `BottomBar`, `SummaryBar`, `Footer`, `ActionBar`, `.toast-floor`; a popup without bars uses the screen under it); `TipRack` / `StackTip` (Ace3 `ActionTip`) are the stack's lowest box, the rack sized to the tip. Removed: `lift_toasts`, `ActionBar.on_mount`, SV Browser `place_toasts`, Ace3 `_place_overlays`, `ActionTip.on_resize` and the screen's `layers` CSS. Tests first in `tests/test_toast_stack.py` (failed first: the WTF Cleaner review's toasts covered the bottom line): 3 toasts on every screen of every tool (+ the Ace3 tip) at BASE and LARGE, menu / changelog / help / setup, one right edge, lowest box on the bars, no overlap, no bar covered; `OneHelperTest` (only `ui/toasts.py` names the rack). STD-7.24 is now a MUST for this (folded, not a new ID); architecture `toasts` and `base` rows, Ace3 internals, tree-screen recipe, testing.md, CHANGELOG. No new event. Full suite 1848 tests OK (2 skipped), ruff clean, events check OK. Review fixes L9-e (toasts clear a popup's own controls, `PopupStackTest`, STD-7.24 citations): full suite 1849 tests OK (2 skipped), ruff clean, events check OK |
-| L10 | long warning lists collapse | todo | | |
+| L10 | long warning lists collapse | done | (this commit) | Why Yes/No went off the popup: the Ace3 `report.apply_confirm` returned one red alert line per addon warning, all printed in the ConfirmScreen body, so 28 warnings made the box taller than the window and it scrolled its buttons away. New shared `ui/dialogs.CountedTree` (entries `core.text.Listed(message, where, item)`; one collapsed counted row "⚠ N warnings (Space or click to expand)" → message (n) → where (n) → items, the label flips to "collapse" when open) taken by `ConfirmScreen` and `InfoScreen` as `listed=` (`noun=`); `TreeKeys` acts on the focused tree when a popup has two. Adopted: the Ace3 Apply and Dry run confirms (warnings) and the Ace3 Notes popup (`OpResult.notes` are now `Listed`, where = `ops.where_of`: "Retail · ACCT1"). Audit of every other popup in L10-b. Tests first (`tests/test_counted_list.py`: 300 warnings at 120x30 and 160x45 on a confirm and an info popup, Tab reaches the tree, Space/Enter/x/c, buttons on screen and the box unscrolled; the grouping; Ace3 `test_apply_warnings_collapse_behind_a_counted_row`, the Notes test rewritten; failed first on the missing `Listed`/`LISTED_ID`). STD-7.26 added; architecture (dialogs, look and feel), common-tasks, Ace3 guide and internals, CHANGELOG. Full suite 1857 tests OK (2 skipped), ruff clean, events check OK |
 | LR4 | review of L7-L10, green gate, push, CI | todo | | |
 | LR | review, green gate, push | done | (this commit) | Whole-branch review: code, docs, help and CHANGELOG agree with L1-L3 and STD-7.25; fixes: the new import and docstring lines in the four reviews and `warnings_view` re-wrapped to 120 columns (STD-1.10), the internals line for Leftovers re-wrapped. Full suite 1806 tests OK (2 skipped), ruff clean, events check OK |
 
@@ -240,3 +240,42 @@ go-ahead.
   bars; a popup's anchor differs because what it must not cover differs (now its controls too). The test pins
   one right edge on every screen of a size and the bottom of each stack against that screen's bars and controls.
   To confirm with the user: whether "the same anchor" meant one fixed height instead.
+
+- L10-a: the counted row always starts closed, however short the list (the spec's "one collapsed, counted tree
+  row"); once it is opened, its groups are open too when the whole list fits in `DETAIL_ROWS` lines (the
+  `detail_tree` rule), else closed (`x` opens them). Alerts of a fixed number (WoW running, a locker, hidden ticked
+  items, the zip turned off, the SV Browser's disclaimer and array shift) stay red lines of the body: they do not
+  grow, and hiding "WoW is running" behind a row would weaken it.
+- L10-b: the audit of every `ConfirmScreen`, `InfoScreen`, `ChoiceScreen` and tool popup: only the Ace3 Apply / Dry
+  run warnings and the Ace3 Notes are lists that grow with the selection. The rest are bounded or already scroll:
+  the WTF Cleaner confirm (one line per flavor, and fixed alerts), the Screenshot Organizer and Interface Backup
+  confirms (fixed alerts; the restore alerts are counts, one per kind), the SV Browser Apply confirm (its files are
+  already a `detail_tree`, which scrolls; its alerts are fixed), the Ace3 Leftovers confirm (a `detail_tree`), the
+  Ace3 Delete / Assign target popup (its body is `.popup-body`, `max-height: 40vh`, scrolling), the recovery,
+  lock and update popups (fixed text). Result screens are full screens whose detail table scrolls under a fixed
+  button row. The Ace3 "Not done (n)" refusals are a toast, not a popup, already cut at 8 lines plus "… and N
+  more"; left as is.
+- L10-c: `Listed` lives in `core/text.py` (UI-free) so a tool's report and ops modules can build the entries
+  without importing `ui/`; the tree is in `ui/dialogs.py` next to `detail_tree`. The Ace3 "kept" note no longer
+  puts a count in its sentence ("Characters that have a folder in WTF were kept."; the item says "ElvUI: 2
+  characters"), so it groups across addons.
+- L10-d: the warning sentences no longer start with the addon (it is the item): 'The "Default" profile will be
+  deleted.', '"Healer" does not exist yet; ...', "LibDualSpec switches ...".
+- L10-e: review of L10 (six findings, all minor). (1) fixed, superseding L10-b's last sentence: the Ace3 "Not
+  done" refusals are now an `InfoScreen("Not done")` with a `CountedTree` ("⚠ N databases not changed", grouped
+  by reason, then where, then the database), shown before the Notes (which follow when it closes), no longer a
+  toast cut at 8 lines; `_lines` is gone. To confirm with the user: a refusal now needs OK (a popup, not a
+  toast). (2) and (6), one finding, fixed, amending L10-a: `CountedTree(open_short=)` opens the row when the whole
+  list fits in `DETAIL_ROWS`; `InfoScreen` passes it when the list is its only content (no body, no groups), so
+  one or two notes show at once; a confirm's warnings still start closed. `alert=False` drops the ⚠ and the red for
+  a neutral list: the Notes. (3) rejected: 100x20 is below the 80x24 floor of STD-7.23 (designed for 120x30,
+  grows at 160x45); at 80x24 Yes stays visible, and the box scrolling below that is the documented behaviour
+  (`POPUP_TREE_CSS` comment). (4) fixed: `ops.item_of(state, states)` names the database when another one of
+  `states` is in the same file ("ElvUI (ElvPrivateDB)") and the character for a character's file ("PerChar
+  [Realm1/Kaelys]"); `ops.listed` takes `states` (the staging's, or the confirm's changed ones); `CountedTree`
+  drops exact repeats (`dict.fromkeys`), as the old Notes did. (5) fixed: architecture's dialogs row names
+  `detail_hint(groups, listed=())` and the new `InfoScreen` / `CountedTree` parameters. Tests first (failed first):
+  `test_an_entry_repeated_exactly_is_listed_once`, `test_a_neutral_list_has_no_warning_mark`,
+  `test_open_short_opens_the_row_only_when_the_whole_list_fits`,
+  `test_a_short_list_that_is_the_whole_popup_shows_at_once`,
+  `test_listed_items_name_the_database_and_the_character`, `test_refusals_open_a_popup_listing_every_one`.

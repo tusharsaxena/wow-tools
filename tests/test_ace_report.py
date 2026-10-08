@@ -163,13 +163,17 @@ class ReportTest(unittest.TestCase):
         key = self.st("ElvDB").key
         self.staging.delete({key: ["Default"]}, "Healer")
         self.staging.assign({self.st("HandyNotesDB").key: ["Kaelys - Realm1"]}, "Default")
-        title, body, alerts = report.apply_confirm(self.staging.summary(), self.staging.changed(), dry_run=False)
+        title, body, warnings = report.apply_confirm(self.staging.summary(), self.staging.changed(), dry_run=False)
         self.assertEqual(title, "Apply the pending changes?")
         self.assertIn("2 files", body)
-        self.assertTrue(any("Default" in a and "deleted" in a for a in alerts))
-        self.assertTrue(any("next login" in a for a in alerts))
-        self.assertTrue(any("LibDualSpec" in a for a in alerts))
         self.assertIn("Retail", body)
+        # one Listed per warning (spec L10): the message once, where (flavor · account) and the addon apart
+        deleted = [w for w in warnings if "Default" in w.message and "deleted" in w.message]
+        self.assertEqual([(w.where, w.item) for w in deleted], [("Retail · ACCT1", "ElvUI")])
+        self.assertEqual(deleted[0].message, 'The "Default" profile will be deleted.')
+        self.assertTrue(any("next login" in w.message for w in warnings))
+        self.assertTrue(any("LibDualSpec" in w.message for w in warnings))
+        self.assertFalse(any(w.item in w.message for w in warnings))  # the addon is never in the message
 
     def test_removed_character_follows_a_renamed_profile(self):
         key = self.st("KickCDDB").key
