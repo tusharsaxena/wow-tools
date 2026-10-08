@@ -48,6 +48,9 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 
 ### Fixed
 
+- **WTF Cleaner**
+  - The result of a clean across several game versions names the run journal once, above the game versions, with
+    the hint that **Undo last clean** puts the files back. It was listed again in every game version's block.
 - **Screenshot Organizer**
   - The Screenshot Organizer shows its scan progress at once after you pick the game version, starting with
     "Checking the destination folder": a slow or sleeping destination drive no longer freezes the screen for a

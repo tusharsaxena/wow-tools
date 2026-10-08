@@ -1068,18 +1068,38 @@ class KeyboardNavigationTest(AppTestCase):
         names its folder and the next its file."""
         from wowtools.core.install import Flavor
         from wowtools.tools.wtf_cleaner.multi import FlavorRun, MultiCleanResult
-        from wowtools.tools.wtf_cleaner.result_screen import multi_summary_rows
+        from wowtools.tools.wtf_cleaner.result_screen import MULTI_UNDO_NOTE, multi_summary_rows
         flavor = Flavor("_retail_", self.root / "_retail_")
         journal = self.root / "wow-tools" / "wtf-cleaner" / "journal" / "journal-20261004-153304.jsonl"
         for folder, expected in (
                 (self.backup_dir, [("Journal folder", to_stored(journal.parent), False),
-                                   ("Run journal", journal.name, False)]),
-                (self.root / "wow-tools" / "wtf-cleaner", [("Run journal", str(Path("journal", journal.name)), False)])):
+                                   ("Run journal", f"{journal.name} {MULTI_UNDO_NOTE}", False)]),
+                (self.root / "wow-tools" / "wtf-cleaner",
+                 [("Run journal", f"{Path('journal', journal.name)} {MULTI_UNDO_NOTE}", False)])):
             clean = CleanResult(dry_run=False, backup_path=folder / "cleaned" / "cleaned-retail-x.zip",
                                 journal_path=journal)
             result = MultiCleanResult(dry_run=False, runs=[FlavorRun(flavor, [], result=clean)], journal_path=journal)
             rows = multi_summary_rows(result)
             self.assertEqual(rows[:len(expected)], expected)  # on top, before the flavor's block
+
+    def test_multi_summary_shows_the_run_journal_once(self):
+        """L14: one journal for every flavor of the run, so one "Run journal" row (the one with the Undo hint) and
+        at most one "Journal folder" row: the flavor blocks do not repeat them."""
+        from wowtools.core.install import Flavor
+        from wowtools.tools.wtf_cleaner.multi import FlavorRun, MultiCleanResult
+        from wowtools.tools.wtf_cleaner.result_screen import MULTI_UNDO_NOTE, multi_summary_rows
+        journal = self.root / "wow-tools" / "wtf-cleaner" / "journal" / "journal-20261004-153304.jsonl"
+        runs = []
+        for folder in ("_retail_", "_classic_"):
+            clean = CleanResult(dry_run=False, backup_path=self.backup_dir / "cleaned" / f"cleaned-{folder}x.zip",
+                                journal_path=journal)
+            runs.append(FlavorRun(Flavor(folder, self.root / folder), [], result=clean))
+        for done in (runs[:1], runs):
+            rows = multi_summary_rows(MultiCleanResult(dry_run=False, runs=done, journal_path=journal))
+            items = [item for item, _, _ in rows]
+            self.assertEqual(items.count("Run journal"), 1, rows)
+            self.assertEqual(items.count("Journal folder"), 1, rows)
+            self.assertTrue({item: value for item, value, _ in rows}["Run journal"].endswith(MULTI_UNDO_NOTE))
 
     async def test_real_clean_result_names_the_journal_inside_the_default_backup_folder(self):
         """With no backup folder set, the default one (<WoW>/wow-tools/wtf-cleaner) holds journal/: the journal
@@ -1706,11 +1726,30 @@ class AllFlavorsTest(AppTestCase):
             summary = screen.query_one("#result-summary", DataTable)
             values = [str(summary.get_row_at(i)[1]) for i in range(summary.row_count)]
             self.assertEqual(values.count("passed"), 2)
+            items = [str(summary.get_row_at(i)[0]) for i in range(summary.row_count)]
+            self.assertEqual(items.count("Run journal"), 1, items)  # L14: once, above the flavor blocks
+            self.assertLess(items.index("Run journal"), items.index("Classic Era"))
+            # above every flavor block no file is named yet, so the note names what Undo puts back
+            self.assertIn("restores deleted files", values[items.index("Run journal")])
         self.assertEqual(len(list(self.backup_dir.glob("backup/backup-classic_era-*.zip"))), 1)
         self.assertEqual(len(list(self.backup_dir.glob("backup/backup-retail-*.zip"))), 1)
         self.assertFalse((self.era_sv / "Gone.lua").exists())
         self.assertFalse((self.sv / "Uninstalled.lua").exists())
         self.assertFalse((self.backup_dir / MARKER_NAME).exists())
+
+    async def test_multi_flavor_journal_row_fits_at_base(self):
+        """L14: with the default backup folder the shared journal row reads journal/<name> plus the Undo note,
+        the longest summary value; it still fits at 120x30 with no sideways scroll."""
+        self.tool_cfg.remove("wtf_cleaner", "backup_dir", log=False)
+        self.tool_cfg.save()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_all(app, pilot)
+            await self.run_mode(app, pilot, "w")
+            summary = app.screen.query_one("#result-summary", DataTable)
+            rows = {str(summary.get_row_at(i)[0]): str(summary.get_row_at(i)[1]) for i in range(summary.row_count)}
+            self.assertTrue(rows["Run journal"].startswith(str(Path("journal", ""))), rows)
+            self.assertEqual(summary.max_scroll_x, 0)
 
     async def test_backup_error_in_first_flavor_stops_before_the_second(self):
         calls = []

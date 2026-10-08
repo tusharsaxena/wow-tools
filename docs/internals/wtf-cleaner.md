@@ -176,6 +176,9 @@ set, `clean.risk_warning_changed`, L8). `review_screen.py` holds:
 `result_screen.py` holds `ResultScreen(result, flavor=None)`, a `ResultBase`: a summary table plus a per-file `DataTable`. With a
 `MultiCleanResult` it shows Done / Stopped / Not started rows after a stop, one block of summary rows per finished
 flavor, and a Flavor column (`report.MULTI_RESULT_COLUMNS`). Zips are named inside the backup folder (`cleaned/<name>`, `backup/<name>`), which has a "Backup folder" row of its own. A real clean adds a "Run journal" row: inside the backup folder when it is there (the default one holds
-`journal/`), else its name after a "Journal folder" row, so both fit at 120x30 for the default install path. The per-file table puts Reasons before
+`journal/`), else its name after a "Journal folder" row, so both fit at 120x30 for the default install path; it
+carries the Undo note (`UNDO_NOTE`). Several flavors share one journal: `multi_summary_rows` names it once, above
+the flavor blocks, which leave it out (`summary_rows(result, journal=False)`, L14). That row comes before any file
+is named, so its note says what Undo restores (`MULTI_UNDO_NOTE`). The per-file table puts Reasons before
 Size and File, so why each file goes shows at 120x30. With an
 `UndoResult` it is titled "undo result" and shows `report.undo_summary_rows` and `report.UNDO_COLUMNS`.

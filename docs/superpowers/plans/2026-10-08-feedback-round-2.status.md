@@ -8,7 +8,7 @@ go-ahead.
 |---|---|---|---|---|
 | R0 | spec, plan, ledger | done | (this commit) | written 2026-10-08 09:58 while round 1's workflow ran |
 | L11 | `t` from any screen | done | (this commit) | `WowToolsApp.key_t` -> `action_tool_menu`; q's busy and staged-work logic shared (`refused_while_busy`, `ask_before_leaving`); new event `ui.tool_menu_refused`; STD-8.11 extended; tests/test_tool_menu_key.py (9 tests, every screen of every tool at BASE and LARGE); full suite 1872 tests OK (2 skipped) |
-| L14 | one "Run journal" row | todo | | |
+| L14 | one "Run journal" row | done | (this commit) | cause: a clean across flavors (`multi_summary_rows`) named the shared journal on top and again in every flavor block (`summary_rows`); now once on top with the Undo note, blocks pass `journal=False`; the top note is `MULTI_UNDO_NOTE` (L14-c); the other four tools already have one journal row (Ace3/SV Browser guard test added); tests in test_wtf_app.py and test_ace_report.py; full suite 1875 tests OK (2 skipped) |
 | L15 | blacklist mark | todo | | |
 | L16 | Interface Backup `backup/` folder | todo | | |
 | LR5 | review L11-L16, push, CI | todo | | |
@@ -52,3 +52,16 @@ go-ahead.
 - **L11-d** `t` does nothing under the lock warning (the menu is not open until it is answered), as on the menu.
 - **L11-e** `Ka0sApp.action_quit` now calls `ask_before_leaving(self.exit)` instead of `super().action_quit()`;
   Textual's `App.action_quit` is only `self.exit()`, so q's behaviour is unchanged (tests/test_quit_key.py green).
+- **L14-a** The journal row kept is the one on top of a multi-flavor summary, now carrying the Undo note
+  (`UNDO_NOTE`): the journal is one file for every flavor of the run, so a row per flavor block would still repeat
+  it with two flavors. The flavor blocks leave out "Journal folder" and "Run journal" (`summary_rows(result,
+  journal=False)`); a single-flavor result (`CleanResult`) keeps its row in place, with the note, as before.
+- **L14-b** The other tools: Ace3 Profile Manager and Saved Variables Browser share `sv_report.apply_summary_rows`
+  (one "Journal" row after the per-flavor zips; a two-flavor test pins it), Interface Backup's restore summary is
+  one flavor with one "Journal" row, the Screenshot Organizer's summary one "Journal" row. No change there.
+- **L14-c** Review: the top row's note said "puts them back" before any file is named (a stop with "Done: none"
+  leaves nothing for "them"). A multi-flavor result now uses `MULTI_UNDO_NOTE`, "(Undo last clean on the review
+  restores deleted files)"; the single-flavor row keeps `UNDO_NOTE` after its files. The wording is kept to 54
+  characters so `journal/<name>` plus the note fits at 120x30 with the default backup folder (a longer "puts the
+  deleted files back" scrolled sideways; a test pins the fit). The internals paragraph that grew past 120 columns
+  is rewrapped.

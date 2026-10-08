@@ -21,6 +21,9 @@ from wowtools.tools.wtf_cleaner.undo import UndoResult
 from wowtools.ui.result_screen import ResultBase, result_bindings, status_colour, status_style
 
 UNDO_NOTE = "(Undo last clean, on the review, puts them back)"
+# Several flavors: the journal row sits above every flavor block, before any file is named, so "them" would point at
+# nothing (L14). Short enough that journal/<name> plus the note fits at 120x30.
+MULTI_UNDO_NOTE = "(Undo last clean on the review restores deleted files)"
 BLOCK_STYLE = "bold #5CC8FF"
 # Theme colour per file status in the result table.
 STATUS_COLOURS = {"deleted": "success", "restored": "success", "would_delete": "accent", "skipped": "warning",
@@ -64,9 +67,10 @@ def _backup_folder(result: CleanResult) -> Path | None:
     return zipped.parent.parent if zipped is not None else None
 
 
-def summary_rows(result: CleanResult) -> list[tuple[str, str]]:
+def summary_rows(result: CleanResult, *, journal: bool = True) -> list[tuple[str, str]]:
     """The summary of one flavor's clean or dry run. Zips are named inside the backup folder, which gets a row of
-    its own; the run journal too when it is in there, else by its whole path."""
+    its own; the run journal too when it is in there, else by its whole path. journal=False leaves the journal's
+    rows out: several flavors share one journal, named once above their blocks (L14)."""
     done = result.would_delete if result.dry_run else result.deleted
     if result.dry_run:
         snapshot, check = "not taken (dry run)", "not run (dry run)"
@@ -100,14 +104,15 @@ def summary_rows(result: CleanResult) -> list[tuple[str, str]]:
     ]
     if result.marker_left:
         rows.append(("Crash marker", MARKER_LEFT_TEXT))
-    if result.journal_path is not None:
+    if journal and result.journal_path is not None:
         at = rows.index(("Post-clean check", check))
         rows[at:at] = journal_rows(result.journal_path, folder, UNDO_NOTE)
     return rows
 
 
 def multi_summary_rows(result: MultiCleanResult) -> list[tuple[str, str, bool]]:
-    """(item, value, is a flavor heading): which flavors ran, then one block of rows per finished flavor."""
+    """(item, value, is a flavor heading): which flavors ran and the run journal (one for every flavor, with the
+    Undo note), then one block of rows per finished flavor, which does not name the journal again (L14)."""
     def names(runs: list[FlavorRun]) -> str:
         return ", ".join(r.flavor.display_name for r in runs) or "none"
 
@@ -122,10 +127,12 @@ def multi_summary_rows(result: MultiCleanResult) -> list[tuple[str, str, bool]]:
     if result.journal_path is not None:
         folders = [_backup_folder(run.result) for run in result.done]  # type: ignore[arg-type]
         rows += [(item, value, False)
-                 for item, value in journal_rows(result.journal_path, next((f for f in folders if f), None))]
+                 for item, value in journal_rows(result.journal_path, next((f for f in folders if f), None),
+                                                 MULTI_UNDO_NOTE)]
     for run in result.done:
         rows.append((run.flavor.display_name, "", True))
-        rows += [(item, value, False) for item, value in summary_rows(run.result)]  # type: ignore[arg-type]
+        rows += [(item, value, False)
+                 for item, value in summary_rows(run.result, journal=False)]  # type: ignore[arg-type]
     return rows
 
 

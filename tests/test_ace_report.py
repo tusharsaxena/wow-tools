@@ -159,6 +159,21 @@ class ReportTest(unittest.TestCase):
         dry = multi.MultiApplyResult(True, [multi.FlavorRun(flavor, editor.ApplyResult(flavor, True))])
         self.assertEqual([item for item, _ in report.apply_summary_rows(dry)], ["Would change"])
 
+    def test_result_summary_names_the_journal_once_for_several_flavors(self):
+        """L14: the flavors of one run share one journal, so the summary has one "Journal" row (the zips get a row
+        per flavor). The Ace3 Profile Manager and the Saved Variables Browser share apply_summary_rows."""
+        root = Path("/wow/wow-tools/ace3-profile-manager")
+        runs = []
+        for folder in ("_retail_", "_classic_era_"):
+            flavor = Flavor(folder, Path("/wow", folder))
+            runs.append(multi.FlavorRun(flavor, editor.ApplyResult(
+                flavor, False, snapshot=root / "snapshots" / f"snapshot{folder}1.zip",
+                backup_zip=root / "edited" / f"edited{folder}1.zip")))
+        result = multi.MultiApplyResult(False, runs, root / "journal" / "journal-1.jsonl")
+        items = [item for item, _ in report.apply_summary_rows(result)]
+        self.assertEqual(items.count("Journal"), 1, items)
+        self.assertEqual(items.count("Backup folder"), 1, items)
+
     def test_apply_confirm_alerts(self):
         key = self.st("ElvDB").key
         self.staging.delete({key: ["Default"]}, "Healer")
