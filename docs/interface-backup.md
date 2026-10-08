@@ -14,8 +14,6 @@ as they are, so you can undo the restore too.
 > `Interface`. Interface Backup warns you if WoW is running. A backup works with the game open, but it may miss
 > your latest settings.
 
-<!-- screenshots: review screen, restore screen, result -->
-
 ## Step by step
 
 ### Making a backup
@@ -72,6 +70,10 @@ how many backups it has and when the newest was made, or "no backups yet". The n
 ("checking…"), but you can pick straight away. Your choice is remembered for next time.
 
 ## The review screen
+
+**_The Interface Backup review screen_**
+
+![The Interface Backup review screen: every game version with its file counts, sizes and backups](assets/screenshots/interface-backup/review.png)
 
 The review screen looks like the other tools' review screens: a panel on the left, a tree on the right, and a bar
 at the bottom.
@@ -172,6 +174,10 @@ old backups are kept. Two warnings can appear in red:
   usually makes them a lot smaller, so the backup may still fit). This needs the sizes, so it only shows on
   Windows.
 
+**_A backup in progress_**
+
+![The backup progress window: overall progress and one bar per game version being zipped](assets/screenshots/interface-backup/backup-progress.png)
+
 Once you confirm, a progress window shows the game version, the step ("Zipping", "Verifying the zip", "Removing
 old backups") and the file it's working on. For each game version, the app:
 
@@ -189,6 +195,10 @@ say how many. A file that's locked by another program stops that game version's 
 try again.
 
 ### The backup results
+
+**_The results of a backup_**
+
+![The backup results: files and sizes per game version and the zip each one went to](assets/screenshots/interface-backup/backup-result.png)
 
 The top table sums up the backup: how many game versions were backed up (and how many failed), the files and
 their size, the zips' total size, the folder they're in, and how many old backups were removed. The table below
@@ -215,6 +225,10 @@ A safety backup (its line starts with **safety**) can be restored like any other
 to the folders as they were before an older restore.
 
 ### The restore screen
+
+**_The restore screen_**
+
+![The restore screen: the backup's details, the parts to restore, and what will be removed or lost](assets/screenshots/interface-backup/restore-screen.png)
 
 The restore screen has the same shape as the review screen.
 
@@ -297,6 +311,10 @@ swapped out in one rename only after the new one is complete.
 
 ### The restore results
 
+**_The results of a restore_**
+
+![The restore results: the backup restored from, the safety backup and the journal](assets/screenshots/interface-backup/restore-result.png)
+
 The top table says which game version, whether the restore finished, the zip it restored from, the safety
 backup's zip, the folder both zips are in, and the journal's name. The table below has a row per folder:
 
@@ -334,6 +352,10 @@ and which game version. **Yes** is selected, in red.
 
 Before it changes anything, Undo checks that the safety backup is still there and reads back every file in it. If
 something's wrong, it says why and changes nothing.
+
+**_The results of an undo_**
+
+![The undo results: the safety backup put back and each folder restored](assets/screenshots/interface-backup/undo-result.png)
 
 ## Links and junctions
 

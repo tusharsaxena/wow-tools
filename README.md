@@ -12,7 +12,7 @@ you land back on the menu.
 
 **_The tool menu_**
 
-![The tool menu](docs/assets/screenshot-01.png)
+![The tool menu](docs/assets/screenshots/suite/tool-menu.png)
 
 ## The tools
 
@@ -46,11 +46,23 @@ software comes with no warranty.
 
 **_WTF Cleaner: the list of leftover addon settings, ready to clean_**
 
-![WTF Cleaner review screen](docs/assets/screenshot-02-wtfcleaner-main.png)
+![WTF Cleaner review screen](docs/assets/screenshots/wtf-cleaner/review.png)
 
 **_Screenshot Organizer: screenshots grouped by day, ready to sort_**
 
-![Screenshot Organizer review screen](docs/assets/screenshot-05-screenshot-organizer-main.png)
+![Screenshot Organizer review screen](docs/assets/screenshots/screenshot-organizer/review.png)
+
+**_Interface Backup: every game version with its folders and its backups_**
+
+![Interface Backup review screen](docs/assets/screenshots/interface-backup/review.png)
+
+**_Ace3 Profile Manager: every addon's profiles, by addon_**
+
+![Ace3 Profile Manager review screen](docs/assets/screenshots/ace3-profile-manager/review.png)
+
+**_Saved Variables Browser: your SavedVariables files as a tree_**
+
+![Saved Variables Browser review screen](docs/assets/screenshots/sv-browser/review.png)
 
 Every tool looks and works the same way: a panel on the left with its settings and buttons, a tree on the right
 with what it found (tick what you want), and a bar at the bottom that totals your choice. Before it changes
@@ -171,6 +183,11 @@ The first time you open a tool, it asks for two things:
    The same screen asks how many backups to keep per game version (10; 0 keeps them all), how many journals
    each tool keeps (10) and how many game versions to work on at once (2; the Saved Variables Browser's search also reads that many
    files at once; use 1 on a hard drive or a WSL `/mnt` folder). All three apply to every tool.
+
+   **_The general settings, asked for the first time and on `s` Settings_**
+
+   ![The general settings screen: the WoW folder, backups and journals to keep, and game versions at once](docs/assets/screenshots/suite/general-settings.png)
+
 2. **That tool's settings.** Each guide explains them. If you're not sure, keep the suggested values.
 
 Then you pick which version of the game to work on, or **All flavors** for every version at once. ("Flavor" is

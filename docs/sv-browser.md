@@ -25,8 +25,6 @@ it changes are backed up before anything is written, and **Undo last change** pu
 > overwritten. That's why **Apply** and **Undo** refuse to run while WoW is running (browsing, searching and a
 > **Dry run** work any time).
 
-<!-- screenshots: disclaimer popup, review screen (Browse), search popup, review screen (Results), apply confirm, result -->
-
 ## What it shows
 
 Every addon keeps its settings in **SavedVariables** files: one `.lua` file per addon, in the `WTF` folder of each
@@ -61,6 +59,10 @@ other files such as `Config.wtf`, and anything reached through a link (a symlink
    **Undo last change** (`z`) on the review screen.
 
 ## The review screen
+
+**_The Saved Variables Browser review screen, Browse view_**
+
+![The Saved Variables Browser review screen in the Browse view](assets/screenshots/sv-browser/review.png)
 
 **On the right** is the tree. It has two views; **View** (`v`) switches between them, and the screen's sub-title
 names the one you're on.
@@ -153,6 +155,10 @@ does leaving the screen: they haven't been written, and leaving throws them away
 
 ### Edit value
 
+**_Editing a value_**
+
+![The Edit value popup: the current value, its type and the new value](assets/screenshots/sv-browser/edit-value.png)
+
 The popup names the key and its value now (**Now:**), and has a type list (String, Number or Boolean) and the new value: a text
 box for a string or a number, a checkbox for a boolean. The type may change (a number can become a string). **OK**
 (or `Enter`) checks what you typed and stages it; a problem shows under the box until you change it.
@@ -212,7 +218,15 @@ its key but never by its value.
 
 The popup opens with your last search filled in, so narrowing it is quick.
 
+**_The search popup_**
+
+![The Search popup: a value to find (Contains), with every flavor, account and character in scope](assets/screenshots/sv-browser/search.png)
+
 ### Results
+
+**_Search results_**
+
+![The Results view: every hit of a search, ticked, under its file](assets/screenshots/sv-browser/search-results.png)
 
 The search reads every file in scope (several at once, with a progress window), and switches the tree to the
 **Results** view: game version → account → **Account-wide** or `Realm/Name` → file → one line per hit,
@@ -231,6 +245,10 @@ files, and how long it took.
 - A **new search** replaces the results and their ticks; what is staged stays.
 
 ## Editing the results in bulk
+
+**_Editing the results in bulk_**
+
+![The bulk edit popup: replace only the matched text in every ticked result](assets/screenshots/sv-browser/bulk-edit.png)
 
 In the **Results** view, **Edit value** (`e`) and **Rename key** (`k`) work on **every ticked result**, or on the
 highlighted one when none is ticked. They open the same popups as in Browse, titled with the count ("Edit 37
@@ -296,6 +314,10 @@ version in memory. It writes nothing at all: no zip, no journal. It works while 
 has a **Back to review** button (`Esc`) that takes you back with your staged edits still there.
 
 ## The results screen
+
+**_The results of an Apply_**
+
+![The Apply results: the backups and journal, then every changed file with its number of edits](assets/screenshots/sv-browser/apply-result.png)
 
 The top table sums up the run: game versions, files changed (or that would change), edits written (or checked),
 files skipped, put back or failed, the backup folder, the `WTF` backup, the zip of the

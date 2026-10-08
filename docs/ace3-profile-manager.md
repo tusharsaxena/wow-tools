@@ -19,8 +19,6 @@ edits, and **Undo last change** puts them back.
 > would be overwritten. That's why **Apply** and **Undo** refuse to run while WoW is running (a **Dry run** works
 > any time).
 
-<!-- screenshots: review screen, popup, result -->
-
 ## How it works
 
 Nothing you do on the review screen touches a file until you press **Apply**. In four steps:
@@ -58,6 +56,10 @@ changes and a very long name highlighted, it shows only the pending changes so t
 
 ## The review screen
 
+**_The Ace3 Profile Manager review screen, By addon_**
+
+![The Ace3 Profile Manager review screen in the By addon view](assets/screenshots/ace3-profile-manager/review.png)
+
 **On the right** is a tree of every addon that keeps Ace3 profiles. It has two views; press `v` (or tick the box
 on the left) to switch between them.
 
@@ -77,6 +79,10 @@ game version → account → character → one line per addon, `Addon: Profile`
 
 This is the view for "what does this character use everywhere?". Ticking a line here picks that character in
 that addon.
+
+**_The By character view_**
+
+![The Ace3 Profile Manager review screen in the By character view](assets/screenshots/ace3-profile-manager/review-by-character.png)
 
 **Under the tree** are the guidance line (see [How it works](#how-it-works)) and the **action bar**:
 
@@ -187,6 +193,10 @@ message lists the ones it skipped. Anything else worth knowing about a change (f
 create "Default" itself at its next login) opens a **Notes** box, grouped by note with the addons under each.
 **Leftovers** asks first, listing the characters it will remove under each addon (`Space` opens an addon, `x`
 opens them all).
+
+**_Removing leftover characters_**
+
+![The Remove leftover characters popup, listing the addons and how many characters each loses](assets/screenshots/ace3-profile-manager/leftovers-confirm.png)
 
 ### Quick actions
 
@@ -314,6 +324,10 @@ new version in memory. It writes nothing at all: no zip, no journal. It works wh
 screen has a **Back to review** button (`Esc`) that takes you back with your pending changes still there.
 
 ## The results screen
+
+**_The results of an Apply_**
+
+![The Apply results: the backups and journal, then every change with its result](assets/screenshots/ace3-profile-manager/apply-result.png)
 
 The top table sums up the run: how many files were changed, skipped or put back, where the `WTF` backup and the
 zip of the original files are, and the journal. The table below lists each change, by game version, account and

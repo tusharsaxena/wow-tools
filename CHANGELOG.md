@@ -6,6 +6,12 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 
 ## [Unreleased]
 
+### Changed
+
+- **Docs**
+  - New screenshots of every tool: the README shows the tool menu, the general settings and each tool's review
+    screen, and each tool's guide shows its review screen, its confirm or progress window and its results.
+
 ### Fixed
 
 - **The app**

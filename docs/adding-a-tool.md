@@ -155,7 +155,8 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
    and `WowToolsApp(..., tool_options={"screenshot-organizer": {...}}).run_test()` for the TUI (open the tool from the menu
    with Enter). Never touch a real install.
 5. **Docs**: write a user guide, `docs/<tool name>.md` (for example `docs/screenshot-organizer.md`), in the same
-   plain style as the other guides, with screenshots from `docs/assets/`, its settings and its troubleshooting.
+   plain style as the other guides, with screenshots in `docs/assets/screenshots/<tool name>/` (shared screens such as
+   the tool menu live in `docs/assets/screenshots/suite/`), its settings and its troubleshooting.
    Add a row to the README's tools table and a link under "Tool guides", plus the tool's config file in "Your
    settings", and a bullet under the tool in the next `CHANGELOG.md` entry (Keep a Changelog format). Add the
    config section, a short summary under "Tools" and a "Documentation map" row to `docs/architecture.md`, and the data

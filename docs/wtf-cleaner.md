@@ -29,7 +29,7 @@ ones you leave ticked. If you regret it later, you can undo the clean.
 
 **_The WTF Cleaner review screen_**
 
-![The WTF Cleaner review screen](assets/screenshot-02-wtfcleaner-main.png)
+![The WTF Cleaner review screen](assets/screenshots/wtf-cleaner/review.png)
 
 **On the right** is the list of files the cleaner suggests removing, grouped like this:
 
@@ -177,12 +177,17 @@ to the review. With no warnings, there's no button. The log still has them too.
 
 When you press **Clean**, the bottom bar says "Checking for running programs…" for a moment while the cleaner
 looks for WoW and for programs that lock these files. Your ticks and filters can't be changed during that moment,
-so what you confirm is exactly what the list shows. Then it asks you to confirm. Once you do, a progress window
-shows each step and the file it's working on:
+so what you confirm is exactly what the list shows. Then it asks you to confirm:
+
+**_Confirming a clean_**
+
+![The clean confirmation: how many files, where the zips go, and the journal for Undo](assets/screenshots/wtf-cleaner/clean-confirm.png)
+
+Once you do, a progress window shows each step and the file it's working on:
 
 **_A clean in progress_**
 
-![A clean in progress](assets/screenshot-03-wtfcleaner-in-progress.png)
+![A clean in progress](assets/screenshots/wtf-cleaner/clean-progress.png)
 
 Before anything is deleted, the cleaner:
 
@@ -207,7 +212,7 @@ version runs into a problem, the cleaner stops there, and the versions after it 
 
 **_The results of a clean_**
 
-![The results of a clean](assets/screenshot-04-wtfcleaner-summary.png)
+![The results of a clean](assets/screenshots/wtf-cleaner/result.png)
 
 The top table sums up the clean: how many files were deleted, where the zips are, and whether the final check
 passed. With All flavors there's a block for each game version. The table below lists every file with what
