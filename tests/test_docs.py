@@ -88,7 +88,8 @@ class DocsTest(unittest.TestCase):
                        "## Dry run", "## Undo last change", "changed since", "snapshots\\snapshot-<flavor>-",
                        "edited\\edited-<flavor>-<account>-", "journal\\journal-", "edit-in-progress.json",
                        "Put the originals back", "## Settings", "keep_backups", "## FAQ", "LibDualSpec",
-                       "missing", "no character folder", "## Troubleshooting", "](assets/screenshots/ace3-profile-manager/",
+                       "missing", "no character folder", "## Troubleshooting",
+                       "](assets/screenshots/ace3-profile-manager/",
                        "## How it works", "pending change", "guidance line", "action bar", "Blacklist…",
                        "blacklist screen"):
             self.assertIn(needle, guide)

@@ -6,8 +6,10 @@ from wowtools.core.events import EventSpec, register_events
 TOOL_NAME = "wtf-cleaner"
 
 EVENTS: dict[str, EventSpec] = {
-    "clean.disclaimer_accepted": EventSpec("info", "The USE AT YOUR OWN RISK warning was accepted (I understand): it is not shown again this session."),
-    "clean.disclaimer_declined": EventSpec("info", "The USE AT YOUR OWN RISK warning was declined (Back): nothing was scanned."),
+    "clean.disclaimer_accepted": EventSpec("info", "The USE AT YOUR OWN RISK warning was accepted (I understand): "
+                                                   "it is not shown again this session."),
+    "clean.disclaimer_declined": EventSpec("info", "The USE AT YOUR OWN RISK warning was declined (Back): "
+                                                   "nothing was scanned."),
     "clean.risk_warning_changed": EventSpec("info", "The USE AT YOUR OWN RISK warning was turned off (its Don't show "
                                                    "this warning again box) or back on in the settings (shown, "
                                                    "source)."),

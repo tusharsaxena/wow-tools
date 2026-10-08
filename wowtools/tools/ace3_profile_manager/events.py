@@ -8,8 +8,10 @@ TOOL_NAME = "ace3-profile-manager"
 SV_TOOL = SvTool(TOOL_NAME, "ace")  # on the shared SavedVariables write pipeline (core/sv_apply.py)
 
 EVENTS: dict[str, EventSpec] = {
-    "ace.disclaimer_accepted": EventSpec("info", "The USE AT YOUR OWN RISK warning was accepted (I understand): it is not shown again this session."),
-    "ace.disclaimer_declined": EventSpec("info", "The USE AT YOUR OWN RISK warning was declined (Back): nothing was scanned."),
+    "ace.disclaimer_accepted": EventSpec("info", "The USE AT YOUR OWN RISK warning was accepted (I understand): "
+                                                 "it is not shown again this session."),
+    "ace.disclaimer_declined": EventSpec("info", "The USE AT YOUR OWN RISK warning was declined (Back): "
+                                                 "nothing was scanned."),
     "ace.risk_warning_changed": EventSpec("info", "The USE AT YOUR OWN RISK warning was turned off (its Don't show "
                                                    "this warning again box) or back on in the settings (shown, "
                                                    "source)."),

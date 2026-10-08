@@ -9,8 +9,10 @@ SV_TOOL = SvTool(TOOL_NAME, "svb")  # on the shared SavedVariables write pipelin
 
 EVENTS: dict[str, EventSpec] = {
     "svb.started": EventSpec("info", "The Saved Variables Browser opened on a flavor (or All flavors)."),
-    "svb.disclaimer_accepted": EventSpec("info", "The USE AT YOUR OWN RISK warning was accepted (I understand): it is not shown again this session."),
-    "svb.disclaimer_declined": EventSpec("info", "The USE AT YOUR OWN RISK warning was declined (Back): nothing was scanned."),
+    "svb.disclaimer_accepted": EventSpec("info", "The USE AT YOUR OWN RISK warning was accepted (I understand): "
+                                                 "it is not shown again this session."),
+    "svb.disclaimer_declined": EventSpec("info", "The USE AT YOUR OWN RISK warning was declined (Back): "
+                                                 "nothing was scanned."),
     "svb.risk_warning_changed": EventSpec("info", "The USE AT YOUR OWN RISK warning was turned off (its Don't show "
                                                    "this warning again box) or back on in the settings (shown, "
                                                    "source)."),
