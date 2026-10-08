@@ -190,11 +190,13 @@ def submit_filter(screen, text: str) -> None:
     screen.submit_filter()
 
 
-async def settle(app, pilot, timeout: float = 10.0) -> None:
+async def settle(app, pilot, timeout: float = 30.0) -> None:
     """Wait until background workers are done and the screen has drawn what they produced. One pause after
     `wait_for_complete()` is not always enough on a slow machine (CI on Windows): a worker may not have started
     yet, or a list rebuild scheduled with `call_after_refresh` may still be pending. Past `timeout` it fails,
-    naming what was still busy: a state that never settles (a footer left stale) must not pass as settled."""
+    naming what was still busy: a state that never settles (a footer left stale) must not pass as settled. The
+    30 s bound is for a loaded CI runner: on windows / 3.13 the WTF Cleaner's result screen after a clean still had
+    messages queued at 10 s (CI runs 37661658846 and 37733704942), while it settles in well under 1 s here."""
     deadline = time.monotonic() + timeout
     stale_footer = False
     while True:

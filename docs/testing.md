@@ -153,7 +153,7 @@ builders stamp on files.
 
 | Helper | Use |
 |---|---|
-| `await settle(app, pilot, timeout=10.0)` | Wait until workers are done, no rebuild or message is pending and every visible footer has recomposed. Call it after anything that starts work and before asserting. Past the timeout it fails, naming what was still busy |
+| `await settle(app, pilot, timeout=30.0)` | Wait until workers are done, no rebuild or message is pending and every visible footer has recomposed. Call it after anything that starts work and before asserting. Past the timeout it fails, naming what was still busy (30 s: a loaded Windows CI runner needed more than 10 s after a clean) |
 | `submit_filter(screen, text)` | Put text in a tree screen's filter box and submit it (typing alone never filters, spec D40); `settle` after it |
 | `await accept_disclaimer(app, pilot)` | Accept the USE AT YOUR OWN RISK popup (`ui.disclaimer`, L4: WTF Cleaner, Ace3 Profile Manager, Saved Variables Browser) if it is showing |
 | `stage_sv_edit(review)` | Stage one value edit on a Saved Variables Browser review, so Apply and Dry run have something to do |
