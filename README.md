@@ -47,10 +47,6 @@ Browser) also show a USE AT YOUR OWN RISK warning. It comes up once each time yo
 version (and, in the WTF Cleaner and the Ace3 Profile Manager, an account) and before the first scan. You can turn it
 off for each tool (see [Your settings](#your-settings)).
 
-**_The USE AT YOUR OWN RISK warning_**
-
-![The USE AT YOUR OWN RISK warning, here with the Ace3 Profile Manager's wording (it differs per tool), with Back and I understand buttons](docs/assets/screenshots/suite/risk-warning.png)
-
 ## Screenshots
 
 **_WTF Cleaner: the list of leftover addon settings, ready to clean_**

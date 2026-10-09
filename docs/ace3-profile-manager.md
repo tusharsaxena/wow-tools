@@ -52,10 +52,6 @@ changes and a very long name highlighted, it shows only the pending changes so t
    `Space` to tick) before **I understand** to stop it for good; **Show the USE AT YOUR OWN RISK warning** in the
    tool's [settings](#settings) turns it back on.
 
-   **_The USE AT YOUR OWN RISK warning_**
-
-   ![The USE AT YOUR OWN RISK warning, shown after you pick a game version (and account), before the scan, with Back and I understand buttons](assets/screenshots/suite/risk-warning.png)
-
 6. The tool reads every addon's settings file and shows the review screen. Nothing is ticked yet.
 7. Tick the profiles or characters you want to change, and press a button in the action bar under the tree, or its
    key: `d` deletes profiles, `p` moves characters to another profile, `e` renames a profile, `k` copies one, `o`
