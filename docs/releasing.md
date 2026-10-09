@@ -82,8 +82,10 @@ install it can only be the user's.
 ## Steps
 
 1. Make sure `main`/`master` is green: the `tests` workflow on GitHub Actions (`.github/workflows/tests.yml`)
-   passes on all four jobs (Linux and Windows, Python 3.10 and 3.13). Locally: the
-   [green gate](testing.md#the-green-gate) (`run_tests.py`, `ruff check --no-cache .`, `gen_event_docs.py --check`).
+   passes on both jobs (Windows / Python 3.13, Linux / Python 3.10). Locally: the
+   [green gate](testing.md#the-green-gate) (`run_tests.py --all`, the WSL and native Windows suites at once;
+   `ruff check --no-cache .`; `gen_event_docs.py --check`). This is one of the two times CI is checked; the other
+   is before a merge into master ([STD-10.2](standards.md#10-testing)).
 2. Bump `__version__` in `wowtools/__init__.py`, following semver.
 3. Add the [`CHANGELOG.md`](../CHANGELOG.md) entry for vX.Y.Z: a `## [X.Y.Z] - YYYY-MM-DD` heading (today's date) above the previous
    one, with what changed (move anything under `## [Unreleased]` into it). Every tagged release must have an entry:

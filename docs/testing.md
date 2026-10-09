@@ -23,9 +23,12 @@ rows are ways to run the suite while you work.
 
 | Command | What it does |
 |---|---|
-| **gate** `python3 scripts/run_tests.py` | The whole suite in parallel: the tests are sorted by id and dealt round-robin into one shard per CPU (at most 16), one process per shard. Exit code 0 only if every shard passed. About 100 to 120 s on WSL `/mnt/d`. |
+| **gate** `python3 scripts/run_tests.py --all` | From WSL: the WSL suite and the native Windows suite at the same time, each with half the default shards (12 each on 16 CPUs; or `-j N` each), each printed under its own `===== WSL (-j N) =====` / `===== Windows (-j N) =====` heading, then `WSL: OK, Windows: OK, in T s` and `OK` or `FAILED`. Exit code 0 only if both passed. About 175 s on the 16-CPU WSL `/mnt/d` machine (200 s at 8 shards each, 265 to 280 s before balanced shards), about what the two runs take one after the other (about 90 s and 80 s): the machine is CPU-bound. With no Windows Python, the plain run below is the gate and CI covers Windows before the merge ([below](#windows-from-wsl)). |
+| `python3 scripts/run_tests.py` | The whole suite in parallel: 1.5 shards per CPU (at most 24; [below](#shard-count)), one process per shard, the tests dealt by recorded time ([below](#balanced-shards)). Exit code 0 only if every shard passed. About 90 s on WSL `/mnt/d` (100 s at one shard per CPU, 145 s round-robin). |
+| `python3 scripts/run_tests.py --windows` | From WSL: the whole suite under the native Windows Python, in the same checkout, its output streamed as it comes; exit code that run's. About 80 s (100 s at one shard per CPU, 140 s round-robin). On native Windows it is the plain run; on Linux that is not WSL both `--windows` and `--all` fail with a message. |
 | `python3 scripts/run_tests.py -k TEXT` | Only the tests whose id (`tests.test_wtf_app.SomeTest.test_name`) contains `TEXT`, e.g. `-k sv_browser` or `-k test_look_and_feel`. |
-| `python3 scripts/run_tests.py -j N` | `N` shards instead of one per CPU. |
+| `python3 scripts/run_tests.py -j N` | `N` shards instead of the default 1.5 per CPU. |
+| `python3 scripts/run_tests.py --verbose-shards` | Also a line per shard before the summary: `shard i/N: T s, K tests, planned P s` (the time the cache predicted for it). Passed on with `--windows`, and to both sides of `--all`. |
 | `python3 scripts/run_tests.py --timeout S` | Kill and fail a shard still running after `S` seconds (`0`: no limit). The default is 600 s per shard at `-j 4` or more, and proportionally more below that (1200 s at `-j 2`, 2400 s at `-j 1`; a one-shard run takes about 15 minutes on WSL `/mnt/d`). |
 | `python3 -m unittest discover -s tests -t . -v` | The same tests, serially and verbose, in one process. Use it to read a failure's full output in order. |
 | **gate** `ruff check --no-cache .` | Lint (settings in `ruff.toml`: Python 3.10 target, 120 columns, `vendor/` excluded). Not run in CI, so it is on you. |
@@ -41,22 +44,87 @@ that keeps the interpreter alive) is reported as `timed out after S s after its 
 count in the summary. Shard output goes to temp files, not pipes, so a child process a hung test left behind cannot
 hold the run open on Windows.
 
+### Balanced shards
+
+Shards are balanced by recorded test time (spec F2). Each shard child gets its explicit list of test ids in a temp
+file, times every test (from the end of the one before, so a class's `setUpClass` counts towards its first test) and
+reports the times with its summary, with how many ids it read and any it did not find (a shard that did not run its
+whole list fails the run); the runner merges the times into `.test-times-<platform>.json` at the repo root (`wsl`,
+`linux` or `windows`; one file per platform, so the WSL and the Windows side of `--all` never clobber each other).
+The files are gitignored (`.test-times-*.json`), so they are never committed and, untracked, never in a release. The
+next run deals the tests longest first (ties by id), each to the least-loaded shard (ties to the lowest index); a
+test with no recorded time counts as the median; each shard runs its tests in id order. A `-k` run uses the cache
+too and updates only its own tests' times; a full run also drops the times of tests that are gone. With no cache, or
+one that is unreadable, corrupt or of another version, the tests are dealt round-robin by id, silently, as before.
+The same tests and cache always give the same shards. Just before the `Ran N tests` line the runner prints `Shard
+times: fastest A s, slowest B s (balanced by recorded test times)` (or `(round-robin: no recorded test times yet)`).
+
+Measured 2026-10-09 on the 16-CPU WSL `/mnt/d` machine, 16 shards, median of 3 runs (1945 to 1959 tests):
+
+| Run | Round-robin | Balanced |
+|---|---|---|
+| WSL `run_tests.py` | 143.5 s (shards 62 to 144 s) | 99.8 s (shards 87 to 97 s) |
+| `--windows` (Python 3.14) | 138.6 s (shards 58 to 139 s) | 97.3 s (shards 91 to 97 s) |
+| `--all` (-j 8 each) | 269 to 283 s | 201.6 s (one run; shards 181 to 198 s) |
+
+### Shard count
+
+The default shard count was chosen by measurement (spec F3): 1.5 shards per CPU, at most 24 (`MAX_DEFAULT_JOBS`),
+and `--all` gives each side half of that. The tests spend much of their time waiting (pilots, workers, file I/O),
+so more shards than CPUs pay, up to a point: 2 per CPU were no faster than 1.5, and the cap keeps a big machine from
+starting dozens of Textual processes. Measured 2026-10-09 on the 16-CPU WSL `/mnt/d` machine with balanced shards,
+median of 3 runs each (the runner's own `Ran N tests in T s`; 1962 to 1965 tests), shards of the median run:
+
+| Run | One per CPU | 1.5 per CPU | 2 per CPU |
+|---|---|---|---|
+| WSL `run_tests.py` (-j 16 / 24 / 32) | 100.9 s (shards 96 to 98 s) | 87.5 s, 13 % faster (shards 80 to 85 s) | 87.3 s (shards 70 to 84 s) |
+| `--windows` (Python 3.14; -j 16 / 24 / 32) | 99.6 s (shards 92 to 99 s) | 78.0 s, 22 % faster (shards 73 to 78 s) | 78.1 s (shards 70 to 78 s) |
+| `--all` (-j 8 / 12 / 16 each) | 197.9 s (WSL shards 187 to 194 s, Windows 180 to 186 s) | 176.5 s, 11 % faster (WSL 160 to 173 s, Windows 149 to 154 s) | 177.9 s (WSL 150 to 174 s, Windows 143 to 152 s) |
+
+### Windows from WSL
+
+`--windows` and `--all` reach Windows through `cmd.exe` (spec F1): the runner turns the checkout into a Windows path
+with `wslpath -w`, and `cmd.exe` runs `pushd <that path> && py -3 scripts\run_tests.py ...` with `-k`, `-j` and
+`--timeout` passed through, so both suites test the same files. `py -3` is the newest Python the Windows `py`
+launcher knows; set `WOWTOOLS_WINDOWS_PYTHON` to another command (say `py -3.13`, or a full path to `python.exe`)
+to pick one. It goes into the `cmd.exe` line as written, so a path with spaces needs double quotes inside the value:
+`WOWTOOLS_WINDOWS_PYTHON='"C:\Program Files\Python314\python.exe"'`. The `cmd.exe` line travels in the
+`WOWTOOLS_WINDOWS_RUN` variable, shared through `WSLENV`, because WSL would escape the double quotes in an argument
+in a way `cmd.exe` does not read; for the same reason a `-k` text cannot contain a double quote (a trailing
+backslash is fine: it is doubled, as Windows argument parsing needs). `cmd.exe` starts from the checkout's own
+drive (or `C:`), so it never warns about a UNC current directory, and `pushd` also reaches a checkout on
+`\\wsl.localhost`. With no `cmd.exe` on `PATH` (WSL interop off) or a checkout `wslpath` cannot map, both flags
+stop at once with a message and exit 2. A Windows run that fails without printing its summary, typically because
+no Windows Python is installed, ends with a hint to set `WOWTOOLS_WINDOWS_PYTHON` or use the plain run. Ctrl+C
+stops both suites: the Windows runner announces its pid and is killed with its shards by `taskkill.exe /T` (a
+Ctrl+C before that line arrives waits up to 10 s for it), and the WSL runner gets SIGINT and kills its own shards.
+The Windows suite skips about 79 POSIX- or WSL-only tests that the WSL suite runs.
+
 ## CI
 
 `.github/workflows/tests.yml` runs on every push, every pull request and by hand (`workflow_dispatch`), with
-read-only permissions and a 20-minute timeout per job ([STD-10.2](standards.md#10-testing)).
+read-only permissions and a 20-minute timeout per job ([STD-10.2](standards.md#10-testing)). The matrix is two
+jobs, listed with `include` (spec F4):
 
-| Matrix | Values |
-|---|---|
-| `os` | `ubuntu-latest`, `windows-latest` |
-| `python` | `3.10` (the floor), `3.13` |
+| Job | `os` | `python` |
+|---|---|---|
+| Windows | `windows-latest` | `3.13` |
+| Linux | `ubuntu-latest` | `3.10` (the floor) |
 
-`fail-fast` is off, so all four jobs finish. Each job runs, in bash:
+`fail-fast` is off, so both jobs finish. Nobody waits for CI during a build (spec F5): the local green gate already
+runs the WSL and native Windows suites. It is checked once before asking to merge into master, and before a
+release ([releasing.md](releasing.md#steps)). Each job runs, in bash:
 
 1. `python -m compileall -q wowtools scripts tests` (byte-compile: catches syntax newer than the interpreter).
 2. `python scripts/gen_event_docs.py --check`.
-3. `python scripts/run_tests.py --timeout 900`: 900 s per shard, not the 600 s default, since a slow Windows runner
-   has taken 594 s for one of its four shards; a hang still fails with its test's name inside the 20 minutes.
+3. `python scripts/run_tests.py --timeout 900`: no `-j`, so the [default shard count](#shard-count) applies:
+   6 shards on a 4-vCPU runner (4 before spec F3; 1.5 per CPU was measured only on the 16-CPU machine, so CI's
+   timings are checked when CI is next checked, before the merge). CI's shards are dealt round-robin, not
+   [balanced](#balanced-shards): each job starts from a fresh checkout, the `.test-times-*.json` files are
+   gitignored and the workflow has no cache step, so there are no recorded times (locally round-robin's slowest
+   shard took about 2.3 times its fastest). 900 s per shard, not the 600 s default, since a slow Windows runner has
+   taken 594 s for one round-robin shard (of 4); a hang still fails with its test's name inside the 20 minutes. The
+   Windows job's slowest shard at 6 shards is checked against 900 s and the job against 20 minutes before the merge.
 
 Ruff is not part of CI (the suite stays stdlib-only); run it locally.
 
@@ -111,7 +179,7 @@ Cleaner's tests predate that rule: its logic tests are `test_cleaner.py`, `test_
 |---|---|
 | `test_suite.py`, `test_suite_app.py` | `wowtools/suite.py` (start-up, the instance lock, renamed-tool migration on start, the update at start) and `WowToolsApp` (menu, setup, opening tools) |
 | `test_updater_check.py`, `test_updater_apply.py` | `core/updater.py`: the release check (fake openers, never the network) and applying an update |
-| `test_release_scripts.py` | `scripts/build_release.py`, the hashed vendor lock and `scripts/run_tests.py`'s per-shard timeout |
+| `test_release_scripts.py` | `scripts/build_release.py`, the hashed vendor lock, `scripts/run_tests.py`'s per-shard timeout, its `--windows` / `--all` runs (the `cmd.exe` call is faked), its shards balanced by recorded time (the cache in a temp folder) and its default shard count (and that this page's CI section names it for a 4-vCPU runner); and the CI workflow (`CiWorkflowTest`): exactly its two jobs, no doc still claiming the old CI matrix, CI's round-robin shards named in the workflow and this page, STD-10.2 naming both jobs and STD-10.1 pointing to it |
 | `test_release_contents.py` | The release manifest (STD-11.5): every tracked path is in a table of [releasing.md](releasing.md#what-a-release-contains), `.gitattributes` export-ignores the "stays out" table, `git archive` of `HEAD` holds exactly the "ships" table, no shipped Markdown file links to a file that does not ship (needs git; skips without it), the updater's `RELEASE_SHIPS` / `RELEASE_STAYS_OUT` are the two tables entry for entry, and its `MANAGED_DIRS` / `MANAGED_FILES` are the top-level "ships" names |
 | `test_launcher.py` | `wow-tools.cmd` stays safe to replace while it runs (Windows-only parts skip elsewhere) |
 | `test_quit_key.py`, `test_tool_menu_key.py`, `test_toast_stack.py` | The suite-wide walks: `q` and `t` from every screen and popup, toasts above the bars (see [below](#the-suite-wide-key-and-toast-walks)) |
