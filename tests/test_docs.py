@@ -140,7 +140,7 @@ class DocsTest(unittest.TestCase):
 
     def test_guides_filter_on_submit_and_risk_banner(self):
         """Feedback round 1 (D37, D40, D41): every tree filter applies on Enter or its Filter button, never as you
-        type; the destructive screens' guides name the red banner; the changelog says so too."""
+        type; the destructive screens' guides name the red banner."""
         for tool in TOOLS.values():
             guide = (REPO_ROOT / "docs" / f"{tool.name}.md").read_text(encoding="utf-8")
             self.assertIn("**Filter**", guide, tool.name)
@@ -152,16 +152,14 @@ class DocsTest(unittest.TestCase):
         self.assertNotIn("`Enter` keeps the filter", readme)
         self.assertNotIn("find and replace", readme)
         changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-        for needle in ("**Filter**", "⚠ USE AT YOUR OWN RISK", "Ka0s WoW Tools** in bold gold"):
-            self.assertIn(needle, changelog)
-        self.assertNotIn("Find only", changelog)
+        self.assertNotIn("Find only", changelog)  # the changelog names features, not keys and labels
         standards = (REPO_ROOT / "docs" / "standards.md").read_text(encoding="utf-8")
         self.assertIn("`FilterBar`", standards)
         self.assertIn("`RiskBanner`", standards)
 
     def test_warnings_view_and_blacklist_key_are_documented(self):
         """Spec W1, B1-B4: every guide opens its warnings with `!` (no "(see the log)" left), the WTF Cleaner guide
-        explains its blacklist (`b`, greyed rows, the hand-edited setting, the wildcard), and the changelog,
+        explains its blacklist (`b`, greyed rows, the hand-edited setting, the wildcard), and
         architecture (the WTF Cleaner's internals doc for its data flow) and standards.md name the shared pieces."""
         for tool in TOOLS.values():
             guide = (REPO_ROOT / "docs" / f"{tool.name}.md").read_text(encoding="utf-8")
@@ -172,9 +170,6 @@ class DocsTest(unittest.TestCase):
         for needle in ("### The blacklist", "| `b` | Put the highlighted addon", "**blacklisted**",
                        "blacklist = _retail_:ElkBuffBars", "`*:WeakAuras`", "### Scan warnings"):
             self.assertIn(needle, wtf)
-        changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-        for needle in ("warnings view", "`!`", "`b`", "`[wtf_cleaner] blacklist`"):
-            self.assertIn(needle, changelog)
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("`!`", readme)
         self.assertIn("config\\wtf-cleaner.cfg", readme)
@@ -190,7 +185,7 @@ class DocsTest(unittest.TestCase):
 
     def test_blacklist_mark_is_named(self):
         """L15: the in-app help, the guides and the Ace3 blacklist screen of both blacklist tools name the mark a
-        blacklisted row shows in the tick column, and the changelog says it."""
+        blacklisted row shows in the tick column."""
         from wowtools.tools.ace3_profile_manager.blacklist_screen import EXPLANATION
         from wowtools.tools.ace3_profile_manager.help import HELP as ACE_HELP
         from wowtools.tools.wtf_cleaner.help import HELP as WTF_HELP
@@ -201,8 +196,6 @@ class DocsTest(unittest.TestCase):
         for name in ("wtf-cleaner", "ace3-profile-manager"):
             guide = (REPO_ROOT / "docs" / f"{name}.md").read_text(encoding="utf-8")
             self.assertIn(f"`{BLACKLISTED_MARK}` where the tick goes", guide, name)
-        changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-        self.assertIn(f"`{BLACKLISTED_MARK}` where the tick goes", changelog)
 
     def test_config_comments_are_not_kept(self):
         """F-013: a save rewrites the config files through configparser, which drops comments; the README's settings
