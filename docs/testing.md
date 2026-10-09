@@ -130,8 +130,9 @@ Ruff is not part of CI (the suite stays stdlib-only); run it locally.
 
 A second workflow, `.github/workflows/virustotal.yml`, runs no tests: it scans a release's zip on VirusTotal when
 the release is published, or by hand (`workflow_dispatch`), and adds the report's line to the release notes
-([releasing.md](releasing.md#steps), step 8). It never runs on a push, so the green gate and the two jobs above
-do not depend on it or on its `VT_API_KEY` secret.
+([releasing.md](releasing.md#steps), step 8). GitHub reads its file from the tagged commit on a release, and
+from `master` for a run by hand, so a tag that predates it is scanned by hand only. It never runs on a push, so
+the green gate and the two jobs above do not depend on it or on its `VT_API_KEY` secret.
 
 ## Test layout
 
@@ -185,7 +186,7 @@ Cleaner's tests predate that rule: its logic tests are `test_cleaner.py`, `test_
 | `test_suite.py`, `test_suite_app.py` | `wowtools/suite.py` (start-up, the instance lock, renamed-tool migration on start, the update at start) and `WowToolsApp` (menu, setup, opening tools) |
 | `test_updater_check.py`, `test_updater_apply.py` | `core/updater.py`: the release check (fake openers, never the network) and applying an update |
 | `test_release_scripts.py` | `scripts/build_release.py`, the hashed vendor lock, `scripts/run_tests.py`'s per-shard timeout, its `--windows` / `--all` runs (the `cmd.exe` call is faked), its shards balanced by recorded time (the cache in a temp folder) and its default shard count (and that this page's CI section names it for a 4-vCPU runner); and the CI workflow (`CiWorkflowTest`): exactly its two jobs, no doc still claiming the old CI matrix, CI's round-robin shards named in the workflow and this page, STD-10.2 naming both jobs and STD-10.1 pointing to it |
-| `test_virustotal_scan.py` | `scripts/virustotal_scan.py` against a fake VirusTotal (fake opener and clock; no network, no real key): a finished report reused without an upload, upload then polls 15 s apart until completed, HTTP 429 backed off and retried, 401 / 403 / 413 / other errors, a missing key (no traceback, no request), a zip over 32 MB, the notes block appended then replaced (idempotent), the detections line, the timeout; and `.github/workflows/virustotal.yml` (only on a published release or by hand, `contents: write` only, the key from `secrets.VT_API_KEY`, `SHA256SUMS` checked before the scan) |
+| `test_virustotal_scan.py` | `scripts/virustotal_scan.py` against a fake VirusTotal (fake opener and clock; no network, no real key): a finished report reused without an upload, upload then polls 15 s apart until completed, HTTP 429 backed off and retried, 401 / 403 / 413 / other errors, a missing key (no traceback, no request), a zip over 32 MB, the notes block appended then replaced (idempotent), `--block-file` then `--splice` (no key, no request), the detections line, the timeout (kept even when every request is slow; no request given longer than the time left), a dropped connection as a clean error; and `.github/workflows/virustotal.yml` (only on a published release or by hand, `contents: write` only, the key from `secrets.VT_API_KEY`, `SHA256SUMS` checked before the scan, the notes fetched only after it) |
 | `test_release_contents.py` | The release manifest (STD-11.5): every tracked path is in a table of [releasing.md](releasing.md#what-a-release-contains), `.gitattributes` export-ignores the "stays out" table, `git archive` of `HEAD` holds exactly the "ships" table, no shipped Markdown file links to a file that does not ship (needs git; skips without it), the updater's `RELEASE_SHIPS` / `RELEASE_STAYS_OUT` are the two tables entry for entry, and its `MANAGED_DIRS` / `MANAGED_FILES` are the top-level "ships" names |
 | `test_launcher.py` | `wow-tools.cmd` stays safe to replace while it runs (Windows-only parts skip elsewhere) |
 | `test_quit_key.py`, `test_tool_menu_key.py`, `test_toast_stack.py` | The suite-wide walks: `q` and `t` from every screen and popup, toasts above the bars (see [below](#the-suite-wide-key-and-toast-walks)) |

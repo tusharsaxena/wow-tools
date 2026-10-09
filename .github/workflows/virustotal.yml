@@ -56,11 +56,14 @@ jobs:
       - name: Verify the zip against SHA256SUMS
         working-directory: release
         run: sha256sum -c SHA256SUMS
-      - name: Fetch the release notes
-        run: gh release view "$TAG" --json body -q .body > notes.md
       - name: Scan on VirusTotal
         env:
           VT_API_KEY: ${{ secrets.VT_API_KEY }}
-        run: python3 scripts/virustotal_scan.py "release/wow-tools-$TAG.zip" --notes-file notes.md
+        run: python3 scripts/virustotal_scan.py "release/wow-tools-$TAG.zip" --block-file block.md
+      # The notes are fetched only now, after the scan (minutes), and edited straight away: an edit made to them
+      # while the scan ran is kept.
       - name: Add the report to the release notes
-        run: gh release edit "$TAG" --notes-file notes.md
+        run: |
+          gh release view "$TAG" --json body -q .body > notes.md
+          python3 scripts/virustotal_scan.py --splice block.md --notes-file notes.md
+          gh release edit "$TAG" --notes-file notes.md

@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """Scan a release zip on VirusTotal and, with --notes-file, write the result into the release notes.
 
-Run: VT_API_KEY=... python3 scripts/virustotal_scan.py ZIP [--notes-file F] [--timeout S]
+Run: VT_API_KEY=... python3 scripts/virustotal_scan.py ZIP [--notes-file F] [--block-file F] [--timeout S]
+     python3 scripts/virustotal_scan.py --splice BLOCK --notes-file F  (no key, no request)
 The key is read only from the VT_API_KEY environment variable and is never printed. It looks up the zip's SHA-256
 first (a finished report is reused), else uploads it (32 MB at most) and polls the analysis until it completes,
 waiting at least 15 s between requests (the free tier allows 4 a minute). Exit 0 on a completed scan, detections
 or not (a person reads the report); 1 on an API or HTTP error or a timeout; 2 on a usage error. Stdlib only. The
-release workflow .github/workflows/virustotal.yml runs it on each published release; see docs/releasing.md."""
+release workflow .github/workflows/virustotal.yml runs it on each published release: the scan writes the block
+to --block-file, and only then does the workflow fetch the notes and --splice the block in, so an edit made to the
+notes during the scan is kept. See docs/releasing.md."""
 from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -77,13 +81,23 @@ class Client:
         self._timeout = timeout
         self._last: float | None = None
 
+    def _timed_out(self) -> ScanError:
+        return ScanError(f"the scan did not finish within {self._timeout:g} s; rerun it later "
+                         "(an upload already made is found by its SHA-256)")
+
     def _wait(self, seconds: float) -> None:
         if seconds <= 0:
             return
         if self._clock() + seconds > self._deadline:
-            raise ScanError(f"the scan did not finish within {self._timeout:g} s; rerun it later "
-                            "(an upload already made is found by its SHA-256)")
+            raise self._timed_out()
         self._sleep(seconds)
+
+    def _time_left(self) -> float:
+        """Seconds to the deadline, checked before every attempt whatever the wait (a slow request needs none)."""
+        left = self._deadline - self._clock()
+        if left <= 0:
+            raise self._timed_out()
+        return left
 
     def _safe(self, text: str) -> str:
         return text.replace(self._key, "***") if self._key else text
@@ -98,10 +112,11 @@ class Client:
         for attempt in range(RATE_LIMIT_RETRIES + 1):
             if self._last is not None:
                 self._wait(self._last + REQUEST_GAP - self._clock())
+            left = self._time_left()
             self._last = self._clock()
             req = urllib.request.Request(f"{API}{path}", data=body, headers=headers, method=method)
             try:
-                with self._opener(req, timeout=HTTP_TIMEOUT) as response:
+                with self._opener(req, timeout=min(HTTP_TIMEOUT, left)) as response:
                     raw = response.read()
             except urllib.error.HTTPError as exc:
                 if exc.code == 429 and attempt < RATE_LIMIT_RETRIES:
@@ -111,7 +126,7 @@ class Client:
                 if exc.code == 404 and missing_ok:
                     return None
                 raise ScanError(self._safe(_http_message(method, path, exc))) from None
-            except (urllib.error.URLError, OSError) as exc:
+            except (urllib.error.URLError, OSError, http.client.HTTPException) as exc:  # e.g. IncompleteRead
                 raise ScanError(self._safe(f"{method} {path} failed: {exc}")) from None
             try:
                 return json.loads(raw.decode("utf-8"))
@@ -211,7 +226,11 @@ def notes_block(result: ScanResult) -> str:
 
 def update_notes(text: str, result: ScanResult) -> str:
     """The notes with their VirusTotal block replaced, or appended at the end if they have none."""
-    block = notes_block(result)
+    return splice(text, notes_block(result))
+
+
+def splice(text: str, block: str) -> str:
+    """The notes with `block` (a whole marked block) in place of their VirusTotal block, or appended."""
     if _BLOCK_RE.search(text):
         return _BLOCK_RE.sub(lambda _match: block, text, count=1)
     text = text.rstrip()
@@ -221,11 +240,20 @@ def update_notes(text: str, result: ScanResult) -> str:
 def main(argv: list[str] | None = None, *, env: dict | None = None, opener: Callable = urllib.request.urlopen,
          clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep) -> int:
     parser = argparse.ArgumentParser(description="Scan a release zip on VirusTotal (the key from $VT_API_KEY).")
-    parser.add_argument("zip", type=Path, help="the release zip, e.g. dist/wow-tools-vX.Y.Z.zip")
+    parser.add_argument("zip", type=Path, nargs="?", help="the release zip, e.g. dist/wow-tools-vX.Y.Z.zip")
     parser.add_argument("--notes-file", type=Path, help="release notes to write the VirusTotal line into")
+    parser.add_argument("--block-file", type=Path, help="write just the VirusTotal block here, for --splice")
+    parser.add_argument("--splice", type=Path, metavar="BLOCK",
+                        help="no scan: put the block from this file (a --block-file) into --notes-file")
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT,
                         help=f"give up after this many seconds (default {DEFAULT_TIMEOUT:g})")
     args = parser.parse_args(argv)
+    if args.splice is not None:
+        if args.zip is not None:
+            parser.error("--splice takes no zip")
+        return _splice_main(args.splice, args.notes_file)
+    if args.zip is None:
+        parser.error("the zip is required (or --splice BLOCK --notes-file F)")
     key = (os.environ if env is None else env).get(KEY_ENV, "").strip()
     if not key:
         print(f"error: {KEY_ENV} is not set. Set it in your shell (never commit it); in CI it is the repository's "
@@ -234,9 +262,10 @@ def main(argv: list[str] | None = None, *, env: dict | None = None, opener: Call
     if not args.zip.is_file():
         print(f"error: {args.zip} is not a file", file=sys.stderr)
         return 2
-    if args.notes_file is not None and args.notes_file.exists() and not args.notes_file.is_file():
-        print(f"error: {args.notes_file} is not a file", file=sys.stderr)
-        return 2
+    for out in (args.notes_file, args.block_file):
+        if out is not None and out.exists() and not out.is_file():
+            print(f"error: {out} is not a file", file=sys.stderr)
+            return 2
     client = Client(key, opener=opener, clock=clock, sleep=sleep, timeout=args.timeout)
     try:
         result = scan(args.zip, client)
@@ -251,6 +280,29 @@ def main(argv: list[str] | None = None, *, env: dict | None = None, opener: Call
         old = args.notes_file.read_text(encoding="utf-8") if args.notes_file.exists() else ""
         args.notes_file.write_text(update_notes(old, result), encoding="utf-8", newline="\n")
         print(f"wrote the VirusTotal line into {args.notes_file}")
+    if args.block_file is not None:
+        args.block_file.write_text(notes_block(result) + "\n", encoding="utf-8", newline="\n")
+        print(f"wrote the VirusTotal block to {args.block_file}")
+    return 0
+
+
+def _splice_main(block_file: Path, notes_file: Path | None) -> int:
+    if notes_file is None:
+        print("error: --splice needs --notes-file", file=sys.stderr)
+        return 2
+    if not block_file.is_file():
+        print(f"error: {block_file} is not a file", file=sys.stderr)
+        return 2
+    block = block_file.read_text(encoding="utf-8").strip()
+    if not _BLOCK_RE.fullmatch(block):
+        print(f"error: {block_file} is not a VirusTotal block (write one with --block-file)", file=sys.stderr)
+        return 2
+    if notes_file.exists() and not notes_file.is_file():
+        print(f"error: {notes_file} is not a file", file=sys.stderr)
+        return 2
+    old = notes_file.read_text(encoding="utf-8") if notes_file.exists() else ""
+    notes_file.write_text(splice(old, block), encoding="utf-8", newline="\n")
+    print(f"wrote the VirusTotal block into {notes_file}")
     return 0
 
 

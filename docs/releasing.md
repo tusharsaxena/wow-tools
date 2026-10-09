@@ -107,22 +107,30 @@ install it can only be the user's.
    ```
 
    The notes appear in the in-app update prompt. If you forgot the assets, add them before anyone updates:
-   `gh release upload vX.Y.Z dist/wow-tools-vX.Y.Z.zip dist/SHA256SUMS`.
+   `gh release upload vX.Y.Z dist/wow-tools-vX.Y.Z.zip dist/SHA256SUMS`. The `virustotal` run that publishing
+   started has then failed (no asset to download), so rerun it by hand afterwards: step 8.
 8. Check the VirusTotal scan. Publishing the release starts the `virustotal` workflow
    (`.github/workflows/virustotal.yml`): it downloads the zip and `SHA256SUMS` from the release, checks the sum,
    runs `scripts/virustotal_scan.py` on the zip (an existing report for its SHA-256 is reused, else it uploads it
-   and waits for the analysis) and adds a marked line to the notes: "VirusTotal: N of M engines flagged this zip"
-   with the report's link. The README's FAQ tells Windows users the notes carry it. Check its run with
-   `gh run list --workflow virustotal.yml`. If it flagged anything, look at the report and say why in the notes
-   (`gh release edit vX.Y.Z --notes-file <notes>`, keeping the marked block): a heuristic hit or two on the bundled
-   libraries or the launchers is a common false positive. To (re)run it by hand:
-   `gh workflow run virustotal.yml -f tag=vX.Y.Z` (rerunning replaces the block, never adds a second one). The API
-   key is the repository's Actions secret `VT_API_KEY`; without it the workflow fails at its first step. Local
-   fallback, with the key set in your shell (never commit it):
+   and waits for the analysis) and only then fetches the notes and adds a marked line to them, so an edit made
+   while it ran is kept: "VirusTotal: N of M engines flagged this zip" with the report's link. The README's FAQ
+   tells Windows users the notes carry it. Check its run with `gh run list --workflow virustotal.yml`. If it
+   flagged anything, look at the report and say why in the notes (`gh release edit vX.Y.Z --notes-file <notes>`,
+   keeping the marked block): a heuristic hit or two on the bundled libraries or the launchers is a common false
+   positive. To (re)run it by hand: `gh workflow run virustotal.yml -f tag=vX.Y.Z` (rerunning replaces the block,
+   never adds a second one). The API key is the repository's Actions secret `VT_API_KEY`; without it the workflow
+   fails at its first step.
+
+   GitHub runs the workflow file of the tagged commit on a published release, and `gh workflow run` only once the
+   file is on the default branch. So a release whose tag predates the workflow (v1.0.0 and earlier) never starts
+   it: scan it by hand with `gh workflow run virustotal.yml -f tag=vX.Y.Z`, which works once the workflow is on
+   `master`. Before that, only the local fallback works. Local fallback, with the key set in your shell (never
+   commit it):
 
    ```sh
+   VT_API_KEY=... python3 scripts/virustotal_scan.py dist/wow-tools-vX.Y.Z.zip --block-file block.md
    gh release view vX.Y.Z --json body -q .body > notes.md
-   VT_API_KEY=... python3 scripts/virustotal_scan.py dist/wow-tools-vX.Y.Z.zip --notes-file notes.md
+   python3 scripts/virustotal_scan.py --splice block.md --notes-file notes.md
    gh release edit vX.Y.Z --notes-file notes.md
    ```
 
