@@ -14,8 +14,7 @@ from pathlib import Path
 from wowtools import __version__
 from wowtools.core import activity
 from wowtools.core.bootstrap import REPO_ROOT
-from wowtools.core.config import (CONFIG_DIR, LEGACY_CONFIG_PATH, SUITE_CONFIG_NAME, Config, ConfigError,
-                                  migrate_legacy_config)
+from wowtools.core.config import CONFIG_DIR, SUITE_CONFIG_NAME, Config, ConfigError
 from wowtools.core.events import get_event_log, init_event_log, log_event, log_exception
 from wowtools.core.lock import LOCK_PATH, InstanceLock, LockInfo
 from wowtools.core.migrate import ConfigMigration, merge_folder_logged, migrate_tool_config, tool_folder_pairs
@@ -41,7 +40,7 @@ def usage() -> str:
 
 
 def run(argv: list[str], *, cfg: Config | None = None, log_dir: Path | None = LOG_DIR,
-        config_dir: Path = CONFIG_DIR, legacy_config: Path = LEGACY_CONFIG_PATH, lock_path: Path = LOCK_PATH,
+        config_dir: Path = CONFIG_DIR, lock_path: Path = LOCK_PATH,
         app_factory: Callable[..., object] | None = None, input_fn: Callable[[str], str] = input) -> int:
     if argv[:1] in (["-h"], ["--help"], ["help"]):
         print(usage())
@@ -53,7 +52,6 @@ def run(argv: list[str], *, cfg: Config | None = None, log_dir: Path | None = LO
         hint = " Tools open from the menu: run wow-tools with no arguments." if argv[0] in TOOLS else ""
         print(f"Unknown command: {argv[0]}.{hint}\n\n{usage()}", file=sys.stderr)
         return 1
-    migrated: list[Path] = []
     renamed: list[ConfigMigration] = []
     # The lock comes first: the renamed-tool moves below must never run under another copy that is using them.
     lock = InstanceLock(lock_path)
@@ -65,9 +63,6 @@ def run(argv: list[str], *, cfg: Config | None = None, log_dir: Path | None = LO
     may_migrate = conflict is None or conflict.stale is True
     try:
         if cfg is None:
-            # A legacy file may still use a renamed tool's old section: split it under the old name first.
-            sections = {r.old_section: r.old for r in RENAMED_TOOLS} | {t.section: t.name for t in TOOLS.values()}
-            migrated = migrate_legacy_config(legacy_config, config_dir, sections)
             cfg = Config(config_dir / SUITE_CONFIG_NAME).load()
         if may_migrate:
             renamed = [m for r in RENAMED_TOOLS if (m := migrate_tool_config(config_dir, r)) is not None]
@@ -80,8 +75,6 @@ def run(argv: list[str], *, cfg: Config | None = None, log_dir: Path | None = LO
     try:
         init_event_log(log_dir, tool="suite", mode="tui" if not argv else "cli",
                        text_level=cfg.log_level, retention_days=cfg.log_retention_days)
-        if migrated:
-            log_event("config.migrated", legacy=str(legacy_config), files=[str(p) for p in migrated])
         for m in renamed:
             log_event("config.renamed", old=str(m.old), new=str(m.new), merged=m.merged, added=m.added,
                       kept_old=str(m.kept_old) if m.kept_old else None)

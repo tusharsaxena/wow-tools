@@ -212,10 +212,6 @@ work on at once. They're on the first screen `s` opens (the one with your WoW fo
 (2, from 1 to 8; use 1 on a hard drive or a WSL `/mnt` folder). The game version list counts the waiting screenshots
 in up to `parallelism` game versions at once. Filing them is still one run with one journal.
 
-> Older versions called this tool `screenshots`. The app renames its old settings file, log folder and
-> `wow-tools\screenshots` folder to the new `screenshot-organizer` names automatically, and never overwrites
-> anything while doing so.
-
 ## FAQ
 
 | Question | Answer |

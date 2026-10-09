@@ -398,10 +398,6 @@ Unless you change it in settings, the backup folder is `<your WoW folder>\wow-to
   journal\journal-<YYYYMMDD-HHMMSS>.jsonl                      the record Undo last change uses
 ```
 
-The tool used to be called `ace-profiles`. If you have folders or a settings file under that name, they move to
-the new name on the next start (the backup folder's when you next open the tool), and Undo still finds your
-earlier changes.
-
 `<flavor>` is the game version (`retail`, `classic_era` and so on) and `<account>` is the account you picked, or
 `all`. If two runs start in the same second, the second gets `-2` added before `.zip`, so no backup ever replaces
 another. The journals always stay in your WoW folder, even if you pick another backup folder.

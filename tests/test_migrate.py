@@ -173,10 +173,6 @@ class RenameTableTest(unittest.TestCase):
             self.assertEqual(TOOLS[rename.new].section, rename.new_section)
             self.assertNotIn(rename.old, TOOLS)
 
-    def test_screenshots_became_screenshot_organizer(self):
-        self.assertIn(ToolRename("screenshots", "screenshot-organizer", "screenshots", "screenshot_organizer"),
-                      RENAMED_TOOLS)
-
     def test_folder_pairs(self):
         logs, wow = Path("/l"), Path("/w")
         self.assertEqual(tool_folder_pairs(RENAME, logs, wow),

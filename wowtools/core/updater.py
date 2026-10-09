@@ -199,8 +199,6 @@ MANAGED_FILES = tuple(entry for entry in RELEASE_SHIPS if "/" not in entry and n
 # them there, an update replaces them with the folder, and they are never carried as the user's files (P2). A
 # folder entry (docs/internals/, docs/superpowers/, docs/ideas/) covers every file under it, a user's too (P2-d).
 DEVELOPER_PATHS = tuple(entry for entry in RELEASE_STAYS_OUT if entry.split("/", 1)[0] in MANAGED_DIRS)
-# Program files earlier versions shipped that no longer exist; a zip update removes them (and backs them up).
-RETIRED_FILES = ("wtf-cleaner.cmd", "wtf-cleaner.sh")
 BACKUP_DIR_NAME = ".update-backup"
 KEEP_UPDATE_BACKUPS = 2  # .update-backup/<version> folders kept after an update (the newest by version)
 # Before an old .update-backup/<version> is pruned, the files a user added inside its managed folders are moved here,
@@ -400,9 +398,9 @@ def _shipped_names(staging: Path) -> list[str]:
 
 
 def _replaced_names(root: Path, shipped: list[str]) -> list[str]:
-    """The install's program files an update replaces: the managed and retired names, plus the root *.md files
+    """The install's program files an update replaces: the managed names, plus the root *.md files
     the release ships. Other root *.md files are the user's (notes, a copied guide) and stay untouched (F-019)."""
-    fixed = [name for name in (*MANAGED_DIRS, *MANAGED_FILES, *RETIRED_FILES) if (root / name).exists()]
+    fixed = [name for name in (*MANAGED_DIRS, *MANAGED_FILES) if (root / name).exists()]
     return fixed + [name for name in shipped if name not in fixed and (root / name).exists()]
 
 

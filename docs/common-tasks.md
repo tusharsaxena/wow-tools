@@ -234,8 +234,7 @@ Worked example: commit `8d6a1a8` (`orphan_backups`, rule 5).
 2. The package's `TOOL_NAME` (`events.py`) and `SECTION` (`settings.py`); rename the package folder and fix its
    imports and the `Tool.module` path if the package name changes.
 3. A folder named after the tool inside a folder the user chose is not moved by `core/migrate.py`: the tool moves
-   it itself when it opens (the Ace3 Profile Manager's `settings.migrate_backup_root()` with
-   `merge_folder_logged()`).
+   it itself when it opens, with `merge_folder_logged(<backup_dir>/<old>, <backup_dir>/<new>)`.
 4. Tests: the per-tool tables (`TOOLS`, `RUN_ACTION`, `PREPARE`, `DESTRUCTIVE_REVIEWS`, `ACCOUNT_TOOLS`, `RISK_EVENTS`;
    every file STD-10.8 lists), `tool_options` keys, test file names;
    `tests/test_migrate.py::test_every_rename_points_at_a_registered_tool` checks the new line.

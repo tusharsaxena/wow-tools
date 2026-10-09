@@ -20,7 +20,7 @@ from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager.blacklist_screen import BlacklistScreen
 from wowtools.tools.ace3_profile_manager.report import DISCLAIMER
 from wowtools.tools.ace3_profile_manager.review_screen import ProfileReviewScreen
-from wowtools.tools.ace3_profile_manager.settings import (SECTION, ProfileSettings, load_settings, migrate_backup_root,
+from wowtools.tools.ace3_profile_manager.settings import (SECTION, ProfileSettings, load_settings,
                                                           resolve_root, save_settings)
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.settings_form import ToolSettingsScreen, folder_hint
@@ -116,10 +116,6 @@ class AceProfilesFlow(ToolFlow):
         self._wow_check = wow_check  # tests inject it; None: the review builds one for its flavors
         self.flavors: list[Flavor] = []
         self.unlocked: set[tuple[str, str]] = set()
-
-    def _ready(self, install: WowInstall, first_run: bool) -> None:
-        migrate_backup_root(load_settings(self.tool_cfg))
-        super()._ready(install, first_run)
 
     def _pick_flavor(self) -> None:
         install = self.install()

@@ -19,10 +19,15 @@ from wowtools.core import activity, events
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.lock import InstanceLock
+from wowtools.core.migrate import ToolRename
 from wowtools.core.updater import ReleaseInfo
 from wowtools.suite import _auto_update, run
 from wowtools.tools import TOOLS
 from wowtools.ui.base import Ka0sApp
+
+
+# A test-only rename onto a registered tool: "screenshots" was never a released name.
+TEST_RENAME = ToolRename("screenshots", "screenshot-organizer", "screenshots", "screenshot_organizer")
 
 
 class FakeApp:
@@ -90,6 +95,10 @@ class SuiteTest(unittest.TestCase):
         self.log_dir = self.tmp / "logs"
         self.lock_path = self.tmp / "wow-tools.lock"
         FakeApp.made = []
+        # No released tool has been renamed (RENAMED_TOOLS is empty): the rename tests use a test-only line.
+        patcher = unittest.mock.patch("wowtools.suite.RENAMED_TOOLS", (TEST_RENAME,))
+        patcher.start()
+        self.addCleanup(patcher.stop)
         # run() installs a process-wide log pointing at this temp dir; put the old one back afterwards.
         self.addCleanup(setattr, events, "_current", events.get_event_log())
 
@@ -97,8 +106,8 @@ class SuiteTest(unittest.TestCase):
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
             code = run(argv, cfg=self.cfg if cfg == "default" else cfg, log_dir=self.log_dir,
-                       config_dir=self.config_dir, legacy_config=self.tmp / "wow-tools.cfg",
-                       lock_path=self.lock_path, app_factory=kwargs.pop("app_factory", FakeApp), input_fn=lambda prompt: answer, **kwargs)
+                       config_dir=self.config_dir, lock_path=self.lock_path,
+                       app_factory=kwargs.pop("app_factory", FakeApp), input_fn=lambda prompt: answer, **kwargs)
         return code, out.getvalue(), err.getvalue()
 
     def records(self, tool="suite"):
@@ -187,18 +196,6 @@ class SuiteTest(unittest.TestCase):
         self.assertIn("may already be running", err)
         self.assertEqual(json.loads(self.lock_path.read_text())["token"], "x")
 
-    def test_legacy_config_is_migrated_on_start(self):
-        legacy = self.tmp / "wow-tools.cfg"
-        legacy.write_text(f"[general]\nwow_path = {self.root}\ncheck_for_updates = false\n\n"
-                          "[wtf_cleaner]\nmax_age_days = 45\n", encoding="utf-8")
-        (self.config_dir / "wow-tools.cfg").unlink()
-        code, _, _ = self.run_suite([], cfg=None)
-        self.assertEqual(code, 0)
-        self.assertFalse(legacy.exists())
-        self.assertEqual(Config(self.config_dir / "wtf-cleaner.cfg").load().get("wtf_cleaner", "max_age_days"), "45")
-        self.assertEqual(FakeApp.made[0].cfg.wow_path, self.root)
-        self.assertIn("config.migrated", [r["event"] for r in self.records()])
-
     def test_renamed_tool_config_and_folders_move_on_start(self):
         (self.config_dir / "screenshots.cfg").write_text("[screenshots]\ncopy_mode = true\n", encoding="utf-8")
         _write_file(self.log_dir / "screenshots" / "events-2026-10-01.log", "old")
@@ -216,31 +213,6 @@ class SuiteTest(unittest.TestCase):
         self.assertEqual([r["event"] for r in records].count("folder.renamed"), 2)
         config_event = next(r for r in records if r["event"] == "config.renamed")
         self.assertEqual(config_event["data"]["new"], str(self.config_dir / "screenshot-organizer.cfg"))
-
-    def test_ace_profiles_becomes_ace3_profile_manager_on_start(self):
-        (self.config_dir / "ace-profiles.cfg").write_text("[ace_profiles]\nblacklist = _retail_:ElvUI\n",
-                                                          encoding="utf-8")
-        _write_file(self.log_dir / "ace-profiles" / "events-2026-10-01.log", "old")
-        _write_file(self.root / "wow-tools" / "ace-profiles" / "edited" / "edited-1.zip", "z")
-        code, _, _ = self.run_suite([])
-        self.assertEqual(code, 0)
-        self.assertFalse((self.config_dir / "ace-profiles.cfg").exists())
-        self.assertEqual(Config(self.config_dir / "ace3-profile-manager.cfg").load()
-                         .get("ace3_profile_manager", "blacklist"), "_retail_:ElvUI")
-        self.assertTrue((self.log_dir / "ace3-profile-manager" / "events-2026-10-01.log").is_file())
-        self.assertFalse((self.root / "wow-tools" / "ace-profiles").exists())
-        self.assertTrue((self.root / "wow-tools" / "ace3-profile-manager" / "edited" / "edited-1.zip").is_file())
-
-    def test_renamed_tool_with_legacy_config_section(self):
-        legacy = self.tmp / "wow-tools.cfg"
-        legacy.write_text(f"[general]\nwow_path = {self.root}\ncheck_for_updates = false\n\n"
-                          "[screenshots]\nkeep_journals = 4\n", encoding="utf-8")
-        (self.config_dir / "wow-tools.cfg").unlink()
-        code, _, _ = self.run_suite([], cfg=None)
-        self.assertEqual(code, 0)
-        cfg = Config(self.config_dir / "screenshot-organizer.cfg").load()
-        self.assertEqual(cfg.get("screenshot_organizer", "keep_journals"), "4")
-        self.assertIsNone(Config(self.config_dir / "wow-tools.cfg").load().get("screenshots", "keep_journals"))
 
     def test_folder_clash_is_logged_as_a_warning_and_start_carries_on(self):
         _write_file(self.root / "wow-tools" / "screenshots" / "journal" / "a.jsonl", "old")

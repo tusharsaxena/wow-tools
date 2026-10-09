@@ -96,8 +96,7 @@ class ZipUpdateTest(unittest.TestCase):
         self.assertFalse((self.root / "docs" / "only-in-0.1.0.md").exists())
         self.assertEqual((self.root / "LICENSE").read_text(), "licence 0.2.0\n")
         self.assertEqual((self.root / "config" / "wow-tools.cfg").read_text(), "[general]\n")
-        self.assertFalse((self.root / "wtf-cleaner.sh").exists())  # retired wrapper removed, but backed up
-        self.assertTrue((self.root / ".update-backup" / "0.1.0" / "wtf-cleaner.sh").exists())
+        self.assertEqual((self.root / "wtf-cleaner.sh").read_text(), "old wrapper\n")  # not shipped: the user's
         self.assertTrue((self.root / "logs" / "events-2026-09-27.jsonl").exists())
         self.assertEqual((self.root / "my-notes.txt").read_text(), "mine")
         self.assertIn("0.1.0", (self.root / ".update-backup" / "0.1.0" / "wowtools" / "__init__.py").read_text())

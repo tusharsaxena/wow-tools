@@ -87,16 +87,6 @@ class SettingsTest(unittest.TestCase):
         self.assertIsNone(s.resolve_root(s.ProfileSettings(), None))
         self.assertEqual(resolve_journal_dir(wow), wow / "wow-tools" / "ace3-profile-manager" / "journal")
 
-    def test_old_folder_in_a_chosen_backup_folder_moves_to_the_new_name(self):
-        backup = self.tmp / "b"
-        (backup / "ace-profiles" / "edited").mkdir(parents=True)
-        (backup / "ace-profiles" / "edited" / "edited-1.zip").write_bytes(b"zip")
-        s.migrate_backup_root(s.ProfileSettings(backup_dir=backup))
-        self.assertFalse((backup / "ace-profiles").exists())
-        self.assertEqual((backup / "ace3-profile-manager" / "edited" / "edited-1.zip").read_bytes(), b"zip")
-        s.migrate_backup_root(s.ProfileSettings(backup_dir=backup))  # nothing left to move
-        s.migrate_backup_root(s.ProfileSettings())  # the default folder is core/migrate.py's job
-
     def test_events_registered_with_prefix(self):
         self.assertIn(TOOL_NAME, TOOL_REGISTRIES)
         self.assertTrue(all(name.startswith("ace.") for name in TOOL_REGISTRIES[TOOL_NAME]))

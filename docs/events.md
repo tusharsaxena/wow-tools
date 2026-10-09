@@ -39,7 +39,6 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `changelog.unreadable` | warning | CHANGELOG.md was missing, unreadable or malformed, so the changelog screen showed nothing (the reason is in `reason`). |
 | `config.changed` | info | A config value changed or was removed, or was overridden for one run. |
 | `config.created` | info | A config file in config/ was written for the first time. |
-| `config.migrated` | info | The old shared wow-tools.cfg was split into config/ (one file per tool). |
 | `config.renamed` | info | A renamed tool's config file was moved to its new name (merged into the new file when both existed). |
 | `error` | error | An unexpected or fatal error. |
 | `folder.renamed` | info | A renamed tool's folder (logs/<tool>/ or <WoW>/wow-tools/<tool>/) was moved to its new name; logged as a warning when entries clashed or failed to move. |
