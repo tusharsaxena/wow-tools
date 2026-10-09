@@ -4,6 +4,13 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and version numbers follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- The README explains the Windows "publisher could not be verified" prompt and how to unblock the zip so it
+  stops appearing.
+
 ## [1.0.0] - 2026-10-09
 
 The first release: five tools for the files World of Warcraft keeps on your disk, in one app.
