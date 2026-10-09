@@ -23,10 +23,6 @@ before you press **I understand**. The popup then stays hidden until you tick
 **Show the USE AT YOUR OWN RISK warning** in the tool's [settings](#settings). The red line and the warning on the
 confirms stay either way.
 
-**_The USE AT YOUR OWN RISK warning_**
-
-![The USE AT YOUR OWN RISK warning (shown here with the Ace3 Profile Manager's text; the wording differs per tool), with Back and I understand buttons](assets/screenshots/suite/risk-warning.png)
-
 What the tool does promise: every byte you didn't change stays exactly as it was. Before it writes anything, it backs
 up your whole `WTF` folder and every file it is about to change, and **Undo last change** puts those files back.
 

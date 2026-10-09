@@ -33,10 +33,6 @@ ones you leave ticked. If you regret it later, you can undo the clean.
 
 ## The USE AT YOUR OWN RISK warning
 
-**_The USE AT YOUR OWN RISK warning_**
-
-![The USE AT YOUR OWN RISK warning (shown here with the Ace3 Profile Manager's text; the wording differs per tool), with Back and I understand buttons](assets/screenshots/suite/risk-warning.png)
-
 The cleaner deletes addon settings files by the rules you tick. It can't know what an addon still needs, and a
 deleted file takes that addon's settings with it, so it shows this warning before the first scan. The warning says
 that a backup zip of your `WTF` folder is made first and **Undo last clean** puts the files back, but you're
