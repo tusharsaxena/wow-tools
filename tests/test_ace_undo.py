@@ -71,8 +71,8 @@ class UndoTest(unittest.TestCase):
         self.assertEqual(latest_undoable(self.journals), self.journal)
 
     def test_undo_finds_its_zips_after_the_folder_moved(self):
-        """The rename from ace-profiles: the journal still names <old root>/edited/<zip>; Undo reads the zip of that
-        name in the new root's edited folder."""
+        """A moved tool folder (a future rename): the journal still names <old root>/edited/<zip>; Undo reads the zip
+        of that name in the new root's edited folder."""
         moved = self.tmp / "renamed"
         self.root.rename(moved)
         result = undo.undo_run(self.journal, wow_root=self.wow, root=moved, keep_snapshots=2, now=WHEN)

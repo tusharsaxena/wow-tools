@@ -52,7 +52,6 @@ CORE_EVENTS: dict[str, EventSpec] = {
                                                  "screen showed nothing (the reason is in `reason`)."),
     "config.created": EventSpec("info", "A config file in config/ was written for the first time."),
     "config.changed": EventSpec("info", "A config value changed or was removed, or was overridden for one run."),
-    "config.migrated": EventSpec("info", "The old shared wow-tools.cfg was split into config/ (one file per tool)."),
     "config.renamed": EventSpec("info", "A renamed tool's config file was moved to its new name (merged into the new "
                                         "file when both existed)."),
     "folder.renamed": EventSpec("info", "A renamed tool's folder (logs/<tool>/ or <WoW>/wow-tools/<tool>/) was moved "
@@ -88,9 +87,6 @@ REGISTRY: dict[str, EventSpec] = dict(CORE_EVENTS)
 TOOL_REGISTRIES: dict[str, dict[str, EventSpec]] = {"core": dict(CORE_EVENTS)}
 
 _LOG_NAME = re.compile(r"^(?:events|logfile)-(\d{4}-\d{2}-\d{2})\.log$")
-# The flat layout used before per-tool folders: logs/events-<day>.jsonl and logs/wow-tools-<day>.log.
-_FLAT_LOG_NAME = re.compile(r"^(events|wow-tools)-(\d{4}-\d{2}-\d{2})\.(jsonl|log)$")
-_TEXT_TOOL = re.compile(r"^\S+ \S+ \S+\s+\[([^\]]+)\] ")
 _SAFE_TOOL = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
@@ -98,54 +94,6 @@ def log_paths(log_dir: Path, tool: str, day: str) -> tuple[Path, Path]:
     """(events file, readable log file) for one tool and day: logs/<tool>/events-<day>.log, logfile-<day>.log."""
     folder = log_dir / (tool if _SAFE_TOOL.match(tool or "") and tool not in (".", "..") else "suite")
     return folder / f"events-{day}.log", folder / f"logfile-{day}.log"
-
-
-def migrate_flat_logs(log_dir: Path | None) -> list[Path]:
-    """Move logs from the old flat layout into per-tool folders, splitting each file by the tool on each line.
-
-    Old lines go before anything already in the new file. Returns the old files that were moved (and removed).
-    Never raises: a file that cannot be moved stays where it is."""
-    if log_dir is None or not log_dir.is_dir():
-        return []
-    try:
-        paths = sorted(log_dir.iterdir())
-    except OSError:
-        return []
-    moved: list[Path] = []
-    for path in paths:
-        match = _FLAT_LOG_NAME.match(path.name)
-        if not match:
-            continue
-        kind, day = match.group(1), match.group(2)
-        try:
-            if not path.is_file():
-                continue
-            by_tool: dict[str, list[str]] = {}
-            for line in path.read_text(encoding="utf-8").splitlines():
-                if not line.strip():
-                    continue
-                tool = "suite"
-                if kind == "events":
-                    with contextlib.suppress(ValueError, TypeError, AttributeError):
-                        tool = str(json.loads(line).get("tool") or "suite")
-                else:
-                    found = _TEXT_TOOL.match(line)
-                    if found:
-                        tool = found.group(1)
-                by_tool.setdefault(tool, []).append(line)
-            for tool, lines in by_tool.items():
-                events_path, text_path = log_paths(log_dir, tool, day)
-                target = events_path if kind == "events" else text_path
-                target.parent.mkdir(parents=True, exist_ok=True)
-                existing = target.read_text(encoding="utf-8") if target.exists() else ""
-                partial = target.with_name(target.name + ".partial")
-                partial.write_text("\n".join(lines) + "\n" + existing, encoding="utf-8")
-                partial.replace(target)
-            path.unlink()
-            moved.append(path)
-        except (OSError, UnicodeDecodeError):
-            continue
-    return moved
 
 
 def register_events(owner: str, events: dict[str, EventSpec]) -> None:
@@ -335,12 +283,10 @@ _current = EventLog(strict=True)
 
 
 def init_event_log(log_dir: Path | None, **kwargs: Any) -> EventLog:
-    """Install the process-wide log (called once by the launcher), move any old flat-layout logs into the
-    per-tool folders, and prune old files."""
+    """Install the process-wide log (called once by the launcher) and prune old files."""
     global _current
     _current.close()
     _current = EventLog(log_dir, **kwargs)
-    migrate_flat_logs(_current.log_dir)
     _current.prune()
     return _current
 

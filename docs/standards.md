@@ -163,7 +163,8 @@ it: a test (`tests/<file>.py::<test>`) or *review*. Decision IDs (D9, D17, W1, B
   `ToolRename(old, new, old_section, new_section)` line to `RENAMED_TOOLS`. Anything named after the tool inside a
   user-chosen folder (Interface Backup's `<backup_dir>/interface-backup`) the tool moves itself.
   *Why:* `core/migrate.py` moves config, logs and `<WoW>/wow-tools/<tool>/` at start-up, never user-chosen folders.
-  *Enforced by:* `tests/test_migrate.py::test_every_rename_points_at_a_registered_tool`,
+  *Enforced by:* `tests/test_migrate.py::test_every_rename_points_at_a_registered_tool` (guards future lines:
+  `RENAMED_TOOLS` is empty until a tool is renamed),
   `tests/test_suite.py::test_renamed_tool_config_and_folders_move_on_start`.
 
 ## 4. Configuration and paths
@@ -193,12 +194,12 @@ it: a test (`tests/<file>.py::<test>`) or *review*. Decision IDs (D9, D17, W1, B
   `tests/test_core_sv_pipeline.py::test_marker_paths_are_stored_in_windows_form_and_read_natively`,
   `tests/test_safety.py::test_marker_paths_are_stored_in_windows_form_and_read_natively`.
 - **STD-4.5 MUST** Retention is global: backups and snapshots prune per flavor to `[general] keep_backups`
-  (`Config.keep_backups`, 0 = all), journals per tool to `keep_journals`. A tool has no retention setting, and its
-  `save_settings` calls `cfg.remove_retired(SECTION, source=source)` then `cfg.save()`.
-  *Why:* one setting the user understands, edited on the setup screen; retired per-tool keys go on the next save.
+  (`Config.keep_backups`, 0 = all), journals per tool to `keep_journals`. A tool has no retention setting of its
+  own.
+  *Why:* one setting the user understands, edited on the setup screen.
   *Enforced by:* `tests/test_config.py::test_retention_defaults_are_ten_and_ten`,
   `tests/test_ace_app.py::test_settings_have_no_retention_inputs`, the per-tool
-  `test_retention_is_global_and_stale_keys_go_on_save`. *Deviation:* WTF Cleaner `keep_cleaned`.
+  `test_settings_have_no_retention_fields`. *Deviation:* WTF Cleaner `keep_cleaned`.
 - **STD-4.6 SHOULD** Add a new suite-wide setting as a typed, clamped `Config` property on `[general]` (with a
   `DEFAULT_` constant), edited on the setup screen.
   *Why:* bad input gives a sane default ([D10][polish]).

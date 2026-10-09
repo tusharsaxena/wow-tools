@@ -68,8 +68,7 @@ Example: the Screenshot Organizer's `copy_mode`.
 
 1. `wowtools/tools/<package>/settings.py`: a field with its default on the settings dataclass; read it in
    `load_settings` with a typed getter and a default (`cfg.get_bool(SECTION, "copy_mode", False)`); write it in
-   `save_settings` with `cfg.set` (`cfg.set_path` for a folder), before the existing `cfg.remove_retired(SECTION,
-   source=source)` and `cfg.save()`.
+   `save_settings` with `cfg.set` (`cfg.set_path` for a folder), before the existing `cfg.save()`.
 2. `wowtools/tools/<package>/app.py`: the row in the `ToolSettingsScreen` subclass, `fields()` (a `Label` then an
    `Input`, or one `Ka0sCheckbox`; `folder_input()` for a folder), and its value in `save()`. Validate there: on a
    bad value call `self._error(...)` and return `False`; a folder goes through `core.install.validate_backup_dir`
@@ -234,8 +233,7 @@ Worked example: commit `8d6a1a8` (`orphan_backups`, rule 5).
 2. The package's `TOOL_NAME` (`events.py`) and `SECTION` (`settings.py`); rename the package folder and fix its
    imports and the `Tool.module` path if the package name changes.
 3. A folder named after the tool inside a folder the user chose is not moved by `core/migrate.py`: the tool moves
-   it itself when it opens (the Ace3 Profile Manager's `settings.migrate_backup_root()` with
-   `merge_folder_logged()`).
+   it itself when it opens, with `merge_folder_logged(<backup_dir>/<old>, <backup_dir>/<new>)`.
 4. Tests: the per-tool tables (`TOOLS`, `RUN_ACTION`, `PREPARE`, `DESTRUCTIVE_REVIEWS`, `ACCOUNT_TOOLS`, `RISK_EVENTS`;
    every file STD-10.8 lists), `tool_options` keys, test file names;
    `tests/test_migrate.py::test_every_rename_points_at_a_registered_tool` checks the new line.

@@ -206,34 +206,12 @@ class SinkTest(unittest.TestCase):
             removed = EventLog(self.dir, retention_days=90, clock=lambda: FIXED).prune()
         self.assertEqual(removed, [old])
 
-    def test_prune_and_flat_migration_never_raise_when_the_log_folder_cannot_be_listed(self):
+    def test_prune_never_raises_when_the_log_folder_cannot_be_listed(self):
         def iterdir(path):
             raise PermissionError(13, "Permission denied", str(path))
 
         with mock.patch.object(Path, "iterdir", iterdir):
             self.assertEqual(EventLog(self.dir, retention_days=90, clock=lambda: FIXED).prune(), [])
-            self.assertEqual(events.migrate_flat_logs(self.dir), [])
-
-    def test_flat_logs_are_split_into_tool_folders(self):
-        suite_rec = json.dumps({"tool": "suite", "event": "session.start"})
-        tool_rec = json.dumps({"tool": "wtf-cleaner", "event": "scan.started"})
-        (self.dir / "events-2026-09-20.jsonl").write_text(f"{suite_rec}\n{tool_rec}\nnot json\n", encoding="utf-8")
-        (self.dir / "wow-tools-2026-09-20.log").write_text(
-            "2026-09-20 10:00:00 INFO    [suite] session.start  argv=\n"
-            "2026-09-20 10:00:01 INFO    [wtf-cleaner] scan.started  flavor=_retail_\n", encoding="utf-8")
-        newer = self.dir / "wtf-cleaner" / "logfile-2026-09-20.log"
-        newer.parent.mkdir()
-        newer.write_text("already here\n", encoding="utf-8")
-        moved = events.migrate_flat_logs(self.dir)
-        self.assertEqual(len(moved), 2)
-        self.assertFalse(any(self.dir.glob("*.jsonl")))
-        self.assertEqual((self.dir / "suite" / "events-2026-09-20.log").read_text(encoding="utf-8"),
-                         f"{suite_rec}\nnot json\n")
-        self.assertEqual((self.dir / "wtf-cleaner" / "events-2026-09-20.log").read_text(encoding="utf-8"),
-                         f"{tool_rec}\n")
-        self.assertIn("[suite] session.start", (self.dir / "suite" / "logfile-2026-09-20.log").read_text())
-        self.assertEqual(newer.read_text(encoding="utf-8").splitlines(),
-                         ["2026-09-20 10:00:01 INFO    [wtf-cleaner] scan.started  flavor=_retail_", "already here"])
 
     def test_io_failure_disables_sinks_without_raising(self):
         blocker = self.dir / "logs"

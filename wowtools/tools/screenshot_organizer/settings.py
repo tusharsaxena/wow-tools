@@ -29,7 +29,6 @@ def save_settings(cfg: Config, settings: ShotSettings, *, source: str = "setting
     cfg.set_path(SECTION, "dest_dir", settings.dest_dir, source=source)
     cfg.set(SECTION, "copy_mode", settings.copy_mode, source=source)
     cfg.set(SECTION, "last_flavor_choice", settings.last_flavor_choice, source=source)
-    cfg.remove_retired(SECTION, source=source)
     cfg.save()
 
 

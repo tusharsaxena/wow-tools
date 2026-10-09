@@ -20,10 +20,7 @@ from wowtools.core.paths import to_native, to_stored
 CONFIG_DIR = REPO_ROOT / "config"
 SUITE_CONFIG_NAME = "wow-tools.cfg"
 DEFAULT_CONFIG_PATH = CONFIG_DIR / SUITE_CONFIG_NAME
-LEGACY_CONFIG_PATH = REPO_ROOT / "wow-tools.cfg"  # the single shared file used before config/
 GENERAL = "general"
-# [general] keys that nothing reads any more; dropped when a legacy config is migrated.
-RETIRED_GENERAL_KEYS = ("backup_dir",)
 # Retention, shared by every tool ([general]): backups (snapshots, dry-run zips, Interface Backup zips) kept per
 # flavor, 0 = keep all; and run journals kept per tool, at least 1.
 DEFAULT_KEEP_BACKUPS = 10
@@ -33,8 +30,6 @@ DEFAULT_KEEP_JOURNALS = 10
 DEFAULT_PARALLELISM = 2
 MIN_PARALLELISM = 1
 MAX_PARALLELISM = 8
-# The per-tool keys these replaced: ignored when read, removed when a tool saves its settings.
-RETIRED_TOOL_KEYS = ("keep_backups", "keep_snapshots", "keep_journals")
 # A tool's own setting (WTF Cleaner, Ace3 Profile Manager, SV Browser): true = never show its USE AT YOUR OWN RISK
 # popup (spec 2026-10-07-feedback-bars-leftovers L8). Its "Don't show this warning again" box sets it.
 SKIP_RISK_WARNING = "skip_risk_warning"
@@ -49,35 +44,6 @@ class ConfigError(Exception):
 def tool_config_path(tool: str, config_dir: Path = CONFIG_DIR) -> Path:
     """config/<tool>.cfg, e.g. config/wtf-cleaner.cfg."""
     return config_dir / f"{tool}.cfg"
-
-
-def migrate_legacy_config(legacy: Path, config_dir: Path, tool_sections: dict[str, str]) -> list[Path]:
-    """Split the old shared wow-tools.cfg into config/: [general] to wow-tools.cfg, and each tool's section
-    (tool_sections maps section -> tool name) to config/<tool>.cfg. Other sections stay with [general].
-
-    Runs only when the legacy file exists and config/wow-tools.cfg does not. The legacy file is removed once
-    every new file is written. Returns the files written ([] if there was nothing to do). Raises ConfigError if
-    the legacy file cannot be read, or OSError if a new file cannot be written (the legacy file is then kept)."""
-    target = config_dir / SUITE_CONFIG_NAME
-    if not legacy.is_file() or target.exists():
-        return []
-    old = Config(legacy).load()
-    files: dict[Path, configparser.ConfigParser] = {}
-    for section in old._parser.sections():
-        tool = tool_sections.get(section)
-        path = tool_config_path(tool, config_dir) if tool else target
-        parser = files.setdefault(path, configparser.ConfigParser(interpolation=None))
-        parser.add_section(section)
-        for key, value in old._parser.items(section, raw=True):
-            if section == GENERAL and key in RETIRED_GENERAL_KEYS:
-                continue
-            parser.set(section, key, value)
-    files.setdefault(target, configparser.ConfigParser(interpolation=None))
-    config_dir.mkdir(parents=True, exist_ok=True)
-    for path, parser in files.items():
-        atomic_write_text(path, _render(parser))
-    legacy.unlink()
-    return sorted(files)
 
 
 def _render(parser: configparser.ConfigParser) -> str:
@@ -162,11 +128,6 @@ class Config:
         self._parser.remove_option(section, key)
         if log:
             log_event("config.changed", section=section, key=key, old=old, new=None, source=source)
-
-    def remove_retired(self, section: str, *, source: str = "app") -> None:
-        """Drop the per-tool retention keys that [general] keep_backups / keep_journals replaced."""
-        for key in RETIRED_TOOL_KEYS:
-            self.remove(section, key, source=source)
 
     def get_path(self, section: str, key: str) -> Path | None:
         raw = (self.get(section, key) or "").strip()

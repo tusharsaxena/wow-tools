@@ -31,20 +31,14 @@ class SettingsTest(unittest.TestCase):
         s.save_settings(self.cfg, saved)
         self.assertEqual(s.load_settings(Config(self.tmp / "ace3-profile-manager.cfg").load()), saved)
 
-    def test_retention_is_global_and_stale_keys_go_on_save(self):
-        """Feedback round 1: retention lives in [general]; the old per-tool keys are ignored, then removed."""
-        for key, value in (("keep_backups", "3"), ("keep_journals", "2"), ("keep_snapshots", "2")):
-            self.cfg.set(s.SECTION, key, value, log=False)
+    def test_settings_have_no_retention_fields(self):
+        """Feedback round 1: retention lives in [general], not in the tool's settings."""
         loaded = s.load_settings(self.cfg)
         for name in ("keep_backups", "keep_journals", "keep_snapshots"):
             self.assertFalse(hasattr(loaded, name), name)
-        s.save_settings(self.cfg, loaded)
-        again = Config(self.cfg.path).load()
-        for key in ("keep_backups", "keep_journals", "keep_snapshots"):
-            self.assertIsNone(again.get(s.SECTION, key), key)
 
     def test_blacklist_pairs_parse_and_format(self):
-        """Feedback round 1: the blacklist holds (flavor folder, addon) pairs; a bare (legacy) name is "*"."""
+        """Feedback round 1: the blacklist holds (flavor folder, addon) pairs; a bare name is "*"."""
         self.assertEqual(bl.parse_blacklist("_retail_:ElvUI, Questie"), [("_retail_", "ElvUI"), ("*", "Questie")])
         self.assertEqual(bl.parse_blacklist(" _retail_:ElvUI\n_RETAIL_:elvui ,, _classic_era_ : Questie "),
                          [("_retail_", "ElvUI"), ("_classic_era_", "Questie")])
@@ -62,9 +56,9 @@ class SettingsTest(unittest.TestCase):
         self.assertTrue(bl.is_blacklisted([("_Retail_", "ELVUI")], "_retail_", "ElvUI"))
         self.assertFalse(bl.is_blacklisted(retail, "_classic_era_", "ElvUI"))  # Retail's pair: not Classic Era
         self.assertFalse(bl.is_blacklisted(retail, "_retail_", "ElvUI_Options"))
-        legacy = [("*", "Questie")]  # a bare name from the first build: every flavor
-        self.assertTrue(bl.is_blacklisted(legacy, "_retail_", "Questie"))
-        self.assertTrue(bl.is_blacklisted(legacy, "_classic_era_", "questie"))
+        wildcard = [("*", "Questie")]  # a bare name: every flavor
+        self.assertTrue(bl.is_blacklisted(wildcard, "_retail_", "Questie"))
+        self.assertTrue(bl.is_blacklisted(wildcard, "_classic_era_", "questie"))
 
     def test_toggle_pair(self):
         folders = ["_retail_", "_classic_era_"]
@@ -75,7 +69,7 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(bl.toggle_pair([("*", "ElvUI"), ("_retail_", "KickCD")], "_retail_", "ElvUI", folders),
                          ([("_classic_era_", "ElvUI"), ("_retail_", "KickCD")], False))
 
-    def test_legacy_names_load_as_wildcards(self):
+    def test_bare_names_load_as_wildcards(self):
         self.cfg.set(s.SECTION, "blacklist", "ElvUI, _retail_:KickCD", log=False)
         self.assertEqual(s.load_settings(self.cfg).blacklist, [("*", "ElvUI"), ("_retail_", "KickCD")])
 
@@ -86,16 +80,6 @@ class SettingsTest(unittest.TestCase):
                          self.tmp / "b" / "ace3-profile-manager")
         self.assertIsNone(s.resolve_root(s.ProfileSettings(), None))
         self.assertEqual(resolve_journal_dir(wow), wow / "wow-tools" / "ace3-profile-manager" / "journal")
-
-    def test_old_folder_in_a_chosen_backup_folder_moves_to_the_new_name(self):
-        backup = self.tmp / "b"
-        (backup / "ace-profiles" / "edited").mkdir(parents=True)
-        (backup / "ace-profiles" / "edited" / "edited-1.zip").write_bytes(b"zip")
-        s.migrate_backup_root(s.ProfileSettings(backup_dir=backup))
-        self.assertFalse((backup / "ace-profiles").exists())
-        self.assertEqual((backup / "ace3-profile-manager" / "edited" / "edited-1.zip").read_bytes(), b"zip")
-        s.migrate_backup_root(s.ProfileSettings(backup_dir=backup))  # nothing left to move
-        s.migrate_backup_root(s.ProfileSettings())  # the default folder is core/migrate.py's job
 
     def test_events_registered_with_prefix(self):
         self.assertIn(TOOL_NAME, TOOL_REGISTRIES)

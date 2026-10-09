@@ -252,14 +252,15 @@ change.
   collapse) and press **Save**, or **Cancel** (`Esc`) to leave it as it was. `a` and `n` act on what the filter
   shows; when it hides ticked addons, **Save** says how many and asks first (they're saved too). A blacklisted
   addon that's no longer installed is listed with "(not found)" so you can take it off; so is one blacklisted
-  (from an older version) in every game version, under each version that doesn't have it.
+  in every game version (a name with no game version), under each version that doesn't have it.
 - `u` **unlocks** a blacklisted addon for this session only: it can be changed until you close the tool, and it's
   tagged "unlocked". Press `u` again to lock it again.
 - Blacklisting or locking an addon throws away any pending changes for it, and says so.
 
 An addon's name is its settings file's name without `.lua` (`ElvUI`, `Bartender4`), upper or lower case doesn't
-matter. A name saved by the first version of the tool, without a game version, blacklists that addon in every game
-version until you next save the blacklist.
+matter. A name with no game version (`ElvUI` or `*:ElvUI`, typed into `blacklist` in
+`config\ace3-profile-manager.cfg` with the app closed) blacklists that addon in every game version until you next
+save the blacklist.
 
 ## Keys on the review screen
 
@@ -397,10 +398,6 @@ Unless you change it in settings, the backup folder is `<your WoW folder>\wow-to
 <your WoW folder>\wow-tools\ace3-profile-manager\
   journal\journal-<YYYYMMDD-HHMMSS>.jsonl                      the record Undo last change uses
 ```
-
-The tool used to be called `ace-profiles`. If you have folders or a settings file under that name, they move to
-the new name on the next start (the backup folder's when you next open the tool), and Undo still finds your
-earlier changes.
 
 `<flavor>` is the game version (`retail`, `classic_era` and so on) and `<account>` is the account you picked, or
 `all`. If two runs start in the same second, the second gets `-2` added before `.zip`, so no backup ever replaces

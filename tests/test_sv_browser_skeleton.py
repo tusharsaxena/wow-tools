@@ -67,15 +67,9 @@ class SettingsTest(unittest.TestCase):
         s.save_settings(self.cfg, saved)
         self.assertEqual(s.load_settings(Config(self.cfg.path).load()), saved)
 
-    def test_retention_is_global_and_stray_keys_go_on_save(self):
-        for key in ("keep_backups", "keep_journals", "keep_snapshots"):
-            self.cfg.set(s.SECTION, key, "3", log=False)
+    def test_settings_have_no_retention_fields(self):
         loaded = s.load_settings(self.cfg)
         self.assertFalse(any(hasattr(loaded, k) for k in ("keep_backups", "keep_journals", "keep_snapshots")))
-        s.save_settings(self.cfg, loaded)
-        again = Config(self.cfg.path).load()
-        for key in ("keep_backups", "keep_journals", "keep_snapshots"):
-            self.assertIsNone(again.get(s.SECTION, key), key)
 
     def test_root_is_the_backup_folder_or_the_wow_folder(self):
         wow = self.tmp / "World of Warcraft"

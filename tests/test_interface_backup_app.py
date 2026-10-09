@@ -264,7 +264,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertIn("<backup folder>\\interface-backup\\backup\\backup-<flavor>-<date>.zip", labels)
 
     async def test_review_lists_every_flavor_and_where_zips_go(self):
-        self.save_tool_cfg(backup_dir=str(self.bk), keep_backups="5")  # stale per-tool key: ignored
+        self.save_tool_cfg(backup_dir=str(self.bk))
         self.cfg.set("general", "keep_backups", "3", log=False)
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:

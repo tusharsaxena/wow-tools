@@ -8,12 +8,10 @@ from pathlib import Path
 from wowtools.core.blacklist import Pair, format_blacklist, parse_blacklist
 from wowtools.core.config import SKIP_RISK_WARNING, Config
 from wowtools.core.journal import tool_root
-from wowtools.core.migrate import merge_folder_logged
 from wowtools.tools.ace3_profile_manager.events import TOOL_NAME
 
 SECTION = "ace3_profile_manager"
 ROOT_NAME = TOOL_NAME
-OLD_ROOT_NAME = "ace-profiles"  # the tool's name before the rename (RENAMED_TOOLS)
 
 
 @dataclass
@@ -39,7 +37,6 @@ def load_settings(cfg: Config) -> ProfileSettings:
 
 def save_settings(cfg: Config, settings: ProfileSettings, *, source: str = "settings") -> None:
     cfg.set_path(SECTION, "backup_dir", settings.backup_dir, source=source)
-    cfg.remove_retired(SECTION, source=source)
     cfg.set(SECTION, "blacklist", format_blacklist(settings.blacklist), source=source)
     cfg.set(SECTION, "last_account", settings.last_account or "", source=source)
     cfg.set(SECTION, SKIP_RISK_WARNING, settings.skip_risk_warning, source=source)
@@ -51,13 +48,3 @@ def save_settings(cfg: Config, settings: ProfileSettings, *, source: str = "sett
 def resolve_root(settings: ProfileSettings, wow_path: Path | None) -> Path | None:
     """Where snapshots/, edited/ and the crash marker live."""
     return tool_root(settings.backup_dir, wow_path, ROOT_NAME)
-
-
-def migrate_backup_root(settings: ProfileSettings) -> None:
-    """Move <backup_dir>/ace-profiles, the tool's folder under its old name, to <backup_dir>/ace3-profile-manager.
-    core/migrate.py moves <WoW>/wow-tools/<old>/ at start-up, but not a folder inside one the user chose. Never
-    raises; nothing is overwritten."""
-    if settings.backup_dir is not None:
-        merge_folder_logged(settings.backup_dir / OLD_ROOT_NAME, settings.backup_dir / ROOT_NAME)
-
-

@@ -25,7 +25,6 @@ def load_settings(cfg: Config) -> BackupSettings:
 
 def save_settings(cfg: Config, settings: BackupSettings, *, source: str = "settings") -> None:
     cfg.set_path(SECTION, "backup_dir", settings.backup_dir, source=source)
-    cfg.remove_retired(SECTION, source=source)
     cfg.set(SECTION, "last_flavor_choice", settings.last_flavor_choice, source=source)
     cfg.save()
 

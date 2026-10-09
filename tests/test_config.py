@@ -9,8 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from wowtools.core.bootstrap import REPO_ROOT
-from wowtools.core.config import (CONFIG_DIR, DEFAULT_CONFIG_PATH, LEGACY_CONFIG_PATH, Config, ConfigError,
-                                  migrate_legacy_config, tool_config_path)
+from wowtools.core.config import CONFIG_DIR, DEFAULT_CONFIG_PATH, Config, ConfigError, tool_config_path
 from wowtools.core.events import capture_events
 
 
@@ -23,7 +22,6 @@ class ConfigTest(unittest.TestCase):
     def test_default_paths_are_in_the_config_folder_not_cwd(self):
         self.assertEqual(DEFAULT_CONFIG_PATH, REPO_ROOT / "config" / "wow-tools.cfg")
         self.assertEqual(tool_config_path("wtf-cleaner"), REPO_ROOT / "config" / "wtf-cleaner.cfg")
-        self.assertEqual(LEGACY_CONFIG_PATH, REPO_ROOT / "wow-tools.cfg")
         self.assertEqual(CONFIG_DIR, REPO_ROOT / "config")
 
     def test_missing_file_gives_defaults(self):
@@ -195,43 +193,3 @@ class ConfigTest(unittest.TestCase):
         self.path.write_text("this is not an ini file [[[", encoding="utf-8")
         with self.assertRaises(ConfigError):
             Config(self.path).load()
-
-
-class MigrationTest(unittest.TestCase):
-    def setUp(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.tmp = Path(tmp.name)
-        self.legacy = self.tmp / "wow-tools.cfg"
-        self.config_dir = self.tmp / "config"
-
-    def test_splits_general_and_tool_sections_and_removes_the_old_file(self):
-        self.legacy.write_text("[general]\nwow_path = G:\\WoW\nbackup_dir = \nlast_flavor = _retail_\n\n"
-                               "[wtf_cleaner]\nmax_age_days = 30\nlast_account = \n\n[mystery]\nx = 1\n",
-                               encoding="utf-8")
-        written = migrate_legacy_config(self.legacy, self.config_dir, {"wtf_cleaner": "wtf-cleaner"})
-        self.assertEqual(written, sorted([self.config_dir / "wow-tools.cfg", self.config_dir / "wtf-cleaner.cfg"]))
-        self.assertFalse(self.legacy.exists())
-        general = Config(self.config_dir / "wow-tools.cfg").load()
-        self.assertEqual(general.get("general", "wow_path"), "G:\\WoW")
-        self.assertEqual(general.last_flavor, "_retail_")
-        self.assertIsNone(general.get("general", "backup_dir"))  # retired key dropped
-        self.assertEqual(general.get("mystery", "x"), "1")  # unknown sections stay with [general]
-        self.assertIsNone(general.get("wtf_cleaner", "max_age_days"))
-        tool = Config(self.config_dir / "wtf-cleaner.cfg").load()
-        self.assertEqual(tool.get("wtf_cleaner", "max_age_days"), "30")
-        self.assertEqual(tool.get("wtf_cleaner", "last_account"), "")
-
-    def test_nothing_to_do_when_new_config_exists_or_no_legacy(self):
-        self.assertEqual(migrate_legacy_config(self.legacy, self.config_dir, {}), [])
-        self.legacy.write_text("[general]\n", encoding="utf-8")
-        self.config_dir.mkdir()
-        (self.config_dir / "wow-tools.cfg").write_text("[general]\nlast_flavor = x\n", encoding="utf-8")
-        self.assertEqual(migrate_legacy_config(self.legacy, self.config_dir, {}), [])
-        self.assertTrue(self.legacy.exists())
-
-    def test_unreadable_legacy_raises_and_keeps_it(self):
-        self.legacy.write_text("not an ini", encoding="utf-8")
-        with self.assertRaises(ConfigError):
-            migrate_legacy_config(self.legacy, self.config_dir, {})
-        self.assertTrue(self.legacy.exists())

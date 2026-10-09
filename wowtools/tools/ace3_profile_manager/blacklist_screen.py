@@ -42,7 +42,7 @@ class BlacklistScreen(TreeFilter, ReviewBase, Screen["list[Pair] | None"]):
     """Tick the (flavor, addon) pairs to blacklist. Dismisses with the new pair list (Save), or None (Cancel, Esc).
 
     `cfg` is the suite config (its WoW folder names every flavor of the install); `flavors` are the flavors shown;
-    `pairs` the blacklist now. A legacy wildcard pair ("*") shows ticked under every shown flavor (marked
+    `pairs` the blacklist now. A wildcard pair ("*") shows ticked under every shown flavor (marked
     "(not found)" where that flavor has no data for it) and is saved as explicit pairs; pairs of flavors not shown
     are kept as they are."""
 

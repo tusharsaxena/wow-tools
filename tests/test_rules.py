@@ -230,7 +230,7 @@ class SettingsTest(unittest.TestCase):
         settings.keep_cleaned = 5
         save_settings(cfg, settings)
         reloaded = Config(self.path).load()
-        self.assertEqual(reloaded.get(SECTION, "keep_cleaned"), "5")  # remove_retired leaves it alone
+        self.assertEqual(reloaded.get(SECTION, "keep_cleaned"), "5")
         self.assertEqual(load_settings(reloaded).keep_cleaned, 5)
         for bad in ("-3", "lots"):
             cfg.set(SECTION, "keep_cleaned", bad)
@@ -261,18 +261,11 @@ class SettingsTest(unittest.TestCase):
         save_settings(cfg, settings)
         self.assertEqual(load_settings(Config(self.path).load()).blacklist, [])
 
-    def test_retention_is_global_and_stale_keys_go_on_save(self):
-        """Feedback round 1: retention lives in [general]; the old per-tool keys are ignored, then removed."""
-        cfg = Config(self.path)
-        for key, value in (("keep_backups", "3"), ("keep_journals", "2"), ("keep_snapshots", "2")):
-            cfg.set(SECTION, key, value, log=False)
-        settings = load_settings(cfg)
+    def test_settings_have_no_retention_fields(self):
+        """Feedback round 1: retention lives in [general], not in the tool's settings (keep_cleaned aside)."""
+        settings = load_settings(Config(self.path))
         for name in ("keep_backups", "keep_journals", "keep_snapshots"):
             self.assertFalse(hasattr(settings, name), name)
-        save_settings(cfg, settings)
-        again = Config(self.path).load()
-        for key in ("keep_backups", "keep_journals", "keep_snapshots"):
-            self.assertIsNone(again.get(SECTION, key), key)
 
     def test_settings_round_trip_backup_dir(self):
         cfg = Config(self.path)

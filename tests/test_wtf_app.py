@@ -2103,10 +2103,8 @@ class UndoLastCleanTest(AppTestCase):
             for box in ("#keep_backups", "#keep_journals", "#keep-backups", "#keep-journals"):
                 self.assertFalse(screen.query(box), box)
 
-    async def test_retention_comes_from_general_not_the_tool_file(self):
-        """Feedback round 1: a stale per-tool keep_backups is ignored; the global value is used (0 = keep all)."""
-        self.tool_cfg.set("wtf_cleaner", "keep_backups", "3", log=False)
-        self.tool_cfg.save()
+    async def test_retention_comes_from_general(self):
+        """Feedback round 1: the review uses the global keep_backups (0 = keep all)."""
         for keep, wanted in (("7", "the newest 7 of this flavor are kept"), ("0", "all of this flavor are kept")):
             self.cfg.set("general", "keep_backups", keep, log=False)
             app = self.make_app()

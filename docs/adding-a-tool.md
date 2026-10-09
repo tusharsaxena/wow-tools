@@ -177,15 +177,15 @@ of its own, and backups it prunes follow `cfg.keep_backups`, 0 = keep all). Keep
    `tests/test_release_contents.py` fails on a tracked file that neither table names, and on a table the
    constant does not match (its internals doc is already under `docs/internals/` in "Stays out").
 6. **Renaming a tool later**: change the name in `TOOLS`, the tool's `TOOL_NAME` and `SECTION`, and add one line
-   to `RENAMED_TOOLS` in `wowtools/tools/__init__.py`, e.g.
-   `ToolRename("screenshots", "screenshot-organizer", "screenshots", "screenshot_organizer")`. On the next start
+   to `RENAMED_TOOLS` in `wowtools/tools/__init__.py` (empty while no tool has been renamed), e.g.
+   `ToolRename("old-name", "new-name", "old_name", "new_name")`. On the next start
    the old config file, `logs/<old>/` and `<WoW folder>/wow-tools/<old>/` move to the new name (`core/migrate.py`).
    Nothing else moves: a tool whose output folder is named after `TOOL_NAME` inside a folder the user chose
    (Interface Backup's `<backup folder>/interface-backup`, when the backup folder is set) needs that subfolder
    moved too, which migrate does not do. Without it the tool lists no backups and Undo refuses the moved journals.
-   The Ace3 Profile Manager's rename from `ace-profiles` is the worked example: `settings.migrate_backup_root()`
-   moves `<backup_dir>/ace-profiles` with `merge_folder_logged()` when the tool opens, and the shared
-   `core/sv_undo._moved_zip()` (Undo and recovery of every tool on the SavedVariables pipeline) finds a journal's `edited-*.zip` by name in the new folder.
+   The tool moves it itself when it opens: `merge_folder_logged(<backup_dir>/<old>, <backup_dir>/<new>)` from
+   `core/migrate.py` (never raises, never overwrites). The shared `core/sv_undo._moved_zip()` (Undo and recovery
+   of every tool on the SavedVariables pipeline) already finds a journal's `edited-*.zip` by name in the new folder.
    Rename the guide `docs/<old>.md` in the "Ships" table of [releasing.md](releasing.md#what-a-release-contains)
    and in `RELEASE_SHIPS` (`wowtools/core/updater.py`) too (STD-11.5): a stale entry fails
    `test_the_archive_holds_everything_that_ships`, and a new name no table
