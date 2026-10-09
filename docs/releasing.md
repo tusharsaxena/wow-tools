@@ -108,7 +108,12 @@ install it can only be the user's.
 
    The notes appear in the in-app update prompt. If you forgot the assets, add them before anyone updates:
    `gh release upload vX.Y.Z dist/wow-tools-vX.Y.Z.zip dist/SHA256SUMS`.
-8. Check: on a zip install of the previous version, `./wow-tools.sh update` should say
+8. Scan the zip on [VirusTotal](https://www.virustotal.com/): upload `dist/wow-tools-vX.Y.Z.zip` there and add the
+   report's link to the release notes (`gh release edit vX.Y.Z --notes-file <notes with the link>`). The README's
+   FAQ tells Windows users the notes carry it. A heuristic hit or two on the bundled libraries or the launchers is
+   a common false positive; say so in the notes rather than leave it unexplained. Uploading makes the file public,
+   which a published release already is.
+9. Check: on a zip install of the previous version, `./wow-tools.sh update` should say
    "Updated Ka0s WoW Tools to vX.Y.Z", and the log should have an `update.verified` event.
 
 Never re-use or move a tag, and never replace a published asset. Git installs would fail to fast-forward, and a
