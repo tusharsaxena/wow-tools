@@ -50,8 +50,8 @@ When a new file does not fit one rule clearly, it stays out until the release ma
 | Path | What it is |
 |---|---|
 | `tests/` | The test suite |
-| `scripts/` | `run_tests.py`, `build_release.py`, `update_vendor.py`, `gen_event_docs.py` |
-| `.github/` | CI |
+| `scripts/` | `run_tests.py`, `build_release.py`, `update_vendor.py`, `gen_event_docs.py`, `virustotal_scan.py` |
+| `.github/` | CI: the `tests` and `virustotal` workflows |
 | `docs/standards.md`, `docs/architecture.md`, `docs/internals/`, `docs/testing.md`, `docs/common-tasks.md`, `docs/adding-a-tool.md`, `docs/releasing.md`, `docs/vendoring.md`, `docs/events.md` | Developer documentation |
 | `docs/superpowers/`, `reviews/`, `docs/ideas/` | Design specs, plans, ledgers, review bundles and tool ideas |
 | `docs/assets/ka0s-logo.png` | The repository logo, which no shipped doc shows |
@@ -107,12 +107,36 @@ install it can only be the user's.
    ```
 
    The notes appear in the in-app update prompt. If you forgot the assets, add them before anyone updates:
-   `gh release upload vX.Y.Z dist/wow-tools-vX.Y.Z.zip dist/SHA256SUMS`.
-8. Scan the zip on [VirusTotal](https://www.virustotal.com/): upload `dist/wow-tools-vX.Y.Z.zip` there and add the
-   report's link to the release notes (`gh release edit vX.Y.Z --notes-file <notes with the link>`). The README's
-   FAQ tells Windows users the notes carry it. A heuristic hit or two on the bundled libraries or the launchers is
-   a common false positive; say so in the notes rather than leave it unexplained. Uploading makes the file public,
-   which a published release already is.
+   `gh release upload vX.Y.Z dist/wow-tools-vX.Y.Z.zip dist/SHA256SUMS`. The `virustotal` run that publishing
+   started has then failed (no asset to download), so rerun it by hand afterwards: step 8.
+8. Check the VirusTotal scan. Publishing the release starts the `virustotal` workflow
+   (`.github/workflows/virustotal.yml`): it downloads the zip and `SHA256SUMS` from the release, checks the sum,
+   runs `scripts/virustotal_scan.py` on the zip (an existing report for its SHA-256 is reused, else it uploads it
+   and waits for the analysis) and only then fetches the notes and adds a marked line to them, so an edit made
+   while it ran is kept: "VirusTotal: N of M engines flagged this zip" with the report's link. The README's FAQ
+   tells Windows users the notes carry it. Check its run with `gh run list --workflow virustotal.yml`. If it
+   flagged anything, look at the report and say why in the notes (`gh release edit vX.Y.Z --notes-file <notes>`,
+   keeping the marked block): a heuristic hit or two on the bundled libraries or the launchers is a common false
+   positive. To (re)run it by hand: `gh workflow run virustotal.yml -f tag=vX.Y.Z` (rerunning replaces the block,
+   never adds a second one). The API key is the repository's Actions secret `VT_API_KEY`; without it the workflow
+   fails at its first step.
+
+   GitHub runs the workflow file of the tagged commit on a published release, and `gh workflow run` only once the
+   file is on the default branch. So a release whose tag predates the workflow (v1.0.0 and earlier) never starts
+   it: scan it by hand with `gh workflow run virustotal.yml -f tag=vX.Y.Z`, which works once the workflow is on
+   `master`. Before that, only the local fallback works. Local fallback, with the key set in your shell (never
+   commit it):
+
+   ```sh
+   VT_API_KEY=... python3 scripts/virustotal_scan.py dist/wow-tools-vX.Y.Z.zip --block-file block.md
+   gh release view vX.Y.Z --json body -q .body > notes.md
+   python3 scripts/virustotal_scan.py --splice block.md --notes-file notes.md
+   gh release edit vX.Y.Z --notes-file notes.md
+   ```
+
+   The script exits 0 on a finished scan, detections or not (you decide), and non-zero on an API error, a refused
+   key or a timeout (900 s; `--timeout S`). It waits 15 s between requests, the free tier's 4 a minute. Uploading
+   makes the file public, which a published release already is.
 9. Check: on a zip install of the previous version, `./wow-tools.sh update` should say
    "Updated Ka0s WoW Tools to vX.Y.Z", and the log should have an `update.verified` event.
 
