@@ -234,6 +234,7 @@ keyword arguments go into `[general]`. A tool's own settings go into `<config_di
 | `await footer_keys(screen, pilot, wanted)` | The keys a screen's footer lists, once it lists every key in `wanted` (or the timeout passes) |
 | `assert_keys_on_buttons(test, screen)` | Spec D17 on one screen: a button shows its action's key, a shown key works there, and the footer lists none of them |
 | `with record_fsyncs(module=None) as calls:` | Record `("fsync", file size)` for every `os.fsync`, and with `module`, `("rename", source size)` for every call of that module's `rename_no_replace`: a test checks a file reached the disk before it was moved into place or counted (F-012) |
+| `with cpu_seconds() as cpu:` | The process's CPU time inside the block (`time.process_time()`), in `cpu.seconds` once it ends: what a CPU-cost budget asserts on ([below](#timing-races-and-skipped-tests)) |
 
 Logging is tested through `wowtools.core.events.capture_events()`, a context manager that swaps in a strict
 in-memory event log and yields its records. An unregistered event then raises, and nothing is written to `logs/`
@@ -409,6 +410,21 @@ finished, or left `run_test` while a new screen was still mounting (`NoMatches` 
 the test with `settle()`, which now waits for workers, pending rebuilds, queued messages and stale footers, and
 fails loudly at its timeout rather than passing on a half-drawn screen. If a TUI test fails only under the parallel
 runner or only on Windows, look for a missing `await settle(app, pilot)` first.
+
+A test that bounds how long work takes uses the right clock. A CPU-cost budget of in-process work (parsing,
+compiling, searching a big file) measures the process's CPU time with `cpu_seconds()`, never wall time: the
+`--all` gate runs the WSL and Windows suites at once on every CPU, and under that load wall time broke the 4 s budget
+of `test_thousands_of_edits_in_one_file_compile_and_verify_quickly` while the work takes about 0.6 s of CPU. CPU
+time is not load-proof under WSL either: a vCPU the Windows side holds back still counts as the process's CPU time
+(that 0.6 s read 1.2 s with only the Windows suite running, and 11.5 s once under `--all`). So a budget keeps a wide
+margin (11x to 35x for the four in `test_luasv.py`, `test_sv_browser_model.py` and `test_sv_browser_search.py`),
+and a test that guards against quadratic work asserts on how the CPU cost grows instead: the compile test alternates
+three 1000-edit and three 4000-edit runs, divides the fastest large run by the fastest small one and wants it under 8
+(linear is 4, the quadratic code was 15). That ratio guards growth, not a constant-factor slowdown that stays linear;
+that trade-off is accepted for its purpose (the M2 quadratic regression). Wall time (`time.monotonic()`) is only
+for a bound on waiting (a worker, a subprocess, a timeout), which CPU time cannot see, and that bound is set against
+the thing it guards: under the 5 s `slow_check` a UI-thread check would hold, under the 30 s sleep a killed process
+would otherwise finish.
 
 Some tests skip on purpose, with the reason in the decorator: POSIX-only behaviour (`chmod` read-only, hard links,
 `EXDEV`), symlinks (they need privileges on Windows), Windows-only launcher tests, and a config-save stress test

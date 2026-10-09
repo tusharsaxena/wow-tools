@@ -5,12 +5,11 @@ from __future__ import annotations
 
 import hashlib
 import tempfile
-import time
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from tests.fixtures import SVB_FONT, build_sv_tree
+from tests.fixtures import SVB_FONT, build_sv_tree, cpu_seconds
 from wowtools.core import luasv
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
@@ -222,12 +221,11 @@ class CapAndSizeTest(unittest.TestCase):
         data = b"WeakAurasSaved = {\r\n[\"displays\"] = {\r\n" + body + b"},\r\n}\r\nOther = 1\r\n"
         self.assertGreater(len(data), 5_000_000)
         doc = self.write("WeakAuras.lua", data)
-        started = time.monotonic()
-        roots = doc.roots()
-        loaded = time.monotonic() - started
+        with cpu_seconds() as cpu:
+            roots = doc.roots()
         self.assertEqual([n.key for n in roots], ["WeakAurasSaved", "Other"])
         self.assertIsInstance(roots[0].value.fields[0].value, Opaque)  # displays not built at load
-        self.assertLess(loaded, 3.0)
+        self.assertLess(cpu.seconds, 3.0)
         displays = doc.children(roots[0])[0]
         self.assertEqual(displays.count, 20000)
         kids = doc.children(displays)

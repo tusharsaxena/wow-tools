@@ -727,8 +727,11 @@ class BoundedRunTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pid_file = Path(tmp) / "grandchild.pid"
             started = time.monotonic()
+            # The processes run outside tmp: _kill_tree waits only for the direct child, and on a loaded Windows box
+            # the killed grandchild can still hold its cwd when tmp is removed (WinError 32 under --all).
             with self.assertRaises(subprocess.TimeoutExpired):
-                updater._run_bounded([sys.executable, "-c", CHILD, GRANDCHILD, str(pid_file)], cwd=tmp,
+                updater._run_bounded([sys.executable, "-c", CHILD, GRANDCHILD, str(pid_file)],
+                                     cwd=tempfile.gettempdir(),
                                      capture_output=True, text=True, check=False, timeout=3, env=dict(os.environ))
             self.assertLess(time.monotonic() - started, 15)
             self.assertTrue(pid_file.exists())
