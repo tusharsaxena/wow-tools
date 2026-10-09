@@ -426,8 +426,8 @@ time is not load-proof under WSL either: a vCPU the Windows side holds back stil
 (that 0.6 s read 1.2 s with only the Windows suite running, and 11.5 s once under `--all`). So a budget keeps a wide
 margin (11x to 35x for the four in `test_luasv.py`, `test_sv_browser_model.py` and `test_sv_browser_search.py`),
 and a test that guards against quadratic work asserts on how the CPU cost grows instead: the compile test alternates
-three 1000-edit and three 4000-edit runs, divides the fastest large run by the fastest small one and wants it under 8
-(linear is 4, the quadratic code was 15). That ratio guards growth, not a constant-factor slowdown that stays linear;
+three 1000-edit and three 4000-edit runs, divides the fastest large run by the fastest small one and wants it under 10
+(linear is 4, the quadratic code was 15; a loaded Windows CI runner once read 9.0 for linear code). That ratio guards growth, not a constant-factor slowdown that stays linear;
 that trade-off is accepted for its purpose (the M2 quadratic regression). Wall time (`time.monotonic()`) is only
 for a bound on waiting (a worker, a subprocess, a timeout), which CPU time cannot see, and that bound is set against
 the thing it guards: under the 5 s `slow_check` a UI-thread check would hold, under the 30 s sleep a killed process

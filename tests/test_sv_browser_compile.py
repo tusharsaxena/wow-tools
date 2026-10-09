@@ -303,7 +303,8 @@ class ManyEditsTest(CompileTestBase):
             small_runs.append(self.compile_and_verify(1000, *small))
             large_runs.append(self.compile_and_verify(4000, *large))
         ratio = min(large_runs) / max(min(small_runs), 0.001)
-        self.assertLess(ratio, 8.0, f"CPU cost of 4000 edits over 1000: {ratio:.1f} ({small_runs}, {large_runs})")
+        # 10: linear is 4, the old quadratic code was 15; a loaded Windows CI runner once read 9.0 for linear code.
+        self.assertLess(ratio, 10.0, f"CPU cost of 4000 edits over 1000: {ratio:.1f} ({small_runs}, {large_runs})")
 
 
 class VerifyTest(CompileTestBase):
