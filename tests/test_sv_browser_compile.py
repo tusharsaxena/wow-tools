@@ -291,15 +291,19 @@ class ManyEditsTest(CompileTestBase):
         # M2 review: locate and the expected rows were linear per edit (quadratic per file). Asserted on how the CPU
         # cost grows from 1000 to 4000 edits, not on a time: 4x is linear (0.15 s and 0.6 s here), the quadratic
         # code took 15x (0.95 s and 14 s). An absolute 4 s budget broke under the --all gate even on CPU time:
-        # under WSL a vCPU the Windows side holds back still counts as CPU time (11.5 s once). A slowdown hits both
-        # sizes of a pair, and the best of three adjacent pairs drops one that a burst of load split.
+        # under WSL a vCPU the Windows side holds back still counts as CPU time (11.5 s once). The runs alternate
+        # sizes so sustained load hits both, and each size keeps its fastest of three: one burst can neither fail
+        # the test (it needs all three large runs) nor pass a regression (it needs all three small runs).
+        # Trade-off: a ratio catches quadratic growth (it passes only while the quadratic cost at 1000 edits stays
+        # under about half the linear cost, where the old 4 s budget allowed about 1.4x), not a constant-factor
+        # slowdown that stays linear.
         small, large = self.many_edits(1000), self.many_edits(4000)
-        ratios = []
+        small_runs, large_runs = [], []
         for _ in range(3):
-            small_cpu = self.compile_and_verify(1000, *small)
-            large_cpu = self.compile_and_verify(4000, *large)
-            ratios.append(large_cpu / max(small_cpu, 0.001))
-        self.assertLess(min(ratios), 8.0, f"CPU cost of 4000 edits over 1000: {ratios}")
+            small_runs.append(self.compile_and_verify(1000, *small))
+            large_runs.append(self.compile_and_verify(4000, *large))
+        ratio = min(large_runs) / max(min(small_runs), 0.001)
+        self.assertLess(ratio, 8.0, f"CPU cost of 4000 edits over 1000: {ratio:.1f} ({small_runs}, {large_runs})")
 
 
 class VerifyTest(CompileTestBase):
