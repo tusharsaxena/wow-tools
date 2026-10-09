@@ -167,11 +167,25 @@ class MigrateToolConfigTest(unittest.TestCase):
 
 
 class RenameTableTest(unittest.TestCase):
+    def assert_points_at_a_registered_tool(self, rename: ToolRename) -> None:
+        self.assertIn(rename.new, TOOLS)
+        self.assertEqual(TOOLS[rename.new].section, rename.new_section)
+        self.assertNotIn(rename.old, TOOLS)
+
     def test_every_rename_points_at_a_registered_tool(self):
         for rename in RENAMED_TOOLS:
-            self.assertIn(rename.new, TOOLS)
-            self.assertEqual(TOOLS[rename.new].section, rename.new_section)
-            self.assertNotIn(rename.old, TOOLS)
+            self.assert_points_at_a_registered_tool(rename)
+
+    def test_the_rename_check_accepts_a_good_line_and_rejects_bad_ones(self):
+        # RENAMED_TOOLS is empty until a tool is renamed: prove the check above bites on sample lines.
+        self.assert_points_at_a_registered_tool(
+            ToolRename("screenshots", "screenshot-organizer", "screenshots", "screenshot_organizer"))
+        bad = [ToolRename("old-tool", "no-such-tool", "old_tool", "no_such_tool"),
+               ToolRename("screenshots", "screenshot-organizer", "screenshots", "wrong_section"),
+               ToolRename("wtf-cleaner", "screenshot-organizer", "wtf_cleaner", "screenshot_organizer")]
+        for rename in bad:
+            with self.subTest(rename=rename), self.assertRaises(AssertionError):
+                self.assert_points_at_a_registered_tool(rename)
 
     def test_folder_pairs(self):
         logs, wow = Path("/l"), Path("/w")

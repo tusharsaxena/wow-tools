@@ -224,11 +224,11 @@ per app session, L4; `ace.disclaimer_accepted` / `_declined`; Back returns to th
 - `BlacklistScreen(cfg, flavors, pairs)` (`blacklist_screen.py`): `TreeFilter` and `ReviewBase`, `two_pane_css`. Left
   pane: an explanation, the `FilterBar` (filter box and **Filter** button) and **Save** / **Select none** / **Cancel** (keys `n` and Esc on the buttons); right: a flavor → addon tree, from its own
   scan worker (`scan_flavors`), of every addon with Ace3 data plus each blacklisted pair no longer found
-  ("(not found)"; a legacy `"*"` pair is listed under every shown flavor, so a Save, or a failed scan, never drops
+  ("(not found)"; a wildcard `"*"` pair (a bare name) is listed under every shown flavor, so a Save, or a failed scan, never drops
   it). A ticked pair is blacklisted; nothing else is ticked. `a`/`n`/`/`/`x`/`c` as on every tree (the filter
   matches flavor and addon names; a mark counts the keys shown). With ticks the filter hides, Save asks first
   (`ConfirmScreen`, kind `confirm`, saying how many). It
-  dismisses with the new pair list (or `None`); pairs of flavors it does not show are kept, and a legacy `"*"`
+  dismisses with the new pair list (or `None`); pairs of flavors it does not show are kept, and a wildcard `"*"`
   pair is saved as explicit pairs (for the hidden flavors too).
 - `popups.py`: `TargetScreen` (delete and assign: a target `Select` plus a new-name `Input`; what the change takes,
   one `Listed(addon, item=profile or character)` per database entry, is its `listed=`, one collapsed, counted

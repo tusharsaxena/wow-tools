@@ -29,7 +29,6 @@ def load_settings(cfg: Config) -> SvBrowserSettings:
 def save_settings(cfg: Config, settings: SvBrowserSettings, *, source: str = "settings") -> None:
     cfg.set_path(SECTION, "backup_dir", settings.backup_dir, source=source)
     cfg.set(SECTION, SKIP_RISK_WARNING, settings.skip_risk_warning, source=source)
-    cfg.remove_retired(SECTION, source=source)
     if settings.last_flavor_choice is not None:
         cfg.set(SECTION, "last_flavor_choice", settings.last_flavor_choice, source=source)
     cfg.save()

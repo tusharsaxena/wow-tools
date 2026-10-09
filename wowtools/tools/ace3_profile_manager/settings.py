@@ -37,7 +37,6 @@ def load_settings(cfg: Config) -> ProfileSettings:
 
 def save_settings(cfg: Config, settings: ProfileSettings, *, source: str = "settings") -> None:
     cfg.set_path(SECTION, "backup_dir", settings.backup_dir, source=source)
-    cfg.remove_retired(SECTION, source=source)
     cfg.set(SECTION, "blacklist", format_blacklist(settings.blacklist), source=source)
     cfg.set(SECTION, "last_account", settings.last_account or "", source=source)
     cfg.set(SECTION, SKIP_RISK_WARNING, settings.skip_risk_warning, source=source)
@@ -49,4 +48,3 @@ def save_settings(cfg: Config, settings: ProfileSettings, *, source: str = "sett
 def resolve_root(settings: ProfileSettings, wow_path: Path | None) -> Path | None:
     """Where snapshots/, edited/ and the crash marker live."""
     return tool_root(settings.backup_dir, wow_path, ROOT_NAME)
-

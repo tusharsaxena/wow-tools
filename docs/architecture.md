@@ -112,11 +112,10 @@ Backup zips, Ace3 Profile Manager and Saved Variables Browser snapshots; default
 (`Config.keep_journals`: run journals kept per tool, default 10, at least 1). Also shared: `parallelism`
 (`Config.parallelism`: game versions a tool works on at once through `core/parallel.py`, default 2, clamped to 1-8,
 unreadable = 2; a hard drive or a WSL `/mnt` folder should use 1). All three are edited on the setup screen
-(`#keep-backups`, `#keep-journals`, `#parallelism`; Save refuses a value outside 1-8). The per-tool `keep_backups` / `keep_snapshots` / `keep_journals` they replaced
-are ignored, and each tool's `save_settings` drops them (`Config.remove_retired`).
+(`#keep-backups`, `#keep-journals`, `#parallelism`; Save refuses a value outside 1-8).
 Each tool owns one file with one section. `config/wtf-cleaner.cfg` `[wtf_cleaner]`: `max_age_days`, `criterion_*`, `backup_before_delete`,
 `keep_cleaned` (cleaned-files zips kept per flavor, default 0 = keep all, negative or bad = 0; the one tool-level
-retention setting, which `remove_retired` leaves alone), `blacklist` (the `core/blacklist.py` pair format, empty by default; written by `b` on the review, kept by the settings form, which has no row for it), `backup_dir` (empty = `<wow_path>/wow-tools/wtf-cleaner`, resolved by `settings.resolve_backup_dir()`) and
+retention setting), `blacklist` (the `core/blacklist.py` pair format, empty by default; written by `b` on the review, kept by the settings form, which has no row for it), `backup_dir` (empty = `<wow_path>/wow-tools/wtf-cleaner`, resolved by `settings.resolve_backup_dir()`) and
 `last_account` (empty = all accounts), `skip_risk_warning` (L8: true = no USE AT YOUR OWN RISK popup; also in the
 Ace3 and SV Browser sections) and `last_flavor_choice` (empty = all flavors, else a flavor
 folder; absent until first chosen, and then the picker pre-selects `[general] last_flavor`). `config/screenshot-organizer.cfg` `[screenshot_organizer]`: `dest_dir` (empty = in place),

@@ -252,14 +252,15 @@ change.
   collapse) and press **Save**, or **Cancel** (`Esc`) to leave it as it was. `a` and `n` act on what the filter
   shows; when it hides ticked addons, **Save** says how many and asks first (they're saved too). A blacklisted
   addon that's no longer installed is listed with "(not found)" so you can take it off; so is one blacklisted
-  (from an older version) in every game version, under each version that doesn't have it.
+  in every game version (a name with no game version), under each version that doesn't have it.
 - `u` **unlocks** a blacklisted addon for this session only: it can be changed until you close the tool, and it's
   tagged "unlocked". Press `u` again to lock it again.
 - Blacklisting or locking an addon throws away any pending changes for it, and says so.
 
 An addon's name is its settings file's name without `.lua` (`ElvUI`, `Bartender4`), upper or lower case doesn't
-matter. A name saved by the first version of the tool, without a game version, blacklists that addon in every game
-version until you next save the blacklist.
+matter. A name with no game version (`ElvUI` or `*:ElvUI`, typed into `blacklist` in
+`config\ace3-profile-manager.cfg` with the app closed) blacklists that addon in every game version until you next
+save the blacklist.
 
 ## Keys on the review screen
 

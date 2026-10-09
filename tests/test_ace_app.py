@@ -714,11 +714,7 @@ class RunTest(AceAppBase):
             self.assertEqual(path.read_bytes(), before)
 
     async def test_runs_use_the_global_retention(self):
-        """Feedback round 1: Apply prunes to [general] keep_backups / keep_journals; stale tool keys are ignored."""
-        tool = Config(self.config_dir / "ace3-profile-manager.cfg")
-        for key in ("keep_snapshots", "keep_backups", "keep_journals"):
-            tool.set("ace3_profile_manager", key, "2", log=False)
-        tool.save()
+        """Feedback round 1: Apply prunes to [general] keep_backups / keep_journals."""
         self.cfg.set("general", "keep_backups", "0", log=False)
         self.cfg.set("general", "keep_journals", "4", log=False)
         calls = []
@@ -1609,7 +1605,7 @@ class BlacklistScreenTest(AceAppBase):
             await settle(app, pilot)
             self.assertEqual(results, [[]])
 
-    async def test_legacy_wildcard_and_missing_pairs(self):
+    async def test_wildcard_and_missing_pairs(self):
         """A bare name is ticked under every flavor that has it, and saved as explicit pairs; a pair no longer
         found is shown "(not found)" and kept while ticked; a flavor not shown keeps its pairs."""
         app = self.make_app()
@@ -1684,7 +1680,7 @@ class BlacklistScreenTest(AceAppBase):
 
 
 class FeedbackReviewFixesTest(AceAppBase):
-    """Feedback round 1 review: legacy wildcards survive the blacklist screen, `s` never stacks a second settings
+    """Feedback round 1 review: wildcards survive the blacklist screen, `s` never stacks a second settings
     screen, Delete/Assign on the root ask for a tick, and the guidance line knows a blacklisted addon."""
 
     async def save_unchanged(self, app, pilot, pairs):

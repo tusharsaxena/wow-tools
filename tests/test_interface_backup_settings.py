@@ -11,7 +11,7 @@ from wowtools.core.install import WowInstall, validate_backup_dir
 from wowtools.core.journal import TOOLS_SUBDIR
 from wowtools.tools.interface_backup import events
 from wowtools.tools.interface_backup.journal import resolve_journal_dir
-from wowtools.tools.interface_backup.settings import (SECTION, BackupSettings, load_settings, resolve_backup_root,
+from wowtools.tools.interface_backup.settings import (BackupSettings, load_settings, resolve_backup_root,
                                                       save_settings)
 
 
@@ -32,17 +32,11 @@ class SettingsTest(unittest.TestCase):
         s = load_settings(Config(self.tmp / "interface-backup.cfg").load())
         self.assertEqual((s.backup_dir, s.last_flavor_choice), (self.tmp / "bk", "_retail_"))
 
-    def test_retention_is_global_and_stale_keys_go_on_save(self):
-        """Feedback round 1: retention lives in [general]; the old per-tool keys are ignored, then removed."""
-        for key, value in (("keep_backups", "3"), ("keep_journals", "2"), ("keep_snapshots", "2")):
-            self.cfg.set(SECTION, key, value, log=False)
+    def test_settings_have_no_retention_fields(self):
+        """Feedback round 1: retention lives in [general], not in the tool's settings."""
         s = load_settings(self.cfg)
         for name in ("keep_backups", "keep_journals", "keep_snapshots"):
             self.assertFalse(hasattr(s, name), name)
-        save_settings(self.cfg, s)
-        again = Config(self.cfg.path).load()
-        for key in ("keep_backups", "keep_journals", "keep_snapshots"):
-            self.assertIsNone(again.get(SECTION, key), key)
 
     def test_roots(self):
         wow = self.tmp / "WoW"

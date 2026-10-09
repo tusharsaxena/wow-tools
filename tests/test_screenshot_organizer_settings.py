@@ -37,14 +37,11 @@ class SettingsTest(unittest.TestCase):
         cfg.set(SECTION, "copy_mode", "maybe", log=False)
         self.assertFalse(load_settings(cfg).copy_mode)
 
-    def test_retention_is_global_and_stale_keys_go_on_save(self):
-        """Feedback round 1: retention lives in [general]; the old per-tool key is ignored, then removed."""
-        cfg = Config(self.tmp / "screenshot-organizer.cfg")
-        cfg.set(SECTION, "keep_journals", "2", log=False)
-        s = load_settings(cfg)
-        self.assertFalse(hasattr(s, "keep_journals"))
-        save_settings(cfg, s)
-        self.assertIsNone(Config(cfg.path).load().get(SECTION, "keep_journals"))
+    def test_settings_have_no_retention_fields(self):
+        """Feedback round 1: retention lives in [general], not in the tool's settings."""
+        s = load_settings(Config(self.tmp / "screenshot-organizer.cfg"))
+        for name in ("keep_backups", "keep_journals"):
+            self.assertFalse(hasattr(s, name), name)
 
     def test_target_root(self):
         self.assertEqual(source_dir(self.retail), self.root / "_retail_" / "Screenshots")

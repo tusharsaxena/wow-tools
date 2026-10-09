@@ -10,7 +10,7 @@ from collections.abc import Iterable
 __all__ = ["WILDCARD", "Pair", "format_blacklist", "is_blacklisted", "parse_blacklist", "toggle_pair", "unique_pairs"]
 
 _SPLIT = re.compile(r"[,\r\n]+")
-WILDCARD = "*"  # the flavor of a bare (legacy) blacklist name: every flavor
+WILDCARD = "*"  # the flavor of a bare blacklist name: every flavor
 Pair = tuple[str, str]  # (flavor folder, addon)
 
 
@@ -27,8 +27,8 @@ def unique_pairs(pairs: Iterable[Pair]) -> list[Pair]:
 
 
 def parse_blacklist(text: str) -> list[Pair]:
-    """`flavor:addon` entries separated by commas or new lines (`_retail_:ElvUI, Questie`). A bare name (the first
-    build's form) becomes ("*", name): every flavor. Blanks dropped, duplicates (ignoring case) keep the first
+    """`flavor:addon` entries separated by commas or new lines (`_retail_:ElvUI, Questie`). A bare name (or `*:addon`)
+    becomes ("*", name): every flavor. Blanks dropped, duplicates (ignoring case) keep the first
     spelling."""
     pairs: list[Pair] = []
     for part in _SPLIT.split(text or ""):

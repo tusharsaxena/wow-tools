@@ -68,8 +68,7 @@ Example: the Screenshot Organizer's `copy_mode`.
 
 1. `wowtools/tools/<package>/settings.py`: a field with its default on the settings dataclass; read it in
    `load_settings` with a typed getter and a default (`cfg.get_bool(SECTION, "copy_mode", False)`); write it in
-   `save_settings` with `cfg.set` (`cfg.set_path` for a folder), before the existing `cfg.remove_retired(SECTION,
-   source=source)` and `cfg.save()`.
+   `save_settings` with `cfg.set` (`cfg.set_path` for a folder), before the existing `cfg.save()`.
 2. `wowtools/tools/<package>/app.py`: the row in the `ToolSettingsScreen` subclass, `fields()` (a `Label` then an
    `Input`, or one `Ka0sCheckbox`; `folder_input()` for a folder), and its value in `save()`. Validate there: on a
    bad value call `self._error(...)` and return `False`; a folder goes through `core.install.validate_backup_dir`
