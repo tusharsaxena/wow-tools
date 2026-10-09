@@ -17,9 +17,6 @@ EVENTS: dict[str, EventSpec] = {
     "ibackup.backup_skipped": EventSpec("warning", "A flavor was skipped: it has no real Interface or WTF folder (missing, or links)."),
     "ibackup.backup_failed": EventSpec("error", "A flavor's backup failed; no zip was left behind."),
     "ibackup.links_skipped": EventSpec("info", "Links (symlinks, junctions) that were not followed: count and up to 20 paths."),
-    "ibackup.zips_moved": EventSpec("info", "Zips an older version left in interface-backup/ were moved into its "
-                                    "backup/ folder: count, and names left in place (taken or failed: warning, "
-                                    "logged the first time a name is left only)."),
     "ibackup.pruned": EventSpec("info", "Older backups of a flavor were deleted to keep the newest N (keep_backups)."),
     "ibackup.restore_started": EventSpec("info", "A restore started: backup, flavor, parts and warning counts."),
     "ibackup.safety_created": EventSpec("info", "The pre-restore safety backup was written and verified."),
