@@ -1,0 +1,66 @@
+name: virustotal
+
+# Scans a published release's zip on VirusTotal and adds the report's line to its notes (docs/releasing.md, step 8).
+# Never on a push: only when a release is published, or by hand (gh workflow run virustotal.yml -f tag=vX.Y.Z).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to scan, vX.Y.Z (blank: the latest release)"
+        required: false
+        default: ""
+
+# Write, for gh release edit; nothing else.
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    name: VirusTotal scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: The API key secret is set
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+        run: |
+          if [ -z "$VT_API_KEY" ]; then
+            echo "::error::The VT_API_KEY Actions secret is not set (Settings > Secrets and variables > Actions)"
+            exit 1
+          fi
+      - uses: actions/checkout@v5
+      - name: Pick the tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="${RELEASE_TAG:-$INPUT_TAG}"
+          if [ -z "$tag" ]; then
+            tag="$(gh release view --json tagName -q .tagName)"
+          fi
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$tag' is not a release tag vX.Y.Z"
+            exit 1
+          fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+      - name: Download the release assets
+        run: gh release download "$TAG" -D release -p 'wow-tools-*.zip' -p SHA256SUMS
+      - name: Verify the zip against SHA256SUMS
+        working-directory: release
+        run: sha256sum -c SHA256SUMS
+      - name: Fetch the release notes
+        run: gh release view "$TAG" --json body -q .body > notes.md
+      - name: Scan on VirusTotal
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+        run: python3 scripts/virustotal_scan.py "release/wow-tools-$TAG.zip" --notes-file notes.md
+      - name: Add the report to the release notes
+        run: gh release edit "$TAG" --notes-file notes.md
