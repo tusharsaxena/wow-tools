@@ -544,3 +544,26 @@ def record_fsyncs(module=None):
 
             stack.enter_context(mock.patch.object(module, "rename_no_replace", side_effect=rename))
         yield calls
+
+
+class CpuTime:
+    """What `cpu_seconds()` yields: `seconds` is set when the block ends."""
+
+    seconds = 0.0
+
+
+@contextlib.contextmanager
+def cpu_seconds():
+    """Measure the CPU time this process spends inside the block (time.process_time(): every thread of the
+    process, never time spent waiting). A CPU-cost budget of in-process work (parsing, compiling,
+    searching) asserts on this, not on wall time: `run_tests.py --all` runs the WSL and Windows suites at once on
+    every CPU, and wall time under that load broke a 4 s budget the work itself meets. Wall time stays for tests
+    that bound a wait (a worker, a subprocess, a timeout), which CPU time cannot see. Under WSL CPU time still grows
+    while the Windows side holds a vCPU back, so a budget keeps a wide margin or asserts on how the cost grows
+    (docs/testing.md, Timing races). Yields a CpuTime."""
+    timer = CpuTime()
+    started = time.process_time()
+    try:
+        yield timer
+    finally:
+        timer.seconds = time.process_time() - started

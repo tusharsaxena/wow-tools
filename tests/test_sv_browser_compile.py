@@ -6,12 +6,11 @@ changed outside the edits. Plus the plans fed through the shared pipeline's dry 
 from __future__ import annotations
 
 import tempfile
-import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from tests.fixtures import SVB_DETAILS, SVB_ELVUI, SVB_FONT, _write_lua, ace_lua, build_sv_tree
+from tests.fixtures import SVB_DETAILS, SVB_ELVUI, SVB_FONT, _write_lua, ace_lua, build_sv_tree, cpu_seconds
 from wowtools.core import sv_apply
 from wowtools.core.install import Flavor, WowInstall
 from wowtools.core.luasv import decode_string, key_id, parse
@@ -265,24 +264,42 @@ class CompileProblemTest(CompileTestBase):
 
 
 class ManyEditsTest(CompileTestBase):
-    def test_thousands_of_edits_in_one_file_compile_and_verify_quickly(self):
-        # M2 review: locate and the expected rows were linear per edit (quadratic per file)
-        count = 4000
+    def many_edits(self, count: int):
+        """A WeakAuras file with `count` auras and one font edit per aura: (file, plan, data)."""
         lines = ["WeakAurasSaved = {", '["displays"] = {']
         for i in range(count):
             lines += [f'["aura{i}"] = {{', '["text"] = {', f'["font"] = "{SVB_FONT}",', "},", "},"]
         lines += ["},", "}"]
-        doc = self.doc(ace_lua(*lines), "WeakAuras.lua")
+        doc = self.doc(ace_lua(*lines), f"WeakAuras{count}.lua")
         doc.roots()
         file = replace(doc.file, sha256=doc.sha256)
         edits = [FieldEdit(("WeakAurasSaved", "displays", f"aura{i}", "text", "font"), set_value=True,
                            value="Expressway") for i in range(count)]
-        started = time.monotonic()
-        edit = compile_file(file, FilePlan(file, edits), doc.data)
+        return file, FilePlan(file, edits), doc.data
+
+    def compile_and_verify(self, count: int, file, plan, data) -> float:
+        """Compile and verify the edits; the CPU seconds that took."""
+        with cpu_seconds() as cpu:
+            edit = compile_file(file, plan, data)
+            problems = verify_edit(edit, data)
         self.assertEqual(edit.problems, [])
-        self.assertEqual(verify_edit(edit, doc.data), [])
-        self.assertLess(time.monotonic() - started, 4.0)
+        self.assertEqual(problems, [])
         self.assertEqual(edit.data.count(b'"Expressway"'), count)
+        return cpu.seconds
+
+    def test_thousands_of_edits_in_one_file_compile_and_verify_quickly(self):
+        # M2 review: locate and the expected rows were linear per edit (quadratic per file). Asserted on how the CPU
+        # cost grows from 1000 to 4000 edits, not on a time: 4x is linear (0.15 s and 0.6 s here), the quadratic
+        # code took 15x (0.95 s and 14 s). An absolute 4 s budget broke under the --all gate even on CPU time:
+        # under WSL a vCPU the Windows side holds back still counts as CPU time (11.5 s once). A slowdown hits both
+        # sizes of a pair, and the best of three adjacent pairs drops one that a burst of load split.
+        small, large = self.many_edits(1000), self.many_edits(4000)
+        ratios = []
+        for _ in range(3):
+            small_cpu = self.compile_and_verify(1000, *small)
+            large_cpu = self.compile_and_verify(4000, *large)
+            ratios.append(large_cpu / max(small_cpu, 0.001))
+        self.assertLess(min(ratios), 8.0, f"CPU cost of 4000 edits over 1000: {ratios}")
 
 
 class VerifyTest(CompileTestBase):

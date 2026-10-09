@@ -1,9 +1,9 @@
 """luasv: the SavedVariables reader with byte spans (spec §5.1)."""
 from __future__ import annotations
 
-import time
 import unittest
 
+from tests.fixtures import cpu_seconds
 from wowtools.core import luasv
 from wowtools.core.luasv import LuaParseError, Opaque, Table
 
@@ -148,11 +148,10 @@ class SpeedTest(unittest.TestCase):
 
         def descend(path):
             return len(path) <= 2
-        started = time.perf_counter()
-        chunk = luasv.parse(data, descend)
-        elapsed = time.perf_counter() - started
+        with cpu_seconds() as cpu:
+            chunk = luasv.parse(data, descend)
         self.assertEqual(len(chunk.get("BigDB").value.get("profiles").value.fields), 250)
-        self.assertLess(elapsed, 5.0)
+        self.assertLess(cpu.seconds, 5.0)
 
 
 WOW_FILE = (b'\r\nMyAddonDB = {\r\n\t["name"] = "Ka\\"0s\\\\ \\104i",\r\n\t["count"] = 3,\r\n\t["scale"] = 0.1,\r\n'
@@ -274,10 +273,10 @@ class IterScalarsTest(unittest.TestCase):
     def test_streams_a_big_file_quickly(self):
         rows = b"".join(b'["k%d"] = {\n["v"] = "s}",\n[1] = 0.5,\n"x", -- [2]\n},\n' % i for i in range(60000))
         data = b"BigDB = {\n" + rows + b"}\n"
-        started = time.perf_counter()
-        count = sum(1 for _ in luasv.iter_scalars(data))
+        with cpu_seconds() as cpu:
+            count = sum(1 for _ in luasv.iter_scalars(data))
         self.assertEqual(count, 180000)
-        self.assertLess(time.perf_counter() - started, 10.0)
+        self.assertLess(cpu.seconds, 10.0)
 
 
 class EncodeTest(unittest.TestCase):

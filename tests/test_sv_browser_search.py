@@ -7,12 +7,11 @@ from __future__ import annotations
 import hashlib
 import re
 import tempfile
-import time
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from tests.fixtures import SVB_FONT, _write_lua, ace_lua, build_sv_tree
+from tests.fixtures import SVB_FONT, _write_lua, ace_lua, build_sv_tree, cpu_seconds
 from wowtools.core import luasv
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
@@ -531,11 +530,10 @@ class StreamingGuardTest(SearchTestBase):
         path = self.add_file("Big.lua", *lines)
         self.assertGreater(path.stat().st_size, 5_000_000)
         files = [f for f in self.files() if f.path.name == "Big.lua"]
-        started = time.monotonic()
-        result = run_search(files, SearchSpec(key="font", value=SVB_FONT))
-        seconds = time.monotonic() - started
+        with cpu_seconds() as cpu:
+            result = run_search(files, SearchSpec(key="font", value=SVB_FONT))
         self.assertEqual(len(result.hits), 20)
-        self.assertLess(seconds, 15)
+        self.assertLess(cpu.seconds, 15)
 
 
 if __name__ == "__main__":
