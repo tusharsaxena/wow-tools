@@ -51,13 +51,6 @@ Unless you change it in settings, the backup folder is `<your WoW folder>\wow-to
   journal\journal-<YYYYMMDD-HHMMSS>.jsonl        the record Undo uses
 ```
 
-Earlier versions put the zips straight into `interface-backup`. The first time you open the review, they're moved into
-its `backup` folder. A zip that can't be moved (one of the same name is already in `backup`, or the move fails) stays
-where it is, and the log says so once per session. It's still listed, restored and cleaned up like the others. The
-app tries the move again each time the review scans (when you open it, or press `r`). If the name was already taken in
-`backup`, Backups lists two zips with that name: look at both, then move or delete the old one in `interface-backup`
-yourself.
-
 `<flavor>` is the game version (`retail`, `classic_era` and so on). For example:
 `backup-retail-20261004-201530.zip`. If two backups start in the same second, the second gets `-2` added before
 `.zip`, so no backup ever replaces another. The journals always stay in your WoW folder, even if you pick another

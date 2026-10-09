@@ -121,12 +121,11 @@ def rename_no_replace(src: Path, dst: Path) -> None:
         raise
 
 
-def free_name(folder: Path, stem: str, suffix: str, *, also: tuple[Path, ...] = ()) -> Path:
-    """folder/<stem><suffix>, or <stem>-2<suffix>, <stem>-3<suffix>, ... when that name is taken (in folder, or in
-    any folder of `also`). Used for timestamped names (backups, journals) so two runs in the same second never
-    share a file."""
+def free_name(folder: Path, stem: str, suffix: str) -> Path:
+    """folder/<stem><suffix>, or <stem>-2<suffix>, <stem>-3<suffix>, ... when that name is taken in folder. Used
+    for timestamped names (backups, journals) so two runs in the same second never share a file."""
     name, n = f"{stem}{suffix}", 2
-    while any(os.path.lexists(place / name) for place in (folder, *also)):
+    while os.path.lexists(folder / name):
         name, n = f"{stem}-{n}{suffix}", n + 1
     return folder / name
 

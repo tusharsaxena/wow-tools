@@ -317,9 +317,9 @@ class BackupTest(unittest.TestCase):
         self.assertEqual(skipped[0]["data"]["links"], ["Interface", "WTF"])
 
     def test_prune_never_deletes_the_new_backup_even_if_others_are_stamped_later(self):
-        self.root.mkdir(parents=True)
+        (self.root / "backup").mkdir(parents=True)
         for day in (5, 6, 7):
-            (self.root / f"backup-retail-202611{day:02d}-000000.zip").write_bytes(b"z")
+            (self.root / "backup" / f"backup-retail-202611{day:02d}-000000.zip").write_bytes(b"z")
         for keep, left in ((2, 2), (1, 1)):
             with self.subTest(keep=keep), capture_events():
                 outcome = back_up(self.scan(), self.root, keep=keep, now=NOW)
@@ -368,17 +368,17 @@ class BackupTest(unittest.TestCase):
         self.assertEqual([p for p in self.root.rglob("*") if not p.is_dir()], [])
 
     def test_existing_backup_never_replaced(self):
-        self.root.mkdir(parents=True)
-        (self.root / "backup-retail-20261004-153012.zip").write_bytes(b"old")
+        (self.root / "backup").mkdir(parents=True)
+        (self.root / "backup" / "backup-retail-20261004-153012.zip").write_bytes(b"old")
         with capture_events():
             outcome = back_up(self.scan(), self.root, keep=10, now=NOW)
         self.assertEqual(outcome.path.name, "backup-retail-20261004-153012-2.zip")
-        self.assertEqual((self.root / "backup-retail-20261004-153012.zip").read_bytes(), b"old")
+        self.assertEqual((self.root / "backup" / "backup-retail-20261004-153012.zip").read_bytes(), b"old")
 
     def test_prune_after_success_only(self):
-        self.root.mkdir(parents=True)
+        (self.root / "backup").mkdir(parents=True)
         for day in (1, 2, 3):
-            (self.root / f"backup-retail-2026100{day}-000000.zip").write_bytes(b"z")
+            (self.root / "backup" / f"backup-retail-2026100{day}-000000.zip").write_bytes(b"z")
         with capture_events() as events:
             outcome = back_up(self.scan(), self.root, keep=2, now=NOW)
         self.assertEqual(len(outcome.pruned), 2)

@@ -19,16 +19,17 @@ class CatalogTest(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name) / "interface-backup"
         self.root.mkdir()
+        self.zips = self.root / "backup"  # where the zips live (L16)
+        self.zips.mkdir()
 
     def touch(self, name: str) -> Path:
-        path = self.root / name
+        path = self.zips / name
         path.write_bytes(b"z")
         return path
 
     def test_new_path_and_collision(self):
         first = new_backup_path(self.root, "retail", NOW)
         self.assertEqual(first.name, "backup-retail-20261004-153012.zip")
-        first.parent.mkdir()
         first.write_bytes(b"z")
         self.assertEqual(new_backup_path(self.root, "retail", NOW).name, "backup-retail-20261004-153012-2.zip")
         self.assertEqual(new_backup_path(self.root, "retail", NOW, kind="pre-restore").name,
@@ -49,7 +50,7 @@ class CatalogTest(unittest.TestCase):
         self.touch("backup-classic_era-20261003-000000.zip")
         self.touch("pre-restore-retail-20261003-000000.zip")
         self.touch("notes.txt")
-        (self.root / "backup-retail-20261009-000000.zip").mkdir()  # a folder with a backup's name is not a backup
+        (self.zips / "backup-retail-20261009-000000.zip").mkdir()  # a folder with a backup's name is not a backup
         names = [b.path.name for b in list_backups(self.root, {"retail"}, kinds=("backup",))]
         self.assertEqual(names, ["backup-retail-20261002-000000-2.zip", "backup-retail-20261002-000000.zip",
                                  "backup-retail-20261001-000000.zip"])
@@ -68,10 +69,10 @@ class CatalogTest(unittest.TestCase):
         removed = prune_backups(self.root, "retail", 2)
         self.assertEqual(sorted(p.name for p in removed),
                          ["backup-retail-20261001-000000.zip", "backup-retail-20261002-000000.zip"])
-        self.assertTrue((self.root / "backup-retail-20261004-000000.zip").exists())
-        self.assertTrue((self.root / "backup-classic_era-20261001-000000.zip").exists())
-        self.assertTrue((self.root / "pre-restore-retail-20261001-000000.zip").exists())
-        self.assertTrue((self.root / "notes.txt").exists())
+        self.assertTrue((self.zips / "backup-retail-20261004-000000.zip").exists())
+        self.assertTrue((self.zips / "backup-classic_era-20261001-000000.zip").exists())
+        self.assertTrue((self.zips / "pre-restore-retail-20261001-000000.zip").exists())
+        self.assertTrue((self.zips / "notes.txt").exists())
         self.assertEqual(prune_backups(self.root, "retail", 0), [])  # 0 = never delete
 
     def test_prune_protects_the_named_backup_whatever_its_stamp(self):
@@ -81,9 +82,9 @@ class CatalogTest(unittest.TestCase):
         removed = prune_backups(self.root, "retail", 2, protect=new)
         self.assertTrue(new.exists())
         self.assertNotIn(new, removed)
-        self.assertEqual(sorted(p.name for p in self.root.glob("backup-retail-*")),
+        self.assertEqual(sorted(p.name for p in self.zips.glob("backup-retail-*")),
                          ["backup-retail-20261001-000000.zip", "backup-retail-20261004-000000.zip"])
-        self.assertEqual(prune_backups(self.root, "retail", 1, protect=new), [self.root / "backup-retail-20261004-000000.zip"])
+        self.assertEqual(prune_backups(self.root, "retail", 1, protect=new), [self.zips / "backup-retail-20261004-000000.zip"])
 
     def test_prune_safety_deletes_only_the_names_given(self):
         keep = self.touch("pre-restore-retail-20261001-000000.zip")
@@ -91,7 +92,7 @@ class CatalogTest(unittest.TestCase):
         protected = self.touch("pre-restore-retail-20261003-000000.zip")
         backup = self.touch("backup-retail-20261002-000000.zip")
         names = {drop.name, protected.name, backup.name}
-        self.assertEqual(prune_safety(self.root, names, protect=self.root / protected.name), [drop])
+        self.assertEqual(prune_safety(self.root, names, protect=self.zips / protected.name), [drop])
         self.assertTrue(keep.exists())
         self.assertTrue(protected.exists())
         self.assertTrue(backup.exists())
