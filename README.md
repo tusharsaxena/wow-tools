@@ -115,9 +115,10 @@ That's the only thing you install. Everything else the tools need comes in the d
 
 1. Go to the [Releases page](https://github.com/tusharsaxena/wow-tools/releases).
 2. Under the newest version, download the **wow-tools-vX.Y.Z.zip** file (X.Y.Z is the version number).
-3. On Windows, unblock the zip before you unzip it: right-click it, choose **Properties**, tick **Unblock** at the
-   bottom of the **General** tab and press **OK**. If you skip this, Windows asks "The publisher could not be
-   verified" every time you start `wow-tools.cmd` (see the [FAQ](#faq)).
+3. Windows only: unblock the zip before you unzip it. Right-click it, choose **Properties**, tick **Unblock** at
+   the bottom of the **General** tab and press **OK**. If you skip this, Windows asks "The publisher could not be
+   verified" when you start `wow-tools.cmd` (see
+   [The Windows security warning](#the-windows-security-warning-windows-only)).
 4. Unzip it anywhere you like, for example `Documents\wow-tools`.
 
 If you use git, you can clone it instead, which makes updates a single command:
@@ -135,6 +136,34 @@ If you use git, you can clone it instead, which makes updates a single command:
 > **Tip for Windows:** make a shortcut so you don't have to open the folder every time. Right-click
 > `wow-tools.cmd`, choose **Show more options**, then **Send to → Desktop (create shortcut)**. Double-click the
 > shortcut to start the app. You can also right-click the shortcut and pick **Pin to Start**.
+
+### The Windows security warning (Windows only)
+
+This is only for Windows. On a Mac or Linux there's nothing to do.
+
+The first time you double-click `wow-tools.cmd` after downloading the app, Windows may stop and ask first:
+
+**_The Windows security warning_**
+
+![Windows' "The publisher could not be verified" warning for wow-tools.cmd, with Run and Cancel buttons](docs/assets/screenshots/suite/windows-security-warning.png)
+
+**What it means.** Windows marks everything in a zip you downloaded as "from the internet". When you start a
+marked script that has no digital signature, it asks you before it runs it. A `.cmd` file can't carry a
+signature, so you'll see this for Ka0s WoW Tools whatever happens. It doesn't mean Windows found anything wrong
+with the file.
+
+**Why it's safe.** `wow-tools.cmd` only starts Python with the app from the same folder. Open it in Notepad and
+you'll see it's a few short lines. The rest of the app is plain Python you can read too. If you want a second
+opinion before you run it, each release's notes on the
+[Releases page](https://github.com/tusharsaxena/wow-tools/releases) link a VirusTotal scan of its zip.
+
+**How to stop it.** Any one of these works:
+
+- Before you unzip: right-click the zip, choose **Properties**, tick **Unblock** at the bottom of the **General**
+  tab and press **OK**. Nothing you unzip from it will ask again.
+- Already unzipped: open PowerShell in the app's folder and run `Get-ChildItem -Recurse | Unblock-File`.
+- Or untick **Always ask before opening this file** on the warning and press **Run**. Windows won't ask about
+  that file again.
 
 ### Navigating the app
 
@@ -316,7 +345,7 @@ If you use WSL (Linux inside Windows), the same folder works from both sides. Ru
 | Is it safe? Can I lose anything? | Every tool shows you what it will do and asks before it changes anything. The WTF Cleaner backs up your whole `WTF` folder and zips every file before deleting it, the Screenshot Organizer never overwrites a file, Interface Backup takes a safety backup of your folders before every restore, and the Ace3 Profile Manager and the Saved Variables Browser back up your whole `WTF` folder and every file they edit before changing anything. Each can undo its last run (Interface Backup: its last restore). If you're unsure, press **Dry run** in the WTF Cleaner, the Screenshot Organizer, the Ace3 Profile Manager or the Saved Variables Browser first: it shows what would happen without changing anything. The Saved Variables Browser is the exception: it lets you change any value an addon saved without knowing what the addon expects, so you use it at your own risk. The WTF Cleaner, the Ace3 Profile Manager and the Saved Variables Browser each ask you to accept a **USE AT YOUR OWN RISK** warning the first time you pick a game version in them after starting the app (before anything is scanned), unless you ticked **Don't show this warning again for this tool** on it. |
 | Does it change the game itself? | No. It never touches the game program. The WTF Cleaner and the Screenshot Organizer only work on files the game leaves in your WoW folder: addon settings in `WTF` and pictures in `Screenshots`. Interface Backup only reads your `Interface` and `WTF` folders to back them up; they change only when you restore a backup (or undo a restore) and confirm it. The Ace3 Profile Manager only changes the profile lists in addon settings files in `WTF`, and the Saved Variables Browser only the values and keys you edit in them, each only when you apply and confirm. |
 | Do I need to close WoW? | Close it before you clean with the WTF Cleaner: WoW rewrites those files when you log out and can bring deleted ones back. Close it before an Interface Backup restore or undo too; a backup works with the game open but may miss your latest settings. The WTF Cleaner and Interface Backup warn you if WoW is running. The Ace3 Profile Manager and the Saved Variables Browser refuse to apply or undo a change while WoW is running, since the game would overwrite it. The Screenshot Organizer doesn't mind if the game is open. |
-| Windows says "The publisher could not be verified". Is that safe? | Windows asks this about any script that came in a downloaded zip and carries no digital signature, and a `.cmd` file can't carry one. Press **Run**, or stop it for good: unblock the zip before you unzip it (right-click it, **Properties**, tick **Unblock**, **OK**). For a folder you already unzipped, run `Get-ChildItem -Recurse \| Unblock-File` in PowerShell inside it. Each release's notes link a VirusTotal scan of its zip if you want to check it first. |
+| Windows says "The publisher could not be verified". Is that safe? | Yes. It's a Windows-only prompt for any unsigned script that came in a downloaded zip. See [The Windows security warning](#the-windows-security-warning-windows-only) for what it means, why it's safe and how to stop it. |
 | Do I need to install anything besides Python? | No. Everything else the app needs comes in the download. |
 | Does it work on a Mac? | Yes, with `./wow-tools.sh`, and everything works there, including the "WoW is running" warning. |
 | Why does it say another copy may already be running? | Only one copy of the app can run at once. While it's open it keeps a small file called `wow-tools.lock` in its folder. If you start it a second time, or it crashed last time, you get a warning with two buttons: **Quit** if the app really is open somewhere else, or **Override and continue** if it isn't (for example after a crash). When the app can tell the other copy is gone, it says so and puts you on **Override and continue**. |
