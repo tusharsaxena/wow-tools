@@ -4,133 +4,7 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and version numbers follow
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
-
-### Added
-
-- **WTF Cleaner** and **Ace3 Profile Manager**
-  - Before the first scan they ask you to accept a **USE AT YOUR OWN RISK** warning, like the Saved Variables
-    Browser: it says what the tool deletes or rewrites, that a backup and Undo are there, and to close WoW first.
-    **I understand** goes on, **Back** returns to the game versions. It's asked once each time you start the app.
-  - A blacklisted addon's lines show `⊘` where the tick goes, greyed like the line, so you can see why they have no
-    tick. In the Ace3 Profile Manager that's in both views, By addon and By character.
-- **Every tool**
-  - `t` goes back to the tool menu from any screen and any popup, like `q` quits: the game version and account
-    pickers, the help, the changelog, the settings, the warnings, the USE AT YOUR OWN RISK warning (it asks again
-    next time) and every "are you sure?" window, not only reviews and results.
-    Typing `t` in a text box still types it, a run that is writing files has to finish first, and with changes
-    staged but not applied it asks first. On the tool menu it does nothing. `Esc` still works as before.
-- **WTF Cleaner**, **Ace3 Profile Manager** and **Saved Variables Browser**
-  - The **USE AT YOUR OWN RISK** warning has a **Don't show this warning again for this tool** box (`Tab` to it,
-    `Space` to tick, `Enter` still means **I understand**). Ticked with **I understand**, the warning is never
-    shown again for that tool; **Back** never saves it. **Show the USE AT YOUR OWN RISK warning** in the tool's
-    settings (`s`) turns it back on.
-
-### Changed
-
-- **Docs**
-  - The release zip holds only what you need to run the app and read about it: the program, its libraries, the
-    launchers, the README, the changelog, the license and the five guides with their pictures. The developer
-    documentation, tests and scripts stay on GitHub, and the README no longer has a section for developers.
-  - New screenshots of every tool: the README shows the tool menu, the general settings, the USE AT YOUR OWN RISK
-    warning and each tool's review screen, and each tool's guide shows its review screen, its confirm or progress window
-    and its results.
-  - The README, every guide and the in-app help now match the app: when the USE AT YOUR OWN RISK warning appears
-    (after you pick a game version and account, before the first scan), what a WTF Cleaner **Dry run** does and
-    skips, `t` and `Esc` on every screen, the settings as the settings screen names them, and where the backups
-    go. The WTF Cleaner guide has a section on the warning, and the help on the tool menu explains it and the
-    **lime** Rescan button.
-- **The app**
-  - `q` quits from any screen and any popup: the game version and account pickers, the help, the changelog, the
-    settings, the warnings and every "are you sure?" window, not only the tool menu, reviews and results. On the
-    help and the changelog `q` used to go back; `Esc` still does. Typing `q` in a text box still types it, a run
-    that is writing files still has to finish first, and with changes staged but not applied it asks first.
-    While any "discard your changes?" question is open, `q` waits for your answer instead of asking again.
-- **Ace3 Profile Manager**
-  - The **Apply** and **Dry run** confirms no longer print one red line per addon warning (28 lines could push
-    **Yes** and **No** off the window): the warnings sit under one line, **⚠ 28 warnings (Space or click to
-    expand)**. Open it (`Tab` to it, then `Space`, `Enter` or a click) to see each warning once, with the game
-    version and account under it, then the addons; `x` opens everything and the list scrolls inside the window.
-    The **Notes** box after a change lists its notes the same way (one or two notes show at once), and what a
-    change could not do is a **Not done** box listed the same way, every addon in it (it was a notification cut
-    at 8 lines). Two databases of one addon, or a character's own file, are told apart in these lists.
-  - **Leftovers** (`o`) is now one press: it ticks every leftover character the tree shows, then asks to remove
-    them, listing them under each addon. There's no need to tick them first. **No** keeps the ticks; with none
-    shown it says so and changes nothing.
-  - The **Delete** and **Assign** windows list what they change under one line, such as **12 profiles (Space or
-    click to expand)**, instead of one line per addon (82 addons made a long list to scroll past). Open it to see
-    each addon with its profiles or characters; the profile list, the name box and the buttons stay on screen.
-- **Interface Backup**
-  - Backups and safety backups now go into a `backup` folder inside `interface-backup`, next to `journal`, instead
-    of sitting loose beside it. Zips made by an earlier version are moved there once, the first time you open
-    the review. A zip that can't be moved (its name is already taken there, or the move fails) stays where it is
-    and is listed, restored and cleaned up as before. The log says so once per session, and the move is tried
-    again each time the review scans. **Undo** of an earlier restore finds its safety backup in the new folder.
-- **Saved Variables Browser**
-  - The **USE AT YOUR OWN RISK** warning is asked once each time you start the app, no longer every time you open
-    the tool. **Back** still doesn't count: it asks again next time.
-
-### Fixed
-
-- **Screenshot Organizer**
-  - The scan progress shows as soon as you pick the game version, starting with "Checking the destination
-    folder". A slow or sleeping destination drive no longer freezes an empty screen for a few seconds. A
-    destination that isn't allowed is reported as before.
-- **The app**
-  - Messages that pop up at the bottom right now start at the same place on every screen, just above the bars at
-    the bottom (and above the action bar under a tree), and several stack upward without covering each other. The
-    Ace3 Profile Manager's "what this button would do" box is the lowest of that stack, so a message no longer
-    lands on top of it. On a popup they start above its buttons, text box, tick box or list, so a message never
-    covers what you're about to press or type into.
-  - Scanning or rescanning no longer moves the bars under the tree to the top of the pane: the Ace3 Profile
-    Manager's guide and action bar, and the Saved Variables Browser's action bar, stay at the bottom while the scan
-    runs. When a scan fails, its message takes one line at the bottom (the notice shows it in full), so a long
-    error doesn't push the bars up either.
-  - Pressing Ctrl+C while `wow-tools update` (or an automatic update at start) is replacing a zip install's files
-    now puts the version you had back instead of leaving it half replaced, and says the update stopped. Any other
-    unexpected error while backing up or replacing the files is reported instead of crashing, and a half-done
-    replace is rolled back the same way. If putting it back fails too, the message names the folder your previous
-    version is saved in, and an automatic update then quits instead of opening the menu. A Ctrl+C after the new
-    version is in place (while old backups are tidied up) no longer reports the update as stopped.
-  - When the app cannot start because a folder in `logs/` can't be read, it no longer leaves its lock behind, so
-    the next start doesn't warn that another copy may be running. An unreadable log folder is now skipped instead.
-  - When your WoW folder's path has letters like é or ü and WoW is running, an Apply or Undo now refuses with the
-    usual "WoW is running" message instead of stopping with an unexpected error.
-  - Every file the app writes in place (a SavedVariables file, a settings file, an unfinished-change reminder) is
-    now flushed to the disk before it replaces the old one. A power cut or a system crash right after an Apply,
-    an Undo or a settings change leaves the old file or the new one, never an empty file. Each Undo journal line
-    and each safety backup zip is flushed the same way before the change it covers. So is a screenshot copied to
-    another drive, before its original is deleted, and a file a WTF Cleaner Undo puts back.
-  - The README, every tool's guide and the message about a release with no checksum now say that comments you
-    add to a settings file in `config` aren't kept: the app rewrites the file whenever it saves a setting or the
-    game version you pick. Edit these files with the app closed.
-- **WTF Cleaner**
-  - The result of a clean across several game versions names the run journal once, above the game versions, with
-    the hint that **Undo last clean** puts the files back. It was listed again in every game version's block.
-  - Looking up the clean **Undo** can put back, and the "An earlier clean did not finish" check, no longer hold
-    the screen before the scan shows.
-  - A file WoW rewrites while a clean is backing up the WTF folder is now kept (shown as changed since the scan)
-    instead of deleted, so its newer data is never lost.
-  - When another program (a virus scanner or OneDrive) keeps the cleaner from removing its marker file after a
-    clean that finished, the result now says so (a **Crash marker** row), and the next start's "An earlier clean
-    did not finish" message says such a clean needs nothing restored. **Dismiss** on that message now tells you
-    when it could not remove the file either, instead of closing as if it had while new cleans stay refused.
-- **Interface Backup**
-  - On Windows, **Undo** after a restore that removed a symlinked addon folder now makes the symlink again to
-    the path it had (`C:\...`), not to the same path written with a `\\?\` prefix. The Undo journal records
-    the path as you made it, too. A link to a mounted volume that **Undo** cannot make again is now listed as one
-    to make by hand, instead of being made to the wrong place.
-- **Ace3 Profile Manager and Saved Variables Browser**
-  - **Put the originals back** after an unfinished change now works when you run the app from the other system
-    (Windows or WSL) than the one the change was started from: the files are found in the WoW folder you set. If
-    that game version is not in your WoW folder, nothing is changed and the unfinished change is still offered,
-    instead of every file being reported as gone and the reminder cleared.
-  - When another program (a virus scanner or OneDrive) keeps the app from removing its unfinished-change reminder
-    after an Apply that finished, the result now says so, and **Put the originals back** on the next scan only
-    removes the reminder instead of undoing the finished change. If the reminder still can't be removed then, or
-    after **Leave as is**, a notice says so instead of reporting it removed.
-
-## [0.1.0] - 2026-10-05
+## [1.0.0] - 2026-10-09
 
 The first version: five tools in one app.
 
@@ -142,10 +16,22 @@ The first version: five tools in one app.
     Mac, Linux and WSL.
   - Notices a running WoW for the game versions you're working on, on every platform (Windows, WSL, Mac and
     Linux), and warns you or waits before touching files WoW rewrites.
-  - Checks for updates and installs them for you. Older backups of replaced versions are deleted, but files you
-    had added inside the app's own folders are moved to `update-leftovers` first.
+  - Checks for updates and installs them for you. Updating a zip install replaces only what a release ships: the
+    `scripts` folder and anything else no release has are yours and left alone, and the old version is kept in
+    `.update-backup`. Older backups of replaced versions are deleted, but files you had added inside the app's own
+    folders are moved to `update-leftovers` first.
+  - An update stopped with Ctrl+C, or one that hits an unexpected error while it backs up or replaces the files,
+    puts the version you had back and says the update stopped. If putting it back fails too, the message names the
+    folder your previous version is saved in, and an automatic update quits instead of opening the menu.
   - How many backups and journals to keep is one setting for every tool (10 each; 0 backups keeps them all), on
     the first settings screen.
+  - The settings files in `config` are rewritten whenever the app saves a setting or the game version you pick, so
+    comments you add to them aren't kept. Edit these files with the app closed.
+  - Every file the app writes in place (a SavedVariables file, a settings file, an unfinished-change reminder) is
+    flushed to the disk before it replaces the old one, so a power cut or a system crash right after an Apply, an
+    Undo or a settings change leaves the old file or the new one, never an empty file. Each Undo journal line and
+    each safety backup zip is flushed the same way before the change it covers. So is a screenshot copied to
+    another drive, before its original is deleted, and a file a WTF Cleaner Undo puts back.
   - `x` expands and `c` collapses every line of a tree, on every tree screen.
   - `/` filters every tree: type part of a name (an addon, a file, a date, a profile…), press `Enter` or the
     **Filter** button beside the box, and the tree keeps the matching lines and the groups they're in. Typing
@@ -161,8 +47,17 @@ The first version: five tools in one app.
   - Buttons are coloured by what they do, the same in every tool: red deletes, amber overwrites, green adds
     something new, violet undoes, cyan is a dry run, blue confirms, grey moves between screens, dim grey backs out.
   - `h` opens a help screen everywhere: on the tool menu it explains the app (what each tool does, the keys every
-    tool shares, settings, button colours); in a tool it explains that tool, step by step, with every button and
-    its key, the safety nets and a link to the tool's guide. `Esc`, `q` or `h` closes it.
+    tool shares, settings, button colours, the USE AT YOUR OWN RISK warning and the **lime** Rescan button); in a
+    tool it explains that tool, step by step, with every button and its key, the safety nets and a link to the
+    tool's guide. `Esc` or `h` closes it.
+  - `q` quits from any screen and any popup: the tool menu, the game version and account pickers, the help, the
+    changelog, the settings, the warnings, reviews, results and every "are you sure?" window. Typing `q` in a text
+    box types it, a run that is writing files has to finish first, and with changes staged but not applied it asks
+    first. While any "discard your changes?" question is open, `q` waits for your answer.
+  - `t` goes back to the tool menu from any screen and any popup the same way: the game version and account
+    pickers, the help, the changelog, the settings, the warnings, the USE AT YOUR OWN RISK warning (it asks again
+    next time), every "are you sure?" window, reviews and results. On the tool menu it does nothing. `Esc` goes
+    back one step.
   - Every button shows its key under its name (**Clean** over `(w)`), and the row of keys along the bottom lists
     only the keys no button has, so it stays short; while a popup is open it is empty, since the popup's buttons
     say what to press.
@@ -190,9 +85,19 @@ The first version: five tools in one app.
     and **Back** (`Esc`).
   - `b` on a tree line puts the highlighted addon (or the addon a file or profile belongs to) on the tool's
     blacklist, or takes it off, in the tools that keep one (the WTF Cleaner and the Ace3 Profile Manager), and says
-    which ("ElkBuffBars (Retail) is now on the blacklist."). Each tool keeps its own list.
+    which ("ElkBuffBars (Retail) is now on the blacklist."). Each tool keeps its own list. A blacklisted addon's
+    lines show `⊘` where the tick goes, greyed like the line, so you can see why they have no tick.
   - `c` on the tool menu opens the changelog: every version on the left (yours marked "current"), its notes on the
     right.
+- **WTF Cleaner**, **Ace3 Profile Manager** and **Saved Variables Browser**
+  - After you pick a game version and account, and before the first scan, each asks you to accept a **USE AT YOUR
+    OWN RISK** warning: it says what the tool deletes or rewrites, that a backup and Undo are there, and to close
+    WoW first. **I understand** goes on, **Back** returns to the game versions and asks again next time. It's asked
+    once per tool each time you start the app.
+  - The warning has a **Don't show this warning again for this tool** box (`Tab` to it, `Space` to tick, `Enter`
+    still means **I understand**). Ticked with **I understand**, the warning is never shown again for that tool;
+    **Back** never saves it. **Show the USE AT YOUR OWN RISK warning** in the tool's settings (`s`) turns it back
+    on.
 - **WTF Cleaner**
   - Finds settings left behind by addons you no longer use, shows them for review, backs them up and deletes them.
   - Works on one game version, one account or **All flavors**.
@@ -203,10 +108,17 @@ The first version: five tools in one app.
     account with no characters counts every addon as enabled).
   - **Clean** is on `w`.
   - A blacklist of addons it never cleans, one game version each: `b` on an addon's line (or one of its files) adds
-    it or takes it off. Blacklisted addons stay in the review, greyed and tagged "blacklisted", but are never
-    ticked, counted or cleaned. The list is `[wtf_cleaner] blacklist` in `config\wtf-cleaner.cfg`
+    it or takes it off. Blacklisted addons stay in the review, greyed, tagged "blacklisted" and marked `⊘`, but are
+    never ticked, counted or cleaned. The list is `[wtf_cleaner] blacklist` in `config\wtf-cleaner.cfg`
     (`_retail_:ElkBuffBars, ...`; a name without a game version means every one).
-  - **Dry run** and **Undo last clean**.
+  - **Dry run** and **Undo last clean**. The result of a clean names its run journal, with the hint that **Undo last
+    clean** puts the files back.
+  - A file WoW rewrites while a clean is backing up the WTF folder is kept (shown as changed since the scan), not
+    deleted, so its newer data is never lost.
+  - When another program (a virus scanner or OneDrive) keeps the cleaner from removing its marker file after a
+    clean that finished, the result says so (a **Crash marker** row), and the next start's "An earlier clean did
+    not finish" message says such a clean needs nothing restored. **Dismiss** on that message tells you when it
+    could not remove the file either.
   - The zips of the files each clean removed are kept forever unless you set how many to keep per game version
     (**Cleaned-files zips to keep** in its settings; 0, the default, keeps them all).
 - **Screenshot Organizer**
@@ -215,22 +127,38 @@ The first version: five tools in one app.
 - **Interface Backup**
   - Zips each game version's `Interface` and `WTF` folders (your addons and their settings) into one dated,
     checked zip, and keeps the newest backups per game version (see the retention setting under "The app").
+  - Backups and safety backups go into a `backup` folder inside `interface-backup`, next to `journal`.
   - Restores a backup exactly: the `Interface` folder, the `WTF` folder or both, after listing what would be
     removed or changed. It takes a safety backup first, and **Undo** puts the folders back.
   - Never follows linked addon folders (symlinks, junctions): they're left out of backups and kept by a restore.
+    When the backup holds real files in a link's place, the restore removes the link (never what it points at) and
+    **Undo** makes it again to the path it had (on Windows, `C:\...` as you made it); a link to a mounted volume
+    that **Undo** cannot make again is listed as one to make by hand.
   - Backing up several game versions: one that fails never stops the others, and the results list each one.
 - **Ace3 Profile Manager**
   - Shows every Ace3 addon's profiles and which characters use them.
-  - Deletes, renames and copies profiles, moves characters between them and removes characters that no longer
-    exist.
+  - Deletes, renames and copies profiles and moves characters between them.
+  - **Leftovers** (`o`) removes characters that no longer exist in one press: it ticks every leftover character
+    the tree shows, then asks to remove them, listing them under each addon. **No** keeps the ticks; with none
+    shown it says so and changes nothing.
   - A blacklist (per game version, picked from a tree, or `b` on an addon in the review) keeps addons out of its
-    reach. When the filter hides ticked addons, **Save** says how many and asks first.
+    reach. A blacklisted addon shows `⊘` in both views, By addon and By character. When the filter hides ticked
+    addons, **Save** says how many and asks first.
   - Changes wait as **pending changes** until you apply them; an action bar and a guidance line under the tree say
     what to do next.
+  - The **Delete** and **Assign** windows list what they change under one line, such as **12 profiles (Space or
+    click to expand)**. Open it to see each addon with its profiles or characters; the profile list, the name box
+    and the buttons stay on screen.
+  - The **Apply** and **Dry run** confirms put the addon warnings under one line, **⚠ 28 warnings (Space or click
+    to expand)**, so **Yes** and **No** stay in the window. Open it (`Tab` to it, then `Space`, `Enter` or a click)
+    to see each warning once, with the game version and account under it, then the addons; `x` opens everything
+    and the list scrolls inside the window. The **Notes** box after a change lists its notes the same way (one or
+    two notes show at once), and what a change could not do is a **Not done** box listed the same way, every addon
+    in it. Two databases of one addon, or a character's own file, are told apart in these lists.
   - Edits only the lines that change in each settings file, after backing up the whole `WTF` folder and every file
     it edits, and refuses while WoW is running.
   - **Dry run** and **Undo last change**.
-- **Saved Variables Browser** (use at your own risk)
+- **Saved Variables Browser**
   - Shows every SavedVariables file of every game version, account and character as a tree you can open down to
     single values; a file is only read when you open it, and a big table shows its first 500 entries.
   - Edits a value (string, number or boolean), renames a key or deletes a key (a whole table with it); a top-level
@@ -245,10 +173,27 @@ The first version: five tools in one app.
   - Edits wait as staged changes until you apply them.
   - Changes only the bytes you edited, after backing up the whole `WTF` folder and every file it edits, checks each
     new file before writing it, and refuses while WoW is running. **Dry run** and **Undo last change**; a change
-    cut short (a crash, a power cut) can be put back.
-  - Asks you to accept a USE AT YOUR OWN RISK warning each time you open it, and repeats it on every Apply and Undo.
-- **Shared SavedVariables library**
-  - The SavedVariables reader and the safe write pipeline (backups, journal, Undo, recovery) the Ace3 Profile
-    Manager used are now shared by both tools; the Ace3 Profile Manager works as before.
-  - Strings with a backslash before a character Lua 5.1 doesn't treat as an escape (`\x41`, `\z`) are now read the
-    way WoW reads them.
+    cut short (a crash, a power cut) can be put back. Every Apply and Undo repeats the USE AT YOUR OWN RISK
+    warning.
+- **Ace3 Profile Manager** and **Saved Variables Browser** (one SavedVariables library)
+  - Both tools share one SavedVariables reader and one safe write pipeline: backups, journal, Undo and recovery.
+  - Strings with a backslash before a character Lua 5.1 doesn't treat as an escape (`\x41`, `\z`) are read the way
+    WoW reads them.
+  - **Put the originals back** after an unfinished change works when you run the app from the other system
+    (Windows or WSL) than the one the change was started from: the files are found in the WoW folder you set. If
+    that game version is not in your WoW folder, nothing is changed and the unfinished change is still offered.
+  - When another program (a virus scanner or OneDrive) keeps the app from removing its unfinished-change reminder
+    after an Apply that finished, the result says so, and **Put the originals back** on the next scan only removes
+    the reminder, leaving the finished change alone. If the reminder still can't be removed then, or after
+    **Leave as is**, a notice says so.
+  - **Undo** only backs up game version folders inside your WoW folder, and only writes its zip inside the backup
+    folder, even from a damaged journal.
+- **Docs**
+  - Screenshots of every tool: the README shows the tool menu, the general settings and each tool's review screen,
+    and each tool's guide shows its review screen, its confirm or progress window and its results.
+  - The README, every guide and the in-app help match the app: when the USE AT YOUR OWN RISK warning appears, what
+    a WTF Cleaner **Dry run** does and skips, `t` and `Esc` on every screen, the settings as the settings screen
+    names them, and where the backups go. The WTF Cleaner guide has a section on the warning.
+  - The release zip holds only what you need to run the app and read about it: the program, its libraries, the
+    launchers, the README, the changelog, the license and the five guides with their pictures. The developer
+    documentation, tests and scripts are on GitHub.

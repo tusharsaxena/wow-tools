@@ -1,6 +1,6 @@
 # Ka0s WoW Tools
 
-![Version](https://img.shields.io/badge/Version-0.1.0-blue)
+![Version](https://img.shields.io/badge/Version-1.0.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-yellow)
 ![Platforms](https://img.shields.io/badge/Platforms-Windows_%7C_macOS_%7C_Linux-purple)
 ![Tests](https://img.shields.io/badge/Tests-1925_passing%2C_2_skipped-green)
