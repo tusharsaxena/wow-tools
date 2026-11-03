@@ -11,7 +11,7 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 |---|---|---|---|---|---|
 | T0 | - | spec, plan, ledger | done | (this commit) | builder check folded into the spec |
 | T1 | M1 | bootstrap log writer, launcher events, LN7 deviation | done | (this commit) | 15 new tests (8 test_bootstrap, 7 test_suite incl. MainTest); gate green: WSL 1987 OK (2 skipped), Windows 1987 OK (78 skipped), ruff clean, events.md current. Review fixes (T1r): bootstrap.py parses on 3.7 again (no walrus; ast test), and the 2000-line cap (MAX_KEEP_LINES) now applies after the date trim too; gate green: WSL/Windows 1989 OK |
-| T2 | M1 | wow-tools.cmd check, log, pause | todo | | |
+| T2 | M1 | wow-tools.cmd check, log, pause | done | (this commit) | 8 new tests in test_launcher.py (2 structure tests on every platform, 6 cmd.exe tests Windows-only); gate green: WSL 1997 OK (8 skipped), Windows 1997 OK (78 skipped), ruff clean, events.md current. Manual run from a folder named `a!b & c` logged and paused correctly |
 | T3 | M1 | wow-tools.sh parity, README FAQ, CHANGELOG; push | todo | | |
 | T4 | M2 | dump addon, refresh script; then user runs dumps | todo | | |
 | T5 | M2 | install helpers (Forever, real characters) | todo | | |
@@ -53,3 +53,16 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
   step; a `ConfigError` keeps "Fix or delete the file". An exception after the log opened but before
   `session.start` is now also logged there as `error` (`where=suite.start`), so `__main__` never logs it twice.
 - T1e: the CHANGELOG line for the launcher fix lands in T3 with the `.cmd`/`.sh` work (the user-visible part).
+- T2a: the `.cmd` Python check runs before the last line and, on failure, writes `launcher.python_missing` or
+  `launcher.python_too_old` and then `launcher.exited`, pauses when double-clicked and exits: 3 for too old, 9009
+  (cmd.exe's "not found") for missing. Any probe result other than 0 or 3 counts as missing (the Store placeholder,
+  `py` without a Python 3). The probe and the version read use `call`, so a `.bat` shim (pyenv-win) returns.
+- T2b: double-click = `%cmdcmdline%` contains both the script's name and `/c` (case-insensitive), compared by
+  delayed-expansion substitution rather than `echo | findstr`, so quotes or `&` in the command line can't break it.
+  The pause shows the launcher's own English prompt ("Press any key to close this window.", `pause >nul`), since
+  `pause`'s text is localised and the tests pin the prompt.
+- T2c: log writes are `(>>"<log>" echo ...) 2>nul`: a `2>nul` on the same command doesn't hide cmd.exe's own
+  "cannot find the path" message for a failed redirect, the group's does. On the last line the path is read as
+  `!WOWTOOLS_LOG!` (a `!` in the app folder survives). `launcher.started` writes `args=%*` last (`python=`,
+  `platform=windows` first) so arbitrary arguments can only trail the line; an argument with `)` would cut the
+  logged args short, which the suite's own arguments (`update`, `--check`, `--version`, `--help`) never contain.
