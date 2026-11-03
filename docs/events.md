@@ -269,3 +269,10 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `svb.would_edit` | info | Dry run: a file that would be rewritten, with its changes (checked, not written). |
 | `svb.wow_running` | warning | Apply or Undo was refused because WoW of that flavor is running. |
 | `svb.write_failed` | error | A SavedVariables file could not be written; the run stopped. |
+
+## `config-copier` events
+
+| Event | Level | Description |
+|---|---|---|
+| `copier.file_unreadable` | warning | A source or target client file could not be read while planning a copy, so its pairs are shown as unreadable and never copied (path, reason). |
+| `copier.planned` | info | A copy was planned from a source character: source, targets, files and how many (target, file) pairs are new, replaced, unchanged, have no source file or could not be read (counts). |

@@ -19,7 +19,7 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 | T7 | M2 | macro and CVar file parsers | done | 2e9243e, review fixes (this commit) | 27 new tests: 14 in test_macrofile.py (the plan's 6 plus empty file, quoted name and lowercase id, limits, empty-body add, bad changes, invalid UTF-8, other-prefix ids, id overflow), 13 in test_cvarfile.py (the plan's 3 plus spans, other lines kept, duplicates, empty file, spelling and line ending kept, every duplicate set/removed, unterminated last line, removing a missing CVar, invalid UTF-8, bad changes); fixtures gain macro_file_bytes and cvar_file_bytes; architecture.md Core modules rows for both. Gate green: WSL 2080 OK (9 skipped), Windows 2080 OK (85 skipped; the first --all run had one Windows failure in the test runner's own shard-balancing test, not in this change, clean on the --windows rerun and a second --all), ruff clean, events.md current. No CHANGELOG line: nothing a user sees yet. Review fixes (T7r1): a replace whose name, icon and body equal the parsed macro keeps the block's bytes (the one-blank-line block), pinned by test_unchanged_replace_keeps_the_block_bytes |
 | T8 | M2 | KB loader, state list, macro limits | done | (this commit) | 17 new tests in test_kb.py (the plan's 4 plus case-insensitive state match, exceptions, unreadable state list, the refresh_kb schema, odd entries, unsafe flavor names, caching, the X8 category groups, unknown-flavor limits, every shipped limit sourced, bad limits, the KB folder and README, kb.unreadable registered); architecture.md Core modules row for `kb`; events.md regenerated. Gate green: WSL 2098 OK (9 skipped), Windows 2098 OK (85 skipped; the first --all run's Windows half reported FAILED with 0 failures and 0 errors after one shard hung 600 s on the executor join in test_ui_base, environmental, clean on the --windows rerun in 81 s), ruff clean, events.md current. No CHANGELOG line: nothing a user sees yet Review fix (fix: T8 review fixes): `highestUnlocked*` added to the state patterns, `showTutorials` made an exception (T8g); T20's row now carries CC5's per-pattern dump check; +1 test, gate green: WSL 2099 OK (9 skipped), Windows 2099 OK (85 skipped), ruff clean, events.md current |
 | T9 | M2 | shared character tree; push | done | (this commit) | 7 new tests in test_character_tree.py (the plan's 4 plus account_extra, shown=, populating under a flavor node without marks), on a toy ReviewBase screen over the new `build_character_tree` fixture; architecture.md UI row for `character_tree`. Gate green: WSL 2106 OK (9 skipped), Windows 2106 OK (85 skipped), ruff clean, events.md current. No CHANGELOG line: nothing a user sees yet. Push (M2) left to the orchestrator. Review fixes (T9c, T9d): `character_extra` hook, hooks' keys fold into parents, 5 more tests (12 in all) incl. a TreeFilter screen; gate green: WSL 2111 OK (9 skipped), Windows 2111 OK (85 skipped), ruff clean, events.md current |
-| T10 | M3 | copier planning and config merge | todo | | |
+| T10 | M3 | copier planning and config merge | done | (this commit) | 24 new tests: 13 in test_config_copier_planner.py (the plan's 5 plus COPY_FILES order, unknown-layout macro warning, no warning when unchanged, config pair is the merge, config unchanged when only state differs, unreadable files and their events, bad arguments, nothing written), 11 in test_config_copier_merge.py (the plan's 4 plus line order and bytes, empty target, empty source, a duplicated line, LF and other lines kept, case-insensitive names, source duplicate); `copier.*` events registered, events.md regenerated. Gate green: WSL 2135 OK (9 skipped), Windows 2135 OK (85 skipped), ruff clean, events.md current. No CHANGELOG line: nothing a user sees yet (the tool is registered in T11) |
 | T11 | M3 | copier run, undo, flow | todo | | |
 | T12 | M3 | copier docs; push | todo | | |
 | T13 | M4 | macro model, ops, paste rules | todo | | |
@@ -221,3 +221,22 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
   `character_filter_texts`, marks from `shown_tick_mark`): Space on an account and `n` act on the shown keys only,
   a hidden tick is kept and counted by `hidden_ticked_keys`, the realm matches case-insensitively, no match shows
   `NO_MATCH_TEXT`.
+- T10a: `PairPlan` gains a fifth status `unreadable` and a `problem: str | None` field (default None) beyond the
+  plan's interface: a source or target file that exists but can't be read (a folder by that name, no permission, an
+  I/O error) is never copied, its reason is shown instead of a crash, and it is logged once per path as
+  `copier.file_unreadable` (warning). `warnings` defaults to `()`. `no-source` and `unreadable` pairs carry no bytes
+  (`new`, `old`, `old_sha256` None), so the target's file is left alone.
+- T10b: `plan_copy` returns targets in the order given and files in `COPY_FILES` order whatever order `names` has;
+  it raises ValueError for a name outside `COPY_FILES` (X4) or the source among the targets (CC2), reads each source
+  file once, never writes, and logs `copier.planned` (source, target count, files, counts by status). A target file
+  already equal to what it would get (after the merge, for config) is `unchanged`, so it is never rewritten.
+- T10c: the CC7 macro warning is on a `replace` of `macros-cache.txt` whose target file holds at least one macro, or
+  is in a layout the reader doesn't know and isn't blank (it may hold macros); not on `new`, `unchanged` or a target
+  file with no macros.
+- T10d: `merge_config` sets a source preference only when the value the client reads from the target differs
+  (`CvarFile.get`, last line wins), so a target with the same preferences comes back byte-identical even with odd
+  spelling or a duplicated line; a duplicated line is collapsed only when the CVar's value changes. A source
+  duplicate gives the last value. A target-only preference loses every line of it. With no target the result is the
+  source's bytes minus its state lines (its own order, newline and other lines); an empty target file is merged like
+  any target (CRLF for appended lines). The source's comment and other non-`SET` lines are not copied into a target.
+  State is `core.kb.is_state_cvar` on the shipped list; the per-pattern dump check is still T20's.
