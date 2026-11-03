@@ -110,6 +110,21 @@ class ApplyTest(unittest.TestCase):
         self.assertEqual(out, b'VER 3 0100000000000001 "E" "134400"\r\nEND\r\n')
         self.assertEqual(parse_macros(out).macros[0].body, "")
 
+    def test_unchanged_replace_keeps_the_block_bytes(self):
+        # A block with one blank body line and one with no body lines both read back as "" (T7b, T7r1); a replace
+        # that changes nothing keeps the bytes either way, and a real edit still rewrites the block.
+        data = (b'VER 3 0100000000000001 "Blank" "134400"\r\n\r\nEND\r\n'
+                b'VER 3 0100000000000002 "None" "134400"\r\nEND\r\n')
+        parsed = parse_macros(data)
+        self.assertEqual([m.body for m in parsed.macros], ["", ""])
+        same = [MacroChange("replace", m.id, m.name, m.icon, m.body) for m in parsed.macros]
+        self.assertEqual(apply_macro_changes(data, parsed, same), data)
+        lower = MacroChange("replace", "0100000000000001".lower(), "Blank", "134400", "")
+        self.assertEqual(apply_macro_changes(data, parsed, [lower]), data)
+        out = apply_macro_changes(data, parsed, [MacroChange("replace", "0100000000000001", "Blank", "134400", "/sit")])
+        self.assertEqual(out, b'VER 3 0100000000000001 "Blank" "134400"\r\n/sit\r\nEND\r\n'
+                         + data[parsed.macros[1].span[0]:])
+
     def test_bad_changes_raise(self):
         parsed = parse_macros(RETAIL)
         bad = {

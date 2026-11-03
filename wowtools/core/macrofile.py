@@ -14,7 +14,8 @@ problem, and apply_macro_changes refuses to rewrite it (Review Focus 1). Text is
 surrogateescape, so any byte survives a round trip.
 
 apply_macro_changes splices: a block nobody changed keeps its exact bytes and its place; a replaced block is rewritten
-where it stands (keeping its id: action bar buttons point at macro ids, V5); a deleted block goes; an added one is
+where it stands (keeping its id: action bar buttons point at macro ids, V5), unless its name, icon and body equal the
+parsed ones, when it keeps its bytes (ME13); a deleted block goes; an added one is
 appended (the client re-sorts by name when it saves). The 16-character name and 255-character body limits are the
 caller's to enforce (NAME_LIMIT, BODY_LIMIT): this module only refuses what would break the layout.
 """
@@ -164,7 +165,9 @@ def apply_macro_changes(data: bytes, parsed: MacroFile, changes: Sequence[MacroC
         elif macro is None:
             raise ValueError(f"no macro {change.id} in the file")
         elif change.kind == "replace":
-            edits[macro.span[0]] = (macro.span[1], _block(change, parsed.newline))
+            if (change.name, change.icon, change.body) != (macro.name, macro.icon, macro.body):
+                edits[macro.span[0]] = (macro.span[1], _block(change, parsed.newline))
+            # else: nothing changed, so the block keeps its bytes (one blank body line and no lines both read as "")
         elif change.kind == "delete":
             edits[macro.span[0]] = (macro.span[1], b"")
         else:
