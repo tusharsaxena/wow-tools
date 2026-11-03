@@ -16,7 +16,7 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 | T4 | M2 | dump addon, refresh script; then user runs dumps | waiting-user | (this commit) | 11 new tests in test_refresh_kb.py (10 refresh_kb, 1 addon shape); the Lua (112 lines) also smoke-run under lua5.1 with stubbed APIs and fed through refresh_kb.py end to end (scratchpad only); gate green: WSL 2018 OK (9 skipped), Windows 2018 OK (84 skipped), ruff clean, events.md current. Waiting on the user: install the addon and `/kbdump` once per flavor (scripts/kb_dump/README.md); T5 onward does not wait, T20 needs the dumps. Review fix (fix: T4 review fixes): a dump string that is not valid UTF-8 now skips its flavor with a message instead of crashing the run (T4h); +1 test, gate green: WSL 2019 OK (9 skipped), Windows 2019 OK (84 skipped), ruff clean, events.md current |
 | T5 | M2 | install helpers (Forever, real characters) | done | (this commit) | 5 new tests in test_install.py (RealCharactersTest: the plan's 4 plus on_error passed through); gate green: WSL 2024 OK (9 skipped), Windows 2024 OK (84 skipped), ruff clean, events.md current. Review fix (fix: T5 review fixes): test_real_characters_passes_on_error checked nothing (a missing account folder never reaches on_error); it now makes one realm's iterdir raise PermissionError and asserts on_error gets that realm and the other realm's character still lists (fails if real_characters drops on_error); gate green: WSL 2024 OK (9 skipped), Windows 2024 OK (84 skipped; one first-run WinError 10055 socket-buffer error, environmental, clean on rerun), ruff clean, events.md current |
 | T6 | M2 | client-file write pipeline | done | (this commit) | 28 new tests: 24 in test_client_apply.py (the plan's 9 plus created-only run, stale-skip-rest, appears-before-write, link guard, guarded path stops the run, client_destination, roll-back removes a created file, undo of a gone created file, undo while WoW runs, journal entry outside the names, recovery leaves a rewritten created file, finished-run recovery, no cache.md5/.old, client_events), 3 in test_fsutil.py (atomic_create_bytes), 1 in test_backup.py (allow_empty); test_structure pins the new pieces in core. Existing Ace3 / SV Browser / pipeline tests unchanged and green. Gate green: WSL 2052 OK (9 skipped), Windows 2052 OK (85 skipped; the first --all run had one WinError 10055 socket-buffer error, environmental as in T5, clean on the --windows rerun), ruff clean, events.md current. Review fix (fix: T6 review fixes): a created file roll-back could not remove now gets its own detail and message (delete it / Undo / recovery), never the unzip advice; +1 test, crash-marker test asserts it; gate green again: WSL 2053 OK, Windows 2053 OK (one WinError 10055 on --all, clean on the --windows rerun), ruff clean, events.md current |
-| T7 | M2 | macro and CVar file parsers | todo | | |
+| T7 | M2 | macro and CVar file parsers | done | (this commit) | 27 new tests: 14 in test_macrofile.py (the plan's 6 plus empty file, quoted name and lowercase id, limits, empty-body add, bad changes, invalid UTF-8, other-prefix ids, id overflow), 13 in test_cvarfile.py (the plan's 3 plus spans, other lines kept, duplicates, empty file, spelling and line ending kept, every duplicate set/removed, unterminated last line, removing a missing CVar, invalid UTF-8, bad changes); fixtures gain macro_file_bytes and cvar_file_bytes; architecture.md Core modules rows for both. Gate green: WSL 2080 OK (9 skipped), Windows 2080 OK (85 skipped; the first --all run had one Windows failure in the test runner's own shard-balancing test, not in this change, clean on the --windows rerun and a second --all), ruff clean, events.md current. No CHANGELOG line: nothing a user sees yet |
 | T8 | M2 | KB loader, state list, macro limits | todo | | |
 | T9 | M2 | shared character tree; push | todo | | |
 | T10 | M3 | copier planning and config merge | todo | | |
@@ -137,3 +137,26 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
   `file_edited`, `write_failed` and `probe_recovered`, plus `file_created` (Apply) and `file_removed` (Undo,
   recovery). No registry of an existing tool changed, so `docs/events.md` is unchanged until a tool registers it.
   No CHANGELOG line: nothing a user can see yet (the tools that use it land in T11, T15, T21).
+- T7a: a macros-cache.txt is a known layout only when every line ends in CRLF (the file ends in one too), every
+  block is `VER 3 <16 hex> "<name>" "<icon>"`, its body lines and `END`, with nothing between blocks and no id twice
+  (compared case-insensitively). Anything else (LF-only or mixed endings, a missing `END`, `MACRO`, `VER 2`, a blank
+  or stray line, no final newline, a BOM, a duplicated id) is read-only: `known_layout` False with a `line N ...`
+  problem, no macros listed, and `apply_macro_changes` raises even with no changes. An empty file is known, empty,
+  CRLF. A body line that is itself a `VER 3` header ends the block early, so it reads as a missing `END`.
+- T7b: the header's icon has no quote and the name is greedy, so a name holding quotes reads back whole. A body is
+  its lines joined with "\n"; an empty body is written with no lines (a block with one blank line also reads as "").
+  `apply_macro_changes` refuses (ValueError) a malformed id, a line break in name or icon, a CR in the body, a quote
+  in the icon, a body line `END` or `VER 3 ...`, an add of an id in the file, a replace/delete of one it lacks, and
+  two changes to one id. It does not enforce `NAME_LIMIT` (16) or `BODY_LIMIT` (255): those are the model's (T13).
+  Changed blocks are rewritten in place, deletes removed, adds appended in the order given. `ICON_DEFAULT = "134400"`
+  is added for ME8.
+- T7c: `next_macro_id` counts only ids with the scope's prefix (another prefix in the file is ignored), writes
+  16 uppercase hex digits, starts at `<prefix>00000000000001` and raises ValueError when the prefix runs out
+  (`00FFFFFFFFFFFFFF`) or the layout is unknown.
+- T7d: CVar files: a `SET <name> "<value>"` line has a name without spaces or quotes and the value runs to the line's
+  last quote (quotes inside kept). Names match case-insensitively (the client's rule); `get` returns the last line's
+  value. A set rewrites the CVar's first line in place, keeping the file's spelling of the name and that line's own
+  ending, leaves the bytes untouched when the value is the same, and removes any later duplicate; a remove drops
+  every line of it. New lines are appended with the file's newline (the first line's; CRLF for an empty file or one
+  without a line ending), adding a newline first when the last line has none. ValueError for an empty name or one
+  with a space or quote, a value with a line break, or a CVar both set and removed (or set twice in other cases).

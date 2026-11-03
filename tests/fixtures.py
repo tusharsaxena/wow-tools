@@ -32,6 +32,8 @@ build_sv_tree(root) builds a separate install for the Saved Variables Browser (s
 texts): two flavors, two accounts, account-wide and per-character files, nested tables, numeric/boolean keys,
 Font/font/barFont keys, SVB_FONT in several files and flavors, escapes, floats, a nil array slot with -- [n]
 comments, a Blizzard_* file, a .bak and a broken file.
+macro_file_bytes(macros) and cvar_file_bytes(pairs) synthesize a macros-cache.txt and a config-cache.wtf / Config.wtf
+the way the Retail client writes them (config tools spec V4): never copied from a real install.
 """
 from __future__ import annotations
 
@@ -567,3 +569,20 @@ def cpu_seconds():
         yield timer
     finally:
         timer.seconds = time.process_time() - started
+
+
+def macro_file_bytes(macros, newline: bytes = b"\r\n") -> bytes:
+    """A macros-cache.txt in the Retail layout (config tools spec V4): one `VER 3 <id> "<name>" "<icon>"` line, the
+    body lines and `END` per macro, every line ending in `newline` (the client writes CRLF), UTF-8. `macros` is
+    (id, name, icon, body) tuples; a body's lines are split on "\n" and an empty body has no lines."""
+    out = bytearray()
+    for macro_id, name, icon, body in macros:
+        lines = [f'VER 3 {macro_id} "{name}" "{icon}"', *(body.split("\n") if body else []), "END"]
+        for line in lines:
+            out += line.encode("utf-8") + newline
+    return bytes(out)
+
+
+def cvar_file_bytes(pairs, newline: bytes = b"\r\n") -> bytes:
+    """A config-cache.wtf or Config.wtf: one `SET <name> "<value>"` line per (name, value) pair, UTF-8."""
+    return b"".join(f'SET {name} "{value}"'.encode() + newline for name, value in pairs)
