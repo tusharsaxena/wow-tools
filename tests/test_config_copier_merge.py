@@ -96,6 +96,10 @@ class MergeTest(unittest.TestCase):
         merged = merge_config(b'SET autoLootDefault "0"\r\nSET autoLootDefault "1"\r\n', None)
         self.assertEqual(parse_cvars(merged).get("autoLootDefault"), "1")
 
+    def test_source_name_with_non_ascii_whitespace_is_merged(self):
+        merged = merge_config(b'SET foo\xc2\xa0bar "1"\r\n', b'SET x "1"\r\n')
+        self.assertEqual(merged, b'SET foo\xc2\xa0bar "1"\r\n')
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -87,9 +87,16 @@ class ApplyTest(unittest.TestCase):
         parsed = parse_cvars(data)
         self.assertEqual(apply_cvar_changes(data, parsed, {"a": parsed.get("a")}, ()), data)
 
+    def test_any_name_the_parser_reads_can_be_set(self):
+        data = b'SET foo\xc2\xa0bar "1"\r\nSET x\x1cy "2"\r\n'  # U+00A0 and \x1c are not ASCII whitespace
+        parsed = parse_cvars(data)
+        self.assertEqual([line.name for line in parsed.lines], ["foo\xa0bar", "x\x1cy"])
+        changed = apply_cvar_changes(data, parsed, {"foo\xa0bar": "3", "x\x1cy": "4"}, ())
+        self.assertEqual(changed, b'SET foo\xc2\xa0bar "3"\r\nSET x\x1cy "4"\r\n')
+
     def test_bad_changes_raise(self):
         parsed = parse_cvars(SAMPLE)
-        for sets, removes in (({"a": "1\n2"}, ()), ({"a b": "1"}, ()), ({"": "1"}, ()), ({'a"': "1"}, ()),
+        for sets, removes in (({"a": "1\n2"}, ()), ({"a b": "1"}, ()), ({"": "1"}, ()), ({'a"': "1"}, ()), ({"a\tb": "1"}, ()),
                               ({"a": "1"}, {"A"})):
             with self.subTest(sets=sets, removes=removes), self.assertRaises(ValueError):
                 apply_cvar_changes(SAMPLE, parsed, sets, removes)

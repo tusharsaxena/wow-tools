@@ -26,7 +26,7 @@ DEFAULT_NEWLINE = b"\r\n"  # an empty file, or one without a line ending, gets t
 _ENCODING = "utf-8"
 _ERRORS = "surrogateescape"
 _SET = re.compile(rb'SET ([^\s"]+) "(.*)"')
-_NAME = re.compile(r'[^\s"]+')
+_NAME = re.compile(r'[^\s"]+', re.ASCII)  # the same whitespace as _SET's bytes \s, so the writer takes every name read
 
 
 @dataclass(frozen=True)
@@ -79,7 +79,8 @@ def _set_line(name: str, value: str) -> bytes:
 
 def apply_cvar_changes(data: bytes, parsed: CvarFile, sets: Mapping[str, str], removes: Collection[str]) -> bytes:
     """`data` (as `parsed` read it) with `sets` and `removes` applied (see the module docstring). Raises ValueError for
-    a name that is empty or holds a space or quote, a value with a line break, or a CVar both set and removed."""
+    a name that is empty or holds ASCII whitespace or a quote, a value with a line break, or a CVar both set and
+    removed."""
     wanted = {name.casefold(): (name, value) for name, value in sets.items()}
     dropped = {name.casefold() for name in removes}
     for name, value in sets.items():
