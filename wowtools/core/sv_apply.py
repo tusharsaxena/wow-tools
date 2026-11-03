@@ -435,7 +435,7 @@ def _roll_back(tool: SvTool, exc: BaseException, written: list[tuple[SvFile, byt
                failing: SvFile | None, result: ApplyResult, journal: EditJournal, root: Path, flavor: Flavor) -> None:
     """Put back every file this run wrote (a file it created is deleted), newest first, then raise ApplyError (or
     re-raise a non-Exception). failing is the file being written when it failed; its outcome is added here."""
-    put_back, left = [], []
+    put_back, left, left_created = [], [], set()
     for file, original in reversed(written):
         try:
             if original is None:
@@ -445,6 +445,8 @@ def _roll_back(tool: SvTool, exc: BaseException, written: list[tuple[SvFile, byt
             put_back.append(file.rel)
         except OSError as error:
             left.append(file.rel)
+            if original is None:
+                left_created.add(file.rel)
             log_event(tool.event("rollback_failed"), flavor=flavor.folder, path=file.rel, error=str(error))
     if put_back:
         try:
@@ -452,17 +454,22 @@ def _roll_back(tool: SvTool, exc: BaseException, written: list[tuple[SvFile, byt
         except OSError:
             pass
     done, not_back = set(put_back), set(left)
-    left_detail = f"could not be put back after the failure; its original is in {result.backup_zip}"
+
+    def left_detail(rel: str) -> str:
+        if rel in left_created:  # no original in the zip: the fix is to delete it
+            return ("was created by this run and could not be removed after the failure; close WoW and use Undo "
+                    "or the recovery screen, or delete it by hand")
+        return f"could not be put back after the failure; its original is in {result.backup_zip}"
     for outcome in result.outcomes:
         if outcome.status == "edited" and outcome.file.rel in done:
             outcome.status = "rolled_back"
         elif outcome.status == "edited" and outcome.file.rel in not_back:
-            outcome.status, outcome.detail = "failed", left_detail
+            outcome.status, outcome.detail = "failed", left_detail(outcome.file.rel)
     if failing is not None and not any(o.file is failing for o in result.outcomes):
         if failing.rel in done:
             result.outcomes.append(FileOutcome(failing, "rolled_back", f"writing it failed ({exc})"))
         elif failing.rel in not_back:
-            result.outcomes.append(FileOutcome(failing, "failed", left_detail))
+            result.outcomes.append(FileOutcome(failing, "failed", left_detail(failing.rel)))
         else:
             result.outcomes.append(FileOutcome(failing, "failed", f"not written ({exc})"))
     log_event(tool.event("rolled_back"), flavor=flavor.folder, files=put_back, left=left, error=str(exc))
@@ -474,9 +481,13 @@ def _roll_back(tool: SvTool, exc: BaseException, written: list[tuple[SvFile, byt
     message = f"Writing the changes failed ({exc})."
     if put_back:
         message += f" The {len(put_back)} file(s) already written were put back."
-    if left:
-        message += (f" {len(left)} file(s) could not be put back: their originals are in "
+    replaced_left = [rel for rel in left if rel not in left_created]
+    if replaced_left:
+        message += (f" {len(replaced_left)} file(s) could not be put back: their originals are in "
                     f"{result.backup_zip}. Close WoW and use Undo, or unzip them by hand.")
+    if left_created:
+        message += (f" {len(left_created)} file(s) this run created could not be removed. Close WoW and use Undo "
+                    "or the recovery screen, or delete them by hand.")
     raise ApplyError(message, rolled_back=put_back, files_left=left) from exc
 
 

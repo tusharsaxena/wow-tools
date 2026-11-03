@@ -260,6 +260,21 @@ class ClientApplyTest(unittest.TestCase):
         self.assertIsNone(sv_apply.read_marker(self.root))
         self.assertIsNone(TOOL.journals.latest_undoable(self.journals))
 
+    def test_a_created_file_left_after_a_failure_is_not_sent_to_the_zip(self):
+        """Only a created file could not be undone: the message says to delete it, not to unzip it."""
+        def write(path, data):
+            raise OSError("disk full")
+        with patch("wowtools.core.sv_apply.remove_created", side_effect=OSError("locked")):
+            result = self.run_apply([self.change(self.chat, CHAT, absent=True), self.change(self.macros, NEW_MACROS)],
+                                    write=write)
+        error = result.stopped.error
+        self.assertNotIn("unzip", error)
+        self.assertNotIn("could not be put back", error)
+        self.assertIn("this run created could not be removed", error)
+        self.assertTrue(self.chat.exists())
+        self.assertEqual(self.macros.read_bytes(), MACROS)
+        self.assertIsNotNone(sv_apply.read_marker(self.root))  # recovery can still remove it
+
     def test_undo_skips_file_changed_since(self):
         result = self.run_apply([self.change(self.macros, NEW_MACROS), self.change(self.chat, CHAT, absent=True)])
         self.macros.write_bytes(b"WoW saved it at logout")
@@ -311,6 +326,15 @@ class ClientApplyTest(unittest.TestCase):
         self.assertIsNotNone(result.stopped)
         self.assertEqual(self.chat.read_bytes(), CHAT)
         self.assertEqual(self.macros.read_bytes(), NEW_MACROS)
+        # A created file has no original in the zip: its advice is to delete it, never to unzip it (T6r).
+        error = result.stopped.error
+        self.assertIn("1 file(s) could not be put back", error)
+        self.assertIn("1 file(s) this run created could not be removed", error)
+        self.assertIn("delete them by hand", error)
+        details = {o.file.rel: o.detail for o in result.stopped.result.outcomes if o.status == "failed"}
+        self.assertIn("could not be removed", details[self.rel(self.chat)])
+        self.assertNotIn(".zip", details[self.rel(self.chat)])
+        self.assertIn("its original is in", details[self.rel(self.macros)])
         marker = sv_apply.read_marker(self.root)
         self.assertIsNotNone(marker)
         self.assertEqual(marker.created, [self.rel(self.chat)])
