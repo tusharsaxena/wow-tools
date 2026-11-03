@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from tests.fixtures import build_wow_tree
@@ -112,10 +113,20 @@ class RealCharactersTest(unittest.TestCase):
                           "Realm2/old.bak", "Realm2/Tr\u00e2xex"])
 
     def test_real_characters_passes_on_error(self):
+        # A realm that can't be listed reaches on_error, so real_characters must hand it on to characters().
         errors = []
-        missing = Account("X", self.account.path.parent / "missing")
-        self.assertEqual(missing.real_characters(on_error=lambda p, e: errors.append(p)), [])
-        self.assertEqual(errors, [])
+        realm1 = self.account.path / "Realm1"
+        real_iterdir = Path.iterdir
+
+        def iterdir(path):
+            if path == realm1:
+                raise PermissionError(13, "denied", str(path))
+            return real_iterdir(path)
+
+        with mock.patch.object(Path, "iterdir", iterdir):
+            chars = self.account.real_characters(on_error=lambda p, e: errors.append((p, type(e))))
+        self.assertEqual([c.name for c in chars], ["Tr\u00e2xex"])
+        self.assertEqual(errors, [(realm1, PermissionError)])
 
 
 class ValidateOutputDirTest(unittest.TestCase):
