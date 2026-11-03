@@ -17,7 +17,8 @@ APPENDIX_STATE_NAMES = (
     "trackedAchievements", "reputationsCollapsed", "currencyCategoriesCollapsed", "unlockedMajorFactions",
     "lfgSelectedRoles", "pvpSelectedRoles")
 APPENDIX_STATE_PATTERNS = ("closed*", "*Tutorial*", "garrison*", "lastRenownForCovenant*", "latest*", "new*Season",
-                           "savedClassConfig*", "cameraSaved*", "last*", "saved*Config*", "*Collapsed")
+                           "savedClassConfig*", "cameraSaved*", "last*", "saved*Config*", "*Collapsed",
+                           "highestUnlocked*")
 # Every appendix CVar the reading puts on the state list, matched by a name or a pattern.
 APPENDIX_STATE_CVARS = (
     "closedExtraAbiltyTutorials", "covenantMissionTutorial", "eventSchedulerLastUpdate", "garrisonCompleteTalent",
@@ -67,6 +68,15 @@ class StateListTest(KbTestCase):
         self.assertTrue(kb.is_state_cvar("ClosedInfoFrames"))
         self.assertTrue(kb.is_state_cvar("someTUTORIALflag"))
         self.assertFalse(kb.is_state_cvar(""))
+
+    def test_shipped_patterns_cover_siblings_and_spare_known_preferences(self):
+        # CC5 names highestUnlocked* as a pattern: a sibling progress CVar stays the target's own.
+        self.assertTrue(kb.is_state_cvar("highestUnlockedMythicPlusTier"))
+        # showTutorials is the Retail Tutorials toggle, a preference that *Tutorial* would otherwise catch.
+        data = json.loads((kb.KB_ROOT / "cvar_state.json").read_text(encoding="utf-8"))
+        self.assertIn("showTutorials", data["exceptions"])
+        self.assertFalse(kb.is_state_cvar("showTutorials"))
+        self.assertFalse(kb.is_state_cvar("SHOWTUTORIALS"))
 
     def test_exceptions_win_over_patterns(self):
         write_json(self.root / "cvar_state.json", {"source": "test", "names": ["keepMe"], "patterns": ["last*"],
