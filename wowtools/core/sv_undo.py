@@ -5,10 +5,15 @@ A file is put back from the edited-*.zip only when it is still byte-for-byte wha
 WoW (or anything else) saved since is skipped and never overwritten. Undo and recovery are refused while that
 flavor's WoW runs, refuse locked files, and take a whole-WTF snapshot of each flavor first (Undo: several flavors
 up to [general] parallelism at once, core/parallel.py).
+
+A journal or marker path maps back through `dest_for` (default destination: a SavedVariables file); the client-file
+pipeline (core/client_apply.py) passes its own. A file the run created (a "created" entry, marker.created) is deleted
+when it is still what the run wrote (file_removed), and is left alone otherwise; only that pipeline makes them.
 """
 from __future__ import annotations
 
 import hashlib
+import os
 import zipfile
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -26,12 +31,12 @@ from wowtools.core.snapshot import prune_snapshots, take_snapshot
 from wowtools.core.sv_apply import (EDITED_SUBDIR, SNAPSHOT_PREFIX, SNAPSHOT_SUBDIR, Marker, UndoError, WowRunning,
                                     clear_marker, refuse_running)
 from wowtools.core.sv_events import SvTool
-from wowtools.core.sv_journal import completed_runs, read_edit_journal, record_recovered
+from wowtools.core.sv_journal import A_CREATED, completed_runs, read_edit_journal, record_recovered
 from wowtools.core.svfiles import find_locked, locked_message
 from wowtools.core.undo import FAILED, RESTORED, SKIPPED, UndoResultBase, safe_destination
 
-__all__ = ["CHANGED_SINCE", "UndoError", "UndoOutcome", "UndoResult", "WowRunning", "destination", "leave",
-           "recover", "undo_flavors", "undo_run"]
+__all__ = ["CHANGED_SINCE", "Destination", "UndoError", "UndoOutcome", "UndoResult", "WowRunning", "destination",
+           "leave", "recover", "undo_flavors", "undo_run"]
 
 CHANGED_SINCE = "changed since the change was made (WoW may have saved it); left as it is"
 
@@ -59,11 +64,14 @@ def destination(wow_root: Path, flavor: str, rel: str) -> Path | None:
     return safe_destination(wow_root, flavor, rel, prefix=("WTF", "Account"), min_parts=5, parent="SavedVariables")
 
 
-def undo_flavors(wow_root: Path, entries: Iterable[dict]) -> list[Flavor]:
+Destination = Callable[[Path, str, str], Path | None]  # (wow_root, flavor, rel) -> the file, or None: refused
+
+
+def undo_flavors(wow_root: Path, entries: Iterable[dict], dest_for: Destination = destination) -> list[Flavor]:
     """The flavors Undo backs up, sorted: only those with an entry whose destination passed safe_destination, so a
     crafted flavor ("../x") is never zipped or pruned (STD-5.25). The Undo popup builds its rows from the same list."""
     return [Flavor(folder, wow_root / folder)
-            for folder in sorted({e["flavor"] for e in entries if destination(wow_root, e["flavor"], e["rel"])})]
+            for folder in sorted({e["flavor"] for e in entries if dest_for(wow_root, e["flavor"], e["rel"])})]
 
 
 def _sha(data: bytes) -> str:
@@ -100,6 +108,39 @@ def _put_back(zip_path: Path, rel: str, dest: Path, sha_before: str) -> str | No
     except OSError as exc:
         return f"could not be written: {exc.strerror or exc}"
     return None
+
+
+def _delete_created(dest: Path) -> str | None:
+    """Delete a file the run created. Returns a problem, or None when done."""
+    try:
+        os.remove(dest)
+    except OSError as exc:
+        return f"could not be removed: {exc.strerror or exc}"
+    return None
+
+
+def _undo_created(tool: SvTool, entry: dict, dest: Path, result: UndoResult) -> None:
+    """Undo of a created entry: delete the file while it is still what the run wrote; gone or changed: skipped."""
+    rel, flavor = entry["rel"], entry["flavor"]
+    current = _current_sha(dest)
+    if current is None:
+        result.outcomes.append(UndoOutcome(flavor, rel, dest, SKIPPED, "the file is gone"))
+        log_event(tool.event("file_skipped"), flavor=flavor, path=rel, reason="gone")
+    elif current != entry["sha_after"]:
+        result.outcomes.append(UndoOutcome(flavor, rel, dest, SKIPPED, CHANGED_SINCE))
+        log_event(tool.event("file_skipped"), flavor=flavor, path=rel, reason="changed")
+    else:
+        _removed(tool, flavor, rel, dest, result)
+
+
+def _removed(tool: SvTool, flavor: str, rel: str, dest: Path, result: UndoResult) -> None:
+    problem = _delete_created(dest)
+    if problem is None:
+        result.outcomes.append(UndoOutcome(flavor, rel, dest, RESTORED, "removed"))
+        log_event(tool.event("file_removed"), flavor=flavor, path=rel)
+    else:
+        result.outcomes.append(UndoOutcome(flavor, rel, dest, FAILED, problem))
+        log_event(tool.event("undo_failed"), flavor=flavor, path=rel, error=problem)
 
 
 def _refuse_locked(tool: SvTool, targets: list[tuple[str, Path | None]], action: str) -> None:
@@ -159,8 +200,9 @@ def undo_run(tool: SvTool, journal_path: Path, *, wow_root: Path, root: Path, ke
              wow_check: Callable[[], list[str] | None] | None = None, now: datetime | None = None,
              progress: Callable[[str, int, int, str], None] | None = None, parallelism: int = 1,
              on_flavor: Callable[[Flavor], None] | None = None,
-             on_flavor_done: Callable[[Flavor], None] | None = None) -> UndoResult:
-    """Put back the files of the journal's run that are still what it wrote. The WTF snapshots come first, up to
+             on_flavor_done: Callable[[Flavor], None] | None = None,
+             dest_for: Destination = destination) -> UndoResult:
+    """Put back the files of the journal's run that are still what it wrote (delete those it created). The WTF snapshots come first, up to
     `parallelism` flavors at once; on_flavor(flavor) runs in the snapshot's thread before it starts (its progress
     reports then come from that thread) and on_flavor_done(flavor) once it ended. The files are put back after
     every snapshot succeeded, in this thread; a snapshot that failed means nothing was changed (UndoError)."""
@@ -169,10 +211,10 @@ def undo_run(tool: SvTool, journal_path: Path, *, wow_root: Path, root: Path, ke
     entries = list(reversed(journal.entries))
     log_event(tool.event("undo_started"), journal=journal_path.name, files=len(entries))
     refuse_running(tool, wow_check, "undo", "files")
-    targets = [(e, destination(wow_root, e["flavor"], e["rel"])) for e in entries]
+    targets = [(e, dest_for(wow_root, e["flavor"], e["rel"])) for e in entries]
     _refuse_locked(tool, [(entry["rel"], dest) for entry, dest in targets], "undo")
     result = UndoResult(journal_path=journal_path)
-    flavors = undo_flavors(wow_root, entries)
+    flavors = undo_flavors(wow_root, entries, dest_for)
     result.snapshots.extend(_snapshots(tool, flavors, root, now, report, parallelism, on_flavor, on_flavor_done))
     skipped = tool.event("file_skipped")
     for index, (entry, dest) in enumerate(targets, 1):
@@ -181,6 +223,9 @@ def undo_run(tool: SvTool, journal_path: Path, *, wow_root: Path, root: Path, ke
         if dest is None:
             result.outcomes.append(UndoOutcome(flavor, rel, None, SKIPPED, "it is outside the WTF folder"))
             log_event(skipped, flavor=flavor, path=rel, reason="outside")
+            continue
+        if entry["action"] == A_CREATED:
+            _undo_created(tool, entry, dest, result)
             continue
         try:
             current = dest.read_bytes()
@@ -219,24 +264,25 @@ def _marker_flavor(marker: Marker, wow_root: Path) -> Flavor:
     return flavor
 
 
-def _never_written(wow_root: Path, marker: Marker, rels: set[str]) -> bool:
+def _never_written(wow_root: Path, marker: Marker, rels: set[str], dest_for: Destination) -> bool:
     """Every file of rels is in the WTF folder and not at what the run would have written (marker.after): a run
     that finished skipped it (it changed between the check and the write), so there is nothing to put back."""
     for rel in rels:
-        dest = destination(wow_root, marker.flavor, rel)
+        dest = dest_for(wow_root, marker.flavor, rel)
         if dest is None or _current_sha(dest) == marker.after.get(rel):
             return False
     return True
 
 
-def _finished_journal(journal_dir: Path | None, marker: Marker, wow_root: Path) -> Path | None:
+def _finished_journal(journal_dir: Path | None, marker: Marker, wow_root: Path,
+                      dest_for: Destination) -> Path | None:
     """The journal showing the marker's flavor finished: it holds a completed record for the marker's flavor and
     zip (written only when that flavor's write loop got through every file, never after a failure or Ctrl+C, so
     the run-level "finished" line, written either way, proves nothing) and an edited entry (not rolled back) from
     that zip for at least one file of the marker, and every file of the marker without one is not at what the run
     would have written (the run skipped it, _never_written). None when there is no such journal (or one cannot be
     read: the run is then treated as unfinished, as before)."""
-    wanted, zip_name = set(marker.files), PureWindowsPath(marker.zip).name
+    wanted, zip_name = set(marker.files) | set(marker.created), PureWindowsPath(marker.zip).name
     for path in list_journals(journal_dir):
         try:
             if (marker.flavor, zip_name) not in completed_runs(path):
@@ -246,15 +292,17 @@ def _finished_journal(journal_dir: Path | None, marker: Marker, wow_root: Path) 
             continue
         edited = {e["rel"] for e in journal.entries
                   if e["flavor"] == marker.flavor and PureWindowsPath(e["zip"]).name == zip_name}
-        if edited and _never_written(wow_root, marker, wanted - edited):
+        if edited and _never_written(wow_root, marker, wanted - edited, dest_for):
             return path
     return None
 
 
 def recover(tool: SvTool, marker: Marker, *, wow_root: Path, root: Path, journal_dir: Path | None = None,
             keep_snapshots: int | None = None, wow_check: Callable[[], list[str] | None] | None = None,
-            now: datetime | None = None, progress: Callable[[str, int, int, str], None] | None = None) -> UndoResult:
-    """After an Apply that did not finish: put back every file of the marker that is still what the run wrote.
+            now: datetime | None = None, progress: Callable[[str, int, int, str], None] | None = None,
+            dest_for: Destination = destination) -> UndoResult:
+    """After an Apply that did not finish: put back every file of the marker that is still what the run wrote (a
+    file it created, marker.created, is deleted then; one that is absent counts as at its original).
     A file still at its original is left alone; one that is neither (the run skipped it as changed since the scan,
     or WoW saved it since) is skipped and never overwritten. As Undo: refused while that flavor's WoW runs or a
     file is locked, and the flavor's WTF folder is backed up first (when there is something to put back), then
@@ -275,7 +323,7 @@ def recover(tool: SvTool, marker: Marker, *, wow_root: Path, root: Path, journal
     Removing the marker can fail again (another program still holds it): the result then has marker_left set, and
     marker_stale or recovery_done is logged at warning with marker_left, so nothing claims it was removed."""
     report = safe_progress(progress)
-    finished = _finished_journal(journal_dir, marker, wow_root)
+    finished = _finished_journal(journal_dir, marker, wow_root, dest_for)
     if finished is not None:
         left = not clear_marker(root)
         log_event(tool.event("marker_stale"), flavor=marker.flavor, journal=finished.name,
@@ -283,28 +331,34 @@ def recover(tool: SvTool, marker: Marker, *, wow_root: Path, root: Path, journal
         return UndoResult(stale_marker=True, marker_left=left)
     flavor = _marker_flavor(marker, wow_root)
     refuse_running(tool, wow_check, "recover", "files")
-    targets = {rel: destination(wow_root, marker.flavor, rel) for rel in marker.files}
+    created = set(marker.created)
+    rels = sorted(set(marker.files) | created)
+    targets = {rel: dest_for(wow_root, marker.flavor, rel) for rel in rels}
     _refuse_locked(tool, sorted(targets.items()), "recover")
     result = UndoResult()
     original: list[str] = []
     if any(dest is not None and _current_sha(dest) == marker.after.get(rel) for rel, dest in targets.items()):
         result.snapshots.append(_snapshot(tool, flavor, root, now, report, "recovery"))
     skipped = tool.event("file_skipped")
-    for index, (rel, sha_before) in enumerate(sorted(marker.files.items()), 1):
-        report("undo", index, len(marker.files), rel)
+    for index, rel in enumerate(rels, 1):
+        report("undo", index, len(rels), rel)
         dest = targets[rel]
         if dest is None:
             result.outcomes.append(UndoOutcome(marker.flavor, rel, None, SKIPPED, "it is outside the WTF folder"))
             log_event(skipped, flavor=marker.flavor, path=rel, reason="outside")
             continue
         current = _current_sha(dest)
-        if current == sha_before:
+        sha_before = None if rel in created else marker.files[rel]
+        if current == sha_before:  # at its original (a created file: still absent)
             original.append(rel)
             continue
         if current is None or current != marker.after.get(rel):
             detail = "the file is gone or could not be read" if current is None else CHANGED_SINCE
             result.outcomes.append(UndoOutcome(marker.flavor, rel, dest, SKIPPED, detail))
             log_event(skipped, flavor=marker.flavor, path=rel, reason="gone" if current is None else "changed")
+            continue
+        if sha_before is None:
+            _removed(tool, marker.flavor, rel, dest, result)
             continue
         problem = _put_back(_moved_zip(marker.zip, root), rel, dest, sha_before)
         status = RESTORED if problem is None else FAILED

@@ -45,12 +45,14 @@ def _arcname(path: Path, base_dir: Path, resolved_base: list[Path]) -> str:
 
 def create_backup(entries: list[BackupEntry], base_dir: Path, dest_zip: Path, meta: dict,
                   on_file: Callable[[int, int, str], None] | None = None,
-                  on_verify: Callable[[int, int, str], None] | None = None) -> Path:
-    """Zip entries (stored relative to base_dir) plus manifest.json, verify, then move into place.
+                  on_verify: Callable[[int, int, str], None] | None = None, allow_empty: bool = False) -> Path:
+    """Zip entries (stored relative to base_dir) plus manifest.json, verify, then move into place. No entries is a
+    BackupError unless allow_empty (a zip holding only the manifest: the client-file pipeline's run that only
+    creates files, whose zip still names the run in its marker and journal).
 
     on_file(current, total, arcname) is called after each file is written to the zip, and on_verify(current,
     total, arcname) after each entry is checked."""
-    if not entries:
+    if not entries and not allow_empty:
         raise BackupError("nothing to back up")
     resolved_base: list[Path] = []
     expected: dict[str, int] = {}

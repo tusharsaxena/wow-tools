@@ -2,7 +2,8 @@
 journal and zip headers) and its event prefix, plus the pipeline's event specs under that prefix. UI-free.
 
 Events stay per tool (SV Browser spec D20): each tool registers sv_events(<its prefix>) with its own events, so the
-Ace3 Profile Manager keeps its ace.* names and the SV Browser gets svb.* ones with the same levels and texts.
+Ace3 Profile Manager keeps its ace.* names and the SV Browser gets svb.* ones with the same levels and texts. A tool on
+the client-file pipeline (core/client_apply.py) registers client_events(<its prefix>) instead.
 """
 from __future__ import annotations
 
@@ -50,9 +51,26 @@ _EVENTS: dict[str, tuple[str, str]] = {
 }
 
 
+# The client-file pipeline (core/client_apply.py) writes files outside SavedVariables and creates some: its tools
+# register client_events, these texts over the ones above plus the two events only a created file logs.
+_CLIENT_EVENTS: dict[str, tuple[str, str]] = {
+    "probe_recovered": ("warning", "A client file left as <name>.wowtools-lockcheck by an interrupted lock check was renamed back."),
+    "file_edited": ("info", "A client file (in an account or character folder, or Config.wtf) was rewritten with the pending changes."),
+    "write_failed": ("error", "A client file could not be written; the run stopped."),
+    "file_created": ("info", "A client file that did not exist was created with the pending changes."),
+    "file_removed": ("info", "Undo or recovery: a file the run had created was deleted (it was still what the run wrote)."),
+}
+
+
 def sv_events(prefix: str) -> dict[str, EventSpec]:
     """The pipeline's events named <prefix>.<event>, for the tool to register with its own."""
     return {f"{prefix}.{name}": EventSpec(level, text) for name, (level, text) in _EVENTS.items()}
+
+
+def client_events(prefix: str) -> dict[str, EventSpec]:
+    """sv_events for a tool on the client-file pipeline: the same events, client-file texts, plus file_created
+    (Apply) and file_removed (Undo, recovery)."""
+    return {f"{prefix}.{name}": EventSpec(level, text) for name, (level, text) in {**_EVENTS, **_CLIENT_EVENTS}.items()}
 
 
 @dataclass

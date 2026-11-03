@@ -156,14 +156,20 @@ class StructureTest(unittest.TestCase):
                      "check_assignments": "sv_verify.py", "rest_outside": "sv_verify.py",
                      "same_outside": "sv_verify.py", "in_backup_folder": "sv_report.py",
                      "apply_summary_rows": "sv_report.py", "apply_detail_rows": "sv_report.py",
-                     "undo_detail_rows": "sv_report.py", "sv_events": "sv_events.py"}
+                     "undo_detail_rows": "sv_report.py", "sv_events": "sv_events.py",
+                     # the client-file pipeline (config tools spec X5) is the same one with its guard plugged in
+                     "remove_created": "sv_apply.py", "_create_one": "sv_apply.py", "client_events": "sv_events.py",
+                     "client_rel_ok": "client_apply.py", "client_destination": "client_apply.py",
+                     "apply_client_changes": "client_apply.py", "undo_client_run": "client_apply.py",
+                     "recover_client_run": "client_apply.py"}
         where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & set(functions)
                  if not (n == "_roll_back" and rel(p) == "wowtools/tools/interface_backup/restore.py")}
         self.assertEqual(where, {(f"wowtools/core/{module}", name) for name, module in functions.items()
                                  if name != "_gaps"})
         classes = {"ApplyResult": "sv_apply.py", "MultiApplyResult": "sv_apply.py", "ApplyError": "sv_apply.py",
                    "UndoError": "sv_apply.py", "WowRunning": "sv_apply.py", "EditJournal": "sv_journal.py",
-                   "ProfileJournal": None, "SvTool": "sv_events.py"}
+                   "ProfileJournal": None, "SvTool": "sv_events.py", "ClientFileGuard": "client_apply.py",
+                   "ClientChange": "client_apply.py"}
         where = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
                  if isinstance(node, ast.ClassDef) and node.name in classes}
         self.assertEqual(where, {(f"wowtools/core/{module}", name) for name, module in classes.items() if module})

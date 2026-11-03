@@ -15,7 +15,7 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 | T3 | M1 | wow-tools.sh parity, README FAQ, CHANGELOG; push | done | (this commit) | 9 new tests in test_launcher.py (3 structure tests on every platform, 6 `sh` tests POSIX-only); gate green: WSL 2007 OK (9 skipped), Windows 2007 OK (84 skipped), ruff clean, events.md current. Push left to the orchestrator. T3 review fix (minor, docs only): the FAQ row's log path now reads `logs/suite/launcher.log` with the Windows form beside it, and "a text editor (Notepad on Windows)"; no test needed; gate green again: WSL 2007 OK (9 skipped), Windows 2007 OK (84 skipped), ruff clean, events.md current |
 | T4 | M2 | dump addon, refresh script; then user runs dumps | waiting-user | (this commit) | 11 new tests in test_refresh_kb.py (10 refresh_kb, 1 addon shape); the Lua (112 lines) also smoke-run under lua5.1 with stubbed APIs and fed through refresh_kb.py end to end (scratchpad only); gate green: WSL 2018 OK (9 skipped), Windows 2018 OK (84 skipped), ruff clean, events.md current. Waiting on the user: install the addon and `/kbdump` once per flavor (scripts/kb_dump/README.md); T5 onward does not wait, T20 needs the dumps. Review fix (fix: T4 review fixes): a dump string that is not valid UTF-8 now skips its flavor with a message instead of crashing the run (T4h); +1 test, gate green: WSL 2019 OK (9 skipped), Windows 2019 OK (84 skipped), ruff clean, events.md current |
 | T5 | M2 | install helpers (Forever, real characters) | done | (this commit) | 5 new tests in test_install.py (RealCharactersTest: the plan's 4 plus on_error passed through); gate green: WSL 2024 OK (9 skipped), Windows 2024 OK (84 skipped), ruff clean, events.md current. Review fix (fix: T5 review fixes): test_real_characters_passes_on_error checked nothing (a missing account folder never reaches on_error); it now makes one realm's iterdir raise PermissionError and asserts on_error gets that realm and the other realm's character still lists (fails if real_characters drops on_error); gate green: WSL 2024 OK (9 skipped), Windows 2024 OK (84 skipped; one first-run WinError 10055 socket-buffer error, environmental, clean on rerun), ruff clean, events.md current |
-| T6 | M2 | client-file write pipeline | todo | | |
+| T6 | M2 | client-file write pipeline | done | (this commit) | 28 new tests: 24 in test_client_apply.py (the plan's 9 plus created-only run, stale-skip-rest, appears-before-write, link guard, guarded path stops the run, client_destination, roll-back removes a created file, undo of a gone created file, undo while WoW runs, journal entry outside the names, recovery leaves a rewritten created file, finished-run recovery, no cache.md5/.old, client_events), 3 in test_fsutil.py (atomic_create_bytes), 1 in test_backup.py (allow_empty); test_structure pins the new pieces in core. Existing Ace3 / SV Browser / pipeline tests unchanged and green. Gate green: WSL 2052 OK (9 skipped), Windows 2052 OK (85 skipped; the first --all run had one WinError 10055 socket-buffer error, environmental as in T5, clean on the --windows rerun), ruff clean, events.md current |
 | T7 | M2 | macro and CVar file parsers | todo | | |
 | T8 | M2 | KB loader, state list, macro limits | todo | | |
 | T9 | M2 | shared character tree; push | todo | | |
@@ -108,3 +108,32 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
   takes the same `on_error` as `characters()` and passes it on. No CHANGELOG line: `flavor_name("_forever_")` already
   showed "Forever" through the title-case fallback, so the new `FLAVOR_NAMES` row changes nothing a user sees; it
   only pins the name. `docs/architecture.md`'s `install` row names both helpers.
+- T6a: X5 is done by generalising, not forking: `core/client_apply.py` is thin and runs every write through
+  `sv_apply.apply_flavor` / `apply_flavors` and `sv_undo.undo_run` / `recover`, which gained `guard=` (default
+  `SvGuard`), `create=` and `dest_for=` (default the SavedVariables `destination`). Nothing had to be separate, so
+  the docstring records that instead. A created file is a unit whose `SvFile.sha256` is None (annotation widened to
+  `str | None`; the SavedVariables tools never make one, so their runs, events and journals are unchanged).
+- T6b: a created file: refused (skipped, `EXISTS` "it exists now; rescan") if it exists at the check or right
+  before the write; written with the new `fsutil.atomic_create_bytes` (fsync'ed partial, then `rename_no_replace`,
+  so one that appears in between is never replaced, STD-5.16/5.17); journaled `{"action": "created", ...,
+  "sha_after", "zip"}` with the run's zip so it matches its run like an edited entry; in the marker's new
+  `created` list (not in `files`: no original); deleted by roll-back (`sv_apply.remove_created`), Undo and recovery
+  only while still at its `sha_after`; recovery counts an absent one as at its original. Its outcome is `edited`
+  with detail `created`, so the result rows count it as changed.
+- T6c: every real run with something to write still gets an originals zip, even one that only creates files: it
+  holds just `manifest.json` (with a `created` list), via `create_backup(..., allow_empty=True)`, so the marker and
+  journal always name a real zip. The default still refuses an empty backup (WTF Cleaner unchanged).
+- T6d: a stale `expected_sha256` follows the pipeline's own rule: that file is skipped (`file_changed`) and the rest
+  of the run is written; a single stale change therefore writes nothing (no journal, no zip). A path the guard
+  refuses stops the whole run before anything is written (`result.stopped`), as `SvGuard` does.
+- T6e: `ClientFileGuard` takes exact, case-sensitive names (the tool's list, X4) at exactly
+  `WTF/Account/<A>/<name>` or `WTF/Account/<A>/<Realm>/<Char>/<name>` with `is_character_name(Char)` (X3 enforced
+  at the write too, so `Name - Copy` is refused even if a tool forgot to filter), never with `SavedVariables` on
+  the way, and `Config.wtf` only as `WTF/Config.wtf`. It refuses a file that is a link and a path whose parent
+  resolves anywhere but the lexical place below the flavor folder (a link on the way). `check(path, info=None)`
+  returns the resolved path; `client_rel_ok` is the one rule both the guard and `client_destination` (Undo,
+  recovery) use. The tool passes `names`; `cache.md5` and `.old` are never in it (V2).
+- T6f: events: `sv_events.client_events(prefix)` = the pipeline's events with client-file texts for
+  `file_edited`, `write_failed` and `probe_recovered`, plus `file_created` (Apply) and `file_removed` (Undo,
+  recovery). No registry of an existing tool changed, so `docs/events.md` is unchanged until a tool registers it.
+  No CHANGELOG line: nothing a user can see yet (the tools that use it land in T11, T15, T21).

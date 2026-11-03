@@ -32,6 +32,15 @@ class BackupTest(unittest.TestCase):
         size = self.dest.stat().st_size
         self.assertEqual(calls, [("fsync", size), ("rename", size)])
 
+    def test_no_entries_is_refused_unless_allowed(self):
+        with self.assertRaises(BackupError):
+            create_backup([], self.flavor_dir, self.dest, {})
+        self.assertFalse(self.dest.exists())
+        out = create_backup([], self.flavor_dir, self.dest, {"created": ["WTF/x"]}, allow_empty=True)
+        with zipfile.ZipFile(out) as zf:
+            self.assertEqual(zf.namelist(), ["manifest.json"])
+            self.assertEqual(json.loads(zf.read("manifest.json"))["created"], ["WTF/x"])
+
     def test_zip_contains_files_relative_to_flavor_and_manifest(self):
         out = create_backup(self.entries, self.flavor_dir, self.dest, {"tool": "wtf-cleaner", "flavor": "_retail_"})
         self.assertEqual(out, self.dest)

@@ -40,14 +40,16 @@ def sha256_of(data: bytes) -> str:
 
 @dataclass(frozen=True)
 class SvFile:
-    """One SavedVariables file as a scan read it: where it is, whose it is, and its size, mtime and hash then."""
+    """One SavedVariables file as a scan read it: where it is, whose it is, and its size, mtime and hash then.
+    sha256 None is a file that must not exist yet, which the run creates (only the client-file pipeline,
+    core/client_apply.py, makes such units)."""
     path: Path
     flavor: Flavor
     account: str
     character: Character | None
     size: int
     mtime: float
-    sha256: str
+    sha256: str | None
 
     @property
     def addon(self) -> str:
