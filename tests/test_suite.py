@@ -245,6 +245,50 @@ class SuiteTest(unittest.TestCase):
         self.assertEqual(FakeApp.made, [])
         self.assertFalse(self.lock_path.exists())  # the next start must not see "another copy may be running"
 
+    def launcher_log(self):
+        path = self.log_dir / "suite" / "launcher.log"
+        return path.read_text(encoding="utf-8") if path.exists() else ""
+
+    def test_lock_failure_is_logged_and_hints_the_folder(self):
+        """LN3, LN5: a lock that cannot be created says the folder isn't writable and goes to launcher.log."""
+        blocker = self.tmp / "not-a-folder"
+        blocker.write_text("x", encoding="utf-8")
+        self.lock_path = blocker / "wow-tools.lock"
+        code, _, err = self.run_suite([])
+        self.assertEqual(code, 1)
+        self.assertIn("Could not create the lock file", err)
+        self.assertIn("isn't writable", err)
+        self.assertIn("Program Files", err)
+        self.assertIn("bootstrap.failed where=lock", self.launcher_log())
+
+    def test_log_start_failure_is_logged_and_hints_the_folder(self):
+        with unittest.mock.patch("wowtools.suite.init_event_log",
+                                 side_effect=PermissionError(13, "Permission denied", str(self.log_dir))):
+            code, _, err = self.run_suite([])
+        self.assertEqual(code, 1)
+        self.assertIn("isn't writable", err)
+        self.assertIn("bootstrap.failed where=log_start type=PermissionError", self.launcher_log())
+
+    def test_config_failure_is_logged(self):
+        (self.config_dir / "screenshots.cfg").write_text("not ini\n", encoding="utf-8")
+        code, _, err = self.run_suite([])
+        self.assertEqual(code, 1)
+        self.assertNotIn("isn't writable", err)  # a broken file, not a folder problem
+        self.assertIn("bootstrap.failed where=config", self.launcher_log())
+
+    def test_start_trims_the_launcher_log(self):
+        path = self.log_dir / "suite" / "launcher.log"
+        _write_file(path, "2000-01-01T10:00:00 launcher.exited code=0\n")
+        self.run_suite([])
+        self.assertNotIn("2000-01-01", self.launcher_log())
+
+    def test_a_start_failure_after_the_log_opened_is_logged_there(self):
+        with unittest.mock.patch("wowtools.suite._migrate_renamed_folders", side_effect=RuntimeError("boom")), \
+                self.assertRaises(RuntimeError):
+            self.run_suite([])
+        errors = [r for r in self.records() if r["event"] == "error"]
+        self.assertEqual([r["data"]["message"] for r in errors], ["boom"])
+
     def test_lock_is_released_when_start_up_fails_after_the_log_started(self):
         with unittest.mock.patch("wowtools.suite._migrate_renamed_folders", side_effect=RuntimeError("boom")), \
                 self.assertRaises(RuntimeError):
@@ -338,6 +382,54 @@ class AutoUpdateTest(unittest.TestCase):
                 capture_events(), unittest.mock.patch("sys.stderr", err):
             self.assertEqual(_auto_update(self.cfg), 1)
         self.assertIn(".update-backup/0.1.0", err.getvalue())
+
+
+class MainTest(unittest.TestCase):
+    """LN5: wowtools.__main__.main() logs what fails before the event log opens to launcher.log."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.log = Path(tmp.name) / "logs" / "suite" / "launcher.log"
+        patcher = unittest.mock.patch("wowtools.core.bootstrap.LAUNCHER_LOG", self.log)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_old_python_logged(self):
+        from wowtools import __main__ as entry
+        err = io.StringIO()
+        with unittest.mock.patch("wowtools.__main__.check_python", return_value="needs Python 3.10 (found 3.9)."), \
+                redirect_stderr(err):
+            self.assertEqual(entry.main([]), 1)
+        self.assertIn("needs Python 3.10", err.getvalue())
+        self.assertIn("bootstrap.failed where=python_check message=needs Python 3.10",
+                      self.log.read_text(encoding="utf-8"))
+
+    def test_uncaught_exception_before_the_log_opens_is_logged_and_raised(self):
+        from wowtools import __main__ as entry
+        with unittest.mock.patch("wowtools.suite.run", side_effect=ImportError("no textual")), \
+                unittest.mock.patch.object(events, "_current", events.EventLog(strict=True)), \
+                self.assertRaises(ImportError):
+            entry.main([])
+        self.assertIn("bootstrap.failed where=startup type=ImportError message=no textual",
+                      self.log.read_text(encoding="utf-8"))
+
+    def test_an_exception_after_the_log_opened_is_not_logged_twice(self):
+        from wowtools import __main__ as entry
+        with tempfile.TemporaryDirectory() as logs, \
+                unittest.mock.patch("wowtools.suite.run", side_effect=RuntimeError("late")), \
+                unittest.mock.patch.object(events, "_current", events.EventLog(Path(logs), strict=True)), \
+                self.assertRaises(RuntimeError):
+            entry.main([])
+        self.assertFalse(self.log.exists())
+
+    def test_ctrl_c_is_not_a_failure(self):
+        from wowtools import __main__ as entry
+        with unittest.mock.patch("wowtools.suite.run", side_effect=KeyboardInterrupt), \
+                unittest.mock.patch.object(events, "_current", events.EventLog(strict=True)), \
+                self.assertRaises(KeyboardInterrupt):
+            entry.main([])
+        self.assertFalse(self.log.exists())
 
 
 class PersistUpdateStateTest(unittest.TestCase):

@@ -36,12 +36,17 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 
 | Event | Level | Description |
 |---|---|---|
+| `bootstrap.failed` | error | Start-up failed before the event log opened: the Python check, the lock, the config, the log folder or an uncaught error (logs/suite/launcher.log: where, type, message, the traceback's last lines). |
 | `changelog.unreadable` | warning | CHANGELOG.md was missing, unreadable or malformed, so the changelog screen showed nothing (the reason is in `reason`). |
 | `config.changed` | info | A config value changed or was removed, or was overridden for one run. |
 | `config.created` | info | A config file in config/ was written for the first time. |
 | `config.renamed` | info | A renamed tool's config file was moved to its new name (merged into the new file when both existed). |
 | `error` | error | An unexpected or fatal error. |
 | `folder.renamed` | info | A renamed tool's folder (logs/<tool>/ or <WoW>/wow-tools/<tool>/) was moved to its new name; logged as a warning when entries clashed or failed to move. |
+| `launcher.exited` | info | Python returned to the launcher (logs/suite/launcher.log: the exit code). |
+| `launcher.python_missing` | error | The launcher found no usable Python and stopped (logs/suite/launcher.log). |
+| `launcher.python_too_old` | error | The launcher found a Python older than 3.10 and stopped (logs/suite/launcher.log: the version found). |
+| `launcher.started` | info | wow-tools.cmd or wow-tools.sh is about to start Python (logs/suite/launcher.log: time, args, the python command it chose, platform). |
 | `lock.conflict` | warning | Another copy of Ka0s WoW Tools appears to be running (its lock file exists). |
 | `lock.overridden` | warning | The user took over an existing lock file and carried on. |
 | `parallel.finished` | debug | A run over several units ended: how many, how many failed, how many never started (an earlier unit failed and the run stops on one), seconds. |

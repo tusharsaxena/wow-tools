@@ -73,7 +73,7 @@ The UI-free half of the shared library (`wowtools/core/`):
 
 | Module | Job |
 |---|---|
-| `bootstrap` | `REPO_ROOT`, `VENDOR_DIR`, Python ≥ 3.10 check, `add_vendor_path()` |
+| `bootstrap` | `REPO_ROOT`, `VENDOR_DIR`, Python ≥ 3.10 check, `add_vendor_path()`, the launcher log `logs/suite/launcher.log` (`log_bootstrap_failure()`, `trim_launcher_log()`; LN7 deviation) |
 | `paths` | WSL detection; `to_native()` / `to_stored()` translate `G:\X` ⇄ `/mnt/g/X` |
 | `config` | `config/wow-tools.cfg` (`[general]`) plus `config/<tool>.cfg` per tool (`tool_config_path()`); typed accessors; `config.changed` events. `save()` is atomic and runs on the UI thread only (the background update check hands its values back through `check_for_update(persist=...)`) |
 | `migrate` | Start-up moves for renamed tools (`wowtools.tools.RENAMED_TOOLS`, one `ToolRename` line each): `migrate_tool_config()` turns `config/<old>.cfg` into `config/<new>.cfg` with the section renamed; `merge_folder()` (or `merge_folder_logged()`, which logs `folder.renamed` and never raises) moves `logs/<old>/` and `<WoW>/wow-tools/<old>/` to the new name. Never overwrites (details below) |
