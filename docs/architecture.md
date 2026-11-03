@@ -42,8 +42,10 @@ tool's data flow and screens are in [`docs/internals/`](internals/).
 
 ## Layers
 
-    wow-tools.sh / .cmd    the only entry point (runs python -m wowtools). The .cmd starts Python and exits on its
-                           last line, so a zip update can replace it while it runs (tests/test_launcher.py)
+    wow-tools.sh / .cmd    the only entry point (runs python -m wowtools). Both check for Python 3.10+ first, log
+                           each launch and exit to logs/suite/launcher.log (LN7 deviation), and are parsed whole
+                           before Python starts (.cmd: Python and the exit on its last line; .sh: one main() called
+                           on its last line), so a zip update can replace them while they run (tests/test_launcher.py)
     wowtools/__main__.py   Python check + vendor/ on sys.path, then suite.run()
     wowtools/suite.py      no args: instance lock, renamed-tool moves, the suite app; or `update`, `--version`, `--help`
     wowtools/core/         UI-free framework shared by every tool (never imports textual)

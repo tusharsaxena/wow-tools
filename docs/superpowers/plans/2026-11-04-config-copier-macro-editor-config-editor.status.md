@@ -12,7 +12,7 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 | T0 | - | spec, plan, ledger | done | (this commit) | builder check folded into the spec |
 | T1 | M1 | bootstrap log writer, launcher events, LN7 deviation | done | (this commit) | 15 new tests (8 test_bootstrap, 7 test_suite incl. MainTest); gate green: WSL 1987 OK (2 skipped), Windows 1987 OK (78 skipped), ruff clean, events.md current. Review fixes (T1r): bootstrap.py parses on 3.7 again (no walrus; ast test), and the 2000-line cap (MAX_KEEP_LINES) now applies after the date trim too; gate green: WSL/Windows 1989 OK |
 | T2 | M1 | wow-tools.cmd check, log, pause | done | (this commit) | 8 new tests in test_launcher.py (2 structure tests on every platform, 6 cmd.exe tests Windows-only); gate green: WSL 1997 OK (8 skipped), Windows 1997 OK (78 skipped), ruff clean, events.md current. Manual run from a folder named `a!b & c` logged and paused correctly; review fix: test_old_python_message covers the LN2 too-old branch (fake python.bat on PATH reports 3.8, exits 3); gate after it green: WSL OK, Windows 1998 OK (78 skipped), ruff clean, events.md current (one earlier --all run had a single Windows error that did not recur on the rerun and was not captured) |
-| T3 | M1 | wow-tools.sh parity, README FAQ, CHANGELOG; push | todo | | |
+| T3 | M1 | wow-tools.sh parity, README FAQ, CHANGELOG; push | done | (this commit) | 9 new tests in test_launcher.py (3 structure tests on every platform, 6 `sh` tests POSIX-only); gate green: WSL 2007 OK (9 skipped), Windows 2007 OK (84 skipped), ruff clean, events.md current. Push left to the orchestrator |
 | T4 | M2 | dump addon, refresh script; then user runs dumps | todo | | |
 | T5 | M2 | install helpers (Forever, real characters) | todo | | |
 | T6 | M2 | client-file write pipeline | todo | | |
@@ -66,3 +66,13 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
   `!WOWTOOLS_LOG!` (a `!` in the app folder survives). `launcher.started` writes `args=%*` last (`python=`,
   `platform=windows` first) so arbitrary arguments can only trail the line; an argument with `)` would cut the
   logged args short, which the suite's own arguments (`update`, `--check`, `--version`, `--help`) never contain.
+- T3a: `wow-tools.sh` puts its whole body in `main()` and ends on `main "$@"; exit $?`, so the shell has parsed
+  everything (the exit included) before Python starts; no `exec`, so it can log the exit. The rewrite test replaces
+  the file with `echo REREAD; exit 99` lines while the fake app runs and checks none of them ran (dash and bash).
+- T3b: the `.sh` Python check mirrors the `.cmd` (T2a): `python3` not on PATH, or a probe result other than 0 or
+  3, is missing and exits 127 (the shell's "not found"); 3 is too old, reads `found=x.y`, exits 3. Its messages go
+  to stderr. Log lines use ISO local time (`date '+%Y-%m-%dT%H:%M:%S'`), `platform=` is `uname -s`, and `args=$*`
+  comes last as in the `.cmd`. Log writes are `{ ... >>"$log"; } 2>/dev/null`, so an unwritable folder is silent.
+- T3c: README gets two FAQ rows ("The window flashes and closes when I start it", "It says the folder isn't
+  writable") and a Troubleshooting row pointing at the first; the CHANGELOG starts an `## [Unreleased]` section
+  with one `### Fixed` line for the launcher fix (T1-T3).
