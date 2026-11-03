@@ -165,3 +165,20 @@ class LauncherOnWindowsTest(unittest.TestCase):
         lines = self.launcher_log()
         self.assertTrue(any(" launcher.python_missing" in line for line in lines), lines)
         self.assertTrue(any(f"launcher.exited code={proc.returncode}" in line for line in lines), lines)
+
+    def test_old_python_message(self):
+        # A stand-in "python" that is too old: it fails the version check (exit 3) and reports 3.8 when asked.
+        bin_dir = self.dir / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "python.bat").write_bytes(b"@echo 3.8\r\n@exit /b 3\r\n")
+        system32 = str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32")
+        proc = self.run_launcher("0", path=f"{system32};{bin_dir}")
+        self.assertNotIn("fake app ran", proc.stdout)
+        self.assertIn("is Python 3.8.", proc.stdout)
+        self.assertIn("Installing Python", proc.stdout)
+        self.assertIn(PAUSE_PROMPT, proc.stdout)
+        self.assertEqual(proc.returncode, 3, proc.stderr)
+        self.assertEqual(proc.stderr.strip(), "")
+        lines = self.launcher_log()
+        self.assertTrue(any(" launcher.python_too_old found=3.8 " in line for line in lines), lines)
+        self.assertTrue(any(line.rstrip().endswith("launcher.exited code=3") for line in lines), lines)
