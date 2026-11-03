@@ -34,6 +34,8 @@ Font/font/barFont keys, SVB_FONT in several files and flavors, escapes, floats, 
 comments, a Blizzard_* file, a .bak and a broken file.
 macro_file_bytes(macros) and cvar_file_bytes(pairs) synthesize a macros-cache.txt and a config-cache.wtf / Config.wtf
 the way the Retail client writes them (config tools spec V4): never copied from a real install.
+build_character_tree(root) builds account › realm › character folders for the shared character tree (see its
+docstring): non-ASCII names, copies that are not characters, an account with none.
 """
 from __future__ import annotations
 
@@ -586,3 +588,14 @@ def macro_file_bytes(macros, newline: bytes = b"\r\n") -> bytes:
 def cvar_file_bytes(pairs, newline: bytes = b"\r\n") -> bytes:
     """A config-cache.wtf or Config.wtf: one `SET <name> "<value>"` line per (name, value) pair, UTF-8."""
     return b"".join(f'SET {name} "{value}"'.encode() + newline for name, value in pairs)
+
+
+def build_character_tree(root: Path) -> Path:
+    """A retail install for the character tree (config tools spec X2, X3), folders only:
+    MAIN/Realm1: Aellâ, Bob and the copies `Bob - Copy` and `Bob2` (not characters); MAIN/Realm2: Trâxex;
+    MAIN/SavedVariables (never a realm); ALT/Realm1: Dænerys; BARE: no characters."""
+    accounts = root / "_retail_" / "WTF" / "Account"
+    for rel in ("MAIN/Realm1/Aellâ", "MAIN/Realm1/Bob", "MAIN/Realm1/Bob - Copy", "MAIN/Realm1/Bob2",
+                "MAIN/Realm2/Trâxex", "MAIN/SavedVariables", "ALT/Realm1/Dænerys", "BARE"):
+        (accounts / rel).mkdir(parents=True, exist_ok=True)
+    return root
