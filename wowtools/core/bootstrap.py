@@ -20,7 +20,7 @@ VENDOR_DIR = REPO_ROOT / "vendor"
 MIN_PYTHON = (3, 10)
 LAUNCHER_LOG = REPO_ROOT / "logs" / "suite" / "launcher.log"
 TRACEBACK_LINES = 10  # the last lines of a traceback kept under a bootstrap.failed line
-UNDATED_KEEP_LINES = 2000  # when no line's date can be read, the trim keeps this many lines
+MAX_KEEP_LINES = 2000  # the trim never keeps more than this many lines (the cap for lines whose date can't be read)
 
 # A leading date: ISO / year first (2026-11-04, 2026/11/04), or the cmd.exe %date% shapes with an optional weekday
 # first (Wed 11/04/2026, 04.11.2026). Day and month order depends on the locale, so both readings are tried.
@@ -73,10 +73,13 @@ def log_bootstrap_failure(where: str, problem: BaseException | str, *, path: Pat
 
 def _line_dates(line: bytes) -> list[date] | None:
     """Every date the start of a line can mean (two for an ambiguous day/month), or None when it has none."""
-    if match := _YEAR_FIRST.match(line):
-        readings = [(int(match[1]), int(match[2]), int(match[3]))]
-    elif match := _YEAR_LAST.match(line):
-        first, second, year = int(match[1]), int(match[2]), int(match[3])
+    # No walrus here: this module must parse on old Pythons so check_python can report them (STD-1.1).
+    year_first = _YEAR_FIRST.match(line)
+    year_last = None if year_first else _YEAR_LAST.match(line)
+    if year_first:
+        readings = [(int(year_first[1]), int(year_first[2]), int(year_first[3]))]
+    elif year_last:
+        first, second, year = int(year_last[1]), int(year_last[2]), int(year_last[3])
         readings = [(year, second, first), (year, first, second)]
     else:
         return None
@@ -91,8 +94,9 @@ def trim_launcher_log(path: Path, retention_days: int, now: datetime) -> None:
     """Drop the launcher log's records older than retention_days (LN6). Never raises.
 
     A record is a line with a leading date plus the indented lines under it. It is dropped only when every reading
-    of its date is older than the cutoff; a line with no date is kept. When no line's date can be read at all, the
-    last UNDATED_KEEP_LINES lines are kept instead. The file is rewritten (temp file, then replace) only when
+    of its date is older than the cutoff; a line with no date is kept. Whatever survives is then capped at the last
+    MAX_KEEP_LINES lines, so lines whose date can't be read (a %date% shape no pattern matches) can't grow the
+    file forever. The file is rewritten (temp file, then replace) only when
     something was dropped; bytes are kept as written (cmd.exe writes in the console code page)."""
     try:
         if not path.is_file():
@@ -100,7 +104,6 @@ def trim_launcher_log(path: Path, retention_days: int, now: datetime) -> None:
         lines = path.read_bytes().splitlines(keepends=True)
         cutoff = now.date() - timedelta(days=retention_days)
         kept: list[bytes] = []
-        dated = False
         keep = True
         for line in lines:
             if line[:1] in (b" ", b"\t"):
@@ -108,12 +111,10 @@ def trim_launcher_log(path: Path, retention_days: int, now: datetime) -> None:
                     kept.append(line)
                 continue
             dates = _line_dates(line)
-            dated = dated or dates is not None
             keep = dates is None or any(day >= cutoff for day in dates)
             if keep:
                 kept.append(line)
-        if not dated:
-            kept = lines[-UNDATED_KEEP_LINES:]
+        kept = kept[-MAX_KEEP_LINES:]
         if len(kept) == len(lines):
             return
         partial = path.with_name(path.name + ".partial")

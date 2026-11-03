@@ -10,7 +10,7 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 | Task | Milestone | Title | Status | Commit | Notes |
 |---|---|---|---|---|---|
 | T0 | - | spec, plan, ledger | done | (this commit) | builder check folded into the spec |
-| T1 | M1 | bootstrap log writer, launcher events, LN7 deviation | done | (this commit) | 15 new tests (8 test_bootstrap, 7 test_suite incl. MainTest); gate green: WSL 1987 OK (2 skipped), Windows 1987 OK (78 skipped), ruff clean, events.md current |
+| T1 | M1 | bootstrap log writer, launcher events, LN7 deviation | done | (this commit) | 15 new tests (8 test_bootstrap, 7 test_suite incl. MainTest); gate green: WSL 1987 OK (2 skipped), Windows 1987 OK (78 skipped), ruff clean, events.md current. Review fixes (T1r): bootstrap.py parses on 3.7 again (no walrus; ast test), and the 2000-line cap (MAX_KEEP_LINES) now applies after the date trim too; gate green: WSL/Windows 1989 OK |
 | T2 | M1 | wow-tools.cmd check, log, pause | todo | | |
 | T3 | M1 | wow-tools.sh parity, README FAQ, CHANGELOG; push | todo | | |
 | T4 | M2 | dump addon, refresh script; then user runs dumps | todo | | |

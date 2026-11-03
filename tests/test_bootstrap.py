@@ -110,6 +110,23 @@ class LauncherLogTest(unittest.TestCase):
         self.assertEqual(kept[0], "Line 500 launcher.started")
         self.assertEqual(kept[-1], "Line 2499 launcher.started")
 
+    def test_trim_caps_undated_lines_even_beside_a_dated_one(self):
+        # One ISO line plus a locale whose %date% no pattern reads: the cap still applies (review finding).
+        self._write("2026-11-01T10:00:00 bootstrap.failed where=lock message=recent",
+                    *[f"2016. 11. 04. 10:00:00,00 launcher.started n={n}" for n in range(2500)])
+        bootstrap.trim_launcher_log(self.log, 30, self.NOW)
+        kept = self.log.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(kept), bootstrap.MAX_KEEP_LINES)
+        self.assertEqual(kept[-1], "2016. 11. 04. 10:00:00,00 launcher.started n=2499")
+
+    def test_bootstrap_parses_on_old_pythons(self):
+        # check_python must be able to run on 3.7 to tell the user to upgrade, so these modules parse there.
+        import ast
+        root = Path(bootstrap.__file__).resolve().parents[1]
+        for path in (root / "core" / "bootstrap.py", root / "__main__.py"):
+            with self.subTest(path=path.name):
+                ast.parse(path.read_text(encoding="utf-8"), feature_version=(3, 7))
+
     def test_trim_leaves_an_unchanged_file_alone_and_never_raises(self):
         self._write("2026-11-01T10:00:00 launcher.exited code=0")
         before = self.log.stat().st_mtime_ns
