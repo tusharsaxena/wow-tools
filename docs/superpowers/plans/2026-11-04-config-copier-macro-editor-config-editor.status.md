@@ -13,7 +13,7 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 | T1 | M1 | bootstrap log writer, launcher events, LN7 deviation | done | (this commit) | 15 new tests (8 test_bootstrap, 7 test_suite incl. MainTest); gate green: WSL 1987 OK (2 skipped), Windows 1987 OK (78 skipped), ruff clean, events.md current. Review fixes (T1r): bootstrap.py parses on 3.7 again (no walrus; ast test), and the 2000-line cap (MAX_KEEP_LINES) now applies after the date trim too; gate green: WSL/Windows 1989 OK |
 | T2 | M1 | wow-tools.cmd check, log, pause | done | (this commit) | 8 new tests in test_launcher.py (2 structure tests on every platform, 6 cmd.exe tests Windows-only); gate green: WSL 1997 OK (8 skipped), Windows 1997 OK (78 skipped), ruff clean, events.md current. Manual run from a folder named `a!b & c` logged and paused correctly; review fix: test_old_python_message covers the LN2 too-old branch (fake python.bat on PATH reports 3.8, exits 3); gate after it green: WSL OK, Windows 1998 OK (78 skipped), ruff clean, events.md current (one earlier --all run had a single Windows error that did not recur on the rerun and was not captured) |
 | T3 | M1 | wow-tools.sh parity, README FAQ, CHANGELOG; push | done | (this commit) | 9 new tests in test_launcher.py (3 structure tests on every platform, 6 `sh` tests POSIX-only); gate green: WSL 2007 OK (9 skipped), Windows 2007 OK (84 skipped), ruff clean, events.md current. Push left to the orchestrator. T3 review fix (minor, docs only): the FAQ row's log path now reads `logs/suite/launcher.log` with the Windows form beside it, and "a text editor (Notepad on Windows)"; no test needed; gate green again: WSL 2007 OK (9 skipped), Windows 2007 OK (84 skipped), ruff clean, events.md current |
-| T4 | M2 | dump addon, refresh script; then user runs dumps | todo | | |
+| T4 | M2 | dump addon, refresh script; then user runs dumps | waiting-user | (this commit) | 11 new tests in test_refresh_kb.py (10 refresh_kb, 1 addon shape); the Lua (112 lines) also smoke-run under lua5.1 with stubbed APIs and fed through refresh_kb.py end to end (scratchpad only); gate green: WSL 2018 OK (9 skipped), Windows 2018 OK (84 skipped), ruff clean, events.md current. Waiting on the user: install the addon and `/kbdump` once per flavor (scripts/kb_dump/README.md); T5 onward does not wait, T20 needs the dumps |
 | T5 | M2 | install helpers (Forever, real characters) | todo | | |
 | T6 | M2 | client-file write pipeline | todo | | |
 | T7 | M2 | macro and CVar file parsers | todo | | |
@@ -76,3 +76,26 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 - T3c: README gets two FAQ rows ("The window flashes and closes when I start it", "It says the folder isn't
   writable") and a Troubleshooting row pointing at the first; the CHANGELOG starts an `## [Unreleased]` section
   with one `### Fixed` line for the launcher fix (T1-T3).
+- T4a: the dump's console `category` is stored as the `Enum.ConsoleCategory` name (a number on a client without
+  the enum) and written lowercased (`graphics`, `game`, `net` ...); the X8 mapping to the issue's groups is left to
+  the KB loader (T8), so the JSON keeps the client's own word.
+- T4b: scope: `isStoredServerCharacter` wins over `isStoredServerAccount` when both are set (the more specific
+  file); neither is `machine`. `synced` is true exactly when the scope isn't `machine`. The dump's current `value`
+  and `secure` flag are recorded by the addon but never written to the KB JSON (the user's own settings stay out).
+- T4c: one `.toc` for every flavor, `## Interface: 120105, 50503, 20505, 11508` (the comma list the current
+  clients read); the README tells the user to tick "Load out of date AddOns" if a flavor says it is out of date.
+- T4d: several accounts of one flavor with a dump: the newest `KaosKbDump.lua` by modification time wins, and the
+  output line names the file. A flavor with no or an unreadable dump is skipped with a message and keeps its older
+  JSON; the run fails (exit 1, nothing written) only when no flavor had a readable dump.
+- T4e: slash keys are lowercased (`/CASTSEQUENCE` -> `/castsequence`; the client matches them case-insensitively);
+  when two `SLASH_*` keys claim one slash the alphabetically first wins (in Lua and again in Python), so reruns
+  agree. The addon leaves its own `/kbdump` out. `slash_commands/<flavor>.json` also carries a top-level `source`
+  (`client dump <flavor> <build>`, X6), beyond the plan's schema.
+- T4f: `--wiki` reads `{"cvars": {name: {"text", "source"}}}` from `scripts/kb_dump/wiki_notes.json` (or
+  `--wiki-notes PATH`) and adds `"wiki": {"text", "source"}` to that CVar's entry, beside the Blizzard `help` whose
+  source is the file's top-level `source`. A note without text or without a `https://warcraft.wiki.gg/` source stops
+  the run before anything is written; a note for a CVar the dump lacks is ignored. `refresh_kb.py` never uses the
+  network: the notes are researched and rewritten in our own words by hand in T20 (X7's "MediaWiki API" fetch is not
+  needed for that and is not built).
+- T4g: output JSON is UTF-8, `indent=1`, sorted keys, LF, written via `.partial` + replace, so reruns on the same
+  dump are byte-identical and diffs stay readable.

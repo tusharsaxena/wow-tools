@@ -1,0 +1,8 @@
+## Interface: 120105, 50503, 20505, 11508
+## Title: Ka0s KB Dump
+## Notes: Developer tool for wow-tools: /kbdump records the client's CVars and slash commands.
+## Author: Ka0s
+## Version: 1.0.0
+## SavedVariables: KaosKbDumpDB
+
+KaosKbDump.lua
