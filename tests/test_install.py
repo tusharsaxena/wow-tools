@@ -6,7 +6,15 @@ import unittest
 from pathlib import Path
 
 from tests.fixtures import build_wow_tree
-from wowtools.core.install import Account, Flavor, WowInstall, detect_installs, validate_output_dir
+from wowtools.core.install import (
+    FLAVOR_NAMES,
+    Account,
+    Flavor,
+    WowInstall,
+    detect_installs,
+    is_character_name,
+    validate_output_dir,
+)
 
 
 class InstallTest(unittest.TestCase):
@@ -69,6 +77,45 @@ class InstallTest(unittest.TestCase):
     def test_detect_installs(self):
         self.assertEqual(detect_installs([self.tmp]), [self.root])
         self.assertEqual(detect_installs([self.tmp / "empty"]), [])
+
+
+class RealCharactersTest(unittest.TestCase):
+    """X3: the new tools skip folders under a realm that can't be a character (a copy, a backup); characters()
+    itself, which the existing tools use, is unchanged."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.account = Account("ACCT1", Path(tmp.name) / "ACCT1")
+        for realm, name in (("Realm1", "Aell\u00e2"), ("Realm1", "Testwarrka"), ("Realm1", "Testwarrka - Copy"),
+                            ("Realm1", "Bob2"), ("Realm2", "Tr\u00e2xex"), ("Realm2", "old.bak")):
+            (self.account.path / realm / name).mkdir(parents=True)
+        (self.account.path / "SavedVariables").mkdir()
+
+    def test_forever_display_name(self):
+        self.assertEqual(FLAVOR_NAMES["_forever_"], "Forever")
+        self.assertEqual(Flavor("_forever_", Path(".")).display_name, "Forever")
+
+    def test_character_name_rules(self):
+        for name in ("Aell\u00e2", "Tr\u00e2xex", "Testwarrka", "D\u00e6nerys"):
+            self.assertTrue(is_character_name(name), name)
+        for name in ("Testwarrka - Copy", "Bob2", "", "Old_Char", "Char.bak", " Bob"):
+            self.assertFalse(is_character_name(name), name)
+
+    def test_real_characters_skips_copies(self):
+        self.assertEqual([c.label for c in self.account.real_characters()],
+                         ["Realm1/Aell\u00e2", "Realm1/Testwarrka", "Realm2/Tr\u00e2xex"])
+
+    def test_characters_unchanged_includes_copies(self):
+        self.assertEqual([c.label for c in self.account.characters()],
+                         ["Realm1/Aell\u00e2", "Realm1/Bob2", "Realm1/Testwarrka", "Realm1/Testwarrka - Copy",
+                          "Realm2/old.bak", "Realm2/Tr\u00e2xex"])
+
+    def test_real_characters_passes_on_error(self):
+        errors = []
+        missing = Account("X", self.account.path.parent / "missing")
+        self.assertEqual(missing.real_characters(on_error=lambda p, e: errors.append(p)), [])
+        self.assertEqual(errors, [])
 
 
 class ValidateOutputDirTest(unittest.TestCase):

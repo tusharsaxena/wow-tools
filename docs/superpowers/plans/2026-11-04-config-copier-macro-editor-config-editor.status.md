@@ -14,7 +14,7 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 | T2 | M1 | wow-tools.cmd check, log, pause | done | (this commit) | 8 new tests in test_launcher.py (2 structure tests on every platform, 6 cmd.exe tests Windows-only); gate green: WSL 1997 OK (8 skipped), Windows 1997 OK (78 skipped), ruff clean, events.md current. Manual run from a folder named `a!b & c` logged and paused correctly; review fix: test_old_python_message covers the LN2 too-old branch (fake python.bat on PATH reports 3.8, exits 3); gate after it green: WSL OK, Windows 1998 OK (78 skipped), ruff clean, events.md current (one earlier --all run had a single Windows error that did not recur on the rerun and was not captured) |
 | T3 | M1 | wow-tools.sh parity, README FAQ, CHANGELOG; push | done | (this commit) | 9 new tests in test_launcher.py (3 structure tests on every platform, 6 `sh` tests POSIX-only); gate green: WSL 2007 OK (9 skipped), Windows 2007 OK (84 skipped), ruff clean, events.md current. Push left to the orchestrator. T3 review fix (minor, docs only): the FAQ row's log path now reads `logs/suite/launcher.log` with the Windows form beside it, and "a text editor (Notepad on Windows)"; no test needed; gate green again: WSL 2007 OK (9 skipped), Windows 2007 OK (84 skipped), ruff clean, events.md current |
 | T4 | M2 | dump addon, refresh script; then user runs dumps | waiting-user | (this commit) | 11 new tests in test_refresh_kb.py (10 refresh_kb, 1 addon shape); the Lua (112 lines) also smoke-run under lua5.1 with stubbed APIs and fed through refresh_kb.py end to end (scratchpad only); gate green: WSL 2018 OK (9 skipped), Windows 2018 OK (84 skipped), ruff clean, events.md current. Waiting on the user: install the addon and `/kbdump` once per flavor (scripts/kb_dump/README.md); T5 onward does not wait, T20 needs the dumps. Review fix (fix: T4 review fixes): a dump string that is not valid UTF-8 now skips its flavor with a message instead of crashing the run (T4h); +1 test, gate green: WSL 2019 OK (9 skipped), Windows 2019 OK (84 skipped), ruff clean, events.md current |
-| T5 | M2 | install helpers (Forever, real characters) | todo | | |
+| T5 | M2 | install helpers (Forever, real characters) | done | (this commit) | 5 new tests in test_install.py (RealCharactersTest: the plan's 4 plus on_error passed through); gate green: WSL 2024 OK (9 skipped), Windows 2024 OK (84 skipped), ruff clean, events.md current |
 | T6 | M2 | client-file write pipeline | todo | | |
 | T7 | M2 | macro and CVar file parsers | todo | | |
 | T8 | M2 | KB loader, state list, macro limits | todo | | |
@@ -103,3 +103,8 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
   not valid UTF-8 (luasv keeps such bytes as surrogates) raises DumpError there, so the flavor is skipped with
   "could not be read: a string in the dump is not valid UTF-8", its older files are kept and the other flavors carry
   on. Refused rather than replaced: a KB entry with mangled text is worse than the previous good one.
+- T5a: `is_character_name` is exactly `bool(name) and all(ch.isalpha() for ch in name)`: accented letters
+  (`Aellâ`, `Trâxex`, `Dænerys`) pass, while spaces, digits, `_`, `.` and `-` fail. `real_characters(on_error=...)`
+  takes the same `on_error` as `characters()` and passes it on. No CHANGELOG line: `flavor_name("_forever_")` already
+  showed "Forever" through the title-case fallback, so the new `FLAVOR_NAMES` row changes nothing a user sees; it
+  only pins the name. `docs/architecture.md`'s `install` row names both helpers.
