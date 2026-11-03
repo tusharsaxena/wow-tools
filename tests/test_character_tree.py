@@ -19,6 +19,7 @@ from wowtools.ui.character_tree import (NO_CHARACTERS, CharacterNode, character_
                                         node_keys, populate_characters)
 from wowtools.ui.dialogs import relabel_branch, tick_mark, two_pane_css
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
+from wowtools.ui.tree_filter import FILTER_BINDINGS, FilterBar, TreeFilter
 from wowtools.ui.widgets import NAV_BINDINGS
 
 
@@ -80,6 +81,46 @@ class CharacterReview(ReviewBase, Screen[str]):
                        else Text(str(data)))
 
 
+class FilteredCharacterReview(TreeFilter, CharacterReview):
+    """The same screen with the filter, as a tool's would be: a filtered rebuild through `shown=`, marks from
+    `shown_tick_mark`, keys matched on `character_filter_texts`."""
+
+    BINDINGS: ClassVar[list[Binding]] = [*CharacterReview.BINDINGS, *FILTER_BINDINGS]
+
+    def __init__(self, flavor, **populate) -> None:
+        super().__init__(flavor, **populate)
+        self.characters = {char_key(c): c for a in flavor.accounts() for c in a.real_characters()}
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(id="body"):
+            with Vertical(id="filters"):
+                yield FilterBar()
+            yield ReviewTree(Text("root"), id="chars")
+        yield Static(Text(""), id="summary")
+
+    def on_mount(self) -> None:
+        self._rebuild()
+        self.query_one("#chars", Tree).focus()
+
+    def _rebuild(self) -> None:
+        tree = self.query_one("#chars", Tree)
+        tree.clear()
+        self.added = populate_characters(
+            tree.root, self.flavor, key=char_key, label=lambda c: c.name, mark=self.mark,
+            shown=lambda c: self.text_filter.path_matches(character_filter_texts(c)) if self.filtering else True)
+        self.note_no_match(tree.root)
+        tree.root.expand()
+
+    def mark(self, keys) -> tuple[str, str]:
+        return self.shown_tick_mark(keys)
+
+    def all_tick_keys(self):
+        return list(self.characters)
+
+    def filter_texts(self, key):
+        return character_filter_texts(self.characters[key])
+
+
 class Host(App):
     def __init__(self, screen: Screen) -> None:
         super().__init__()
@@ -105,8 +146,8 @@ class CharacterTreeTest(TuiTestCase):
         self.root = build_character_tree(Path(self._tmp.name))
         self.flavor = WowInstall(self.root).flavors()[0]
 
-    async def run_screen(self, test, **populate) -> None:
-        app = Host(CharacterReview(self.flavor, **populate))
+    async def run_screen(self, test, screen=CharacterReview, **populate) -> None:
+        app = Host(screen(self.flavor, **populate))
         async with app.run_test(size=(120, 30)) as pilot:
             await pilot.pause()
             await test(app.review, app.review.query_one("#chars", Tree), pilot)
@@ -213,3 +254,87 @@ class CharacterTreeTest(TuiTestCase):
             self.assertEqual(labels(flavor_node)[0], ("ALT", [("Realm1", ["DÆNERYS"])]))
             self.assertEqual(flavor_node.children[0].data.kind, "account")
         await self.run_screen(test)
+
+    async def test_account_extra_keys_fold_into_the_account(self):
+        def extra(account, node):
+            node.add_leaf(f"{account.name} macros", data=("extra", account.name))
+            return [f"{account.name}/macros"]
+
+        async def test(review, tree, pilot):
+            self.assertEqual(review.added[:2], ["ALT/macros", "ALT/Realm1/Dænerys"])
+            self.assertEqual(node_keys(self.find(tree, "BARE")), ("BARE/macros",))
+            self.assertEqual(self.find(tree, "BARE").label.plain, "✘ BARE")
+            review.ticked.add("MAIN/macros")
+            review._refresh_labels()
+            self.assertEqual(self.find(tree, "MAIN").label.plain, "◩ MAIN")
+            tree.move_cursor(self.find(tree, "ALT"))
+            await pilot.press("space")
+            self.assertEqual(review.ticked, {"MAIN/macros", "ALT/macros", "ALT/Realm1/Dænerys"})
+        await self.run_screen(test, account_extra=extra)
+
+    async def test_character_extra_hangs_nodes_under_a_character(self):
+        def extra(character, node):
+            if character.name == "Trâxex":
+                return None  # nothing to add: the character stays a leaf
+            node.add_leaf(f"{character.name} macro", data=("macro", character.name))
+            return [f"{char_key(character)}/macro"]
+
+        async def test(review, tree, pilot):
+            bob = self.find(tree, "MAIN", "Realm1", "Bob")
+            self.assertTrue(bob.allow_expand)
+            self.assertFalse(bob.is_expanded)
+            self.assertEqual([c.label.plain for c in bob.children], ["Bob macro"])
+            self.assertEqual(bob.data.keys, ("MAIN/Realm1/Bob", "MAIN/Realm1/Bob/macro"))
+            self.assertEqual(bob.label.plain, "✘ Bob")
+            self.assertFalse(self.find(tree, "MAIN", "Realm2", "Trâxex").allow_expand)
+            self.assertIn("MAIN/Realm1/Aellâ/macro", node_keys(self.find(tree, "MAIN")))
+            self.assertIn("ALT/Realm1/Dænerys/macro", review.added)
+            tree.move_cursor(self.find(tree, "MAIN", "Realm1"))
+            await pilot.press("space")
+            self.assertEqual(review.ticked, {"MAIN/Realm1/Aellâ", "MAIN/Realm1/Aellâ/macro", "MAIN/Realm1/Bob",
+                                             "MAIN/Realm1/Bob/macro"})
+            self.assertEqual(self.find(tree, "MAIN", "Realm1", "Bob").label.plain, "✔ Bob")
+        await self.run_screen(test, character_extra=extra)
+
+    async def test_disabled_character_keeps_extra_nodes_without_its_own_key(self):
+        async def test(review, tree, pilot):
+            aella = self.find(tree, "MAIN", "Realm1", "Aellâ")
+            self.assertEqual(aella.data.keys, ("MAIN/Realm1/Aellâ/macro",))
+            self.assertEqual(aella.label.plain, "✘ Aellâ  the source")
+        await self.run_screen(test, disabled=lambda c: "the source" if c.name == "Aellâ" else None,
+                              character_extra=lambda c, node: (node.add_leaf("m"), [f"{char_key(c)}/macro"])[1])
+
+    async def test_filter_rebuilds_with_shown_and_ticks_only_what_it_shows(self):
+        async def test(review, tree, pilot):
+            review.ticked.add("MAIN/Realm1/Aellâ")  # a tick the filter will hide
+            await pilot.press("slash", "b", "o", "b", "enter")
+            await pilot.pause()
+            tree = review.query_one("#chars", Tree)
+            self.assertEqual(labels(tree.root), [("✘ MAIN", [("✘ Realm1", ["✘ Bob"])])])
+            self.assertEqual(review.hidden_ticked_keys(), ["MAIN/Realm1/Aellâ"])
+            tree.move_cursor(self.find(tree, "MAIN"))
+            await pilot.press("space")
+            self.assertEqual(review.ticked, {"MAIN/Realm1/Aellâ", "MAIN/Realm1/Bob"})
+            self.assertEqual(self.find(tree, "MAIN").label.plain, "✔ MAIN")  # over the shown keys only
+            await pilot.press("slash")
+            review.filter_input().value = "realm2"  # matched on the realm too, case-insensitively
+            await pilot.press("enter")
+            await pilot.pause()
+            tree = review.query_one("#chars", Tree)
+            self.assertEqual(labels(tree.root), [("✘ MAIN", [("✘ Realm2", ["✘ Trâxex"])])])
+            await pilot.press("n")  # select none: the shown keys only
+            self.assertEqual(review.ticked, {"MAIN/Realm1/Aellâ", "MAIN/Realm1/Bob"})
+            await pilot.press("slash", "escape")
+            await pilot.pause()
+            tree = review.query_one("#chars", Tree)
+            self.assertEqual(self.find(tree, "MAIN").label.plain, "◩ MAIN")
+            self.assertEqual(self.find(tree, "MAIN", "Realm1").label.plain, "✔ Realm1")
+        await self.run_screen(test, screen=FilteredCharacterReview)
+
+    async def test_filter_with_no_match_says_so(self):
+        async def test(review, tree, pilot):
+            await pilot.press("slash", *"nobody", "enter")
+            await pilot.pause()
+            tree = review.query_one("#chars", Tree)
+            self.assertEqual(labels(tree.root), ["Nothing matches the filter (Esc in the box clears it)"])
+        await self.run_screen(test, screen=FilteredCharacterReview)

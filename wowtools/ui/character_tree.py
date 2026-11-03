@@ -6,10 +6,13 @@ folder that can't be a character (`Bob - Copy`) never shows. Every account, real
 keys under it: a screen's `node_tick_keys(node)` is `node_keys(node)` (ticking an account or a realm ticks every
 character in it), its labels `character_label(data, mark)`. It works with `ReviewTree`, `TickModel` and
 `TreeFilter` like the other trees: the screen passes `shown=` to narrow a filtered rebuild and
-`character_filter_texts(character)` as a key's `filter_texts`."""
+`character_filter_texts(character)` as a key's `filter_texts`. A tool hangs its own nodes under an account
+(`account_extra`, the Macro Editor's account macros) or under a character (`character_extra`, its character macros
+or the Config Editor's character config); the tick keys a hook returns fold into the keys of every node above them,
+so a parent's mark and Space cover them too."""
 from __future__ import annotations
 
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Iterable
 from typing import NamedTuple
 
 from rich.text import Text
@@ -26,9 +29,10 @@ Mark = Callable[[Collection[str]], "tuple[str, str]"]
 
 
 class CharacterNode(NamedTuple):
-    """The data of an account, realm or character node. `keys` are the tick keys it covers (an account's or a
-    realm's: every tickable character in it, in tree order; a disabled character's: none). `reason` is why a
-    character can't be ticked (None when it can)."""
+    """The data of an account, realm or character node. `keys` are the tick keys it covers, in tree order: a
+    character's own key (none when disabled) then those its `character_extra` nodes returned; a realm's, its
+    characters'; an account's, its `account_extra` nodes' then its realms'. `reason` is why a character can't be
+    ticked (None when it can)."""
 
     kind: str  # "account", "realm" or "character"
     text: str
@@ -40,8 +44,8 @@ class CharacterNode(NamedTuple):
 
 
 def node_keys(node: TreeNode | None) -> tuple[str, ...]:
-    """The tick keys a tick on this node covers: its CharacterNode's keys, none for any other node. A screen that
-    puts its own tickable nodes under an account (`account_extra`) adds their keys itself."""
+    """The tick keys a tick on this node covers: its CharacterNode's keys (with the keys its extra nodes returned),
+    none for any other node. A tool's own nodes answer for themselves in its `node_tick_keys`."""
     data = None if node is None else node.data
     return data.keys if isinstance(data, CharacterNode) else ()
 
@@ -68,37 +72,39 @@ def character_label(data: CharacterNode, mark: Mark | None = None) -> Text:
 def populate_characters(parent: TreeNode, flavor: Flavor, *, key: Callable[[Character], str],
                         label: Callable[[Character], str],
                         disabled: Callable[[Character], str | None] = lambda c: None,
-                        account_extra: Callable[[Account, TreeNode], None] | None = None,
+                        account_extra: Callable[[Account, TreeNode], Iterable[str] | None] | None = None,
+                        character_extra: Callable[[Character, TreeNode], Iterable[str] | None] | None = None,
                         shown: Callable[[Character], bool] | None = None,
                         mark: Mark | None = None,
                         on_error: ErrorHandler | None = None) -> list[str]:
     """Add account › realm › character nodes for `flavor` under `parent`, expanded, and return the tick keys added
-    (`key(character)` of each tickable one, in tree order). `label(character)` is a character's text;
-    `disabled(character)` a reason it can't be ticked (shown greyed, no tick key) or None. `account_extra(account,
-    node)` adds a tool's own nodes under an account before its realms (the Macro Editor's account macros); an account
-    keeps its node with those alone. `shown(character)` leaves the others out (a filtered rebuild), and a realm or
-    account left empty with them; without it, an account with no characters shows a dim NO_CHARACTERS line. `mark`
-    is as for character_label; `on_error` is passed to the folder listing."""
+    in tree order (`key(character)` of each tickable one, and every key a hook returned). `label(character)` is a
+    character's text; `disabled(character)` a reason it can't be ticked (shown greyed, no tick key of its own) or
+    None. `account_extra(account, node)` adds a tool's own nodes under an account before its realms (the Macro
+    Editor's account macros); an account keeps its node with those alone. `character_extra(character, node)` adds
+    them under a character, whose node then expands (collapsed at first; a leaf again when the hook added nothing).
+    Each hook returns the tick keys of what it added (or None), folded into the keys of the nodes above them.
+    `shown(character)` leaves the others out (a filtered rebuild), and a realm or account left empty with them;
+    without it, an account with no characters shows a dim NO_CHARACTERS line. `mark` is as for character_label;
+    `on_error` is passed to the folder listing."""
     added: list[str] = []
     for account in flavor.accounts(on_error):
         characters = [c for c in account.real_characters(on_error) if shown is None or shown(c)]
         realms: dict[str, list[tuple[Character, str | None]]] = {}
         for character in characters:
             realms.setdefault(character.realm, []).append((character, disabled(character)))
-        account_keys = tuple(key(c) for group in realms.values() for c, reason in group if reason is None)
-        node = parent.add(Text(account.name), data=CharacterNode("account", account.name, account_keys, account),
-                          expand=True)
-        if account_extra is not None:
-            account_extra(account, node)
+        node = parent.add(Text(account.name), data=CharacterNode("account", account.name, (), account), expand=True)
+        account_keys = tuple(account_extra(account, node) or ()) if account_extra is not None else ()
         for realm, group in realms.items():
-            realm_keys = tuple(key(c) for c, reason in group if reason is None)
-            realm_node = node.add(Text(realm), data=CharacterNode("realm", realm, realm_keys, account, realm),
-                                  expand=True)
+            realm_node = node.add(Text(realm), data=CharacterNode("realm", realm, (), account, realm), expand=True)
+            realm_keys: tuple[str, ...] = ()
             for character, reason in group:
-                keys = () if reason is not None else (key(character),)
-                data = CharacterNode("character", label(character), keys, account, realm, character, reason)
-                realm_node.add_leaf(character_label(data, mark), data=data)
+                realm_keys += _add_character(realm_node, character, reason, key=key, label=label,
+                                             character_extra=character_extra, mark=mark)
+            realm_node.data = realm_node.data._replace(keys=realm_keys)
             realm_node.set_label(character_label(realm_node.data, mark))
+            account_keys += realm_keys
+        node.data = node.data._replace(keys=account_keys)
         added += account_keys
         if not node.children:
             if shown is not None:
@@ -107,3 +113,22 @@ def populate_characters(parent: TreeNode, flavor: Flavor, *, key: Callable[[Char
             node.add_leaf(Text(NO_CHARACTERS, style="dim"))
         node.set_label(character_label(node.data, mark))
     return added
+
+
+def _add_character(realm_node: TreeNode, character: Character, reason: str | None, *,
+                   key: Callable[[Character], str], label: Callable[[Character], str],
+                   character_extra: Callable[[Character, TreeNode], Iterable[str] | None] | None,
+                   mark: Mark | None) -> tuple[str, ...]:
+    """One character's node under its realm (with the tool's own nodes under it); returns the keys it covers."""
+    own = () if reason is not None else (key(character),)
+    data = CharacterNode("character", label(character), own, realm_node.data.account, character.realm, character,
+                         reason)
+    if character_extra is None:
+        realm_node.add_leaf(character_label(data, mark), data=data)
+        return own
+    node = realm_node.add(Text(data.text), data=data, allow_expand=True)
+    keys = own + tuple(character_extra(character, node) or ())
+    node.data = data._replace(keys=keys)
+    node.allow_expand = bool(node.children)
+    node.set_label(character_label(node.data, mark))
+    return keys
