@@ -134,11 +134,20 @@ def load_wiki_notes(path: Path) -> dict[str, dict]:
     return notes
 
 
-def write_json(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def render_json(data: dict) -> bytes:
+    """The file's bytes. A dump string that was not valid UTF-8 (luasv keeps such bytes as surrogates) cannot be
+    encoded and raises DumpError, so the flavor is skipped like any other unreadable dump."""
     text = json.dumps(data, indent=1, sort_keys=True, ensure_ascii=False) + "\n"
+    try:
+        return text.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise DumpError("a string in the dump is not valid UTF-8") from exc
+
+
+def write_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     partial = path.with_name(path.name + ".partial")
-    partial.write_bytes(text.encode("utf-8"))
+    partial.write_bytes(payload)
     partial.replace(path)
 
 
@@ -168,13 +177,14 @@ def main(argv: list[str] | None = None) -> int:
             continue
         try:
             dump = read_dump(path)
+            cvars = build_cvars(flavor.folder, dump, notes)
+            slash = build_slash(flavor.folder, dump)
+            cvars_bytes, slash_bytes = render_json(cvars), render_json(slash)
         except DumpError as exc:
             print(f"{flavor.folder}: skipped, {path} could not be read: {exc}")
             continue
-        cvars = build_cvars(flavor.folder, dump, notes)
-        slash = build_slash(flavor.folder, dump)
-        write_json(args.out / "cvars" / f"{flavor.folder}.json", cvars)
-        write_json(args.out / "slash_commands" / f"{flavor.folder}.json", slash)
+        write_bytes(args.out / "cvars" / f"{flavor.folder}.json", cvars_bytes)
+        write_bytes(args.out / "slash_commands" / f"{flavor.folder}.json", slash_bytes)
         noted = sum("wiki" in entry for entry in cvars["cvars"].values())
         print(f"{flavor.folder}: build {dump['build']} from {path}: {len(cvars['cvars'])} CVars "
               f"({noted} with wiki notes), {len(slash['commands'])} slash commands")

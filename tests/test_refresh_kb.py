@@ -166,6 +166,21 @@ class RefreshKbTest(unittest.TestCase):
         self.assertIn("_classic_", output)
         self.assertFalse((self.out / "cvars" / "_classic_.json").exists())
 
+    def test_non_utf8_dump_string_is_reported_and_skipped(self):
+        """T4 review: a dump string with a byte that is not UTF-8 skips that flavor with a message; the others are
+        still written and neither of the bad flavor's files is touched."""
+        self.write_dump("_classic_")
+        bad = self.write_dump("_retail_")
+        bad.write_bytes(RETAIL_DUMP.encode("utf-8").replace(b"The max distance", b"The max \xff distance"))
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+        self.assertIn("_retail_: skipped", output)
+        self.assertIn("not valid UTF-8", output)
+        self.assertTrue((self.out / "cvars" / "_classic_.json").is_file())
+        self.assertTrue((self.out / "slash_commands" / "_classic_.json").is_file())
+        self.assertFalse((self.out / "cvars" / "_retail_.json").exists())
+        self.assertFalse((self.out / "slash_commands" / "_retail_.json").exists())
+
     def test_output_is_stable_and_utf8(self):
         self.write_dump("_retail_", RETAIL_DUMP.replace("Automatically loot", "Dænerys loots"))
         self.run_main()
