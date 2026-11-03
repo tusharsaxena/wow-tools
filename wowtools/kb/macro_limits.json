@@ -1,0 +1,11 @@
+{
+ "comment": "Macro slots per flavor (spec ME3): account macros and macros per character. A flavor not listed here uses Retail's values, flagged as unconfirmed.",
+ "flavors": {
+  "_retail_": {
+   "account": 120,
+   "build": "12.1.5 70688",
+   "character": 30,
+   "source": "https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_APIDocumentationGenerated/MacroConstantsDocumentation.lua"
+  }
+ }
+}

@@ -50,6 +50,8 @@ CORE_EVENTS: dict[str, EventSpec] = {
                                                        "running; the lock is kept until it finishes."),
     "changelog.unreadable": EventSpec("warning", "CHANGELOG.md was missing, unreadable or malformed, so the changelog "
                                                  "screen showed nothing (the reason is in `reason`)."),
+    "kb.unreadable": EventSpec("warning", "A knowledge-base file in wowtools/kb/ could not be read or parsed, so it "
+                                          "was read as empty and its entries show as unknown (path, reason)."),
     "config.created": EventSpec("info", "A config file in config/ was written for the first time."),
     "config.changed": EventSpec("info", "A config value changed or was removed, or was overridden for one run."),
     "config.renamed": EventSpec("info", "A renamed tool's config file was moved to its new name (merged into the new "

@@ -43,6 +43,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `config.renamed` | info | A renamed tool's config file was moved to its new name (merged into the new file when both existed). |
 | `error` | error | An unexpected or fatal error. |
 | `folder.renamed` | info | A renamed tool's folder (logs/<tool>/ or <WoW>/wow-tools/<tool>/) was moved to its new name; logged as a warning when entries clashed or failed to move. |
+| `kb.unreadable` | warning | A knowledge-base file in wowtools/kb/ could not be read or parsed, so it was read as empty and its entries show as unknown (path, reason). |
 | `launcher.exited` | info | Python returned to the launcher (logs/suite/launcher.log: the exit code). |
 | `launcher.python_missing` | error | The launcher found no usable Python and stopped (logs/suite/launcher.log). |
 | `launcher.python_too_old` | error | The launcher found a Python older than 3.10 and stopped (logs/suite/launcher.log: the version found). |

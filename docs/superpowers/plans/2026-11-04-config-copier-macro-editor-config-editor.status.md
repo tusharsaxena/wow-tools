@@ -17,7 +17,7 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 | T5 | M2 | install helpers (Forever, real characters) | done | (this commit) | 5 new tests in test_install.py (RealCharactersTest: the plan's 4 plus on_error passed through); gate green: WSL 2024 OK (9 skipped), Windows 2024 OK (84 skipped), ruff clean, events.md current. Review fix (fix: T5 review fixes): test_real_characters_passes_on_error checked nothing (a missing account folder never reaches on_error); it now makes one realm's iterdir raise PermissionError and asserts on_error gets that realm and the other realm's character still lists (fails if real_characters drops on_error); gate green: WSL 2024 OK (9 skipped), Windows 2024 OK (84 skipped; one first-run WinError 10055 socket-buffer error, environmental, clean on rerun), ruff clean, events.md current |
 | T6 | M2 | client-file write pipeline | done | (this commit) | 28 new tests: 24 in test_client_apply.py (the plan's 9 plus created-only run, stale-skip-rest, appears-before-write, link guard, guarded path stops the run, client_destination, roll-back removes a created file, undo of a gone created file, undo while WoW runs, journal entry outside the names, recovery leaves a rewritten created file, finished-run recovery, no cache.md5/.old, client_events), 3 in test_fsutil.py (atomic_create_bytes), 1 in test_backup.py (allow_empty); test_structure pins the new pieces in core. Existing Ace3 / SV Browser / pipeline tests unchanged and green. Gate green: WSL 2052 OK (9 skipped), Windows 2052 OK (85 skipped; the first --all run had one WinError 10055 socket-buffer error, environmental as in T5, clean on the --windows rerun), ruff clean, events.md current. Review fix (fix: T6 review fixes): a created file roll-back could not remove now gets its own detail and message (delete it / Undo / recovery), never the unzip advice; +1 test, crash-marker test asserts it; gate green again: WSL 2053 OK, Windows 2053 OK (one WinError 10055 on --all, clean on the --windows rerun), ruff clean, events.md current |
 | T7 | M2 | macro and CVar file parsers | done | 2e9243e, review fixes (this commit) | 27 new tests: 14 in test_macrofile.py (the plan's 6 plus empty file, quoted name and lowercase id, limits, empty-body add, bad changes, invalid UTF-8, other-prefix ids, id overflow), 13 in test_cvarfile.py (the plan's 3 plus spans, other lines kept, duplicates, empty file, spelling and line ending kept, every duplicate set/removed, unterminated last line, removing a missing CVar, invalid UTF-8, bad changes); fixtures gain macro_file_bytes and cvar_file_bytes; architecture.md Core modules rows for both. Gate green: WSL 2080 OK (9 skipped), Windows 2080 OK (85 skipped; the first --all run had one Windows failure in the test runner's own shard-balancing test, not in this change, clean on the --windows rerun and a second --all), ruff clean, events.md current. No CHANGELOG line: nothing a user sees yet. Review fixes (T7r1): a replace whose name, icon and body equal the parsed macro keeps the block's bytes (the one-blank-line block), pinned by test_unchanged_replace_keeps_the_block_bytes |
-| T8 | M2 | KB loader, state list, macro limits | todo | | |
+| T8 | M2 | KB loader, state list, macro limits | done | (this commit) | 17 new tests in test_kb.py (the plan's 4 plus case-insensitive state match, exceptions, unreadable state list, the refresh_kb schema, odd entries, unsafe flavor names, caching, the X8 category groups, unknown-flavor limits, every shipped limit sourced, bad limits, the KB folder and README, kb.unreadable registered); architecture.md Core modules row for `kb`; events.md regenerated. Gate green: WSL 2098 OK (9 skipped), Windows 2098 OK (85 skipped; the first --all run's Windows half reported FAILED with 0 failures and 0 errors after one shard hung 600 s on the executor join in test_ui_base, environmental, clean on the --windows rerun in 81 s), ruff clean, events.md current. No CHANGELOG line: nothing a user sees yet |
 | T9 | M2 | shared character tree; push | todo | | |
 | T10 | M3 | copier planning and config merge | todo | | |
 | T11 | M3 | copier run, undo, flow | todo | | |
@@ -163,3 +163,36 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
   every line of it. New lines are appended with the file's newline (the first line's; CRLF for an empty file or one
   without a line ending), adding a newline first when the last line has none. ValueError for an empty name or one
   with a space or quote, a value with a line break, or a CVar both set and removed (or set twice in other cases).
+- T8a: `kb.py` loaders take a keyword-only `root=` (default `KB_ROOT` = `wowtools/kb`, read at call time) beyond the
+  plan's signatures, so tests read temp folders. Cached per process by path (`clear_cache()`), thread-safe. A missing
+  file is "no data" and logs nothing; a file that is not UTF-8, not JSON, not an object, or a `cvars/<flavor>.json`
+  without a `cvars` object, logs `kb.unreadable` (warning, `path`, `reason`) once and reads as empty. A flavor folder
+  name that isn't `[A-Za-z0-9_]+` reads nothing (no path escapes). `kb.unreadable` sits in `CORE_EVENTS`, beside
+  `changelog.unreadable`.
+- T8b: `CvarInfo` from the T4 schema: `default` is None only when the entry has no string default; `help` is
+  Blizzard's text; `description` / `description_source` are the `wiki` note's text and URL, both "" unless both are
+  present (no unsourced description); `scope` is None for anything but machine/account/character; `source` is the
+  file's top-level `source` (`client dump <flavor> <build>`). The raw `locked` / `readonly` flags are not in
+  `CvarInfo` (the plan's interface); a later task can add them if the Config Editor needs them.
+- T8c: the X8 mapping (`category_group(name, raw)`), groups `CATEGORY_GROUPS` = graphics, sound, interface,
+  camera, nameplates, combat text, network, other. Name rules first, case-insensitive: `nameplate*` -> nameplates,
+  any name containing `camera` -> camera, containing `floatingcombattext` or starting `combattext` -> combat text.
+  Then the client's console category: graphics -> graphics, sound -> sound, net -> network, game -> interface;
+  everything else (debug, console, combat, default, gm, reveal, none, a bare number, empty) -> other. Revisit when
+  T20 has the real dumps.
+- T8d: `cvar_state.json` = `{source, names, patterns, exceptions}`: the appendix reading's names plus every pattern
+  the spec names (`closed*`, `*Tutorial*`, `last*`, `latest*`, `lastRenownForCovenant*`, `new*Season`,
+  `saved*Config*`, `savedClassConfig*`, `garrison*`, `cameraSaved*`, `*Collapsed`). Matched case-insensitively
+  (fnmatch on lowercased names, the client's own rule); an `exceptions` name is never state, which is how a pattern
+  that catches a real preference in a flavor's dump gets corrected. CC5's "each pattern checked against the
+  flavor's CVar dump" can only run once the dumps are in: it is T20's job (list each pattern's matches per flavor,
+  move any preference into `exceptions`). An unreadable state list means no CVar is state (logged).
+- T8e: macro limits: Retail 120 / 30 confirmed from the client's generated UI docs
+  (`Blizzard_APIDocumentationGenerated/MacroConstantsDocumentation.lua`, Gethe/wow-ui-source `live` at 12.1.5 70688:
+  `MAX_ACCOUNT_MACROS` 120, `MAX_CHARACTER_MACROS` 30), the URL in `macro_limits.json`. The `classic`, `classic_era`
+  and `classic_anniversary` branches (5.5.4, 1.15.9, 2.5.6) use the same globals in `Blizzard_MacroUI.lua` but define
+  them nowhere in Lua (no `MacroConstants` doc either), so those flavors are not shipped: they get Retail's values with
+  `limits_known` False, for ME3's flag. A sourced entry needs positive integers and a `source`, else it isn't known.
+  A later task can add them from an in-game check (e.g. the dump addon recording `MAX_CHARACTER_MACROS`).
+- T8f: `wowtools/kb/README.md` (ships) names files and scripts in backticks only, no links into `scripts/`, which
+  doesn't ship. No CHANGELOG line: nothing a user sees yet.
