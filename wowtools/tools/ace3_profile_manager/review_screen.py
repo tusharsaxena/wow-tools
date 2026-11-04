@@ -40,9 +40,12 @@ from wowtools.tools.ace3_profile_manager.result_screen import ProfileResultScree
 from wowtools.tools.ace3_profile_manager.scanner import ScanResult, scan_flavors
 from wowtools.tools.ace3_profile_manager.settings import load_settings, resolve_root
 from wowtools.tools.ace3_profile_manager.staging_actions import ProfileStagingActions
-from wowtools.tools.ace3_profile_manager.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
+from wowtools.tools.ace3_profile_manager.tree_view import (COUNTED, GROUP, LAYOUTS, READ_ONLY, Filters, Row,
+                                                           TreeBuilder, counts, ident)
 from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult, leave, recover, undo_flavors, undo_run
 from wowtools.ui.branding import BottomBar
+from wowtools.ui.columns import column_text, cut_middle, fit_columns, fit_keeping_count
+from wowtools.ui.counts import COUNT_GAP
 from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                 UnfinishedRunScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
 from wowtools.ui.review import (BLACKLIST_BINDING, ActionBar, BarTree, BlacklistAction, ReviewBase, RunActions,
@@ -59,6 +62,9 @@ SHOW_FILTERS = {"only-multi": "only_multi", "only-unused": "only_unused", "show-
                 "show-blacklisted": "blacklisted"}
 GUIDE_MAX_ROWS = 2  # the guidance line leaves its per-node hint out rather than take more rows than this
 GROUP_KINDS = ("root", "flavor", "account")  # nodes too broad to stand for a selection when nothing is ticked
+TOGGLE_WIDTH = 2  # the tree's ▶ / ▼ in front of a node that opens
+MARK_WIDTH = 2  # the tick mark (or the blacklist mark) in front of every label
+GROUP_NAME_MINIMUM = 4  # a group's name is cut (in its middle) down to this so its count fits the pane
 # The action bar under the tree: (id, label, kind of action, action, key), staged changes first (amber; Copy is green: it
 # only adds a profile), then staged deletes (red), then the rest; a staging button takes the colour of the action it
 # stages (spec D12).
@@ -197,6 +203,7 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
         self.guide_text = guidance(None, "", 0, 0, 0)
         self._guide_shown = self.guide_text  # guide_text as the guide shows it (the steps wrapped between steps)
         self._builder: TreeBuilder | None = None
+        self._fitted_width = 0  # the tree's width the labels were fitted to (R4)
         self._expanded: dict[Hashable, bool] = {}
         self._scanning = False
         self._checking = False  # a running-WoW check is in its worker
@@ -399,6 +406,7 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
                                     locked=self.locked, blacklisted=self._blacklisted, expanded=self._expanded,
                                     warning_style=theme_colour(self.app, "warning"), text_filter=self.text_filter)
         self._builder.build(tree)
+        self._fitted_width = tree.size.width
         for node in self._walk_tree():
             node.set_label(self._label(node.data))
         self.note_no_match(tree.root)  # after the labels: it has no data, so _label would blank it
@@ -408,6 +416,7 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
             if target is not None and target.line >= 0:
                 tree.move_cursor(target)
         self._update_summary()
+        self.call_after_refresh(self._fit_rows)  # built before the tree was laid out (hidden during the scan)
 
     def _tick_keys(self, node: TreeNode | None) -> tuple:
         if node is None or node.data is None or self._builder is None:
@@ -415,17 +424,60 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
         return self._builder.keys.get(id(node.data), ())
 
     def _label(self, data) -> Text:
+        """A node's label: its tick mark (the blacklist mark on a locked addon's row), then its name and count (R2)
+        or its columns (R4), fitted to the pane; a row that doesn't open beside siblings that do is padded where
+        their ▶ / ▼ is, so the columns line up."""
         builder = self._builder
         if builder is None or data is None:
             return Text("")
-        body = builder.bodies.get(id(data), Text(""))
-        if id(data) in builder.held:  # a locked (blacklisted) addon's row: never ticked (L15)
-            return Text.assemble(blacklisted_mark(), body)
-        keys = builder.keys.get(id(data), ())
+        key = id(data)
+        row = builder.rows.get(key)
+        body = builder.bodies.get(key, Text("")) if row is None else self._row_text(data, row)
+        pad = " " * TOGGLE_WIDTH if key in builder.padded else ""
+        if key in builder.held:  # a locked (blacklisted) addon's row: never ticked (L15)
+            return Text.assemble(pad, blacklisted_mark(), body)
+        keys = builder.keys.get(key, ())
         if not keys:
-            return Text.assemble("  ", body)
+            return Text.assemble(pad, "  ", body)
         mark = tick_mark(keys, self.tick_model().unticked, success=theme_colour(self.app, "success"))
-        return Text.assemble(mark, body)
+        return Text.assemble(pad, mark, body)
+
+    def _room(self, data) -> int | None:
+        """The cells a node's text may take behind its guides, its ▶ / ▼ (or the pad in its place) and its mark;
+        None before the tree is laid out (no limit)."""
+        tree = self.query_one("#profiles", Tree)
+        builder = self._builder
+        if tree.size.width <= 0 or builder is None:
+            return None
+        key = id(data)
+        width = tree.size.width - tree.styles.scrollbar_size_vertical  # a scrollbar may come with more rows
+        toggle = TOGGLE_WIDTH if key in builder.toggle else 0
+        return max(0, width - builder.depths.get(key, 0) * tree.guide_depth - toggle - MARK_WIDTH)
+
+    def _row_text(self, data, row: Row) -> Text:
+        room = self._room(data)
+        if row.layout == GROUP:
+            return _group_text(row, room)
+        assert self._builder is not None
+        natural = self._builder.widths[id(data)]
+        layout = LAYOUTS[row.layout]
+        fit = fit_keeping_count if row.layout in COUNTED else fit_columns
+        widths, gap = fit(natural, room, layout)
+        text = column_text(row.cells, widths, row.styles, gap, middle=(0,))
+        text.rstrip()  # empty cells at the end (no character, no status) leave no padding behind
+        return text
+
+    def _fit_rows(self) -> None:
+        """Fit every label to the tree pane's width again when it changed (R4)."""
+        if not self.is_attached or self._builder is None:
+            return
+        tree = self.query_one("#profiles", Tree)
+        if tree.size.width == self._fitted_width:
+            return
+        self._fitted_width = tree.size.width
+        for node in self._walk_tree():
+            if node.data is not None:
+                node.set_label(self._label(node.data))
 
     def _refresh_labels(self, node: TreeNode | None = None) -> None:
         relabel_branch(self.query_one("#profiles", Tree), node, self._label, skip=READ_ONLY)
@@ -508,6 +560,7 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
 
     def on_resize(self) -> None:
         self.call_after_refresh(self._update_guide)  # once the guide has its new width
+        self.call_after_refresh(self._fit_rows)  # and the tree its new width
 
     # --- the action tip (the toast stack's lowest box, ui.toasts) -------------------------------------------------
     def on_descendant_focus(self, event) -> None:
@@ -907,3 +960,19 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
             return None
         return ("Leave and discard the pending changes?",
                 f"{plural(pending, 'pending change')} not applied yet will be dropped; nothing has been written.")
+
+
+def _group_text(row: Row, room: int | None) -> Text:
+    """A group's name and its dim count (R2), the name cut in its middle so the count fits the pane; with no room
+    for both, the name alone, cut to the room."""
+    (name, *count), (style, *count_style) = row.cells, row.styles
+    if not count:
+        return Text(name, style=style)
+    gap = COUNT_GAP
+    tail = len(gap) + len(count[0])
+    if room is not None and Text(name).cell_len + tail > room:
+        if room - tail >= GROUP_NAME_MINIMUM:
+            name = cut_middle(name, room - tail)
+        else:
+            return Text(cut_middle(name, max(1, room)), style=style)
+    return Text.assemble((name, style), (f"{gap}{count[0]}", count_style[0]))

@@ -8,7 +8,7 @@ import unittest
 from rich.text import Text
 
 from wowtools.ui.columns import (ELLIPSIS, NARROW_GAP, WIDE_GAP, ColumnLayout, column_text, cut_middle, fit_columns,
-                                 natural_widths)
+                                 fit_keeping_count, natural_widths)
 from wowtools.ui.counts import COUNT_STYLE, count_text, with_count
 
 # name · reason · files · size · age (the WTF Cleaner's row, the user's example): the name and the reason give way,
@@ -72,6 +72,17 @@ class FitColumnsTest(unittest.TestCase):
         self.assertEqual(fit_columns((30, 7, 6, 7, 11), 20, cvars), ((12, 0, 0, 7, 0), 1))
         self.assertEqual(fit_columns((30, 7, 6, 7, 11), 0, cvars), ((1, 0, 0, 0, 0), 1))
 
+
+    def test_the_count_is_kept_by_cutting_the_name(self):
+        """fit_keeping_count (moved out of the Interface Backup, G6c): where the shared fit would leave the name
+        alone, the name is cut (to its minimum at most) so the count column (1) stays (STD-7.27)."""
+        layout = ColumnLayout(caps=(None,) * 3, minimums=(4, 0, 0), shrink=(), drop=(2,))
+        natural = (20, 7, 10)
+        self.assertEqual(fit_columns(natural, 20, layout), ((20, 0, 0), NARROW_GAP))
+        self.assertEqual(fit_keeping_count(natural, 20, layout), ((12, 7, 0), NARROW_GAP))
+        self.assertEqual(fit_keeping_count(natural, 50, layout), fit_columns(natural, 50, layout))  # it fits
+        self.assertEqual(fit_keeping_count(natural, 10, layout), ((10, 0, 0), NARROW_GAP))  # no room for both
+        self.assertEqual(fit_keeping_count((20, 0, 10), 20, layout), fit_columns((20, 0, 10), 20, layout))  # none
 
 class CutTest(unittest.TestCase):
     def test_cut_in_the_middle_keeps_the_start_and_the_end(self):

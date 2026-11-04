@@ -15,7 +15,7 @@ from rich.cells import cell_len
 from rich.text import Text
 
 __all__ = ["ELLIPSIS", "NARROW_GAP", "WIDE_GAP", "ColumnLayout", "column_text", "cut_middle", "fit_columns",
-           "natural_widths"]
+           "fit_keeping_count", "natural_widths"]
 
 ELLIPSIS = "…"
 WIDE_GAP, NARROW_GAP = 2, 1  # spaces between two columns: two when everything fits so, else one
@@ -80,6 +80,15 @@ def fit_columns(natural: Sequence[int], room: int | None, layout: ColumnLayout) 
             return tuple(widths), NARROW_GAP
     widths[0] = max(1, min(widths[0], room))  # the name alone, cut to the room
     return tuple(widths), NARROW_GAP
+
+
+def fit_keeping_count(natural: Sequence[int], room: int | None, layout: ColumnLayout) -> tuple[tuple[int, ...], int]:
+    """fit_columns for a row whose column 1 is its leaf count (STD-7.27): the name whole while a column can be
+    dropped instead; when only the name would be left, the name is cut (down to its minimum) so the count stays."""
+    widths, gap = fit_columns(natural, room, layout)
+    if natural[1] and not widths[1]:
+        widths, gap = fit_columns(natural, room, layout._replace(shrink=(*layout.shrink, (0,))))
+    return widths, gap
 
 
 def _take(text: str, cells: int, *, from_end: bool = False) -> str:

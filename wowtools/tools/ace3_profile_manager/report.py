@@ -30,6 +30,7 @@ NO_PENDING = "No pending changes"
 STEPS = ("1 Tick profiles or characters (Space) → 2 pick an action below → 3 check the pending changes in the tree "
          "→ 4 Apply writes them")
 CHARACTER_KINDS = ("char", "pair", "character")  # tree nodes that are one character
+TAG_SEPARATOR = ", "  # a row's tags share its last column (feedback round 2 R4)
 
 
 @dataclass
@@ -39,8 +40,9 @@ class CharRow:
     removed: bool = False
 
     @property
-    def label(self) -> str:
-        return " · ".join([self.char, *self.tags])
+    def cells(self) -> tuple[str, str]:
+        """The row's columns (R4, STD-7.28): the character, its tags."""
+        return self.char, TAG_SEPARATOR.join(self.tags)
 
 
 @dataclass
@@ -51,11 +53,17 @@ class ProfileRow:
     chars: list[CharRow] = field(default_factory=list)
 
     @property
-    def label(self) -> str:
-        if self.deleted:
-            return " · ".join([self.name, *self.tags])
-        live = sum(1 for c in self.chars if not c.removed)
-        return " · ".join([self.name, plural(live, "character"), *self.tags])
+    def cells(self) -> tuple[str, str, str]:
+        """The row's columns (R4, STD-7.28): the profile, how many characters use it (none on a deleted one), its
+        tags."""
+        live = "" if self.deleted else plural(sum(1 for c in self.chars if not c.removed), "character")
+        return self.name, live, TAG_SEPARATOR.join(self.tags)
+
+
+def pair_cells(name: str, profile: str, tags: list[str]) -> tuple[str, str, str]:
+    """A By character row's columns (R4): the addon (and its database when it has several), the character's
+    profile there, its tags."""
+    return name, profile, TAG_SEPARATOR.join(tags)
 
 
 def char_tags(state: DbState, char: str) -> list[str]:

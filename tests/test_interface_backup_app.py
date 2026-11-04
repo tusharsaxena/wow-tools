@@ -2368,13 +2368,13 @@ class FlavorRowFitTest(TuiTestCase):
         end, the date kept, rather than dropped whole."""
         cells = ("Classic Era", "2 items", "12408 files", "412.0 MB", "last 2026-10-04 15:30:12")
         natural = tuple(len(c) for c in cells)
-        widths, gap = review_module._fit_keeping_count(natural, 58, review_module.FLAVOR_COLUMNS)
+        widths, gap = review_module.fit_keeping_count(natural, 58, review_module.FLAVOR_COLUMNS)
         self.assertEqual(widths[:4], natural[:4])
         self.assertEqual(sum(widths) + gap * 4, 58)
         text = str(column_text(cells, widths, review_module.FLAVOR_STYLES, gap, middle=(0,)))
         self.assertIn(" last 2026-10-04", text)
         # too narrow for the date: the column is dropped, not cut below it
-        widths, gap = review_module._fit_keeping_count(natural, 52, review_module.FLAVOR_COLUMNS)
+        widths, gap = review_module.fit_keeping_count(natural, 52, review_module.FLAVOR_COLUMNS)
         self.assertEqual(widths[4], 0)
         self.assertEqual(widths[:2], natural[:2])
 

@@ -198,7 +198,22 @@ per app session, L4; `ace.disclaimer_accepted` / `_declined`; Back returns to th
   box hides counts as hidden too. `a` / `n` act on what is shown; Delete, Assign, Leftovers, Only Default and
   Everyone → Default still take every tick (falling back to the highlighted node only with no tick at all), and
   their popup (a toast for the two that stage at once) says how many ticks are hidden. Labels and tags come from `report.profile_rows` and
-  `char_tags`. Ticks are `("p", DbKey, profile)` and `("c", DbKey, char)`; groups tick their descendants; locked
+  `char_tags`. Leaf counts (feedback round 2 R2, STD-7.27): the leaf is a profile row By addon (`profile`, and a
+  pending delete, `deleted`: a row of its addon until Apply) and a character's addon row By character (`pair`, and
+  a `removed` one), `tree_view.LEAF_KINDS`; a profile row is a leaf itself (its characters are its characters
+  column). `TreeBuilder._count` counts them after the build, so the count is what the Show boxes and the filter
+  left; the root, a flavor, an account, a database and a character end with theirs, an addon has it as its count
+  column, an account with no Ace3 data keeps its note, and Scan warnings counts its lines (left out of the root's).
+  Columns (R4, STD-7.28): every other row is a `tree_view.Row` of cells laid out by `LAYOUTS`: an addon name ·
+  count · its character (a per-character file) · blacklisted / unlocked; a profile name · characters · tags
+  (`ProfileRow.cells`, tags joined by `report.TAG_SEPARATOR`); a character under a profile name · tags
+  (`CharRow.cells`); By character a character name · count · no character folder, and its addon row addon ·
+  profile · tags (`report.pair_cells`). `TreeBuilder._align` works out each sibling group's natural widths once per
+  build and pads a row that doesn't open beside siblings that do (`padded`: two spaces where their ▶ is), so the
+  columns line up; the screen fits them (`_row_text`: `fit_columns`, or `fit_keeping_count` on a row with a count;
+  a group's name is cut in its middle so its count fits, `_group_text`) to `_room` and refits every label on a
+  resize (`_fit_rows`). At 80 columns the deepest rows have only a few cells behind their guides and are cut to
+  them. The blacklist screen's root and flavors count the addons they show. Ticks are `("p", DbKey, profile)` and `("c", DbKey, char)`; groups tick their descendants; locked
   addons, deleted profiles, removed characters and notes are read-only. Every row of a locked addon (in both views)
   is in `TreeBuilder.held` and shows the shared blacklist mark (`ui.review.blacklisted_mark()`, `⊘`, dim, L15) in
   place of a tick mark; an unlocked one takes ticks again. `#summary` is `report.selection_text` plus

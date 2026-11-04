@@ -23,6 +23,7 @@ from wowtools.core.text import plural
 from wowtools.tools.ace3_profile_manager.report import scan_label
 from wowtools.tools.ace3_profile_manager.scanner import ScanResult, scan_flavors
 from wowtools.ui.branding import BottomBar
+from wowtools.ui.counts import with_count
 from wowtools.ui.dialogs import (ACCENT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, relabel_branch, review_hint,
                                 two_pane_css)
 from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
@@ -76,6 +77,7 @@ class BlacklistScreen(TreeFilter, ReviewBase, Screen["list[Pair] | None"]):
         self.flavor_names: dict[Key, str] = {}  # the flavor's display name of each, for the filter
         self.scan: ScanResult | None = None
         self._scanning = False
+        self._shown: dict[str, int] = {}  # the addons the tree shows under each flavor folder (R2), per build
 
     # --- layout ------------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -158,6 +160,7 @@ class BlacklistScreen(TreeFilter, ReviewBase, Screen["list[Pair] | None"]):
         tree.clear()
         root = tree.root
         root.data = ("root",)
+        self._shown = {}
         found = self._found()
         text_filter = self.text_filter
         for flavor in self.flavors:
@@ -181,6 +184,8 @@ class BlacklistScreen(TreeFilter, ReviewBase, Screen["list[Pair] | None"]):
             if not shown and not text_filter.matches(flavor.display_name):
                 continue  # nothing of it matches
             node = root.add(Text(""), data=("flavor", folder, flavor.display_name), expand=True)
+            if addons:
+                self._shown[folder] = len(shown)
             if not addons:
                 node.add_leaf(Text("no Ace3 data", style="dim"), data=("note",))
                 node.allow_expand = False
@@ -209,15 +214,16 @@ class BlacklistScreen(TreeFilter, ReviewBase, Screen["list[Pair] | None"]):
             return Text("")
         keys = self._keys(data)
         mark = self.shown_tick_mark(keys) if keys else ("  ", "")
-        if data[0] == "flavor":
-            return Text.assemble(mark, (data[2], ACCENT))
+        if data[0] == "flavor":  # its name and the addons shown under it (R2; none when it has no Ace3 data)
+            name = Text(data[2], style=ACCENT)
+            return Text.assemble(mark, with_count(name, self._shown[data[1]]) if data[1] in self._shown else name)
         if data[0] == "addon":
             body = Text(data[2], style="bold")
             if data[3]:
                 body.append(" (not found)", style="dim")
             return Text.assemble(mark, body)
         if data[0] == "root":
-            return Text.assemble(mark, ("Blacklist", ACCENT))
+            return Text.assemble(mark, with_count(Text("Blacklist", style=ACCENT), sum(self._shown.values())))
         return Text("no Ace3 data", style="dim")
 
     def _refresh_labels(self, node: TreeNode | None = None) -> None:

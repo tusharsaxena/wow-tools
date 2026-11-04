@@ -386,7 +386,7 @@ class StructureTest(unittest.TestCase):
         Macro Editor's cut_name is another thing: a macro name cut to the game's limit). Both modules are pure: no
         Textual import."""
         functions = {"fit_columns": "columns.py", "cut_middle": "columns.py", "column_text": "columns.py",
-                     "natural_widths": "columns.py", "count_text": "counts.py", "with_count": "counts.py"}
+                     "natural_widths": "columns.py", "fit_keeping_count": "columns.py", "count_text": "counts.py", "with_count": "counts.py"}
         where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & set(functions)}
         self.assertEqual(where, {(f"wowtools/ui/{module}", name) for name, module in functions.items()})
         where = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))

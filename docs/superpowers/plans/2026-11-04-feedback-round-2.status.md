@@ -10,7 +10,7 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-feedback-round-2.md`. R
 | G3 | WTF Cleaner counts + columns | done | (this commit) | 7 new tests (test_ui_columns::test_a_rich_cell_keeps_its_own_colours; 6 in test_wtf_app NodeCountsAndColumnsTest: group counts, counts follow the search, blacklisted not counted, aligned addon and file columns, long name cut to the pane at 120x30 and 80x24, flavor counts); no existing test changed. Stale screenshots: wtf-cleaner/review.png (also in README.md). Review fixes (fix: G3 review fixes, G3h/G3i): +1 test (test_a_group_of_blacklisted_rows_only_counts_zero), test_a_long_name_is_cut_to_fit_the_pane checks group rows too, test_flavor_with_nothing_to_clean_says_so changed (flavor `0 items`). Gate after the fixes: run_tests --all 2379 tests, WSL OK, Windows OK (86 skipped); ruff clean; gen_event_docs --check OK. Gate before the fixes: run_tests --all 2378 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
 | G4 | Screenshot Organizer counts + columns | done | (this commit) | 5 new tests in test_screenshot_organizer_app (every node counts the screenshots below it, counts follow the filter, conflicts and duplicates are aligned columns, rows cut to fit the pane at 120x30 and 80x24, copy mode flavor counts its filed copies); 3 existing assertions updated to the new labels (`Skipped  2 items`, `Already filed  4 items`, flavor `4 items`), none loosened. Stale screenshots: screenshot-organizer/review.png (also in README.md). Gate: run_tests --all 2384 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK. Review fixes (fix: G4 review fixes, G4r): +1 test (test_conflict_and_skipped_counts_follow_the_filter: `notes` keeps 1 of 2 Skipped, `080119` 1 of 2 Conflicts); assert_counts checks Conflicts and Skipped against the rows the tree shows under them, no longer the unfiltered total. The 80-column file-row finding is flagged for the user (G4r below), code unchanged. Gate after the fixes: run_tests --all 2385 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
 | G5 | Interface Backup counts + columns | done | (this commit) | 5 new tests in test_interface_backup_app (every node counts the backups below it, backup counts follow the filter, flavor/part/backup rows are aligned columns, review rows cut to fit the pane at 120x30 and 80x24 with the count kept, restore tree counts and columns incl. filter and 80x24); report tests moved to the new cell helpers (part_cells, flavor_cells, held_cells, backup_cells, backups_note, WARNINGS_NOTE). 11 existing app tests updated to the new labels (`Backups  N items`, `Links  1 item`, `⚠ Scan warnings  3 items`, `Will be removed  N items`, group rows `WeakAuras  2 items  Interface/AddOns`, backup rows date-first, the no-data reason without `nothing to back up:`), none loosened; test_backup_and_its_safety_zip_differ_at_base checks `last …` only when it fits at BASE (dropped on Windows, where sizes are known: the first gate run caught it). Stale screenshots: interface-backup/review.png (also in README.md), restore-screen.png. Gate: run_tests --all 2390 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK. Review fixes (fix: G5 review fixes, G5r): a flavor's last backup is cut to its date before it is dropped; a backup row takes a narrower form at 80 columns (no year, no seconds, safety marked S) instead of cutting its date in the middle and dropping its kind. +1 test (FlavorRowFitTest), test_backup_and_its_safety_zip_differ_at_base checks the date unconditionally and the 80-column rows, the report test covers the forms. Gate after the fixes: run_tests --all 2391 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
-| G6 | Ace3 Profile Manager counts + columns | todo | | |
+| G6 | Ace3 Profile Manager counts + columns | done | (this commit) | 8 new tests: 7 in test_ace_app NodeCountsAndColumnsTest (every node counts the profiles below it, counts follow the filter and the Show boxes, a pending delete is still counted, By character counts its addon rows incl. under a filter, sibling rows are aligned columns in both views, rows fit the pane at 120x30 and 80x24 with no trailing padding, the blacklist tree counts its addons incl. under a filter) and test_ui_columns::test_the_count_is_kept_by_cutting_the_name (fit_keeping_count moved to ui/columns, G6c). Existing tests updated to the new labels, none loosened: test_ace_report (3 `label` assertions now `cells`, +2 checks), test_ace_app ReviewTest (`Default  3 characters  Default`, `Gone - Realm1 +no character folder`, `KickCD +Default`; the locked deleted/removed rows check the mark behind the alignment pad), test_interface_backup_app FlavorRowFitTest (calls ui/columns' copy), test_structure (pins fit_keeping_count). Stale screenshots: ace3-profile-manager/review.png (also in README.md), review-by-character.png. Gate: run_tests --all 2399 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
 | G7 | Saved Variables Browser counts + columns | todo | | |
 | G8 | Config Copier counts + columns | todo | | |
 | G9 | Macro Editor counts + columns | todo | | |
@@ -151,3 +151,36 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-feedback-round-2.md`. R
   so at 80 columns the rows read `11-04 22:58` / `11-04 22:58 S`. The guide says so; the bottom line still names
   the zip in full. Supersedes the 80-column half of G5e. The user guide's "its line starts with **safety**"
   (stale since G5e put the date first) now says "its line says **safety**".
+- G6a: the Ace3 Profile Manager's leaf is a profile row By addon (`profile`, and a pending delete `deleted`: a row
+  of its addon until Apply, so it is counted) and a character's addon row By character (`pair`, and a `removed`
+  one); a locked (blacklisted) addon's rows are counted too (they are shown and `u` unlocks them, unlike the WTF
+  Cleaner's never-cleaned blacklisted rows, G3a). A profile row is a leaf itself: its characters are its
+  `N characters` column, not an R2 count (as G3a's addon row and its files).
+- G6b: the root, a flavor, an account, a database and (By character) a character end with their count; an addon
+  has it as a column right after its name (it lines up down the account); an account with no Ace3 data keeps its
+  `no Ace3 data` note in its place; `⚠ Scan warnings` counts its own lines (the old `(N)` is gone) and is left out
+  of the root's count (as G5a). Counted in `TreeBuilder._count` after the build, so it is exactly what the Show
+  boxes and the filter left (every node is built up front: nothing loads on expand). The blacklist screen's root
+  and flavors count the addons they show (a flavor with no Ace3 data has none: its note is not shown); its
+  `(not found)` stays a suffix (a name and a note, not a column row).
+- G6c: G5's `_fit_keeping_count` moved, unchanged, to `ui/columns.fit_keeping_count` (the Ace3 addon and character
+  rows need it too: one copy, STD-2.2); the Interface Backup imports it, its FlavorRowFitTest calls it there, a
+  test in test_ui_columns covers it and test_structure pins it to columns.py.
+- G6d: columns (`tree_view.LAYOUTS`): addon name · count · its character (a per-character file; was `(…)` after the
+  name) · blacklisted / unlocked; profile name · characters · tags; a character under a profile name · tags; By
+  character a character name · count · no character folder, and its addon row addon · profile · tags (was
+  `Addon: Profile · tags`). The ` · ` separators are gone; a row's tags share one column joined by `, `
+  (`report.TAG_SEPARATOR`; `ProfileRow.cells` / `CharRow.cells` / `pair_cells` replace the `label` strings). The
+  tags and the character give way first, then the name (cut in its middle); a count or a status is never cut, only
+  dropped. A profile row with no characters (it cannot open) beside one that can is padded two spaces where the ▶
+  is, so the columns line up; a row's trailing empty cells leave no padding.
+- G6e: at 80 columns the tree pane is 26 cells wide behind its scrollbar, so the deepest rows (a character under a
+  profile under a database: 24 cells of guides) have one cell or none left and are cut to `…` (the shared fit:
+  STD-7.28 "a row always fits"); an addon's or a character's count is dropped there when the name's minimum and
+  the count do not fit (the name is kept). This is the G4r finding again (spec "a row may scroll" against
+  STD-7.28): flagged for the user with it, code follows the standard as G3-G5 do; at 120x30 every row reads in
+  full. The fit test skips rows whose guides and mark already fill the pane.
+- G6f: counts and natural widths are worked out once per build (a few hundred nodes); a tick relabels its branch as
+  before; `_fit_rows` relabels the tree only when its width changed (a resize, or a build before the tree was laid
+  out).
+- G6g: no CHANGELOG line here (G10 adds the suite-wide one).

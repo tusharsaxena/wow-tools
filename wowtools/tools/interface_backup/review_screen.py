@@ -41,7 +41,7 @@ from wowtools.tools.interface_backup.scanner import CHEAP_STATS, PARTS, FlavorSc
 from wowtools.tools.interface_backup.settings import load_settings, resolve_backup_root
 from wowtools.tools.interface_backup.undo import undo_restore
 from wowtools.ui.branding import BottomBar
-from wowtools.ui.columns import ColumnLayout, column_text, fit_columns, natural_widths
+from wowtools.ui.columns import ColumnLayout, column_text, fit_columns, fit_keeping_count, natural_widths
 from wowtools.ui.counts import COUNT_STYLE, count_text, with_count
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                 relabel_branch, theme_colour, two_pane_css)
@@ -598,13 +598,13 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         if data[0] == "root":
             cells = (self.scope_label, count, *held_cells(scans))
             room = tree_room(tree, 0, opens=True, mark=MARK_WIDTH)
-            widths, gap = _fit_keeping_count(natural_widths([cells]), room, ROOT_COLUMNS)
+            widths, gap = fit_keeping_count(natural_widths([cells]), room, ROOT_COLUMNS)
             return Text.assemble(mark, column_text(cells, widths, FLAVOR_STYLES, gap, middle=(0,)))
         scan = data[1]
         cells = self._flavor_cells(scan)
         room = tree_room(tree, 1, opens=True, mark=MARK_WIDTH)
-        widths, gap = _fit_keeping_count(self._flavor_widths or natural_widths([self._flavor_cells(scan, padded=True)]),
-                                         room, FLAVOR_COLUMNS)
+        widths, gap = fit_keeping_count(self._flavor_widths or natural_widths([self._flavor_cells(scan, padded=True)]),
+                                        room, FLAVOR_COLUMNS)
         columns = column_text(cells, widths[:len(cells)], FLAVOR_STYLES, gap, middle=(0,))
         why = skip_reason(scan)
         if why and widths[1]:
@@ -994,12 +994,3 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         self.run_job(BackupProgressScreen("Undoing the last restore", "verify"),
                      lambda progress, _on_flavor: undo_restore(path, wow_root=wow, root=root, progress=progress),
                      self._restore_done)
-
-
-def _fit_keeping_count(natural: tuple[int, ...], room: int | None, layout: ColumnLayout) -> tuple[tuple[int, ...], int]:
-    """fit_columns, the name whole while a column can be dropped instead; when only the name would be left, the
-    name is cut (in its middle) so its count (column 1) stays (STD-7.27)."""
-    widths, gap = fit_columns(natural, room, layout)
-    if natural[1] and not widths[1]:
-        widths, gap = fit_columns(natural, room, layout._replace(shrink=(*layout.shrink, (0,))))
-    return widths, gap
