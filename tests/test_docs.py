@@ -138,6 +138,53 @@ class DocsTest(unittest.TestCase):
         internals = (REPO_ROOT / "docs" / "internals" / "sv-browser.md").read_text(encoding="utf-8")
         self.assertIn("## Data flow", internals)  # the tool's data flow moved from architecture.md to its internals doc
 
+    def test_config_copier_guide_readme_and_notes(self):
+        """T12 (spec CC1-CC8, V1, V2): the guide explains in plain words why a copied file sticks (WoW's own
+        cache.md5 and .old files, never touched), the five files, the merge rule, the macro warning and the safety
+        net; the README, CLAUDE.md, architecture, internals doc and CHANGELOG name the tool."""
+        from wowtools.tools.config_copier.model import COPY_FILES, MACRO_WARNING
+        guide = (REPO_ROOT / "docs" / "config-copier.md").read_text(encoding="utf-8")
+        flat = " ".join(guide.split())
+        self.assertTrue(guide.index("Close WoW") < guide.index("## Step by step"))
+        for name in COPY_FILES:
+            self.assertIn(f"`{name}`", guide)
+        for needle in ("## Step by step", "## The review screen", "## Keys on the review screen",
+                       "## Why a copy sticks", "`cache.md5`", "fingerprint", "`.old`", "next login",
+                       "## What the tool never touches", "## How config-cache.wtf is merged",
+                       "## Macros and action bars", MACRO_WARNING, "## Write", "## Dry run", "## Undo last change",
+                       "## The safety net", "### Where your backups go", "snapshots\\snapshot-<flavor>-",
+                       "edited\\edited-<flavor>-all-", "edit-in-progress.json", "journal\\journal-",
+                       "### If a copy was interrupted", "Put the originals back", "Leave as is", "## WoW running",
+                       "changed since", "keep_backups", "keep_journals", "config\\config-copier.cfg", "## Settings",
+                       "## FAQ", "## Troubleshooting", "](assets/screenshots/config-copier/", "Back to review",
+                       "**Diff**", "kept: the target's own", "Only line endings or bytes that are not text differ."):
+            self.assertIn(needle, flat)
+        for key in ("`Space`", "`a`", "`n`", "`/`", "`x`", "`c`", "`w`", "`y`", "`r`", "`z`", "`d`", "`!`", "`f`",
+                    "`t`", "`s`", "`h`", "`q`"):
+            self.assertIn(key, guide)
+        readme = " ".join((REPO_ROOT / "README.md").read_text(encoding="utf-8").split())
+        for needle in ("config\\config-copier.cfg", "](docs/config-copier.md)",
+                       "](docs/assets/screenshots/config-copier/review.png)", "the Config Copier's last copy",
+                       "the Saved Variables Browser and the Config Copier can also do a practice run"):
+            self.assertIn(needle, readme)
+        faq = readme[readme.index("## FAQ"):]
+        self.assertIn("Config Copier", faq[:faq.index("Windows says")])  # safe? changes the game? close WoW?
+        claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertIn("Config Copier (`config-copier`, package `tools/config_copier`)", claude)
+        changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertIn("- **Config Copier**", changelog)
+        architecture = " ".join((REPO_ROOT / "docs" / "architecture.md").read_text(encoding="utf-8").split())
+        for needle in ("](internals/config-copier.md)", "](config-copier.md)",
+                       "`config/config-copier.cfg` `[config_copier]`"):
+            self.assertIn(needle, architecture)
+        internals = (REPO_ROOT / "docs" / "internals" / "config-copier.md").read_text(encoding="utf-8")
+        for needle in ("## Data flow", "## Screens", "## Why a plain copy works (V1, V2)", "`cache.md5`",
+                       "## Safety", "`ClientFileGuard`", "## Events", "`copier.planned`", "## Tests",
+                       "`tests/test_config_copier_merge.py`"):
+            self.assertIn(needle, internals)
+        releasing = (REPO_ROOT / "docs" / "releasing.md").read_text(encoding="utf-8")
+        self.assertIn("`docs/config-copier.md`", releasing)
+
     def test_guides_filter_on_submit_and_risk_banner(self):
         """Feedback round 1 (D37, D40, D41): every tree filter applies on Enter or its Filter button, never as you
         type; the destructive screens' guides name the red banner."""

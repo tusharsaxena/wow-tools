@@ -9,8 +9,27 @@ Back to [architecture](../architecture.md#tools). Decisions: spec `CC1`-`CC8`, `
 
 ## Contents
 
+- [Why a plain copy works (V1, V2)](#why-a-plain-copy-works-v1-v2)
 - [Data flow](#data-flow)
+- [The config merge (CC5)](#the-config-merge-cc5)
+- [Safety](#safety)
 - [Screens](#screens)
+- [Events](#events)
+- [Tests](#tests)
+
+## Why a plain copy works (V1, V2)
+
+Checked in the client on 2026-11-04 (spec V1-V3). Each account and character folder holds a binary `cache.md5`: one
+24-byte record per synced file (16-byte MD5, 4-byte little-endian timestamp, 4 zero bytes) at a fixed slot per file
+type. `config-cache`, `macros-cache`, `layout-local` and `chat-cache` have slots; `AddOns.txt` is not tracked. Five
+files copied with WoW closed left `cache.md5` stale, yet at login the client used the copied files, and at logout it
+rewrote `cache.md5` with the new fingerprints and made its own `.old` files; nothing was reverted from the server.
+So the copier writes only the plain files and never `cache.md5` or `.old` files: they are not in `NAMES`, so the
+pipeline's guard refuses them. The client also prunes some state at logout (tracked quests the character lacks, the
+reputation list, V3); the guide says so, so a user doesn't take it for a failed copy.
+
+A target with macros loses its action bar links (V5: buttons point at macro IDs, and a copy gives the target the
+source's IDs), hence the CC7 warning; the account folder's `macros-cache.txt` (account macros) is never a copy file.
 
 ## Data flow
 
@@ -43,6 +62,38 @@ Modules (all UI-free except `app.py` and the `*_screen.py` files):
   lines are the same (only line endings or bytes that are not UTF-8 differ): the diff screen says so.
 - `settings`: `[config_copier]` `backup_dir`, `last_flavor_choice`; `resolve_root` = `core.journal.tool_root`.
 
+## The config merge (CC5)
+
+`merge.merge_config(source, target)` works on `core/cvarfile.py`'s byte spans, never re-serialising:
+
+- a CVar is **state** when `core.kb.is_state_cvar(name)` says so (the shipped list in `wowtools/kb/`: names, a few
+  patterns such as `closed*`, `*Tutorial*`, `last*`, `saved*Config*`, and exceptions such as `showTutorials`); every
+  other CVar is a **preference**;
+- every target preference the source lacks is removed (each of its lines); every source preference whose value the
+  client would read from the target (`CvarFile.get`, last line wins) differs is set in place (keeping that line's
+  ending), and one the target lacks is appended in the source's order; names match case-insensitively;
+- target state lines stay byte for byte; source state lines and the source's other non-`SET` lines are never copied;
+- no target file: the source's bytes minus its state lines.
+
+A target whose preferences already match comes back byte-identical, so the planner calls it `unchanged` and it is
+never written (the anti-goal "a file changed where the user changed nothing"). The per-pattern check of the state
+list against each flavor's CVar dump is T20's (plan), once the dumps exist.
+
+## Safety
+
+The copy runs on the shared client-file pipeline (`core/client_apply.py`, X5), not a pipeline of its own: the
+SavedVariables one (`core/sv_apply`, `core/sv_undo`, `core/sv_journal`) with `ClientFileGuard` in place of `SvGuard`.
+The guard takes only `NAMES` directly in a real character's folder (`core.install.is_character_name`, X3) of the
+flavor's `WTF/Account`, nothing under a link. From the pipeline: refused while that flavor's WoW runs
+(`copier.wow_running`), dry run in memory, refused while an earlier run's crash marker is there, the SHA-256 recheck of
+every target file against what the review read (a changed file is skipped, the rest written), the lock probe, the
+whole-WTF snapshot, the originals zip (`edited-<flavor>-all-<stamp>.zip`), the crash marker, the journal, atomic write
+and read-back, roll-back on a failed write, and one Undo of the last run. A pair with no target file is a
+`ClientChange` with `expected_sha256` None: created with `atomic_create_bytes` (refused if the file appeared since),
+journaled `created`; Undo and recovery delete it only while it is still what the run wrote (CC8). The copier's
+backups go under `settings.resolve_root()` (`<backup_dir or <wow_path>/wow-tools>/config-copier`), its journals under
+`<wow_path>/wow-tools/config-copier/journal`.
+
 ## Screens
 
 - `app.CopierFlow`: settings (first run) → `FlavorScreen` (All flavors allowed, X1) → `SourceScreen` → review.
@@ -59,3 +110,24 @@ Modules (all UI-free except `app.py` and the `*_screen.py` files):
   work, so leaving asks nothing.
 - `diff_screen.DiffScreen`: the unified diff of one replaced pair, read-only.
 - `CopierResultScreen` (`ResultScreen`): the copy, dry run and Undo results.
+
+## Events
+
+`copier.started`, `copier.planned` (counts by status) and `copier.file_unreadable` (warning, once per path) are the
+copier's own; every other `copier.*` event is the pipeline's, from `core.sv_events.client_events("copier")`
+(`copier.apply_started` … `copier.file_created`, `copier.file_removed`, `copier.wow_running`). The full list with
+levels is in [events.md](../events.md).
+
+## Tests
+
+- `tests/test_config_copier_planner.py`: `plan_copy` statuses, byte-for-byte plain files, the CC7 warning, unreadable
+  files, nothing written.
+- `tests/test_config_copier_merge.py`: `merge_config` (preferences exactly the source's, state kept, no target file,
+  identity on equal preferences, line order and endings, odd names).
+- `tests/test_config_copier_run.py`: the run on the pipeline (two targets byte-identical, unticked pairs left alone,
+  dry run, Undo removing created files, non-ASCII paths and bodies, an unknown macro layout, WoW running, a file
+  changed since the review, recovery), the report and diff rows.
+- `tests/test_config_copier_app.py`: the TUI flow (source → targets → review → copy), the diff screen, greyed
+  targets, the macro warning in the confirm, 80x24. The suite-wide meta-tests (look and feel, help, quit, tool menu,
+  toasts, warnings, structure) cover the copier too; `tests/fixtures.py` `reach_review` and `pick_source` reach it.
+- `tests/test_docs.py` `test_config_copier_guide_readme_and_notes`: this doc, the guide, the README rows.
