@@ -55,7 +55,14 @@ guide's "If a change comes back" asks users to report a revert. `Config.wtf` has
         ui/columns.fit_columns with review_screen.CVAR_COLUMNS (the file's widest cells, ui/columns.natural_widths,
         capped 40/24/24, shrunk to the tree pane's room, then whole columns dropped in report.DROP_ORDER so a row
         always fits; the name cut in its middle by ui/columns.cut_middle; drawn by column_text; refitted on resize),
-        state and category coloured by ui/theme.CVAR_STATE_COLOURS / CVAR_CATEGORY_COLOURS (CF1-CF3)
+        state and category coloured by ui/theme.CVAR_STATE_COLOURS / CVAR_CATEGORY_COLOURS (CF1-CF3); a row the
+        file doesn't set in ui/theme.NOT_SET_COLOUR, darker than dim (R3)
+        leaf counts (feedback round 2 R2, STD-7.27): the leaf is a CVar row. _count_rows, at the start of every
+        rebuild, counts per file the rows rows_for shows (from the model, so a file not opened yet counts too) and
+        sums them per account, realm, flavor and the root; leaf_count(data) gives a node's, which _label appends
+        with ui/counts.with_count (a file or a character only when it has rows). The same pass counts the rows per
+        category with every other filter applied: the category select's entries (`Graphics (22 items)`, the
+        prompt `All categories (N items)`, R5), set without a Changed so the pick stays and nothing rebuilds again
     edits (edit_actions.py) → ops.stage_set / stage_remove / stage_reset / stage_toggle on ConfigStaged
     Apply / Dry run → runner.run_apply(staged, targets) = changes_by_flavor(build_changes(...))
         → core/client_apply.apply_client_flavors (one run over every flavor: one journal, one Undo)
@@ -90,7 +97,7 @@ the sources rule in `wowtools/kb/README.md`), cached per path; tests pass `kb_ro
   `tests/test_kb.py` checks every shipped CVar is listed. For a name it doesn't list (a newer dump),
   `category_group(name, raw)` (X8) puts the CVar in one of `CATEGORY_GROUPS`: name rules first (`nameplate*`,
   `*camera*`, `*floatingCombatText*` / `combatText*`), then the console category (`graphics`, `sound`, `net` →
-  network, `game` → interface); for an uncategorised CVar (`default`, `none`) the `sound_` and graphics name prefixes
+  network, `game` → interface, `debug` → debug); for an uncategorised CVar (`default`, `none`) the `sound_` and graphics name prefixes
   (T20f); anything else is `other`.
 - `recommendations.json` → `load_recommendations(flavor)`: `Recommendation(cvar, value, flavors, reason, source)`
   (CE7), a few dozen, each with an https source (mostly warcraft.wiki.gg); an entry without one is not loaded.
@@ -113,7 +120,8 @@ staged changes.
   name, help and note, or its file's group), Show (category select, Changed only, Show all known), the staged line,
   Apply / Dry run / Rescan / Undo last change. The bar under the tree: Set `e`, Add `N`, Remove `d`, Reset `R`,
   Recommend… `m` (`edit_actions.TREE_ACTIONS`). The help panel (`report.help_panel`: a `HelpPanel` of a title and
-  sections of `HelpLine`s, rendered by `review_screen.help_panel_text` with bold labels, the CF3 colours and a bullet
+  sections of `HelpLine`s, rendered by `review_screen.help_panel_text` with the title in bold gold (`HELP_TITLE`) and the labels in bold
+  cyan (`HELP_LABEL`, R1), the CF3 colours and a bullet
   per source, CF5) sits under the tree (40% of the tree pane, scrolling) or beside it from 160 columns
   (`HORIZONTAL_BREAKPOINTS`, the `-wide` class).
 - `popups.AddCvarScreen` (name, value, what the KB knows of the name; CF6: the name narrows an `OptionList` of

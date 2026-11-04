@@ -182,7 +182,7 @@ class CvarsTest(KbTestCase):
                  ("floatingCombatTextCombatDamage", "combat"): "combat text",
                  ("enableFloatingCombatText", "game"): "combat text", ("graphicsQuality", "graphics"): "graphics",
                  ("Sound_MasterVolume", "sound"): "sound", ("disableServerNagle", "net"): "network",
-                 ("autoLootDefault", "game"): "interface", ("scriptErrors", "debug"): "other",
+                 ("autoLootDefault", "game"): "interface", ("scriptErrors", "debug"): "debug",
                  ("assistAttack", "combat"): "other", ("x", ""): "other", ("y", "17"): "other",
                  # T20f: the client files many graphics and sound CVars under no real category ("default").
                  ("graphicsQuality", "default"): "graphics", ("RAIDfarclip", "default"): "graphics",
@@ -194,7 +194,7 @@ class CvarsTest(KbTestCase):
             self.assertEqual(kb.category_group(name, raw), group, (name, raw))
             self.assertIn(group, kb.CATEGORY_GROUPS)
         self.assertEqual(kb.CATEGORY_GROUPS, ("graphics", "sound", "interface", "camera", "nameplates",
-                                              "combat text", "network", "other"))
+                                              "combat text", "network", "game state", "debug", "system", "other"))
 
 
 class ShippedCvarsTest(KbTestCase):
@@ -300,7 +300,8 @@ class CuratedCategoriesTest(KbTestCase):
         self.assertEqual(kb.load_cvars("_retail_", root=self.root)["cursorSizePreferred"].category, "interface")
         kb.clear_cache()
         self.curated({"cursorSizePreferred": "mouse", "Sound_X": 3, "": "sound"})  # not a group: the rules decide
-        self.assertEqual(kb.cvar_category("cursorSizePreferred", "debug", root=self.root), "other")
+        self.assertEqual(kb.cvar_category("cursorSizePreferred", "debug", root=self.root), "debug")
+        self.assertEqual(kb.cvar_category("cursorSizePreferred", "gm", root=self.root), "other")
         self.assertEqual(kb.cvar_category("Sound_X", "default", root=self.root), "sound")
         for content in ("{not json", json.dumps({"categories": [1]})):
             with self.subTest(content=content):
@@ -333,6 +334,21 @@ class CuratedCategoriesTest(KbTestCase):
                 for name, info in loaded.items():
                     self.assertEqual(info.category, by_lower[name.lower()], name)
 
+    def test_other_is_kept_to_a_handful(self):
+        """Feedback round 2 R6: the 250 CVars once in "other" are re-sorted into the groups, three of them new (game
+        state, debug, system); "other" keeps only what fits nothing."""
+        categories = json.loads((kb.KB_ROOT / "cvar_categories.json").read_text(encoding="utf-8"))["categories"]
+        groups = list(categories.values())
+        self.assertLessEqual(groups.count("other"), 5)
+        for group, at_least in (("game state", 80), ("debug", 90), ("system", 40)):
+            with self.subTest(group=group):
+                self.assertGreaterEqual(groups.count(group), at_least)
+        for name, group in (("readEULA", "game state"), ("lastCharacterIndex", "game state"),
+                            ("scriptErrors", "debug"), ("taintLog", "debug"), ("ThreadPoolLimitHP", "system"),
+                            ("hwDetect", "system"), ("UseSlug", "graphics"), ("synchronizeConfig", "network")):
+            with self.subTest(name=name):
+                self.assertEqual(categories[name], group)
+
     def test_the_curated_groups_put_misfiled_cvars_right(self):
         """The client files these under game or none, which the rules alone made interface or other (CF4)."""
         retail = kb.load_cvars("_retail_")
@@ -341,7 +357,7 @@ class CuratedCategoriesTest(KbTestCase):
                             "SoftTargetNameplateEnemy": "nameplates", "UnitNameEnemyPlayerName": "nameplates",
                             "WorldTextScale": "combat text", "CombatDamage": "combat text",
                             "useIPv6": "network", "realmName": "network", "maxFPS": "graphics",
-                            "cursorSizePreferred": "interface", "scriptErrors": "other"}.items():
+                            "cursorSizePreferred": "interface", "scriptErrors": "debug"}.items():
             with self.subTest(cvar=name):
                 self.assertIn(name, retail)
                 self.assertEqual(retail[name].category, group)

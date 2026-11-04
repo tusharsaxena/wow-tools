@@ -69,7 +69,8 @@ log (`logs\config-editor`) records every file it wrote. **Undo last change** sti
 ![The Config Editor](assets/screenshots/config-editor/browse.png)
 
 The tree lists the [three levels](#the-three-levels) of every game version you picked: **Config.wtf**, then
-each account's **Account config** and its characters by realm.
+each account's **Account config** and its characters by realm. Each line with CVars below it says, dimmed after its
+name, how many it holds as the filters show them (`Retail  340 items`, `Aellâ  27 items`), even before you open it.
 
 Open a file to see its CVars, one per line in five columns:
 
@@ -80,12 +81,15 @@ myAddonThing                    Dænerys       unknown  other
 ```
 
 - **The CVar's name**, then **its value** in this file: `not set` means the file has no line for it, so the game
-  uses its default.
+  uses its default. A CVar that isn't set is drawn darker than the ones the file sets.
 - **The default**: the game's own value, blank when it isn't known.
 - **The state**, in colour: `changed` (amber) means the value differs from the default, `default` (green) that it
   matches it or isn't set, `unknown` (grey) that there is no default to compare with: the editor knows nothing about
   that CVar (see [Unknown CVars](#unknown-cvars)) or its list gives no default.
-- **The category** (graphics, sound, interface and so on), each in its own colour.
+- **The category** (graphics, sound, interface and so on), each in its own colour. **game state** holds what the
+  game remembers rather than a setting (popups seen, the last character, renown and transmog trackers), **debug**
+  the developer, logging and error CVars, **system** threads, caches, the install and the title bar; **other** only
+  what fits nowhere.
 
 The columns line up within each file. A long value (some CVars hold a whole list) is cut with `…` so the state and
 category stay in view: the help panel and **Set** show it whole. In a narrow window the value, the default and then
@@ -98,7 +102,7 @@ be read shows **read-only**: it is never ticked or written, and the **warnings v
 ### The help panel
 
 The panel under the tree (beside it in a window 160 columns wide or more) shows the highlighted CVar, its name in
-bold at the top, then short sections with a blank line between them and each line's label in bold:
+bold gold at the top, then short sections with a blank line between them and each line's label in bold cyan:
 
 - **Value**, **Default**, **Recommended**, **State** and **Category**: its value here, its default, the
   recommendation for it if there is one, the state (`changed`, `default` or `unknown`, with what that means) and the
@@ -140,7 +144,8 @@ doesn't know.
 
 `/` goes to the filter box: type part of a CVar's name or of its description (or a file's name) and press Enter or
 **Filter**; the files with a match open. Under **Show**, pick a category (graphics, sound, interface, camera,
-nameplates, combat text, network, other), tick **Changed only** for the CVars set to something other than their
+nameplates, combat text, network, game state, debug, system, other: each says how many CVars it would show with the
+other choices and the search as they are, `Graphics (22 items)`), tick **Changed only** for the CVars set to something other than their
 default, or tick **Show all known** to list every CVar the knowledge base knows for that file's level, set or not.
 The search and the **Show** choices narrow the list together: a search you applied earlier still applies when you
 pick a category. When the two leave nothing, the help panel says which search and category it is; `Esc` in the

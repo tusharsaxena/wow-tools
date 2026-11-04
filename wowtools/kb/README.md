@@ -61,11 +61,16 @@ flavor's CVar list, add that name to `exceptions`.
 ### `cvar_categories.json`
 
 `{"comment", "categories": {"<CVar name>": "<group>"}}`, sorted by name: the Config Editor's group (one of graphics,
-sound, interface, camera, nameplates, combat text, network, other) of every CVar any `cvars/<flavor>.json` holds,
+sound, interface, camera, nameplates, combat text, network, game state, debug, system, other) of every CVar any
+`cvars/<flavor>.json` holds,
 decided by hand from the CVar's name and Blizzard's help text, since the client files most CVars under `game`,
 `default` or `none`. Names match without regard to case. `core/kb.py` uses this group first; a CVar not listed (one a
 newer dump adds) gets the group of the name and console-category rules. After `scripts/refresh_kb.py` brings new
-CVars, add them here: `tests/test_kb.py` checks that every shipped CVar is listed and every group is one of the eight.
+CVars, add them here: `tests/test_kb.py` checks that every shipped CVar is listed and every group is one of the eleven.
+**game state** is what the client remembers rather than a setting (`seen*`, `last*`, `read*`, `new*Season`, renown
+and transmog trackers, counters, unlocked lists), **debug** the developer, logging, error, event-log, frame stack,
+taint and profiling CVars, **system** threads, async, caches, install and hardware detection, kiosk, the OS and the
+title bar; **other** keeps only what fits none of them (feedback round 2 R6).
 
 ### `macro_limits.json`
 

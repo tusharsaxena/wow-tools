@@ -21,10 +21,15 @@ from wowtools.core.events import log_event
 KB_ROOT = Path(__file__).resolve().parents[1] / "kb"
 
 # The Config Editor's groups (X8), in the order its filter lists them.
-CATEGORY_GROUPS = ("graphics", "sound", "interface", "camera", "nameplates", "combat text", "network", "other")
-# The client's console category (the dump's lowercased Enum.ConsoleCategory name) -> group. Any other word (debug,
-# console, combat, gm, reveal, none, a bare number) is "other". The name rules in category_group come first.
-CONSOLE_CATEGORY_GROUPS = {"graphics": "graphics", "sound": "sound", "net": "network", "game": "interface"}
+# Game state (what the client remembers rather than a setting: seen*, last*, read* ...), debug (developer, logging,
+# error, frame stack, taint, profiling) and system (threads, cache, install, hardware, kiosk, OS) were added by the
+# feedback round 2 spec (R6) to keep "other" to what fits nothing.
+CATEGORY_GROUPS = ("graphics", "sound", "interface", "camera", "nameplates", "combat text", "network", "game state",
+                   "debug", "system", "other")
+# The client's console category (the dump's lowercased Enum.ConsoleCategory name) -> group. Any other word (console,
+# combat, gm, reveal, none, a bare number) is "other". The name rules in category_group come first.
+CONSOLE_CATEGORY_GROUPS = {"graphics": "graphics", "sound": "sound", "net": "network", "game": "interface",
+                           "debug": "debug"}
 # The client files many graphics and sound CVars under no real category ("default", "none"): for those only, a name
 # prefix places them (T20f, read off the 12.1.5 and Classic dumps). A leading "raid" (the raid-quality copy of a
 # graphics setting, `RAIDfarclip`, `raidGraphicsSSAO`) is dropped first.

@@ -17,17 +17,19 @@ from tests.fixtures import (BASE, CONFIG_AELLA, CONFIG_MACHINE, LARGE, TINY, Tui
                             make_config, settle, submit_filter)
 from wowtools.core.kb import clear_cache
 from wowtools.tools import TOOLS
-from wowtools.tools.config_editor.model import CONFIG_CACHE, CONFIG_WTF
+from wowtools.tools.config_editor.model import CATEGORIES, CONFIG_CACHE, CONFIG_WTF
 from wowtools.tools.config_editor.popups import AddCvarScreen, RecommendScreen
 from wowtools.tools.config_editor.report import CHANGED, DEFAULT_STATE, NO_DESCRIPTION, NOT_SET, UNKNOWN, row_cells
-from wowtools.tools.config_editor.review_screen import (CvarNode, ConfigResultScreen, ConfigReviewScreen, FileKey,
-                                                        FileNode)
+from wowtools.tools.config_editor.review_screen import (HELP_LABEL, CvarNode, ConfigResultScreen,
+                                                        ConfigReviewScreen, FileKey, FileNode)
 from wowtools.ui import dialogs
 from wowtools.ui.character_tree import CharacterNode
+from wowtools.ui.counts import COUNT_GAP, COUNT_STYLE, count_text
 from wowtools.ui.dialogs import CONFIRM_GUARD, ConfirmScreen, DiscardScreen, TextPromptScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
-from wowtools.ui.theme import CVAR_CATEGORY_COLOURS, CVAR_STATE_COLOURS
+from wowtools.ui.theme import (BACKGROUND, CVAR_CATEGORY_COLOURS, CVAR_STATE_COLOURS, FOREGROUND, NOT_SET_COLOUR,
+                                TITLE_GOLD, contrast)
 from wowtools.ui.tree_filter import NO_MATCH_TEXT
 
 TOOL = "config-editor"
@@ -184,9 +186,10 @@ class ConfigEditorAppTest(TuiTestCase):
             review = await self.open_review(app, pilot)
             tree = review.query_one("#cvars", Tree)
             top = [n.label.plain.lstrip("✔✘◐ ").strip() for n in tree.root.children]
-            self.assertEqual(top, [CONFIG_WTF, "ALT", "BARE", "MAIN"])  # the machine file first, then the accounts
+            # the machine file first, then the accounts, each with its count of CVar rows (R2)
+            self.assertEqual(top, [f"{CONFIG_WTF}  2 items", "ALT  0 items", "BARE  0 items", "MAIN  8 items"])
             main = tree.root.children[3]
-            self.assertTrue(main.children[0].label.plain.strip().endswith("Account config"))
+            self.assertTrue(main.children[0].label.plain.strip().endswith("Account config  2 items"))
             self.assertEqual(main.children[0].data.target.level, "account")
             labels = [n.label.plain for n in walk(tree.root)]
             self.assertFalse([label for label in labels if "Bob - Copy" in label or "Bob2" in label])
@@ -754,7 +757,8 @@ class ConfigEditorAppTest(TuiTestCase):
         character's file. The client files them all under `game` (the curated groups, CF4b, place them)."""
         levels = {"machine": CONFIG_WTF, "account": "MAIN", "character": "Aellâ"}
         groups = {"sound": "Sound_Test", "camera": "cameraTest", "nameplates": "nameplateTest",
-                  "combat text": "WorldTextTest", "network": "netTest", "graphics": "gxTest", "other": "debugTest"}
+                  "combat text": "WorldTextTest", "network": "netTest", "graphics": "gxTest",
+                  "game state": "seenTest", "debug": "devLogTest", "system": "threadTest", "other": "oddTest"}
         cvars = dict(KB_CVARS)
         curated = {}
         for group, stem in groups.items():
@@ -864,9 +868,9 @@ class ConfigEditorAppTest(TuiTestCase):
                 return [str(span.style) for span in text.spans if span.start <= start and span.end >= end]
 
             self.assertTrue(plain.startswith("cameraDistanceMaxZoomFactor\n\n"), plain)
-            self.assertIn("bold", styles_of("cameraDistanceMaxZoomFactor"))
+            self.assertIn("bold", " ".join(styles_of("cameraDistanceMaxZoomFactor")))
             for label in ("Value:", "Default:", "State:", "Category:", "Note:", "Scope:", "Sources:"):
-                self.assertIn("bold", styles_of(label), label)
+                self.assertIn("bold", " ".join(styles_of(label)), label)
             self.assertIn(CVAR_STATE_COLOURS[CHANGED].lower(), " ".join(styles_of("State: changed", "changed")).lower())
             self.assertIn(CVAR_CATEGORY_COLOURS["camera"].lower(),
                           " ".join(styles_of("Category: camera", "camera")).lower())
@@ -888,7 +892,7 @@ class ConfigEditorAppTest(TuiTestCase):
             text = review.help_text()
             self.assertTrue(text.plain.startswith("Retail › MAIN/Realm1/Aellâ\n\nFile: config-cache.wtf"),
                             text.plain)
-            self.assertIn("bold", [str(span.style) for span in text.spans if span.start == 0])
+            self.assertIn("bold", " ".join(str(span.style) for span in text.spans if span.start == 0))
 
     async def test_help_panel_moves_beside_the_tree_when_wide(self):
         """Under the tree up to 159 columns, the right column from 160 on (the plan's ≥ 160 cols)."""
@@ -916,3 +920,181 @@ class ConfigEditorAppTest(TuiTestCase):
             await self.press_on(app, pilot, review, await cvar_node(pilot, character_node(tree, "Aellâ"),
                                                              "assistedCombatHighlight"), "space")
             self.assertEqual(review.staged.count(), 1)
+
+    # --- feedback round 2 (R1, R2, R3, R5) ---------------------------------------------------------------------
+    def leaf_count(self, label) -> int | None:
+        """The dim leaf count at the end of a node's label (R2, STD-7.27): `27 items` -> 27; None without one."""
+        words = label.plain.split()
+        if len(words) < 2 or words[-1] not in ("item", "items") or not words[-2].isdigit():
+            return None
+        start = label.plain.rindex(f"{COUNT_GAP}{words[-2]} {words[-1]}")
+        styles = {str(span.style) for span in label.spans if span.start <= start + len(COUNT_GAP) < span.end}
+        self.assertIn(COUNT_STYLE, styles, label.plain)
+        return int(words[-2])
+
+    async def assert_counts_match_the_tree(self, pilot, tree: Tree) -> None:
+        """Every node with children (the root, flavors, files, accounts, realms, characters) ends with the count of
+        the CVar rows under it, read before its files are opened (from the model), and equal to the rows the tree
+        shows once every file is opened."""
+        before = {id(node): self.leaf_count(node.label) for node in walk(tree.root)
+                  if not isinstance(node.data, CvarNode)}
+        for node in list(walk(tree.root)):
+            if node.allow_expand and not isinstance(node.data, CvarNode):
+                node.expand()
+        await pilot.pause()
+        await pilot.pause()
+        for node in walk(tree.root):
+            if isinstance(node.data, CvarNode) or node.data is None and node is not tree.root:
+                continue
+            shown = sum(isinstance(n.data, CvarNode) for n in walk(node))
+            with self.subTest(node=node.label.plain):
+                if node.children or node is tree.root:
+                    self.assertEqual(before[id(node)], shown)
+                    self.assertEqual(self.leaf_count(node.label), shown)
+                else:
+                    self.assertIsNone(before[id(node)])
+
+    async def test_every_node_counts_its_cvar_rows(self):
+        """R2 (STD-7.27): the root, Config.wtf, each account, its Account config, each realm and each character show
+        dim `N items` after their label: the CVar rows below them as the tree shows them, counted from the model
+        before a file is opened, and again after the search, Changed only, Show all known and a category."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            self.assertFalse(character_node(tree, "Aellâ").children)  # not opened yet: the count is the model's
+            aella_rows = len(review.rows_for(review.targets[self.aella()]))
+            self.assertEqual(self.leaf_count(character_node(tree, "Aellâ").label), aella_rows)
+            self.assertTrue(tree.root.label.plain.startswith("Retail"), tree.root.label.plain)
+            await self.assert_counts_match_the_tree(pilot, tree)
+            for change in ("show-all", "changed-only", "category", "search"):
+                with self.subTest(change=change):
+                    if change == "search":
+                        submit_filter(review, "camera")
+                    elif change == "category":
+                        review.query_one("#category", Select).value = "nameplates"
+                    else:
+                        review.query_one(f"#{change}", Checkbox).value = True
+                    await settle(app, pilot)
+                    await self.assert_counts_match_the_tree(pilot, tree)
+
+    async def test_flavor_nodes_count_their_rows(self):
+        """R2: with All flavors each flavor's node counts its rows, and the root the sum."""
+        era = self.root / "_classic_era_" / "WTF"
+        (era / "Account" / "ACCT" / "Realm1" / "Other").mkdir(parents=True)
+        (era / CONFIG_WTF).write_bytes(b'SET gxMaximize "0"\r\nSET gxWindow "1"\r\n')
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot, ALL_FLAVORS)
+            tree = review.query_one("#cvars", Tree)
+            flavors = [n for n in tree.root.children if isinstance(n.data, list)]
+            self.assertEqual(len(flavors), 2)
+            await self.assert_counts_match_the_tree(pilot, tree)
+            self.assertEqual(self.leaf_count(tree.root.label), sum(self.leaf_count(n.label) for n in flavors))
+
+    async def test_category_dropdown_counts_follow_the_filters(self):
+        """R5: each category shows how many rows it would show under the current filters across the whole tree,
+        `Graphics (1 item)`, and All categories the total; the counts change with Show all known and the search,
+        and picking a category keeps them (and the pick)."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            select = review.query_one("#category", Select)
+
+            def expected() -> dict[str | None, int]:
+                found = {None: 0, **{name: 0 for name in CATEGORIES}}
+                category = review.category
+                review.category = None
+                try:
+                    for target in review.all_targets():
+                        for row in review.rows_for(target):
+                            found[None] += 1
+                            found[row.category] += 1
+                finally:
+                    review.category = category
+                return found
+
+            def shown() -> dict[str | None, str]:
+                labels = {value: str(prompt) for prompt, value in select._options if value != Select.BLANK}
+                labels[None] = select.prompt
+                return labels
+
+            for step in ("start", "show-all", "search", "pick"):
+                if step == "show-all":
+                    review.query_one("#show-all", Checkbox).value = True
+                elif step == "search":
+                    submit_filter(review, "nameplate")
+                elif step == "pick":
+                    select.value = "nameplates"
+                await settle(app, pilot)
+                counts = expected()
+                with self.subTest(step=step):
+                    labels = shown()
+                    self.assertEqual(labels[None], f"All categories ({count_text(counts[None])})")
+                    for name in CATEGORIES:
+                        self.assertEqual(labels[name], f"{name.capitalize()} ({count_text(counts[name])})")
+            self.assertEqual(review.category, "nameplates")
+            self.assertEqual(select.value, "nameplates")
+            self.assertGreater(counts["nameplates"], 0)
+            tree = review.query_one("#cvars", Tree)
+            self.assertEqual(self.leaf_count(tree.root.label), counts["nameplates"])
+
+    async def test_not_set_rows_are_darker(self):
+        """R3: a CVar the file doesn't set (Show all known) is drawn in NOT_SET_COLOUR, darker than the dim of
+        before yet readable (3:1 on the background); a set row keeps the normal colour."""
+        from textual.color import Color
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            review.query_one("#show-all", Checkbox).value = True
+            await settle(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            nodes = await open_rows(pilot, character_node(tree, "Aellâ"))
+            unset = next(n for n in nodes if n.data.row.value is None)
+            set_row = next(n for n in nodes if n.data.row.value is not None and n.data.row.info is not None)
+            for node, colour in ((unset, NOT_SET_COLOUR.lower()), (set_row, None)):
+                name = node.data.row.name
+                start = node.label.plain.index(name[:6])
+                styles = " ".join(str(s.style) for s in node.label.spans if s.start <= start < s.end).lower()
+                with self.subTest(name=name):
+                    if colour is None:
+                        self.assertNotIn(NOT_SET_COLOUR.lower(), styles)
+                        self.assertNotIn("dim", styles)
+                    else:
+                        self.assertIn(colour, styles)
+        old_dim = Color.parse(BACKGROUND).blend(Color.parse(FOREGROUND), 0.66)
+        self.assertGreaterEqual(contrast(NOT_SET_COLOUR, BACKGROUND), 3.0)
+        self.assertLess(contrast(NOT_SET_COLOUR, BACKGROUND), contrast(old_dim.hex, BACKGROUND))
+
+    async def test_help_panel_title_and_labels_are_coloured(self):
+        """R1: the help panel's title (the CVar's name, or the file's place) is bold gold, every label (Value,
+        Default, State, Category, Type, Blizzard, Note, Recommended, Scope, Sources and each source's name) bold
+        cyan; the values keep the normal colour."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            aella = character_node(tree, "Aellâ")
+            await self.press_on(app, pilot, review, await cvar_node(pilot, aella, "cameraDistanceMaxZoomFactor"))
+            text = review.help_text()
+            plain = text.plain
+
+            def styles_at(start: int, length: int) -> str:
+                return " ".join(str(s.style) for s in text.spans
+                                if s.start <= start and s.end >= start + length).lower()
+
+            self.assertIn(TITLE_GOLD.lower(), styles_at(0, len("cameraDistanceMaxZoomFactor")))
+            self.assertIn("bold", styles_at(0, len("cameraDistanceMaxZoomFactor")))
+            for label in ("Value:", "Default:", "Recommended:", "State:", "Category:", "Note:", "Scope:", "Sources:",
+                          "• Note:", "• Recommended:"):
+                start = plain.index(label) + (2 if label.startswith("•") else 0)
+                width = len(label) - (2 if label.startswith("•") else 0)
+                with self.subTest(label=label):
+                    self.assertIn(HELP_LABEL.lower(), styles_at(start, width))
+            value = plain.index("Default: 1.9") + len("Default: ")
+            self.assertNotIn(HELP_LABEL.lower(), styles_at(value, 3))
+            await self.press_on(app, pilot, review, aella)
+            text = review.help_text()
+            plain = text.plain
+            self.assertIn(TITLE_GOLD.lower(), styles_at(0, len("Retail")))
+            self.assertIn(HELP_LABEL.lower(), styles_at(plain.index("File:"), len("File:")))

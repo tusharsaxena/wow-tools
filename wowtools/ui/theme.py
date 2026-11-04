@@ -51,7 +51,8 @@ CVAR_STATE_COLOURS: dict[str, str] = {
     "unknown": "#76869A",
 }
 # One colour per category group (core.kb.CATEGORY_GROUPS, in its order), each readable on the background and apart
-# from the others; "other" a warm stone grey, clear of the unknown state's cool grey.
+# from the others; "other" a warm stone grey, clear of the unknown state's cool grey. Game state, debug and system
+# (feedback round 2 R6) take the hues the first eight left free: teal, orange, periwinkle.
 CVAR_CATEGORY_COLOURS: dict[str, str] = {
     "graphics": "#6E9BFF",     # blue
     "sound": "#C792EA",        # violet
@@ -60,8 +61,14 @@ CVAR_CATEGORY_COLOURS: dict[str, str] = {
     "nameplates": "#A6D96A",   # lime
     "combat text": "#F07178",  # coral
     "network": "#D7BA7D",      # sand
+    "game state": "#4FD6BE",   # teal
+    "debug": "#FF9E64",        # orange
+    "system": "#9D9DFF",       # periwinkle
     "other": "#A39E93",        # stone grey
 }
+# A CVar row the file doesn't set (Show all known, feedback round 2 R3): darker than the dim the set rows' secondary
+# text gets (the foreground blended 66% over the background, about 6.4:1), still readable (about 3.7:1).
+NOT_SET_COLOUR = "#5F6B7B"
 SHADE = 0.15  # how much lighter / darker the top and bottom edges (and the hover background) are
 
 

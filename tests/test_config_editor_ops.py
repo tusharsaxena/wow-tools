@@ -235,7 +235,7 @@ class ConfigEditorOpsTest(unittest.TestCase):
 
     def test_category_mapping(self):
         self.assertEqual(CATEGORIES, ("graphics", "sound", "interface", "camera", "nameplates", "combat text",
-                                      "network", "other"))
+                                      "network", "game state", "debug", "system", "other"))
         for name, expected in (("nameplateShowAll", "nameplates"), ("NamePlateHorizontalScale", "nameplates"),
                                ("cameraSmoothStyle", "camera"), ("test_cameraOverShoulder", "camera"),
                                ("floatingCombatTextCombatHealing", "combat text"),
