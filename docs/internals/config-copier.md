@@ -72,8 +72,10 @@ Modules (all UI-free except `app.py` and the `*_screen.py` files):
 - every target preference the source lacks is removed (each of its lines); every source preference whose value the
   client would read from the target (`CvarFile.get`, last line wins) differs is set in place (keeping that line's
   ending), and one the target lacks is appended in the source's order; names match case-insensitively;
-- target state lines stay byte for byte; source state lines and the source's other non-`SET` lines are never copied;
-- no target file: the source's bytes minus its state lines.
+- with a target file: target state lines stay byte for byte; source state lines and the source's other non-`SET`
+  lines are never copied;
+- no target file: the source's bytes minus its state lines (its non-`SET` lines, if any, are kept with its
+  preferences).
 
 A target whose preferences already match comes back byte-identical, so the planner calls it `unchanged` and it is
 never written (the anti-goal "a file changed where the user changed nothing"). The per-pattern check of the state

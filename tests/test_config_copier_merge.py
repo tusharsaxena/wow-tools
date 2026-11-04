@@ -60,6 +60,11 @@ class MergeTest(unittest.TestCase):
         self.assertEqual(merged, cvar_file_bytes([("assistedCombatHighlight", "1"), ("nameplateSelectedAlpha", "1"),
                                                   ("autoLootDefault", "1")]))
 
+    def test_merge_without_target_file_keeps_the_sources_other_lines(self):
+        """No target file: only the source's state lines go; its non-SET lines stay (internals doc, T12r)."""
+        source = b'SET a "1"\r\nGARBAGE line\r\nSET hardTrackedQuests "5"\r\n'
+        self.assertEqual(merge_config(source, None), b'SET a "1"\r\nGARBAGE line\r\n')
+
     def test_merge_into_an_empty_target_file(self):
         self.assertEqual(cvars(merge_config(SOURCE, b"")), cvars(merge_config(SOURCE, None)))
 

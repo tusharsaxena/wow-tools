@@ -115,9 +115,10 @@ The copy gives the target the source's settings **exactly**: a setting the sourc
 a setting only the target has is removed. The target keeps its own progress and bookkeeping CVars, and the source's are
 never copied. The list of which CVars are progress ships with the app; anything not on it counts as a setting.
 
-A target with no `config-cache.wtf` gets the source's settings only. A setting the target already has with the
-source's value is left exactly as it is, so a target that already matches is **unchanged** and never rewritten. Kept
-lines stay in the target's order and new ones go at the end; WoW sorts the file again itself at the next logout.
+A target with no `config-cache.wtf` gets a copy of the source's file without its progress and bookkeeping CVars. A
+setting the target already has with the source's value is left exactly as it is, so a target that already matches is
+**unchanged** and never rewritten. Kept lines stay in the target's order and new ones go at the end; WoW sorts the
+file again itself at the next logout.
 
 ## Macros and action bars
 
