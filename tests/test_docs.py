@@ -198,10 +198,11 @@ class DocsTest(unittest.TestCase):
         self.assertTrue(guide.index("Close WoW") < guide.index("## Step by step"))
         self.assertTrue(guide.index("## How WoW keeps your macros") < guide.index("## Step by step"))
         account, character = macro_limits("_retail_")
+        from wowtools.tools.macro_editor.report import UNCONFIRMED
         for needle in ("## How WoW keeps your macros", "`macros-cache.txt`", "16 characters", "sorts them by name",
                        "## Macros and action bars", "number", "keeps its number", "the next free number",
                        "**Overwrite**", DELETE_WARNING, "## Slots", f"{account} account macros",
-                       f"{character} macros per character", "`30/30 FULL`",
+                       f"{character} macros per character", "`30/30 FULL`", f"`3/30 {UNCONFIRMED}`",
                        "## Across game versions", CROSS_FLAVOR, "## Templates", "## The optimizer",
                        "never swaps `/cast` and `/use`", "## Spell names are not checked", "## The conditional builder",
                        "## What the tool never touches", "`cache.md5`", "`.old`",

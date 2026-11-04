@@ -65,7 +65,7 @@ it is not loaded, so nothing is described from a guess.
   same in game; `optimizer.optimize` applies only the `automatic` ones (`cast_to_use` is listed, never applied).
 - `macro_limits.json` → `macro_limits(flavor)`: the slots (ME3), sourced for Retail only (120 account, 30 per
   character, from the client's `MacroConstants`). Another flavor counts with Retail's values (`limits_known` False);
-  the tool does not mark them, and the guide says they may not match (T17b).
+  `MacroSet.limit_known` carries that, and `report.slots_text` marks the set's slots `unconfirmed` (T17r).
 
 Spell names are free text (ME12): there is no spell data, nothing checks or suggests them, and the optimizer never
 changes them (`showtooltip_same` only compares the directive's spell with the first one cast;

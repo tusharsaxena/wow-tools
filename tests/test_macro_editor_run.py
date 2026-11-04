@@ -177,6 +177,8 @@ class MacroRunTest(unittest.TestCase):
         aella = self.set_of("MAIN/Realm1/Aellâ")
         self.assertEqual(report.slots_text(3, 30), "3/30")
         self.assertEqual(report.slots_text(30, 30), "30/30 FULL")
+        self.assertEqual(report.slots_text(3, 30, known=False), "3/30 unconfirmed")  # ME3: Retail's, not sourced
+        self.assertEqual(report.slots_text(30, 30, known=False), "30/30 FULL unconfirmed")
         heal = self.macro(aella, "Heal Dænerys")
         self.assertEqual(report.macro_text(heal),
                          "Heal Dænerys · /cast [@mouseover,help,nodead] Flash Heal · 41/255")

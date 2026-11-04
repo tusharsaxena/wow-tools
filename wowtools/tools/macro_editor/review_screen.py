@@ -469,7 +469,7 @@ class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryAc
         mset = self.sets.get(character.path / MACRO_FILE)
         if mset is None or mset.read_only:
             return character.name
-        return f"{character.name}  {slots_text(len(effective_macros(self.staged, mset)), mset.limit)}"
+        return f"{character.name}  {slots_text(len(effective_macros(self.staged, mset)), mset.limit, mset.limit_known)}"
 
     def _disabled(self, character: Character) -> str | None:
         mset = self.sets.get(character.path / MACRO_FILE)
@@ -602,7 +602,7 @@ class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryAc
                 return Text.assemble((NO_MARK, ""), (ACCOUNT_MACROS, "dim"), (f"  {READ_ONLY}", "dim italic"))
             count = len(effective_macros(self.staged, mset))
             return Text.assemble(self.mark(data.keys), (ACCOUNT_MACROS, "bold"),
-                                 (f"  {slots_text(count, mset.limit)}", ""))
+                                 (f"  {slots_text(count, mset.limit, mset.limit_known)}", ""))
         if isinstance(data, CharacterNode):
             return character_label(data, self.mark)
         mark = self.mark(data[2]) if data[2] else (NO_MARK, "")

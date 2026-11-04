@@ -13,7 +13,8 @@ rewrites these files when a character logs out, and Apply and Undo refuse while 
 
 1. **Pick a game version**, or **All flavors**.
 2. The tree shows each account's **Account macros** and each character, with the slots used (`12/30`,
-   `30/30 FULL`); open one to see its macros: name, first line and length (`n/255`).
+   `30/30 FULL`; `unconfirmed` where only Retail's slot numbers are known); open one to see its macros: name, first
+   line and length (`n/255`).
 3. Change what you like: nothing is written yet. Changed macros are marked ✎, new ones +, deleted ones ✗.
 4. **Dry run** checks everything without writing. **Apply** asks first, then writes every change in one go; the
    **results** list every file.

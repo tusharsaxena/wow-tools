@@ -1,5 +1,5 @@
 {
- "comment": "Macro slots per flavor (spec ME3): account macros and macros per character. A flavor not listed here uses Retail's values (core.kb.limits_known says False).",
+ "comment": "Macro slots per flavor (spec ME3): account macros and macros per character. A flavor not listed here uses Retail's values (core.kb.limits_known says False) and the Macro Editor marks its slots unconfirmed.",
  "flavors": {
   "_retail_": {
    "account": 120,

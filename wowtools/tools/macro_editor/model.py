@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from wowtools.core.install import Account, Character, Flavor
-from wowtools.core.kb import macro_limits
+from wowtools.core.kb import limits_known, macro_limits
 from wowtools.core.macrofile import MacroFile
 
 __all__ = ["MACRO_FILE", "MacroSet"]
@@ -38,6 +38,12 @@ class MacroSet:
         """Macro slots in this set for its flavor (ME3, core.kb.macro_limits)."""
         account, character = macro_limits(self.flavor.folder)
         return account if self.character is None else character
+
+    @property
+    def limit_known(self) -> bool:
+        """False when the KB has no sourced limits for this flavor and `limit` is Retail's (ME3): the tree marks the
+        slots unconfirmed."""
+        return limits_known(self.flavor.folder)
 
     @property
     def read_only(self) -> bool:

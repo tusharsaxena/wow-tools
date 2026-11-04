@@ -28,15 +28,20 @@ __all__ = ["ACCOUNT_MACROS", "DELETE_WARNING", "FILE_COLUMNS", "RESULT_TEXT", "S
 ACCOUNT_MACROS = "Account macros"
 FILE_COLUMNS = ("Flavor", "Account", "Macros", "Result")
 FULL = "FULL"
+# ME3: a flavor with no sourced limits in the KB is counted with Retail's, and its slots say so.
+UNCONFIRMED = "unconfirmed"
 # ME6 (V5): an action bar button points at a macro id; a deleted macro's buttons go with it.
 DELETE_WARNING = "Action bar buttons that use the deleted macros will be removed."
 CROSS_FLAVOR = "a macro written for one game version may not work in another."
 
 
-def slots_text(count: int, limit: int) -> str:
-    """A set's slot use, as the tree shows it: `12/30`, `30/30 FULL` (ME2)."""
+def slots_text(count: int, limit: int, known: bool = True) -> str:
+    """A set's slot use, as the tree shows it: `12/30`, `30/30 FULL` (ME2); `12/30 unconfirmed` when the limit is
+    not sourced for the set's flavor (`known` False, ME3)."""
     text = f"{count}/{limit}"
-    return f"{text} {FULL}" if count >= limit else text
+    if count >= limit:
+        text = f"{text} {FULL}"
+    return f"{text} {UNCONFIRMED}" if not known else text
 
 
 def macro_text(macro: Macro) -> str:

@@ -154,6 +154,10 @@ class MacroEditorAppTest(MacroEditorTestBase):
             self.assertIn("Aellâ  3/30", character_node(tree, "Aellâ").label.plain)
             self.assertIn("Trâxex  0/30", character_node(tree, "Trâxex").label.plain)
             self.assertIn("Account macros  1/120", account_set_node(tree, "MAIN").label.plain)
+            # ME3: Classic Era has no sourced limits, so its slots are Retail's and marked unconfirmed; Retail's are not
+            self.assertTrue(character_node(tree, "Other", "_classic_era_").label.plain.endswith("/30 unconfirmed"))
+            self.assertNotIn("unconfirmed", character_node(tree, "Aellâ").label.plain)
+            self.assertNotIn("unconfirmed", account_set_node(tree, "MAIN").label.plain)
             heal = macro_node(tree, character_node(tree, "Aellâ"), "Heal Dænerys")
             self.assertIn("Heal Dænerys · /cast [@mouseover,help,nodead] Flash Heal · 41/255", heal.label.plain)
             self.assertTrue(review.query_one("#btn-apply").disabled)  # nothing staged
