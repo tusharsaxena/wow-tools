@@ -15,7 +15,7 @@ from textual.widgets import Button, Header, Static
 
 from wowtools.core.text import plural
 from wowtools.tools.config_copier.model import CONFIG_FILE, PairPlan
-from wowtools.tools.config_copier.report import character_text, diff_rows, pair_text
+from wowtools.tools.config_copier.report import BYTES_ONLY, bytes_only, character_text, diff_rows, pair_text
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import theme_colour
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
@@ -59,7 +59,9 @@ class DiffScreen(Screen[None]):
             text.append(f"{mark} {line}".rstrip() if mark != " " else f"  {line}", style=styles.get(mark, ""))
             if note:
                 text.append(f"    ({note})", style="dim italic")
-        if not self.rows:
+        if bytes_only(self.plan):
+            text.append(f"\n\n{BYTES_ONLY}" if self.rows else BYTES_ONLY, style="dim")
+        elif not self.rows:
             text.append("The files are the same.", style="dim")
         return text
 

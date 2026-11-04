@@ -523,8 +523,8 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   *Enforced by:* `tests/test_look_and_feel.py::test_a_group_mark_counts_what_the_filter_shows`,
   `tests/test_ui_tree_filter.py::test_select_all_and_none_act_on_what_the_filter_shows`.
 - **STD-7.10 MUST** Show the shared `RiskBanner` (`⚠  USE AT YOUR OWN RISK`) as the first child of the left pane on
-  exactly the screens that can destroy data (WTF Cleaner, Ace3 and SV Browser reviews, Interface Backup restore)
-  ([D37][svb]).
+  exactly the screens that can destroy data (WTF Cleaner, Ace3, SV Browser and Config Copier reviews, Interface
+  Backup restore) ([D37][svb]).
   *Why:* warn exactly where data can be lost.
   *Enforced by:* `tests/test_structure.py::test_risk_banner_on_exactly_the_destructive_screens`,
   `tests/test_look_and_feel.py::test_destructive_reviews_open_with_the_risk_banner`.

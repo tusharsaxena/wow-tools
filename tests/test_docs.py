@@ -145,7 +145,7 @@ class DocsTest(unittest.TestCase):
             guide = (REPO_ROOT / "docs" / f"{tool.name}.md").read_text(encoding="utf-8")
             self.assertIn("**Filter**", guide, tool.name)
             self.assertNotIn("keeps the filter", guide, tool.name)  # the old live filter's Enter
-        for name in ("wtf-cleaner", "ace3-profile-manager", "interface-backup", "sv-browser"):
+        for name in ("wtf-cleaner", "ace3-profile-manager", "interface-backup", "sv-browser", "config-copier"):
             guide = (REPO_ROOT / "docs" / f"{name}.md").read_text(encoding="utf-8")
             self.assertIn("`⚠ USE AT YOUR OWN RISK`", guide, name)
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")

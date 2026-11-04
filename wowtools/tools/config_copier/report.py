@@ -103,10 +103,18 @@ def file_rows(result: MultiApplyResult) -> list[tuple[str, str, str, str]]:
 
 KEPT = "kept: the target's own"  # a config-cache.wtf state line the copy leaves as it is (CC5)
 GAP = "…"  # between two parts of a long diff
+BYTES_ONLY = "Only line endings or bytes that are not text differ."  # a replace no line of the diff shows
 
 
 def _lines(data: bytes | None) -> list[str]:
     return (data or b"").decode("utf-8", "replace").splitlines()
+
+
+def bytes_only(plan: PairPlan) -> bool:
+    """True when the pair's files differ but not in any line the diff shows: only line endings (CRLF against LF, a
+    last newline) or bytes that are not UTF-8 text, which the display decodes the same."""
+    old, new = plan.old or b"", plan.new or b""
+    return old != new and _lines(old) == _lines(new)
 
 
 def _state_line(line: str) -> bool:

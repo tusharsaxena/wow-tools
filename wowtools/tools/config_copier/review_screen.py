@@ -54,7 +54,7 @@ from wowtools.ui.result_screen import ResultScreen
 from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, SvRecoveryActions, TickModel, WowCheck
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, TreeFilter
 from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost, where_text
-from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
+from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button
 
 TITLE = "Config Copier"
 NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
@@ -185,6 +185,7 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         yield Header()
         with Horizontal(id="body"):
             with Vertical(id="filters"):
+                yield RiskBanner()
                 yield Static(Text.assemble(("Source: ", "bold"), self.source_text()), id="source")
                 yield Label("Files", classes="section")
                 for name in COPY_FILES:

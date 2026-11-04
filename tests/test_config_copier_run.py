@@ -3,6 +3,7 @@ client-file pipeline, the dry run, Undo and recovery, and the text of the confir
 synthesized in a tests/fixtures.py temp tree (build_copier_tree)."""
 from __future__ import annotations
 
+import dataclasses
 import tempfile
 import unittest
 from datetime import datetime
@@ -246,6 +247,22 @@ class CopierReportTest(unittest.TestCase):
         title, body, alerts = report.copy_confirm(self.source, "_retail_", plans, dry_run=True)
         self.assertEqual((title, alerts), ("Dry run", []))
         self.assertIn("no file is written", body)
+
+    def test_bytes_only_when_no_line_differs(self):
+        """A replace whose only difference is the line endings or bytes that are not UTF-8 shows no diff line; the
+        diff screen says so instead of "The files are the same." (T11 review)."""
+        plans = {(p.target.name, p.name): p for p in plan_copy(self.source, [self.bob], COPY_FILES)}
+        plan = plans["Bob", "AddOns.txt"]
+        cases = [(b"A: enabled\nB: enabled\n", b"A: enabled\r\nB: enabled\r\n"), (b"A\xfe\r\n", b"A\xff\r\n"),
+                 (b"A\n", b"A")]
+        for old, new in cases:
+            with self.subTest(old=old, new=new):
+                pair = dataclasses.replace(plan, old=old, new=new)
+                self.assertEqual(report.diff_rows(pair), [])
+                self.assertTrue(report.bytes_only(pair))
+        self.assertFalse(report.bytes_only(dataclasses.replace(plan, old=b"A\n", new=b"A\n")))
+        self.assertFalse(report.bytes_only(dataclasses.replace(plan, old=b"A\n", new=b"B\n")))
+        self.assertFalse(report.bytes_only(dataclasses.replace(plan, old=None, new=b"A\n")))
 
     def test_result_rows(self):
         tmp = Path(self.wow).parent

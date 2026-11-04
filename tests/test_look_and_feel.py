@@ -46,7 +46,7 @@ RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "inte
               "ace3-profile-manager": "dry_run", "sv-browser": "dry_run",
               "config-copier": "dry_run"}
 # The reviews that can destroy data: the risk banner tops their left pane (spec D37).
-DESTRUCTIVE_REVIEWS = ("wtf-cleaner", "ace3-profile-manager", "sv-browser")
+DESTRUCTIVE_REVIEWS = ("wtf-cleaner", "ace3-profile-manager", "sv-browser", "config-copier")
 # What a review needs before its run action has something to do (the Ace3 Profile Manager runs staged changes).
 PREPARE = {"ace3-profile-manager": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
                                            review.refresh_view()),

@@ -39,14 +39,15 @@ Modules (all UI-free except `app.py` and the `*_screen.py` files):
   `NAMES`; Undo puts back replaced files and deletes created ones, each only while it is what the run wrote (CC8).
 - `report`: pair statuses, the confirm (`copy_confirm`, `copy_groups`, `copy_listed` for the CC7 warnings as a
   counted list), result rows, and `diff_rows(plan)` (difflib: three lines of context per change for a plain file,
-  the whole file with state lines noted kept for `config-cache.wtf`).
+  the whole file with state lines noted kept for `config-cache.wtf`); `bytes_only(plan)` is true for a replace whose
+  lines are the same (only line endings or bytes that are not UTF-8 differ): the diff screen says so.
 - `settings`: `[config_copier]` `backup_dir`, `last_flavor_choice`; `resolve_root` = `core.journal.tool_root`.
 
 ## Screens
 
 - `app.CopierFlow`: settings (first run) → `FlavorScreen` (All flavors allowed, X1) → `SourceScreen` → review.
-  No USE AT YOUR OWN RISK popup and no risk banner: only the client's own five files, within one game version, with
-  backups and Undo.
+  No USE AT YOUR OWN RISK popup (only the client's own five files, within one game version, with backups and Undo),
+  but the review carries the shared `RiskBanner` (STD-7.10): Write overwrites the targets' files.
 - `source_screen.SourceScreen`: `populate_characters` without marks under each flavor (All flavors), the shared
   filter (`FilterBox`), **Choose** (Enter) and **Back** (Esc); `t` to the tool menu.
 - `review_screen.CopierReviewScreen` (`WarningsHost`, `TreeFilter`, `SvRecoveryActions`, `RunActions`,

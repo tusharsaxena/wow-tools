@@ -5,6 +5,7 @@ CC7 warnings) → result, Diff on a replaced pair (config pairs mark the state l
 is synthesized in a tests/fixtures.py temp tree (build_copier_tree), never a real install."""
 from __future__ import annotations
 
+import dataclasses
 import tempfile
 from pathlib import Path
 
@@ -269,6 +270,28 @@ class CopierAppTest(TuiTestCase):
             self.assertIn('- SET enableMultiActionBars "15"', text)
             self.assertIn('+ SET assistedCombatHighlight "1"', text)
             self.assertNotIn("savedClassConfigOne", text)  # the source's state is never copied
+
+    async def test_diff_screen_names_a_line_ending_only_change(self):
+        """T11 review: a replaced pair whose files differ only in line endings says so, not "the same"; a
+        config-cache.wtf one keeps its rows and adds the line."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            plans = {(p.target.name, p.name): p for p in review.plans.values()}
+            for name in ("macros-cache.txt", "config-cache.wtf"):
+                with self.subTest(name=name):
+                    plan = plans["Bob", name]
+                    crlf = (plan.old or b"").replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+                    pair = dataclasses.replace(plan, new=crlf.replace(b"\r\n", b"\n"), old=crlf)
+                    app.push_screen(DiffScreen(pair, "MAIN › Realm1/Aellâ"))
+                    await settle(app, pilot)
+                    text = app.screen.diff_text().plain
+                    self.assertIn("Only line endings or bytes that are not text differ.", text)
+                    self.assertNotIn("The files are the same.", text)
+                    self.assertIn("0 lines removed, 0 lines added", app.screen.head_text().plain)
+                    await pilot.press("escape")
+                    await settle(app, pilot)
+                    self.assertIs(app.screen, review)
 
     async def test_other_flavor_targets_greyed(self):
         app = self.make_app()

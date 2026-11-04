@@ -42,10 +42,11 @@ overwritten. **Write** and **Undo last change** refuse while that game version r
 
 ![The Config Copier review](assets/screenshots/config-copier/review.png)
 
-The left pane shows the source, the five files (all ticked: untick one to leave it alone for every target), the
-filter and the buttons. The tree on the right lists every account, realm and character. The source shows greyed
-(**source**), and so do the characters of other game versions (**other flavor**): a copy stays within one game
-version. Folders that aren't characters, such as `Bob - Copy`, are not listed.
+The left pane shows a red `⚠ USE AT YOUR OWN RISK` line (a copy overwrites the targets' files), the source, the five
+files (all ticked: untick one to leave it alone for every target), the filter and the buttons. The tree on the right
+lists every account, realm and character. The source shows greyed (**source**), and so do the characters of other
+game versions (**other flavor**): a copy stays within one game version. Folders that aren't characters, such as
+`Bob - Copy`, are not listed.
 
 Nothing is ticked at first. Ticking a character ticks every file it can get; open it to untick a single file. Each
 file says what a copy does:

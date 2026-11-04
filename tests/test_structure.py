@@ -482,6 +482,7 @@ class StructureTest(unittest.TestCase):
             "ReviewScreen": "wowtools/tools/wtf_cleaner/review_screen.py",
             "ProfileReviewScreen": "wowtools/tools/ace3_profile_manager/review_screen.py",
             "RestoreScreen": "wowtools/tools/interface_backup/restore_screen.py",
+            "CopierReviewScreen": "wowtools/tools/config_copier/review_screen.py",
         })
 
     def test_footer_and_brand_bar_only_in_the_bottom_bar(self):
