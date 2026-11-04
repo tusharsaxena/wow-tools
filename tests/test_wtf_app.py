@@ -1651,13 +1651,18 @@ class AllFlavorsTest(AppTestCase):
         self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).blacklist, [("_classic_era_", "Gone")])
 
     async def test_flavor_with_nothing_to_clean_says_so(self):
+        """A flavor with nothing to clean counts `0 items` (it has account rows: STD-7.27); its accounts, with no
+        rows below them, say "nothing to clean"."""
         (self.era_sv / "Gone.lua").unlink()
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_all(app, pilot)
             tree = review.query_one("#proposal", Tree)
             era = next(n for n in tree.root.children if "Classic Era" in str(n.label))
-            self.assertIn("nothing to clean", str(era.label))
+            self.assertTrue(str(era.label).endswith("  0 items"), str(era.label))
+            self.assertTrue(era.children)
+            for account in era.children:
+                self.assertIn("nothing to clean", str(account.label))
 
     async def test_every_flavor_failing_shows_the_error(self):
         for folder in ("_classic_era_", "_retail_"):
@@ -2204,8 +2209,8 @@ class NodeCountsAndColumnsTest(AppTestCase):
 
     def assert_counts(self, tree):
         for node in self.groups(tree):
-            if not node.data[1] and node is not tree.root:
-                continue  # an account or flavor with nothing to clean says so (test_account_with_nothing_...)
+            if not node.children and node is not tree.root:
+                continue  # an account or flavor with no rows says "nothing to clean" (test_account_with_nothing_...)
             with self.subTest(group=node.data[2]):
                 self.assertTrue(str(node.label).endswith(f"  {plural(self.shown_items(node), 'item')}"),
                                 str(node.label))
@@ -2245,6 +2250,29 @@ class NodeCountsAndColumnsTest(AppTestCase):
             review = await self.open_review(app, pilot)
             tree = review.query_one("#proposal", Tree)
             self.assertTrue(any(n.data[1].blacklisted for n in _walk(tree.root) if n.data and n.data[0] == "item"))
+            self.assert_counts(tree)
+
+    async def test_a_group_of_blacklisted_rows_only_counts_zero(self):
+        """STD-7.27: a group with rows below it says `0 items` when none is cleanable (all blacklisted), never the
+        tool's own "nothing to clean" (kept for a group with no rows at all)."""
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            owner = next(n for n in self.groups(tree) if n.data[2] != "account-wide" and n.data[1]
+                         and n.parent is not tree.root)
+            addons = sorted({i.addon for i in owner.data[1]})
+            self.tool_cfg.set("wtf_cleaner", "blacklist", ",".join(f"_retail_:{a}" for a in addons), log=False)
+            self.tool_cfg.save()
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            held = [n for n in self.groups(tree) if n.children and not n.data[1]]
+            self.assertTrue(held)
+            for node in held:
+                self.assertTrue(str(node.label).endswith("  0 items"), str(node.label))
+                self.assertNotIn("nothing to clean", str(node.label))
             self.assert_counts(tree)
 
     def assert_aligned(self, rows, cell) -> None:
@@ -2288,7 +2316,7 @@ class NodeCountsAndColumnsTest(AppTestCase):
                 await settle(app, pilot)
                 room = tree.size.width - tree.styles.scrollbar_size_vertical
                 for node in _walk(tree.root):
-                    if node.data and node.data[0] in ("item", "file"):
+                    if node.data:  # every row, a group too: its count is never cut off (R2 at 80 columns)
                         with self.subTest(size=size, row=str(node.label)):
                             self.assertLessEqual(_indent(node) + node.label.cell_len, room)
                 if size == BASE:
@@ -2297,6 +2325,9 @@ class NodeCountsAndColumnsTest(AppTestCase):
                     self.assertNotIn(long, plain)
                     self.assertIn("Not installed", plain)  # the reasons and the short columns still show
                     self.assertRegex(plain, r"1 file +1 B +\d+d$")
+                for node in self.groups(tree):
+                    if node.data[1] or node is tree.root:
+                        self.assertRegex(str(node.label), r"  \d+ items?$")
 
     async def test_flavor_nodes_count_their_addon_entries(self):
         era_sv = self.root / "_classic_era_" / "WTF" / "Account" / "ACCT1" / "SavedVariables"

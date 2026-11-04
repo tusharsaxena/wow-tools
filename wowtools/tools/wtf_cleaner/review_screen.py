@@ -7,6 +7,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import ClassVar
 
+from rich.cells import cell_len
 from rich.text import Text
 from textual import events
 from textual.app import ComposeResult
@@ -40,8 +41,8 @@ from wowtools.tools.wtf_cleaner.safety import (MARKER_NAME, SNAPSHOT_SUBDIR, Mar
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir, save_settings
 from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
 from wowtools.ui.branding import BottomBar
-from wowtools.ui.columns import ColumnLayout, column_text, fit_columns, natural_widths
-from wowtools.ui.counts import with_count
+from wowtools.ui.columns import ColumnLayout, column_text, cut_middle, fit_columns, natural_widths
+from wowtools.ui.counts import COUNT_GAP, count_text, with_count
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceScreen, ConfirmScreen,
                                 ProgressScreen, relabel_branch, two_pane_css)
 from wowtools.ui.review import (BLACKLIST_BINDING, BLACKLIST_KEY, BlacklistAction, ReviewBase, ReviewTree, TickModel,
@@ -53,6 +54,7 @@ from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, 
 
 WARNING_STYLE = "#E8B04B"
 ALL_FLAVORS_LABEL = "All flavors"
+NOTHING_TO_CLEAN = "  nothing to clean"
 __all__ = ["CleanProgressScreen", "RecoveryScreen", "ResultScreen", "ReviewScreen"]
 # The addon and file rows' columns as the shared fit takes them (feedback round 2 R4, STD-7.28): the reasons give
 # way first, then the name; files, size and age are never cut, only dropped (report.ITEM_DROP / FILE_DROP).
@@ -172,6 +174,7 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         # (the guides, and the ▶ of an addon row), worked out once per rebuild; the age is as of that rebuild
         self._columns: dict[int, tuple[int, ...]] = {}
         self._indents: dict[int, int] = {}
+        self._group_rows: set[int] = set()  # id(group data) of the groups with rows below them (blacklisted too)
         self._now = time.time()
         self._fitted_width = 0
 
@@ -367,6 +370,7 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         tree.root.data = ("group", self.proposal.items, self._root_name())
         self._filter_texts = {}
         self._columns, self._indents, self._now = {}, {}, time.time()
+        self._group_rows = set()
         self._fitted_width = tree.size.width
         # The flavors (several) or the accounts (one); a (name, Text): a flavor not scanned, kept by the filter when
         # its name matches (as a flavor row is in every tool)
@@ -489,8 +493,9 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
             self._indents[id(node.data)] = guides
             parent.add_leaf(self._label(node.data), data=node.data)
             return
-        if kind == "item":
-            self._indents[id(node.data)] = guides + TOGGLE_WIDTH
+        self._indents[id(node.data)] = guides + TOGGLE_WIDTH  # an addon row or a group: both open
+        if kind == "group" and node.children:
+            self._group_rows.add(id(node.data))
         rows = [child.data for child in node.children if child.data[0] != "group" and kept.shows(child)]
         if rows:
             natural = natural_widths(self._row_cells(data) for data in rows)
@@ -530,10 +535,21 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         kind = data[0]
         if kind in ("file", "item"):
             return self._row_label(data)
-        items, name = data[1], data[2]
-        if not items and data is not self.query_one("#proposal", Tree).root.data:
-            return Text.assemble("  ", (name, ACCENT), ("  nothing to clean", "dim"))  # an account or flavor
-        return with_count(Text.assemble(self._mark(self._paths(data)), (name, ACCENT)), self._shown_count(items))
+        items = data[1]
+        if not items and id(data) not in self._group_rows and data is not self.query_one("#proposal", Tree).root.data:
+            # an account or flavor with no rows at all (STD-7.27 covers a node with children only)
+            return Text.assemble("  ", (self._group_name(data, NOTHING_TO_CLEAN), ACCENT), (NOTHING_TO_CLEAN, "dim"))
+        count = self._shown_count(items)
+        return with_count(Text.assemble(self._mark(self._paths(data)),
+                                        (self._group_name(data, f"{COUNT_GAP}{count_text(count)}"), ACCENT)), count)
+
+    def _group_name(self, data, after: str) -> str:
+        """A group's name, cut in its middle when the row (its mark, the name and `after`, its count) would not fit
+        the tree pane, so the count always shows (R2 at 80 columns)."""
+        name, room = data[2], self._row_room(data)
+        if room is None:
+            return name
+        return cut_middle(name, max(1, room - cell_len(after)))
 
     def _shown_count(self, items: list[ProposalItem]) -> int:
         """How many of a group's addon entries the tree shows (R2, STD-7.27): all of them, or under a search the
@@ -553,7 +569,7 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         if tree.size.width <= 0:
             return None
         width = tree.size.width - tree.styles.scrollbar_size_vertical  # a scrollbar may come with more rows
-        return max(0, width - self._indents.get(id(data), 0) - MARK_WIDTH)
+        return max(0, width - self._indents.get(id(data), TOGGLE_WIDTH) - MARK_WIDTH)  # the root: its ▼ only
 
     def _row_label(self, data) -> Text:
         """An addon row (name · reasons · files · size · age) or a file row (name · size · age) in columns as wide
@@ -579,7 +595,7 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         self.call_after_refresh(self._fit_rows)
 
     def _fit_rows(self) -> None:
-        """Fit the addon and file rows again to the tree pane's width when it changed (R4)."""
+        """Fit the rows (groups too) again to the tree pane's width when it changed (R4)."""
         if not self.is_attached:
             return
         tree = self.query_one("#proposal", Tree)
@@ -589,9 +605,11 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         stack = list(tree.root.children)
         while stack:
             node = stack.pop()
-            if node.data is not None and node.data[0] in ("item", "file"):
-                node.set_label(self._row_label(node.data))
+            if node.data is not None:
+                node.set_label(self._label(node.data))
             stack.extend(node.children)
+        if tree.root.data is not None:  # None until a scan built the tree
+            tree.root.set_label(self._label(tree.root.data))
 
     def _refresh_labels(self, node=None) -> None:
         """Relabel node's branch and its ancestors (everything a tick there can change), or the whole tree."""

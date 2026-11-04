@@ -167,8 +167,10 @@ set, `clean.risk_warning_changed`, L8). `review_screen.py` holds:
   addon entry (a `ProposalItem`, cleanable; a blacklisted one is never counted, it is never cleaned). Every group
   (the root, a flavor, an account, account-wide or a character) ends with `with_count(label, n)`; `_shown_count`
   counts its items as the tree shows them (under a search, the ones with a file the filter keeps, which is how
-  `ModelFilter` keeps an addon row); a group with no cleanable items at all still says "nothing to clean" in the
-  count's place. An addon row is the leaf: its files are its `files` column, not a count. Columns (R4,
+  `ModelFilter` keeps an addon row); a group with rows below it but no cleanable item (only blacklisted rows, or
+  accounts with nothing to clean) counts `0 items`, and only a group with no rows at all (`_group_rows` holds the
+  others) says "nothing to clean" in the count's place. A group's name is cut in its middle (`_group_name`, from
+  `_row_room`) so its count always fits the pane, at 80 columns too. An addon row is the leaf: its files are its `files` column, not a count. Columns (R4,
   STD-7.28): an addon row is `report.item_cells` (name · reasons · files · size · age; the reasons cell
   `blacklisted` on a blacklisted row), a file row `report.file_cells` (name · size · age), fitted by
   `ui/columns.fit_columns` with `review_screen.ITEM_COLUMNS` / `FILE_COLUMNS` (caps and minimums from

@@ -62,8 +62,8 @@ game version → account → account-wide settings or one character → addon �
 
 Everything starts ticked, meaning "remove this". Untick an addon, a character or a whole account to keep it.
 Each game version, account and character says, dimmed after its name, how many addons it holds that the list
-shows (`12 items`; a search narrows the counts too). An account or game version with nothing to remove says
-"nothing to clean".
+shows (`12 items`; a search narrows the counts too). An account with nothing to remove says "nothing to clean"
+(a game version holding only such accounts counts `0 items`).
 
 An addon's line reads in columns: its name, why it's suggested (each rule in its colour), how many files, their
 size and the age of the newest one in days. Its files, once you open it, line up the same way: name, size, age. In a
