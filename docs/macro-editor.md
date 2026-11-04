@@ -86,7 +86,8 @@ id such as `134400`, the question mark, or a texture name) and its text, with a 
 is greyed out while the text is too long. An edited macro keeps its place on your action bars.
 
 As you type a `/command`, a conditional after `[` or `,`, or a unit after `@`, a list of suggestions opens under the
-text: ↑/↓ choose, Tab or Enter take one, Esc closes the list. The help panel on the right explains whatever is under
+text: ↑/↓ choose, Tab or Enter take one, Esc closes the list. After a command that is already complete, such as
+`/targetenemy`, Enter starts a new line unless you chose a suggestion with ↑/↓. The help panel on the right explains whatever is under
 the cursor and reads a whole `[...]` block out in plain English, with the page it comes from. Spell names are free
 text and never checked.
 

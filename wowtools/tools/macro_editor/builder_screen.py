@@ -44,9 +44,11 @@ class BuilderScreen(ModalScreen["tuple[str | None, str | None, tuple[str, ...]] 
     BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"),
                                          Binding("ctrl+s", "ok", "OK", show=False), *NAV_BINDINGS]
 
-    def __init__(self, original: BlockChoice | None, ref: MacroReference) -> None:
+    def __init__(self, original: BlockChoice | None, ref: MacroReference, *, block: str | None = None) -> None:
+        """`block` is the block's text as written: the preview rewrites it as OK will (its spaces kept)."""
         super().__init__()
         self.original = original
+        self.block_text = block
         self.ref = ref
         builder = ref.builder
         self.targets = [NO_TARGET, *builder.get("targets", ())]
@@ -92,7 +94,7 @@ class BuilderScreen(ModalScreen["tuple[str | None, str | None, tuple[str, ...]] 
     def block(self) -> str:
         target, unit, states = self.choice()
         original = self.original
-        text = None if original is None else "[" + ",".join(original.items) + "]"
+        text = None if original is None else self.block_text or "[" + ",".join(original.items) + "]"
         return write_block(original, target=target, unit=unit, states=states, builder=self.ref.builder, block=text)
 
     def _preview(self) -> None:

@@ -64,7 +64,8 @@ character folder. Leaving, quitting, a rescan and Undo ask before dropping stage
   the tree: New `N`, Edit `e`, Delete `d`, Copy `k`, Paste… `p`, Replace text… `R` (`edit_actions.TREE_ACTIONS`).
 - `edit_screen.MacroEditScreen` (New, Edit; ME8): name (cut at 16), icon, scope line, the `n / 255` meter (Save off
   over 255), `MacroTextArea` with the suggestion list (`syntax.suggestions`, replacing from `syntax.completion_start`;
-  ↑/↓, Tab/Enter, Esc while it shows) and the help panel (`explain.describe_at`, plus `unknown_terms` for the flavor).
+  ↑/↓, Tab/Enter, Esc while it shows; Enter after a word that is itself an entry is a new line unless ↑/↓ moved the
+  highlight, and a taken suggestion's own Changed lists nothing) and the help panel (`explain.describe_at`, plus `unknown_terms` for the flavor).
   Ctrl+B `builder_screen.BuilderScreen` (ME9: `builder.read_block` / `write_block`, an unchanged block stays as
   written, unshown items kept), Ctrl+O `optimize_screen.OptimizeScreen` (ME10: each `Rewrite` with its reason and
   source; OK takes the body), Ctrl+T `template_screen.TemplateScreen` (ME11: fill the placeholders, inserted as whole

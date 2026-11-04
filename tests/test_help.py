@@ -19,6 +19,8 @@ from wowtools import __version__
 from wowtools.core.install import WowInstall
 from wowtools.tools import TOOLS
 from wowtools.tools.config_copier.source_screen import SourceScreen
+from wowtools.tools.macro_editor.edit_screen import MacroEditScreen
+from wowtools.tools.macro_editor.reference_screen import ReferenceScreen
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.changelog_screen import ChangelogScreen
@@ -175,6 +177,25 @@ class HelpScreenTest(TuiTestCase):
                         await self.assert_help(app, pilot, text)
                         app.screen.dismiss(None)
                         await settle(app, pilot)
+                    if name == "macro-editor":  # the edit screen (New, Edit) and its full reference (F1)
+                        app.push_screen(MacroEditScreen("Edit", "MAIN/Realm1/Bob", "Character macro",
+                                                        flavor="_retail_", name="Bob", body="/cast Flash Heal"))
+                        await settle(app, pilot)
+                        edit = app.screen
+                        labels |= {b.label_text for b in edit.query(ActionButton)}
+                        edit.query_one("#builder").focus()  # the name box has focus: h would type there
+                        await pilot.pause()
+                        await self.assert_help(app, pilot, text)
+                        await pilot.press("f1")
+                        await settle(app, pilot)
+                        self.assertIsInstance(app.screen, ReferenceScreen)
+                        labels |= {b.label_text for b in app.screen.query(ActionButton)}
+                        await self.assert_help(app, pilot, text)
+                        app.screen.dismiss(None)
+                        await settle(app, pilot)
+                        edit.dismiss(None)
+                        await settle(app, pilot)
+                        self.assertIs(app.screen, review)
                     PREPARE.get(name, lambda r: None)(review)
                     getattr(review, f"action_{RUN_ACTION[name]}")()
                     await settle(app, pilot)

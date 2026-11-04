@@ -219,6 +219,60 @@ class MacroEditScreenTest(MacroEditorTestBase):
             await settle(app, pilot)
             self.assertEqual(area.text, "/cast [@mouseover,help] H\n")
 
+    async def test_enter_after_a_complete_word_is_a_new_line(self):
+        """A word that is already a command but starts longer ones (`/targetenemy`, `/targetenemyplayer`): Enter is a
+        new line, not the longer command, unless ↑/↓ chose it; Tab still takes one. A suggestion taken closes the
+        list until the next keystroke, so `/cas` Tab Enter is `/cast` and a new line."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            _, screen = await self.edit_bob(app, pilot)
+            suggestions = screen.query_one("#suggestions", OptionList)
+            area = await self.set_body(app, pilot, screen, "/targetenem")
+            await pilot.press("y")
+            await settle(app, pilot)
+            self.assertTrue(suggestions.display)  # /targetenemyplayer is listed
+            await pilot.press("enter")
+            await settle(app, pilot)
+            self.assertEqual(area.text, "/targetenemy\n")
+            self.assertFalse(suggestions.display)
+            area = await self.set_body(app, pilot, screen, "/ca")
+            await pilot.press("s", "tab")
+            await settle(app, pilot)
+            self.assertEqual(area.text, "/cast")
+            self.assertFalse(suggestions.display)  # not reopened on /castrandom and /castsequence
+            await pilot.press("enter")
+            await settle(app, pilot)
+            self.assertEqual(area.text, "/cast\n")
+            # ↑/↓ chose one: Enter takes it
+            area = await self.set_body(app, pilot, screen, "/targetenem")
+            await pilot.press("y", "down", "up")
+            await settle(app, pilot)
+            await pilot.press("enter")
+            await settle(app, pilot)
+            self.assertEqual(area.text, "/targetenemyplayer")
+            # Tab takes it even after a complete word
+            area = await self.set_body(app, pilot, screen, "/targetenem")
+            await pilot.press("y", "tab")
+            await settle(app, pilot)
+            self.assertEqual(area.text, "/targetenemyplayer")
+
+    async def test_builder_preview_keeps_the_block_as_written(self):
+        """A block written with spaces: the preview shows what OK writes, spaces and all."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            _, screen = await self.edit_bob(app, pilot)
+            spaced = "/cast [@mouseover, help, nodead] Flash Heal"
+            area = await self.set_body(app, pilot, screen, spaced, spaced.index("help"))
+            await pilot.press("ctrl+b")
+            await settle(app, pilot)
+            builder = app.screen
+            self.assertIsInstance(builder, BuilderScreen)
+            self.assertIn("[@mouseover, help, nodead]", plain(builder.query_one("#block-preview", Static)))
+            self.assertEqual(builder.block(), "[@mouseover, help, nodead]")
+            await pilot.click("#ok")
+            await settle(app, pilot)
+            self.assertEqual(area.text, spaced)
+
     async def test_builder_round_trip_block(self):
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:

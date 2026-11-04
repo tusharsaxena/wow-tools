@@ -52,8 +52,22 @@ matching macros** unticked every macro stays in the tree and the matches are und
 shown, `n` nothing. `/` goes to the filter box. `x` / `c` expand or collapse the whole tree. `f` or `Esc` goes back
 to the game versions, `t` to the tool menu, `s` opens the settings, `q` quits; with staged changes each asks first.
 The results screen has **Rescan** (`r`), **Other flavor** (`f`), **Tools** (`t`) and **Quit** (`q`); after a dry
-run, **Back to review** (`Esc`). In the paste review, **Paste** pastes and **Cancel** (`Esc`) drops it; the macro
-form's **Save** (`Ctrl+S`) stages the macro and Replace text…'s **Replace** the replacements.
+run, **Back to review** (`Esc`). In the paste review, **Paste** pastes and **Cancel** (`Esc`) drops it; Replace
+text…'s **Replace** stages the replacements.
+
+## The edit screen (New, Edit)
+
+The name (up to 16 characters), the icon, the body with its `n / 255` meter and, beside it, help on what is under the
+cursor. Typing a command, a condition or a `@unit` lists suggestions: `↑`/`↓` choose, `Tab` or `Enter` take one,
+`Esc` hides them (after a word that is already complete, `Enter` is a new line).
+
+| Button | Key | Does |
+|---|---|---|
+| **Save** | `Ctrl+S` | Stages the macro (off above 255 characters); **Cancel** (`Esc`) drops it |
+| **Builder…** | `Ctrl+B` | Builds the `[...]` block under the cursor, or a new one, from lists and ticks; **OK** writes it |
+| **Optimize…** | `Ctrl+O` | Shortens the macro and says why; **OK** takes the rewrites |
+| **Template…** | `Ctrl+T` | A ready-made macro: pick one, fill its blanks, **Insert** puts it in |
+| **Reference** | `F1` | Every command, condition and unit this game version knows; **Back** (`Esc`) returns |
 
 ## Settings (`s`)
 

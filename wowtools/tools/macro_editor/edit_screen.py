@@ -4,7 +4,9 @@ body with a live `n / 255` meter (Save is off above 255) and, beside it, a help 
 the cursor from the flavor's macro reference and reads a whole [...] block out in plain English (explain.describe_at).
 
 Typing a `/command`, a `#directive`, a conditional after `[` or `,`, a unit after `@` or an argument after `:` lists
-suggestions under the body (syntax.suggestions): ↑/↓ choose, Tab or Enter take one, Esc hides the list. Ctrl+B opens
+suggestions under the body (syntax.suggestions): ↑/↓ choose, Tab or Enter take one, Esc hides the list. When the
+word typed is already complete (`/targetenemy`, which `/targetenemyplayer` also starts with), Enter is a new line
+unless ↑/↓ chose a suggestion; Tab still takes one. A suggestion taken closes the list until the next keystroke. Ctrl+B opens
 the conditional builder on the block under the cursor (OK rewrites it, or inserts a new block at the cursor), Ctrl+O
 the optimizer (its rewrites and their reasons; OK takes them), Ctrl+T a template (filled in, inserted as whole
 lines), F1 the full reference. `check` returns why the macro can't be staged, or None. Dismisses with (name, icon,
@@ -49,15 +51,19 @@ NOTHING_HERE = "Move the cursor onto a command, a [...] block, a conditional or 
 
 class MacroTextArea(TextArea):
     """The body. While the screen lists suggestions, Tab and Enter take the highlighted one and ↑/↓ choose it;
-    otherwise the keys do what they always do (Enter a new line, Tab the next control)."""
+    otherwise the keys do what they always do (Enter a new line, Tab the next control). Enter after a word that is
+    already complete is a new line, unless ↑/↓ chose a suggestion."""
 
     async def _on_key(self, event: events.Key) -> None:
         screen = self.screen
         if isinstance(screen, MacroEditScreen) and screen.suggesting and event.key in ("tab", "enter"):
-            event.stop()
-            event.prevent_default()
-            screen.take_suggestion()
-            return
+            if event.key == "enter" and not screen.enter_takes_suggestion():
+                screen.hide_suggestions()  # the word is complete: Enter is the new line the user meant
+            else:
+                event.stop()
+                event.prevent_default()
+                screen.take_suggestion()
+                return
         await super()._on_key(event)
 
     def action_cursor_up(self, select: bool = False) -> None:
@@ -116,6 +122,9 @@ class MacroEditScreen(Screen[tuple[str, str, str] | None]):
         self.ref = load_macro_reference(flavor)
         self.options: list[tuple[str, str]] = []  # the suggestions listed
         self._seen_text = body                    # the text the suggestions were made for
+        self._complete = False                    # the word typed is itself a reference entry
+        self._moved = False                       # ↑/↓ moved the highlight since the list was made
+        self._taken: str | None = None            # the body a taken suggestion makes: its Changed lists nothing
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -194,7 +203,9 @@ class MacroEditScreen(Screen[tuple[str, str, str] | None]):
         self._help()
         show_error(self.query_one("#macro-error", Static), None)
         self._seen_text = self.area.text
-        self._suggest()
+        taken, self._taken = self._taken, None
+        if taken is None or taken != self._seen_text:  # a suggestion just taken keeps the list closed
+            self._suggest()
 
     def on_text_area_selection_changed(self, event: TextArea.SelectionChanged) -> None:
         event.stop()
@@ -210,11 +221,14 @@ class MacroEditScreen(Screen[tuple[str, str, str] | None]):
     def _suggest(self) -> None:
         body, offset = self.area.text, self.offset()
         typed = body[completion_start(body, offset):offset].lower()
-        self._show_suggestions([(word, help_text) for word, help_text in suggestions(body, offset, self.ref)
-                                if word.lower() != typed])
+        found = suggestions(body, offset, self.ref)
+        complete = any(word.lower() == typed for word, _ in found)
+        self._show_suggestions([(word, help_text) for word, help_text in found if word.lower() != typed])
+        self._complete = complete
 
     def _show_suggestions(self, options: list[tuple[str, str]]) -> None:
         self.options = options
+        self._complete = self._moved = False
         listed = self.query_one("#suggestions", OptionList)
         listed.clear_options()
         if options:
@@ -226,6 +240,15 @@ class MacroEditScreen(Screen[tuple[str, str, str] | None]):
     def move_suggestion(self, step: int) -> None:
         listed = self.query_one("#suggestions", OptionList)
         listed.highlighted = ((listed.highlighted or 0) + step) % len(self.options)
+        self._moved = True
+
+    def enter_takes_suggestion(self) -> bool:
+        """Enter takes the highlighted suggestion unless the word typed is already complete and ↑/↓ did not choose
+        one: `/targetenemy` + Enter is a new line, not `/targetenemyplayer`."""
+        return self._moved or not self._complete
+
+    def hide_suggestions(self) -> None:
+        self._show_suggestions([])
 
     def take_suggestion(self, index: int | None = None) -> None:
         listed = self.query_one("#suggestions", OptionList)
@@ -233,6 +256,7 @@ class MacroEditScreen(Screen[tuple[str, str, str] | None]):
         area, body, offset = self.area, self.area.text, self.offset()
         start = area.document.get_location_from_index(completion_start(body, offset))
         self._show_suggestions([])
+        self._taken = body[:completion_start(body, offset)] + word + body[offset:]
         area.replace(word, start, area.cursor_location)
         area.focus()
 
@@ -267,7 +291,7 @@ class MacroEditScreen(Screen[tuple[str, str, str] | None]):
 
     def action_cancel(self) -> None:
         if self.suggesting:
-            self._show_suggestions([])
+            self.hide_suggestions()
             return
         self.dismiss(None)
 
@@ -290,7 +314,7 @@ class MacroEditScreen(Screen[tuple[str, str, str] | None]):
                 if end < len(body) and not body[end].isspace() and body[end] not in "[;":
                     block += " "
             self.set_body(body[:start] + block + body[end:], start + len(block.rstrip()))
-        self.app.push_screen(BuilderScreen(original, self.ref), done)
+        self.app.push_screen(BuilderScreen(original, self.ref, block=None if token is None else token.text), done)
 
     def action_optimize(self) -> None:
         body = self.area.text
