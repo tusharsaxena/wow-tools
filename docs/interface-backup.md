@@ -86,24 +86,32 @@ at the bottom.
 
 game version → `Interface`, `WTF`, links, warnings and **Backups** → one line per backup
 
-The top line is **All flavors** (or the game version you picked), with the files and size of everything ticked.
-Each game version's line shows what a backup of it would hold (files and size) and its backups ("2 backups, last
-2026-10-04 20:15:30", or "no backups yet"). A version with nothing to back up says why instead ("nothing to back
-up: no Interface or WTF folder"), and its backups only when it has some. Under it:
+Every line with something under it ends its name with a dimmed count of the backups below it (`Retail  3 items`),
+counted before you open them and, with a filter set, of what the filter shows. **Links** and **Scan warnings**
+count their own lines instead. The top line is **All flavors** (or the game version you picked): its count, then
+the files and size of every game version with something to back up, ticked or not (the bottom line sums what is
+ticked). Each game version's line shows, in columns that line up from one version
+to the next, its count, what a backup of it would hold (files and size) and its newest backup ("last 2026-10-04
+20:15:30", or "no backups yet"); when the tree is narrow the newest backup is cut to its date first, then the
+last columns are left out. A version with nothing to
+back up says why after its count ("no Interface or WTF folder"). Under it:
 
 | Line | Shows |
 |---|---|
-| **Interface** | How many files your `Interface` folder holds, and their size. "missing" when there is no such folder, "link, skipped" when the folder is a link (see [Links and junctions](#links-and-junctions)) |
+| **Interface** | How many files your `Interface` folder holds, and their size, in columns. "missing" when there is no such folder, "link, skipped" when the folder is a link (see [Links and junctions](#links-and-junctions)) |
 | **WTF** | The same for `WTF` |
-| **Links (N)** | Linked folders or files found inside. They're not backed up, and a restore keeps them. Open the line to see them |
+| **Links** | Linked folders or files found inside. They're not backed up, and a restore keeps them. Open the line to see them |
 | ⚠ **Left from an interrupted restore** | A folder an interrupted restore left behind. Restores of this game version are blocked until you deal with it (see [If a restore was interrupted](#if-a-restore-was-interrupted)) |
-| ⚠ **Scan warnings (N)** | Places the app couldn't read, so they're not backed up. Open the line to see them, or press `!` for the [warnings view](#scan-warnings) |
-| **Backups (N)** | The game version's backups. Safety backups are counted apart: "Backups (2 + 1 safety)". Open the line to list them, newest first |
+| ⚠ **Scan warnings** | Places the app couldn't read, so they're not backed up. Open the line to see them, or press `!` for the [warnings view](#scan-warnings) |
+| **Backups** | The game version's backups, safety backups included ("Backups  3 items  incl. 1 safety"). Open the line to list them, newest first |
 
-Each backup's line says **backup** or **safety** (a safety backup, taken before a restore), the date and time, what the
-zip holds and its size, for example `backup 2026-10-04 20:15:30 · Interface, WTF · 84.2 MB`. What the zip holds fills in
+Each backup's line shows, in columns, the date and time, **backup** or **safety** (a safety backup, taken before a
+restore), what the zip holds and its size, for example `2026-10-04 20:15:30  backup  Interface, WTF  84.2 MB`. What
+the zip holds fills in
 a moment after you open the list ("…" until then): "Interface, WTF", "Interface", "WTF", "none" (a safety backup taken
-when the restored folder didn't exist yet), or "?" when the zip can't be read.
+when the restored folder didn't exist yet), or "?" when the zip can't be read. In a narrow window the line keeps
+what tells the backups apart: the year goes first, then the seconds, and a safety backup is then marked **S**
+(`10-04 20:15 S`); the bottom line still names the highlighted backup in full.
 
 Every game version starts ticked, meaning "back this up". Ticks are on game versions only: a backup always holds
 a version's whole `Interface` and `WTF` folders. A game version with nothing to back up (no `Interface` or `WTF`
@@ -225,7 +233,7 @@ On the review screen, open the game version's **Backups** line, highlight a back
 `Enter` on the backup). The bottom bar names the highlighted backup in full ("Backup from 2026-10-04 20:15:30 ·
 Interface, WTF · 84.2 MB: Restore puts it back"). If no backup is highlighted, `e` tells you how to pick one.
 
-A safety backup (its line starts with **safety**) can be restored like any other backup. That's how you go back
+A safety backup (its line says **safety**) can be restored like any other backup. That's how you go back
 to the folders as they were before an older restore.
 
 ### The restore screen
@@ -250,15 +258,17 @@ Below them are the filter box (`/`) with its **Filter** button, then **Restore**
 `Enter` or **Filter**); it never changes what is restored. `Esc` in the box clears it.
 
 **On the right** is a tree of what the restore would cost you, compared with your folders as they are now. It's
-worked out again each time you tick or untick a box ("Comparing the backup with your folders…" meanwhile):
+worked out again each time you tick or untick a box ("Comparing the backup with your folders…" meanwhile). Every
+line with something under it ends its name with a dimmed count of the files, links or places below it (with a
+filter set, of what the filter shows):
 
 | Line | Means |
 |---|---|
-| **Will be removed (N files)** | Files you have now that the backup doesn't. They're grouped by folder, largest group first (for example `WeakAuras  Interface/AddOns · 312 files`); open a group to see its files. Usually these are addons you installed after the backup |
-| **Newer now than in the backup (N files)** | Files that changed after the backup was made, such as settings you changed since. These changes are lost |
-| **Links kept (N)** | Links that stay as they are |
-| **Links replaced (N)** | A link where the backup holds real files. Only the link goes, never what it points at, and Undo makes it again |
-| **Could not be read (N)** | Folders the app couldn't look into. Whatever they hold is replaced too, without being listed |
+| **Will be removed** | Files you have now that the backup doesn't. They're grouped by folder, largest group first, in columns (for example `WeakAuras  312 items  Interface/AddOns`); open a group to see its files. Usually these are addons you installed after the backup |
+| **Newer now than in the backup** | Files that changed after the backup was made, such as settings you changed since. These changes are lost |
+| **Links kept** | Links that stay as they are |
+| **Links replaced** | A link where the backup holds real files. Only the link goes, never what it points at, and Undo makes it again |
+| **Could not be read** | Folders the app couldn't look into. Whatever they hold is replaced too, without being listed |
 | ⚠ **Low disk space** | The WoW drive has less free space than the restored folders need |
 
 The first two start open, the others open with `Enter` or `Space`. The warnings are in amber. If nothing would be
@@ -353,8 +363,8 @@ and which game version. **Yes** is selected, in red.
   again, pointing where it did. If one can't be made again, that folder shows **Failed** and the Details column
   names the link and where it pointed, so you can make it by hand.
 - Undo only goes back **one restore**. After you undo, the button stays greyed out until your next restore. To go
-  back further, restore an older restore's safety backup from the game version's **Backups** (its line starts
-  with **safety**).
+  back further, restore an older restore's safety backup from the game version's **Backups** (its line says
+  **safety**).
 - If no folder could be put back (WoW had files locked, say), the undo doesn't count: close WoW and press
   **Undo last restore** again.
 
@@ -449,7 +459,7 @@ won't find them. Undo needs the safety backup in the folder the settings name.
 | How much space do backups take? | It depends on your addons. Addon files and settings are text, so a zip is often a fraction of the folders' size. The backup results show both. The newest 10 per game version are kept, plus a safety backup for each of the last 10 restores; both numbers can be changed in the shared settings. |
 | Can I restore just one addon, or one file? | Not from the app: it restores whole folders. To get one addon back, close WoW, open the zip, and extract its folder (for example `Interface\AddOns\WeakAuras`) into the game version's folder. |
 | Can I restore a Retail backup into Classic? | No. A backup only restores into the game version it came from. |
-| Can I undo a restore from last week? | **Undo last restore** only goes back to the most recent restore. For an older one, restore its safety backup: open the game version's **Backups** on the review screen; its line starts with **safety**. |
+| Can I undo a restore from last week? | **Undo last restore** only goes back to the most recent restore. For an older one, restore its safety backup: open the game version's **Backups** on the review screen; its line says **safety**. |
 | Does it back up on its own, on a schedule? | No. It only backs up when you press **Back up**. |
 | Can I open the zips myself? | Yes. They're ordinary zip files. Don't add or remove files in them, though: the app checks every file against the zip's `manifest.json` and refuses a zip that doesn't match. |
 | Why does the review screen show no sizes? | You're on WSL, a Mac or Linux. Reading every file's size there takes a disk round trip per file, so the review screen counts files only. The backup results show the sizes. |

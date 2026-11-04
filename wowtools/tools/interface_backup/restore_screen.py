@@ -26,9 +26,11 @@ from wowtools.tools.interface_backup.restore import (BackupContents, RestoreErro
                                                      case_key, open_backup, plan_restore)
 from wowtools.tools.interface_backup.scanner import PARTS, FlavorScan, scan_flavor
 from wowtools.ui.branding import BottomBar
+from wowtools.ui.columns import ColumnLayout, column_text, fit_columns, natural_widths
+from wowtools.ui.counts import COUNT_STYLE, count_text, with_count
 from wowtools.ui.dialogs import ACCENT, TREE_BINDINGS, TREE_HINT, TwoPaneFocus, review_hint, theme_colour, two_pane_css
 from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
-from wowtools.ui.review import ButtonActions, ReviewTree
+from wowtools.ui.review import TOGGLE_WIDTH, ButtonActions, FittedRows, ReviewTree, tree_room
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, FilterBox, ModelFilter, ModelNode
 from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button
@@ -58,15 +60,21 @@ def _error_text(exc: Exception) -> str:
     return str(exc) if isinstance(exc, RestoreError) else f"{type(exc).__name__}: {exc}"
 
 
-def group_label(name: str, files: int | None) -> Text:
-    """A folder group's tree label, the part that tells groups apart first (the tree is narrow at 80 columns):
-    "WeakAuras  Interface/AddOns · 2 files"; `files` None for a group that is one file."""
+# A folder group's row as columns (feedback round 2 R4, STD-7.28): the name that tells groups apart, its count of
+# files (a group that is one file has none) and the folder it sits in. The folder gives way first, then the name
+# (both cut in their middle); the count is never cut, and the folder is dropped when the minimums do not fit.
+GROUP_COLUMNS = ColumnLayout(caps=(32, None, None), minimums=(8, 0, 8), shrink=((2,), (0,)), drop=(2,))
+GROUP_STYLES = ("bold", COUNT_STYLE, "dim")
+
+
+def group_cells(name: str, files: int | None) -> tuple[str, str, str]:
+    """A folder group's columns: "WeakAuras", "2 items", "Interface/AddOns"; `files` None for a group that is one
+    file (no count)."""
     parent, _, last = name.rpartition("/")
-    return Text.assemble((last, "bold"), (f"  {parent}" if parent else "", "dim"),
-                         (f" · {plural(files, 'file')}" if files is not None else "", "dim"))
+    return last, "" if files is None else count_text(files), parent
 
 
-class RestoreScreen(WarningsHost, FilterBox, ButtonActions, TwoPaneFocus, Screen[RestorePlan | None]):
+class RestoreScreen(WarningsHost, FilterBox, ButtonActions, FittedRows, TwoPaneFocus, Screen[RestorePlan | None]):
     """Two panes, like the review: on the left the backup's details, a box per part, the tree filter (nothing to
     tick in the tree: the filter only narrows it) and Restore / Back; on the right a tree of what the restore
     changes (worked out in a worker each time a box changes); a summary line below. Dismisses with the plan to
@@ -103,6 +111,14 @@ class RestoreScreen(WarningsHost, FilterBox, ButtonActions, TwoPaneFocus, Screen
         self._generation = 0  # bumped per replan: a plan worked out for older boxes is dropped
         self._kept: ModelFilter | None = None  # what the filter keeps of the plan (files load on expand)
         self._last_filter: Widget | None = None
+        # a folder group's row (R4): id(row data) -> its cells, its siblings' natural widths and whether it is
+        # padded where its siblings' ▶ / ▼ is (a group that is one file, beside groups that open)
+        self._columns: dict[int, tuple[tuple[str, str, str], tuple[int, ...], bool]] = {}
+
+    @property
+    def root_title(self) -> Text:
+        """The tree's root (short: the tree is narrow at 80 columns; the left pane has the kind and the zip)."""
+        return Text(f"{self.flavor.display_name} · {self.info.when}", style=ACCENT)
 
     @property
     def kind_text(self) -> str:
@@ -124,8 +140,7 @@ class RestoreScreen(WarningsHost, FilterBox, ButtonActions, TwoPaneFocus, Screen
                     yield action_button("Restore", "overwrite", "o", id="btn-restore", disabled=True)
                     yield action_button("Back", "cancel", "b", id="btn-back")
                 yield NavHint(NAV_HINT)
-            # Short: the tree is narrow at 80 columns; the left pane has the kind and the zip.
-            yield ReviewTree(Text(f"{self.flavor.display_name} · {self.info.when}", style=ACCENT), id="effects")
+            yield ReviewTree(self.root_title, id="effects")
         yield SummaryBar()
         yield BottomBar()
 
@@ -225,6 +240,7 @@ class RestoreScreen(WarningsHost, FilterBox, ButtonActions, TwoPaneFocus, Screen
         """The tree holds one line: waiting, a problem or what to do."""
         tree = self.query_one("#effects", Tree)
         tree.clear()
+        tree.root.set_label(self.root_title)  # no count: the line is a message, not what the restore touches
         tree.root.add_leaf(Text(text, style=style), data=("note",))
         tree.root.expand()
 
@@ -321,34 +337,47 @@ class RestoreScreen(WarningsHost, FilterBox, ButtonActions, TwoPaneFocus, Screen
             self._show_plan(self.plan)
 
     def _show_plan(self, plan: RestorePlan) -> None:
+        """The plan as the tree, through the filter. Every node with children ends with its leaf count (R2,
+        STD-7.27): the leaf is a path the restore touches (a file, a link or a place that could not be read), as the
+        filter shows them, a group's files before it is opened too; folder groups are aligned columns (R4)."""
         tree = self.query_one("#effects", Tree)
         tree.clear()
+        self._columns = {}
+        self.rows_built(tree)  # fitted again once the tree is laid out
         warning = f"bold {theme_colour(self.app, 'warning')}"
         effects = self._model(plan)
         kept = self._kept = self._model_filter(effects)
+        total = 0
         for effect in effects:
             if not kept.shows(effect):
                 continue
             kind = effect.data[1]
             title, note = next((t, n) for k, t, n in EFFECTS if k == kind)
-            items = self._effect_items(kind)
-            count = plural(len(items), "file") if kind in GROUPED else str(len(items))
-            label = Text.assemble((f"{title} ({count})", warning if kind in WARN else "bold"), (f"  {note}", "dim"))
+            rows = [child for child in effect.children if kept.shows(child)]
+            files = {id(child): sum(kept.shows(f) for f in child.children) if child.data[0] == "group" else 1
+                     for child in rows}
+            count = sum(files.values())
+            total += count
+            label = with_count(Text(title, style=warning if kind in WARN else "bold"), count).append(f"  {note}",
+                                                                                                      "dim")
             if kind in GROUPED:
                 node = tree.root.add(label, data=effect.data, expand=True)
-                for child in effect.children:
-                    if not kept.shows(child):
-                        continue
-                    name = child.data[2]
+                cells = [group_cells(child.data[2], files[id(child)] if child.data[0] == "group" else None)
+                         for child in rows]
+                natural = natural_widths(cells)
+                opens = any(child.data[0] == "group" for child in rows)
+                for child, row in zip(rows, cells):
+                    self._columns[id(child.data)] = row, natural, opens and child.data[0] == "file"
                     if child.data[0] == "file":
-                        node.add_leaf(group_label(name, None), data=child.data)
+                        node.add_leaf(self._group_label(child.data), data=child.data)
                     else:
-                        group = node.add(group_label(name, len(child.children)), data=child.data,
+                        group = node.add(self._group_label(child.data), data=child.data,
                                          allow_expand=True)  # files load on expand
                         self._open_if(group, kept.opens(child))
             else:
                 lines = tree.root.add(label, data=effect.data, allow_expand=True)  # lines load on expand
                 self._open_if(lines, kept.opens(effect))
+        tree.root.set_label(with_count(self.root_title, total))
         self.note_no_match(tree.root)  # before the notes, which are not items: the filter never hides them
         if plan.low_space:  # the notes are not items: the filter never hides them
             tree.root.add_leaf(Text(f"⚠ Low disk space on the WoW drive: {human_size(plan.free_bytes)} free, "
@@ -358,6 +387,23 @@ class RestoreScreen(WarningsHost, FilterBox, ButtonActions, TwoPaneFocus, Screen
             tree.root.add_leaf(Text.assemble(("Nothing on disk would be lost", success),
                                              ("  everything is in the backup", "dim")), data=("note",))
         tree.root.expand()
+
+    def _group_label(self, data) -> Text:
+        """A folder group's row (name · count · folder) in columns as wide as its siblings' widest cells, fitted
+        to the pane (R4); a group that is one file, beside groups that open, is padded where their ▶ / ▼ is, so the
+        columns line up."""
+        cells, natural, padded = self._columns[id(data)]
+        room = tree_room(self.query_one("#effects", Tree), 2, opens=data[0] == "group" or padded)
+        widths, gap = fit_columns(natural, room, GROUP_COLUMNS)
+        return Text.assemble(" " * TOGGLE_WIDTH if padded else "", column_text(cells, widths, GROUP_STYLES, gap,
+                                                                               middle=(0, 2)))
+
+    def refit_rows(self, tree: Tree) -> None:
+        """Fit the folder group rows again to the tree pane's width (R4, FittedRows)."""
+        for effect in tree.root.children:
+            for node in effect.children:
+                if node.data is not None and id(node.data) in self._columns:
+                    node.set_label(self._group_label(node.data))
 
     def _open_if(self, node, opens: bool) -> None:
         """Open a node whose files load on expand when the filter opens it (its matches show)."""

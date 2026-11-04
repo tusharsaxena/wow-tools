@@ -380,6 +380,43 @@ class StructureTest(unittest.TestCase):
                                   "wowtools/tools/macro_editor/edit_actions.py",
                                   "wowtools/tools/sv_browser/edit_actions.py"])
 
+    def test_tree_label_helpers_live_in_ui(self):
+        """STD-7.27, STD-7.28 (feedback round 2 R2, R4): the node columns are wowtools/ui/columns.py's, the leaf
+        count wowtools/ui/counts.py's and a label's room and its refit wowtools/ui/review.py's, one definition each; the Config Editor's own fit and name cut are gone (the
+        Macro Editor's cut_name is another thing: a macro name cut to the game's limit). Both modules are pure: no
+        Textual import."""
+        functions = {"fit_columns": "columns.py", "cut_middle": "columns.py", "column_text": "columns.py",
+                     "natural_widths": "columns.py", "fit_keeping_count": "columns.py", "cut_to_room": "columns.py",
+                     "group_text": "columns.py", "count_text": "counts.py", "with_count": "counts.py",
+                     "tree_room": "review.py", "rows_built": "review.py", "fit_rows": "review.py"}
+        where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & set(functions)}
+        self.assertEqual(where, {(f"wowtools/ui/{module}", name) for name, module in functions.items()})
+        # G10 review: the tools' own copies (a group's name and count, the refit on a resize) are gone; a tool says
+        # what is in front of a row (its lead) and the room is worked out (the pane less its scrollbar) in ui/ only,
+        # where the widths and the name's floor are set.
+        gone = {"_group_text", "_group_name", "_fit_rows"}
+        self.assertEqual({(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & gone}, set())
+        constants = {"GROUP_NAME_MINIMUM": "columns.py", "TOGGLE_WIDTH": "review.py", "MARK_WIDTH": "review.py"}
+        where = {(rel(p), target.id) for p in modules("wowtools") for node in ast.walk(tree(p))
+                 if isinstance(node, ast.Assign) for target in node.targets
+                 if isinstance(target, ast.Name) and target.id in constants}
+        self.assertEqual(where, {(f"wowtools/ui/{module}", name) for name, module in constants.items()})
+        scrollbar = {rel(p) for p in modules("wowtools") for node in ast.walk(tree(p))
+                     if isinstance(node, ast.Attribute) and node.attr == "scrollbar_size_vertical"}
+        self.assertEqual(scrollbar, {"wowtools/ui/review.py"})
+        fitted = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
+                  if isinstance(node, ast.ClassDef) and node.name == "FittedRows"}
+        self.assertEqual(fitted, {("wowtools/ui/review.py", "FittedRows")})
+        where = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
+                 if isinstance(node, ast.ClassDef) and node.name == "ColumnLayout"}
+        self.assertEqual(where, {("wowtools/ui/columns.py", "ColumnLayout")})
+        cuts = {rel(p) for p in modules("wowtools") if "cut_name" in defined_functions(tree(p))}
+        self.assertEqual(cuts, {"wowtools/tools/macro_editor/ops.py"})
+        for name in ("columns.py", "counts.py"):
+            path = REPO / "wowtools" / "ui" / name
+            imports = resolved_imports(tree(path), package_of(path))
+            self.assertFalse(any(m == "textual" or m.startswith("textual.") for m in imports), name)
+
     def test_tree_filter_lives_in_ui(self):
         """The tree filter (spec D7) is wowtools/ui/tree_filter.py's: no tool defines its own match, model filter,
         filter box or `/` action."""

@@ -172,6 +172,7 @@ Cleaner's tests predate that rule: its logic tests are `test_cleaner.py`, `test_
 | `test_ui_shared_screens.py` | The shared result screen, choice popup, settings form and `ToolFlow`, driven through toy screens |
 | `test_ui_warnings.py`, `test_warnings_view.py` | The shared warnings view, then the same rules on every tool's review |
 | `test_ui_widgets.py` | `action_button` and keys on buttons |
+| `test_ui_columns.py` | `ui/columns.py` and `ui/counts.py` (feedback round 2 R2, R4; STD-7.27, STD-7.28): node data in aligned columns fitted to the pane, the dim leaf count |
 | `test_dialogs.py`, `test_progress_popup.py` | `ui/dialogs.py`; the progress popup and its `ProgressBoard` |
 | `test_flavor_screen.py` | `ui/flavor_screen.py` |
 | `test_counted_list.py` | `CountedTree` (spec L10, STD-7.26): long lists in popups behind one counted row |

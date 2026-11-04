@@ -75,15 +75,25 @@ on the left) to switch between them.
 
 game version → account → addon → profile → the characters that use it
 
-- An addon whose settings are kept per character shows that character (realm/name) after its name, for example
-  `KickCD (Mug'thol/Kaelys)`.
+- Every game version, account, addon and database ends its name with a dimmed count of the profiles below it
+  (`Retail  42 items`), of what the tree shows: the filter and the Show boxes narrow the counts too. A profile you
+  marked for deletion is counted until you apply it.
+- An addon whose settings are kept per character shows that character (realm/name) after its count, for example
+  `KickCD  2 items  Mug'thol/Kaelys`.
 - When one file holds more than one Ace3 database (ElvUI keeps `ElvDB` and `ElvPrivateDB` in one file), each
   database gets its own line under the addon.
-- A profile line shows its name and how many characters use it, for example `Default · 12 characters`.
+- A profile line shows, in columns that line up with the other profiles', its name, how many characters use it and
+  its tags, for example `Default  12 characters  Default`. Under a search or with Leftover characters off, the
+  count is of the characters shown under it. A character's tags follow its name the same way. When
+  the tree is narrow the tags give way first, then the names are shortened with "…". In a very narrow window a
+  name is never cut below a few letters at each end: the line scrolls sideways instead.
 
 **By character**:
 
-game version → account → character → one line per addon, `Addon: Profile`
+game version → account → character → one line per addon: the addon, the profile it uses, its tags (in columns)
+
+Each character counts its addon lines (`Kaelys - Mug'thol  7 items`), and each account and game version the lines
+below it.
 
 This is the view for "what does this character use everywhere?". Ticking a line here picks that character in
 that addon.
@@ -122,7 +132,7 @@ selected button), so they never cover either.
 `Selected: 3 profiles · 8 characters · 6 pending changes in 2 files`.
 
 **Scan warnings**: when the scan couldn't read a settings file (or skipped a folder), the tree lists it under
-**Scan warnings** at the bottom, and a **⚠ N scan warnings (!)** button sits at the right end of the bottom bar: click
+**Scan warnings** at the bottom (with a count of its lines), and a **⚠ N scan warnings (!)** button sits at the right end of the bottom bar: click
 it or press `!` to open the **warnings view**. It lists every warning, grouped by game version, each with the file or
 folder (inside that game version's folder) and what went wrong; the line on the left shows the highlighted one in full.
 `/` filters the list, `x` / `c` expand and collapse it, `h` opens the help, and **Back** (`Esc`) returns to the review.
@@ -247,7 +257,8 @@ change.
 
 - `b` adds the highlighted addon, in its game version, to the blacklist, or takes it off. It's saved at once.
 - **Blacklist…** (in the action bar, and **Edit blacklist…** in the settings) opens the **blacklist screen**: a tree
-  of game version → addon listing every addon with Ace3 profiles. Nothing is ticked except what's already
+  of game version → addon listing every addon with Ace3 profiles (each game version counts the addons it shows).
+  Nothing is ticked except what's already
   blacklisted; tick the ones you want blacklisted (`Space`, `a` all, `n` none, `/` filter, `x` / `c` expand and
   collapse) and press **Save**, or **Cancel** (`Esc`) to leave it as it was. `a` and `n` act on what the filter
   shows; when it hides ticked addons, **Save** says how many and asks first (they're saved too). A blacklisted

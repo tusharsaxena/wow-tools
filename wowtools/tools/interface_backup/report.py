@@ -27,24 +27,30 @@ _PART_KINDS = {"restored": "Restored", "replaced_left": "Restored (old copy left
                "failed": "Failed"}
 
 
-def _files_and_size(files: int, size: int | None) -> str:
-    return plural(files, "file") + ("" if size is None else f" · {human_size(size)}")
+def files_and_size_cells(files: int, size: int | None) -> tuple[str, str]:
+    """The files and size columns of a review row: "12408 files", "412.0 MB" (empty when the size is unknown)."""
+    return plural(files, "file"), "" if size is None else human_size(size)
 
 
-def part_text(part: PartScan) -> str:
-    """A part's line in the review tree: its files and size, "missing" or "link, skipped"."""
+def part_cells(part: PartScan) -> tuple[str, str]:
+    """A part row's columns after its name (feedback round 2 R4): its files and size, or "missing" / "link,
+    skipped" and no size."""
     if not part.exists:
-        return "link, skipped" if part.linked else "missing"
-    return _files_and_size(len(part.files), part.size)
+        return "link, skipped" if part.linked else "missing", ""
+    return files_and_size_cells(len(part.files), part.size)
 
 
-def flavor_text(scan: FlavorScan, backups: list[BackupInfo]) -> str:
-    """A flavor's line in the review tree: what a backup would hold (or why there is nothing) and its backups. With
-    nothing to back up and no backups, "no backups yet" is left out, so the line fits the tree at 120x30."""
-    if not scan.has_data:
-        held = f"nothing to back up: {skip_reason(scan)}"
-        return f"{held} · {picker_note(backups)}" if any(not b.is_safety for b in backups) else held
-    return f"{_files_and_size(scan.file_count, scan.size)} · {picker_note(backups)}"
+def flavor_cells(scan: FlavorScan, backups: list[BackupInfo]) -> tuple[str, str, str]:
+    """A flavor row's columns after its name and count, for a flavor with something to back up: what a backup would
+    hold (files, size) and its newest backup ("last 2026-10-04 15:30:12", or "no backups yet"; safety zips apart,
+    as on the picker)."""
+    return (*files_and_size_cells(scan.file_count, scan.size), last_backup_note(backups))
+
+
+def last_backup_note(backups: list[BackupInfo]) -> str:
+    """The newest backup (not a safety zip) of one flavor, newest first: "last 2026-10-04 15:30:12"."""
+    mine = [b for b in backups if not b.is_safety]
+    return f"last {mine[0].when}" if mine else "no backups yet"
 
 
 def leftover_text(scan: FlavorScan) -> str:
@@ -53,16 +59,20 @@ def leftover_text(scan: FlavorScan) -> str:
             "this flavor until you move or delete it (see the guide).")
 
 
-def warnings_text(scan: FlavorScan) -> str:
-    """The scan-warnings node of a flavor: how many places were skipped."""
-    count = sum(len(p.errors) for p in scan.parts.values())
-    return f"Scan warnings ({count}): skipped, not backed up (the log lists up to {SAMPLE} per folder)"
+# The note after the scan-warnings node's count: what happened to the places skipped.
+WARNINGS_NOTE = f"skipped, not backed up (the log lists up to {SAMPLE} per folder)"
 
 
 def held_text(scans: list[FlavorScan]) -> str:
     """Files and size (when known) a backup of these flavors would hold."""
+    files, size = held_cells(scans)
+    return f"{files} · {size}" if size else files
+
+
+def held_cells(scans: list[FlavorScan]) -> tuple[str, str]:
+    """held_text as the root row's two columns (files, size)."""
     chosen = [s for s in scans if s.has_data]
-    return _files_and_size(sum(s.file_count for s in chosen), _known_total([s.size for s in chosen]))
+    return files_and_size_cells(sum(s.file_count for s in chosen), _known_total([s.size for s in chosen]))
 
 
 def selection_text(scans: list[FlavorScan]) -> str:
@@ -80,11 +90,10 @@ def picker_note(backups: list[BackupInfo]) -> str:
     return f"{plural(len(mine), 'backup')}, last {mine[0].when}" if mine else "no backups yet"
 
 
-def backups_title(backups: list[BackupInfo]) -> str:
-    """A flavor's Backups node title, counting as picker_note does (safety zips apart): "Backups (2)",
-    "Backups (1 + 1 safety)"."""
+def backups_note(backups: list[BackupInfo]) -> str:
+    """The note after a flavor's Backups count: how many of them are safety zips, and what to do."""
     safety = sum(b.is_safety for b in backups)
-    return f"Backups ({len(backups) - safety}{f' + {safety} safety' if safety else ''})"
+    return f"{f'incl. {safety} safety · ' if safety else ''}highlight one, then Restore"
 
 
 def _known_total(sizes: list[int | None]) -> int | None:
@@ -165,12 +174,23 @@ def parts_cell(parts: tuple[str, ...] | None) -> str:
 PARTS_PENDING = "…"  # a backup's parts until a worker has read its manifest
 
 
-def backup_text(info: BackupInfo, parts: tuple[str, ...] | None | str = PARTS_PENDING) -> str:
-    """A backup's line in the review tree: kind, the whole date and time (as on the flavor's line and the bottom
-    line), parts (PARTS_PENDING until read) and size. "backup 2026-10-04 15:33:04 · Interface, WTF · 2.0 KB"."""
-    kind = "safety" if info.is_safety else "backup"
-    cell = parts if isinstance(parts, str) else parts_cell(parts)
-    return f"{kind} {info.when} · {cell} · {human_size(info.size)}"
+SAFETY_MARK = "S"  # a safety zip's kind on a backup row too narrow for "safety" (the guide explains it)
+BACKUP_FORMS = 4  # the backup row's forms, widest first (backup_cells)
+
+
+def backup_cells(info: BackupInfo, parts: tuple[str, ...] | None | str = PARTS_PENDING,
+                 form: int = 0) -> tuple[str, str, str, str]:
+    """A backup row's columns in the review tree (feedback round 2 R4): the date and time (what tells it apart, as
+    on the bottom line), its kind (backup or safety), its parts (PARTS_PENDING until read) and size. `form` 0 is
+    the whole date and time; the narrower forms, for a narrow pane, keep what tells a flavor's zips apart: 1
+    leaves out the year (`10-04 15:30:12`), 2 the seconds too (`10-04 15:30`), 3 also marks a safety zip with
+    SAFETY_MARK in place of the kind (a backup's kind cell is then empty)."""
+    when = info.when if form == 0 else info.when[5:] if form == 1 else info.when[5:16]
+    if form >= 3:
+        kind = SAFETY_MARK if info.is_safety else ""
+    else:
+        kind = "safety" if info.is_safety else "backup"
+    return when, kind, parts if isinstance(parts, str) else parts_cell(parts), human_size(info.size)
 
 
 def backup_detail(info: BackupInfo, parts: tuple[str, ...] | None | str = PARTS_PENDING) -> str:

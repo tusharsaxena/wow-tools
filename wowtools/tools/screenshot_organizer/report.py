@@ -43,6 +43,27 @@ STAGE_TITLES = {"organize": "Filing screenshots", "prune": "Tidying journals", "
 RESULT_COLUMNS = ("Outcome", "Flavor", "File", "Target", "Reason")
 
 
+# The review tree's rows as aligned columns (feedback round 2 R4, STD-7.28), fitted by the screen through ui.columns:
+# a file row is name · note (`possible duplicate`, or nothing), a conflict row name · target folder. The name is cut
+# in its middle; the target, a long path, gives way first (cut in its middle too, so its date folders show); the
+# note is short and never cut, only left out with the name alone.
+POSSIBLE_DUPLICATE = "possible duplicate"
+FILE_CAPS = (48, None)
+FILE_MINIMUMS = (12, 0)
+CONFLICT_CAPS = (48, None)
+CONFLICT_MINIMUMS = (12, 12)
+
+
+def file_cells(item: ShotItem) -> tuple[str, str]:
+    """A file row's columns: the name and its note (`possible duplicate`, or empty)."""
+    return item.src.name, POSSIBLE_DUPLICATE if item.state == MAYBE_DUPLICATE else ""
+
+
+def conflict_cells(item: ShotItem) -> tuple[str, str]:
+    """A conflict row's columns: the name and the folder that already holds a different file of that name."""
+    return item.src.name, f"→ {item.dst.parent}"
+
+
 def kind_class(kind: str) -> str:
     """"success", "accent", "warning", "error" or "" for an outcome kind."""
     for name, kinds in (("success", SUCCESS_KINDS), ("accent", ACCENT_KINDS), ("warning", WARNING_KINDS),

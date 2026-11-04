@@ -21,11 +21,12 @@ from wowtools.core.cvarfile import apply_cvar_changes, parse_cvars
 from wowtools.core.kb import CvarInfo, Recommendation
 from wowtools.tools.config_editor.model import ConfigTarget, Row
 
-__all__ = ["BOOLEAN_VALUES", "ConfigStaged", "RecommendRow", "applicable_recommendations", "build_changes",
-           "effective_value", "is_boolean", "rows", "same_value", "stage_remove", "stage_reset", "stage_set",
-           "stage_toggle"]
+__all__ = ["ADD_LIST_CAP", "BOOLEAN_VALUES", "ConfigStaged", "RecommendRow", "add_candidates",
+           "applicable_recommendations", "build_changes", "effective_value", "is_boolean", "match_candidates", "rows",
+           "same_value", "stage_remove", "stage_reset", "stage_set", "stage_toggle"]
 
 BOOLEAN_VALUES = ("0", "1")
+ADD_LIST_CAP = 200  # Add's list shows at most this many matches (CF6), then how many more there are
 _EMPTY = parse_cvars(b"")
 
 
@@ -192,6 +193,39 @@ def rows(target: ConfigTarget, cvars: Mapping[str, CvarInfo], *, show_all_known:
         if _matches(needle, name, info):
             out.append(row)
     return sorted(out, key=lambda r: (r.name.casefold(), r.name))
+
+
+def add_candidates(targets: Sequence[ConfigTarget], cvars: Mapping[str, Mapping[str, CvarInfo]],
+                   staged: ConfigStaged | None = None) -> list[CvarInfo]:
+    """Add's list (feedback spec CF6): every CVar the knowledge base of a target's flavor (`cvars`: flavor folder ->
+    its CVars) knows for that target's level, as Show all known lists them, that none of the targets sets (as staged:
+    a CVar staged to be added leaves the list, one staged to be removed comes back). Once per name (case ignored,
+    the first target's flavor wins), sorted by name."""
+    taken = {key for target in targets for key, (_, value, _) in _values(staged, target).items() if value is not None}
+    found: dict[str, CvarInfo] = {}
+    for target in targets:
+        for info in cvars.get(target.flavor.folder, {}).values():
+            key = info.name.casefold()
+            if info.scope == target.level and key not in taken:
+                found.setdefault(key, info)
+    return sorted(found.values(), key=lambda i: (i.name.casefold(), i.name))
+
+
+def match_candidates(candidates: Sequence[CvarInfo], typed: str,
+                     cap: int = ADD_LIST_CAP) -> tuple[list[CvarInfo], int]:
+    """The candidates whose name holds `typed` (case ignored; all for an empty text), those starting with it first,
+    each part in the candidates' order: at most `cap` of them, and how many more matched."""
+    needle = typed.strip().casefold()
+    starts: list[CvarInfo] = []
+    inside: list[CvarInfo] = []
+    for info in candidates:
+        name = info.name.casefold()
+        if name.startswith(needle):
+            starts.append(info)
+        elif needle in name:
+            inside.append(info)
+    matched = starts + inside
+    return matched[:cap], max(len(matched) - cap, 0)
 
 
 def _lines(target: ConfigTarget, sets: Mapping[str, str], removes: set[str]) -> tuple[str, ...]:

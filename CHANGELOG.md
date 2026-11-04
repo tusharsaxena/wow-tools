@@ -17,6 +17,11 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 - **Config Editor**: see and change the CVars in `Config.wtf` and every account's and character's config, with help
   for each CVar and sourced recommendations, set across many characters at once, with a dry run and Undo.
 
+### Changed
+
+- Every tool's trees now show how many items each group holds, counting only what the search or filter shows,
+  and their rows line up in columns.
+
 ### Fixed
 
 - The launcher no longer closes its window before you can read an error: a double-clicked `wow-tools.cmd` waits

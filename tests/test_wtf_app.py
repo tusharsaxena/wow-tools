@@ -13,19 +13,22 @@ from unittest.mock import patch
 from textual.app import App
 from textual.widgets import Button, DataTable, Input, OptionList, ProgressBar, Static, Tree
 
-from tests.fixtures import BASE, TuiTestCase, accept_disclaimer, build_wow_tree, make_config, settle, submit_filter
+from tests.fixtures import (BASE, TINY, TuiTestCase, accept_disclaimer, assert_fits_or_keeps_minimum,
+                            assert_siblings_distinct, build_wow_tree, make_config, settle, submit_filter)
 from wowtools.core import activity
 from wowtools.core.backup import BackupError
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.core.paths import to_stored
+from wowtools.core.text import human_size, plural
 from wowtools.tools.wtf_cleaner import multi
 from wowtools.tools.wtf_cleaner import review_screen as review_module
 from wowtools.tools.wtf_cleaner.app import CleanerSettingsScreen
 from wowtools.tools.wtf_cleaner.cleaner import CleanError, CleanResult, FileOutcome
 from wowtools.tools.wtf_cleaner.journal import resolve_journal_dir, latest_undoable
-from wowtools.tools.wtf_cleaner.report import CRITERION_COLORS, RESULT_COLUMNS, result_rows
+from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, FILE_MINIMUMS, ITEM_MINIMUMS, RESULT_COLUMNS,
+                                               result_rows)
 from wowtools.tools.wtf_cleaner.review_screen import CleanProgressScreen, RecoveryScreen, ResultScreen, ReviewScreen
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, criterion_counts
 from wowtools.tools.wtf_cleaner.safety import MARKER_NAME
@@ -33,6 +36,7 @@ from wowtools.tools.wtf_cleaner.scanner import scan
 from wowtools.tools.wtf_cleaner.settings import load_settings
 from wowtools.tools.wtf_cleaner.undo import UndoResult
 from wowtools.ui.account_screen import AccountScreen
+from wowtools.ui.columns import GROUP_NAME_MINIMUM
 from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.review import BLACKLIST_NO_TARGET, BLACKLISTED_MARK
@@ -1649,13 +1653,18 @@ class AllFlavorsTest(AppTestCase):
         self.assertEqual(load_settings(Config(self.tool_cfg.path).load()).blacklist, [("_classic_era_", "Gone")])
 
     async def test_flavor_with_nothing_to_clean_says_so(self):
+        """A flavor with nothing to clean counts `0 items` (it has account rows: STD-7.27); its accounts, with no
+        rows below them, say "nothing to clean"."""
         (self.era_sv / "Gone.lua").unlink()
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:
             review = await self.open_all(app, pilot)
             tree = review.query_one("#proposal", Tree)
             era = next(n for n in tree.root.children if "Classic Era" in str(n.label))
-            self.assertIn("nothing to clean", str(era.label))
+            self.assertTrue(str(era.label).endswith("  0 items"), str(era.label))
+            self.assertTrue(era.children)
+            for account in era.children:
+                self.assertIn("nothing to clean", str(account.label))
 
     async def test_every_flavor_failing_shows_the_error(self):
         for folder in ("_classic_era_", "_retail_"):
@@ -2178,3 +2187,177 @@ class TreeFilterTest(AppTestCase):
             submit_filter(review, item.account)
             await settle(app, pilot)
             self.assertEqual({n.data[2] for n in tree.root.children if n.data}, {item.account})  # its account
+
+
+def _indent(node) -> int:
+    """The cells in front of a node's label: the tree guides, and the ▶ / ▼ of a node that opens."""
+    depth, parent = 0, node.parent
+    while parent is not None:
+        depth, parent = depth + 1, parent.parent
+    return depth * node.tree.guide_depth + (2 if node.allow_expand else 0)
+
+
+class NodeCountsAndColumnsTest(AppTestCase):
+    """Feedback round 2 R2 / R4 (STD-7.27, STD-7.28) on the WTF Cleaner review: every group (the root, a flavor,
+    an account, account-wide or a character) counts the addon entries below it that the tree shows (after the
+    search; a blacklisted row is not one, it is never cleaned), an addon row and its file rows are aligned columns
+    (name · reasons · files · size · age, and name · size · age), and a long name is cut so a row fits the pane."""
+
+    def groups(self, tree):
+        return [n for n in _walk(tree.root) if n.data and n.data[0] == "group"]
+
+    def shown_items(self, node) -> int:
+        return sum(1 for n in _walk(node) if n.data and n.data[0] == "item" and not n.data[1].blacklisted)
+
+    def assert_counts(self, tree):
+        for node in self.groups(tree):
+            if not node.children and node is not tree.root:
+                continue  # an account or flavor with no rows says "nothing to clean" (test_account_with_nothing_...)
+            with self.subTest(group=node.data[2]):
+                self.assertTrue(str(node.label).endswith(f"  {plural(self.shown_items(node), 'item')}"),
+                                str(node.label))
+                count = node.label.spans[-1]
+                self.assertEqual((str(node.label)[count.start:].strip(), count.style),
+                                 (plural(self.shown_items(node), "item"), "dim"))
+
+    async def test_every_group_counts_the_addon_entries_below_it(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            self.assertEqual(str(tree.root.label).split("  ")[-1], plural(len(review.proposal.items), "item"))
+            self.assertLessEqual({"ACCT1", "ACCT2", "account-wide"}, {n.data[2] for n in self.groups(tree)})
+            self.assert_counts(tree)
+            for node in _walk(tree.root):  # an addon row is the leaf: its files are a column, not a count
+                if node.data and node.data[0] == "item":
+                    self.assertNotIn("item", str(node.label).split("  ", 1)[-1], str(node.label))
+
+    async def test_counts_follow_the_search(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            submit_filter(review, "OldAddon")
+            await settle(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            self.assertTrue(str(tree.root.label).endswith("  1 item"), str(tree.root.label))
+            acct1 = next(n for n in tree.root.children if n.data[2] == "ACCT1")
+            self.assertTrue(str(acct1.label).endswith("  1 item"), str(acct1.label))
+            self.assert_counts(tree)
+
+    async def test_blacklisted_rows_are_not_counted(self):
+        self.tool_cfg.set("wtf_cleaner", "blacklist", "_retail_:Uninstalled", log=False)
+        self.tool_cfg.save()
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            self.assertTrue(any(n.data[1].blacklisted for n in _walk(tree.root) if n.data and n.data[0] == "item"))
+            self.assert_counts(tree)
+
+    async def test_a_group_of_blacklisted_rows_only_counts_zero(self):
+        """STD-7.27: a group with rows below it says `0 items` when none is cleanable (all blacklisted), never the
+        tool's own "nothing to clean" (kept for a group with no rows at all)."""
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            owner = next(n for n in self.groups(tree) if n.data[2] != "account-wide" and n.data[1]
+                         and n.parent is not tree.root)
+            addons = sorted({i.addon for i in owner.data[1]})
+            self.tool_cfg.set("wtf_cleaner", "blacklist", ",".join(f"_retail_:{a}" for a in addons), log=False)
+            self.tool_cfg.save()
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            held = [n for n in self.groups(tree) if n.children and not n.data[1]]
+            self.assertTrue(held)
+            for node in held:
+                self.assertTrue(str(node.label).endswith("  0 items"), str(node.label))
+                self.assertNotIn("nothing to clean", str(node.label))
+            self.assert_counts(tree)
+
+    def assert_aligned(self, rows, cell) -> None:
+        """Every sibling row's `cell(row)` (its text) starts in one column: the columns line up."""
+        starts = {str(n.label).rindex(cell(n)) for n in rows}
+        self.assertEqual(len(starts), 1, [str(n.label) for n in rows])
+
+    async def test_addon_and_file_rows_are_aligned_columns(self):
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            owner = next(n for n in self.groups(tree) if n.data[2] == "account-wide" and len(n.children) > 2)
+            items = [n for n in owner.children if n.data[0] == "item"]
+            self.assert_aligned(items, lambda n: plural(len(n.data[1].files), "file"))
+            for node in items:  # the files, size and age columns are dim; the reasons keep their colours
+                plain = str(node.label)
+                files = plural(len(node.data[1].files), "file")
+                spans = {plain[s.start:s.end].strip(): str(s.style) for s in node.label.spans}
+                self.assertEqual(spans.get(files), "dim", plain)
+                self.assertRegex(plain, r"\d+d$")
+            item = max(items, key=lambda n: len(n.data[1].files))
+            item.expand()
+            await pilot.pause()
+            files = [n for n in item.children if n.data[0] == "file"]
+            self.assertGreater(len(files), 1)
+            self.assert_aligned(files, lambda n: human_size(n.data[2].size))
+
+    async def test_a_long_name_is_cut_to_fit_the_pane(self):
+        """At 120x30 every row fits the pane; at 80x24 a row deep in the tree keeps its name's minimum and scrolls
+        sideways past the pane rather than cut its name to a few cells (STD-7.28, user decision U1), so sibling
+        rows still read apart."""
+        long = "VeryLongAddonName" * 9
+        (self.sv / f"{long}.lua").write_text("x")
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#proposal", Tree)
+            row = next(n for n in _walk(tree.root) if n.data and n.data[0] == "item" and n.data[1].addon == long)
+            row.expand()
+            await settle(app, pilot)
+            for size in (BASE, TINY):
+                await pilot.resize_terminal(*size)
+                await settle(app, pilot)
+                room = tree.size.width - tree.styles.scrollbar_size_vertical
+                for node in _walk(tree.root):
+                    if not node.data:
+                        continue
+                    with self.subTest(size=size, row=str(node.label)):
+                        if size == BASE:  # every row, a group too: its count is never cut off (R2)
+                            self.assertLessEqual(_indent(node) + node.label.cell_len, room)
+                        elif node.data[0] in ("item", "file"):  # 80 columns: the name keeps its minimum (U1)
+                            name = node.data[1].addon if node.data[0] == "item" else node.data[2].name
+                            minimum = (ITEM_MINIMUMS if node.data[0] == "item" else FILE_MINIMUMS)[0]
+                            assert_fits_or_keeps_minimum(self, node, _indent(node), room, name, minimum)
+                        else:
+                            assert_fits_or_keeps_minimum(self, node, _indent(node), room, node.data[2],
+                                                         GROUP_NAME_MINIMUM,
+                                                         after=r"  (\d+ items?|nothing to clean)")
+                assert_siblings_distinct(self, [n for n in _walk(tree.root) if n.data])
+                if size == BASE:
+                    plain = str(row.label)
+                    self.assertIn("…", plain)
+                    self.assertNotIn(long, plain)
+                    self.assertIn("Not installed", plain)  # the reasons and the short columns still show
+                    self.assertRegex(plain, r"1 file +1 B +\d+d$")
+                for node in self.groups(tree):
+                    if node.data[1] or node is tree.root:
+                        self.assertRegex(str(node.label), r"  \d+ items?$")
+
+    async def test_flavor_nodes_count_their_addon_entries(self):
+        era_sv = self.root / "_classic_era_" / "WTF" / "Account" / "ACCT1" / "SavedVariables"
+        (era_sv / "Gone.lua").write_text("x")
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            await self.enter_tool(app, pilot)
+            app.screen.query_one("#flavors", OptionList).highlighted = 0
+            await pilot.press("enter")
+            await pilot.pause()
+            await settle(app, pilot)
+            await accept_disclaimer(app, pilot)
+            review = app.screen
+            tree = review.query_one("#proposal", Tree)
+            flavors = [n for n in tree.root.children if n.data and n.data[0] == "group" and n.data[1]]
+            self.assertGreaterEqual(len(flavors), 2)
+            self.assert_counts(tree)

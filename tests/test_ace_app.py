@@ -1,13 +1,15 @@
 """Ace3 Profile Manager screens (flow, settings, review, popups, apply, undo, recovery)."""
 from __future__ import annotations
 
+import re
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 from textual.widgets import Button, DataTable, Input, Static, Tree
 
-from tests.fixtures import BASE, TuiTestCase, accept_disclaimer, build_ace_tree, make_config, settle, submit_filter
+from tests.fixtures import (BASE, COUNT_AFTER, TINY, TuiTestCase, accept_disclaimer, assert_fits_or_keeps_minimum,
+                            build_ace_tree, make_config, settle, submit_filter)
 from wowtools.core.backup import BackupEntry, create_backup
 from wowtools.core.blacklist import toggle_pair
 from wowtools.core.config import Config
@@ -25,8 +27,11 @@ from wowtools.tools.ace3_profile_manager.result_screen import ProfileResultScree
 from wowtools.tools.ace3_profile_manager.review_screen import ProfileReviewScreen
 from wowtools.tools.ace3_profile_manager.scanner import sha256_of
 from wowtools.tools.ace3_profile_manager.settings import load_settings
+from wowtools.tools.ace3_profile_manager.tree_view import GROUP, LAYOUTS
 from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult
 from wowtools.ui.account_screen import AccountScreen
+from wowtools.ui.columns import GROUP_NAME_MINIMUM
+from wowtools.ui.counts import count_text
 from wowtools.ui.dialogs import LISTED_ID, ConfirmScreen, InfoScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.review import BLACKLISTED_MARK
@@ -207,9 +212,9 @@ class ReviewTest(AceAppBase):
             await settle(app, pilot)
             text = "\n".join(labels(tree))
             for expected in ("Retail", "Classic Era", "ACCT1", "KickCD", "ElvUI", "ElvDB", "ElvPrivateDB",
-                             "Default · 3 characters · Default", "unused", "missing",
-                             "Gone - Realm1 · no character folder", "spec profiles", "Scan warnings"):
+                             "Default  3 characters  Default", "unused", "missing", "spec profiles", "Scan warnings"):
                 self.assertIn(expected, text)
+            self.assertRegex(text, r"Gone - Realm1 +no character folder")  # R4: the tags in a column
             self.assertNotIn("KickCDPerfDB", text)
             self.assertNotIn("Memento", text.replace("Memento.lua", ""))
             self.assertEqual(review.ticked, set())
@@ -359,8 +364,11 @@ class ReviewTest(AceAppBase):
                 self.assertEqual({n.data[0] for n in rows}, set(kinds), view)
                 for node in rows:
                     label = node.label
-                    self.assertTrue(label.plain.startswith(f"{BLACKLISTED_MARK} "), (view, label.plain))
-                    self.assertTrue(any(s.start == 0 and "dim" in str(s.style) for s in label.spans), label.spans)
+                    # a row that doesn't open beside one that does is padded where the ▶ is (R4: columns line up)
+                    pad = 2 if id(node.data) in review._builder.padded else 0
+                    self.assertEqual(label.plain[:pad], " " * pad)
+                    self.assertTrue(label.plain[pad:].startswith(f"{BLACKLISTED_MARK} "), (view, label.plain))
+                    self.assertTrue(any(s.start == pad and "dim" in str(s.style) for s in label.spans), label.spans)
 
     async def test_b_locks_the_pair_in_its_flavor_only(self):
         """Feedback round 1: b blacklists (Retail, ElvUI); Classic Era's Questie stays tickable."""
@@ -407,7 +415,7 @@ class ReviewTest(AceAppBase):
             await settle(app, pilot)
             text = "\n".join(labels(tree))
             self.assertIn("Kaelys - Realm1", text)
-            self.assertIn("KickCD: Default", text)
+            self.assertRegex(text, r"KickCD +Default")  # R4: addon, then its profile in a column
             submit_filter(review, "mierin")
             await settle(app, pilot)
             tree.root.expand_all()
@@ -2169,3 +2177,247 @@ class OnePressLeftoversTest(AceAppBase):
             review.query_one("#show-leftovers").value = False
             await settle(app, pilot)
             self.assertEqual(review.action_tip("remove_leftovers"), "No leftover characters are shown.")
+
+
+# --- feedback round 2 (R2, R4; STD-7.27, STD-7.28) --------------------------------------------------------------
+LEAVES = {"addon": ("profile", "deleted"), "character": ("pair", "removed")}  # the leaf of each view (G6a)
+GROUPS = ("root", "flavor", "account", "db")  # a name and its count
+COUNTED_ROWS = ("addon", "character")  # column rows with a count column
+
+
+def leaf_count(node, kinds) -> int:
+    """The leaves below `node` as the tree shows them (a Scan warnings group is not counted in its parents')."""
+    if node.data and node.data[0] in kinds:
+        return 1
+    return sum(leaf_count(c, kinds) for c in node.children if not (c.data and c.data[0] == "warnings"))
+
+
+def depth(node) -> int:
+    n = 0
+    while node.parent is not None:
+        node, n = node.parent, n + 1
+    return n
+
+
+def column_at(node, pattern) -> int | None:
+    """Where `pattern` starts on node's row (behind its guides): its toggle counts, so siblings that open and ones
+    that don't compare alike."""
+    match = re.search(pattern, node.label.plain)
+    return None if match is None else (2 if node.allow_expand else 0) + match.start()
+
+
+class NodeCountsAndColumnsTest(AceAppBase):
+    def assert_counts(self, tree, view):
+        kinds = LEAVES[view]
+        checked = 0
+        for node in walk(tree.root):
+            kind = node.data[0] if node.data else None
+            plain = node.label.plain
+            if kind == "account" and not node.data[1].files:
+                self.assertTrue(plain.endswith("no Ace3 data"), plain)
+                continue
+            if kind in GROUPS:
+                self.assertTrue(plain.endswith(f"  {count_text(leaf_count(node, kinds))}"), plain)
+                checked += 1
+            elif kind in COUNTED_ROWS:
+                self.assertRegex(plain, rf"  {count_text(leaf_count(node, kinds))}(  |$)")
+                checked += 1
+            elif kind == "warnings":
+                self.assertTrue(plain[2:].startswith(f"⚠ Scan warnings  {count_text(len(node.children))}"), plain)
+                checked += 1
+        self.assertGreater(checked, 3)
+
+    async def test_every_node_counts_the_profiles_below_it(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#profiles", Tree)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            self.assert_counts(tree, "addon")
+            kickcd = find_addon(tree, "KickCD")
+            self.assertRegex(kickcd.label.plain, r"KickCD +2 items$")  # Default and Backup
+            elvui = find_addon(tree, "ElvUI")
+            self.assertEqual(leaf_count(elvui, LEAVES["addon"]), sum(len(db.children) for db in elvui.children))
+
+    async def test_counts_follow_the_filter_and_the_show_boxes(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#profiles", Tree)
+            total = leaf_count(tree.root, LEAVES["addon"])
+            submit_filter(review, "healer")
+            await settle(app, pilot)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            self.assertLess(leaf_count(tree.root, LEAVES["addon"]), total)
+            self.assert_counts(tree, "addon")
+            submit_filter(review, "")
+            await settle(app, pilot)
+            review.query_one("#only-unused").value = True
+            await settle(app, pilot)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            self.assertLess(leaf_count(tree.root, LEAVES["addon"]), total)
+            self.assert_counts(tree, "addon")
+
+    def assert_character_counts(self, tree) -> int:
+        """Every profile row's `N characters` is the live characters the tree shows under it (R2, STD-7.27)."""
+        checked = 0
+        for node in walk(tree.root):
+            if node.data and node.data[0] == "profile":
+                shown = sum(1 for c in node.children if c.data[0] == "char")
+                self.assertRegex(node.label.plain, rf"  {re.escape(plural(shown, 'character'))}(  |$)")
+                checked += 1
+        return checked
+
+    async def test_a_profile_counts_the_characters_it_shows(self):
+        """Under a search and with Leftover characters off, a profile's character count follows the rows below it
+        (G6 review), not every character in the database."""
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#profiles", Tree)
+            submit_filter(review, "mierin")
+            await settle(app, pilot)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            self.assertGreater(self.assert_character_counts(tree), 0)
+            default = next(n for n in walk(find_addon(tree, "KickCD")) if n.data[0] == "profile"
+                           and n.data[2] == "Default")
+            self.assertRegex(default.label.plain, r"Default +1 character  ")
+            submit_filter(review, "")
+            await settle(app, pilot)
+            review.query_one("#show-leftovers").value = False
+            await settle(app, pilot)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            self.assertGreater(self.assert_character_counts(tree), 0)
+            default = next(n for n in walk(find_addon(tree, "KickCD")) if n.data[0] == "profile"
+                           and n.data[2] == "Default")
+            self.assertRegex(default.label.plain, r"Default +2 characters  ")
+
+    async def test_a_deleted_profile_is_still_counted(self):
+        """A pending delete stays a row of its addon until Apply (G6a): it is counted."""
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            key = next(k for k, st in review.staging.states.items() if st.db.sv_name == "KickCDDB"
+                       and st.file.account == "ACCT1")
+            self.assertTrue(review.staging.delete({key: ["Backup"]}, "Default").ok)
+            review.refresh_view()
+            await settle(app, pilot)
+            tree = review.query_one("#profiles", Tree)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            self.assertRegex(find_addon(tree, "KickCD").label.plain, r"KickCD +2 items$")
+            self.assert_counts(tree, "addon")
+
+    async def test_by_character_every_node_counts_its_addon_pairs(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            await pilot.press("v")
+            await settle(app, pilot)
+            tree = review.query_one("#profiles", Tree)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            self.assert_counts(tree, "character")
+            submit_filter(review, "kickcd")
+            await settle(app, pilot)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            self.assert_counts(tree, "character")
+
+    async def test_sibling_rows_are_aligned_columns(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#profiles", Tree)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            account = find_addon(tree, "KickCD").parent
+            starts = {column_at(n, r"\d+ items?") for n in account.children}
+            self.assertEqual(len(starts), 1, [n.label.plain for n in account.children])  # the count column
+            for node in walk(tree.root):
+                profiles = [c for c in node.children if c.data and c.data[0] == "profile"]
+                if len(profiles) > 1:
+                    starts = {column_at(c, r"\d+ characters?") for c in profiles}
+                    self.assertEqual(len(starts), 1, [c.label.plain for c in profiles])
+            default = find(tree, "profile", "Default")
+            self.assertRegex(default.label.plain, r"^. Default +\d+ characters? +Default")
+            self.assertNotIn(" · ", "\n".join(labels(tree)))  # the old run-together text is gone
+            await pilot.press("v")
+            await settle(app, pilot)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            kaelys = find(tree, "character", "Kaelys - Realm1")
+            pairs = [c for c in kaelys.children if c.data[0] == "pair"]
+            self.assertGreater(len(pairs), 1)
+            starts = set()
+            for pair in pairs:
+                state = review.staging.state(pair.data[1])
+                addon, profile = state.file.addon, state.keys[pair.data[2]]
+                plain = pair.label.plain
+                self.assertTrue(plain[2:].startswith(addon), plain)
+                starts.add(plain.index(profile, 2 + len(addon)))
+            self.assertEqual(len(starts), 1, [c.label.plain for c in pairs])  # the profile column
+            self.assertNotIn(" · ", "\n".join(labels(tree)))
+
+    async def test_rows_fit_the_pane(self):
+        """Every row fits the pane at 120x30; at 80x24 the deepest rows (a character under a profile under a
+        database) keep their name's minimum and scroll sideways instead of reading `…` (STD-7.28, user decision
+        U1)."""
+        for size in (BASE, TINY):
+            app = self.make_app()
+            async with app.run_test(size=size) as pilot:
+                review = await self.open_review(app, pilot)
+                tree = review.query_one("#profiles", Tree)
+                for view in ("addon", "character"):
+                    if view == "character":
+                        await pilot.press("v")
+                        await settle(app, pilot)
+                    tree.root.expand_all()
+                    await settle(app, pilot)
+                    room = tree.size.width - tree.styles.scrollbar_size_vertical
+                    for node in walk(tree.root):
+                        if node.data is None or node.data[0] == "note":
+                            continue
+                        guides = depth(node) * tree.guide_depth + (2 if node.allow_expand else 0)
+                        row = review._builder.rows.get(id(node.data))
+                        if row is None:
+                            self.assertLessEqual(guides + node.label.cell_len, room, (size, view, node.label.plain))
+                        else:  # where the name's minimum does not fit, the name keeps it and the row scrolls (U1)
+                            minimum = GROUP_NAME_MINIMUM if row.layout == GROUP else LAYOUTS[row.layout].minimums[0]
+                            counted_row = len(row.cells) > 1 if row.layout == GROUP else \
+                                row.layout in COUNTED_ROWS and bool(row.cells[1])
+                            with self.subTest(size=size, view=view, row=node.label.plain):
+                                assert_fits_or_keeps_minimum(self, node, guides, room, row.cells[0], minimum,
+                                                             after=COUNT_AFTER if counted_row else "")
+                        self.assertEqual(node.label.plain, node.label.plain.rstrip())  # no trailing padding
+                        if node.data[0] in ("root", "flavor", "account", "addon", "character"):  # the count kept
+                            self.assertRegex(node.label.plain, r"\d+ items?|no Ace3 data", (size, node.label.plain))
+
+    async def test_the_blacklist_tree_counts_its_addons(self):
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            await pilot.pause()
+            install = WowInstall(self.root)
+            app.push_screen(BlacklistScreen(self.cfg, install.flavors(), []), lambda _: None)
+            await settle(app, pilot)
+            tree = app.screen.query_one("#blacklist-tree", Tree)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            addons = [n for n in walk(tree.root) if n.data and n.data[0] == "addon"]
+            self.assertTrue(tree.root.label.plain.endswith(f"Blacklist  {count_text(len(addons))}"),
+                            tree.root.label.plain)
+            for flavor in tree.root.children:
+                shown = sum(1 for c in flavor.children if c.data[0] == "addon")
+                self.assertTrue(flavor.label.plain.endswith(f"  {count_text(shown)}"), flavor.label.plain)
+            submit_filter(app.screen, "kick")
+            await settle(app, pilot)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            addons = [n for n in walk(tree.root) if n.data and n.data[0] == "addon"]
+            self.assertTrue(tree.root.label.plain.endswith(f"Blacklist  {count_text(len(addons))}"),
+                            tree.root.label.plain)

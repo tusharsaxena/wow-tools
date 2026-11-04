@@ -1,9 +1,12 @@
 """The Config Editor's browse screen (config tools spec CE2-CE8; X1-X5, X8): every CVar file of the chosen flavors
 (a scan in a worker, scanner.scan_targets, with the flavor's CVar data and recommendations from core.kb) as the
 shared character tree, (flavor ›) Config.wtf, account › Account config and realm › character (the character's
-config-cache.wtf). A file opens to its CVar rows, `name = value (default …) ✱changed` (report.row_text), loaded when
-it is opened (a file can set hundreds, and Show all known adds the knowledge base's). A file that can't be read is
-read-only: greyed, never ticked or written, and listed in the warnings view (`!`).
+config-cache.wtf). A file opens to its CVar rows, loaded when it is opened (a file can set hundreds, and Show all
+known adds the knowledge base's): five aligned columns, name, value, default, state and category (feedback spec
+CF1-CF3; report.row_cells fitted by the shared ui.columns, CVAR_COLUMNS), each as wide as the file's widest cell up to a cap, cut with … to fit
+the tree pane (columns dropped when even the minimums don't fit; fitted again when the window is resized), the
+state and category in their theme colours. A file that can't be read is read-only: greyed, never ticked or
+written, and listed in the warnings view (`!`).
 
 The left pane has the search (the shared filter box: a CVar's name, Blizzard's help and our note, or its file's
 group), the category select and the Changed only / Show all known boxes (CE6), the staged line and Apply / Dry run /
@@ -16,10 +19,12 @@ client-file pipeline (RunActions: WoW check, confirm with the scope warnings, pr
 Undo puts it all back. Leaving with staged changes asks first. Dismisses with "flavors", "tools" or "quit"."""
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Collection, Hashable, Iterable, Sequence
 from pathlib import Path
 from typing import ClassVar, NamedTuple
 
+from rich.cells import cell_len
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -41,10 +46,11 @@ from wowtools.tools.config_editor.events import SV_TOOL
 from wowtools.tools.config_editor.journal import latest_undoable, read_journal, resolve_journal_dir
 from wowtools.tools.config_editor.model import CATEGORIES, CONFIG_CACHE, CONFIG_WTF, ConfigTarget, Row
 from wowtools.tools.config_editor.ops import ConfigStaged, build_changes, rows
-from wowtools.tools.config_editor.report import (ACCOUNT_CONFIG, FILE_COLUMNS, STAGE_TITLES, STATUS_COLOURS,
-                                                 UNDO_COLUMNS, apply_confirm, apply_groups, file_label, file_rows,
-                                                 help_lines, recovery_text, row_text, scope_listed, summary_rows,
-                                                 undo_confirm, undo_detail_rows, undo_summary_rows)
+from wowtools.tools.config_editor.report import (ACCOUNT_CONFIG, COLUMN_CAPS, COLUMN_MINIMUMS, DROP_ORDER,
+                                                 FILE_COLUMNS, STAGE_TITLES, STATUS_COLOURS, HelpPanel, UNDO_COLUMNS,
+                                                 apply_confirm, apply_groups, file_label, file_rows, help_panel,
+                                                 recovery_text, row_cells, scope_listed, summary_rows, undo_confirm,
+                                                 undo_detail_rows, undo_summary_rows)
 from wowtools.tools.config_editor.runner import ApplyError, run_apply
 from wowtools.tools.config_editor.scanner import scan_targets
 from wowtools.tools.config_editor.settings import load_settings, resolve_root
@@ -52,10 +58,14 @@ from wowtools.tools.config_editor.undo import (UndoError, UndoResult, leave, pen
                                                undo_run)
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.character_tree import CharacterNode, character_label, node_keys, populate_characters
+from wowtools.ui.columns import ColumnLayout, column_text, fit_columns, natural_widths
+from wowtools.ui.counts import count_text, with_count
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                  UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
 from wowtools.ui.result_screen import ResultScreen
-from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, SvRecoveryActions, TickModel, WowCheck
+from wowtools.ui.review import (MARK_WIDTH, ActionBar, BarTree, FittedRows, ReviewBase, RunActions, SvRecoveryActions,
+                                TickModel, WowCheck, tree_room)
+from wowtools.ui.theme import CVAR_CATEGORY_COLOURS, CVAR_STATE_COLOURS, NOT_SET_COLOUR, TITLE_GOLD
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, TreeFilter
 from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost, where_text
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, NavSelect, RiskBanner, action_button
@@ -66,10 +76,43 @@ NAV_HINT = (REVIEW_HINT + "Space on a 0/1 CVar toggle · a all · n none · " + 
 READ_ONLY = "read-only"
 NO_FILE = "no file"
 NO_MARK = "  "
+# The CVar row's five columns as the shared fit takes them (CF2, FB2r): the name, value and default capped and cut
+# (the value and the default first, then the name), the state and category never cut, only dropped (DROP_ORDER).
+CVAR_COLUMNS = ColumnLayout(caps=(*COLUMN_CAPS, None, None), minimums=(*COLUMN_MINIMUMS, 0, 0),
+                            shrink=((1, 2), (0,)), drop=DROP_ORDER)
 STAGED_MARK = "✎"  # a CVar with a staged change, before its line (the Saved Variables Browser's symbol, D12)
 WIDE = 160  # from this many columns the help panel sits beside the tree
+# The help panel's title (the CVar's name, or the file's place) and its labels (feedback round 2 R1): the suite's gold
+# header and the theme's cyan accent, both bold; the values stay in the normal colour.
+HELP_TITLE = f"bold {TITLE_GOLD}"
+HELP_LABEL = ACCENT
+ALL_CATEGORIES = "All categories"
 GROUP_HELP = "Open a file to see its CVars; highlight one for its help. Space ticks files: Set, Remove, Reset and " \
              "Add then act on every ticked file."
+
+
+def help_panel_text(panel: HelpPanel, warning: str) -> Text:
+    """The help panel as Rich Text (CF5): the title in HELP_TITLE, a blank line before each section, each label in
+    HELP_LABEL (R1) and its text in the normal style, the state and the category in their row colours (CF3), a
+    warning in bold `warning`, a source as a `•` bullet."""
+    text = Text()
+    text.append(panel.title, style=HELP_TITLE)
+    for section in panel.sections:
+        text.append("\n")
+        for line in section:
+            text.append("\n")
+            if line.bullet:
+                text.append("  • ")
+            if line.label:
+                text.append(f"{line.label}:", style=HELP_LABEL)
+                if line.text or line.tail:
+                    text.append(" ")
+            style = {"state": CVAR_STATE_COLOURS.get(line.text, ""),
+                     "category": CVAR_CATEGORY_COLOURS.get(line.text, ""),
+                     "warning": f"bold {warning}"}.get(line.kind, "")
+            text.append(line.text, style=style)
+            text.append(line.tail)
+    return text
 
 
 class FileKey(NamedTuple):
@@ -118,8 +161,8 @@ class ConfigResultScreen(ResultScreen):
         self.title_text = title
 
 
-class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecoveryActions, RunActions, ReviewBase,
-                         Screen[str]):
+class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecoveryActions, RunActions, FittedRows,
+                         ReviewBase, Screen[str]):
     """The CVar files of `flavors` (the flavor picked, or all of them). `wow_check` (tests inject one) stands for the
     running-WoW check; `kb_root` (tests) is the knowledge base folder (None: the one shipped in wowtools/kb)."""
 
@@ -140,7 +183,7 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
     ConfigReviewScreen #main { width: 1fr; }
     ConfigReviewScreen #tree-pane { width: 2fr; }
     ConfigReviewScreen #cvars { height: 1fr; }
-    ConfigReviewScreen #cvar-help { height: 5; padding: 0 1; border-top: solid $accent 40%; }
+    ConfigReviewScreen #cvar-help { height: 40%; min-height: 5; padding: 0 1; border-top: solid $accent 40%; }
     ConfigReviewScreen #side-help { width: 1fr; padding: 0 1; border-left: solid $accent 40%; display: none; }
     ConfigReviewScreen #tree-actions { padding: 0 1; }
     ConfigReviewScreen #category { margin-top: 1; }
@@ -197,6 +240,16 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
         self.summary_text = ""
         self._stale = False  # an Apply or Undo changed the files: read them again when the review is shown
         self._keep_open: set[Hashable] = set()  # the files a rebuild opens again (their rows are loaded at once)
+        # CF1, CF2: per file, its rows' widest cells (the natural column widths) and the tree guides' width in
+        # front of its rows
+        self._columns: dict[Path, tuple[int, ...]] = {}
+        self._indents: dict[Path, int] = {}
+        # R2, R5: per file, the CVar rows the tree shows under the filters; the sums per tree group (("root",),
+        # ("flavor", folder), ("account", path), ("realm", path, realm)); the rows per category with every other
+        # filter applied (the category select's counts)
+        self._row_counts: dict[Path, int] = {}
+        self._group_counts: Counter[tuple] = Counter()
+        self._category_counts: Counter[str] = Counter()
 
     # --- layout ------------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -430,11 +483,65 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
     def rows_for(self, target: ConfigTarget) -> list[Row]:
         """The file's CVar rows as the filters show them (CE6): category, changed only, show all known and, unless
         the file's group matches the search, only the CVars it matches."""
+        return self._rows_in(target, self.category)
+
+    def _rows_in(self, target: ConfigTarget, category: str | None) -> list[Row]:
         found = rows(target, self.cvars_for(target.flavor.folder), show_all_known=self.show_all,
-                     category=self.category, changed_only=self.changed_only, search="", staged=self.staged)
+                     category=category, changed_only=self.changed_only, search="", staged=self.staged)
         if not self.filtering or self.text_filter.path_matches(self.group_texts(target)):
             return found
         return [row for row in found if self.row_matches(row)]
+
+    def _count_rows(self) -> None:
+        """Count, from the model (a file's rows load only when it is opened), the CVar rows each file shows under
+        the filters and their sums per tree group (R2), and per category the rows it would show with every other
+        filter applied (R5); then put those in the category select. A file the search hides counts 0 (its rows
+        are none), so the sums are what the tree shows."""
+        files: dict[Path, int] = {}
+        groups: Counter[tuple] = Counter()
+        categories: Counter[str] = Counter()
+        for target in self.targets.values():
+            shown = Counter(row.category for row in self._rows_in(target, None))
+            categories.update(shown)
+            count = shown.total() if self.category is None else shown[self.category]
+            files[target.path] = count
+            groups["root",] += count
+            groups["flavor", target.flavor.folder] += count
+            if target.account is not None:
+                groups["account", target.account.path] += count
+                if target.character is not None:
+                    groups["realm", target.account.path, target.character.realm] += count
+        self._row_counts, self._group_counts, self._category_counts = files, groups, categories
+        self._update_category_options()
+
+    def _update_category_options(self) -> None:
+        """The category select's entries with their counts (R5), `Graphics (22 items)`, the prompt with the total;
+        the pick is kept and no Changed is sent (it would rebuild again)."""
+        select = self.query_one("#category", Select)
+        counts = self._category_counts
+        options = [(f"{name.capitalize()} ({count_text(counts[name])})", name) for name in CATEGORIES]
+        with self.prevent(Select.Changed):
+            select.prompt = f"{ALL_CATEGORIES} ({count_text(counts.total())})"
+            select.set_options(options)
+            if self.category is not None:
+                select.value = self.category
+
+    def leaf_count(self, data) -> int | None:
+        """The R2 count after a node's label (STD-7.27): the CVar rows below it as the tree shows them. A file or a
+        character only when it has rows (a node with no children has no count); an account, a realm and a flavor
+        always (they have children)."""
+        if isinstance(data, FileNode):
+            return self._row_counts.get(data.target.path, 0) or None
+        if isinstance(data, CharacterNode):
+            if data.kind == "character":
+                target = self.character_target(data.character) if data.character is not None else None
+                return (self._row_counts.get(target.path, 0) if target is not None else 0) or None
+            if data.kind == "realm":
+                return self._group_counts["realm", data.account.path, data.realm]
+            return self._group_counts["account", data.account.path]
+        if isinstance(data, list) and data and data[0] == "flavor":
+            return self._group_counts["flavor", data[1]]
+        return None
 
     def target_shown(self, target: ConfigTarget | None) -> bool:
         if target is None or not self.filtering:
@@ -515,7 +622,13 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
             node.expand()
 
     def _add_rows(self, target: ConfigTarget, node: TreeNode, found: list[Row] | None = None) -> None:
-        for row in self.rows_for(target) if found is None else found:
+        found = self.rows_for(target) if found is None else found
+        self._columns[target.path] = natural_widths(map(row_cells, found))
+        depth, parent = 0, node
+        while parent is not None:
+            depth, parent = depth + 1, parent.parent
+        self._indents[target.path] = depth * node.tree.guide_depth  # the guides in front of a row (show_root)
+        for row in found:
             data = CvarNode("cvar", target, row)
             node.add_leaf(self._cvar_label(data), data=data)
 
@@ -549,6 +662,8 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
         cursor = tree.cursor_node.data if tree.cursor_node is not None else None
         self._keep_open = self._opened(tree)
         tree.clear()
+        self.rows_built(tree)  # fitted again once the tree is laid out (behind its loading indicator, a rebuild)
+        self._count_rows()
         many = len(self.flavors) > 1
         for flavor in self.flavors:
             parent = tree.root.add(Text(flavor.display_name), data=["flavor", flavor.folder, ()],
@@ -573,6 +688,10 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
                     continue
                 parent.data = ["flavor", flavor.folder, tuple(keys)]
                 parent.set_label(self._label(parent.data))
+        for node in self._walk(tree):  # populate_characters labels them before their counts are known
+            if isinstance(node.data, CharacterNode):
+                node.set_label(self._label(node.data))
+        tree.root.set_label(with_count(Text(self.scope_label, style=ACCENT), self._group_counts["root",]))
         self.note_no_match(tree.root)
         tree.root.expand()
         self._restore_cursor(tree, cursor)
@@ -623,22 +742,46 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
                 self.call_after_refresh(lambda n=node: tree.move_cursor(n) if n.tree is tree else None)
                 return
 
+    def _row_room(self, path: Path) -> int | None:
+        """The cells a row of the file may take in the tree pane (None before the tree is laid out)."""
+        # NO_MARK and the staged mark (or two spaces) in front of a CVar's columns
+        return tree_room(self.query_one("#cvars", Tree), indent=self._indents.get(path, 0), mark=2 * MARK_WIDTH)
+
     def _cvar_label(self, data: CvarNode) -> Text:
-        """The staged mark (before the line), then `name = value (default …) ✱changed` and the category, dim (CE4);
-        a CVar not set is dim, an unknown one italic."""
+        """The staged mark, then the five columns (CF1-CF3): name, value and default (a CVar not set in
+        NOT_SET_COLOUR, darker than dim (R3), name, value and default alike; in a read-only file dim; an unknown one
+        italic; the default always dim), cut with … to the file's column widths as they fit the pane
+        (the name in its middle), the state and category in their colours; a column the pane has no room for is
+        left out (fit_columns)."""
         row = data.row
-        parts: list[tuple[str, str]] = [(NO_MARK, "")]
-        parts.append((f"{STAGED_MARK} ", f"bold {theme_colour(self.app, 'warning')}") if row.staged else ("  ", ""))
-        style = "dim" if row.value is None or data.target.read_only else ""
+        cells = row_cells(row)
+        natural = self._columns.get(data.target.path) or tuple(map(cell_len, cells))
+        widths, gap = fit_columns(natural, self._row_room(data.target.path), CVAR_COLUMNS)
+        style = NOT_SET_COLOUR if row.value is None else "dim" if data.target.read_only else ""
+        default = NOT_SET_COLOUR if row.value is None else "dim"
         if row.info is None:
             style = f"{style} italic".strip()
-        parts.append((row_text(row), style))
-        parts.append((f"  · {row.category}", "dim"))
-        return Text.assemble(*parts)
+        state, category = cells[3], cells[4]
+        styles = (style, style, default, CVAR_STATE_COLOURS[state], CVAR_CATEGORY_COLOURS.get(category, ""))
+        text = Text.assemble((NO_MARK, ""), (f"{STAGED_MARK} ", f"bold {theme_colour(self.app, 'warning')}")
+                             if row.staged else ("  ", ""))
+        text.append_text(column_text(cells, widths, styles, gap, middle=(0,)))
+        return text
+
+    def refit_rows(self, tree: Tree) -> None:
+        """Fit the CVar rows again to the tree pane's new width (CF2, FittedRows)."""
+        for node in self._walk(tree):
+            if isinstance(node.data, CvarNode):
+                node.set_label(self._cvar_label(node.data))
 
     def _label(self, data) -> Text:
         if isinstance(data, CvarNode):
             return self._cvar_label(data)
+        label = self._node_label(data)
+        count = self.leaf_count(data)
+        return label if count is None else with_count(label, count)
+
+    def _node_label(self, data) -> Text:
         if isinstance(data, FileNode):
             target = data.target
             if target.read_only:
@@ -695,21 +838,48 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
             self._update_summary()
 
     # --- the help panel ----------------------------------------------------------------------------
-    def help_text(self) -> str:
+    def _nothing_shown(self) -> bool:
+        """True when the search leaves the tree empty (it shows only NO_MATCH_TEXT)."""
+        if not self.filtering:
+            return False
+        return not any(node.data is not None for node in self.query_one("#cvars", Tree).root.children)
+
+    def narrowed_help(self) -> str:
+        """Why the tree is empty (CF4a): the search and the Show choices narrow it together, so a search applied
+        earlier still applies when a category is picked. Names each and how to clear it."""
+        shown = []
+        if self.category is not None:
+            shown.append(f"in the {self.category.capitalize()} category")
+        if self.changed_only:
+            shown.append("with Changed only ticked")
+        lines = [" ".join([f'Nothing matches the search "{self.text_filter.text.strip()}"', *shown]) + "."]
+        if shown:
+            lines.append("The search and the Show choices narrow the list together.")
+        lines.append("Esc in the filter box clears the search" + ("; All categories shows every category"
+                                                                  if self.category is not None else "") + ".")
+        if not self.show_all:
+            lines.append("Show all known adds the CVars the files don't set.")
+        return "\n".join(lines)
+
+    def help_text(self) -> Text:
+        """The help panel's Text: the highlighted CVar's or file's panel (CF5), else the hint or why nothing shows."""
         data = self._cursor_data()
         target = self._node_target(data)
         if target is None:
-            return GROUP_HELP if self.scanned else ""
+            if self.scanned and self._nothing_shown():
+                return Text(self.narrowed_help())
+            return Text(GROUP_HELP if self.scanned else "")
         folder = target.flavor.folder
         row = data.row if isinstance(data, CvarNode) else None
         rec = None
         if row is not None:
             rec = next((r for r in self.recommendations_for(folder) if r.cvar.casefold() == row.name.casefold()),
                        None)
-        return "\n".join(help_lines(target, row, recommendation=rec, has_data=bool(self.cvars_for(folder))))
+        panel = help_panel(target, row, recommendation=rec, has_data=bool(self.cvars_for(folder)))
+        return help_panel_text(panel, theme_colour(self.app, "warning"))
 
     def _update_help(self) -> None:
-        text = Text(self.help_text())
+        text = self.help_text()
         self.query_one("#cvar-help-text", Static).update(text)
         self.query_one("#side-help-text", Static).update(text)
 

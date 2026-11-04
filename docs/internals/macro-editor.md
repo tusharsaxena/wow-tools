@@ -88,6 +88,21 @@ character folder. Leaving, quitting, a rescan and Undo ask before dropping stage
   `SvRecoveryActions`, `RunActions`, `ReviewBase`). Left pane: the risk banner (STD-7.10), the filter box with
   Names / Bodies / Only matching macros, the staged line, Apply / Dry run / Rescan / Undo last change. The bar under
   the tree: New `N`, Edit `e`, Delete `d`, Copy `k`, Paste… `p`, Replace text… `R` (`edit_actions.TREE_ACTIONS`).
+  The leaf (STD-7.27) is a macro line as `macro_rows` lists it and the search leaves it (a staged delete included:
+  it stays a struck line until Apply, while the slots leave it out); a read-only set lists none. The root, a
+  flavor, an account, a realm, a character and Account macros end with the lines the tree shows under them,
+  counted in `_add_macros` as the tree is built (`_set_idents`; nothing loads on expand), so a realm or an account
+  with no macro lines says `0 items`, and a set with none (a leaf) has no count. A macro line is columns
+  (STD-7.28, `report.macro_cells`, `MACRO_COLUMNS`): name · first line · `n/255`, as wide as the set's widest
+  cells; the first line gives way first, cut at its end, then the name, cut in its middle; the length is never cut,
+  only dropped (after the first line). The staged mark's room is kept blank on the other lines of a set that has
+  one, so the names line up. A character's or Account macros' line is name · slots (or `read-only`) · count
+  (`SET_COLUMNS`), aligned across a realm's characters (`_character_widths`); the slots are never cut, only
+  dropped (`ui/columns.fit_keeping_count`: then the name and the count). An account's, realm's or flavor's name is
+  cut in its middle so its count fits the pane (`ui/columns.group_text`), never below 4 cells, its count kept, and a
+  macro name never below its 6: at 80 columns a line deeper than that scrolls sideways, a macro line's first line
+  and length dropped first (STD-7.28, U1); every line is fitted again when the tree's width changes
+  (`ui/review.FittedRows`).
 - `edit_screen.MacroEditScreen` (New, Edit; ME8): name (cut at 16), icon, scope line, the `n / 255` meter (Save off
   over 255), `MacroTextArea` with the suggestion list (`syntax.suggestions`, replacing from `syntax.completion_start`;
   ↑/↓, Tab/Enter, Esc while it shows; Enter after a word that is itself an entry is a new line unless ↑/↓ moved the
@@ -110,4 +125,6 @@ character folder. Leaving, quitting, a rescan and Undo ask before dropping stage
 `tests/test_macro_editor_optimizer.py` (the reference, explainer, optimizer and templates), `tests/test_macro_editor_edit.py`
 (the edit screen, builder, optimizer, template and reference screens, and their UI-free halves), `tests/test_macro_editor_run.py`
 (runs across files and flavors, dry run, WoW running, a file changed since, the paste preview and warnings, texts) and
-`tests/test_macro_editor_app.py` (the browse screen end to end), on `tests/fixtures.py` `build_macro_tree`.
+`tests/test_macro_editor_app.py` (the browse screen end to end; `NodeCountsAndColumnsTest`: every node's count, also
+under a search, Only matching macros off and a staged delete, the macro and character columns aligned, every line
+fitting the pane at 120x30 and 80x24), on `tests/fixtures.py` `build_macro_tree`.

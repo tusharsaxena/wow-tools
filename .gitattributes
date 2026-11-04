@@ -1,6 +1,8 @@
 * text=auto
 *.sh text eol=lf
 *.cmd text eol=crlf
+# scripts/refresh_kb.py writes the knowledge base with LF; a checkout keeps it byte-identical to a rerun.
+wowtools/kb/**/*.json text eol=lf
 vendor/** -diff linguist-vendored
 vendor/** -text
 

@@ -38,54 +38,57 @@ class ReportTest(unittest.TestCase):
     def test_tree_texts(self):
         retail = scan()
         backups = [info("20261005-101010", "pre-restore"), info("20261004-153012")]
-        self.assertEqual(report.part_text(retail.parts["Interface"]), "1 file · 100 B")
-        self.assertEqual(report.part_text(retail.parts["WTF"]), "missing")
-        self.assertEqual(report.part_text(PartScan("WTF", RETAIL.path / "WTF", linked=True)), "link, skipped")
-        self.assertEqual(report.part_text(scan(False).parts["Interface"]), "1 file")  # sizes unknown
-        self.assertEqual(report.flavor_text(retail, backups), "1 file · 100 B · 1 backup, last 2026-10-04 15:30:12")
+        # The review's rows as columns (feedback round 2 R4): a part's files and size, a flavor's and its last backup.
+        self.assertEqual(report.part_cells(retail.parts["Interface"]), ("1 file", "100 B"))
+        self.assertEqual(report.part_cells(retail.parts["WTF"]), ("missing", ""))
+        self.assertEqual(report.part_cells(PartScan("WTF", RETAIL.path / "WTF", linked=True)), ("link, skipped", ""))
+        self.assertEqual(report.part_cells(scan(False).parts["Interface"]), ("1 file", ""))  # sizes unknown
+        self.assertEqual(report.flavor_cells(retail, backups), ("1 file", "100 B", "last 2026-10-04 15:30:12"))
+        self.assertEqual(report.flavor_cells(retail, backups[:1]), ("1 file", "100 B", "no backups yet"))  # safety
         empty = FlavorScan(RETAIL, {"Interface": PartScan("Interface", RETAIL.path / "Interface"),
                                     "WTF": PartScan("WTF", RETAIL.path / "WTF")})
-        # nothing to back up and no backups: "no backups yet" adds nothing, and the line fits the tree at 120x30
-        self.assertEqual(report.flavor_text(empty, []), "nothing to back up: no Interface or WTF folder")
-        self.assertEqual(report.flavor_text(empty, backups),
-                         "nothing to back up: no Interface or WTF folder · 1 backup, last 2026-10-04 15:30:12")
         self.assertIn("WTF.replaced", report.leftover_text(retail))
         self.assertIn("Restore is blocked", report.leftover_text(retail))
         self.assertEqual(report.held_text([retail, empty]), "1 file · 100 B")
+        self.assertEqual(report.held_cells([retail, empty]), ("1 file", "100 B"))
+        self.assertEqual(report.held_text([scan(False)]), "1 file")
         self.assertEqual(report.selection_text([retail, empty]), "Selected: 2 flavors · 1 file · 100 B · 1 link not backed up")
         self.assertEqual(report.selection_text([]), "Selected: 0 flavors · 0 files · 0 B")
         self.assertEqual(report.selection_text([scan(False)]), "Selected: 1 flavor · 1 file · 1 link not backed up")
 
-    def test_warnings_text(self):
-        busy = PartScan("Interface", RETAIL.path / "Interface", True, errors=[f"err {i}" for i in range(5)])
-        s = FlavorScan(RETAIL, {"Interface": busy, "WTF": PartScan("WTF", RETAIL.path / "WTF", errors=["x"])})
-        self.assertEqual(report.warnings_text(s),
-                         "Scan warnings (6): skipped, not backed up (the log lists up to 20 per folder)")
+    def test_warnings_note(self):
+        self.assertEqual(report.WARNINGS_NOTE, "skipped, not backed up (the log lists up to 20 per folder)")
 
-    def test_picker_note_and_backup_text(self):
+    def test_picker_note_and_backup_cells(self):
         self.assertEqual(report.picker_note([]), "no backups yet")
         self.assertEqual(report.picker_note([info("20261005-101010", "pre-restore")]), "no backups yet")
         # Seconds everywhere: two backups (or a backup and its safety zip) are often a few seconds apart.
         self.assertEqual(report.picker_note([info("20261004-153012")]), "1 backup, last 2026-10-04 15:30:12")
         b = info("20261004-153012")
-        # Kind, then the whole date and time as everywhere else (the tree has room for it at 120x30).
-        self.assertEqual(report.backup_text(b), "backup 2026-10-04 15:30:12 · … · 2.0 KB")
-        self.assertEqual(report.backup_text(b, ("Interface", "WTF")),
-                         "backup 2026-10-04 15:30:12 · Interface, WTF · 2.0 KB")
-        self.assertEqual(report.backup_text(b, None), "backup 2026-10-04 15:30:12 · ? · 2.0 KB")
-        self.assertEqual(report.backup_text(info("20261003-010203", "pre-restore", 100), ()),
-                         "safety 2026-10-03 01:02:03 · none · 100 B")
+        # The whole date and time first (what tells two zips apart), then the kind, the parts and the size.
+        self.assertEqual(report.backup_cells(b), ("2026-10-04 15:30:12", "backup", "…", "2.0 KB"))
+        self.assertEqual(report.backup_cells(b, ("Interface", "WTF")),
+                         ("2026-10-04 15:30:12", "backup", "Interface, WTF", "2.0 KB"))
+        self.assertEqual(report.backup_cells(b, None), ("2026-10-04 15:30:12", "backup", "?", "2.0 KB"))
+        self.assertEqual(report.backup_cells(info("20261003-010203", "pre-restore", 100), ()),
+                         ("2026-10-03 01:02:03", "safety", "none", "100 B"))
+        # The narrower forms (G5r): no year, then no seconds, then a safety zip marked S in place of its kind.
+        s = info("20261003-010203", "pre-restore", 100)
+        self.assertEqual(report.BACKUP_FORMS, 4)
+        self.assertEqual([report.backup_cells(b, (), f)[:2] for f in range(1, 4)],
+                         [("10-04 15:30:12", "backup"), ("10-04 15:30", "backup"), ("10-04 15:30", "")])
+        self.assertEqual([report.backup_cells(s, (), f)[:2] for f in range(1, 4)],
+                         [("10-03 01:02:03", "safety"), ("10-03 01:02", "safety"), ("10-03 01:02", report.SAFETY_MARK)])
         self.assertEqual(report.backup_detail(b, ("Interface", "WTF")),
                          "Backup from 2026-10-04 15:30:12 · Interface, WTF · 2.0 KB")
         self.assertEqual(report.backup_detail(info("20261003-010203", "pre-restore", 100)),
                          "Safety backup (before a restore) from 2026-10-03 01:02:03 · … · 100 B")
 
-    def test_backups_title_counts_safety_zips_apart(self):
-        self.assertEqual(report.backups_title([info("20261004-153012")]), "Backups (1)")
+    def test_backups_note_names_the_safety_zips(self):
+        self.assertEqual(report.backups_note([info("20261004-153012")]), "highlight one, then Restore")
         both = [info("20261004-153020", "pre-restore"), info("20261004-153012")]
-        self.assertEqual(report.backups_title(both), "Backups (1 + 1 safety)")  # as picker_note: "1 backup"
+        self.assertEqual(report.backups_note(both), "incl. 1 safety · highlight one, then Restore")
         self.assertTrue(report.picker_note(both).startswith("1 backup,"))
-        self.assertEqual(report.backups_title([info("20261004-153020", "pre-restore")]), "Backups (0 + 1 safety)")
 
     def test_friendly_created(self):
         self.assertEqual(report.friendly_created("2026-10-04T12:57:33+05:30"), "2026-10-04 12:57:33")

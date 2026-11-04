@@ -12,19 +12,23 @@ from unittest import mock
 
 from textual.widgets import Checkbox, Input, OptionList, TextArea, Tree
 
-from tests.fixtures import (BASE, MACRO_ACCOUNT, MACRO_AELLA, MACRO_BOB, MACRO_UNKNOWN, TINY, TuiTestCase,
-                            build_macro_tree, make_config, settle, submit_filter)
+from tests.fixtures import (BASE, COUNT_AFTER, LARGE, MACRO_ACCOUNT, MACRO_AELLA, MACRO_BOB, MACRO_UNKNOWN, TINY,
+                            TuiTestCase, assert_fits_or_keeps_minimum, assert_siblings_distinct, build_macro_tree,
+                            make_config, settle, submit_filter)
 from wowtools.core.events import capture_events
+from wowtools.core.install import flavor_name
 from wowtools.core.macrofile import parse_macros
+from wowtools.core.text import plural
 from wowtools.tools import TOOLS
 from wowtools.tools.macro_editor.edit_screen import MacroEditScreen
 from wowtools.tools.macro_editor.model import MACRO_FILE
 from wowtools.tools.macro_editor.popups import PasteScreen, ReplaceTextScreen
-from wowtools.tools.macro_editor.report import DELETE_WARNING
+from wowtools.tools.macro_editor.report import ACCOUNT_MACROS, DELETE_WARNING, MACRO_MINIMUMS
 from wowtools.tools.macro_editor.review_screen import (MacroNode, MacroResultScreen, MacroReviewScreen, SetKey,
                                                        SetNode)
 from wowtools.ui import dialogs
 from wowtools.ui.character_tree import CharacterNode
+from wowtools.ui.columns import GROUP_NAME_MINIMUM
 from wowtools.ui.dialogs import CONFIRM_GUARD, ConfirmScreen, DiscardScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
@@ -150,7 +154,7 @@ class MacroEditorAppTest(MacroEditorTestBase):
             tree = review.query_one("#macros", Tree)
             flavors = [n.label.plain.strip() for n in tree.root.children]
             self.assertEqual(len(flavors), 2)
-            self.assertTrue(any(f.endswith("Retail") for f in flavors), flavors)
+            self.assertIn("Retail  6 items", [f[2:] for f in flavors])  # the mark, then the name and its count
             names = [n.data.character.name for n in walk(tree.root)
                      if isinstance(n.data, CharacterNode) and n.data.kind == "character"]
             self.assertEqual(sorted(names), sorted(["Aellâ", "Bob", "Trâxex", "Dænerys", "Other"]))  # no copies
@@ -158,11 +162,12 @@ class MacroEditorAppTest(MacroEditorTestBase):
             self.assertIn("Trâxex  0/30", character_node(tree, "Trâxex").label.plain)
             self.assertIn("Account macros  1/120", account_set_node(tree, "MAIN").label.plain)
             # ME3: a flavor with no sourced limits (Classic Era here, patched) counts with Retail's, marked unconfirmed
-            self.assertTrue(character_node(tree, "Other", "_classic_era_").label.plain.endswith("/30 unconfirmed"))
+            self.assertTrue(character_node(tree, "Other", "_classic_era_").label.plain.endswith("/30 unconfirmed  1 item"))
             self.assertNotIn("unconfirmed", character_node(tree, "Aellâ").label.plain)
             self.assertNotIn("unconfirmed", account_set_node(tree, "MAIN").label.plain)
             heal = macro_node(tree, character_node(tree, "Aellâ"), "Heal Dænerys")
-            self.assertIn("Heal Dænerys · /cast [@mouseover,help,nodead] Flash Heal · 41/255", heal.label.plain)
+            # columns fitted to the pane (R4): at 120x30 with All flavors the first line gives way, cut at its end
+            self.assertEqual(heal.label.plain[2:], "Heal Dænerys /cast [@mouseover,help,… 41/255")
             self.assertTrue(review.query_one("#btn-apply").disabled)  # nothing staged
             self.assertTrue(review.sub_title.startswith("Macro Editor · All flavors"))
 
@@ -455,3 +460,165 @@ class MacroEditorAppTest(MacroEditorTestBase):
             self.assertGreater(tree.region.width, 20)
             for button in ("#btn-apply", "#act-new", "#act-paste"):
                 self.assertTrue(review.query_one(button).display)
+
+
+def indent(node) -> int:
+    """The cells in front of a node's label: the tree guides, and the ▶ / ▼ of a node that opens."""
+    depth, parent = 0, node.parent
+    while parent is not None:
+        depth, parent = depth + 1, parent.parent
+    return depth * node.tree.guide_depth + (2 if node.allow_expand else 0)
+
+
+class NodeCountsAndColumnsTest(MacroEditorTestBase):
+    """Feedback round 2 R2 / R4 (STD-7.27, STD-7.28) on the Macro Editor's browse tree: every node with children
+    (the root, a flavor, an account, Account macros, a realm, a character) counts the macro lines below it that the
+    tree shows (after the search and Only matching macros; a staged delete included); a
+    macro line is the leaf and its name · first line · length are aligned columns cut to the pane, as are a
+    character's name · slots (or read-only) · count among its realm's characters."""
+
+    def shown_macros(self, node) -> int:
+        return sum(1 for n in walk(node) if isinstance(n.data, MacroNode))
+
+    def assert_counts(self, tree) -> None:
+        for node in walk(tree.root):
+            if not node.children or isinstance(node.data, MacroNode) or node.data is None and node is not tree.root:
+                continue
+            with self.subTest(node=str(node.label)):
+                expected = plural(self.shown_macros(node), "item")
+                self.assertTrue(str(node.label).endswith(f"  {expected}"), str(node.label))
+                count = node.label.spans[-1]
+                self.assertEqual((str(node.label)[count.start:].strip(), str(count.style)), (expected, "dim"))
+
+    async def test_every_node_counts_the_macros_below_it(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#macros", Tree)
+            # Retail: Account macros 1, Aellâ 3, Bob 2 (Dænerys' file is in a layout the reader doesn't know: no
+            # macro lines); Classic Era: Other 1
+            self.assertTrue(str(tree.root.label).endswith("  7 items"), str(tree.root.label))
+            flavors = {n.data[1]: str(n.label) for n in tree.root.children if isinstance(n.data, list)}
+            self.assertTrue(flavors["_retail_"].endswith("  6 items"), flavors)
+            self.assertTrue(flavors["_classic_era_"].endswith("  1 item"), flavors)
+            self.assertTrue(str(character_node(tree, "Aellâ").label).endswith("  3 items"))
+            self.assertTrue(str(character_node(tree, "Dænerys").label).endswith("read-only"))  # no lines, no count
+            self.assertTrue(str(account_set_node(tree, "MAIN").label).endswith("  1 item"))
+            self.assertNotIn("item", str(character_node(tree, "Trâxex").label))  # no macros: a leaf, no count
+            for node in walk(tree.root):  # a macro line is the leaf: no count of its own
+                if isinstance(node.data, MacroNode):
+                    self.assertNotIn("item", str(node.label))
+            self.assert_counts(tree)
+            # a staged delete stays a line (struck) until Apply, so it is still counted; the slots say what is left
+            bob = character_node(tree, "Bob")
+            await goto(pilot, tree, macro_node(tree, bob, "Bob"))
+            await pilot.press("d")
+            await settle(app, pilot)
+            app.screen.dismiss(True)
+            await settle(app, pilot)
+            bob = character_node(tree, "Bob")
+            self.assertIn("1/30", str(bob.label))
+            self.assertTrue(str(bob.label).endswith("  2 items"), str(bob.label))
+            self.assert_counts(tree)
+
+    async def test_counts_follow_the_search(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot, "_retail_")
+            tree = review.query_one("#macros", Tree)
+            self.assertTrue(str(tree.root.label).endswith("  6 items"), str(tree.root.label))
+            submit_filter(review, "flash")
+            await settle(app, pilot)
+            self.assertTrue(str(tree.root.label).endswith("  2 items"), str(tree.root.label))
+            self.assertTrue(str(character_node(tree, "Aellâ").label).endswith("  1 item"))
+            self.assert_counts(tree)
+            submit_filter(review, "Bob")  # a character's name: all of its macros
+            await settle(app, pilot)
+            self.assertTrue(str(character_node(tree, "Bob").label).endswith("  2 items"))
+            self.assert_counts(tree)
+            review.query_one("#only-matching", Checkbox).value = False  # every macro shown, the matches marked
+            await settle(app, pilot)
+            self.assertTrue(str(tree.root.label).endswith("  6 items"), str(tree.root.label))
+            self.assert_counts(tree)
+            review.query_one("#only-matching", Checkbox).value = True
+            review.query_one("#search-names", Checkbox).value = False
+            review.query_one("#search-bodies", Checkbox).value = False
+            submit_filter(review, "flash")
+            await settle(app, pilot)
+            self.assertTrue(str(tree.root.label).endswith("  0 items"), str(tree.root.label))
+
+    async def test_rows_are_aligned_columns(self):
+        app = self.make_app()
+        async with app.run_test(size=LARGE) as pilot:
+            review = await self.open_review(app, pilot, "_retail_")
+            tree = review.query_one("#macros", Tree)
+            aella = character_node(tree, "Aellâ")
+            rows = [macro_node(tree, aella, name) for name in ("Heal Dænerys", "D Up", "Fly")]
+            await settle(app, pilot)
+            labels = [str(n.label) for n in rows]
+            for label in labels:
+                self.assertNotIn(" · ", label)
+                self.assertFalse(label.endswith(" "), label)
+            self.assertEqual(len({label.index("/cast") for label in labels}), 1, labels)  # first lines line up
+            self.assertEqual(len({label.rindex("/255") for label in labels}), 1, labels)  # lengths line up
+            self.assertRegex(labels[0], r"^. Heal Dænerys  /cast \[@mouseover,help,nodead\] Flash Heal +41/255$")
+            # a staged mark before one line: its siblings keep the mark's room, so the names still line up
+            await goto(pilot, tree, rows[1])
+            await pilot.press("d")
+            await settle(app, pilot)
+            app.screen.dismiss(True)
+            await settle(app, pilot)
+            aella = character_node(tree, "Aellâ")
+            labels = [str(macro_node(tree, aella, name).label) for name in ("Heal Dænerys", "D Up", "Fly")]
+            self.assertIn("✗ D Up", labels[1])
+            self.assertEqual(len({label.index(name) for label, name in zip(labels, ("Heal Dænerys", "D Up", "Fly"))}),
+                             1, labels)
+            self.assertEqual(len({label.index("/cast") for label in labels}), 1, labels)
+            # a realm's characters: name · slots · count, the slots and the counts lined up
+            chars = [str(character_node(tree, name).label) for name in ("Aellâ", "Bob")]
+            self.assertEqual(len({label.index("/30") for label in chars}), 1, chars)
+            self.assertEqual(len({label.rindex("item") for label in chars}), 1, chars)
+            self.assertRegex(chars[1], r"^. Bob +2/30 +2 items$")
+            spans = {chars[1][s.start:s.end].strip(): str(s.style) for s in character_node(tree, "Bob").label.spans}
+            self.assertEqual(spans.get("2 items"), "dim", spans)
+            self.assertRegex(str(character_node(tree, "Dænerys").label), r"^ +Dænerys  read-only$")
+
+    async def test_rows_fit_the_pane(self):
+        """Every line fits the pane at 120x30; at 80x24 a macro line 16 to 20 cells deep keeps its name's 6 cells
+        (a character or a realm its name's 4) and scrolls sideways instead of reading `He…s` (STD-7.28, user
+        decision U1)."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#macros", Tree)
+            for name in ("Aellâ", "Bob", "Dænerys"):
+                character_node(tree, name).expand()
+            account_set_node(tree, "MAIN").expand()
+            await settle(app, pilot)
+            for size in (BASE, TINY):
+                await pilot.resize_terminal(*size)
+                await settle(app, pilot)
+                room = tree.size.width - tree.styles.scrollbar_size_vertical
+                for node in walk(tree.root):
+                    data = node.data
+                    if data is None:
+                        continue
+                    if isinstance(data, MacroNode):
+                        name, minimum = data.macro.name, MACRO_MINIMUMS[0]
+                    else:
+                        name = ACCOUNT_MACROS if isinstance(data, SetNode) else \
+                            data.text if isinstance(data, CharacterNode) else flavor_name(data[1])
+                        minimum = GROUP_NAME_MINIMUM
+                    with self.subTest(size=size, row=str(node.label)):
+                        if size == BASE:
+                            self.assertLessEqual(indent(node) + node.label.cell_len, room)
+                        assert_fits_or_keeps_minimum(self, node, indent(node), room, name, minimum,
+                                                     after=COUNT_AFTER if node.allow_expand else "")
+                assert_siblings_distinct(self, [n for n in walk(tree.root) if isinstance(n.data, MacroNode)])
+                if size == BASE:  # at 120 columns the names and lengths read in full
+                    aella = character_node(tree, "Aellâ")
+                    for node in aella.children:
+                        plain = str(node.label)
+                        self.assertIn(node.data.macro.name, plain)
+                        self.assertRegex(plain, r"\d+/255$")
+                    self.assertTrue(str(aella.label).endswith("3/30  3 items"), str(aella.label))

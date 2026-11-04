@@ -134,7 +134,24 @@ copy mode; `validate_dest` errors show inline). `review_screen.py` holds:
 - `ShotReviewScreen`: a `TreeFilter` and `ReviewBase`; the `FilterBar` (filter box and **Filter** button) (`/`, the left pane's first control: it
   matches flavor, year, month, day (`2024-01-02`) and file names on the plan, day and Already filed files included,
   and opens a day whose files match) and the flavor → year → month → day → file tree (day files load on expand; read-only
-  Conflicts and Skipped nodes; in copy mode an Already filed node, unticked, that `a` leaves alone) and the Organize / Dry run / Rescan / Undo last run buttons. It uses the
+  Conflicts and Skipped nodes; in copy mode an Already filed node, unticked, that `a` leaves alone) and the Organize / Dry run / Rescan / Undo last run buttons. Leaf counts (feedback round 2 R2, STD-7.27): the leaf is a
+  screenshot the run can file (a `ShotItem` to file, or already filed: `FlavorPlan.selectable`). `_count_leaves`
+  counts them once per rebuild over the plan (a day's and Already filed's files before they load), as the filter
+  shows them (`ModelFilter.shows` on each file's model node): the root and a flavor count both kinds, a year, a
+  month and a day the ones to file, Already filed its own; Conflicts and Skipped, read-only and never filed, count
+  their own rows and are left out of the flavor's count. Every group label is `with_count(label, n)`, the count
+  before a group's note (Already filed, Conflicts, Skipped) so the note never pushes it off the pane; a flavor with
+  no rows at all keeps its reason ("no Screenshots folder", "could not be read", "nothing to file") in the count's
+  place, and one with only already-filed, conflict or skipped rows has no tick mark. Columns (R4, STD-7.28): a file
+  row is `report.file_cells` (name · `possible duplicate` or nothing), a conflict row `report.conflict_cells`
+  (name · `→` target folder, dim), fitted by `ui/columns.fit_columns` with `review_screen.FILE_COLUMNS` /
+  `CONFLICT_COLUMNS` (the target gives way first, then the name, both cut in their middle; the note is never cut).
+  At 80 columns a day's guides leave a file row 4 cells, so its name keeps its 12-cell minimum and the row scrolls
+  sideways (STD-7.28, user decision U1) rather than read `✔ Wo…g` on every file.
+  `_load_files` (a day's files, on expand) and `_add_node` (the conflicts) work out the natural widths over the
+  sibling rows the filter keeps and each row's indent; `ui/review.FittedRows` refits them when the tree pane's
+  width changes.
+  A skipped row is its name only, not a column row. It uses the
   shared `ConfirmScreen`. On mount and on Rescan it shows the scan box first ("Checking the destination folder",
   Organize, Dry run and Undo off); the scan worker then runs `validate_dest` (it lists the flavors and resolves the
   destination, the first touch of its drive in a session) and `latest_undoable`, then the scan ("Reading

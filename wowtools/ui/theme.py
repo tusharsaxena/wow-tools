@@ -2,7 +2,7 @@
 
 It also holds the action-kind button colours (spec D12): one colour per kind of action, the same in every tool, as
 theme variables `$act-<kind>` (plus `-lighten`, `-darken` and `-text` shades) that `ui/widgets.py` turns into
-button CSS."""
+button CSS; and the colours of a CVar's state and category group (Config Editor feedback spec CF3)."""
 from __future__ import annotations
 
 from textual.color import Color
@@ -44,6 +44,31 @@ ACTION_COLOURS: dict[str, tuple[str, str | None]] = {
     "navigate": ("#33425A", FOREGROUND),            # moves between screens (Tools, Other flavor, Search): grey
     "cancel": ("#1A2536", KA0S_THEME.secondary),    # backs out or declines (Cancel, No, Quit, Back): dim grey
 }
+# A CVar row's state column (CF3): changed in the theme's amber, default in a dim green, unknown in a dim grey.
+CVAR_STATE_COLOURS: dict[str, str] = {
+    "changed": KA0S_THEME.warning or "",
+    "default": "#5E9E7C",
+    "unknown": "#76869A",
+}
+# One colour per category group (core.kb.CATEGORY_GROUPS, in its order), each readable on the background and apart
+# from the others; "other" a warm stone grey, clear of the unknown state's cool grey. Game state, debug and system
+# (feedback round 2 R6) take the hues the first eight left free: teal, orange, periwinkle.
+CVAR_CATEGORY_COLOURS: dict[str, str] = {
+    "graphics": "#6E9BFF",     # blue
+    "sound": "#C792EA",        # violet
+    "interface": KA0S_THEME.accent or "",  # cyan
+    "camera": "#E58FD0",       # pink
+    "nameplates": "#A6D96A",   # lime
+    "combat text": "#F07178",  # coral
+    "network": "#D7BA7D",      # sand
+    "game state": "#4FD6BE",   # teal
+    "debug": "#FF9E64",        # orange
+    "system": "#9D9DFF",       # periwinkle
+    "other": "#A39E93",        # stone grey
+}
+# A CVar row the file doesn't set (Show all known, feedback round 2 R3): darker than the dim the set rows' secondary
+# text gets (the foreground blended 66% over the background, about 6.4:1), still readable (about 3.7:1).
+NOT_SET_COLOUR = "#5F6B7B"
 SHADE = 0.15  # how much lighter / darker the top and bottom edges (and the hover background) are
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from wowtools.core.install import ACCOUNT_WIDE, Flavor, flavor_name
 from wowtools.core.journal import friendly_stamp
-from wowtools.core.text import human_size
+from wowtools.core.text import human_size, plural
 from wowtools.tools.wtf_cleaner.rules import DAY
 from wowtools.tools.wtf_cleaner.scanner import addon_name_for
 
@@ -42,6 +42,35 @@ CRITERION_COLORS = {
 
 def age_days(mtime: float, now: float) -> int:
     return max(0, int((now - mtime) // DAY))
+
+
+# The review tree's rows as aligned columns (feedback round 2 R4, STD-7.28), fitted by the screen through ui.columns:
+# an addon row is name · reasons · files · size · age, a file row name · size · age. The name and the reasons are
+# the free text that gives way (the reasons first); files, size and age are short and never cut, only dropped
+# (age, then files, then size). Caps keep one long name from pushing its siblings' short columns far right.
+BLACKLISTED = "blacklisted"  # the reasons cell of a blacklisted addon's row (spec B2)
+ITEM_CAPS = (40, 48, None, None, None)
+ITEM_MINIMUMS = (12, 13, 0, 0, 0)
+ITEM_DROP = (4, 2, 3)
+FILE_CAPS = (56, None, None)
+FILE_MINIMUMS = (12, 0, 0)
+FILE_DROP = (2,)
+
+
+def reasons_plain(reasons: list[str]) -> str:
+    """Reasons by their short names, comma separated (reasons_text without its colours)."""
+    return ", ".join(CRITERION_SHORT.get(reason, reason) for reason in reasons)
+
+
+def item_cells(item, now: float) -> tuple[str, str, str, str, str]:
+    """An addon row's columns: name, reasons (`blacklisted` for a blacklisted one), files, size, age."""
+    return (item.addon, BLACKLISTED if item.blacklisted else reasons_plain(item.reasons),
+            plural(len(item.files), "file"), human_size(item.total_size), f"{age_days(item.newest_mtime, now)}d")
+
+
+def file_cells(sv, now: float) -> tuple[str, str, str]:
+    """A file row's columns: name, size, age."""
+    return sv.name, human_size(sv.size), f"{age_days(sv.mtime, now)}d"
 
 
 def locker_warning(running: list[str]) -> str:

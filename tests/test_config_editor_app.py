@@ -9,22 +9,29 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
+from unittest import mock
 
-from textual.widgets import Checkbox, Input, Select, Static, Tree
+from textual.widgets import Checkbox, Input, OptionList, Select, Static, Tree
 
-from tests.fixtures import (BASE, CONFIG_AELLA, CONFIG_MACHINE, LARGE, TINY, TuiTestCase, build_config_tree,
-                            make_config, settle, submit_filter)
+from tests.fixtures import (BASE, CONFIG_AELLA, CONFIG_MACHINE, LARGE, TINY, TuiTestCase, assert_fits_or_keeps_minimum,
+                            assert_siblings_distinct, build_config_tree, make_config, settle, submit_filter)
 from wowtools.core.kb import clear_cache
 from wowtools.tools import TOOLS
-from wowtools.tools.config_editor.model import CONFIG_CACHE, CONFIG_WTF
+from wowtools.tools.config_editor.model import CATEGORIES, CONFIG_CACHE, CONFIG_WTF
 from wowtools.tools.config_editor.popups import AddCvarScreen, RecommendScreen
-from wowtools.tools.config_editor.report import CHANGED, UNKNOWN
-from wowtools.tools.config_editor.review_screen import (CvarNode, ConfigResultScreen, ConfigReviewScreen, FileKey,
-                                                        FileNode)
+from wowtools.tools.config_editor.report import (CHANGED, COLUMN_MINIMUMS, DEFAULT_STATE, NO_DESCRIPTION, NOT_SET,
+                                                UNKNOWN, row_cells)
+from wowtools.tools.config_editor.review_screen import (HELP_LABEL, CvarNode, ConfigResultScreen,
+                                                        ConfigReviewScreen, FileKey, FileNode)
+from wowtools.ui import dialogs
 from wowtools.ui.character_tree import CharacterNode
-from wowtools.ui.dialogs import ConfirmScreen, DiscardScreen, TextPromptScreen
+from wowtools.ui.counts import COUNT_GAP, COUNT_STYLE, count_text
+from wowtools.ui.dialogs import CONFIRM_GUARD, ConfirmScreen, DiscardScreen, TextPromptScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
+from wowtools.ui.theme import (BACKGROUND, CVAR_CATEGORY_COLOURS, CVAR_STATE_COLOURS, FOREGROUND, NOT_SET_COLOUR,
+                                TITLE_GOLD, contrast)
+from wowtools.ui.tree_filter import NO_MATCH_TEXT
 
 TOOL = "config-editor"
 KB_CVARS = {
@@ -84,6 +91,20 @@ async def open_rows(pilot, owner) -> list:
 
 async def cvar_node(pilot, owner, name: str):
     return next(n for n in await open_rows(pilot, owner) if n.data.row.name == name)
+
+
+def cells(label: str) -> list[str]:
+    """A CVar row's columns, read back from its line (two or more spaces, or one, apart: the cells hold no runs of
+    spaces in these tests)."""
+    return label.split()
+
+
+def indent(node) -> int:
+    """The tree guides' width in front of a node's label."""
+    depth, parent = 0, node.parent
+    while parent is not None:
+        depth, parent = depth + 1, parent.parent
+    return depth * node.tree.guide_depth
 
 
 async def goto(pilot, tree: Tree, node) -> None:
@@ -166,22 +187,23 @@ class ConfigEditorAppTest(TuiTestCase):
             review = await self.open_review(app, pilot)
             tree = review.query_one("#cvars", Tree)
             top = [n.label.plain.lstrip("✔✘◐ ").strip() for n in tree.root.children]
-            self.assertEqual(top, [CONFIG_WTF, "ALT", "BARE", "MAIN"])  # the machine file first, then the accounts
+            # the machine file first, then the accounts, each with its count of CVar rows (R2)
+            self.assertEqual(top, [f"{CONFIG_WTF}  2 items", "ALT  0 items", "BARE  0 items", "MAIN  8 items"])
             main = tree.root.children[3]
-            self.assertTrue(main.children[0].label.plain.strip().endswith("Account config"))
+            self.assertTrue(main.children[0].label.plain.strip().endswith("Account config  2 items"))
             self.assertEqual(main.children[0].data.target.level, "account")
             labels = [n.label.plain for n in walk(tree.root)]
             self.assertFalse([label for label in labels if "Bob - Copy" in label or "Bob2" in label])
             aella = character_node(tree, "Aellâ")
             self.assertEqual(aella.data.keys, (FileKey(self.aella()),))
             rows = {n.data.row.name: n.label.plain for n in await open_rows(pilot, aella)}
-            self.assertIn(f"cameraDistanceMaxZoomFactor = 2.6 (default 1.9)  {CHANGED}",
-                          rows["cameraDistanceMaxZoomFactor"])
-            self.assertIn(f"myAddonThing = Dænerys  {UNKNOWN}", rows["myAddonThing"])
-            for node in await open_rows(pilot, aella):  # CE4: each row ends with its category (T23w9)
-                self.assertTrue(node.label.plain.endswith(f"· {node.data.row.category}"), node.label.plain)
+            self.assertEqual(cells(rows["cameraDistanceMaxZoomFactor"])[1:], ["2.6", "1.9", CHANGED, "camera"])
+            self.assertEqual(cells(rows["myAddonThing"]), ["myAddonThing", "Dænerys", UNKNOWN, "other"])
+            for node in await open_rows(pilot, aella):  # CE4, CF1: each row ends with its category column
+                self.assertTrue(node.label.plain.endswith(f" {node.data.row.category}"), node.label.plain)
             machine = file_node(tree, CONFIG_WTF)
-            self.assertIn("gxMaximize = 1 (default 0)", (await cvar_node(pilot, machine, "gxMaximize")).label.plain)
+            self.assertEqual(cells((await cvar_node(pilot, machine, "gxMaximize")).label.plain),
+                             ["gxMaximize", "1", "0", CHANGED, "graphics"])
             await self.press_on(app, pilot, review, await cvar_node(pilot, aella, "cameraDistanceMaxZoomFactor"))
             help_text = str(review.query_one("#cvar-help-text", Static).render())
             self.assertIn("How far the camera can zoom out.", help_text)
@@ -197,6 +219,120 @@ class ConfigEditorAppTest(TuiTestCase):
             self.assertEqual(tree.root.children[0].data[0], "flavor")
             self.assertIn(CONFIG_WTF, tree.root.children[0].children[0].label.plain)
 
+    async def test_rows_are_aligned_coloured_columns(self):
+        """CF1-CF3: a file's rows are five aligned columns (name, value, default, state, category), a 300-character
+        value is cut with … and the state and category still show, the state and category carry their colours, and
+        a row fits the tree pane at 120x30; at 80x24 (the floor) the rows are fitted again (columns dropped, the
+        name cut: FB2r), the name down to its 12-cell minimum and the row scrolling sideways past it (STD-7.28,
+        user decision U1)."""
+        blob = "v21##" + "7" * 295
+        self.aella().write_bytes(CONFIG_AELLA + f'SET collapsedCurrencyCategoryDefaults "{blob}"\r\n'.encode())
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            await open_rows(pilot, character_node(tree, "Aellâ"))
+            await settle(app, pilot)
+            nodes = [n for n in character_node(tree, "Aellâ").children if isinstance(n.data, CvarNode)]
+            room = tree.size.width - tree.styles.scrollbar_size_vertical
+            starts = set()
+            for node in nodes:
+                label = node.label
+                name, _, _, state, category = row_cells(node.data.row)
+                with self.subTest(name=name):
+                    self.assertTrue(label.plain.endswith(category), label.plain)
+                    starts.add(len(label.plain) - len(category))  # every row's category starts in one column
+                    self.assertIn(state, label.plain)
+                    self.assertLessEqual(indent(node) + label.cell_len, room)
+                    styles = {label.plain[span.start:span.end].strip(): str(span.style) for span in label.spans}
+                    self.assertEqual(styles[state], CVAR_STATE_COLOURS[state])
+                    self.assertEqual(styles[category], CVAR_CATEGORY_COLOURS[category])
+            self.assertEqual(len(starts), 1, starts)
+            blob_row = next(n for n in nodes if n.data.row.name == "collapsedCurrencyCategoryDefaults")
+            long, blob_category = blob_row.label.plain, blob_row.data.row.category
+            self.assertIn("…", long)
+            self.assertNotIn(blob, long)
+            self.assertEqual(cells(long)[-2:], [UNKNOWN, blob_category])  # the state and category still show
+            await pilot.resize_terminal(*TINY)
+            await settle(app, pilot)
+            room = tree.size.width - tree.styles.scrollbar_size_vertical
+            for node in nodes:  # fitted again to the narrower pane: it fits, or keeps the name's minimum (U1)
+                with self.subTest(name=node.data.row.name, size=TINY):
+                    assert_fits_or_keeps_minimum(self, node, indent(node), room, node.data.row.name,
+                                                 COLUMN_MINIMUMS[0])
+            assert_siblings_distinct(self, nodes)
+            small = next(n for n in nodes if n.data.row.name == "collapsedCurrencyCategoryDefaults").label.plain
+            self.assertLess(len(small), len(long))
+            self.assertTrue(small.strip().startswith("col"), small)  # the name's start is what is left
+
+    async def test_rows_fit_with_two_flavors_and_show_all_known(self):
+        """FB2r: a character file one level deeper (All flavors, two flavors) with Show all known ticked: at 120x30
+        every row fits its pane, the state and category whole (the default column gives way first), names sharing a
+        long start are cut in their middle and stay apart; at 80x30 only the name is left, kept to its minimum
+        (the row scrolls sideways past the pane, U1), and the names still stay apart."""
+        data = dict(KB_CVARS)
+        for name in ("raidFramesDisplayAggroHighlight", "raidFramesDisplayClassColor"):
+            data[name] = {"default": "1", "help": "", "category": "game", "scope": "character", "synced": True}
+        (self.kb / "cvars" / "_retail_.json").write_text(json.dumps(
+            {"source": "client dump _retail_ 1", "cvars": data}), encoding="utf-8")
+        clear_cache()
+        era = self.root / "_classic_era_" / "WTF"
+        (era / "Account" / "ACCT" / "Realm1" / "Other").mkdir(parents=True)
+        (era / CONFIG_WTF).write_bytes(b'SET gxMaximize "0"\r\n')
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot, ALL_FLAVORS)
+            review.query_one("#show-all", Checkbox).value = True
+            await settle(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            nodes = await open_rows(pilot, character_node(tree, "Aellâ"))
+            await settle(app, pilot)
+            self.assertIn("raidFramesDisplayClassColor", {n.data.row.name for n in nodes})
+            room = tree.size.width - tree.styles.scrollbar_size_vertical
+            for node in nodes:
+                name, _, _, state, category = row_cells(node.data.row)
+                with self.subTest(name=name, size=BASE):
+                    self.assertLessEqual(indent(node) + node.label.cell_len, room)
+                    self.assertEqual(node.label.plain.split()[-len(category.split()) - 1:],
+                                     [state, *category.split()])
+            names = {n.data.row.name: cells(n.label.plain)[0] for n in nodes}
+            self.assertNotEqual(names["raidFramesDisplayAggroHighlight"], names["raidFramesDisplayClassColor"])
+            await pilot.resize_terminal(80, 30)
+            await settle(app, pilot)
+            room = tree.size.width - tree.styles.scrollbar_size_vertical
+            for node in nodes:
+                with self.subTest(name=node.data.row.name, size=(80, 30)):
+                    assert_fits_or_keeps_minimum(self, node, indent(node), room, node.data.row.name,
+                                                 COLUMN_MINIMUMS[0])
+                    self.assertTrue(node.label.plain.strip(), node.label.plain)
+            assert_siblings_distinct(self, nodes)
+
+    async def test_rows_fit_again_after_a_rebuild(self):
+        """G10 review: a rebuild runs behind the tree's loading indicator (no width), so its rows are fitted once
+        the tree is shown again: after a Space toggle and after a search, every CVar row of an open file fits the
+        pane at 120x30 (STD-7.28)."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+
+            def assert_rows_fit(step: str) -> None:
+                room = tree.size.width - tree.styles.scrollbar_size_vertical
+                rows = [n for n in walk(tree.root) if isinstance(n.data, CvarNode)]
+                self.assertTrue(rows, step)
+                for node in rows:
+                    self.assertLessEqual(indent(node) + node.label.cell_len, room, (step, node.label.plain))
+
+            await self.press_on(app, pilot, review, await cvar_node(pilot, character_node(tree, "Aellâ"),
+                                                             "assistedCombatHighlight"), "space")
+            self.assertEqual(review.staged.count(), 1)
+            assert_rows_fit("toggle")
+            review.query_one("#show-all", Checkbox).value = True
+            await settle(app, pilot)
+            submit_filter(review, "camera")
+            await settle(app, pilot)
+            assert_rows_fit("search")
+
     async def test_toggle_and_apply(self):
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
@@ -207,7 +343,7 @@ class ConfigEditorAppTest(TuiTestCase):
             self.assertEqual(review.staged.sets, {self.aella(): {"assistedCombatHighlight": "0"}})
             row = await cvar_node(pilot, character_node(tree, "Aellâ"), "assistedCombatHighlight")
             self.assertIn("✎", row.label.plain)
-            self.assertIn("assistedCombatHighlight = 0", row.label.plain)
+            self.assertEqual(cells(row.label.plain)[2], "0")  # ✎, the name (cut to fit), then the value
             # Space on a CVar that is not 0/1 stages nothing
             await self.press_on(app, pilot, review, await cvar_node(pilot, character_node(tree, "Aellâ"),
                                                              "cameraDistanceMaxZoomFactor"), "space")
@@ -229,7 +365,7 @@ class ConfigEditorAppTest(TuiTestCase):
             await self.press_on(app, pilot, review, row, "R")
             self.assertEqual(review.staged.removes, {self.aella(): {"cameraDistanceMaxZoomFactor"}})
             row = await cvar_node(pilot, character_node(tree, "Aellâ"), "cameraDistanceMaxZoomFactor")
-            self.assertIn("not set (default 1.9)", row.label.plain)
+            self.assertEqual(cells(row.label.plain)[2:], [*NOT_SET.split(), "1.9", DEFAULT_STATE, "camera"])
             await self.apply(app, pilot)
             self.assertNotIn(b"cameraDistanceMaxZoomFactor", self.aella().read_bytes())
             app.screen.dismiss("rescan")
@@ -389,6 +525,235 @@ class ConfigEditorAppTest(TuiTestCase):
             self.assertEqual(review.staged.sets, {self.aella(): {"nameplateShowFriends": "0"}})
             self.assertNotIn(traxex, review.staged.sets)
 
+    # CF6 (feedback round 1): Set says what the setting does; Add's name is a searchable list of the known CVars
+    # the files don't set yet.
+    async def test_set_says_what_the_setting_does(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            cases = {"cameraDistanceMaxZoomFactor": "How far the camera can zoom out.",  # our note
+                     "nameplateShowFriends": "Show friendly nameplates",  # Blizzard's help, no note
+                     "assistedCombatHighlight": NO_DESCRIPTION,  # neither
+                     "myAddonThing": NO_DESCRIPTION}  # unknown
+            for name, text in cases.items():
+                with self.subTest(name=name):
+                    row = await cvar_node(pilot, character_node(tree, "Aellâ"), name)
+                    await self.press_on(app, pilot, review, row, "e")
+                    prompt = app.screen
+                    self.assertIsInstance(prompt, TextPromptScreen)
+                    lines = prompt.body_text.split("\n")
+                    self.assertIn(f"What it does: {text}", lines)
+                    if name != "myAddonThing":  # under the Default line
+                        default = next(i for i, line in enumerate(lines) if line.startswith("Default:"))
+                        self.assertEqual(lines[default + 1], f"What it does: {text}")
+                    self.assertIn(text, str(prompt.query_one(".popup-body", Static).render()))
+                    await pilot.press("escape")
+                    await settle(app, pilot)
+                    self.assertIs(app.screen, review)
+            self.assertEqual(review.staged.count(), 0)
+
+    async def open_add(self, app, pilot, review, node) -> AddCvarScreen:
+        await self.press_on(app, pilot, review, node, "N")
+        add = app.screen
+        self.assertIsInstance(add, AddCvarScreen)
+        return add
+
+    @staticmethod
+    def listed(add: AddCvarScreen) -> list[str]:
+        options = add.query_one("#cvar-options", OptionList)
+        return [str(options.get_option_at_index(i).prompt) for i in range(options.option_count)]
+
+    async def test_add_lists_the_known_cvars_not_set(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            cases = {"Aellâ": ["floatingCombatTextCombatDamage"],  # the character CVars it doesn't set
+                     "Bob": ["assistedCombatHighlight", "cameraDistanceMaxZoomFactor",
+                             "floatingCombatTextCombatDamage", "nameplateShowFriends"],
+                     "Trâxex": ["assistedCombatHighlight", "cameraDistanceMaxZoomFactor"]}
+            for name, expected in cases.items():
+                with self.subTest(name=name):
+                    add = await self.open_add(app, pilot, review, character_node(tree, name))
+                    self.assertEqual(self.listed(add), expected)
+                    await pilot.press("escape")
+                    await settle(app, pilot)
+            add = await self.open_add(app, pilot, review, file_node(tree, CONFIG_WTF))  # the machine level
+            self.assertEqual(self.listed(add), [])
+            await pilot.press("escape")
+            await settle(app, pilot)
+            # several ticked files: a CVar set in any of them is left out
+            for name in ("Bob", "Trâxex"):
+                await self.press_on(app, pilot, review, character_node(tree, name), "space")
+            add = await self.open_add(app, pilot, review, character_node(tree, "Bob"))
+            self.assertIn("2 files", add.body_text)
+            self.assertEqual(self.listed(add), ["assistedCombatHighlight", "cameraDistanceMaxZoomFactor"])
+            await pilot.press("escape")
+            await settle(app, pilot)
+            self.assertEqual(review.staged.count(), 0)
+
+    async def test_add_narrows_picks_and_prefills(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            add = await self.open_add(app, pilot, review, character_node(tree, "Bob"))
+            self.assertIs(add.focused, add.query_one("#cvar-name", Input))
+            await pilot.press(*"CAM")  # typing narrows the list (case ignored)
+            await settle(app, pilot)
+            self.assertEqual(self.listed(add), ["cameraDistanceMaxZoomFactor"])
+            await pilot.press("backspace", "backspace", "backspace", *"combat")
+            await settle(app, pilot)
+            self.assertEqual(self.listed(add), ["assistedCombatHighlight", "floatingCombatTextCombatDamage"])
+            options = add.query_one("#cvar-options", OptionList)
+            options.focus()
+            options.highlighted = 1
+            await pilot.press("enter")  # picks it: the name, its default as the value, and what it does
+            await settle(app, pilot)
+            self.assertEqual(add.values(), ("floatingCombatTextCombatDamage", "1"))
+            self.assertIs(add.focused, add.query_one("#cvar-value", Input))
+            note = str(add.query_one("#cvar-note", Static).render())
+            self.assertIn("default 1", note)
+            self.assertIn(NO_DESCRIPTION, note)
+            add.query_one("#cvar-value", Input).value = "0"  # the value stays editable
+            await pilot.press("enter")  # Enter in the value: OK
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            bob = character_node(tree, "Bob").data.character.path / CONFIG_CACHE
+            self.assertEqual(review.staged.sets, {bob: {"floatingCombatTextCombatDamage": "0"}})
+            # picking with the mouse, and a note shown for a CVar with one; the list leaves out the one just staged
+            add = await self.open_add(app, pilot, review, character_node(tree, "Bob"))
+            self.assertNotIn("floatingCombatTextCombatDamage", self.listed(add))
+            await pilot.press(*"zoom")
+            await settle(app, pilot)
+            await pilot.click("#cvar-options", offset=(2, 0))
+            await settle(app, pilot)
+            self.assertEqual(add.values(), ("cameraDistanceMaxZoomFactor", "1.9"))
+            self.assertIn("How far the camera can zoom out.", str(add.query_one("#cvar-note", Static).render()))
+            await pilot.press("escape")  # Esc: nothing staged
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(review.staged.sets, {bob: {"floatingCombatTextCombatDamage": "0"}})
+
+    async def test_add_enter_in_the_name_picks_the_highlighted_match(self):
+        """FB4 review: a partial name with a match highlighted, Enter picks it (as a dropdown would); a name that is
+        itself a known CVar, Enter is OK."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            add = await self.open_add(app, pilot, review, character_node(tree, "Bob"))
+            await pilot.press(*"zoom")
+            await settle(app, pilot)
+            self.assertEqual(self.listed(add), ["cameraDistanceMaxZoomFactor"])
+            await pilot.press("enter")  # picks it: still open, the value field next
+            await settle(app, pilot)
+            self.assertIs(app.screen, add)
+            self.assertEqual(add.values(), ("cameraDistanceMaxZoomFactor", "1.9"))
+            self.assertIs(add.focused, add.query_one("#cvar-value", Input))
+            await pilot.press("enter")  # Enter in the value: OK
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            bob = character_node(tree, "Bob").data.character.path / CONFIG_CACHE
+            self.assertEqual(review.staged.sets, {bob: {"cameraDistanceMaxZoomFactor": "1.9"}})
+            # the full name of a known CVar typed: Enter is OK, nothing to pick
+            add = await self.open_add(app, pilot, review, character_node(tree, "Bob"))
+            add.query_one("#cvar-value", Input).value = "1"
+            await pilot.press(*"nameplateshowfriends")
+            await settle(app, pilot)
+            self.assertEqual(self.listed(add), ["nameplateShowFriends"])
+            await pilot.press("enter")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(review.staged.sets[bob]["nameplateshowfriends"], "1")
+
+    async def test_add_arrows_leave_the_list_at_its_ends(self):
+        """FB4 review: ↑ on the list's top row goes back to the name, ↓ on its last row on to the value."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            add = await self.open_add(app, pilot, review, character_node(tree, "Bob"))
+            name, options = add.query_one("#cvar-name", Input), add.query_one("#cvar-options", OptionList)
+            value = add.query_one("#cvar-value", Input)
+            await pilot.press("down")
+            await settle(app, pilot)
+            self.assertIs(add.focused, options)
+            self.assertEqual(options.highlighted, 0)
+            await pilot.press("up")
+            await settle(app, pilot)
+            self.assertIs(add.focused, name)
+            await pilot.press("down", "down")  # inside the list ↓ moves the highlight
+            await settle(app, pilot)
+            self.assertIs(add.focused, options)
+            self.assertEqual(options.highlighted, 1)
+            last = options.option_count - 1
+            options.highlighted = last
+            await pilot.press("down")  # the last row: on to the value, no wrap round
+            await settle(app, pilot)
+            self.assertIs(add.focused, value)
+            self.assertEqual(options.highlighted, last)
+            await pilot.press("up")  # back into the list, then up its rows and out to the name
+            await settle(app, pilot)
+            self.assertIs(add.focused, options)
+            await pilot.press(*["up"] * (last + 1))
+            await settle(app, pilot)
+            self.assertIs(add.focused, name)
+            await pilot.press("escape")
+            await settle(app, pilot)
+            self.assertEqual(review.staged.count(), 0)
+
+    async def test_add_list_capped_and_unknown_name_still_added(self):
+        app = self.make_app()
+        many = {f"zzCvar{n:04}": {"default": "0", "help": "", "category": "game", "scope": "character",
+                                  "synced": True} for n in range(1500)}
+        (self.kb / "cvars" / "_retail_.json").write_text(json.dumps(
+            {"source": "client dump _retail_ 1", "cvars": KB_CVARS | many}), encoding="utf-8")
+        clear_cache()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            add = await self.open_add(app, pilot, review, character_node(tree, "Bob"))
+            listed = self.listed(add)
+            self.assertEqual(len(listed), 201)  # the cap, then the count of the rest
+            self.assertEqual(listed[-1], "… 1304 more, keep typing")
+            self.assertTrue(add.query_one("#cvar-options", OptionList).get_option_at_index(200).disabled)
+            await pilot.press(*"zzCvar149")
+            await settle(app, pilot)
+            self.assertEqual(self.listed(add), [f"zzCvar{n}" for n in range(1490, 1500)])
+            await pilot.press(*"9x")  # a name the reference doesn't know: nothing listed, still added
+            await settle(app, pilot)
+            self.assertEqual(self.listed(add), [])
+            self.assertIn(UNKNOWN, str(add.query_one("#cvar-note", Static).render()))
+            add.query_one("#cvar-value", Input).value = "5"
+            await pilot.press("enter")  # Enter in the name field: OK, as before
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            bob = character_node(tree, "Bob").data.character.path / CONFIG_CACHE
+            self.assertEqual(review.staged.sets, {bob: {"zzCvar1499x": "5"}})
+
+    async def test_add_enter_guard_on_its_buttons(self):
+        """Enter on a button right after the popup opens is ignored (EnterGuard, as the other popups); Esc never."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            now = [1000.0]
+            self.confirm_guard(CONFIRM_GUARD)
+            with mock.patch.object(dialogs, "monotonic", lambda: now[0]):
+                add = await self.open_add(app, pilot, review, character_node(tree, "Bob"))
+                add.query_one("#cvar-name", Input).value = "brandNewThing"
+                add.query_one("#ok").focus()
+                await pilot.press("enter")
+                await settle(app, pilot)
+                self.assertIs(app.screen, add)
+                now[0] += CONFIRM_GUARD
+                await pilot.press("enter")
+                await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(review.staged.count(), 1)
+
     async def test_filters(self):
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
@@ -420,6 +785,74 @@ class ConfigEditorAppTest(TuiTestCase):
             self.assertFalse([n for n in walk(tree.root) if isinstance(n.data, FileNode)
                               and n.data.target.level == "machine"])
 
+    async def test_each_category_lists_its_cvars_at_every_level(self):
+        """CF4a: with Show all known ticked, every category lists its CVars in Config.wtf, an account's config and a
+        character's file. The client files them all under `game` (the curated groups, CF4b, place them)."""
+        levels = {"machine": CONFIG_WTF, "account": "MAIN", "character": "Aellâ"}
+        groups = {"sound": "Sound_Test", "camera": "cameraTest", "nameplates": "nameplateTest",
+                  "combat text": "WorldTextTest", "network": "netTest", "graphics": "gxTest",
+                  "game state": "seenTest", "debug": "devLogTest", "system": "threadTest", "other": "oddTest"}
+        cvars = dict(KB_CVARS)
+        curated = {}
+        for group, stem in groups.items():
+            for level in levels:
+                name = f"{stem}{level.capitalize()}"
+                cvars[name] = {"default": "1", "help": "", "category": "game", "scope": level, "synced": True}
+                curated[name] = group
+        (self.kb / "cvars" / "_retail_.json").write_text(json.dumps(
+            {"source": "client dump _retail_ 1", "cvars": cvars}), encoding="utf-8")
+        (self.kb / "cvar_categories.json").write_text(json.dumps({"comment": "test", "categories": curated}),
+                                                      encoding="utf-8")
+        clear_cache()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            review.query_one("#show-all", Checkbox).value = True
+            await settle(app, pilot)
+            for group, stem in groups.items():
+                review.query_one("#category", Select).value = group
+                await settle(app, pilot)
+                for level, label in levels.items():
+                    with self.subTest(group=group, level=level):
+                        owner = file_node(tree, label) if level != "character" else character_node(tree, label)
+                        names = [n.data.row.name for n in await open_rows(pilot, owner)]
+                        self.assertIn(f"{stem}{level.capitalize()}", names)
+                        self.assertEqual({n.data.row.category for n in await open_rows(pilot, owner)}, {group})
+
+    async def test_a_search_left_applied_is_named_when_a_category_shows_nothing(self):
+        """The user's smoke test (CF4a, from its log): a search ("gra") applied earlier stays applied, so Sound,
+        Camera ... showed only "Nothing matches the filter". That line stays (STD-7.8); the help panel names the
+        search and the category that together match nothing, and how to clear each."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            review.query_one("#show-all", Checkbox).value = True
+            submit_filter(review, "gra")
+            await settle(app, pilot)
+            review.query_one("#category", Select).value = "sound"
+            await settle(app, pilot)
+            self.assertEqual([str(n.label) for n in tree.root.children], [NO_MATCH_TEXT])
+            help_text = str(review.query_one("#cvar-help-text", Static).render())
+            self.assertIn('the search "gra"', help_text)
+            self.assertIn("Sound", help_text)
+            self.assertIn("Esc in the filter box", help_text)
+            self.assertIn("All categories", help_text)
+            review.query_one("#changed-only", Checkbox).value = True
+            await settle(app, pilot)
+            self.assertIn("Changed only", str(review.query_one("#cvar-help-text", Static).render()))
+            review.query_one("#changed-only", Checkbox).value = False
+            review.query_one("#category", Select).clear()
+            submit_filter(review, "")
+            await settle(app, pilot)
+            review.query_one("#category", Select).value = "sound"  # the category alone: Config.wtf's sound CVars
+            await settle(app, pilot)
+            self.assertNotIn(NO_MATCH_TEXT, [str(n.label) for n in tree.root.children])
+            self.assertIn("Sound_MasterVolume",
+                          [n.data.row.name for n in await open_rows(pilot, file_node(tree, CONFIG_WTF))])
+            self.assertNotIn('the search', str(review.query_one("#cvar-help-text", Static).render()))
+
     async def test_leaving_with_staged_edits_asks_first(self):
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
@@ -448,6 +881,52 @@ class ConfigEditorAppTest(TuiTestCase):
             self.assertEqual(self.tree_bytes(), before)
             self.assertEqual((self.wtf / CONFIG_WTF).read_bytes(), CONFIG_MACHINE)
 
+    async def test_help_panel_layout(self):
+        """CF5: the help panel's Text has the CVar's name as a bold title, bold labels, the state and the category in
+        their row colours, a blank line between sections and a bullet per source; a file's panel a bold title too.
+        Under the tree the panel is tall enough for the sections at 120x30 and the tree keeps the larger part."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            aella = character_node(tree, "Aellâ")
+            await self.press_on(app, pilot, review, await cvar_node(pilot, aella, "cameraDistanceMaxZoomFactor"))
+            text = review.help_text()
+            plain = text.plain
+
+            def styles_of(fragment: str, inner: str | None = None) -> list[str]:
+                """The styles over `inner` (else the whole fragment) where `fragment` first appears."""
+                start = plain.index(fragment) + (fragment.index(inner) if inner else 0)
+                end = start + len(inner or fragment)
+                return [str(span.style) for span in text.spans if span.start <= start and span.end >= end]
+
+            self.assertTrue(plain.startswith("cameraDistanceMaxZoomFactor\n\n"), plain)
+            self.assertIn("bold", " ".join(styles_of("cameraDistanceMaxZoomFactor")))
+            for label in ("Value:", "Default:", "State:", "Category:", "Note:", "Scope:", "Sources:"):
+                self.assertIn("bold", " ".join(styles_of(label)), label)
+            self.assertIn(CVAR_STATE_COLOURS[CHANGED].lower(), " ".join(styles_of("State: changed", "changed")).lower())
+            self.assertIn(CVAR_CATEGORY_COLOURS["camera"].lower(),
+                          " ".join(styles_of("Category: camera", "camera")).lower())
+            self.assertIn("\n\nScope:", plain)
+            self.assertIn("\n\nSources:\n  • Note: https://warcraft.wiki.gg", plain)
+            self.assertNotIn("bold", " ".join(styles_of("Default: 1.9", "1.9")))  # values are in normal weight
+            shown = review.query_one("#cvar-help-text", Static)
+            self.assertIn("Sources:", str(shown.render()))
+            under = review.query_one("#cvar-help")
+            self.assertGreaterEqual(under.region.height, 8)
+            self.assertGreater(tree.region.height, under.region.height)
+            # FB3r1: the recommendation sits with the value and the default, so the panel (which scrolls with the
+            # mouse only) shows it at 120x30 without scrolling, with the value section and the note
+            wrapped = [line.plain for line in text.wrap(app.console, under.scrollable_content_region.width)]
+            visible = wrapped[:under.scrollable_content_region.height]
+            for start in ("Value:", "Default:", "Recommended: 2.6. See more.", "State:", "Category:", "Note:"):
+                self.assertTrue(any(line.startswith(start) for line in visible), (start, visible))
+            await self.press_on(app, pilot, review, aella)
+            text = review.help_text()
+            self.assertTrue(text.plain.startswith("Retail › MAIN/Realm1/Aellâ\n\nFile: config-cache.wtf"),
+                            text.plain)
+            self.assertIn("bold", " ".join(str(span.style) for span in text.spans if span.start == 0))
+
     async def test_help_panel_moves_beside_the_tree_when_wide(self):
         """Under the tree up to 159 columns, the right column from 160 on (the plan's ≥ 160 cols)."""
         for size, side in ((BASE, False), (LARGE, True)):
@@ -474,3 +953,181 @@ class ConfigEditorAppTest(TuiTestCase):
             await self.press_on(app, pilot, review, await cvar_node(pilot, character_node(tree, "Aellâ"),
                                                              "assistedCombatHighlight"), "space")
             self.assertEqual(review.staged.count(), 1)
+
+    # --- feedback round 2 (R1, R2, R3, R5) ---------------------------------------------------------------------
+    def leaf_count(self, label) -> int | None:
+        """The dim leaf count at the end of a node's label (R2, STD-7.27): `27 items` -> 27; None without one."""
+        words = label.plain.split()
+        if len(words) < 2 or words[-1] not in ("item", "items") or not words[-2].isdigit():
+            return None
+        start = label.plain.rindex(f"{COUNT_GAP}{words[-2]} {words[-1]}")
+        styles = {str(span.style) for span in label.spans if span.start <= start + len(COUNT_GAP) < span.end}
+        self.assertIn(COUNT_STYLE, styles, label.plain)
+        return int(words[-2])
+
+    async def assert_counts_match_the_tree(self, pilot, tree: Tree) -> None:
+        """Every node with children (the root, flavors, files, accounts, realms, characters) ends with the count of
+        the CVar rows under it, read before its files are opened (from the model), and equal to the rows the tree
+        shows once every file is opened."""
+        before = {id(node): self.leaf_count(node.label) for node in walk(tree.root)
+                  if not isinstance(node.data, CvarNode)}
+        for node in list(walk(tree.root)):
+            if node.allow_expand and not isinstance(node.data, CvarNode):
+                node.expand()
+        await pilot.pause()
+        await pilot.pause()
+        for node in walk(tree.root):
+            if isinstance(node.data, CvarNode) or node.data is None and node is not tree.root:
+                continue
+            shown = sum(isinstance(n.data, CvarNode) for n in walk(node))
+            with self.subTest(node=node.label.plain):
+                if node.children or node is tree.root:
+                    self.assertEqual(before[id(node)], shown)
+                    self.assertEqual(self.leaf_count(node.label), shown)
+                else:
+                    self.assertIsNone(before[id(node)])
+
+    async def test_every_node_counts_its_cvar_rows(self):
+        """R2 (STD-7.27): the root, Config.wtf, each account, its Account config, each realm and each character show
+        dim `N items` after their label: the CVar rows below them as the tree shows them, counted from the model
+        before a file is opened, and again after the search, Changed only, Show all known and a category."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            self.assertFalse(character_node(tree, "Aellâ").children)  # not opened yet: the count is the model's
+            aella_rows = len(review.rows_for(review.targets[self.aella()]))
+            self.assertEqual(self.leaf_count(character_node(tree, "Aellâ").label), aella_rows)
+            self.assertTrue(tree.root.label.plain.startswith("Retail"), tree.root.label.plain)
+            await self.assert_counts_match_the_tree(pilot, tree)
+            for change in ("show-all", "changed-only", "category", "search"):
+                with self.subTest(change=change):
+                    if change == "search":
+                        submit_filter(review, "camera")
+                    elif change == "category":
+                        review.query_one("#category", Select).value = "nameplates"
+                    else:
+                        review.query_one(f"#{change}", Checkbox).value = True
+                    await settle(app, pilot)
+                    await self.assert_counts_match_the_tree(pilot, tree)
+
+    async def test_flavor_nodes_count_their_rows(self):
+        """R2: with All flavors each flavor's node counts its rows, and the root the sum."""
+        era = self.root / "_classic_era_" / "WTF"
+        (era / "Account" / "ACCT" / "Realm1" / "Other").mkdir(parents=True)
+        (era / CONFIG_WTF).write_bytes(b'SET gxMaximize "0"\r\nSET gxWindow "1"\r\n')
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot, ALL_FLAVORS)
+            tree = review.query_one("#cvars", Tree)
+            flavors = [n for n in tree.root.children if isinstance(n.data, list)]
+            self.assertEqual(len(flavors), 2)
+            await self.assert_counts_match_the_tree(pilot, tree)
+            self.assertEqual(self.leaf_count(tree.root.label), sum(self.leaf_count(n.label) for n in flavors))
+
+    async def test_category_dropdown_counts_follow_the_filters(self):
+        """R5: each category shows how many rows it would show under the current filters across the whole tree,
+        `Graphics (1 item)`, and All categories the total; the counts change with Show all known and the search,
+        and picking a category keeps them (and the pick)."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            select = review.query_one("#category", Select)
+
+            def expected() -> dict[str | None, int]:
+                found = {None: 0, **{name: 0 for name in CATEGORIES}}
+                category = review.category
+                review.category = None
+                try:
+                    for target in review.all_targets():
+                        for row in review.rows_for(target):
+                            found[None] += 1
+                            found[row.category] += 1
+                finally:
+                    review.category = category
+                return found
+
+            def shown() -> dict[str | None, str]:
+                labels = {value: str(prompt) for prompt, value in select._options if value != Select.BLANK}
+                labels[None] = select.prompt
+                return labels
+
+            for step in ("start", "show-all", "search", "pick"):
+                if step == "show-all":
+                    review.query_one("#show-all", Checkbox).value = True
+                elif step == "search":
+                    submit_filter(review, "nameplate")
+                elif step == "pick":
+                    select.value = "nameplates"
+                await settle(app, pilot)
+                counts = expected()
+                with self.subTest(step=step):
+                    labels = shown()
+                    self.assertEqual(labels[None], f"All categories ({count_text(counts[None])})")
+                    for name in CATEGORIES:
+                        self.assertEqual(labels[name], f"{name.capitalize()} ({count_text(counts[name])})")
+            self.assertEqual(review.category, "nameplates")
+            self.assertEqual(select.value, "nameplates")
+            self.assertGreater(counts["nameplates"], 0)
+            tree = review.query_one("#cvars", Tree)
+            self.assertEqual(self.leaf_count(tree.root.label), counts["nameplates"])
+
+    async def test_not_set_rows_are_darker(self):
+        """R3: a CVar the file doesn't set (Show all known) is drawn in NOT_SET_COLOUR, darker than the dim of
+        before yet readable (3:1 on the background); a set row keeps the normal colour."""
+        from textual.color import Color
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            review.query_one("#show-all", Checkbox).value = True
+            await settle(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            nodes = await open_rows(pilot, character_node(tree, "Aellâ"))
+            unset = next(n for n in nodes if n.data.row.value is None)
+            set_row = next(n for n in nodes if n.data.row.value is not None and n.data.row.info is not None)
+            for node, colour in ((unset, NOT_SET_COLOUR.lower()), (set_row, None)):
+                name = node.data.row.name
+                start = node.label.plain.index(name[:6])
+                styles = " ".join(str(s.style) for s in node.label.spans if s.start <= start < s.end).lower()
+                with self.subTest(name=name):
+                    if colour is None:
+                        self.assertNotIn(NOT_SET_COLOUR.lower(), styles)
+                        self.assertNotIn("dim", styles)
+                    else:
+                        self.assertIn(colour, styles)
+        old_dim = Color.parse(BACKGROUND).blend(Color.parse(FOREGROUND), 0.66)
+        self.assertGreaterEqual(contrast(NOT_SET_COLOUR, BACKGROUND), 3.0)
+        self.assertLess(contrast(NOT_SET_COLOUR, BACKGROUND), contrast(old_dim.hex, BACKGROUND))
+
+    async def test_help_panel_title_and_labels_are_coloured(self):
+        """R1: the help panel's title (the CVar's name, or the file's place) is bold gold, every label (Value,
+        Default, State, Category, Type, Blizzard, Note, Recommended, Scope, Sources and each source's name) bold
+        cyan; the values keep the normal colour."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            aella = character_node(tree, "Aellâ")
+            await self.press_on(app, pilot, review, await cvar_node(pilot, aella, "cameraDistanceMaxZoomFactor"))
+            text = review.help_text()
+            plain = text.plain
+
+            def styles_at(start: int, length: int) -> str:
+                return " ".join(str(s.style) for s in text.spans
+                                if s.start <= start and s.end >= start + length).lower()
+
+            self.assertIn(TITLE_GOLD.lower(), styles_at(0, len("cameraDistanceMaxZoomFactor")))
+            self.assertIn("bold", styles_at(0, len("cameraDistanceMaxZoomFactor")))
+            for label in ("Value:", "Default:", "Recommended:", "State:", "Category:", "Note:", "Scope:", "Sources:",
+                          "• Note:", "• Recommended:"):
+                start = plain.index(label) + (2 if label.startswith("•") else 0)
+                width = len(label) - (2 if label.startswith("•") else 0)
+                with self.subTest(label=label):
+                    self.assertIn(HELP_LABEL.lower(), styles_at(start, width))
+            value = plain.index("Default: 1.9") + len("Default: ")
+            self.assertNotIn(HELP_LABEL.lower(), styles_at(value, 3))
+            await self.press_on(app, pilot, review, aella)
+            text = review.help_text()
+            plain = text.plain
+            self.assertIn(TITLE_GOLD.lower(), styles_at(0, len("Retail")))
+            self.assertIn(HELP_LABEL.lower(), styles_at(plain.index("File:"), len("File:")))

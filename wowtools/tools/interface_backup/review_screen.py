@@ -25,23 +25,26 @@ from wowtools.core.install import Flavor, WowInstall, validate_backup_dir
 from wowtools.core.journal import Journal
 from wowtools.core.paths import to_stored
 from wowtools.core.process import wow_check_for
-from wowtools.tools.interface_backup.backup import BackupOutcome, back_up_all
+from wowtools.tools.interface_backup.backup import BackupOutcome, back_up_all, skip_reason
 from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups, read_parts, zips_dir
 from wowtools.tools.interface_backup.journal import latest_undoable, read_restore_journal, resolve_journal_dir
-from wowtools.tools.interface_backup.report import (BACKUP_RESULT_COLUMNS, PARTS_PENDING, STAGE_TITLES, backup_confirm,
-                                                    backup_detail, backup_result_rows, backup_summary_rows, backup_text,
-                                                    backups_title, flavor_text, held_text, leftover_text, part_text,
-                                                    restore_confirm, selection_text, undo_confirm, warnings_text)
+from wowtools.tools.interface_backup.report import (BACKUP_FORMS, BACKUP_RESULT_COLUMNS, PARTS_PENDING, STAGE_TITLES,
+                                                    WARNINGS_NOTE, backup_cells, backup_confirm, backup_detail, backup_result_rows,
+                                                    backup_summary_rows, backups_note, flavor_cells, held_cells,
+                                                    leftover_text, part_cells, restore_confirm, selection_text,
+                                                    undo_confirm)
 from wowtools.tools.interface_backup.restore import RestoreError, RestorePlan, RestoreResult, RestoreStopped, restore
 from wowtools.tools.interface_backup.restore_screen import RestoreResultScreen, RestoreScreen, flavor_warning_items
 from wowtools.tools.interface_backup.scanner import CHEAP_STATS, PARTS, FlavorScan, scan_flavors
 from wowtools.tools.interface_backup.settings import load_settings, resolve_backup_root
 from wowtools.tools.interface_backup.undo import undo_restore
 from wowtools.ui.branding import BottomBar
+from wowtools.ui.columns import ColumnLayout, column_text, fit_columns, fit_keeping_count, natural_widths
+from wowtools.ui.counts import COUNT_STYLE, count_text, with_count
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                 relabel_branch, theme_colour, two_pane_css)
 from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
-from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
+from wowtools.ui.review import MARK_WIDTH, FittedRows, ReviewBase, ReviewTree, TickModel, WowCheck, tree_room
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TreeFilter
 from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
@@ -49,6 +52,20 @@ from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f flavors · t tools"
 # Tree nodes that cannot be ticked: a backup always holds a flavor's whole Interface and WTF.
 READ_ONLY = ("part", "links", "link", "leftover", "warnings", "warning", "backups", "backup")
+# The rows drawn in columns (feedback round 2 R4, STD-7.28). The root and a flavor: name · count · files · size (a
+# flavor also · its last backup); a flavor with nothing to back up keeps the name and count columns and says why
+# after them. A part: name · files · size. A backup: date and time · kind · parts · size. A flavor's last backup is
+# cut (at its end, down to its date) before it is dropped; past that nothing is cut while a column can be dropped
+# instead (the last backup, the size, the files; a backup's parts, size); the name is cut (in its middle) only so
+# the count stays. A backup row keeps its date and time and its kind: when they do not fit, it takes a narrower
+# form (report.backup_cells: no year, then no seconds, then a safety zip marked S) before it cuts the date.
+ROOT_COLUMNS = ColumnLayout(caps=(None,) * 4, minimums=(6, 0, 0, 0), shrink=(), drop=(3, 2))
+FLAVOR_COLUMNS = ColumnLayout(caps=(None,) * 5, minimums=(6, 0, 0, 0, 16), shrink=((4,),), drop=(4, 3, 2))
+FLAVOR_STYLES = (ACCENT, COUNT_STYLE, "dim", "dim", "dim")
+PART_COLUMNS = ColumnLayout(caps=(None,) * 3, minimums=(3, 0, 0), shrink=(), drop=(2, 1))
+PART_STYLES = ("bold", "dim", "dim")
+BACKUP_COLUMNS = ColumnLayout(caps=(None,) * 4, minimums=(10, 0, 0, 0), shrink=(), drop=(2, 3, 1))
+BACKUP_STYLES = ("", "dim", "dim", "dim")
 
 
 def free_bytes(path: Path | None, disk_usage: Callable = shutil.disk_usage) -> int | None:
@@ -105,7 +122,7 @@ class BackupResultScreen(ResultBase):
             table.add_row(Text(flavor), Text(kind, style=style), *(Text(c) for c in rest))
 
 
-class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
+class BackupReviewScreen(WarningsHost, TreeFilter, FittedRows, ReviewBase, Screen[str]):
     """The chosen flavors as a tree (what Interface and WTF hold, links, warnings, the flavor's backups) with
     flavor ticks for Back up, a highlighted backup for Restore, and Undo. Dismisses with "flavors", "tools" or
     "quit"."""
@@ -159,6 +176,11 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         self.summary_text = ""
         self._backup_nodes: dict[Path, TreeNode] = {}
         self._kept: ModelFilter | None = None  # what the filter keeps (links, warnings and backups load on expand)
+        self._counts: dict[tuple, int] = {}  # a node's leaf count (R2) by (kind, flavor folder), per rebuild
+        self._flavor_widths: tuple[int, ...] = ()  # the flavor rows' natural widths (R4), per rebuild
+        # a part or backup row's columns (R4): id(row data) -> its cells and its siblings' natural widths, one pair
+        # per form of the row, widest first (a part has one; a backup BACKUP_FORMS, see report.backup_cells)
+        self._columns: dict[int, list[tuple[tuple[str, ...], tuple[int, ...]]]] = {}
         self._scanning = False
         self._checking = False  # the running-WoW check is in its worker
         # What a result screen asked for once its rescan is done: ("restore", None) for Restore (e), or ("undo",
@@ -391,46 +413,70 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         if scans is None:
             return
         kept = self._kept = self._model_filter()
+        model = [flavor for flavor in self._model(scans) if kept.shows(flavor)]
+        self._counts = self._count_leaves(model, kept)
+        self._flavor_widths = natural_widths(self._flavor_cells(flavor.data[1], padded=True) for flavor in model)
         tree = self.query_one("#flavors", Tree)
         tree.clear()
-        self._backup_nodes = {}
+        self._backup_nodes, self._columns = {}, {}
+        self.rows_built(tree)  # fitted again once the tree is laid out (hidden during the scan)
         tree.root.data = ("root",)
         tree.root.set_label(self._label(tree.root.data))
         warning = f"bold {theme_colour(self.app, 'warning')}"
-        for flavor in self._model(scans):
-            if not kept.shows(flavor):
-                continue
+        for flavor in model:
             scan = flavor.data[1]
+            folder = scan.flavor.folder
             node = tree.root.add(self._label(flavor.data), data=flavor.data, expand=True)
+            parts = [child.data for child in flavor.children if child.data[0] == "part" and kept.shows(child)]
+            natural = natural_widths((name, *part_cells(scan.parts[name])) for _, name, _ in parts)
+            for data in parts:
+                self._columns[id(data)] = [((data[1], *part_cells(scan.parts[data[1]])), natural)]
             for child in flavor.children:
                 if not kept.shows(child):
                     continue
                 data, kind = child.data, child.data[0]
                 opens, added = kept.opens(child), None
                 if kind == "part":
-                    part = scan.parts[data[1]]
-                    node.add_leaf(Text.assemble((data[1], "bold"), (f"  {part_text(part)}", "dim")), data=data)
+                    node.add_leaf(self._row_label(data), data=data)
                 elif kind == "links":
-                    added = node.add(Text.assemble((f"Links ({scan.link_count})", "bold"),
-                                                   ("  not backed up; a restore keeps them", "dim")),
+                    added = node.add(with_count(Text("Links", style="bold"), self._counts.get(("links", folder), 0))
+                                     .append("  not backed up; a restore keeps them", "dim"),
                                      data=data, allow_expand=True)  # paths load on expand
                 elif kind == "leftover":
                     node.add_leaf(Text(f"⚠ {leftover_text(scan)}", style=warning), data=data)
                 elif kind == "warnings":
-                    added = node.add(Text(f"⚠ {warnings_text(scan)}", style=warning), data=data,
-                                     allow_expand=True)  # lines load on expand
+                    added = node.add(with_count(Text("⚠ Scan warnings", style=warning),
+                                                self._counts.get(("warnings", folder), 0))
+                                     .append(f"  {WARNINGS_NOTE}", "dim"),
+                                     data=data, allow_expand=True)  # lines load on expand
                 elif child.children:
-                    added = node.add(Text.assemble((backups_title(self._flavor_backups(scan)), "bold"),
-                                                   ("  highlight one, then Restore", "dim")),
+                    shown = [b for b in self._flavor_backups(scan) if self._shown(("backup", b))]
+                    added = node.add(with_count(Text("Backups", style="bold"), len(shown))
+                                     .append(f"  {backups_note(shown)}", "dim"),
                                      data=data, allow_expand=True)  # zips load on expand, parts in a worker
                 else:
-                    node.add_leaf(Text.assemble(("Backups (0)", "bold"), ("  none yet", "dim")), data=data)
+                    node.add_leaf(Text.assemble(("Backups", "bold"), ("  none yet", "dim")), data=data)
                 if opens and added is not None:
                     self._load_children(added)  # the filter opens it: its matches show
                     added.expand()
         self.note_no_match(tree.root)
         tree.root.expand()
         self._update_summary()
+
+    def _count_leaves(self, model: list[ModelNode], kept: ModelFilter) -> dict[tuple, int]:
+        """Every node's leaf count (R2, STD-7.27), once per rebuild, as the tree shows them (under a filter, what it
+        keeps; a group's lines before it is opened too). The leaf is a backup zip (a safety zip too): the root, a
+        flavor and its Backups count them; Links and Scan warnings, not backups, count their own lines and are left
+        out of the flavor's count."""
+        counts: dict[tuple, int] = {("root",): 0}
+        for flavor in model:
+            folder = flavor.data[1].flavor.folder
+            for child in flavor.children:
+                if child.data[0] in ("links", "warnings", "backups") and kept.shows(child):
+                    counts[(child.data[0], folder)] = sum(kept.shows(line) for line in child.children)
+            counts[("flavor", folder)] = counts.get(("backups", folder), 0)
+            counts[("root",)] += counts[("flavor", folder)]
+        return counts
 
     def _shown(self, data) -> bool:
         """The filter keeps this node (one an expand adds)."""
@@ -458,9 +504,10 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
 
     def _add_backups(self, node: TreeNode, scan: FlavorScan) -> None:
         backups = [b for b in self._flavor_backups(scan) if self._shown(("backup", b))]
-        for info in backups:
-            parts = self.parts.get(info.path, PARTS_PENDING)
-            self._backup_nodes[info.path] = node.add_leaf(Text(backup_text(info, parts)), data=("backup", info))
+        rows = [("backup", info) for info in backups]
+        self._backup_columns(rows)
+        for data in rows:
+            self._backup_nodes[data[1].path] = node.add_leaf(self._row_label(data), data=data)
         unread = [b.path for b in backups if b.path not in self.parts]
         if unread:
             self.run_worker(lambda: self._parts_worker(unread), thread=True, group="backup-parts")
@@ -480,7 +527,10 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         if node is None or not self.is_attached:
             return  # rebuilt (a rescan) since the worker started: its parts are read again on expand
         self.parts[path] = parts
-        node.set_label(Text(backup_text(node.data[1], parts)))
+        siblings = [n for n in node.parent.children if n.data is not None and n.data[0] == "backup"]
+        self._backup_columns([n.data for n in siblings])  # the parts column may be wider now: the rows realign
+        for sibling in siblings:
+            sibling.set_label(self._row_label(sibling.data))
         if self.highlighted_backup() is node.data[1]:
             self._update_summary()  # the bottom line names the highlighted backup's parts too
 
@@ -534,13 +584,89 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         return [data[1]] if data[0] == "flavor" and data[1].has_data else []
 
     def _label(self, data) -> Text:
+        """The root's or a flavor's row (R4): its tick mark, then name · count (R2) · files · size (a flavor also ·
+        its last backup) in columns aligned with the other flavors, fitted to the pane; a flavor with nothing to
+        back up says why after its count."""
         scans = self._scans_of(data)
         mark = self._mark(scans)
+        tree = self.query_one("#flavors", Tree)
+        count = count_text(self._counts.get(self._count_key(data), 0))
         if data[0] == "root":
-            return Text.assemble(mark, (self.scope_label, ACCENT), (f"  {held_text(scans)}", "dim"))
+            cells = (self.scope_label, count, *held_cells(scans))
+            room = tree_room(tree, 0, opens=True, mark=MARK_WIDTH)
+            widths, gap = fit_keeping_count(natural_widths([cells]), room, ROOT_COLUMNS)
+            return Text.assemble(mark, column_text(cells, widths, FLAVOR_STYLES, gap, middle=(0,)))
         scan = data[1]
-        return Text.assemble(mark, (scan.flavor.display_name, ACCENT),
-                             (f"  {flavor_text(scan, self._flavor_backups(scan))}", "dim"))
+        cells = self._flavor_cells(scan)
+        room = tree_room(tree, 1, opens=True, mark=MARK_WIDTH)
+        widths, gap = fit_keeping_count(self._flavor_widths or natural_widths([self._flavor_cells(scan, padded=True)]),
+                                        room, FLAVOR_COLUMNS)
+        columns = column_text(cells, widths[:len(cells)], FLAVOR_STYLES, gap, middle=(0,))
+        why = skip_reason(scan)
+        if why and widths[1]:
+            # nothing to back up: the name and count line up with the other flavors', the reason in place of the data
+            columns.append(" " * (widths[0] + gap + widths[1] - columns.cell_len))
+            left = None if room is None else room - columns.cell_len - gap
+            if left is None or left > 0:
+                note = Text(" " * gap + why, style="dim")
+                if left is not None:
+                    note.truncate(left + gap, overflow="ellipsis")
+                columns.append_text(note)
+        return Text.assemble(mark, columns)
+
+    @staticmethod
+    def _count_key(data) -> tuple:
+        return ("root",) if data[0] == "root" else ("flavor", data[1].flavor.folder)
+
+    def _flavor_cells(self, scan: FlavorScan, *, padded: bool = False) -> tuple[str, ...]:
+        """A flavor row's cells: name, count, then files, size and last backup when it has something to back up
+        (`padded`: empty cells in their place otherwise, for the natural widths)."""
+        head = (scan.flavor.display_name, count_text(self._counts.get(("flavor", scan.flavor.folder), 0)))
+        if scan.has_data:
+            return (*head, *flavor_cells(scan, self._flavor_backups(scan)))
+        return (*head, "", "", "") if padded else head
+
+    def _backup_columns(self, rows: list) -> None:
+        """Work out a Backups group's natural widths over its rows (with the parts read so far), in every form."""
+        for data in rows:
+            self._columns[id(data)] = []
+        for form in range(BACKUP_FORMS):
+            cells = [backup_cells(data[1], self.parts.get(data[1].path, PARTS_PENDING), form) for data in rows]
+            natural = natural_widths(cells)
+            for data, row in zip(rows, cells):
+                self._columns[id(data)].append((row, natural))
+
+    def _row_label(self, data) -> Text:
+        """A part row (name · files · size) or a backup row (date and time · kind · parts · size) in columns as
+        wide as its siblings' widest cells, fitted to the pane (R4). A backup row takes its widest form that keeps
+        the date and time whole and the kind (when the group holds a safety zip); in the narrowest form a safety zip
+        is marked SAFETY_MARK, and what is still too wide is cut there."""
+        forms = self._columns[id(data)]
+        tree = self.query_one("#flavors", Tree)
+        if data[0] == "part":
+            cells, natural = forms[0]
+            widths, gap = fit_columns(natural, tree_room(tree, 2, opens=False), PART_COLUMNS)
+            return column_text(cells, widths, PART_STYLES, gap)
+        room = tree_room(tree, 3, opens=False)
+        needs_kind = forms[-1][1][1] > 0  # the narrowest form's kind column is empty unless a safety zip is there
+        for cells, natural in forms:
+            widths, gap = fit_columns(natural, room, BACKUP_COLUMNS)
+            if widths[0] >= natural[0] and (widths[1] or not needs_kind):
+                break
+        return column_text(cells, widths, BACKUP_STYLES, gap, middle=(0,))
+
+    def refit_rows(self, tree: Tree) -> None:
+        """Fit the column rows again to the tree pane's width (R4, FittedRows)."""
+        if self.scans is None:
+            return
+        stack = [tree.root]
+        while stack:
+            node = stack.pop()
+            if node.data is not None and node.data[0] in ("root", "flavor"):
+                node.set_label(self._label(node.data))
+            elif node.data is not None and id(node.data) in self._columns:
+                node.set_label(self._row_label(node.data))
+            stack.extend(node.children)
 
     def _refresh_labels(self, node=None) -> None:
         """Relabel node's branch and its ancestors (everything a tick there can change), or the whole tree."""

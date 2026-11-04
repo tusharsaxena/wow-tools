@@ -108,7 +108,18 @@ backups go under `settings.resolve_root()` (`<backup_dir or <wow_path>/wow-tools
   `ReviewBase`): the scan worker plans every real character of the source's flavor; the tree is
   `populate_characters` with `disabled` (source, other flavor) and `character_extra` adding one `PairNode` per file
   (tick key `PairKey(target, name)` when it writes something). A character's own tick key is never ticked: its
-  `node_tick_keys` and mark use only its pairs. Left pane: the source, a box per file, the filter, **Write**, **Dry
+  `node_tick_keys` and mark use only its pairs. The leaf (STD-7.27) is a pair line, whatever its status (an
+  `unchanged` or `source has no file` line is listed too): the root, a flavor, an account, a realm and a target
+  character end with the pair lines the tree shows under them (after the search and the file boxes), counted in
+  `_add_pairs` as the tree is built (no node loads on expand), so another flavor and its accounts say `0 items`,
+  and the source and another flavor's characters (no pairs) have no count, their reason in its place. A pair line
+  is columns (STD-7.28, `report.pair_cells`, `PAIR_COLUMNS`): file · status · `⚠ action bars`, as wide as the
+  target's widest cells; a status is never cut (its minimum is the longest, `source has no file`), only a long
+  problem; then the file name gives way, cut in its middle (`macros…e.txt`); the warning is dropped, never cut. A
+  node's name is cut in its middle so its count fits the pane (`ui/columns.group_text`; a greyed character's
+  reason: `REASON_COLUMNS`), never below 4 cells, its count kept (a file name never below its 10: at 80 columns a
+  line deeper than that keeps them and scrolls sideways, its status and warning dropped first, STD-7.28, U1);
+  every line is fitted again when the tree's width changes (`ui/review.FittedRows`). Left pane: the source, a box per file, the filter, **Write**, **Dry
   run**, **Rescan**, **Undo last change**; **Diff** in the bar under the tree. Ticks are a selection, not staged
   work, so leaving asks nothing.
 - `diff_screen.DiffScreen`: the unified diff of one replaced pair, read-only.
@@ -131,6 +142,7 @@ levels is in [events.md](../events.md).
   dry run, Undo removing created files, non-ASCII paths and bodies, an unknown macro layout, WoW running, a file
   changed since the review, recovery), the report and diff rows.
 - `tests/test_config_copier_app.py`: the TUI flow (source → targets → review → copy), the diff screen, greyed
-  targets, the macro warning in the confirm, 80x24. The suite-wide meta-tests (look and feel, help, quit, tool menu,
+  targets, the macro warning in the confirm, 80x24; `NodeCountsAndColumnsTest`: every node's count (also under a
+  search and an unticked file box), the pair columns aligned, every line fitting the pane at 120x30 and 80x24. The suite-wide meta-tests (look and feel, help, quit, tool menu,
   toasts, warnings, structure) cover the copier too; `tests/fixtures.py` `reach_review` and `pick_source` reach it.
 - `tests/test_docs.py` `test_config_copier_guide_readme_and_notes`: this doc, the guide, the README rows.

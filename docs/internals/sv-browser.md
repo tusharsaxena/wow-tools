@@ -137,6 +137,25 @@ session, not on a second open of the tool, a new flavor pick or a rescan, and ne
   (only while the review is the shown screen, else on resume), settled in the folder the marker was read from; the
   flow is the shared `SvRecoveryActions` (`recovery_screen` adds that Put back drops the staged edits,
   `recovery_root` is the marker's folder, `recovery_done` is `_mark_stale`).
+- Counts and columns (feedback round 2 R2, R4; STD-7.27, STD-7.28). The leaf (`LEAF_KIND`) is a SavedVariables
+  file in Browse (the scan lists them; a key is known only once its file is read, D18, so counting keys would read
+  the install) and a hit in Results. The root, a flavor, an account, a realm and an owner (Results: each `r-*`
+  group) end with the leaves the filter keeps below them (`_count`, one pass over the model per rebuild, before the
+  tree is built, so a file not read yet counts and reading one changes nothing); the filter matches a group or a
+  file on its name alone (`_filter_text`), never its count. A file is a leaf itself (its keys are its contents) and
+  a table's `{N}` (its entries one level down, all it knows before it is opened) is its value column, not a count.
+  Rows (`ROW_KINDS`): a file is name · size (`FILE_ROW_COLUMNS`, red `can't read` once it failed), a key is key ·
+  `{N}` or `= value` (`model.node_cells`) · its marks, a hit path · `= old` · marks (`KEY_COLUMNS`: the key (or a
+  hit's path, cut in its middle) and the value give way together, the wider first, then the marks; the key never
+  below its 8 cells; dropped value, marks; a group's name never below 4 with its count kept, `ui/columns.group_text`:
+  a row deeper than that scrolls sideways, U1). Each row aligns with its
+  sibling rows (`_add_children`: one sibling list; `_natural_for` caches their natural widths until the next
+  `_refresh_labels`, as a staged mark widens the marks column); a row that does not open beside one that does is
+  padded two spaces where the ▶ is. `_room` is the pane less the scrollbar, the guides, the ▶ (or pad) and, in
+  Results, the tick mark (`ui/review.tree_room`); `ui/review.FittedRows` refits whenever the tree's width changes,
+  its first layout after a rebuild made before it was laid out too. The
+  filter and the bottom line keep the row in one piece (`_key_plain`: `key = value  ✎ new`), so the full value is
+  always named there.
 - `popups.py`: `SearchProgressScreen` (the search's and the table reads' progress popup),
   `EditValueScreen` (`title`; with `matched` a first `#edit-mode` select, Replace
   only the matched text / Whole value; a type `NavSelect`, then an `Input` or a `PopupCheckbox`), `RenameKeyScreen`

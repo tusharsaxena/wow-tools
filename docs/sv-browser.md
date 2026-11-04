@@ -78,11 +78,19 @@ names the one you're on.
 game version → account → **Account-wide**, or realm → character → the file and its size (`ElvUI.lua  12.4 KB`) →
 variables → keys
 
+- Every game version, account, realm and character, and the top line, ends with how many files it holds, dimmed
+  (`Retail  312 items`, `Kaelys  14 items`): the files the filter shows, counted before any is read.
+- The rows line up in columns: a file's size under its neighbours' sizes, a value under its neighbours' values,
+  a staged change after the widest value. When the panel is narrow, a long key and a long value are cut short
+  with `…` together, the wider first, then the change marks (a key never below a few letters at each end: in a
+  very narrow window only the key is left and the line scrolls sideways); the bottom bar always names the
+  highlighted key and its value in full.
+
 - Nothing is read until you open a file, so the scan is quick even with thousands of files. Opening a file reads it
   and shows its variables; opening a table shows its keys. A big file takes a moment: a dim "Reading…" line shows
   while it loads.
-- A value shows as `key = value`: text in double quotes (a long text is cut short with `…`), numbers as the file
-  writes them, `true`, `false` or `nil`. A table shows as `key {12}`, with how many entries it holds.
+- A value shows as `key  = value`: text in double quotes (a long text is cut short with `…`), numbers as the file
+  writes them, `true`, `false` or `nil`. A table shows as `key  {12}`, with how many entries it holds.
 - Keys show the way the tree writes them: a text key bare (`font`), a number or boolean key in brackets (`[5]`,
   `[true]`). Array entries (lists with no written key) show by their position, `[1]`, `[2]`, …
 - A table with more than 500 entries shows the first 500 and a `… N more` line.
@@ -238,8 +246,9 @@ The popup opens with your last search filled in, so narrowing it is quick.
 
 The search reads every file in scope (several at once, with a progress window), and switches the tree to the
 **Results** view: game version → account → **Account-wide** or `Realm/Name` → file → one line per hit,
-`ElvDB › profiles › Default › general › font = "Expressway"`. A message says how many hits it found, in how many
-files, and how long it took.
+`ElvDB › profiles › Default › general › font  = "Expressway"`, the values lined up. Every group ends with how many
+hits it shows (`ElvUI.lua  2 items`). A message says how many hits it found, in how many files, and how long it
+took.
 
 - **Every hit starts ticked.** `Space` ticks or unticks the highlighted hit or group, `a` and `n` tick and untick
   everything the filter shows (a tick the filter hides stays, and the bottom bar says how many). Ticks only choose

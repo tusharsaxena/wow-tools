@@ -232,6 +232,17 @@ class CopierReportTest(unittest.TestCase):
         [none] = plan_copy(self.source, [self.bob], ["layout-local.txt"])
         self.assertEqual(report.pair_text(none), "source has no file")
 
+    def test_pair_cells(self):
+        """A pair line's columns (feedback round 2 R4): file · status · the CC7 mark; a status is never cut (the
+        status column's minimum is the longest of them), only a long problem."""
+        plans = {(p.target.name, p.name): p for p in plan_copy(self.source, [self.bob, self.traxex], COPY_FILES)}
+        self.assertEqual(report.pair_cells(plans["Bob", "macros-cache.txt"]),
+                         ("macros-cache.txt", "replaced", "⚠ action bars"))
+        self.assertEqual(report.pair_cells(plans["Trâxex", "config-cache.wtf"]),
+                         ("config-cache.wtf", "new (merged)", ""))
+        self.assertEqual(report.PAIR_MINIMUMS[1], len("source has no file"))
+        self.assertTrue(all(len(report.pair_text(p)) <= report.PAIR_MINIMUMS[1] for p in plans.values()))
+
     def test_confirm_lists_targets_files_and_the_macro_warning(self):
         plans = plan_copy(self.source, [self.bob, self.traxex], COPY_FILES)
         title, body, alerts = report.copy_confirm(self.source, "_retail_", plans, dry_run=False)

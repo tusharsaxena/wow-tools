@@ -13,9 +13,15 @@ from wowtools.core.events import capture_events
 from wowtools.core.install import WowInstall
 from wowtools.core.kb import CvarInfo
 from wowtools.tools.config_editor.model import CATEGORIES, CONFIG_CACHE, ConfigTarget, category_of
-from wowtools.tools.config_editor.ops import (ConfigStaged, build_changes, rows, stage_remove, stage_reset,
-                                              stage_set, stage_toggle)
+from wowtools.tools.config_editor.ops import (ADD_LIST_CAP, ConfigStaged, add_candidates, build_changes,
+                                              match_candidates, rows, stage_remove, stage_reset, stage_set,
+                                              stage_toggle)
+from wowtools.tools.config_editor.report import (CHANGED, COLUMN_CAPS, COLUMN_MINIMUMS, DEFAULT_STATE, DROP_ORDER,
+                                                 NO_DESCRIPTION, NOT_SET, STATES, UNKNOWN, row_cells, row_state,
+                                                 what_it_does)
+from wowtools.tools.config_editor.review_screen import CVAR_COLUMNS
 from wowtools.tools.config_editor.scanner import scan_targets
+from wowtools.ui.columns import cut_middle, fit_columns
 
 
 def info(name: str, default: str | None, scope: str | None = "character", category: str = "other",
@@ -229,12 +235,14 @@ class ConfigEditorOpsTest(unittest.TestCase):
 
     def test_category_mapping(self):
         self.assertEqual(CATEGORIES, ("graphics", "sound", "interface", "camera", "nameplates", "combat text",
-                                      "network", "other"))
+                                      "network", "game state", "debug", "system", "other"))
         for name, expected in (("nameplateShowAll", "nameplates"), ("NamePlateHorizontalScale", "nameplates"),
                                ("cameraSmoothStyle", "camera"), ("test_cameraOverShoulder", "camera"),
                                ("floatingCombatTextCombatHealing", "combat text"),
                                ("CombatTextFloatMode", "combat text"), ("enableFloatingCombatText", "combat text"),
-                               ("whatever", "other")):
+                               ("whatever", "other"),
+                               # CF4: a CVar the flavor's data doesn't know still gets the shipped curated group
+                               ("ChatSoundVolume", "sound"), ("useIPv6", "network"), ("CURSORSIZEPREFERRED", "interface")):
             with self.subTest(name=name):
                 self.assertEqual(category_of(None, name), expected)
         self.assertEqual(category_of(CVARS["gxMaximize"], "gxMaximize"), "graphics")
@@ -274,6 +282,155 @@ class ConfigEditorOpsTest(unittest.TestCase):
             stage_set(staged, aella, "bad name", "1")
         with self.assertRaises(ValueError):
             stage_set(staged, aella, "fine", "two\nlines")
+
+
+    # CF1, CF2 (feedback round 1): a CVar row is five columns, name, value, default, state and category; the state is
+    # `changed`, `default` or `unknown`; the name, value and default columns are capped and shrink to fit.
+    def test_state_column(self):
+        self.assertEqual(STATES, (CHANGED, DEFAULT_STATE, UNKNOWN))
+        self.assertEqual(STATES, ("changed", "default", "unknown"))  # U1: the column's names only
+        aella = self.target("MAIN/Realm1/Aellâ")
+        staged = ConfigStaged()
+        stage_set(staged, aella, "lastSelectedClubId", "7")
+        cases = {"cameraDistanceMaxZoomFactor": CHANGED,  # 2.6, default 1.9
+                 "assistedCombatHighlight": DEFAULT_STATE,  # 1, default 1
+                 "floatingCombatTextCombatDamage": DEFAULT_STATE,  # not set: the game uses its default
+                 "myAddonThing": UNKNOWN,  # no KB entry
+                 "lastSelectedClubId": UNKNOWN}  # set, but the KB has no default
+        for name, state in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(row_state(self.row(aella, name, staged)), state)
+
+    def test_row_cells(self):
+        aella = self.target("MAIN/Realm1/Aellâ")
+        self.assertEqual(row_cells(self.row(aella, "cameraDistanceMaxZoomFactor")),
+                         ("cameraDistanceMaxZoomFactor", "2.6", "1.9", CHANGED, "camera"))
+        self.assertEqual(row_cells(self.row(aella, "floatingCombatTextCombatDamage")),
+                         ("floatingCombatTextCombatDamage", NOT_SET, "1", DEFAULT_STATE, "combat text"))
+        self.assertEqual(row_cells(self.row(aella, "myAddonThing")), ("myAddonThing", "Dænerys", "", UNKNOWN, "other"))
+        staged = ConfigStaged()
+        stage_set(staged, aella, "assistedCombatHighlight", "")
+        self.assertEqual(row_cells(self.row(aella, "assistedCombatHighlight", staged))[1], '""')
+
+    def test_columns_capped_without_a_width(self):
+        self.assertEqual(COLUMN_CAPS, (40, 24, 24))  # CF2: the name 40, the value and the default 24
+        widths, gap = fit_columns((300, 300, 300, 7, 11), None, CVAR_COLUMNS)
+        self.assertEqual((widths, gap), ((40, 24, 24, 7, 11), 2))
+        self.assertEqual(fit_columns((10, 3, 3, 7, 6), None, CVAR_COLUMNS), ((10, 3, 3, 7, 6), 2))
+
+    def test_columns_shrink_to_fit(self):
+        natural = (27, 300, 3, 7, 10)
+        widths, gap = fit_columns(natural, 200, CVAR_COLUMNS)  # room for all: capped only, two spaces apart
+        self.assertEqual((widths, gap), ((27, 24, 3, 7, 10), 2))
+        widths, gap = fit_columns(natural, 60, CVAR_COLUMNS)  # the value gives way first, one space apart
+        self.assertEqual(gap, 1)
+        self.assertEqual(sum(widths) + 4 * gap, 60)
+        self.assertEqual(widths[0], 27)
+        self.assertEqual(widths[2:], (3, 7, 10))
+        widths, gap = fit_columns(natural, 46, CVAR_COLUMNS)  # then the name
+        self.assertEqual(sum(widths) + 4 * gap, 46)
+        self.assertEqual(widths[1], COLUMN_MINIMUMS[1])
+        self.assertLess(widths[0], 27)
+        self.assertGreaterEqual(widths[0], COLUMN_MINIMUMS[0])
+        # every column at its minimum is one cell over: the default goes and the name takes the room back
+        self.assertEqual(fit_columns(natural, 42, CVAR_COLUMNS), ((15, 7, 0, 7, 10), 1))
+
+    def test_columns_dropped_when_the_minimums_do_not_fit(self):
+        """FB2r: below the minimums whole columns go, the default first, then the category, the value and the state
+        (never cut), and a name left alone is cut to the room: the row fits while the name's 12-cell minimum does;
+        narrower, the name keeps its minimum and the row scrolls sideways (STD-7.28, user decision U1)."""
+        self.assertEqual(DROP_ORDER, (2, 4, 1, 3))
+        natural = (30, 7, 1, 7, 11)  # a character file under All flavors: 42 cells (FB2 review)
+        # the 1-cell default still fits
+        self.assertEqual(fit_columns(natural, 42, CVAR_COLUMNS), ((12, 7, 1, 7, 11), 1))
+        natural = (30, 7, 6, 7, 11)
+        widths, gap = fit_columns(natural, 42, CVAR_COLUMNS)
+        self.assertEqual((widths, gap), ((14, 7, 0, 7, 11), 1))  # the default goes, the name takes the room back
+        cases = {30: (14, 7, 0, 7, 0), 20: (12, 0, 0, 7, 0), 15: (15, 0, 0, 0, 0), 12: (12, 0, 0, 0, 0),
+                 8: (12, 0, 0, 0, 0), 0: (12, 0, 0, 0, 0)}
+        for room, expected in cases.items():
+            with self.subTest(room=room):
+                widths, _ = fit_columns(natural, room, CVAR_COLUMNS)
+                self.assertEqual(widths, expected)
+                shown = [w for w in widths if w]
+                self.assertLessEqual(sum(shown) + len(shown) - 1, max(room, COLUMN_MINIMUMS[0]))
+        # an empty default: no gap for it
+        self.assertEqual(fit_columns((10, 3, 0, 7, 6), 32, CVAR_COLUMNS), ((10, 3, 0, 7, 6), 2))
+
+    def test_name_cut_in_its_middle(self):
+        """FB2r: a cut name keeps its start and its end, so names sharing a long start stay apart."""
+        self.assertEqual(cut_middle("assistedCombatHighlight", 30), "assistedCombatHighlight")
+        first = cut_middle("raidFramesDisplayAggroHighlight", 15)
+        second = cut_middle("raidFramesDisplayClassColor", 15)
+        self.assertEqual((first, second), ("raidFra…ghlight", "raidFra…ssColor"))
+        self.assertEqual(cut_middle("nameplateShowFriends", 2), "n…")
+        self.assertEqual(cut_middle("nameplateShowFriends", 1), "…")
+        self.assertEqual(cut_middle("nameplateShowFriends", 0), "")
+
+
+    # CF6 (feedback round 1): what a CVar does (Set, Add) and Add's list of the known CVars a file doesn't set.
+    def test_what_it_does(self):
+        self.assertEqual(what_it_does(CVARS["cameraDistanceMaxZoomFactor"]), "How far the camera can zoom out.")
+        both = info("x", "0", help_text="Blizzard's words", description="Our note.")
+        self.assertEqual(what_it_does(both), "Our note.")  # our note wins
+        self.assertEqual(what_it_does(CVARS["nameplateShowFriends"]), "Show friendly nameplates")
+        self.assertEqual(what_it_does(CVARS["assistedCombatHighlight"]), NO_DESCRIPTION)
+        self.assertEqual(NO_DESCRIPTION, "No description in the reference.")
+        self.assertEqual(what_it_does(None), NO_DESCRIPTION)
+        self.assertEqual(what_it_does(info("y", "0", help_text="Two\nlines  here")), "Two lines here")  # one line
+
+    def names(self, targets, staged=None) -> list[str]:
+        return [i.name for i in add_candidates(targets, {"_retail_": CVARS}, staged)]
+
+    def test_add_candidates_one_file(self):
+        aella = self.target("MAIN/Realm1/Aellâ")
+        # the character-level CVars the KB knows that Aellâ doesn't set, by name (machine and account ones don't join)
+        self.assertEqual(self.names([aella]), ["floatingCombatTextCombatDamage", "lastSelectedClubId"])
+        self.assertEqual(self.names([self.target("MAIN/Realm1/Bob")]),  # no file yet: every character CVar
+                         ["assistedCombatHighlight", "cameraDistanceMaxZoomFactor", "floatingCombatTextCombatDamage",
+                          "lastSelectedClubId", "nameplateShowFriends"])
+        self.assertEqual(self.names([self.targets[0]]), ["Sound_EnableAllSound"])  # Config.wtf sets the other two
+        staged = ConfigStaged()  # as staged: an added CVar leaves the list, a removed one comes back
+        stage_set(staged, aella, "LASTSELECTEDCLUBID", "7")
+        stage_remove(staged, aella, "nameplateShowFriends")
+        self.assertEqual(self.names([aella], staged), ["floatingCombatTextCombatDamage", "nameplateShowFriends"])
+        self.assertEqual(self.names([aella], ConfigStaged()), self.names([aella]))
+        self.assertEqual(add_candidates([aella], {}, None), [])  # no data for the flavor: nothing to list
+
+    def test_add_candidates_several_files(self):
+        aella, traxex = self.target("MAIN/Realm1/Aellâ"), self.target("MAIN/Realm2/Trâxex")
+        self.assertEqual(self.names([traxex]), ["assistedCombatHighlight", "cameraDistanceMaxZoomFactor",
+                                                "lastSelectedClubId"])
+        # a CVar set in any of the files is left out
+        self.assertEqual(self.names([aella, traxex]), ["lastSelectedClubId"])
+        # files of two levels: the CVars of each level, once, without the ones any of them sets
+        bob, bare = self.target("MAIN/Realm1/Bob"), self.target("BARE")
+        self.assertEqual(self.names([bob, bare]),
+                         ["assistedCombatHighlight", "autoLootDefault", "cameraDistanceMaxZoomFactor",
+                          "floatingCombatTextCombatDamage", "lastSelectedClubId", "nameplateShowAll",
+                          "nameplateShowFriends"])
+        self.assertEqual(self.names([bob, self.target("MAIN")]),  # MAIN sets both account CVars
+                         self.names([bob]))
+
+    def test_match_candidates(self):
+        known = sorted(CVARS.values(), key=lambda i: i.name.casefold())
+        self.assertEqual(ADD_LIST_CAP, 200)
+        shown, more = match_candidates(known, "")
+        self.assertEqual((len(shown), more), (len(known), 0))
+        shown, more = match_candidates(known, "name")  # in the name, case ignored, those starting with it first
+        self.assertEqual([i.name for i in shown], ["nameplateShowAll", "nameplateShowFriends"])
+        shown, _ = match_candidates(known, "SOUND")
+        self.assertEqual([i.name for i in shown], ["Sound_EnableAllSound", "Sound_MasterVolume"])
+        shown, _ = match_candidates(known, "show")
+        self.assertEqual([i.name for i in shown], ["nameplateShowAll", "nameplateShowFriends"])
+        shown, _ = match_candidates(known, "combat")
+        self.assertEqual([i.name for i in shown], ["assistedCombatHighlight", "floatingCombatTextCombatDamage"])
+        self.assertEqual(match_candidates(known, "  nothingLikeThis "), ([], 0))
+        many = [info(f"cvar{n:04}", "0") for n in range(1900)]  # thousands: the list shows the cap, and counts the rest
+        shown, more = match_candidates(many, "cvar")
+        self.assertEqual((len(shown), more), (ADD_LIST_CAP, 1900 - ADD_LIST_CAP))
+        shown, more = match_candidates(many, "cvar01", cap=5)
+        self.assertEqual(([i.name for i in shown], more), ([f"cvar{n:04}" for n in range(100, 105)], 95))
 
 
 if __name__ == "__main__":

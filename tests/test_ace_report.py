@@ -31,11 +31,13 @@ class ReportTest(unittest.TestCase):
     def test_tags_on_a_fresh_database(self):
         rows = self.rows("KickCDDB")
         self.assertEqual(rows["Default"].tags, ["Default"])
-        self.assertEqual(rows["Default"].label, "Default · 3 characters · Default")
+        self.assertEqual(rows["Default"].cells, ("Default", "3 characters", "Default"))  # R4: columns
+        self.assertEqual(rows["Backup"].cells, ("Backup", "0 characters", "unused, empty"))
         self.assertIn("unused", rows["Backup"].tags)
         self.assertIn("empty", rows["Backup"].tags)
         gone = next(c for c in rows["Default"].chars if c.char == "Gone - Realm1")
         self.assertIn("no character folder", gone.tags)
+        self.assertEqual(gone.cells, ("Gone - Realm1", "no character folder"))
 
     def test_missing_and_lds_tags(self):
         self.assertIn("missing", self.rows("StockDB")["Gone"].tags)
@@ -48,7 +50,7 @@ class ReportTest(unittest.TestCase):
         self.staging.delete({key: ["Healer"]}, "Default")
         rows = self.rows("ElvDB")
         self.assertTrue(rows["Healer"].deleted)
-        self.assertIn("✘ deleted", rows["Healer"].label)
+        self.assertEqual(rows["Healer"].cells, ("Healer", "", "✘ deleted"))
         self.assertIn("copy of Default", rows["Spare"].tags)
         mierin = next(c for c in rows["Default"].chars if c.char == "Mierin - Khaz Modan")
         self.assertIn("was Healer", mierin.tags)
@@ -196,7 +198,7 @@ class ReportTest(unittest.TestCase):
         self.staging.rename(key, "Default", "Main")
         rows = self.rows("KickCDDB")
         self.assertNotIn("Default", rows)
-        self.assertEqual(rows["Main"].label, "Main · 2 characters · renamed from Default")
+        self.assertEqual(rows["Main"].cells, ("Main", "2 characters", "renamed from Default"))
         gone = next(c for c in rows["Main"].chars if c.char == "Gone - Realm1")
         self.assertTrue(gone.removed)
 

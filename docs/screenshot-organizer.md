@@ -61,8 +61,14 @@ conflicts). A version you've never taken a screenshot in says "no Screenshots fo
 game version → year → month → day → screenshots
 
 Everything starts ticked, meaning "sort this". Untick a day, a month or a whole game version to leave it alone.
-Open a day to see its screenshots. A game version with nothing to do says why: "no Screenshots folder" or
-"nothing to file".
+Open a day to see its screenshots. Every line with something under it shows a dimmed count after its name (before
+the note on **Already filed**, **Conflicts** and **Skipped**) of the screenshots below it that can be sorted (`Retail  120 items`, `2024-01-02  3 items`), counted before you open it and, with a
+filter set, of what the filter shows. **Conflicts** and **Skipped** count their own files (they're never sorted, so
+the game version's count leaves them out). A game version with nothing under it says why: "no Screenshots folder"
+or "nothing to file". Screenshot lines line up in columns: the name, then "possible duplicate" where it applies; a
+conflict's line names the folder that already holds a different file of that name. In a very narrow window a name
+is never cut below a few letters at each end: the line keeps only the name (and a count) and scrolls sideways
+instead.
 
 **On the left** are the buttons, where screenshots will go, and whether they'll be moved or copied.
 

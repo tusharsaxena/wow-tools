@@ -51,6 +51,20 @@ guide's "If a change comes back" asks users to report a revert. `Config.wtf` has
     tree: Config.wtf FileNode, then populate_characters(..., account_extra=Account config FileNode,
         character_extra=the character's file, rows loaded when the node opens)
         tick keys: FileKey(path); rows: ops.rows(target, cvars, filters, staged) → CvarNode leaves
+        a row's label: report.row_cells (name, value, default, state, category) fitted by the shared
+        ui/columns.fit_columns with review_screen.CVAR_COLUMNS (the file's widest cells, ui/columns.natural_widths,
+        capped 40/24/24, shrunk to the tree pane's room, then whole columns dropped in report.DROP_ORDER so a row
+        fits; the name cut in its middle by ui/columns.cut_middle, never below its 12 cells: narrower, the row
+        scrolls sideways, STD-7.28 / U1; drawn by column_text; refitted whenever the tree's width changes, after a
+        rebuild behind the loading indicator too: ui/review.FittedRows),
+        state and category coloured by ui/theme.CVAR_STATE_COLOURS / CVAR_CATEGORY_COLOURS (CF1-CF3); a row the
+        file doesn't set in ui/theme.NOT_SET_COLOUR, darker than dim (R3)
+        leaf counts (feedback round 2 R2, STD-7.27): the leaf is a CVar row. _count_rows, at the start of every
+        rebuild, counts per file the rows rows_for shows (from the model, so a file not opened yet counts too) and
+        sums them per account, realm, flavor and the root; leaf_count(data) gives a node's, which _label appends
+        with ui/counts.with_count (a file or a character only when it has rows). The same pass counts the rows per
+        category with every other filter applied: the category select's entries (`Graphics (22 items)`, the
+        prompt `All categories (N items)`, R5), set without a Changed so the pick stays and nothing rebuilds again
     edits (edit_actions.py) → ops.stage_set / stage_remove / stage_reset / stage_toggle on ConfigStaged
     Apply / Dry run → runner.run_apply(staged, targets) = changes_by_flavor(build_changes(...))
         → core/client_apply.apply_client_flavors (one run over every flavor: one journal, one Undo)
@@ -78,10 +92,14 @@ the sources rule in `wowtools/kb/README.md`), cached per path; tests pass `kb_ro
   with `description_source`, our note rewritten from warcraft.wiki.gg (`scripts/kb_dump/wiki_notes.json`), loaded only
   with its URL. Retail, Classic, Anniversary and Classic Era have their own dump; `_forever_` is a `provisional` copy
   of Retail's (U1), its `source` naming the Retail dump; a flavor with no file (PTR, Beta) gives `{}`, so every row is
-  `unknown` and `report.help_lines` says so on the file.
-- `category_group(name, raw)` (X8) puts each CVar in one of `CATEGORY_GROUPS`: name rules first (`nameplate*`,
+  `unknown` and `report.help_panel` says so on the file.
+- `cvar_categories.json` → `curated_categories()` (CF4): the hand-curated group of every CVar in any shipped
+  `cvars/<flavor>.json` (the client files most under `game`, `default` or `none`), matched in any case; `load_cvars`
+  and `cvar_category(name, raw)` use it first, and `model.category_of` for a CVar the flavor's data doesn't know.
+  `tests/test_kb.py` checks every shipped CVar is listed. For a name it doesn't list (a newer dump),
+  `category_group(name, raw)` (X8) puts the CVar in one of `CATEGORY_GROUPS`: name rules first (`nameplate*`,
   `*camera*`, `*floatingCombatText*` / `combatText*`), then the console category (`graphics`, `sound`, `net` →
-  network, `game` → interface); for an uncategorised CVar (`default`, `none`) the `sound_` and graphics name prefixes
+  network, `game` → interface, `debug` → debug); for an uncategorised CVar (`default`, `none`) the `sound_` and graphics name prefixes
   (T20f); anything else is `other`.
 - `recommendations.json` → `load_recommendations(flavor)`: `Recommendation(cvar, value, flavors, reason, source)`
   (CE7), a few dozen, each with an https source (mostly warcraft.wiki.gg); an entry without one is not loaded.
@@ -103,10 +121,17 @@ staged changes.
   `SvRecoveryActions`, `RunActions`, `ReviewBase`). Left pane: the risk banner (STD-7.10), the filter box (a CVar's
   name, help and note, or its file's group), Show (category select, Changed only, Show all known), the staged line,
   Apply / Dry run / Rescan / Undo last change. The bar under the tree: Set `e`, Add `N`, Remove `d`, Reset `R`,
-  Recommend… `m` (`edit_actions.TREE_ACTIONS`). The help panel (`report.help_lines`) sits under the tree, or beside
-  it from 160 columns (`HORIZONTAL_BREAKPOINTS`, the `-wide` class).
-- `popups.AddCvarScreen` (name, value, what the KB knows of the name), `RecommendScreen` (tick list, reason and
-  source); Set is the shared `TextPromptScreen`.
+  Recommend… `m` (`edit_actions.TREE_ACTIONS`). The help panel (`report.help_panel`: a `HelpPanel` of a title and
+  sections of `HelpLine`s, rendered by `review_screen.help_panel_text` with the title in bold gold (`HELP_TITLE`) and the labels in bold
+  cyan (`HELP_LABEL`, R1), the CF3 colours and a bullet
+  per source, CF5) sits under the tree (40% of the tree pane, scrolling) or beside it from 160 columns
+  (`HORIZONTAL_BREAKPOINTS`, the `-wide` class).
+- `popups.AddCvarScreen` (name, value, what the KB knows of the name; CF6: the name narrows an `OptionList` of
+  `ops.add_candidates`, the known CVars of each file's flavor and level that none of the files sets as staged,
+  `ops.match_candidates` caps it at `ADD_LIST_CAP` (200) with a "… n more" line, and a pick fills the name and the
+  default; `EnterGuard` on its buttons), `RecommendScreen` (tick list, reason and source); Set is the shared
+  `TextPromptScreen`, its body ending with `report.what_it_does` (note, else Blizzard's help, else
+  `NO_DESCRIPTION`).
 - `ConfigResultScreen` (the shared result screen), `ConfigProgressScreen` (one row per flavor).
 
 ## Events

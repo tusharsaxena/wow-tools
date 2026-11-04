@@ -40,13 +40,16 @@ from wowtools.tools.ace3_profile_manager.result_screen import ProfileResultScree
 from wowtools.tools.ace3_profile_manager.scanner import ScanResult, scan_flavors
 from wowtools.tools.ace3_profile_manager.settings import load_settings, resolve_root
 from wowtools.tools.ace3_profile_manager.staging_actions import ProfileStagingActions
-from wowtools.tools.ace3_profile_manager.tree_view import READ_ONLY, Filters, TreeBuilder, counts, ident
+from wowtools.tools.ace3_profile_manager.tree_view import (COUNTED, GROUP, LAYOUTS, READ_ONLY, Filters, Row,
+                                                           TreeBuilder, counts, ident)
 from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult, leave, recover, undo_flavors, undo_run
 from wowtools.ui.branding import BottomBar
+from wowtools.ui.columns import column_text, fit_columns, fit_keeping_count, group_text
 from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                 UnfinishedRunScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
-from wowtools.ui.review import (BLACKLIST_BINDING, ActionBar, BarTree, BlacklistAction, ReviewBase, RunActions,
-                                SvRecoveryActions, TickModel, WowCheck, blacklisted_mark)
+from wowtools.ui.review import (BLACKLIST_BINDING, MARK_WIDTH, TOGGLE_WIDTH, ActionBar, BarTree, BlacklistAction,
+                                FittedRows, ReviewBase, RunActions, SvRecoveryActions, TickModel, WowCheck,
+                                blacklisted_mark, tree_room)
 from wowtools.ui.toasts import TOAST_FLOOR, StackTip, TipRack
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, TreeFilter, hidden_by_filter
 from wowtools.ui.warnings_view import (WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost,
@@ -111,7 +114,7 @@ class ActionTip(StackTip):
 
 
 class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistActions, BlacklistAction, TreeFilter,
-                          SvRecoveryActions, RunActions, ReviewBase, Screen[str]):
+                          SvRecoveryActions, RunActions, FittedRows, ReviewBase, Screen[str]):
     """The AceDB databases of the chosen flavors (and account) as a tree. Dismisses with "flavors", "tools" or
     "quit". `unlocked` is the flow's set of casefolded blacklisted (flavor folder, addon) pairs unlocked this
     session (shared, not copied). The staging actions are ProfileStagingActions (staging_actions.py), the blacklist
@@ -399,6 +402,7 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
                                     locked=self.locked, blacklisted=self._blacklisted, expanded=self._expanded,
                                     warning_style=theme_colour(self.app, "warning"), text_filter=self.text_filter)
         self._builder.build(tree)
+        self.rows_built(tree)  # fitted again once the tree is laid out (hidden during the scan)
         for node in self._walk_tree():
             node.set_label(self._label(node.data))
         self.note_no_match(tree.root)  # after the labels: it has no data, so _label would blank it
@@ -415,17 +419,55 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
         return self._builder.keys.get(id(node.data), ())
 
     def _label(self, data) -> Text:
+        """A node's label: its tick mark (the blacklist mark on a locked addon's row), then its name and count (R2)
+        or its columns (R4), fitted to the pane; a row that doesn't open beside siblings that do is padded where
+        their ▶ / ▼ is, so the columns line up."""
         builder = self._builder
         if builder is None or data is None:
             return Text("")
-        body = builder.bodies.get(id(data), Text(""))
-        if id(data) in builder.held:  # a locked (blacklisted) addon's row: never ticked (L15)
-            return Text.assemble(blacklisted_mark(), body)
-        keys = builder.keys.get(id(data), ())
+        key = id(data)
+        row = builder.rows.get(key)
+        body = builder.bodies.get(key, Text("")) if row is None else self._row_text(data, row)
+        pad = " " * TOGGLE_WIDTH if key in builder.padded else ""
+        if key in builder.held:  # a locked (blacklisted) addon's row: never ticked (L15)
+            return Text.assemble(pad, blacklisted_mark(), body)
+        keys = builder.keys.get(key, ())
         if not keys:
-            return Text.assemble("  ", body)
+            return Text.assemble(pad, "  ", body)
         mark = tick_mark(keys, self.tick_model().unticked, success=theme_colour(self.app, "success"))
-        return Text.assemble(mark, body)
+        return Text.assemble(pad, mark, body)
+
+    def _room(self, data) -> int | None:
+        """The cells a node's text may take behind its guides, its ▶ / ▼ (or the pad in its place) and its mark;
+        None before the tree is laid out (no limit)."""
+        builder = self._builder
+        if builder is None:
+            return None
+        key = id(data)
+        return tree_room(self.query_one("#profiles", Tree), builder.depths.get(key, 0), opens=key in builder.toggle,
+                         mark=MARK_WIDTH)
+
+    def _row_text(self, data, row: Row) -> Text:
+        room = self._room(data)
+        if row.layout == GROUP:
+            (name, *count), style = row.cells, row.styles[0]
+            return group_text(name, style, count[0] if count else None, room)
+        assert self._builder is not None
+        natural = self._builder.widths[id(data)]
+        layout = LAYOUTS[row.layout]
+        fit = fit_keeping_count if row.layout in COUNTED else fit_columns
+        widths, gap = fit(natural, room, layout)
+        text = column_text(row.cells, widths, row.styles, gap, middle=(0,))
+        text.rstrip()  # empty cells at the end (no character, no status) leave no padding behind
+        return text
+
+    def refit_rows(self, tree: Tree) -> None:
+        """Fit every label to the tree pane's width again (R4, FittedRows)."""
+        if self._builder is None:
+            return
+        for node in self._walk_tree():
+            if node.data is not None:
+                node.set_label(self._label(node.data))
 
     def _refresh_labels(self, node: TreeNode | None = None) -> None:
         relabel_branch(self.query_one("#profiles", Tree), node, self._label, skip=READ_ONLY)
@@ -507,7 +549,7 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
         return len(Text(text).wrap(self.app.console, guide.size.width)) <= GUIDE_MAX_ROWS
 
     def on_resize(self) -> None:
-        self.call_after_refresh(self._update_guide)  # once the guide has its new width
+        self.call_after_refresh(self._update_guide)  # once the guide has its new width (the tree: FittedRows)
 
     # --- the action tip (the toast stack's lowest box, ui.toasts) -------------------------------------------------
     def on_descendant_focus(self, event) -> None:
