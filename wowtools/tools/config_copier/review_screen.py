@@ -70,6 +70,8 @@ MARK_WIDTH = 2  # the tick mark in front of every line but the root's
 TOGGLE_WIDTH = 2  # the ▶ / ▼ in front of a node that opens
 GROUP_NAME_MINIMUM = 4  # a node's name is cut (in its middle) down to this so its count or reason fits the pane
 PAIR_COLUMNS = ColumnLayout(caps=PAIR_CAPS, minimums=PAIR_MINIMUMS, shrink=((1,), (0,)), drop=(2,))
+# A greyed character's name · reason (R4): the name gives way, cut in its middle; the reason is never cut, only dropped.
+REASON_COLUMNS = ColumnLayout(caps=(None, None), minimums=(GROUP_NAME_MINIMUM, 0), shrink=((0,),))
 
 
 class PairKey(NamedTuple):
@@ -187,6 +189,7 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         self._stale = False  # a Copy or Undo changed the files: read them again when the review is shown
         self._counts: Counter[Hashable] = Counter()  # the pair lines the tree shows under each node (R2), per build
         self._pair_widths: dict[Path, tuple[int, ...]] = {}  # a target's pair columns (R4), per build
+        self._reason_widths: dict[Path, tuple[int, ...]] = {}  # a realm's greyed characters' columns (R4), per build
         self._fitted_width = 0  # the tree's width the labels were last fitted to
 
     # --- layout ------------------------------------------------------------------------------------
@@ -432,12 +435,39 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
                     parent.remove()
                     continue
                 parent.data = ["flavor", flavor.folder, tuple(keys)]
+        self._reason_widths = self._greyed_widths(tree)
         self._relabel_all(tree)  # populate_characters labels its nodes before their counts are known
         self.note_no_match(tree.root)
         tree.root.expand()
         self._restore_cursor(tree, cursor)
         self._update_summary()
         self.call_after_refresh(self._fit_rows)  # a build before the tree was laid out fits once it is
+
+    @staticmethod
+    def _greyed_widths(tree: Tree) -> dict[Path, tuple[int, ...]]:
+        """The name · reason columns of the greyed characters the tree shows, per realm folder (R4): siblings of
+        another flavor all say `other flavor`, so their reasons line up."""
+        rows: dict[Path, list[tuple[str, str]]] = {}
+        stack = list(tree.root.children)
+        while stack:
+            node = stack.pop()
+            data = node.data
+            if isinstance(data, CharacterNode) and data.reason is not None and data.character is not None:
+                rows.setdefault(data.character.path.parent, []).append((data.text, data.reason))
+            stack.extend(node.children)
+        return {realm: natural_widths(cells) for realm, cells in rows.items()}
+
+    def _greyed_label(self, data: CharacterNode, depth: int, *, opens: bool) -> Text:
+        """A greyed character's name · reason, aligned with its realm's other greyed characters and fitted to the
+        pane (R4, STD-7.28)."""
+        cells = (data.text, data.reason or "")
+        natural = (self._reason_widths.get(data.character.path.parent) if data.character is not None else None) \
+            or natural_widths([cells])
+        room = self._room(depth, opens=opens) if self.is_attached else None
+        widths, gap = fit_columns(natural, room, REASON_COLUMNS)
+        text = column_text(cells, widths, ("dim", "dim italic"), gap, middle=(0,))
+        text.rstrip()
+        return text
 
     def _relabel_all(self, tree: Tree) -> None:
         relabel_branch(tree, None, self._label)
@@ -476,8 +506,8 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
 
     def _group_text(self, name: str, style: str, note: tuple[str, str] | None, depth: int, *, opens: bool,
                     mark: int = MARK_WIDTH) -> Text:
-        """A node's name and its note (its dim count, R2, or a greyed character's reason), the name cut in its
-        middle so the note fits the pane; with no room for both, the name alone, cut to the room."""
+        """A node's name and its note (its dim count, R2), the name cut in its middle so the note fits the pane;
+        with no room for both, the name alone, cut to the room (a greyed character's reason: `_greyed_label`)."""
         room = self._room(depth, opens=opens, mark=mark) if self.is_attached else None
         if note is None:
             return Text(name if room is None else cut_middle(name, max(1, room)), style=style)
@@ -543,7 +573,7 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         depth = self._depth(data.kind)
         opens = data.kind != "character" or self._counts[self._character_ident(data)] > 0
         if data.reason is not None:
-            name = self._group_text(data.text, "dim", (f"  {data.reason}", "dim italic"), depth, opens=opens)
+            name = self._greyed_label(data, depth, opens=opens)
         else:
             style = "" if data.kind == "character" else "bold"
             name = self._group_text(data.text, style, self._count_note(self._character_ident(data)) if opens

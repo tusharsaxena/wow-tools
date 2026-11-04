@@ -19,7 +19,8 @@ from wowtools.tools import TOOLS
 from wowtools.tools.config_copier.diff_screen import DiffScreen
 from wowtools.tools.config_copier.model import COPY_FILES, MACRO_WARNING
 from wowtools.tools.config_copier.report import WARNING_MARK, WARNING_SHORT, pair_text
-from wowtools.tools.config_copier.review_screen import CopierReviewScreen, CopierResultScreen, PairKey, PairNode
+from wowtools.tools.config_copier.review_screen import (OTHER_FLAVOR_REASON, CopierResultScreen, CopierReviewScreen,
+                                                        PairKey, PairNode)
 from wowtools.tools.config_copier.source_screen import SourceScreen
 from wowtools.ui.character_tree import CharacterNode
 from wowtools.ui.dialogs import ConfirmScreen
@@ -491,6 +492,33 @@ class NodeCountsAndColumnsTest(CopierTestCase):
             macros = pair_node(tree, "Bob", "macros-cache.txt")
             plain = str(macros.label)
             self.assertRegex(plain, rf"^. macros\S*\.txt +replaced +{WARNING_MARK} {WARNING_SHORT}$")
+
+    async def test_greyed_reasons_are_aligned_columns(self):
+        # Another flavor's characters are all greyed (`other flavor`): name · reason are columns, so a realm with
+        # a short and a long name starts both reasons at the same cell (R4, STD-7.28).
+        realm = self.root / "_classic_era_" / "WTF" / "Account" / "ACCT" / "Realm1"
+        (realm / "Bobbington").mkdir()
+        (realm / "Bobbington" / "AddOns.txt").write_bytes(b"Questie: enabled\r\n")
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#targets", Tree)
+            rows = [character_node(tree, name) for name in ("Other", "Bobbington")]
+            labels = [str(n.label) for n in rows]
+            self.assertEqual(len({label.rindex(OTHER_FLAVOR_REASON) for label in labels}), 1, labels)
+            self.assertRegex(labels[0], rf"^ +Other +{OTHER_FLAVOR_REASON}$")
+            self.assertTrue(labels[1].endswith(f"Bobbington  {OTHER_FLAVOR_REASON}"), labels)
+            for node in rows:
+                spans = {str(node.label)[s.start:s.end].strip(): str(s.style) for s in node.label.spans}
+                self.assertEqual(spans.get(OTHER_FLAVOR_REASON), "dim italic", spans)
+            await pilot.resize_terminal(*TINY)
+            await settle(app, pilot)
+            room = tree.size.width - tree.styles.scrollbar_size_vertical
+            for node in rows:  # narrow: the name gives way first, the reason is never cut, only dropped
+                plain = str(node.label)
+                self.assertLessEqual(indent(node) + node.label.cell_len, room, plain)
+                self.assertTrue(plain.endswith(OTHER_FLAVOR_REASON) or "other " not in plain and "fl" not in plain,
+                                plain)
 
     async def test_rows_fit_the_pane(self):
         app = self.make_app()
