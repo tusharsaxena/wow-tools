@@ -14,6 +14,12 @@ Over several flavors (apply_flavors): one journal for the whole run; the flavors
 never in parallel ([general] parallelism does not apply): they share the one crash marker (edit-in-progress.json
 under the tool's folder, which the recovery screen reads as one pointer), and the run stops at the first flavor
 that fails, the rest "not started".
+
+The guard is pluggable (`guard=`, default SvGuard) and a unit whose SvFile.sha256 is None is a file the run creates:
+it must not exist at the check nor at the write (else it is skipped, EXISTS), is written with atomic_create_bytes
+(never replacing a file that appeared), journaled "created", listed in the marker's `created` (it has no original
+to zip, so the originals zip may hold only its manifest) and deleted by a roll-back. Only the client-file pipeline
+(core/client_apply.py) uses either; the SavedVariables tools' runs are unchanged.
 """
 from __future__ import annotations
 
@@ -29,7 +35,7 @@ from wowtools import __version__
 from wowtools.core import marker as core_marker
 from wowtools.core.backup import BackupEntry, BackupError, create_backup
 from wowtools.core.events import log_event
-from wowtools.core.fsutil import atomic_write_bytes, free_name, safe_progress
+from wowtools.core.fsutil import atomic_create_bytes, atomic_write_bytes, free_name, safe_progress
 from wowtools.core.install import Flavor
 from wowtools.core.journal import new_journal_path, now_iso
 from wowtools.core.paths import to_native
@@ -45,9 +51,17 @@ EDITED_SUBDIR = "edited"
 MARKER_NAME = "edit-in-progress.json"
 ALL_ACCOUNTS = "all"
 CHANGED = "changed since the scan; rescan"
+EXISTS = "it exists now; rescan"  # a file the run was to create is there already: never replaced
+CREATED = "created"  # FileOutcome.detail of a file the run created
 EDITED_NAME = re.compile(r"^edited-.+-\d{8}-\d{6}(?:-\d+)?\.zip$")
 ApplyProgress = Callable[[str, int, int, str], None]
 P = TypeVar("P")
+
+
+class Guard(Protocol):
+    """Refuses (SvFileError) a path the run may not touch: SvGuard, or core/client_apply.ClientFileGuard."""
+
+    def check(self, path: Path, info: os.stat_result | None) -> Any: ...
 
 
 class Edit(Protocol):
@@ -152,6 +166,7 @@ class Marker:
     pid: int
     suite_version: str
     after: dict[str, str] = field(default_factory=dict)  # rel -> SHA-256 of what the run writes
+    created: list[str] = field(default_factory=list)  # rels the run creates (not in files: no original)
 
 
 def write_marker(root: Path, marker: Marker) -> None:
@@ -164,12 +179,15 @@ def read_marker(root: Path | None) -> Marker | None:
     if data is None:
         return None
     try:
-        files, after = data["files"], data.get("after", {})
+        files, after, created = data["files"], data.get("after", {}), data.get("created", [])
         if not all(isinstance(d, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in d.items())
                    for d in (files, after)):
             return None
+        if not isinstance(created, list) or not all(isinstance(rel, str) for rel in created):
+            return None
         return Marker(str(data["flavor"]), to_native(data["flavor_path"]), to_native(data["zip"]), dict(files),
-                      str(data["started"]), int(data["pid"]), str(data["suite_version"]), dict(after))
+                      str(data["started"]), int(data["pid"]), str(data["suite_version"]), dict(after),
+                      list(created))
     except Exception:  # noqa: BLE001 - an unreadable marker is no usable marker
         return None
 
@@ -184,30 +202,52 @@ def edited_zip_path(root: Path, flavor_short: str, account: str | None, now: dat
                      f"edited-{flavor_short}-{account or ALL_ACCOUNTS}-{now:%Y%m%d-%H%M%S}", ".zip")
 
 
-Ready = list[tuple[SvFile, Any, bytes]]  # (file, its edit, its original bytes)
+Ready = list[tuple[SvFile, Any, bytes | None]]  # (file, its edit, its original bytes; None: the run creates it)
+
+
+def _skip(tool: SvTool, result: ApplyResult, file: SvFile, detail: str) -> None:
+    """A file changed (or, to be created, appeared) since the scan: skipped, logged as file_changed."""
+    result.outcomes.append(FileOutcome(file, "skipped", detail))
+    log_event(tool.event("file_changed"), flavor=file.flavor.folder, path=file.rel)
+
+
+def _read_unit(tool: SvTool, file: SvFile, info: os.stat_result | None,
+               result: ApplyResult) -> tuple[bool, bytes | None]:
+    """(go on, the file's bytes now; None for a file to create), or (False, None) once it is skipped."""
+    if file.sha256 is None:
+        if info is not None or os.path.lexists(file.path):
+            _skip(tool, result, file, EXISTS)
+            return False, None
+        if not file.path.parent.is_dir():
+            result.outcomes.append(FileOutcome(file, "skipped", "its folder is gone; rescan"))
+            return False, None
+        return True, None
+    try:
+        data = file.path.read_bytes()
+    except OSError as exc:
+        result.outcomes.append(FileOutcome(file, "skipped", f"could not read it: {exc.strerror or exc}"))
+        return False, None
+    if sha256_of(data) != file.sha256:
+        _skip(tool, result, file, CHANGED)
+        return False, None
+    return True, data
 
 
 def _prepare(tool: SvTool, flavor: Flavor, units: Sequence[tuple[SvFile, Any]], compile_file: Compile,
-             verify: Verify, result: ApplyResult, report: ApplyProgress) -> Ready:
+             verify: Verify, result: ApplyResult, report: ApplyProgress, guard: Guard) -> Ready:
     """Guard, recheck, compile and verify every file. Raises ApplyError on a guard or verify failure."""
-    guard = SvGuard(flavor)
     ready: Ready = []
     for index, (file, payload) in enumerate(units, 1):
+        info = lstat_or_none(file.path)
         try:
-            guard.check(file.path, lstat_or_none(file.path))
+            guard.check(file.path, info)
         except SvFileError as exc:
             raise ApplyError(str(exc)) from None
-        try:
-            data = file.path.read_bytes()
-        except OSError as exc:
-            result.outcomes.append(FileOutcome(file, "skipped", f"could not read it: {exc.strerror or exc}"))
+        go_on, data = _read_unit(tool, file, info, result)
+        if not go_on:
             continue
-        if sha256_of(data) != file.sha256:
-            result.outcomes.append(FileOutcome(file, "skipped", CHANGED))
-            log_event(tool.event("file_changed"), flavor=flavor.folder, path=file.rel)
-            continue
-        edit = compile_file(file, payload, data)
-        problems = verify(edit, data)
+        edit = compile_file(file, payload, data or b"")
+        problems = verify(edit, data or b"")
         if problems:
             log_event(tool.event("verify_failed"), flavor=flavor.folder, path=file.rel, problems=problems[:10])
             raise ApplyError(f"{file.rel}: the change did not check out ({'; '.join(problems[:3])}). "
@@ -243,16 +283,19 @@ def apply_flavor(tool: SvTool, flavor: Flavor, units: Sequence[tuple[SvFile, Any
                  verify: Verify, *, root: Path, journal: EditJournal | None, dry_run: bool, keep_snapshots: int,
                  account: str | None = None, now: datetime | None = None, progress: ApplyProgress | None = None,
                  write: Callable[[Path, bytes], None] = atomic_write_bytes,
-                 started: dict[str, Any] | None = None) -> ApplyResult:
+                 started: dict[str, Any] | None = None, guard: Guard | None = None,
+                 create: Callable[[Path, bytes], None] = atomic_create_bytes) -> ApplyResult:
     """Apply one flavor's units, (file, payload) once per file: compile_file(file, payload, bytes) builds the edit,
     verify(edit, bytes) lists its problems. `started` holds the apply_started event's fields (default: files).
+    guard checks every path (default SvGuard(flavor)); create writes a file the run creates (sha256 None).
     Raises ApplyError when refused or stopped; its result holds what was done until then."""
     result = ApplyResult(flavor, dry_run)
     try:
         return _apply(tool, result, units, compile_file, verify, root=root, journal=journal,
                       keep_snapshots=keep_snapshots, account=account, now=now or datetime.now(),
-                      report=safe_progress(progress), write=write,
-                      started={"files": len(units)} if started is None else started)
+                      report=safe_progress(progress), write=write, create=create,
+                      started={"files": len(units)} if started is None else started,
+                      guard=SvGuard(flavor) if guard is None else guard)
     except ApplyError as exc:
         exc.result = result
         raise
@@ -261,15 +304,15 @@ def apply_flavor(tool: SvTool, flavor: Flavor, units: Sequence[tuple[SvFile, Any
 def _apply(tool: SvTool, result: ApplyResult, units: Sequence[tuple[SvFile, Any]], compile_file: Compile,
            verify: Verify, *, root: Path, journal: EditJournal | None, keep_snapshots: int, account: str | None,
            now: datetime, report: ApplyProgress, write: Callable[[Path, bytes], None],
-           started: dict[str, Any]) -> ApplyResult:
+           create: Callable[[Path, bytes], None], started: dict[str, Any], guard: Guard) -> ApplyResult:
     flavor, dry_run = result.flavor, result.dry_run
     log_event(tool.event("apply_started"), flavor=flavor.folder, dry_run=dry_run, **started)
     if not dry_run:
         _refuse_unfinished(tool, root, flavor)
-    ready = _prepare(tool, flavor, units, compile_file, verify, result, report)
+    ready = _prepare(tool, flavor, units, compile_file, verify, result, report, guard)
     if dry_run:
-        for file, edit, _ in ready:
-            result.outcomes.append(FileOutcome(file, "would_edit", changes=edit.changes))
+        for file, edit, data in ready:
+            result.outcomes.append(FileOutcome(file, "would_edit", CREATED if data is None else "", edit.changes))
             log_event(tool.event("would_edit"), flavor=flavor.folder, path=file.rel, changes=edit.changes[:50])
         log_event(tool.event("dry_run_completed"), flavor=flavor.folder, files=len(ready))
         return result
@@ -284,51 +327,60 @@ def _apply(tool: SvTool, result: ApplyResult, units: Sequence[tuple[SvFile, Any]
     recover_probe_leftovers(sorted({f.path.parent for f, _, _ in ready}), on_recovered=lambda p: log_event(
         tool.event("probe_recovered"), flavor=flavor.folder, path=p.relative_to(flavor.path).as_posix()))
     _refuse_locked(tool, ready, flavor, report)
-    rels = [file.rel for file, _, _ in ready]
+    replaced = [(file, data) for file, _, data in ready if data is not None]
+    created = [file.rel for file, _, data in ready if data is None]
     try:
         result.snapshot = take_snapshot(flavor, root / SNAPSHOT_SUBDIR, SNAPSHOT_PREFIX, now, progress=report,
-                                        must_hold=rels)
+                                        must_hold=[file.rel for file, _ in replaced])
     except BackupError as exc:
         log_event(tool.event("snapshot_failed"), flavor=flavor.folder, error=str(exc))
         raise ApplyError(f"The WTF backup failed ({exc}). Nothing was changed.") from exc
     log_event(tool.event("snapshot_taken"), flavor=flavor.folder, path=str(result.snapshot))
     try:
+        meta = {"tool": tool.name, "kind": "originals", "flavor": flavor.folder, "suite_version": __version__,
+                "sha256": {file.rel: file.sha256 for file, _ in replaced}}
+        if created:
+            meta["created"] = created
         result.backup_zip = create_backup(
-            [BackupEntry(file.path, size=len(data)) for file, _, data in ready], flavor.path,
-            edited_zip_path(root, flavor.short_name, account, now),
-            {"tool": tool.name, "kind": "originals", "flavor": flavor.folder, "suite_version": __version__,
-             "sha256": {file.rel: file.sha256 for file, _, _ in ready}},
-            on_file=lambda i, n, name: report("backup", i, n, name))
+            [BackupEntry(file.path, size=len(data)) for file, data in replaced], flavor.path,
+            edited_zip_path(root, flavor.short_name, account, now), meta,
+            on_file=lambda i, n, name: report("backup", i, n, name), allow_empty=bool(created))
     except BackupError as exc:
         log_event(tool.event("backup_failed"), flavor=flavor.folder, error=str(exc))
         raise ApplyError(f"Saving the original files failed ({exc}). Nothing was changed.") from exc
-    log_event(tool.event("files_backed_up"), flavor=flavor.folder, path=str(result.backup_zip), files=len(ready))
+    log_event(tool.event("files_backed_up"), flavor=flavor.folder, path=str(result.backup_zip), files=len(replaced))
     try:
         write_marker(root, Marker(flavor.folder, flavor.path, result.backup_zip,
-                                  {file.rel: file.sha256 for file, _, _ in ready}, now_iso(), os.getpid(),
-                                  __version__, {file.rel: sha256_of(edit.data) for file, edit, _ in ready}))
+                                  {file.rel: file.sha256 for file, _ in replaced}, now_iso(), os.getpid(),
+                                  __version__, {file.rel: sha256_of(edit.data) for file, edit, _ in ready},
+                                  created))
     except OSError as exc:
         log_event(tool.event("marker_failed"), flavor=flavor.folder, error=str(exc))
         raise ApplyError(f"The crash marker could not be written ({exc}). Nothing was changed.") from exc
-    written: list[tuple[SvFile, bytes]] = []
+    written: list[tuple[SvFile, bytes | None]] = []
     current_file: SvFile | None = None
     try:
         for index, (file, edit, data) in enumerate(ready, 1):
             current_file = file
-            current = file.path.read_bytes()
-            if sha256_of(current) != file.sha256:
-                result.outcomes.append(FileOutcome(file, "skipped", CHANGED))
-                log_event(tool.event("file_changed"), flavor=flavor.folder, path=file.rel)
-                continue
-            write(file.path, edit.data)
-            written.append((file, data))
-            if file.path.read_bytes() != edit.data:
-                raise OSError(f"{file.rel} did not read back as written")
-            journal.add_edited(flavor=flavor.folder, path=file.path, rel=file.rel, zip_path=result.backup_zip,
-                               sha_before=file.sha256, sha_after=sha256_of(edit.data), size_before=len(data),
-                               size_after=len(edit.data), changes=edit.changes)
-            result.outcomes.append(FileOutcome(file, "edited", changes=edit.changes))
-            log_event(tool.event("file_edited"), flavor=flavor.folder, path=file.rel, changes=edit.changes[:50])
+            if data is None:
+                if not _create_one(tool, file, edit, result, journal, create, written):
+                    current_file = None
+                    continue
+            else:
+                current = file.path.read_bytes()
+                if sha256_of(current) != file.sha256:
+                    _skip(tool, result, file, CHANGED)
+                    current_file = None
+                    continue
+                write(file.path, edit.data)
+                written.append((file, data))
+                if file.path.read_bytes() != edit.data:
+                    raise OSError(f"{file.rel} did not read back as written")
+                journal.add_edited(flavor=flavor.folder, path=file.path, rel=file.rel, zip_path=result.backup_zip,
+                                   sha_before=file.sha256, sha_after=sha256_of(edit.data), size_before=len(data),
+                                   size_after=len(edit.data), changes=edit.changes)
+                result.outcomes.append(FileOutcome(file, "edited", changes=edit.changes))
+                log_event(tool.event("file_edited"), flavor=flavor.folder, path=file.rel, changes=edit.changes[:50])
             report("edit", index, len(ready), file.rel)
             current_file = None
     except BaseException as exc:  # noqa: BLE001 - roll back on anything (even Ctrl+C), then re-raise
@@ -347,22 +399,54 @@ def _apply(tool: SvTool, result: ApplyResult, units: Sequence[tuple[SvFile, Any]
     return result
 
 
+def _create_one(tool: SvTool, file: SvFile, edit: Any, result: ApplyResult, journal: EditJournal,
+                create: Callable[[Path, bytes], None], written: list[tuple[SvFile, bytes | None]]) -> bool:
+    """Write a file the run creates, unless one appeared at its name since the check (skipped, EXISTS: never
+    replaced). True when it was written, read back and journaled."""
+    if os.path.lexists(file.path):
+        _skip(tool, result, file, EXISTS)
+        return False
+    try:
+        create(file.path, edit.data)
+    except FileExistsError:  # it appeared between the check and the rename
+        _skip(tool, result, file, EXISTS)
+        return False
+    written.append((file, None))
+    if file.path.read_bytes() != edit.data:
+        raise OSError(f"{file.rel} did not read back as written")
+    journal.add_created(flavor=file.flavor.folder, path=file.path, rel=file.rel, zip_path=result.backup_zip,
+                        sha_after=sha256_of(edit.data), size_after=len(edit.data), changes=edit.changes)
+    result.outcomes.append(FileOutcome(file, "edited", CREATED, edit.changes))
+    log_event(tool.event("file_created"), flavor=file.flavor.folder, path=file.rel, changes=edit.changes[:50])
+    return True
+
+
 def restore_original(path: Path, data: bytes) -> None:
     """Put a file's original bytes back (roll-back after a failure); its own name so tests can fail it."""
     atomic_write_bytes(path, data)
 
 
-def _roll_back(tool: SvTool, exc: BaseException, written: list[tuple[SvFile, bytes]], failing: SvFile | None,
-               result: ApplyResult, journal: EditJournal, root: Path, flavor: Flavor) -> None:
-    """Put back every file this run wrote, newest first, then raise ApplyError (or re-raise a non-Exception).
-    failing is the file being written when it failed; its outcome is added here."""
-    put_back, left = [], []
+def remove_created(path: Path) -> None:
+    """Delete a file the run created (roll-back after a failure); its own name so tests can fail it."""
+    os.remove(path)
+
+
+def _roll_back(tool: SvTool, exc: BaseException, written: list[tuple[SvFile, bytes | None]],
+               failing: SvFile | None, result: ApplyResult, journal: EditJournal, root: Path, flavor: Flavor) -> None:
+    """Put back every file this run wrote (a file it created is deleted), newest first, then raise ApplyError (or
+    re-raise a non-Exception). failing is the file being written when it failed; its outcome is added here."""
+    put_back, left, left_created = [], [], set()
     for file, original in reversed(written):
         try:
-            restore_original(file.path, original)
+            if original is None:
+                remove_created(file.path)
+            else:
+                restore_original(file.path, original)
             put_back.append(file.rel)
         except OSError as error:
             left.append(file.rel)
+            if original is None:
+                left_created.add(file.rel)
             log_event(tool.event("rollback_failed"), flavor=flavor.folder, path=file.rel, error=str(error))
     if put_back:
         try:
@@ -370,17 +454,22 @@ def _roll_back(tool: SvTool, exc: BaseException, written: list[tuple[SvFile, byt
         except OSError:
             pass
     done, not_back = set(put_back), set(left)
-    left_detail = f"could not be put back after the failure; its original is in {result.backup_zip}"
+
+    def left_detail(rel: str) -> str:
+        if rel in left_created:  # no original in the zip: the fix is to delete it
+            return ("was created by this run and could not be removed after the failure; close WoW and use Undo "
+                    "or the recovery screen, or delete it by hand")
+        return f"could not be put back after the failure; its original is in {result.backup_zip}"
     for outcome in result.outcomes:
         if outcome.status == "edited" and outcome.file.rel in done:
             outcome.status = "rolled_back"
         elif outcome.status == "edited" and outcome.file.rel in not_back:
-            outcome.status, outcome.detail = "failed", left_detail
+            outcome.status, outcome.detail = "failed", left_detail(outcome.file.rel)
     if failing is not None and not any(o.file is failing for o in result.outcomes):
         if failing.rel in done:
             result.outcomes.append(FileOutcome(failing, "rolled_back", f"writing it failed ({exc})"))
         elif failing.rel in not_back:
-            result.outcomes.append(FileOutcome(failing, "failed", left_detail))
+            result.outcomes.append(FileOutcome(failing, "failed", left_detail(failing.rel)))
         else:
             result.outcomes.append(FileOutcome(failing, "failed", f"not written ({exc})"))
     log_event(tool.event("rolled_back"), flavor=flavor.folder, files=put_back, left=left, error=str(exc))
@@ -392,9 +481,13 @@ def _roll_back(tool: SvTool, exc: BaseException, written: list[tuple[SvFile, byt
     message = f"Writing the changes failed ({exc})."
     if put_back:
         message += f" The {len(put_back)} file(s) already written were put back."
-    if left:
-        message += (f" {len(left)} file(s) could not be put back: their originals are in "
+    replaced_left = [rel for rel in left if rel not in left_created]
+    if replaced_left:
+        message += (f" {len(replaced_left)} file(s) could not be put back: their originals are in "
                     f"{result.backup_zip}. Close WoW and use Undo, or unzip them by hand.")
+    if left_created:
+        message += (f" {len(left_created)} file(s) this run created could not be removed. Close WoW and use Undo "
+                    "or the recovery screen, or delete them by hand.")
     raise ApplyError(message, rolled_back=put_back, files_left=left) from exc
 
 

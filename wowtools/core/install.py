@@ -18,6 +18,7 @@ FLAVOR_NAMES = {
     "_classic_": "Classic",
     "_classic_era_": "Classic Era",
     "_anniversary_": "Anniversary",
+    "_forever_": "Forever",
     "_ptr_": "Retail PTR",
     "_xptr_": "Retail Experimental PTR",
     "_beta_": "Retail Beta",
@@ -57,6 +58,13 @@ def _subdirs(path: Path, on_error: ErrorHandler | None = None) -> list[Path]:
     return sorted(children, key=lambda p: p.name.casefold())
 
 
+def is_character_name(name: str) -> bool:
+    """Whether a folder under a realm can be a character: WoW names are letters only (accented ones included), so
+    `Testwarrka - Copy` or `Bob2` is a copy or a backup, never a character (X3). Only the tools that write client
+    files use it; Account.characters() lists every folder."""
+    return bool(name) and all(ch.isalpha() for ch in name)
+
+
 @dataclass(frozen=True)
 class Character:
     account: str
@@ -94,6 +102,10 @@ class Account:
             for char in _subdirs(realm, on_error):
                 result.append(Character(self.name, realm.name, char.name, char))
         return result
+
+    def real_characters(self, on_error: ErrorHandler | None = None) -> list[Character]:
+        """characters() without the folders that can't be a character (is_character_name), in the same order."""
+        return [c for c in self.characters(on_error) if is_character_name(c.name)]
 
 
 @dataclass(frozen=True)

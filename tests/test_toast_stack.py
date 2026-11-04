@@ -23,7 +23,8 @@ from textual.widgets import Button, Input, Tree
 from textual.widgets._toast import Toast
 
 from tests.fixtures import (BASE, LARGE, TuiTestCase, accept_disclaimer, build_ace_tree, build_interface_tree,
-                            build_screenshot_tree, build_wow_tree, make_config, settle, stage_sv_edit)
+                            build_screenshot_tree, build_wow_tree, make_config, pick_source, settle, stage_sv_edit,
+                            tick_copier_targets, stage_macro_edit, stage_config_edit)
 from wowtools.core.install import Flavor
 from wowtools.core.lock import LockInfo
 from wowtools.core.updater import ReleaseInfo
@@ -31,6 +32,7 @@ from wowtools.tools import TOOLS
 from wowtools.tools.ace3_profile_manager.editor import Marker as AceMarker
 from wowtools.tools.ace3_profile_manager.popups import ActionsScreen, NameScreen, TargetScreen
 from wowtools.tools.ace3_profile_manager.review_screen import ProfileProgressScreen, ProfileRecoveryScreen
+from wowtools.tools.config_copier.source_screen import SourceScreen
 from wowtools.tools.interface_backup.review_screen import BackupProgressScreen
 from wowtools.tools.screenshot_organizer.review_screen import ShotProgressScreen
 from wowtools.tools.sv_browser.popups import EditValueScreen, RenameKeyScreen, SearchProgressScreen, SearchScreen
@@ -54,10 +56,13 @@ BARS = "BottomBar, SummaryBar, Footer, ActionBar, #guide"
 CONTROLS = "Button, Input, TextArea, Checkbox, Switch, Select, RadioSet, OptionList"
 ACCOUNT_TOOLS = ("wtf-cleaner", "ace3-profile-manager")
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
-              "ace3-profile-manager": "dry_run", "sv-browser": "dry_run"}
+              "ace3-profile-manager": "dry_run", "sv-browser": "dry_run",
+              "config-copier": "dry_run", "macro-editor": "dry_run",
+              "config-editor": "dry_run"}
 PREPARE = {"ace3-profile-manager": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
                                                    review.refresh_view()),
-           "sv-browser": stage_sv_edit}
+           "sv-browser": stage_sv_edit, "config-copier": tick_copier_targets,
+           "macro-editor": stage_macro_edit, "config-editor": stage_config_edit}
 
 
 def bars(app) -> list[Region]:
@@ -190,6 +195,9 @@ class ToastStackTest(TuiTestCase):
                     if isinstance(app.screen, DisclaimerScreen):
                         await self.assert_stack(app, pilot, f"{name} risk popup")
                         await accept_disclaimer(app, pilot)
+                    if isinstance(app.screen, SourceScreen):
+                        await self.assert_stack(app, pilot, f"{name} source picker")
+                        await pick_source(app, pilot)
                     review = app.screen
                     await self.assert_stack(app, pilot, f"{name} review")
                     if name == "ace3-profile-manager":

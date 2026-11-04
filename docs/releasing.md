@@ -42,7 +42,7 @@ When a new file does not fit one rule clearly, it stays out until the release ma
 | `LICENSE` | The suite's MIT licence |
 | `CHANGELOG.md` | Read by the app (`c` on the tool menu); every release must have its entry |
 | `README.md` | Install, run, update, settings, terms of use |
-| `docs/wtf-cleaner.md`, `docs/screenshot-organizer.md`, `docs/interface-backup.md`, `docs/ace3-profile-manager.md`, `docs/sv-browser.md` | The user guides |
+| `docs/wtf-cleaner.md`, `docs/screenshot-organizer.md`, `docs/interface-backup.md`, `docs/ace3-profile-manager.md`, `docs/sv-browser.md`, `docs/config-copier.md`, `docs/macro-editor.md`, `docs/config-editor.md` | The user guides |
 | `docs/assets/screenshots/` | The images in the README and the guides |
 
 ### Stays out

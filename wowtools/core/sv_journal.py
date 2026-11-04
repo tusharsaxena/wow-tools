@@ -3,7 +3,10 @@
 
 One journal per Apply, even across several flavors: <WoW>/wow-tools/<tool>/journal/journal-<stamp>.jsonl. Each
 rewritten file adds {"action": "edited", "flavor", "path", "rel", "zip", "sha_before", "sha_after", "size_before",
-"size_after", "changes"}: zip is the edited-*.zip holding the file's original bytes (as <rel>). When a run puts
+"size_after", "changes"}: zip is the edited-*.zip holding the file's original bytes (as <rel>). A file the run
+created (the client-file pipeline, core/client_apply.py) adds {"action": "created", "flavor", "path", "rel", "zip",
+"sha_after", "size_after", "changes"} instead: it had no original, and zip is the run's edited-*.zip all the same
+(so it is matched to its run like an edited entry); Undo deletes it. When a run puts
 written files back after a failure it appends {"action": "rolled_back", "flavor", "rels"}; those entries are
 dropped on reading, so they are never offered for Undo. When one flavor's write loop got through every file (no
 failure, no Ctrl+C) it appends {"action": "completed", "flavor", "zip"}, before its crash marker is removed: recovery
@@ -20,6 +23,7 @@ from wowtools.core.journal import Journal
 from wowtools.core.paths import to_stored
 
 A_EDITED = "edited"
+A_CREATED = "created"
 A_ROLLED_BACK = "rolled_back"
 A_COMPLETED = "completed"
 PATH_FIELDS = ("path", "zip")
@@ -36,6 +40,14 @@ class EditJournal(core.JournalWriter):
             self.add_entry({"action": A_EDITED, "flavor": flavor, "path": path, "rel": rel, "zip": zip_path,
                             "sha_before": sha_before, "sha_after": sha_after, "size_before": size_before,
                             "size_after": size_after, "changes": list(changes)})
+            self._edited.add((flavor, rel))
+
+    def add_created(self, *, flavor: str, path: Path, rel: str, zip_path: Path, sha_after: str, size_after: int,
+                    changes: list[str]) -> None:
+        """A file the run created (it did not exist): Undo removes it while it is still at sha_after."""
+        with self.lock:
+            self.add_entry({"action": A_CREATED, "flavor": flavor, "path": path, "rel": rel, "zip": zip_path,
+                            "sha_after": sha_after, "size_after": size_after, "changes": list(changes)})
             self._edited.add((flavor, rel))
 
     def add_rolled_back(self, *, flavor: str, rels: list[str]) -> None:
@@ -56,15 +68,18 @@ class EditJournal(core.JournalWriter):
 
 
 def read_edit_journal(path: Path) -> Journal:
+    """The journal with only its edited and created entries that were not rolled back (and are well formed)."""
     journal = core.read_journal(path, path_fields=PATH_FIELDS)
     rolled = {(e.get("flavor"), rel) for e in journal.entries
               if e.get("action") == A_ROLLED_BACK and isinstance(e.get("rels"), list)
               for rel in e["rels"] if isinstance(rel, str)}
     entries = []
     for entry in journal.entries:
-        if entry.get("action") != A_EDITED or (entry.get("flavor"), entry.get("rel")) in rolled:
+        action = entry.get("action")
+        if action not in (A_EDITED, A_CREATED) or (entry.get("flavor"), entry.get("rel")) in rolled:
             continue
-        if not all(isinstance(entry.get(k), str) for k in ("flavor", "rel", "sha_before", "sha_after")):
+        needed = ("flavor", "rel", "sha_after") + (("sha_before",) if action == A_EDITED else ())
+        if not all(isinstance(entry.get(k), str) for k in needed):
             continue
         if not isinstance(entry.get("zip"), Path):
             continue

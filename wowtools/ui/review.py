@@ -197,6 +197,11 @@ class TickActions:
         """True while ticks must not change (a scan or a running-programs check)."""
         return False
 
+    def space_on_node(self, node) -> bool:
+        """Space on this tree node does something other than a tick here (the Config Editor's 0/1 CVar rows switch
+        their value): do it and return True. False (the default): Space ticks."""
+        return False
+
     def no_ticks_here(self) -> bool:
         """True when the tree shows nothing that can be ticked (a screen with views that have none says why: Space,
         a and n stay keys, as on every review)."""
@@ -216,7 +221,7 @@ class TickActions:
         if not isinstance(focused, Tree) or self.ticks_frozen() or self.no_ticks_here():
             return
         node = self.query_one(self.TREE_SELECTOR, Tree).cursor_node
-        if node is None or node.data is None:
+        if node is None or node.data is None or self.space_on_node(node):
             return
         keys = list(self.filter_keys(self.node_tick_keys(node)))  # a group: only what the filter shows
         if not keys:

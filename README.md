@@ -23,15 +23,19 @@ when you're done.
 | **Interface Backup** | Zips a game version's `Interface` and `WTF` folders (your addons and their settings), and puts them back from a zip. | [Interface Backup guide](docs/interface-backup.md) |
 | **Ace3 Profile Manager** | Shows the profiles of every addon built on Ace3 and which characters use them, and lets you delete, rename and copy profiles or move characters between them. | [Ace3 Profile Manager guide](docs/ace3-profile-manager.md) |
 | **Saved Variables Browser** | Shows every SavedVariables file as a tree you can browse down to single values, and lets you edit, rename and delete keys, or find values and edit the results in bulk. Use at your own risk. | [Saved Variables Browser guide](docs/sv-browser.md) |
+| **Config Copier** | Copies one character's macros, enabled addons, chat windows, CVars and layout to other characters of the same game version, with a diff of every file it replaces. | [Config Copier guide](docs/config-copier.md) |
+| **Macro Editor** | Shows the macros of every account and character, and lets you edit, create, delete, copy and paste them between characters, accounts and game versions, or change text in many at once. | [Macro Editor guide](docs/macro-editor.md) |
+| **Config Editor** | Shows the CVars (the game's settings) of this computer, every account and every character, explains each one, and lets you set, add, remove and reset them, with recommendations. | [Config Editor guide](docs/config-editor.md) |
 
 Every tool works with every version of the game you have installed: Retail, Classic, Classic Era, Anniversary,
 and the PTR and Beta clients. You can work on one version at a time or all of them at once.
 
 No tool changes anything until you say so. Each one shows you what it will do first and asks before it
-touches a file. The WTF Cleaner, the Screenshot Organizer, the Ace3 Profile Manager and the Saved Variables Browser
-can also do a practice run (a **Dry run**) that shows what would happen without changing anything. And if you change
-your mind afterwards, you can undo the last clean, the last sort, the last restore, the last profile change or the
-last Saved Variables edit.
+touches a file. The WTF Cleaner, the Screenshot Organizer, the Ace3 Profile Manager, the Saved Variables Browser,
+the Config Copier, the Macro Editor and the Config Editor can also do a practice run (a **Dry run**) that shows what
+would happen without changing anything. And if you change your mind afterwards, you can undo the last clean, the last
+sort, the last restore, the last profile change, the last Saved Variables edit, the last copy, the last macro change or
+the last CVar change.
 
 ## Terms of use
 
@@ -68,6 +72,18 @@ off for each tool (see [Your settings](#your-settings)).
 **_Saved Variables Browser: your SavedVariables files as a tree_**
 
 ![Saved Variables Browser review screen](docs/assets/screenshots/sv-browser/review.png)
+
+**_Config Copier: a character's files, ready to copy to its alts_**
+
+![Config Copier review screen](docs/assets/screenshots/config-copier/review.png)
+
+**_Macro Editor: every account's and character's macros, with changes waiting to be applied_**
+
+![Macro Editor browse screen](docs/assets/screenshots/macro-editor/browse.png)
+
+**_Config Editor: a character's CVars with the help panel, and a change waiting to be applied_**
+
+![Config Editor browse screen](docs/assets/screenshots/config-editor/browse.png)
 
 Every tool looks and works the same way: a panel on the left with its settings and buttons, a tree on the right
 with what it found (tick what you want), and a bar at the bottom that totals your choice. Before it changes
@@ -248,6 +264,12 @@ Each tool has its own guide, with pictures, that walks through every screen:
   and undo a change.
 - [Saved Variables Browser guide](docs/sv-browser.md): browse every addon's saved settings, edit them, and find
   values and edit the results in bulk.
+- [Config Copier guide](docs/config-copier.md): set up alts by copying a character's macros, addons, chat, CVars
+  and layout, and undo a copy.
+- [Macro Editor guide](docs/macro-editor.md): edit your macros, copy them between characters and game versions, and
+  undo a change.
+- [Config Editor guide](docs/config-editor.md): see what each CVar does, change them for one character or many, and
+  undo a change.
 
 ## Updates
 
@@ -307,6 +329,9 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 | `config\interface-backup.cfg` | Interface Backup's settings |
 | `config\ace3-profile-manager.cfg` | The Ace3 Profile Manager's settings (`[ace3_profile_manager]`): backup folder, the blacklist of addons (each in one game version) it never changes and whether to show the USE AT YOUR OWN RISK warning (`skip_risk_warning`) |
 | `config\sv-browser.cfg` | The Saved Variables Browser's settings (`[sv_browser]`): backup folder and whether to show the USE AT YOUR OWN RISK warning (`skip_risk_warning`) |
+| `config\config-copier.cfg` | The Config Copier's settings (`[config_copier]`): backup folder |
+| `config\macro-editor.cfg` | The Macro Editor's settings (`[macro_editor]`): backup folder |
+| `config\config-editor.cfg` | The Config Editor's settings (`[config_editor]`): backup folder |
 
 The easiest way to change them is to press `s` in the app: the first screen is the shared one (WoW folder, backups and
 journals to keep, game versions (and search files) to work on at once), then the tool's own. You can also open the
@@ -323,7 +348,8 @@ its file); **Show the USE AT YOUR OWN RISK warning** in the tool's settings (`s`
 
 Every tool that changes files keeps a short record of what it did, called a **journal**, so it can undo its last run:
 the WTF Cleaner's last clean, the Screenshot Organizer's last sort, Interface Backup's last restore, the Ace3 Profile
-Manager's last change and the Saved Variables Browser's last Apply. Journals are kept in your WoW folder, under
+Manager's last change, the Saved Variables Browser's last Apply, the Config Copier's last copy, the Macro Editor's
+last Apply and the Config Editor's last Apply. Journals are kept in your WoW folder, under
 `wow-tools\<tool name>\journal` (for example `wow-tools\ace3-profile-manager\journal`). Each tool's guide explains its
 undo.
 
@@ -342,10 +368,12 @@ If you use WSL (Linux inside Windows), the same folder works from both sides. Ru
 
 | Question | Answer |
 |----------|--------|
-| Is it safe? Can I lose anything? | Every tool shows you what it will do and asks before it changes anything. The WTF Cleaner backs up your whole `WTF` folder and zips every file before deleting it, the Screenshot Organizer never overwrites a file, Interface Backup takes a safety backup of your folders before every restore, and the Ace3 Profile Manager and the Saved Variables Browser back up your whole `WTF` folder and every file they edit before changing anything. Each can undo its last run (Interface Backup: its last restore). If you're unsure, press **Dry run** in the WTF Cleaner, the Screenshot Organizer, the Ace3 Profile Manager or the Saved Variables Browser first: it shows what would happen without changing anything. The Saved Variables Browser is the exception: it lets you change any value an addon saved without knowing what the addon expects, so you use it at your own risk. The WTF Cleaner, the Ace3 Profile Manager and the Saved Variables Browser each ask you to accept a **USE AT YOUR OWN RISK** warning the first time you pick a game version in them after starting the app (before anything is scanned), unless you ticked **Don't show this warning again for this tool** on it. |
-| Does it change the game itself? | No. It never touches the game program. The WTF Cleaner and the Screenshot Organizer only work on files the game leaves in your WoW folder: addon settings in `WTF` and pictures in `Screenshots`. Interface Backup only reads your `Interface` and `WTF` folders to back them up; they change only when you restore a backup (or undo a restore) and confirm it. The Ace3 Profile Manager only changes the profile lists in addon settings files in `WTF`, and the Saved Variables Browser only the values and keys you edit in them, each only when you apply and confirm. |
-| Do I need to close WoW? | Close it before you clean with the WTF Cleaner: WoW rewrites those files when you log out and can bring deleted ones back. Close it before an Interface Backup restore or undo too; a backup works with the game open but may miss your latest settings. The WTF Cleaner and Interface Backup warn you if WoW is running. The Ace3 Profile Manager and the Saved Variables Browser refuse to apply or undo a change while WoW is running, since the game would overwrite it. The Screenshot Organizer doesn't mind if the game is open. |
+| Is it safe? Can I lose anything? | Every tool shows you what it will do and asks before it changes anything. The WTF Cleaner backs up your whole `WTF` folder and zips every file before deleting it, the Screenshot Organizer never overwrites a file, Interface Backup takes a safety backup of your folders before every restore, and the Ace3 Profile Manager, the Saved Variables Browser, the Config Copier, the Macro Editor and the Config Editor back up your whole `WTF` folder and every file they edit or replace before changing anything. Each can undo its last run (Interface Backup: its last restore). If you're unsure, press **Dry run** in the WTF Cleaner, the Screenshot Organizer, the Ace3 Profile Manager, the Saved Variables Browser, the Config Copier, the Macro Editor or the Config Editor first: it shows what would happen without changing anything. The Saved Variables Browser is the exception: it lets you change any value an addon saved without knowing what the addon expects, so you use it at your own risk. The WTF Cleaner, the Ace3 Profile Manager and the Saved Variables Browser each ask you to accept a **USE AT YOUR OWN RISK** warning the first time you pick a game version in them after starting the app (before anything is scanned), unless you ticked **Don't show this warning again for this tool** on it. |
+| Does it change the game itself? | No. It never touches the game program. The WTF Cleaner and the Screenshot Organizer only work on files the game leaves in your WoW folder: addon settings in `WTF` and pictures in `Screenshots`. Interface Backup only reads your `Interface` and `WTF` folders to back them up; they change only when you restore a backup (or undo a restore) and confirm it. The Ace3 Profile Manager only changes the profile lists in addon settings files in `WTF`, and the Saved Variables Browser only the values and keys you edit in them, each only when you apply and confirm. The Config Copier only copies five of a character's own files (macros, enabled addons, chat windows, CVars and layout) onto the characters you tick, when you confirm. The Macro Editor only changes the macro files (`macros-cache.txt`) of the accounts and characters whose macros you change, and the Config Editor only the CVar files (`Config.wtf` and the accounts' and characters' `config-cache.wtf`) whose CVars you change, each when you apply and confirm. |
+| Do I need to close WoW? | Close it before you clean with the WTF Cleaner: WoW rewrites those files when you log out and can bring deleted ones back. Close it before an Interface Backup restore or undo too; a backup works with the game open but may miss your latest settings. The WTF Cleaner and Interface Backup warn you if WoW is running. The Ace3 Profile Manager, the Saved Variables Browser, the Config Copier, the Macro Editor and the Config Editor refuse to apply, copy or undo a change while WoW is running, since the game would overwrite it. The Screenshot Organizer doesn't mind if the game is open. |
 | Windows says "The publisher could not be verified". Is that safe? | Yes. It's a Windows-only prompt for any unsigned script that came in a downloaded zip. See [The Windows security warning](#the-windows-security-warning-windows-only) for what it means, why it's safe and how to stop it. |
+| The window flashes and closes when I start it. What went wrong? | Something stopped the app before it could show you. A double-clicked `wow-tools.cmd` now waits for a key when that happens, so you can read the message. To see it in any case, start the app from a terminal: open one in the app's folder and type `wow-tools.cmd` (Windows) or `./wow-tools.sh` (Mac and Linux). Every launch, and every problem before the app opens, is also written to `logs/suite/launcher.log` in the app's folder (`logs\suite\launcher.log` on Windows): open it in a text editor (Notepad on Windows) and read the last lines. If it says Python is missing or too old, see [Installing Python](#installing-python). |
+| It says the folder isn't writable. What do I do? | The app keeps its settings, logs and a lock file in its own folder, so it must be able to write there. Windows doesn't let a normal user write in `Program Files` (or other protected folders), so move the whole `wow-tools` folder to one you own, for example `Documents\wow-tools`, and start it from there. |
 | Do I need to install anything besides Python? | No. Everything else the app needs comes in the download. |
 | Does it work on a Mac? | Yes, with `./wow-tools.sh`, and everything works there, including the "WoW is running" warning. |
 | Why does it say another copy may already be running? | Only one copy of the app can run at once. While it's open it keeps a small file called `wow-tools.lock` in its folder. If you start it a second time, or it crashed last time, you get a warning with two buttons: **Quit** if the app really is open somewhere else, or **Override and continue** if it isn't (for example after a crash). When the app can tell the other copy is gone, it says so and puts you on **Override and continue**. |
@@ -360,7 +388,8 @@ If you use WSL (Linux inside Windows), the same folder works from both sides. Ru
 
 | Symptom | Fix |
 |---------|-----|
-| "Python was not found", or nothing happens when I double-click `wow-tools.cmd` | Python isn't installed, or **Add python.exe to PATH** wasn't ticked. Run the Python installer again, choose **Modify**, and tick it. |
+| "Python was not found", "no Python was found", or nothing happens when I double-click `wow-tools.cmd` | Python isn't installed, or **Add python.exe to PATH** wasn't ticked. Run the Python installer again, choose **Modify**, and tick it. |
+| The window flashes and closes | See *The window flashes and closes when I start it* in the [FAQ](#faq). |
 | "No WoW flavor folders (\_retail\_, \_classic\_ ...) were found there" | Pick the `World of Warcraft` folder itself, not `_retail_` inside it. |
 | "Ka0s WoW Tools may already be running" | See *Why does it say another copy may already be running?* in the [FAQ](#faq). |
 | The window looks garbled or too small | Make the terminal window bigger (at least 120 columns by 30 lines; see [Terminal size](#terminal-size)), or use Windows Terminal (the default on Windows 11). |

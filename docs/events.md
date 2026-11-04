@@ -36,12 +36,18 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 
 | Event | Level | Description |
 |---|---|---|
+| `bootstrap.failed` | error | Start-up failed before the event log opened: the Python check, the lock, the config, the log folder or an uncaught error (logs/suite/launcher.log: where, type, message, the traceback's last lines). |
 | `changelog.unreadable` | warning | CHANGELOG.md was missing, unreadable or malformed, so the changelog screen showed nothing (the reason is in `reason`). |
 | `config.changed` | info | A config value changed or was removed, or was overridden for one run. |
 | `config.created` | info | A config file in config/ was written for the first time. |
 | `config.renamed` | info | A renamed tool's config file was moved to its new name (merged into the new file when both existed). |
 | `error` | error | An unexpected or fatal error. |
 | `folder.renamed` | info | A renamed tool's folder (logs/<tool>/ or <WoW>/wow-tools/<tool>/) was moved to its new name; logged as a warning when entries clashed or failed to move. |
+| `kb.unreadable` | warning | A knowledge-base file in wowtools/kb/ could not be read or parsed, so it was read as empty and its entries show as unknown (path, reason). |
+| `launcher.exited` | info | Python returned to the launcher (logs/suite/launcher.log: the exit code). |
+| `launcher.python_missing` | error | The launcher found no usable Python and stopped (logs/suite/launcher.log). |
+| `launcher.python_too_old` | error | The launcher found a Python older than 3.10 and stopped (logs/suite/launcher.log: the version found). |
+| `launcher.started` | info | wow-tools.cmd or wow-tools.sh is about to start Python (logs/suite/launcher.log: time, args, the python command it chose, platform). |
 | `lock.conflict` | warning | Another copy of Ka0s WoW Tools appears to be running (its lock file exists). |
 | `lock.overridden` | warning | The user took over an existing lock file and carried on. |
 | `parallel.finished` | debug | A run over several units ended: how many, how many failed, how many never started (an earlier unit failed and the run stops on one), seconds. |
@@ -263,3 +269,132 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `svb.would_edit` | info | Dry run: a file that would be rewritten, with its changes (checked, not written). |
 | `svb.wow_running` | warning | Apply or Undo was refused because WoW of that flavor is running. |
 | `svb.write_failed` | error | A SavedVariables file could not be written; the run stopped. |
+
+## `config-copier` events
+
+| Event | Level | Description |
+|---|---|---|
+| `copier.apply_completed` | info | Apply finished (logged at warning if any file was skipped or failed). |
+| `copier.apply_started` | info | Apply (or a dry run) of the pending changes started. |
+| `copier.backup_failed` | error | The zip of the original files failed; nothing was changed. |
+| `copier.dry_run_completed` | info | A dry run finished. |
+| `copier.earlier_unfinished` | error | Apply was refused: an earlier Apply did not finish (its crash marker is there); nothing was changed. |
+| `copier.file_changed` | warning | A file changed since the scan; its changes were skipped. |
+| `copier.file_created` | info | A client file that did not exist was created with the pending changes. |
+| `copier.file_edited` | info | A client file (in an account or character folder, or Config.wtf) was rewritten with the pending changes. |
+| `copier.file_locked` | error | Apply or Undo stopped before changing anything: files are locked by another program. |
+| `copier.file_removed` | info | Undo or recovery: a file the run had created was deleted (it was still what the run wrote). |
+| `copier.file_restored` | info | Undo or recovery: a file was put back to its original bytes. |
+| `copier.file_skipped` | warning | Undo or recovery: a file was left alone (it changed since the run, or is outside the WTF folder). |
+| `copier.file_unreadable` | warning | A source or target client file could not be read (or a config-cache.wtf merged) while planning a copy, so its pairs are shown as unreadable and never copied (path, reason). |
+| `copier.files_backed_up` | info | The originals of the files to change were zipped and verified. |
+| `copier.flavors_stopped` | warning | An Apply over several flavors stopped at one flavor; the flavors after it were not started. |
+| `copier.journal_failed` | error | The run journal could not be written; nothing was changed. |
+| `copier.journal_pruned` | info | Older journals (and the zips only they used) were deleted to keep the newest N (keep_journals). |
+| `copier.marker_failed` | error | The crash marker could not be written; nothing was changed. |
+| `copier.marker_left` | warning | Apply finished but its crash marker could not be removed (another program held it); the next scan offers the run as unfinished, and putting the originals back then only removes the marker. |
+| `copier.marker_stale` | info | Recovery found that the run named by the crash marker had finished (its journal says so for every file it wrote, and the files it skipped are not at what it would have written): no file was changed, only the marker is removed (logged at warning with marker_left when it could not be removed either: the next scan offers it again). |
+| `copier.planned` | info | A copy was planned from a source character: source, targets, files and how many (target, file) pairs are new, replaced, unchanged, have no source file or could not be read (counts). |
+| `copier.probe_recovered` | warning | A client file left as <name>.wowtools-lockcheck by an interrupted lock check was renamed back. |
+| `copier.recovery_done` | info | The user chose what to do about an unfinished Apply (put back or leave); logged at warning with marker_left when its crash marker could not be removed (the next scan offers it again). |
+| `copier.recovery_offered` | warning | A marker from an Apply that did not finish was found by a scan (on opening or a rescan), or Apply was pressed while it is there. |
+| `copier.rollback_failed` | error | A file could not be put back after a failure; restore it from the zip the message names. |
+| `copier.rolled_back` | warning | After a failure, the files this run had already written were put back. |
+| `copier.snapshot_discarded` | info | A whole-WTF snapshot taken before an Undo whose other snapshot failed was deleted: nothing was changed, so it protected nothing. |
+| `copier.snapshot_failed` | error | The whole-WTF snapshot failed; nothing was changed. |
+| `copier.snapshot_taken` | info | The whole-WTF snapshot was written and verified. |
+| `copier.snapshots_pruned` | info | Older whole-WTF snapshots of the flavor were deleted to keep the newest N (keep_backups). |
+| `copier.started` | info | The Config Copier opened its review on a source character (flavors, source). |
+| `copier.undo_completed` | info | Undo last change finished (logged at warning if any file was skipped or failed). |
+| `copier.undo_failed` | error | Undo or recovery: a file could not be put back (its zip is missing or does not match). |
+| `copier.undo_started` | info | Undo last change started, from the newest journal. |
+| `copier.verify_failed` | error | An edited file did not re-read as expected; it was not written and the run stopped. |
+| `copier.would_edit` | info | Dry run: a file that would be rewritten, with its changes (checked, not written). |
+| `copier.wow_running` | warning | Apply or Undo was refused because WoW of that flavor is running. |
+| `copier.write_failed` | error | A client file could not be written; the run stopped. |
+
+## `macro-editor` events
+
+| Event | Level | Description |
+|---|---|---|
+| `macro.apply_completed` | info | Apply finished (logged at warning if any file was skipped or failed). |
+| `macro.apply_started` | info | Apply (or a dry run) of the pending changes started. |
+| `macro.backup_failed` | error | The zip of the original files failed; nothing was changed. |
+| `macro.dry_run_completed` | info | A dry run finished. |
+| `macro.earlier_unfinished` | error | Apply was refused: an earlier Apply did not finish (its crash marker is there); nothing was changed. |
+| `macro.file_changed` | warning | A file changed since the scan; its changes were skipped. |
+| `macro.file_created` | info | A client file that did not exist was created with the pending changes. |
+| `macro.file_edited` | info | A client file (in an account or character folder, or Config.wtf) was rewritten with the pending changes. |
+| `macro.file_locked` | error | Apply or Undo stopped before changing anything: files are locked by another program. |
+| `macro.file_removed` | info | Undo or recovery: a file the run had created was deleted (it was still what the run wrote). |
+| `macro.file_restored` | info | Undo or recovery: a file was put back to its original bytes. |
+| `macro.file_skipped` | warning | Undo or recovery: a file was left alone (it changed since the run, or is outside the WTF folder). |
+| `macro.file_unreadable` | warning | A macros-cache.txt could not be read, so its set is shown read-only and never written (path, reason). |
+| `macro.files_backed_up` | info | The originals of the files to change were zipped and verified. |
+| `macro.flavors_stopped` | warning | An Apply over several flavors stopped at one flavor; the flavors after it were not started. |
+| `macro.journal_failed` | error | The run journal could not be written; nothing was changed. |
+| `macro.journal_pruned` | info | Older journals (and the zips only they used) were deleted to keep the newest N (keep_journals). |
+| `macro.marker_failed` | error | The crash marker could not be written; nothing was changed. |
+| `macro.marker_left` | warning | Apply finished but its crash marker could not be removed (another program held it); the next scan offers the run as unfinished, and putting the originals back then only removes the marker. |
+| `macro.marker_stale` | info | Recovery found that the run named by the crash marker had finished (its journal says so for every file it wrote, and the files it skipped are not at what it would have written): no file was changed, only the marker is removed (logged at warning with marker_left when it could not be removed either: the next scan offers it again). |
+| `macro.probe_recovered` | warning | A client file left as <name>.wowtools-lockcheck by an interrupted lock check was renamed back. |
+| `macro.recovery_done` | info | The user chose what to do about an unfinished Apply (put back or leave); logged at warning with marker_left when its crash marker could not be removed (the next scan offers it again). |
+| `macro.recovery_offered` | warning | A marker from an Apply that did not finish was found by a scan (on opening or a rescan), or Apply was pressed while it is there. |
+| `macro.rollback_failed` | error | A file could not be put back after a failure; restore it from the zip the message names. |
+| `macro.rolled_back` | warning | After a failure, the files this run had already written were put back. |
+| `macro.scanned` | info | The macro files of a flavor were read (flavor, sets, macros, read-only sets). |
+| `macro.snapshot_discarded` | info | A whole-WTF snapshot taken before an Undo whose other snapshot failed was deleted: nothing was changed, so it protected nothing. |
+| `macro.snapshot_failed` | error | The whole-WTF snapshot failed; nothing was changed. |
+| `macro.snapshot_taken` | info | The whole-WTF snapshot was written and verified. |
+| `macro.snapshots_pruned` | info | Older whole-WTF snapshots of the flavor were deleted to keep the newest N (keep_backups). |
+| `macro.started` | info | The Macro Editor opened its browse screen (flavors, label). |
+| `macro.undo_completed` | info | Undo last change finished (logged at warning if any file was skipped or failed). |
+| `macro.undo_failed` | error | Undo or recovery: a file could not be put back (its zip is missing or does not match). |
+| `macro.undo_started` | info | Undo last change started, from the newest journal. |
+| `macro.verify_failed` | error | An edited file did not re-read as expected; it was not written and the run stopped. |
+| `macro.would_edit` | info | Dry run: a file that would be rewritten, with its changes (checked, not written). |
+| `macro.wow_running` | warning | Apply or Undo was refused because WoW of that flavor is running. |
+| `macro.write_failed` | error | A client file could not be written; the run stopped. |
+
+## `config-editor` events
+
+| Event | Level | Description |
+|---|---|---|
+| `cvar.apply_completed` | info | Apply finished (logged at warning if any file was skipped or failed). |
+| `cvar.apply_started` | info | Apply (or a dry run) of the pending changes started. |
+| `cvar.backup_failed` | error | The zip of the original files failed; nothing was changed. |
+| `cvar.dry_run_completed` | info | A dry run finished. |
+| `cvar.earlier_unfinished` | error | Apply was refused: an earlier Apply did not finish (its crash marker is there); nothing was changed. |
+| `cvar.file_changed` | warning | A file changed since the scan; its changes were skipped. |
+| `cvar.file_created` | info | A client file that did not exist was created with the pending changes. |
+| `cvar.file_edited` | info | A client file (in an account or character folder, or Config.wtf) was rewritten with the pending changes. |
+| `cvar.file_locked` | error | Apply or Undo stopped before changing anything: files are locked by another program. |
+| `cvar.file_removed` | info | Undo or recovery: a file the run had created was deleted (it was still what the run wrote). |
+| `cvar.file_restored` | info | Undo or recovery: a file was put back to its original bytes. |
+| `cvar.file_skipped` | warning | Undo or recovery: a file was left alone (it changed since the run, or is outside the WTF folder). |
+| `cvar.file_unreadable` | warning | A Config.wtf or config-cache.wtf could not be read, so it is shown read-only and never written (path, reason). |
+| `cvar.files_backed_up` | info | The originals of the files to change were zipped and verified. |
+| `cvar.flavors_stopped` | warning | An Apply over several flavors stopped at one flavor; the flavors after it were not started. |
+| `cvar.journal_failed` | error | The run journal could not be written; nothing was changed. |
+| `cvar.journal_pruned` | info | Older journals (and the zips only they used) were deleted to keep the newest N (keep_journals). |
+| `cvar.marker_failed` | error | The crash marker could not be written; nothing was changed. |
+| `cvar.marker_left` | warning | Apply finished but its crash marker could not be removed (another program held it); the next scan offers the run as unfinished, and putting the originals back then only removes the marker. |
+| `cvar.marker_stale` | info | Recovery found that the run named by the crash marker had finished (its journal says so for every file it wrote, and the files it skipped are not at what it would have written): no file was changed, only the marker is removed (logged at warning with marker_left when it could not be removed either: the next scan offers it again). |
+| `cvar.probe_recovered` | warning | A client file left as <name>.wowtools-lockcheck by an interrupted lock check was renamed back. |
+| `cvar.recovery_done` | info | The user chose what to do about an unfinished Apply (put back or leave); logged at warning with marker_left when its crash marker could not be removed (the next scan offers it again). |
+| `cvar.recovery_offered` | warning | A marker from an Apply that did not finish was found by a scan (on opening or a rescan), or Apply was pressed while it is there. |
+| `cvar.rollback_failed` | error | A file could not be put back after a failure; restore it from the zip the message names. |
+| `cvar.rolled_back` | warning | After a failure, the files this run had already written were put back. |
+| `cvar.scanned` | info | The CVar files of a flavor were read (flavor, files, files that exist, read-only files). |
+| `cvar.snapshot_discarded` | info | A whole-WTF snapshot taken before an Undo whose other snapshot failed was deleted: nothing was changed, so it protected nothing. |
+| `cvar.snapshot_failed` | error | The whole-WTF snapshot failed; nothing was changed. |
+| `cvar.snapshot_taken` | info | The whole-WTF snapshot was written and verified. |
+| `cvar.snapshots_pruned` | info | Older whole-WTF snapshots of the flavor were deleted to keep the newest N (keep_backups). |
+| `cvar.started` | info | The Config Editor opened its browse screen (flavors, label). |
+| `cvar.undo_completed` | info | Undo last change finished (logged at warning if any file was skipped or failed). |
+| `cvar.undo_failed` | error | Undo or recovery: a file could not be put back (its zip is missing or does not match). |
+| `cvar.undo_started` | info | Undo last change started, from the newest journal. |
+| `cvar.verify_failed` | error | An edited file did not re-read as expected; it was not written and the run stopped. |
+| `cvar.would_edit` | info | Dry run: a file that would be rewritten, with its changes (checked, not written). |
+| `cvar.wow_running` | warning | Apply or Undo was refused because WoW of that flavor is running. |
+| `cvar.write_failed` | error | A client file could not be written; the run stopped. |

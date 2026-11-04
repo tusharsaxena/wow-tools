@@ -21,8 +21,8 @@ from wowtools.ui.tool_flow import ToolFlow
 
 
 class RegistryTest(unittest.TestCase):
-    def test_entry_is_last_and_named_per_d1(self):
-        tool = list(TOOLS.values())[-1]
+    def test_entry_is_named_per_d1(self):
+        tool = TOOLS["sv-browser"]
         self.assertEqual((tool.name, tool.title, tool.module, tool.section),
                          ("sv-browser", "Saved Variables Browser", "wowtools.tools.sv_browser.app", "sv_browser"))
         self.assertEqual(tool.description, "Browse and edit every SavedVariables file, with bulk find and replace.")

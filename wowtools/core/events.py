@@ -50,6 +50,8 @@ CORE_EVENTS: dict[str, EventSpec] = {
                                                        "running; the lock is kept until it finishes."),
     "changelog.unreadable": EventSpec("warning", "CHANGELOG.md was missing, unreadable or malformed, so the changelog "
                                                  "screen showed nothing (the reason is in `reason`)."),
+    "kb.unreadable": EventSpec("warning", "A knowledge-base file in wowtools/kb/ could not be read or parsed, so it "
+                                          "was read as empty and its entries show as unknown (path, reason)."),
     "config.created": EventSpec("info", "A config file in config/ was written for the first time."),
     "config.changed": EventSpec("info", "A config value changed or was removed, or was overridden for one run."),
     "config.renamed": EventSpec("info", "A renamed tool's config file was moved to its new name (merged into the new "
@@ -81,6 +83,18 @@ CORE_EVENTS: dict[str, EventSpec] = {
     "update.cleanup_stopped": EventSpec("warning", "Ctrl+C after a zip update had put the new version in place, while it was removing the temporary download (step temp) or pruning old .update-backup folders (step prune); the update counts as applied and the next update prunes again."),
     "update.backup_kept": EventSpec("warning", "An old .update-backup folder was not pruned because a file the user had added could not be moved out of it; the next update tries again."),
     "wow.running_warning": EventSpec("warning", "World of Warcraft appears to be running."),
+    # Written to logs/suite/launcher.log by the launchers and core/bootstrap.py, outside log_event (LN7 deviation):
+    # registered so this reference lists them.
+    "launcher.started": EventSpec("info", "wow-tools.cmd or wow-tools.sh is about to start Python (logs/suite/"
+                                          "launcher.log: time, args, the python command it chose, platform)."),
+    "launcher.exited": EventSpec("info", "Python returned to the launcher (logs/suite/launcher.log: the exit code)."),
+    "launcher.python_missing": EventSpec("error", "The launcher found no usable Python and stopped (logs/suite/"
+                                                  "launcher.log)."),
+    "launcher.python_too_old": EventSpec("error", "The launcher found a Python older than 3.10 and stopped (logs/"
+                                                  "suite/launcher.log: the version found)."),
+    "bootstrap.failed": EventSpec("error", "Start-up failed before the event log opened: the Python check, the "
+                                           "lock, the config, the log folder or an uncaught error (logs/suite/"
+                                           "launcher.log: where, type, message, the traceback's last lines)."),
     "error": EventSpec("error", "An unexpected or fatal error."),
 }
 REGISTRY: dict[str, EventSpec] = dict(CORE_EVENTS)

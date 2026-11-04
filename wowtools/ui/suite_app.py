@@ -85,10 +85,10 @@ class ToolArea(Vertical):
     def on_resize(self, event: Resize) -> None:
         hint = self.query_one(NavHint)
         hint_rows = len(wrap_items(hint.hint, event.size.width - 4).splitlines()) + 1  # its margin-top
-        room = event.size.height - 1 - hint_rows  # the list's margin-top, then the hint
+        room = event.size.height - hint_rows  # the list, then the hint
         hint.display = room >= self.MIN_LIST_ROWS  # below TINY the hint gives way before the list loses its last row
         self.query_one("#tools", OptionList).styles.max_height = max(
-            self.MIN_LIST_ROWS, room if hint.display else event.size.height - 1)
+            self.MIN_LIST_ROWS, room if hint.display else event.size.height)
         self.screen.call_after_refresh(self.screen.fit_art)
 
 
@@ -98,7 +98,8 @@ class ToolMenuScreen(Screen[None]):
     Top to bottom: the banner with the version under it (spec D4), the tool list, the hint, then the terms of use
     (spec D6) right above the bottom bar. The list's area takes what is left, so in a short window the terms and the
     footer stay put and the list scrolls; under MENU_ART_ROWS rows, or when the art would make the list scroll (a
-    narrow window wraps each description onto two rows), the shield art gives way to its name line. The layout floor
+    narrow window wraps each description onto two rows), the shield art gives way to its name line and the blank rows
+    around the banner go too (the `-compact` class). The layout floor
     is TINY: below it the list keeps at least one row and the hint, the terms and the footer may not all fit."""
 
     MENU_ART_ROWS = 30  # BASE: at least this many rows show the whole shield
@@ -107,11 +108,13 @@ class ToolMenuScreen(Screen[None]):
     ToolMenuScreen VersionLine {{ padding: 0 0 1 0; }}
     ToolMenuScreen #pick-title {{ color: $accent; text-style: bold; padding: 0 2; }}
     ToolMenuScreen #tool-area {{ height: 1fr; }}
-    ToolMenuScreen #tools {{ margin: 1 2 0 2; height: auto; border: tall $primary; }}
+    ToolMenuScreen #tools {{ margin: 0 2 0 2; height: auto; border: tall $primary; }}
     ToolMenuScreen #tools > .option-list--option-highlighted {{ background: {LIST_CURSOR_BACKGROUND}; }}
     ToolMenuScreen #tools:focus > .option-list--option-highlighted {{ background: {LIST_CURSOR_BACKGROUND}; }}
     ToolMenuScreen NavHint {{ padding: 0 2; }}
     ToolMenuScreen TermsText {{ margin-top: 1; padding: 0; text-align: center; }}
+    ToolMenuScreen.-compact Banner {{ padding: 0; }}
+    ToolMenuScreen.-compact VersionLine {{ padding: 0; }}
     """
     BINDINGS: ClassVar[list[Binding]] = [Binding("c", "changelog", "Changelog"),
                                          Binding("q,escape", "app.quit", "Quit"), *NAV_BINDINGS]
@@ -130,14 +133,18 @@ class ToolMenuScreen(Screen[None]):
         yield BottomBar()
 
     def on_resize(self, event: Resize) -> None:
-        self.query_one(Banner).show_art(event.size.height >= self.MENU_ART_ROWS)
+        self._show_art(event.size.height >= self.MENU_ART_ROWS)
         self.call_after_refresh(self.fit_art)
+
+    def _show_art(self, art: bool) -> None:
+        self.query_one(Banner).show_art(art)
+        self.set_class(not art, "-compact")
 
     def fit_art(self) -> None:
         """Every tool beats the shield: drop the art once the laid-out list would have to scroll with it."""
         banner = self.query_one(Banner)
         if banner.art and self.query_one("#tools", OptionList).max_scroll_y > 0:
-            banner.show_art(False)
+            self._show_art(False)
 
     def on_mount(self) -> None:
         self.sub_title = "Choose a tool"

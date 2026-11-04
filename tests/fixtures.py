@@ -32,6 +32,11 @@ build_sv_tree(root) builds a separate install for the Saved Variables Browser (s
 texts): two flavors, two accounts, account-wide and per-character files, nested tables, numeric/boolean keys,
 Font/font/barFont keys, SVB_FONT in several files and flavors, escapes, floats, a nil array slot with -- [n]
 comments, a Blizzard_* file, a .bak and a broken file.
+macro_file_bytes(macros) and cvar_file_bytes(pairs) synthesize a macros-cache.txt and a config-cache.wtf / Config.wtf
+the way the Retail client writes them (config tools spec V4): never copied from a real install.
+build_character_tree(root) builds account › realm › character folders for the shared character tree (see its
+docstring): non-ASCII names, copies that are not characters, an account with none.
+build_config_tree(root) adds Config.wtf and config-cache.wtf files on it for the Config Editor (see its docstring).
 """
 from __future__ import annotations
 
@@ -224,6 +229,32 @@ async def accept_disclaimer(app, pilot) -> None:
     if isinstance(app.screen, DisclaimerScreen):
         app.screen.choose(ACCEPT)
         await settle(app, pilot)
+
+
+async def pick_source(app, pilot) -> None:
+    """The Config Copier's source picker comes after the flavor pick: choose the first character it lists that has a
+    file to copy, else the first one (any other tool: nothing to do)."""
+    from wowtools.tools.config_copier.model import COPY_FILES
+    from wowtools.tools.config_copier.source_screen import SourceScreen
+    if isinstance(app.screen, SourceScreen):
+        choices = app.screen.choices
+        app.screen.choose(*next((c for c in choices if any((c[1].path / n).is_file() for n in COPY_FILES)),
+                                choices[0]))
+        await settle(app, pilot)
+
+
+async def reach_review(app, pilot) -> None:
+    """From the flavor pick to a tool's review: the USE AT YOUR OWN RISK warning (accept_disclaimer), then the Config
+    Copier's source picker (pick_source)."""
+    await accept_disclaimer(app, pilot)
+    await pick_source(app, pilot)
+
+
+def tick_copier_targets(review) -> None:
+    """Tick every pair a Config Copier review can copy (what its Copy / Dry run needs)."""
+    review.tick_model().tick(review.all_tick_keys())
+    review._refresh_labels()
+    assert review.selected_plans(), "nothing to copy"
 
 
 def stage_sv_edit(review) -> None:
@@ -567,3 +598,132 @@ def cpu_seconds():
         yield timer
     finally:
         timer.seconds = time.process_time() - started
+
+
+def macro_file_bytes(macros, newline: bytes = b"\r\n") -> bytes:
+    """A macros-cache.txt in the Retail layout (config tools spec V4): one `VER 3 <id> "<name>" "<icon>"` line, the
+    body lines and `END` per macro, every line ending in `newline` (the client writes CRLF), UTF-8. `macros` is
+    (id, name, icon, body) tuples; a body's lines are split on "\n" and an empty body has no lines."""
+    out = bytearray()
+    for macro_id, name, icon, body in macros:
+        lines = [f'VER 3 {macro_id} "{name}" "{icon}"', *(body.split("\n") if body else []), "END"]
+        for line in lines:
+            out += line.encode("utf-8") + newline
+    return bytes(out)
+
+
+def cvar_file_bytes(pairs, newline: bytes = b"\r\n") -> bytes:
+    """A config-cache.wtf or Config.wtf: one `SET <name> "<value>"` line per (name, value) pair, UTF-8."""
+    return b"".join(f'SET {name} "{value}"'.encode() + newline for name, value in pairs)
+
+
+def build_character_tree(root: Path) -> Path:
+    """A retail install for the character tree (config tools spec X2, X3), folders only:
+    MAIN/Realm1: Aellâ, Bob and the copies `Bob - Copy` and `Bob2` (not characters); MAIN/Realm2: Trâxex;
+    MAIN/SavedVariables (never a realm); ALT/Realm1: Dænerys; BARE: no characters."""
+    accounts = root / "_retail_" / "WTF" / "Account"
+    for rel in ("MAIN/Realm1/Aellâ", "MAIN/Realm1/Bob", "MAIN/Realm1/Bob - Copy", "MAIN/Realm1/Bob2",
+                "MAIN/Realm2/Trâxex", "MAIN/SavedVariables", "ALT/Realm1/Dænerys", "BARE"):
+        (accounts / rel).mkdir(parents=True, exist_ok=True)
+    return root
+
+
+COPIER_MACROS = macro_file_bytes([("0100000000000001", "Heal Dænerys", "134400", "/cast [@mouseover] Flash Heal"),
+                                  ("0100000000000002", "D Up", "132360", "/cast Divine Protection")])
+COPIER_ADDONS = "Auctionator: enabled\r\nDetails: enabled\r\nDænerysPack: disabled\r\n".encode()
+COPIER_CHAT = b"VERSION 5\r\n\r\nWINDOW 1\r\nNAME General\r\nEND\r\n"
+COPIER_LAYOUT = b"LAYOUT 1\r\n"
+COPIER_CONFIG = cvar_file_bytes([("assistedCombatHighlight", "1"), ("nameplateMaxScaleDistance", "40"),
+                                 ("hardTrackedQuests", "111"), ("savedClassConfigOne", "src")])
+
+
+def build_copier_tree(root: Path) -> Path:
+    """A WoW folder for the Config Copier (config tools spec CC2-CC7), on build_character_tree's retail folders:
+    MAIN/Realm1/Aellâ, the source, has all five files; Bob has one macro, his own AddOns.txt and a config-cache.wtf
+    (state hardTrackedQuests, preference enableMultiActionBars); `Bob - Copy` (not a character) has macros too;
+    Trâxex has nothing; ALT/Realm1/Dænerys already has Aellâ's chat-cache.txt. _classic_era_ has ACCT/Realm1/Other
+    with an AddOns.txt (another flavor)."""
+    build_character_tree(root)
+    accounts = root / "_retail_" / "WTF" / "Account"
+    source = accounts / "MAIN" / "Realm1" / "Aellâ"
+    for name, data in (("macros-cache.txt", COPIER_MACROS), ("AddOns.txt", COPIER_ADDONS),
+                       ("chat-cache.txt", COPIER_CHAT), ("config-cache.wtf", COPIER_CONFIG),
+                       ("layout-local.txt", COPIER_LAYOUT)):
+        _write_bytes(source / name, data, FRESH)
+    bob = accounts / "MAIN" / "Realm1" / "Bob"
+    _write_bytes(bob / "macros-cache.txt", macro_file_bytes([("0100000000000001", "Bob", "134400", "/sit")]), FRESH)
+    _write_bytes(bob / "AddOns.txt", b"Auctionator: disabled\r\n", FRESH)
+    _write_bytes(bob / "config-cache.wtf", cvar_file_bytes([("hardTrackedQuests", "222"),
+                                                            ("enableMultiActionBars", "15")]), FRESH)
+    _write_bytes(accounts / "MAIN" / "Realm1" / "Bob - Copy" / "macros-cache.txt", COPIER_MACROS, FRESH)
+    _write_bytes(accounts / "ALT" / "Realm1" / "Dænerys" / "chat-cache.txt", COPIER_CHAT, FRESH)
+    _write_bytes(root / "_classic_era_" / "WTF" / "Account" / "ACCT" / "Realm1" / "Other" / "AddOns.txt",
+                 b"Questie: enabled\r\n", FRESH)
+    return root
+
+
+MACRO_AELLA = macro_file_bytes([("0100000000000001", "Heal Dænerys", "134400", "/cast [@mouseover,help,nodead] Flash Heal"),
+                                ("0100000000000002", "D Up", "132360", "/cast Divine Protection"),
+                                ("0100000000000003", "Fly", "134400", "/cast [advflyable] Swift Flight Form")])
+MACRO_BOB = macro_file_bytes([("0100000000000001", "Bob", "134400", "/sit"),
+                              ("0100000000000007", "D Up", "134400", "/cast Flash of Light")])
+MACRO_ACCOUNT = macro_file_bytes([("0000000000000001", "Mount", "134400", "/cast Swift Horse")])
+MACRO_UNKNOWN = b'VER 3 0100000000000001 "Old" "134400"\n/sit\nEND\n'  # LF only: a layout the reader doesn't know
+MACRO_ERA = macro_file_bytes([("0100000000000001", "Era", "134400", "/say hi")])
+
+
+def build_macro_tree(root: Path) -> Path:
+    """A WoW folder for the Macro Editor (config tools spec ME2-ME7, ME14), on build_character_tree's retail folders:
+    MAIN has account macros (Mount); MAIN/Realm1/Aellâ three macros (Heal Dænerys, D Up, Fly with the Retail-only
+    `advflyable`), Bob two (Bob, D Up), `Bob - Copy` (not a character) Aellâ's; Trâxex none; ALT/Realm1/Dænerys a
+    file in a layout the reader doesn't know (LF only: read-only). _classic_era_ has ACCT/Realm1/Other with one
+    macro (Era)."""
+    build_character_tree(root)
+    accounts = root / "_retail_" / "WTF" / "Account"
+    for rel, data in (("MAIN", MACRO_ACCOUNT), ("MAIN/Realm1/Aellâ", MACRO_AELLA), ("MAIN/Realm1/Bob", MACRO_BOB),
+                      ("MAIN/Realm1/Bob - Copy", MACRO_AELLA), ("ALT/Realm1/Dænerys", MACRO_UNKNOWN)):
+        _write_bytes(accounts / rel / "macros-cache.txt", data, FRESH)
+    _write_bytes(root / "_classic_era_" / "WTF" / "Account" / "ACCT" / "Realm1" / "Other" / "macros-cache.txt",
+                 MACRO_ERA, FRESH)
+    return root
+
+
+def stage_macro_edit(review) -> None:
+    """Stage one new macro on a Macro Editor review (what its Apply / Dry run needs): in the first set it can be
+    written to, Retail's first."""
+    from wowtools.tools.macro_editor.ops import stage_new
+    mset = next(s for s in sorted(review.all_sets(), key=lambda s: s.flavor.folder != "_retail_") if not s.read_only)
+    stage_new(review.staged, mset, name="Test", body="/sit")
+    review.staging_changed()
+
+
+CONFIG_MACHINE = cvar_file_bytes([("gxMaximize", "1"), ("Sound_MasterVolume", "0.5")])
+CONFIG_ACCOUNT = cvar_file_bytes([("autoLootDefault", "1"), ("nameplateShowAll", "1")])
+CONFIG_AELLA = cvar_file_bytes([("nameplateShowFriends", "1"), ("cameraDistanceMaxZoomFactor", "2.6"),
+                                ("assistedCombatHighlight", "1"), ("myAddonThing", "Dænerys")])
+CONFIG_TRAXEX = b'SET nameplateShowFriends "0"\n# not a SET line\nSET floatingCombatTextCombatDamage "1"'  # LF, no end
+
+
+def build_config_tree(root: Path) -> Path:
+    """A WoW folder for the Config Editor (config tools spec CE3), on build_character_tree's retail folders:
+    WTF/Config.wtf (machine); MAIN has an account config-cache.wtf; MAIN/Realm1/Aellâ a character one (with a CVar
+    no KB knows, `myAddonThing`), Bob none, `Bob - Copy` (not a character) one; MAIN/Realm2/Trâxex one with LF
+    endings, a line that is not a SET line and no final newline; ALT and BARE have no files."""
+    build_character_tree(root)
+    wtf = root / "_retail_" / "WTF"
+    accounts = wtf / "Account"
+    _write_bytes(wtf / "Config.wtf", CONFIG_MACHINE, FRESH)
+    for rel, data in (("MAIN", CONFIG_ACCOUNT), ("MAIN/Realm1/Aellâ", CONFIG_AELLA),
+                      ("MAIN/Realm1/Bob - Copy", CONFIG_AELLA), ("MAIN/Realm2/Trâxex", CONFIG_TRAXEX)):
+        _write_bytes(accounts / rel / "config-cache.wtf", data, FRESH)
+    return root
+
+
+def stage_config_edit(review) -> None:
+    """Stage one CVar on a Config Editor review (what its Apply / Dry run needs): in the first file it can write,
+    Retail's first."""
+    from wowtools.tools.config_editor.ops import stage_set
+    target = next(t for t in sorted(review.all_targets(), key=lambda t: t.flavor.folder != "_retail_")
+                  if not t.read_only)
+    stage_set(review.staged, target, "testCVar", "1")
+    review.staging_changed()

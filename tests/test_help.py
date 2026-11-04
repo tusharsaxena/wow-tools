@@ -13,10 +13,14 @@ from textual.widgets import Markdown
 from textual.widgets._footer import FooterKey
 
 from tests.fixtures import (BASE, TINY, TuiTestCase, accept_disclaimer, build_ace_tree, build_interface_tree,
-                            build_screenshot_tree, build_wow_tree, footer_keys, make_config, settle, stage_sv_edit)
+                            build_screenshot_tree, build_wow_tree, footer_keys, make_config, pick_source, reach_review,
+                            settle, stage_sv_edit, tick_copier_targets, stage_macro_edit, stage_config_edit)
 from wowtools import __version__
 from wowtools.core.install import WowInstall
 from wowtools.tools import TOOLS
+from wowtools.tools.config_copier.source_screen import SourceScreen
+from wowtools.tools.macro_editor.edit_screen import MacroEditScreen
+from wowtools.tools.macro_editor.reference_screen import ReferenceScreen
 from wowtools.ui.account_screen import AccountScreen
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.changelog_screen import ChangelogScreen
@@ -33,10 +37,13 @@ GITHUB = "https://github.com/tusharsaxena/wow-tools"
 URL = re.compile(r"https://[^\s)\]>]+")
 # The action that leads to a result screen without a running-WoW popup in between, and what it needs first.
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
-              "ace3-profile-manager": "dry_run", "sv-browser": "dry_run"}
+              "ace3-profile-manager": "dry_run", "sv-browser": "dry_run",
+              "config-copier": "dry_run", "macro-editor": "dry_run",
+              "config-editor": "dry_run"}
 PREPARE = {"ace3-profile-manager": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
                                                    review.refresh_view()),
-           "sv-browser": stage_sv_edit}
+           "sv-browser": stage_sv_edit, "config-copier": tick_copier_targets,
+           "macro-editor": stage_macro_edit, "config-editor": stage_config_edit}
 
 
 def url_target(url: str) -> Path:
@@ -146,8 +153,13 @@ class HelpScreenTest(TuiTestCase):
                     picker.dismiss(ALL_FLAVORS)
                     await settle(app, pilot)
                     await accept_disclaimer(app, pilot)
+                    labels = set()
+                    if isinstance(app.screen, SourceScreen):  # the Config Copier's source picker
+                        labels |= {b.label_text for b in app.screen.query(ActionButton)}
+                        await self.assert_help(app, pilot, text)
+                        await pick_source(app, pilot)
                     review = app.screen
-                    labels = {b.label_text for b in review.query(ActionButton)}
+                    labels |= {b.label_text for b in review.query(ActionButton)}
                     self.assertTrue(labels)
                     await self.assert_help(app, pilot, text)
                     app.push_screen(app.flow.settings_screen("settings"))
@@ -166,6 +178,25 @@ class HelpScreenTest(TuiTestCase):
                         await self.assert_help(app, pilot, text)
                         app.screen.dismiss(None)
                         await settle(app, pilot)
+                    if name == "macro-editor":  # the edit screen (New, Edit) and its full reference (F1)
+                        app.push_screen(MacroEditScreen("Edit", "MAIN/Realm1/Bob", "Character macro",
+                                                        flavor="_retail_", name="Bob", body="/cast Flash Heal"))
+                        await settle(app, pilot)
+                        edit = app.screen
+                        labels |= {b.label_text for b in edit.query(ActionButton)}
+                        edit.query_one("#builder").focus()  # the name box has focus: h would type there
+                        await pilot.pause()
+                        await self.assert_help(app, pilot, text)
+                        await pilot.press("f1")
+                        await settle(app, pilot)
+                        self.assertIsInstance(app.screen, ReferenceScreen)
+                        labels |= {b.label_text for b in app.screen.query(ActionButton)}
+                        await self.assert_help(app, pilot, text)
+                        app.screen.dismiss(None)
+                        await settle(app, pilot)
+                        edit.dismiss(None)
+                        await settle(app, pilot)
+                        self.assertIs(app.screen, review)
                     PREPARE.get(name, lambda r: None)(review)
                     getattr(review, f"action_{RUN_ACTION[name]}")()
                     await settle(app, pilot)
@@ -239,7 +270,7 @@ class HelpScreenTest(TuiTestCase):
                     picker = await self.open_flavors(app, pilot, name)
                     picker.dismiss(ALL_FLAVORS)
                     await settle(app, pilot)
-                    await accept_disclaimer(app, pilot)
+                    await reach_review(app, pilot)
                     listed = await footer_keys(app.screen, pilot, {"h", "s", "q"})
                     self.assertTrue({"h", "s", "q"} <= listed, listed)
                     keys = list(app.screen.query(FooterKey))

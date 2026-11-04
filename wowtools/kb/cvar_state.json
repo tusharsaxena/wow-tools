@@ -1,0 +1,39 @@
+{
+ "comment": "CVars that record a character's state (progress, history, IDs, UI bookkeeping): the Config Copier keeps the target's own (spec CC5). Matched case-insensitively; patterns are fnmatch; an exception is never state.",
+ "exceptions": [
+  "housingTutorialsEnabled",
+  "showNPETutorials",
+  "showTutorials"
+ ],
+ "names": [
+  "EJSelectedTier",
+  "clubFinderPlayerSettings",
+  "currencyCategoriesCollapsed",
+  "eventSchedulerLastUpdate",
+  "hardTrackedQuests",
+  "highestUnlockedTieredEntranceTier",
+  "lastSelectedClubId",
+  "lfgSelectedRoles",
+  "maxLevelSpecsUsed",
+  "pvpSelectedRoles",
+  "reputationsCollapsed",
+  "seenPurchasableClassCapstone",
+  "trackedAchievements",
+  "unlockedMajorFactions"
+ ],
+ "patterns": [
+  "*Collapsed",
+  "*Tutorial*",
+  "cameraSaved*",
+  "closed*",
+  "garrison*",
+  "highestUnlocked*",
+  "last*",
+  "lastRenownForCovenant*",
+  "latest*",
+  "new*Season",
+  "saved*Config*",
+  "savedClassConfig*"
+ ],
+ "source": "2026-11-04 config-cache.wtf diff of two Retail characters (config tools spec, CC5 and its appendix)"
+}

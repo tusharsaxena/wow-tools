@@ -9,11 +9,12 @@ import platform
 import sys
 import time
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 from wowtools import __version__
 from wowtools.core import activity
-from wowtools.core.bootstrap import REPO_ROOT
+from wowtools.core.bootstrap import LAUNCHER_LOG, REPO_ROOT, log_bootstrap_failure, trim_launcher_log
 from wowtools.core.config import CONFIG_DIR, SUITE_CONFIG_NAME, Config, ConfigError
 from wowtools.core.events import get_event_log, init_event_log, log_event, log_exception
 from wowtools.core.lock import LOCK_PATH, InstanceLock, LockInfo
@@ -24,6 +25,9 @@ from wowtools.core.updater import (UPDATE_STOPPED, RollbackFailed, UpdateError, 
 from wowtools.tools import RENAMED_TOOLS, TOOLS
 
 LOG_DIR = REPO_ROOT / "logs"
+# LN3: what a pre-log OSError about writing in the app folder adds (Program Files is read-only for a normal user).
+NOT_WRITABLE_HINT = ("The folder isn't writable: move wow-tools out of Program Files (or another protected folder) "
+                     "into a folder you own, then run again.")
 WORKER_WAIT_S = 600.0  # how long to wait for a running clean/organize/undo before releasing the lock anyway
 
 
@@ -53,12 +57,20 @@ def run(argv: list[str], *, cfg: Config | None = None, log_dir: Path | None = LO
         print(f"Unknown command: {argv[0]}.{hint}\n\n{usage()}", file=sys.stderr)
         return 1
     renamed: list[ConfigMigration] = []
+    # Failures before the event log opens go to logs/suite/launcher.log instead (LN5); none without a log folder.
+    launcher_log = log_dir / "suite" / LAUNCHER_LOG.name if log_dir is not None else None
+
+    def pre_log_failure(where: str, exc: BaseException) -> None:
+        if launcher_log is not None:
+            log_bootstrap_failure(where, exc, path=launcher_log)
+
     # The lock comes first: the renamed-tool moves below must never run under another copy that is using them.
     lock = InstanceLock(lock_path)
     try:
         conflict = lock.acquire()
     except OSError as exc:
-        print(f"Could not create the lock file {lock_path}: {exc}", file=sys.stderr)
+        pre_log_failure("lock", exc)
+        print(f"Could not create the lock file {lock_path}: {exc}\n{NOT_WRITABLE_HINT}", file=sys.stderr)
         return 1
     may_migrate = conflict is None or conflict.stale is True
     try:
@@ -68,8 +80,13 @@ def run(argv: list[str], *, cfg: Config | None = None, log_dir: Path | None = LO
             renamed = [m for r in RENAMED_TOOLS if (m := migrate_tool_config(config_dir, r)) is not None]
     except (ConfigError, OSError) as exc:
         lock.release()
-        print(f"{exc}\nFix or delete the file, then run again.", file=sys.stderr)
+        pre_log_failure("config", exc)
+        # A ConfigError is a broken file; a bare OSError here is a read or a renamed-config move that failed.
+        advice = "Fix or delete the file, then run again." if isinstance(exc, ConfigError) else NOT_WRITABLE_HINT
+        print(f"{exc}\n{advice}", file=sys.stderr)
         return 1
+    if launcher_log is not None:
+        trim_launcher_log(launcher_log, cfg.log_retention_days, datetime.now())
     # Until the try/finally below takes over, any failure must release the lock, or the next start would see
     # "another copy may be running" (and on Windows could not tell the lock is stale).
     try:
@@ -85,9 +102,12 @@ def run(argv: list[str], *, cfg: Config | None = None, log_dir: Path | None = LO
     except OSError as exc:
         lock.release()
         get_event_log().close()
-        print(f"Could not start the log in {log_dir}: {exc}", file=sys.stderr)
+        pre_log_failure("log_start", exc)
+        print(f"Could not start the log in {log_dir}: {exc}\n{NOT_WRITABLE_HINT}", file=sys.stderr)
         return 1
-    except BaseException:
+    except BaseException as exc:
+        if isinstance(exc, Exception):
+            log_exception("suite.start", exc)
         lock.release()
         get_event_log().close()
         raise

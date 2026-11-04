@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from wowtools.core import fsutil
 from wowtools.core.fsutil import (
+    atomic_create_bytes,
     atomic_write_bytes,
     atomic_write_text,
     free_name,
@@ -419,3 +420,31 @@ class AtomicWriteBytesTest(unittest.TestCase):
             atomic_write_bytes(path, b"new")
             self.assertEqual(path.read_bytes(), b"new")
             self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["a.lua"])
+
+
+class AtomicCreateBytesTest(unittest.TestCase):
+    """atomic_create_bytes: the client-file pipeline's write of a file that must not exist yet (config tools X5)."""
+
+    def test_creates_the_file_and_leaves_no_partial(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "chat-cache.txt"
+            atomic_create_bytes(path, b"new\r\n")
+            self.assertEqual(path.read_bytes(), b"new\r\n")
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["chat-cache.txt"])
+
+    def test_never_replaces_a_file_that_is_there(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "chat-cache.txt"
+            path.write_bytes(b"the client's")
+            with patch("os.path.lexists", return_value=False), self.assertRaises(FileExistsError):
+                atomic_create_bytes(path, b"ours")
+            self.assertEqual(path.read_bytes(), b"the client's")
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["chat-cache.txt"])
+
+    def test_moves_into_place_with_rename_no_replace(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch("wowtools.core.fsutil.rename_no_replace", wraps=fsutil.rename_no_replace) as renamed, \
+                patch("os.replace") as replaced:
+            atomic_create_bytes(Path(tmp) / "a.txt", b"x")
+        self.assertEqual(renamed.call_count, 1)
+        replaced.assert_not_called()

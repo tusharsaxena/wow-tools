@@ -34,6 +34,26 @@ def _replace_retrying(partial: Path, path: Path) -> None:
     os.replace(partial, path)
 
 
+def _write_partial(path: Path) -> Path:
+    """Write-ready <name>.partial beside path: whatever sits there (a stale partial, a symlink or junction) is
+    removed first, never followed."""
+    partial = path.with_name(path.name + ".partial")
+    if is_link(partial):
+        _unlink_link(partial)
+    elif partial.exists():
+        os.remove(partial)
+    return partial
+
+
+def _fill_partial(partial: Path, data: bytes) -> None:
+    """Create the partial exclusively (never following a link), write data and fsync it."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    with os.fdopen(os.open(partial, flags, 0o666), "wb") as handle:
+        handle.write(data)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
 def atomic_write_bytes(path: Path, data: bytes) -> None:
     """Write data to path so a reader (or the next start, after a crash) sees either the old file or the new one,
     never a truncated mix: write <name>.partial next to it, then os.replace it over the target. If the write or
@@ -50,16 +70,27 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
     path = Path(path)
     partial = path.with_name(path.name + ".partial")
     try:
-        if is_link(partial):
-            _unlink_link(partial)
-        elif partial.exists():
-            os.remove(partial)
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
-        with os.fdopen(os.open(partial, flags, 0o666), "wb") as handle:
-            handle.write(data)
-            handle.flush()
-            os.fsync(handle.fileno())
+        partial = _write_partial(path)
+        _fill_partial(partial, data)
         _replace_retrying(partial, path)
+    except BaseException:
+        try:
+            partial.unlink()
+        except OSError:
+            pass
+        raise
+
+
+def atomic_create_bytes(path: Path, data: bytes) -> None:
+    """atomic_write_bytes() for a file that must not exist yet: the fsync'ed partial is moved into place with
+    rename_no_replace, so a file that appears at path meanwhile is never replaced (FileExistsError; the partial
+    is removed). The client-file pipeline creates files with it (core/client_apply.py)."""
+    path = Path(path)
+    partial = path.with_name(path.name + ".partial")
+    try:
+        partial = _write_partial(path)
+        _fill_partial(partial, data)
+        rename_no_replace(partial, path)
     except BaseException:
         try:
             partial.unlink()

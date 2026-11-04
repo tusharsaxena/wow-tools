@@ -523,8 +523,8 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   *Enforced by:* `tests/test_look_and_feel.py::test_a_group_mark_counts_what_the_filter_shows`,
   `tests/test_ui_tree_filter.py::test_select_all_and_none_act_on_what_the_filter_shows`.
 - **STD-7.10 MUST** Show the shared `RiskBanner` (`⚠  USE AT YOUR OWN RISK`) as the first child of the left pane on
-  exactly the screens that can destroy data (WTF Cleaner, Ace3 and SV Browser reviews, Interface Backup restore)
-  ([D37][svb]).
+  exactly the screens that can destroy data (WTF Cleaner, Ace3, SV Browser, Config Copier, Macro Editor and Config Editor reviews, Interface
+  Backup restore) ([D37][svb]).
   *Why:* warn exactly where data can be lost.
   *Enforced by:* `tests/test_structure.py::test_risk_banner_on_exactly_the_destructive_screens`,
   `tests/test_look_and_feel.py::test_destructive_reviews_open_with_the_risk_banner`.
@@ -889,7 +889,9 @@ The accepted exceptions to the rules above. A deviation not listed here is not a
 | STD-8.3 | Interface Backup's **Restore** is `navigate` on the review (it opens the restore screen) and `overwrite` on the restore screen. | The left pane has no room for a longer label. | `tests/test_structure.py::test_same_label_same_colour` |
 | STD-8.9 | Ace3 Profile Manager binds `u` (unlock) on its review, shadowing the suite's update key there. | Users already know the unlock key; on any screen that binds `u` the update notice says "press u on the tool menu" instead. | [D15][polish] |
 | STD-8.9 | SV Browser adds Search (`S`) in its own button row above the four action buttons. | `s` is the suite's settings key. | [D22][svb] |
+| STD-6.1, STD-6.6 | The launchers (`wow-tools.cmd`, `wow-tools.sh`) and `core/bootstrap.py` write `launcher.*` and `bootstrap.failed` lines to `logs/suite/launcher.log` themselves, outside `log_event`, as plain `<time> <event> key=value` lines. The names are still registered in `core/events.py`, so [events.md](events.md) lists them. | Nothing else can log before Python starts or before the event log opens; those failures were invisible. | LN7 in the [config tools spec][cfg] |
 
+[cfg]: superpowers/specs/2026-11-04-config-copier-macro-editor-config-editor-design.md
 [polish]: superpowers/specs/2026-10-05-suite-polish-design.md
 [rc]: superpowers/specs/2026-10-08-release-contents-design.md
 [svb]: superpowers/specs/2026-10-06-sv-browser-design.md

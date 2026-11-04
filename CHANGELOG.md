@@ -4,6 +4,25 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and version numbers follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Config Copier**: copy one character's macros, enabled addons, chat windows, CVars and layout to other
+  characters, with a diff of every file it replaces, a dry run and Undo.
+- **Macro Editor**: browse every account's and character's macros in every game version, edit, create and delete
+  them, copy and paste them between characters, accounts and game versions, and change text in many at once, with
+  a dry run and Undo. Its editor suggests and explains commands and conditionals as you type, and has a
+  conditional builder, an optimizer that shortens macros and templates for common macros.
+- **Config Editor**: see and change the CVars in `Config.wtf` and every account's and character's config, with help
+  for each CVar and sourced recommendations, set across many characters at once, with a dry run and Undo.
+
+### Fixed
+
+- The launcher no longer closes its window before you can read an error: a double-clicked `wow-tools.cmd` waits
+  for a key when something went wrong, both launchers say so when Python is missing or too old, and every launch
+  is logged to `logs/suite/launcher.log`.
+
 ## [1.0.0] - 2026-10-09
 
 The first release: five tools for the files World of Warcraft keeps on your disk, in one app.

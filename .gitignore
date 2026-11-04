@@ -10,3 +10,6 @@ wow-tools-backups/
 update-leftovers/
 dist/
 .test-times-*.json
+
+# brainstorming companion scratch
+.superpowers/

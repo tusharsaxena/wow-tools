@@ -1,0 +1,117 @@
+{
+ "comment": "Plain-English notes for CVars whose Blizzard help is empty or cryptic (spec X7, plan T20). Each is written in our own words from the warcraft.wiki.gg page in its source, never copied; scripts/refresh_kb.py --wiki layers them onto the CVars each flavor's dump has.",
+ "cvars": {
+  "alwaysShowActionBars": {
+   "text": "Shows the grid of empty action bar slots all the time, not only while you drag a spell. 0 off, 1 on.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_alwaysShowActionBars"
+  },
+  "cameraBobbing": {
+   "text": "Makes the camera bob with your steps in first-person view. 0 off, 1 on.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_cameraBobbing"
+  },
+  "cameraDistanceMaxZoomFactor": {
+   "text": "How far the camera can zoom out, as a multiple of a 15-yard base. On Retail the game allows up to 2.6 (39 yards); the Classic clients take values up to 4 but stop the camera at 50 yards.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_cameraDistanceMaxZoomFactor"
+  },
+  "cameraPivot": {
+   "text": "Lets you keep looking around freely when the camera is pressed against the ground. 0 off, 1 on.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_cameraPivot"
+  },
+  "cameraSmoothStyle": {
+   "text": "When the camera swings back behind your character on its own: 0 never, 1 only sideways while you move, 2 always, 4 only while you move.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_cameraSmoothStyle"
+  },
+  "cameraTerrainTilt": {
+   "text": "Tilts the camera up when your character walks uphill and down when going downhill. Works only while the camera follows you on its own (cameraSmoothStyle not 0). 0 off, 1 on.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_cameraTerrainTilt"
+  },
+  "cameraView": {
+   "text": "Which saved camera position (1 to 5) was used last. The game only records it here; changing it does not move the camera.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_cameraView"
+  },
+  "cameraWaterCollision": {
+   "text": "Treats the water surface as something the camera bumps into, so it stays above or below the water with your character. 0 off, 1 on.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_cameraWaterCollision"
+  },
+  "cameraYawSmoothSpeed": {
+   "text": "How fast the camera turns back behind you when it follows on its own (see cameraSmoothStyle). Higher is faster; roughly 90 to 270.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_cameraYawSmoothSpeed"
+  },
+  "farclip": {
+   "text": "How far away terrain and large world objects such as buildings are still drawn. Higher shows more of the distance and costs more. The Classic clients ignore it and keep a fixed value.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_farclip"
+  },
+  "graphicsShadowQuality": {
+   "text": "The Shadow Quality step of the graphics options, from 0 (low) to 5 (ultra high).",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_graphicsShadowQuality"
+  },
+  "graphicsViewDistance": {
+   "text": "The View Distance step of the graphics options, a slider from 0 to 9.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_graphicsViewDistance"
+  },
+  "groundEffectDensity": {
+   "text": "How thickly grass, ferns, flowers and small rocks are scattered on the ground, from 16 (sparse) to 256 (dense).",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_groundEffectDensity"
+  },
+  "groundEffectDist": {
+   "text": "How far from your character grass, ferns, flowers and small rocks are still drawn.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_groundEffectDist"
+  },
+  "gxMaximize": {
+   "text": "In windowed mode, opens the game window maximised to fill the screen, which makes switching to other programs quick. 0 off, 1 on; ignored in full screen.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_gxMaximize"
+  },
+  "horizonStart": {
+   "text": "Where the horizon starts, which sets how far away trees, rocks and other world objects are still drawn.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_horizonStart"
+  },
+  "maxFPS": {
+   "text": "The highest frame rate the game draws while it is the active window; 0 uses the game's own cap, and any other value is at least 8.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_maxFPS"
+  },
+  "nameplateMotion": {
+   "text": "How nameplates make room for each other: 0 they overlap, 1 they stack upwards, 2 they spread out.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_nameplateMotion"
+  },
+  "ObjectSelectionCircle": {
+   "text": "Draws the circle under the person or pet you have selected. 0 off, 1 on.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_ObjectSelectionCircle"
+  },
+  "particleDensity": {
+   "text": "How many particles spell and world effects use, from 10 (low) to 100 (ultra).",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_particleDensity"
+  },
+  "RenderScale": {
+   "text": "Renders the 3D world at a fraction or a multiple of the screen resolution: 1 is native, below 1 is faster and blurrier, above 1 (up to 2) supersamples for a sharper picture at a large cost.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_RenderScale"
+  },
+  "ResampleSharpness": {
+   "text": "How strongly the picture is sharpened after it has been scaled (see RenderScale): 0 is the strongest, 2 the weakest, and -1 turns sharpening off.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_ResampleSharpness"
+  },
+  "shadowMode": {
+   "text": "Dynamic shadows: 0 only a simple blob under characters, 1 precomputed terrain shadows with dynamic ones near you, 2 static world shadows with dynamic ones near you, 3 fully dynamic shadows.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_shadowMode"
+  },
+  "Sound_AmbienceVolume": {
+   "text": "Volume of the background ambience (wind, birds, crowds), from 0 (silent) to 1 (full). Has no effect while ambient sound is switched off.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_Sound_AmbienceVolume"
+  },
+  "SSAO": {
+   "text": "Ambient occlusion: soft shadows in corners and where objects meet the ground. 0 off, 1 high, 2 low.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_SSAO"
+  },
+  "sunShafts": {
+   "text": "Rays of sunlight through trees and gaps. 0 off, 1 low, 2 high.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_sunShafts"
+  },
+  "synchronizeBindings": {
+   "text": "Whether your key bindings are saved to Blizzard's servers. 0 off, 1 on.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_synchronizeBindings"
+  },
+  "synchronizeConfig": {
+   "text": "Whether the client saves your account and character CVars to Blizzard's servers after each session, so they come back on another computer or after the WTF folder is deleted. 1 saves them, 0 keeps them on this computer only.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_synchronizeConfig"
+  }
+ }
+}
