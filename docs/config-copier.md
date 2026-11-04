@@ -60,10 +60,11 @@ The left pane shows a red `⚠ USE AT YOUR OWN RISK` line (a copy overwrites the
 files (all ticked: untick one to leave it alone for every target), the filter and the buttons. The tree on the right
 lists every account, realm and character. The source shows greyed (**source**), and so do the characters of other
 game versions (**other flavor**): a copy stays within one game version. Folders that aren't characters, such as
-`Bob - Copy`, are not listed.
+`Bob - Copy`, are not listed. Each game version, account, realm and target character ends with how many files it
+lists, dimmed (`Bob  5 items`), as the filter and the file boxes leave them.
 
 Nothing is ticked at first. Ticking a character ticks every file it can get; open it to untick a single file. Each
-file says what a copy does:
+file says what a copy does, in a column of its own beside the file's name:
 
 | Status | Means |
 |---|---|

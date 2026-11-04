@@ -13,11 +13,14 @@ read again; a scan that finds a Copy that did not finish offers to put the origi
 not staged work: leaving asks nothing, as on the WTF Cleaner. Dismisses with "flavors", "tools" or "quit"."""
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Collection, Hashable, Iterable, Sequence
 from pathlib import Path
 from typing import ClassVar, NamedTuple
 
+from rich.cells import cell_len
 from rich.text import Text
+from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -37,17 +40,18 @@ from wowtools.tools.config_copier.events import SV_TOOL
 from wowtools.tools.config_copier.journal import latest_undoable, read_journal, resolve_journal_dir
 from wowtools.tools.config_copier.model import COPY_FILES, PairPlan
 from wowtools.tools.config_copier.planner import plan_copy
-from wowtools.tools.config_copier.report import (FILE_COLUMNS, STAGE_TITLES, STATUS_COLOURS, UNDO_COLUMNS,
-                                                 character_text, copy_confirm, copy_groups, copy_listed, file_rows,
-                                                 pair_text, recovery_text, summary_rows, undo_confirm,
-                                                 undo_detail_rows, undo_summary_rows)
+from wowtools.tools.config_copier.report import (FILE_COLUMNS, PAIR_CAPS, PAIR_MINIMUMS, STAGE_TITLES,
+                                                 STATUS_COLOURS, UNDO_COLUMNS, character_text, copy_confirm,
+                                                 copy_groups, copy_listed, file_rows, pair_cells, recovery_text,
+                                                 summary_rows, undo_confirm, undo_detail_rows, undo_summary_rows)
 from wowtools.tools.config_copier.runner import COPYABLE, ApplyError, run_copy
 from wowtools.tools.config_copier.settings import load_settings, resolve_root
 from wowtools.tools.config_copier.undo import (UndoError, UndoResult, leave, pending_recovery, recover, undo_flavors,
                                                undo_run)
 from wowtools.ui.branding import BottomBar
-from wowtools.ui.character_tree import (CharacterNode, character_filter_texts, character_label, node_keys,
-                                        populate_characters)
+from wowtools.ui.character_tree import CharacterNode, character_filter_texts, node_keys, populate_characters
+from wowtools.ui.columns import ColumnLayout, column_text, cut_middle, fit_columns, natural_widths
+from wowtools.ui.counts import COUNT_GAP, COUNT_STYLE, count_text
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                  UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
 from wowtools.ui.result_screen import ResultScreen
@@ -61,9 +65,11 @@ NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f fl
 SOURCE_REASON = "source"
 OTHER_FLAVOR_REASON = "other flavor"  # X1: one flavor per run, the source's
 NO_DIFF = "Highlight a replaced file first: Diff compares a target's file with what it gets."
-WARNING_MARK = "⚠"
-WARNING_SHORT = "action bars"  # a replaced macros-cache.txt that held macros (CC7)
 NO_MARK = "  "
+MARK_WIDTH = 2  # the tick mark in front of every line but the root's
+TOGGLE_WIDTH = 2  # the ▶ / ▼ in front of a node that opens
+GROUP_NAME_MINIMUM = 4  # a node's name is cut (in its middle) down to this so its count or reason fits the pane
+PAIR_COLUMNS = ColumnLayout(caps=PAIR_CAPS, minimums=PAIR_MINIMUMS, shrink=((1,), (0,)), drop=(2,))
 
 
 class PairKey(NamedTuple):
@@ -179,6 +185,9 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         self._offer_on_resume = False
         self.summary_text = ""
         self._stale = False  # a Copy or Undo changed the files: read them again when the review is shown
+        self._counts: Counter[Hashable] = Counter()  # the pair lines the tree shows under each node (R2), per build
+        self._pair_widths: dict[Path, tuple[int, ...]] = {}  # a target's pair columns (R4), per build
+        self._fitted_width = 0  # the tree's width the labels were last fitted to
 
     # --- layout ------------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -382,11 +391,18 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
             self.text_filter.path_matches(self._pair_texts(k)) for k in self._pairs_of(c))
 
     def _add_pairs(self, character: Character, node: TreeNode) -> list[PairKey]:
-        keys = []
+        """A target's pair lines (the ones the search shows), their columns as wide as their widest cells (R4), and
+        their number added to the counts of the target and every node above it (R2)."""
         whole = not self.filtering or self.text_filter.path_matches(self._target_texts(character))
-        for key in self._pairs_of(character):
-            if not whole and not self.text_filter.path_matches(self._pair_texts(key)):
-                continue
+        shown = [key for key in self._pairs_of(character)
+                 if whole or self.text_filter.path_matches(self._pair_texts(key))]
+        self._pair_widths[character.path] = natural_widths(pair_cells(self.plans[key]) for key in shown)
+        account = character.path.parent.parent
+        for ident in (("character", character.path), ("realm", account, character.realm), ("account", account),
+                      ("flavor", self.source_flavor.folder), ("root",)):
+            self._counts[ident] += len(shown)
+        keys = []
+        for key in shown:
             plan = self.plans[key]
             tick = key if plan.status in COPYABLE else None
             data = PairNode("pair", tick, plan)
@@ -399,6 +415,9 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         tree = self.query_one("#targets", Tree)
         cursor = tree.cursor_node.data if tree.cursor_node is not None else None
         tree.clear()
+        self._counts.clear()
+        self._pair_widths.clear()
+        self._fitted_width = tree.size.width
         many = len(self.flavors) > 1
         for flavor in self.flavors:
             source_flavor = flavor.path == self.source_flavor.path
@@ -413,11 +432,61 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
                     parent.remove()
                     continue
                 parent.data = ["flavor", flavor.folder, tuple(keys)]
-                parent.set_label(self._label(parent.data))
+        self._relabel_all(tree)  # populate_characters labels its nodes before their counts are known
         self.note_no_match(tree.root)
         tree.root.expand()
         self._restore_cursor(tree, cursor)
         self._update_summary()
+        self.call_after_refresh(self._fit_rows)  # a build before the tree was laid out fits once it is
+
+    def _relabel_all(self, tree: Tree) -> None:
+        relabel_branch(tree, None, self._label)
+        tree.root.set_label(self._group_text(self.scope_label, ACCENT, self._count_note(("root",)), 0, opens=True,
+                                             mark=0))
+
+    def on_resize(self, event: events.Resize) -> None:
+        self.call_after_refresh(self._fit_rows)
+
+    def _fit_rows(self) -> None:
+        """Fit every line again to the tree pane's width when it changed (R4)."""
+        if not self.is_attached:
+            return
+        tree = self.query_one("#targets", Tree)
+        if tree.size.width == self._fitted_width:
+            return
+        self._fitted_width = tree.size.width
+        self._relabel_all(tree)
+
+    def _depth(self, kind: str) -> int:
+        """How deep a node of `kind` sits below the root (a flavor's level only with All flavors)."""
+        return {"flavor": 1, "account": 1, "realm": 2, "character": 3, "pair": 4}[kind] + \
+            (kind != "flavor" and len(self.flavors) > 1)
+
+    def _room(self, depth: int, *, opens: bool, mark: int = MARK_WIDTH) -> int | None:
+        """The cells a line may take behind its guides, its ▶ / ▼ when it `opens` and its tick mark (None before
+        the tree is laid out)."""
+        tree = self.query_one("#targets", Tree)
+        if tree.size.width <= 0:
+            return None
+        width = tree.size.width - tree.styles.scrollbar_size_vertical  # a scrollbar may come with more lines
+        return max(0, width - depth * tree.guide_depth - (TOGGLE_WIDTH if opens else 0) - mark)
+
+    def _count_note(self, ident: Hashable) -> tuple[str, str]:
+        return f"{COUNT_GAP}{count_text(self._counts[ident])}", COUNT_STYLE
+
+    def _group_text(self, name: str, style: str, note: tuple[str, str] | None, depth: int, *, opens: bool,
+                    mark: int = MARK_WIDTH) -> Text:
+        """A node's name and its note (its dim count, R2, or a greyed character's reason), the name cut in its
+        middle so the note fits the pane; with no room for both, the name alone, cut to the room."""
+        room = self._room(depth, opens=opens, mark=mark) if self.is_attached else None
+        if note is None:
+            return Text(name if room is None else cut_middle(name, max(1, room)), style=style)
+        after, after_style = note
+        if room is not None and cell_len(name) + cell_len(after) > room:
+            if room - cell_len(after) < GROUP_NAME_MINIMUM:
+                return Text(cut_middle(name, max(1, room)), style=style)
+            name = cut_middle(name, room - cell_len(after))
+        return Text.assemble((name, style), (after, after_style))
 
     def _restore_cursor(self, tree: Tree, data) -> None:
         if data is None:
@@ -440,25 +509,59 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
             stack.extend(node.children)
 
     def _pair_label(self, data: PairNode) -> Text:
+        """A pair line (the leaf, R2): its tick mark, then file · status · warning in columns as wide as its
+        siblings' widest cells, fitted to the pane (R4). A pair that writes nothing has no mark and is dim (a
+        file that can't be read: its problem in the warning colour); the CC7 mark is in the warning colour."""
         plan = data.plan
-        parts: list[tuple[str, str]] = []
+        warning = theme_colour(self.app, "warning")
         if data.key is not None:
-            parts.append(self.shown_tick_mark([data.key]))
-            parts += [(plan.name, ""), (f"  {pair_text(plan)}", "")]
+            mark, styles = self.shown_tick_mark([data.key]), ("", "", warning)
         else:
-            colour = theme_colour(self.app, "warning") if plan.status == "unreadable" else ""
-            parts += [(NO_MARK, ""), (plan.name, "dim"), (f"  {pair_text(plan)}", colour or "dim")]
-        if plan.warnings:  # CC7: the whole sentence is in the confirm; the tree is narrow
-            parts.append((f"  {WARNING_MARK} {WARNING_SHORT}", theme_colour(self.app, "warning")))
-        return Text.assemble(*parts)
+            mark = (NO_MARK, "")
+            styles = ("dim", warning if plan.status == "unreadable" else "dim", warning)
+        cells = pair_cells(plan)
+        natural = self._pair_widths.get(plan.target.path) or natural_widths([cells])
+        room = self._room(self._depth("pair"), opens=False) if self.is_attached else None
+        widths, gap = fit_columns(natural, room, PAIR_COLUMNS)
+        text = Text.assemble(mark)
+        text.append_text(column_text(cells, widths, styles, gap, middle=(0,)))
+        text.rstrip()  # a line with no warning beside one with it leaves no padding behind
+        return text
+
+    def _character_ident(self, data: CharacterNode) -> Hashable:
+        if data.kind == "character" and data.character is not None:
+            return "character", data.character.path
+        if data.kind == "realm":
+            return "realm", data.account.path, data.realm
+        return "account", data.account.path
+
+    def _character_label(self, data: CharacterNode) -> Text:
+        """An account, realm or character line: its tick mark, its name (bold but a character's) and its count
+        (R2), or a greyed character's reason; a character with no pair lines (the source, another flavor's) has
+        no count."""
+        mark = self.mark(data.keys) if data.keys else (NO_MARK, "")
+        depth = self._depth(data.kind)
+        opens = data.kind != "character" or self._counts[self._character_ident(data)] > 0
+        if data.reason is not None:
+            name = self._group_text(data.text, "dim", (f"  {data.reason}", "dim italic"), depth, opens=opens)
+        else:
+            style = "" if data.kind == "character" else "bold"
+            name = self._group_text(data.text, style, self._count_note(self._character_ident(data)) if opens
+                                    else None, depth, opens=opens)
+        text = Text.assemble(mark)
+        text.append_text(name)
+        return text
 
     def _label(self, data) -> Text:
         if isinstance(data, PairNode):
             return self._pair_label(data)
         if isinstance(data, CharacterNode):
-            return character_label(data, self.mark)
+            return self._character_label(data)
         mark = self.mark(data[2]) if data[2] else (NO_MARK, "")
-        return Text.assemble(mark, (flavor_name(data[1]), "bold"))
+        text = Text.assemble(mark)
+        text.append_text(self._group_text(flavor_name(data[1]), "bold", self._count_note(("flavor", data[1])), 1,
+                                          opens=True))
+        return text
 
     def _refresh_labels(self, node: TreeNode | None = None) -> None:
         relabel_branch(self.query_one("#targets", Tree), node, self._label)

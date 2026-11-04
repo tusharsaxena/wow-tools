@@ -18,8 +18,9 @@ from wowtools.core.text import Listed, plural
 from wowtools.tools.config_copier.model import CONFIG_FILE, PairPlan
 from wowtools.tools.config_copier.runner import COPYABLE
 
-__all__ = ["FILE_COLUMNS", "RESULT_TEXT", "STAGE_TITLES", "STATUS_COLOURS", "UNDO_COLUMNS", "character_text",
-           "copy_confirm", "copy_groups", "copy_listed", "diff_rows", "file_rows", "pair_text", "recovery_text", "summary_rows",
+__all__ = ["FILE_COLUMNS", "PAIR_CAPS", "PAIR_MINIMUMS", "RESULT_TEXT", "STAGE_TITLES", "STATUS_COLOURS",
+           "UNDO_COLUMNS", "WARNING_MARK", "WARNING_SHORT", "character_text", "copy_confirm", "copy_groups",
+           "copy_listed", "diff_rows", "file_rows", "pair_cells", "pair_text", "recovery_text", "summary_rows",
            "undo_confirm", "undo_detail_rows", "undo_summary_rows"]
 
 FILE_COLUMNS = ("Account", "Character", "File", "Result")
@@ -27,6 +28,13 @@ FILE_COLUMNS = ("Account", "Character", "File", "Result")
 PAIR_TEXT = {"new": "new", "replace": "replaced", "unchanged": "unchanged", "no-source": "source has no file",
              "unreadable": "can't be read"}
 MERGED = " (merged)"  # after a config-cache.wtf pair that writes: its state CVars stay the target's (CC5)
+WARNING_MARK = "⚠"
+WARNING_SHORT = "action bars"  # a replaced macros-cache.txt that held macros (CC7)
+# A pair line's columns (feedback round 2 R4, STD-7.28): file · status · warning. A status is never cut (its
+# minimum is the longest, `source has no file`): only a long problem gives way, cut at its end; then the file name,
+# cut in its middle (`macros…e.txt`: the five names stay apart); the warning is never cut, only dropped.
+PAIR_CAPS = (None, 40, None)
+PAIR_MINIMUMS = (10, max(map(len, PAIR_TEXT.values())), 0)
 
 
 def character_text(character: Character) -> str:
@@ -43,6 +51,12 @@ def pair_text(plan: PairPlan) -> str:
     if plan.name == CONFIG_FILE and plan.status in COPYABLE:
         text += MERGED
     return text
+
+
+def pair_cells(plan: PairPlan) -> tuple[str, str, str]:
+    """A pair line's cells: the file, its status (pair_text) and the CC7 mark (`⚠ action bars`, or "": the whole
+    sentence is in the confirm; the tree is narrow)."""
+    return plan.name, pair_text(plan), f"{WARNING_MARK} {WARNING_SHORT}" if plan.warnings else ""
 
 
 def _copying(plans: Sequence[PairPlan]) -> list[PairPlan]:

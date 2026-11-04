@@ -8,7 +8,9 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-feedback-round-2.md`. R
   `origin/feat/config-editor-feedback-1`.
 - **G7 (Saved Variables Browser) finished and gated 2026-11-05** after the restart (feat commit); its review and
   fixes follow as for the other tasks.
-- **Then:** G8 Config Copier, G9 Macro Editor, then **G9b** (new, user decision U1 below), then G10.
+- **G8 (Config Copier) finished and gated 2026-11-05** (feat commit); its review and fixes follow as for the other
+  tasks.
+- **Then:** G9 Macro Editor, then **G9b** (new, user decision U1 below), then G10.
 - **U1 (user, 2026-11-05): option (b) for the 80-column finding (G4r).** Amend STD-7.28 for every tool: a name never
   shrinks below its column minimum; at very narrow widths the row scrolls sideways instead. Change the shared
   `wowtools/ui/columns.py` fallback accordingly (all tools), and update the tests that expect a cut name at 80
@@ -16,7 +18,7 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-feedback-round-2.md`. R
 - **Workflow to resume with:** the script
   `~/.claude/projects/-mnt-d-Profile-Users-Tushar-Documents-GIT-wow-tools/28d84149-de96-442d-bbd6-be79f7db079a/workflows/scripts/feedback-round-2.js`
   takes `{"tasks": [...], "sizes": [125, 125]}`; its categorise step re-runs G0's re-sort (already applied by G2),
-  so on resume either drop that phase or run the tasks without it. Remaining tasks: G7 (finish), G8, G9, G9b, G10.
+  so on resume either drop that phase or run the tasks without it. Remaining tasks: G8 review, G9, G9b, G10.
 
 | Task | What | Status | Commit | Notes |
 |---|---|---|---|---|
@@ -28,7 +30,7 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-feedback-round-2.md`. R
 | G5 | Interface Backup counts + columns | done | (this commit) | 5 new tests in test_interface_backup_app (every node counts the backups below it, backup counts follow the filter, flavor/part/backup rows are aligned columns, review rows cut to fit the pane at 120x30 and 80x24 with the count kept, restore tree counts and columns incl. filter and 80x24); report tests moved to the new cell helpers (part_cells, flavor_cells, held_cells, backup_cells, backups_note, WARNINGS_NOTE). 11 existing app tests updated to the new labels (`Backups  N items`, `Links  1 item`, `⚠ Scan warnings  3 items`, `Will be removed  N items`, group rows `WeakAuras  2 items  Interface/AddOns`, backup rows date-first, the no-data reason without `nothing to back up:`), none loosened; test_backup_and_its_safety_zip_differ_at_base checks `last …` only when it fits at BASE (dropped on Windows, where sizes are known: the first gate run caught it). Stale screenshots: interface-backup/review.png (also in README.md), restore-screen.png. Gate: run_tests --all 2390 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK. Review fixes (fix: G5 review fixes, G5r): a flavor's last backup is cut to its date before it is dropped; a backup row takes a narrower form at 80 columns (no year, no seconds, safety marked S) instead of cutting its date in the middle and dropping its kind. +1 test (FlavorRowFitTest), test_backup_and_its_safety_zip_differ_at_base checks the date unconditionally and the 80-column rows, the report test covers the forms. Gate after the fixes: run_tests --all 2391 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
 | G6 | Ace3 Profile Manager counts + columns | done | (this commit) | 8 new tests: 7 in test_ace_app NodeCountsAndColumnsTest (every node counts the profiles below it, counts follow the filter and the Show boxes, a pending delete is still counted, By character counts its addon rows incl. under a filter, sibling rows are aligned columns in both views, rows fit the pane at 120x30 and 80x24 with no trailing padding, the blacklist tree counts its addons incl. under a filter) and test_ui_columns::test_the_count_is_kept_by_cutting_the_name (fit_keeping_count moved to ui/columns, G6c). Existing tests updated to the new labels, none loosened: test_ace_report (3 `label` assertions now `cells`, +2 checks), test_ace_app ReviewTest (`Default  3 characters  Default`, `Gone - Realm1 +no character folder`, `KickCD +Default`; the locked deleted/removed rows check the mark behind the alignment pad), test_interface_backup_app FlavorRowFitTest (calls ui/columns' copy), test_structure (pins fit_keeping_count). Stale screenshots: ace3-profile-manager/review.png (also in README.md), review-by-character.png. Gate: run_tests --all 2399 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK. Review fixes (fix: G6 review fixes, G6r): a profile row's `N characters` counts the characters the tree shows under it (search, Leftover characters), not every character of the database; +1 test (test_a_profile_counts_the_characters_it_shows: `mierin` and Leftover characters off, every profile's count matches its visible live children); the user guide says so. Gate after the fixes: run_tests --all 2400 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
 | G7 | Saved Variables Browser counts + columns | done | (this commit) | 6 new tests: 4 in test_sv_browser_app NodeCountsAndColumnsTest (every group counts the files below it before any is read, counts follow the filter, file and key rows are aligned columns, rows fit the pane), 2 in test_sv_browser_search_ui ResultsCountsAndColumnsTest (Results groups count the hits they show, hit rows are aligned columns). Existing key and hit label checks read the row through `one_piece` (G7f), none loosened. Gate: run_tests --all 2406 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK. Review fixes (G7r, fix commit): key/path and value shrink together, the wider first; 2 new tests in ResultsCountsAndColumnsTest (a hit keeps its value at 120x30, Results rows fit the pane at 120x30 and 80x24); 80-column bare `…` deferred to G9b. Gate: 2408 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
-| G8 | Config Copier counts + columns | todo | | |
+| G8 | Config Copier counts + columns | done | (this commit) | 5 new tests: 4 in test_config_copier_app NodeCountsAndColumnsTest (every node counts the pairs below it, counts follow the search and the file boxes, pair lines are aligned columns, every line fits the pane at 120x30 and 80x24) and test_config_copier_run::test_pair_cells; the app tests moved onto a CopierTestCase base (setUp and steps), none changed or loosened. Stale screenshots: config-copier/review.png (also in README.md). Gate: run_tests --all 2413 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
 | G9 | Macro Editor counts + columns | todo | | |
 | G9b | STD-7.28 amendment: names keep their minimum, rows scroll (U1) | todo | | |
 | G10 | CHANGELOG, whole-branch review, push, CI | todo | | |
@@ -251,3 +253,28 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-feedback-round-2.md`. R
   `max(0, ...)`, `_group_text`'s `max(1, room)`) while the tree still scrolls sideways. That is the U1 case: G9b
   covers the SV Browser's own `_room` / `_group_text` fallbacks too (respect `KEY_COLUMNS`' minimum 8 and
   `GROUP_NAME_MINIMUM`, let the row scroll) and turns the skip in `test_rows_fit_the_pane` into an assertion.
+- G8a: the Config Copier's leaf is a pair line (a file of a target), whatever its status: `unchanged`, `source has
+  no file` and `can't be read` lines are counted too. Unlike G3a's blacklisted rows they are what the review is for
+  (each says what a copy does to that file), and the count then matches the lines under a character exactly; the
+  root, a flavor, an account, a realm and a target character end with it, after the search and the file boxes.
+- G8b: counted in `_add_pairs` as the tree is built (every pair is built up front, nothing loads on expand), so
+  another flavor and its accounts and realms say `0 items` (they have children: greyed characters) and an account
+  with no characters `0 items`; the source and another flavor's characters have no pairs, so no count, their
+  reason (`source`, `other flavor`) in its place.
+- G8c: character, realm and account lines are drawn by the copier (`_character_label`) instead of the shared
+  `character_label`, so the name is cut in its middle to keep its count or reason on the pane (`_group_text`, the SV
+  Browser's rule: down to 4 cells, else the name alone cut to the room). `_group_text` is the copier's own copy,
+  as G7g; with G5g's `tree_room` it joins the G10 whole-branch review's candidates for one `ui/` helper.
+- G8d: a pair line is columns `report.pair_cells`: file · status · `⚠ action bars` (`WARNING_MARK` /
+  `WARNING_SHORT` moved to report.py), widths over the target's shown pairs. `PAIR_COLUMNS`: a status is never cut
+  (its minimum is the longest, `source has no file`), only a long problem text (cap 40); then the file name gives
+  way, cut in its middle, minimum 10 (`macros…e.txt`: the five names stay apart); the warning is dropped, never
+  cut. At 120x30 with All flavors, Bob's lines need 4 cells more than the pane has: the names are cut and
+  `replaced (merged)` and `⚠ action bars` read whole (cutting the status first lost `(merged)`).
+- G8e: at 80x24 a pair line sits 20 cells deep in the 28-cell pane, so its name is cut to 4 cells and its status
+  and warning are dropped, and realm and character lines lose their counts (name alone): STD-7.28 "a row always
+  fits", the G4r / G6e / G7e finding again, left to G9b (U1).
+- G8f: every line is fitted again when the tree's width changes (`on_resize` → `_fit_rows`, and once after a build
+  made before the tree was laid out); a tick relabels its branch as before. No stale screenshot beyond
+  `config-copier/review.png` (also in README.md); the source picker is unchanged.
+- G8g: no CHANGELOG line here (G10 adds the suite-wide one).

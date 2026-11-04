@@ -14,9 +14,11 @@ from textual.widgets import Checkbox, Tree
 from tests.fixtures import (BASE, COPIER_ADDONS, COPIER_CHAT, COPIER_MACROS, TINY, TuiTestCase, build_copier_tree,
                             make_config, settle, submit_filter)
 from wowtools.core.events import capture_events
+from wowtools.core.text import plural
 from wowtools.tools import TOOLS
 from wowtools.tools.config_copier.diff_screen import DiffScreen
 from wowtools.tools.config_copier.model import COPY_FILES, MACRO_WARNING
+from wowtools.tools.config_copier.report import WARNING_MARK, WARNING_SHORT, pair_text
 from wowtools.tools.config_copier.review_screen import CopierReviewScreen, CopierResultScreen, PairKey, PairNode
 from wowtools.tools.config_copier.source_screen import SourceScreen
 from wowtools.ui.character_tree import CharacterNode
@@ -53,7 +55,9 @@ async def goto(pilot, tree: Tree, node) -> None:
     await pilot.pause()
 
 
-class CopierAppTest(TuiTestCase):
+class CopierTestCase(TuiTestCase):
+    """A copier tree in a temp folder, the suite app over it, and the steps to its review."""
+
     def setUp(self):
         t = tempfile.TemporaryDirectory()
         self.addCleanup(t.cleanup)
@@ -106,6 +110,8 @@ class CopierAppTest(TuiTestCase):
             await pilot.press("space")
             await settle(app, pilot)
 
+
+class CopierAppTest(CopierTestCase):
     async def test_registered_in_the_menu(self):
         tool = TOOLS[TOOL]
         self.assertEqual((tool.title, tool.section), ("Config Copier", "config_copier"))
@@ -398,6 +404,122 @@ class CopierAppTest(TuiTestCase):
             await pilot.press("t")
             await settle(app, pilot)
             self.assertIsNone(app.flow)
+
+
+def indent(node) -> int:
+    """The cells in front of a node's label: the tree guides, and the ▶ / ▼ of a node that opens."""
+    depth, parent = 0, node.parent
+    while parent is not None:
+        depth, parent = depth + 1, parent.parent
+    return depth * node.tree.guide_depth + (2 if node.allow_expand else 0)
+
+
+class NodeCountsAndColumnsTest(CopierTestCase):
+    """Feedback round 2 R2 / R4 (STD-7.27, STD-7.28) on the Config Copier review: every node with children (the
+    root, a flavor, an account, a realm, a target character) counts the file pairs below it that the tree shows
+    (after the search and the left pane's file boxes; every pair line, whatever its status); a pair line is the leaf
+    and its name · status · warning are aligned columns cut to the pane."""
+
+    def shown_pairs(self, node) -> int:
+        return sum(1 for n in walk(node) if isinstance(n.data, PairNode))
+
+    def assert_counts(self, tree) -> None:
+        for node in walk(tree.root):
+            if not node.children or isinstance(node.data, PairNode):
+                continue
+            with self.subTest(node=str(node.label)):
+                expected = plural(self.shown_pairs(node), "item")
+                self.assertTrue(str(node.label).endswith(f"  {expected}"), str(node.label))
+                count = node.label.spans[-1]
+                self.assertEqual((str(node.label)[count.start:].strip(), str(count.style)), (expected, "dim"))
+
+    async def test_every_node_counts_the_pairs_below_it(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#targets", Tree)
+            self.assertTrue(str(tree.root.label).endswith("  15 items"), str(tree.root.label))  # 3 targets x 5
+            flavors = {n.data[1]: str(n.label) for n in tree.root.children if isinstance(n.data, list)}
+            self.assertTrue(flavors["_retail_"].endswith("  15 items"), flavors)
+            self.assertTrue(flavors["_classic_era_"].endswith("  0 items"), flavors)  # other flavor: nothing copied
+            self.assertTrue(str(character_node(tree, "Bob").label).endswith("  5 items"))
+            for name in ("Aellâ", "Other"):  # the source and another flavor's character: no pairs, no count
+                plain = str(character_node(tree, name).label)
+                self.assertNotIn("item", plain)
+            for node in walk(tree.root):  # a pair line is the leaf: no count of its own
+                if isinstance(node.data, PairNode):
+                    self.assertNotIn("item", str(node.label))
+            self.assert_counts(tree)
+
+    async def test_counts_follow_the_search_and_the_file_boxes(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#targets", Tree)
+            submit_filter(review, "Bob")
+            await settle(app, pilot)
+            self.assertTrue(str(tree.root.label).endswith("  5 items"), str(tree.root.label))
+            self.assert_counts(tree)
+            submit_filter(review, "chat-cache")
+            await settle(app, pilot)
+            self.assertTrue(str(tree.root.label).endswith("  3 items"), str(tree.root.label))
+            self.assertTrue(str(character_node(tree, "Bob").label).endswith("  1 item"))
+            self.assert_counts(tree)
+            submit_filter(review, "")
+            await settle(app, pilot)
+            review.query_one("#file-AddOns-txt", Checkbox).value = False
+            await settle(app, pilot)
+            self.assertTrue(str(tree.root.label).endswith("  12 items"), str(tree.root.label))
+            self.assertTrue(str(character_node(tree, "Trâxex").label).endswith("  4 items"))
+            self.assert_counts(tree)
+
+    async def test_pair_rows_are_aligned_columns(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#targets", Tree)
+            for owner in ("Bob", "Trâxex", "Dænerys"):
+                rows = [pair_node(tree, owner, name) for name in COPY_FILES]
+                starts = {str(n.label).rindex(pair_text(n.data.plan)) for n in rows}
+                self.assertEqual(len(starts), 1, [str(n.label) for n in rows])  # the statuses line up
+                for node in rows:
+                    plain = str(node.label)
+                    self.assertFalse(plain.endswith(" "), plain)  # no padding after the last column
+                    if node.data.key is None:  # a pair that writes nothing is dim, its status too
+                        spans = {plain[s.start:s.end].strip(): str(s.style) for s in node.label.spans}
+                        self.assertEqual(spans.get(node.data.plan.name), "dim", plain)
+            macros = pair_node(tree, "Bob", "macros-cache.txt")
+            plain = str(macros.label)
+            self.assertRegex(plain, rf"^. macros\S*\.txt +replaced +{WARNING_MARK} {WARNING_SHORT}$")
+
+    async def test_rows_fit_the_pane(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#targets", Tree)
+            for name in ("Bob", "Trâxex", "Dænerys"):
+                character_node(tree, name).expand()
+            await settle(app, pilot)
+            for size in (BASE, TINY):
+                await pilot.resize_terminal(*size)
+                await settle(app, pilot)
+                room = tree.size.width - tree.styles.scrollbar_size_vertical
+                for node in walk(tree.root):
+                    if node.data is None or indent(node) + 2 >= room:
+                        continue  # guides and the mark alone fill the pane (the G4r / U1 case, G9b)
+                    with self.subTest(size=size, row=str(node.label)):
+                        self.assertLessEqual(indent(node) + node.label.cell_len, room)
+                if size == BASE:  # at 120 columns every status and warning reads in full, the names stay apart
+                    for owner in ("Bob", "Trâxex", "Dænerys"):
+                        rows = character_node(tree, owner).children
+                        for node in rows:
+                            plain = str(node.label)
+                            self.assertIn(f" {pair_text(node.data.plan)}", plain)
+                            if node.data.plan.warnings:
+                                self.assertTrue(plain.endswith(f"{WARNING_MARK} {WARNING_SHORT}"), plain)
+                        names = [str(n.label).split()[1] for n in rows]
+                        self.assertEqual(len(set(names)), len(names), names)
+                    self.assertIn("macros…e.txt", str(pair_node(tree, "Bob", "macros-cache.txt").label))
 
 
 if __name__ == "__main__":
