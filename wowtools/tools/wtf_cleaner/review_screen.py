@@ -37,6 +37,7 @@ from wowtools.tools.wtf_cleaner.safety import (MARKER_NAME, SNAPSHOT_SUBDIR, Mar
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir, save_settings
 from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
 from wowtools.ui.branding import BottomBar
+from wowtools.ui.counts import with_count
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceScreen, ConfirmScreen,
                                 ProgressScreen, relabel_branch, two_pane_css)
 from wowtools.ui.review import (BLACKLIST_BINDING, BLACKLIST_KEY, BlacklistAction, ReviewBase, ReviewTree, TickModel,
@@ -515,7 +516,7 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         items, name = data[1], data[2]
         if not items and data is not self.query_one("#proposal", Tree).root.data:
             return Text.assemble("  ", (name, ACCENT), ("  nothing to clean", "dim"))  # an account or flavor
-        return Text.assemble(mark, (name, ACCENT), (f"  {plural(len(items), 'item')}", "dim"))
+        return with_count(Text.assemble(mark, (name, ACCENT)), len(items))
 
     @staticmethod
     def _blacklisted_label(data, now: float) -> Text:

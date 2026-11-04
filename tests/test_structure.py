@@ -380,6 +380,25 @@ class StructureTest(unittest.TestCase):
                                   "wowtools/tools/macro_editor/edit_actions.py",
                                   "wowtools/tools/sv_browser/edit_actions.py"])
 
+    def test_tree_label_helpers_live_in_ui(self):
+        """STD-7.27, STD-7.28 (feedback round 2 R2, R4): the node columns are wowtools/ui/columns.py's and the leaf
+        count wowtools/ui/counts.py's, one definition each; the Config Editor's own fit and name cut are gone (the
+        Macro Editor's cut_name is another thing: a macro name cut to the game's limit). Both modules are pure: no
+        Textual import."""
+        functions = {"fit_columns": "columns.py", "cut_middle": "columns.py", "column_text": "columns.py",
+                     "natural_widths": "columns.py", "count_text": "counts.py", "with_count": "counts.py"}
+        where = {(rel(p), n) for p in modules("wowtools") for n in defined_functions(tree(p)) & set(functions)}
+        self.assertEqual(where, {(f"wowtools/ui/{module}", name) for name, module in functions.items()})
+        where = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
+                 if isinstance(node, ast.ClassDef) and node.name == "ColumnLayout"}
+        self.assertEqual(where, {("wowtools/ui/columns.py", "ColumnLayout")})
+        cuts = {rel(p) for p in modules("wowtools") if "cut_name" in defined_functions(tree(p))}
+        self.assertEqual(cuts, {"wowtools/tools/macro_editor/ops.py"})
+        for name in ("columns.py", "counts.py"):
+            path = REPO / "wowtools" / "ui" / name
+            imports = resolved_imports(tree(path), package_of(path))
+            self.assertFalse(any(m == "textual" or m.startswith("textual.") for m in imports), name)
+
     def test_tree_filter_lives_in_ui(self):
         """The tree filter (spec D7) is wowtools/ui/tree_filter.py's: no tool defines its own match, model filter,
         filter box or `/` action."""

@@ -644,6 +644,29 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   `tests/test_ace_app.py::PopupFeedbackTest::test_notes_open_a_popup_grouped_by_message`,
   `tests/test_ace_app.py::PopupFeedbackTest::test_refusals_open_a_popup_listing_every_one`,
   `tests/test_ace_ops.py::OpsTest::test_listed_items_name_the_database_and_the_character`.
+- **STD-7.27 MUST** Every tree node that has children shows, two spaces after its label and dimmed, how many
+  leaf-level items sit below it at any depth: `Retail  27 items`, `Aellâ  1 item` (`with_count(label, n)` /
+  `count_text(n)` in `ui/counts.py`, never a tool's own text or style). The leaf is the thing the tool lists and acts
+  on (an addon entry, a CVar row, a macro, a file pair, a profile, a screenshot, a backup, a SavedVariables key...),
+  named in the tool's internals doc; the count is of what the tree currently shows (after the search and the tool's
+  own Show filters), and a node whose children load on expand counts them from the model, so it never shows
+  `0 items` before it is opened ([R2][fb2]).
+  *Why:* the user reads how much sits under a flavor, account, realm or character without opening it, the same
+  way in every tool (WTF Cleaner's look, user feedback 2026-11-04).
+  *Enforced by:* `tests/test_ui_columns.py::CountTest`, `tests/test_structure.py::test_tree_label_helpers_live_in_ui`,
+  and each tool's app test (the count on each node level, after a search and a Show filter).
+- **STD-7.28 MUST** Wherever a tree node shows more than one piece of data (a name plus a reason, size, age, date,
+  value, status...), the pieces sit in aligned columns through `ui/columns.py`: a tool keeps its cells and a
+  `ColumnLayout`; each column is as wide as its widest cell among the sibling rows it aligns with
+  (`natural_widths`, up to its cap), long cells are cut with `…` (`column_text`; a name in its middle,
+  `cut_middle`), the secondary columns dim or coloured as the tool colours them, and the row refits when the pane
+  narrows or resizes (`fit_columns`: the free-text columns give way first, the short status-like ones are never cut,
+  only dropped, and a row always fits, at 80 columns too). A node with only a name and its STD-7.27 count is not a
+  column row ([R4][fb2]).
+  *Why:* a row of data in columns is read at a glance down the tree; text run together with ` · ` is not (the
+  Config Editor's CVar rows, user feedback 2026-11-04).
+  *Enforced by:* `tests/test_ui_columns.py`, `tests/test_structure.py::test_tree_label_helpers_live_in_ui`, and each
+  tool's app test (sibling rows aligned, a long cell cut to the pane).
 
 ## 8. Keys and buttons
 
@@ -891,6 +914,7 @@ The accepted exceptions to the rules above. A deviation not listed here is not a
 | STD-8.9 | SV Browser adds Search (`S`) in its own button row above the four action buttons. | `s` is the suite's settings key. | [D22][svb] |
 | STD-6.1, STD-6.6 | The launchers (`wow-tools.cmd`, `wow-tools.sh`) and `core/bootstrap.py` write `launcher.*` and `bootstrap.failed` lines to `logs/suite/launcher.log` themselves, outside `log_event`, as plain `<time> <event> key=value` lines. The names are still registered in `core/events.py`, so [events.md](events.md) lists them. | Nothing else can log before Python starts or before the event log opens; those failures were invisible. | LN7 in the [config tools spec][cfg] |
 
+[fb2]: superpowers/specs/2026-11-04-feedback-round-2-design.md
 [cfg]: superpowers/specs/2026-11-04-config-copier-macro-editor-config-editor-design.md
 [polish]: superpowers/specs/2026-10-05-suite-polish-design.md
 [rc]: superpowers/specs/2026-10-08-release-contents-design.md

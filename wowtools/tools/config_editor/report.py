@@ -20,10 +20,10 @@ from wowtools.core.text import Listed, plural
 from wowtools.tools.config_editor.model import CONFIG_WTF, ConfigTarget, Row
 from wowtools.tools.config_editor.ops import ConfigStaged, build_changes, is_boolean
 
-__all__ = ["ACCOUNT_CONFIG", "CHANGED", "COLUMN_CAPS", "COLUMN_MINIMUMS", "DEFAULT_STATE", "DROP_ORDER", "ELLIPSIS",
+__all__ = ["ACCOUNT_CONFIG", "CHANGED", "COLUMN_CAPS", "COLUMN_MINIMUMS", "DEFAULT_STATE", "DROP_ORDER",
            "FILE_COLUMNS", "NOT_SET", "NO_DESCRIPTION", "RESULT_TEXT", "STAGE_TITLES", "STATES", "STATUS_COLOURS",
-           "UNDO_COLUMNS", "UNKNOWN", "HelpLine", "HelpPanel", "apply_confirm", "apply_groups", "cut_name", "file_label",
-           "file_rows", "fit_columns", "help_panel", "path_label", "recovery_text", "row_cells", "row_state",
+           "UNDO_COLUMNS", "UNKNOWN", "HelpLine", "HelpPanel", "apply_confirm", "apply_groups", "file_label",
+           "file_rows", "help_panel", "path_label", "recovery_text", "row_cells", "row_state",
            "scope_listed", "scope_text", "summary_rows", "target_text", "undo_confirm", "undo_detail_rows",
            "undo_summary_rows", "what_it_does"]
 
@@ -37,14 +37,13 @@ UNKNOWN = "unknown"
 STATES = (CHANGED, DEFAULT_STATE, UNKNOWN)
 # The name, value and default columns (CF2): as wide as the file's widest cell up to the cap; when the tree pane is
 # narrower the value and the default give way first, then the name, down to the minimum (the state and category
-# columns are never cut, only dropped when nothing else fits: DROP_ORDER). "not set" fits the value's minimum.
+# columns are never cut, only dropped when nothing else fits: DROP_ORDER). "not set" fits the value's minimum. The
+# screen fits them with the shared ui.columns (feedback round 2 R4).
 COLUMN_CAPS = (40, 24, 24)
 COLUMN_MINIMUMS = (12, 7, 6)
-WIDE_GAP, NARROW_GAP = 2, 1  # spaces between two columns: two when everything fits so, else one
-# The columns a too-narrow pane drops, one more each step (None: none yet): the default, the category, the value,
-# then the state, leaving the name (FB2r: a row always fits, at 80 columns too).
-DROP_ORDER: tuple[int | None, ...] = (None, 2, 4, 1, 3)
-ELLIPSIS = "…"
+# The columns a too-narrow pane drops, one more each step: the default, the category, the value, then the state,
+# leaving the name (FB2r: a row always fits, at 80 columns too).
+DROP_ORDER = (2, 4, 1, 3)
 FILE_COLUMNS = ("Flavor", "File", "Result")
 LEVEL_FILES: dict[str, str] = {
     "machine": "this computer's Config.wtf",
@@ -83,54 +82,6 @@ def row_cells(row: Row) -> tuple[str, str, str, str, str]:
     value = NOT_SET if row.value is None else _shown(row.value)
     default = "" if row.default is None else _shown(row.default)
     return row.name, value, default, row_state(row), row.category
-
-
-def _visible_total(widths: Sequence[int], gap: int) -> int:
-    shown = [width for width in widths if width]
-    return sum(shown) + gap * max(0, len(shown) - 1)
-
-
-def fit_columns(natural: Sequence[int], room: int | None) -> tuple[tuple[int, ...], int]:
-    """The five column widths and the gap between them (CF2): each column's widest cell (`natural`), the name,
-    value and default capped at COLUMN_CAPS. When `room` (the cells the row may take, None: no limit) is too narrow
-    the gap drops to one space, the value and the default shrink first (the wider of the two each time), then the
-    name, never under COLUMN_MINIMUMS. A row that still doesn't fit drops whole columns, in DROP_ORDER (the default,
-    the category, the value, then the state: the help panel shows them all), and a name left alone is cut to the
-    room, so a row always fits its pane (FB2r). A width of 0 is a column not shown; the state and category are never
-    cut, only dropped."""
-    capped = [min(width, cap) for width, cap in zip(natural[:3], COLUMN_CAPS)] + list(natural[3:])
-    if room is None or _visible_total(capped, WIDE_GAP) <= room:
-        return tuple(capped), WIDE_GAP
-    dropped: list[int] = []
-    for drop in DROP_ORDER:
-        if drop is not None:
-            dropped.append(drop)
-        widths = [0 if i in dropped else width for i, width in enumerate(capped)]
-        excess = _visible_total(widths, NARROW_GAP) - room
-        for columns in ((1, 2), (0,)):
-            while excess > 0:
-                shrinkable = [i for i in columns if widths[i] > COLUMN_MINIMUMS[i]]
-                if not shrinkable:
-                    break
-                widest = max(shrinkable, key=lambda i: widths[i] - COLUMN_MINIMUMS[i])
-                widths[widest] -= 1
-                excess -= 1
-        if excess <= 0:
-            return tuple(widths), NARROW_GAP
-    widths[0] = max(1, min(widths[0], room))  # the name alone, cut to the room
-    return tuple(widths), NARROW_GAP
-
-
-def cut_name(name: str, width: int) -> str:
-    """A CVar name cut to `width` cells in its middle, keeping its start and its end (FB2r): names that share a
-    long start (raidFramesDisplay…) stay apart. CVar names are ASCII, one cell a character."""
-    if len(name) <= width:
-        return name
-    if width <= 1:
-        return ELLIPSIS[:width]
-    head = width // 2
-    tail = width - 1 - head
-    return name[:head] + ELLIPSIS + (name[-tail:] if tail else "")
 
 
 def file_label(target: ConfigTarget) -> str:

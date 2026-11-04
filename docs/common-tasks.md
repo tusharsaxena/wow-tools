@@ -168,9 +168,15 @@ uses `FilterBox` instead of `TreeFilter` (Interface Backup's restore screen).
    A screen with a scan box goes in `test_bars_keep_their_place_while_a_scan_runs` (STD-7.25). A new screen goes
    in the walk of `tests/test_toast_stack.py`: toasts are placed for it (`ui/toasts.py`); a row toasts must stay
    above that is not a bar gets the `TOAST_FLOOR` class (STD-7.24).
-6. Help and guide: the screen's buttons in `help.py`, the `**Filter**` button and the keys in the guide.
+6. Labels: every node with children ends with its leaf count, `with_count(label, n)` from `wowtools/ui/counts.py`
+   (STD-7.27; count the leaf from the model as the tree shows it, so a node that loads on expand counts before it
+   opens, and name the leaf in the internals doc). A node that shows more than one piece of data lays them out in
+   columns with `wowtools/ui/columns.py` (STD-7.28): its cells from the tool's report, a `ColumnLayout`,
+   `natural_widths` over the sibling rows, `fit_columns` to the pane's room (refit on resize) and `column_text`.
+   The tool's app test checks the count on each node level and that sibling rows line up.
+7. Help and guide: the screen's buttons in `help.py`, the `**Filter**` button and the keys in the guide.
 
-**Rules:** STD-7.4, STD-7.6 to STD-7.9, STD-7.11, STD-7.23 to STD-7.25, STD-8.5, STD-8.7. Then [the green
+**Rules:** STD-7.4, STD-7.6 to STD-7.9, STD-7.11, STD-7.23 to STD-7.25, STD-7.27, STD-7.28, STD-8.5, STD-8.7. Then [the green
 gate](#the-green-gate).
 
 ## 7. Add a shared helper (the two-tool rule)

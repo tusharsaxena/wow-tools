@@ -3,7 +3,7 @@
 shared character tree, (flavor ›) Config.wtf, account › Account config and realm › character (the character's
 config-cache.wtf). A file opens to its CVar rows, loaded when it is opened (a file can set hundreds, and Show all
 known adds the knowledge base's): five aligned columns, name, value, default, state and category (feedback spec
-CF1-CF3; report.row_cells, report.fit_columns), each as wide as the file's widest cell up to a cap, cut with … to fit
+CF1-CF3; report.row_cells fitted by the shared ui.columns, CVAR_COLUMNS), each as wide as the file's widest cell up to a cap, cut with … to fit
 the tree pane (columns dropped when even the minimums don't fit; fitted again when the window is resized), the
 state and category in their theme colours. A file that can't be read is read-only: greyed, never ticked or
 written, and listed in the warnings view (`!`).
@@ -46,11 +46,11 @@ from wowtools.tools.config_editor.events import SV_TOOL
 from wowtools.tools.config_editor.journal import latest_undoable, read_journal, resolve_journal_dir
 from wowtools.tools.config_editor.model import CATEGORIES, CONFIG_CACHE, CONFIG_WTF, ConfigTarget, Row
 from wowtools.tools.config_editor.ops import ConfigStaged, build_changes, rows
-from wowtools.tools.config_editor.report import (ACCOUNT_CONFIG, FILE_COLUMNS, STAGE_TITLES, STATUS_COLOURS, HelpPanel,
-                                                 UNDO_COLUMNS, apply_confirm, apply_groups, cut_name, file_label,
-                                                 file_rows, fit_columns, help_panel, recovery_text, row_cells,
-                                                 scope_listed, summary_rows, undo_confirm, undo_detail_rows,
-                                                 undo_summary_rows)
+from wowtools.tools.config_editor.report import (ACCOUNT_CONFIG, COLUMN_CAPS, COLUMN_MINIMUMS, DROP_ORDER,
+                                                 FILE_COLUMNS, STAGE_TITLES, STATUS_COLOURS, HelpPanel, UNDO_COLUMNS,
+                                                 apply_confirm, apply_groups, file_label, file_rows, help_panel,
+                                                 recovery_text, row_cells, scope_listed, summary_rows, undo_confirm,
+                                                 undo_detail_rows, undo_summary_rows)
 from wowtools.tools.config_editor.runner import ApplyError, run_apply
 from wowtools.tools.config_editor.scanner import scan_targets
 from wowtools.tools.config_editor.settings import load_settings, resolve_root
@@ -58,6 +58,7 @@ from wowtools.tools.config_editor.undo import (UndoError, UndoResult, leave, pen
                                                undo_run)
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.character_tree import CharacterNode, character_label, node_keys, populate_characters
+from wowtools.ui.columns import ColumnLayout, column_text, fit_columns, natural_widths
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                  UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
 from wowtools.ui.result_screen import ResultScreen
@@ -74,6 +75,10 @@ READ_ONLY = "read-only"
 NO_FILE = "no file"
 NO_MARK = "  "
 MARK_WIDTH = 4  # NO_MARK and the staged mark (or two spaces) in front of a CVar's columns
+# The CVar row's five columns as the shared fit takes them (CF2, FB2r): the name, value and default capped and cut
+# (the value and the default first, then the name), the state and category never cut, only dropped (DROP_ORDER).
+CVAR_COLUMNS = ColumnLayout(caps=(*COLUMN_CAPS, None, None), minimums=(*COLUMN_MINIMUMS, 0, 0),
+                            shrink=((1, 2), (0,)), drop=DROP_ORDER)
 STAGED_MARK = "✎"  # a CVar with a staged change, before its line (the Saved Variables Browser's symbol, D12)
 WIDE = 160  # from this many columns the help panel sits beside the tree
 GROUP_HELP = "Open a file to see its CVars; highlight one for its help. Space ticks files: Set, Remove, Reset and " \
@@ -553,7 +558,7 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
 
     def _add_rows(self, target: ConfigTarget, node: TreeNode, found: list[Row] | None = None) -> None:
         found = self.rows_for(target) if found is None else found
-        self._columns[target.path] = tuple(max(map(cell_len, column)) for column in zip(*map(row_cells, found)))
+        self._columns[target.path] = natural_widths(map(row_cells, found))
         depth, parent = 0, node
         while parent is not None:
             depth, parent = depth + 1, parent.parent
@@ -682,7 +687,7 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
         row = data.row
         cells = row_cells(row)
         natural = self._columns.get(data.target.path) or tuple(map(cell_len, cells))
-        widths, gap = fit_columns(natural, self._row_room(data.target.path))
+        widths, gap = fit_columns(natural, self._row_room(data.target.path), CVAR_COLUMNS)
         style = "dim" if row.value is None or data.target.read_only else ""
         if row.info is None:
             style = f"{style} italic".strip()
@@ -690,14 +695,7 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
         styles = (style, style, "dim", CVAR_STATE_COLOURS[state], CVAR_CATEGORY_COLOURS.get(category, ""))
         text = Text.assemble((NO_MARK, ""), (f"{STAGED_MARK} ", f"bold {theme_colour(self.app, 'warning')}")
                              if row.staged else ("  ", ""))
-        shown = [(cell, width, cell_style) for cell, width, cell_style in zip(cells, widths, styles) if width]
-        for index, (cell, width, cell_style) in enumerate(shown):
-            last = index == len(shown) - 1
-            piece = Text(cut_name(cell, width) if index == 0 else cell, style=cell_style)
-            piece.truncate(width, overflow="ellipsis", pad=not last)
-            text.append_text(piece)
-            if not last:
-                text.append(" " * gap)
+        text.append_text(column_text(cells, widths, styles, gap, middle=(0,)))
         return text
 
     def on_resize(self, event: events.Resize) -> None:
