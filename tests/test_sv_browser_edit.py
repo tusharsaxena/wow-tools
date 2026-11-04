@@ -5,8 +5,8 @@ from __future__ import annotations
 
 from textual.widgets import Button, Input, Select, Static, Tree
 
-from tests.fixtures import BASE, TINY, assert_keys_on_buttons, settle
-from tests.test_sv_browser_app import SvBrowserTestBase, child, labels, select
+from tests.fixtures import BASE, LARGE, TINY, assert_keys_on_buttons, settle
+from tests.test_sv_browser_app import SvBrowserTestBase, one_piece, child, labels, select
 from wowtools.core.events import capture_events
 from wowtools.tools.sv_browser.ops import SHIFT_WARNING
 from wowtools.tools.sv_browser.popups import EditValueScreen, RenameKeyScreen
@@ -86,13 +86,13 @@ class EditValueTest(SvEditTestBase):
             self.assertIs(app.screen, review)
             self.assertIn("svb.staged", [e["event"] for e in events])
             node = child(general, "fontSize")
-            self.assertEqual(node.label.plain, "fontSize = 12  ✎ 14")
+            self.assertEqual(one_piece(node), "fontSize = 12  ✎ 14")
             self.assertEqual(self.pending(review), "Staged: 1 edit in 1 file")
             self.assertFalse(review.query_one("#btn-apply", Button).disabled)
 
     async def test_the_type_may_change_to_a_boolean_or_a_string(self):
         app = self.make_app()
-        async with app.run_test(size=BASE) as pilot:
+        async with app.run_test(size=LARGE) as pilot:
             review, general = await self.general(app, pilot)
             popup = await self.press_on(review, pilot, child(general, "font ="), "e")
             self.assertEqual(popup.query_one("#value-type", Select).value, REPLACE_STRING)
@@ -105,7 +105,7 @@ class EditValueTest(SvEditTestBase):
             box.value = True
             await pilot.click("#ok")
             await settle(app, pilot)
-            self.assertEqual(child(general, "font =").label.plain, 'font = "Friz Quadrata TT"  ✎ true')
+            self.assertEqual(one_piece(child(general, "font =")), 'font = "Friz Quadrata TT"  ✎ true')
             popup = await self.press_on(review, pilot, child(general, "autoRepair"), "e")
             self.assertEqual(popup.query_one("#value-type", Select).value, REPLACE_BOOLEAN)
             self.assertTrue(popup.query_one("#value-bool", Ka0sCheckbox).value)
@@ -115,7 +115,7 @@ class EditValueTest(SvEditTestBase):
             popup.query_one("#value-text", Input).value = "12"
             await pilot.click("#ok")
             await settle(app, pilot)
-            self.assertEqual(child(general, "autoRepair").label.plain, 'autoRepair = true  ✎ "12"')
+            self.assertEqual(one_piece(child(general, "autoRepair")), 'autoRepair = true  ✎ "12"')
             self.assertEqual(self.pending(review), "Staged: 2 edits in 1 file")
 
     async def test_cancel_and_the_same_value_stage_nothing(self):
@@ -130,7 +130,7 @@ class EditValueTest(SvEditTestBase):
             await pilot.click("#ok")  # 12 as it is
             await settle(app, pilot)
             self.assertEqual(review.staging.count, 0)
-            self.assertEqual(child(general, "fontSize").label.plain, "fontSize = 12")
+            self.assertEqual(one_piece(child(general, "fontSize")), "fontSize = 12")
 
     async def test_a_nil_top_level_value_and_a_string_with_line_breaks(self):
         app = self.make_app()
@@ -141,7 +141,7 @@ class EditValueTest(SvEditTestBase):
             popup.query_one("#value-text", Input).value = "13.0"
             await pilot.click("#ok")
             await settle(app, pilot)
-            self.assertEqual(child(elv, "ElvVersion").label.plain, 'ElvVersion = nil  ✎ "13.0"')
+            self.assertEqual(one_piece(child(elv, "ElvVersion")), 'ElvVersion = nil  ✎ "13.0"')
             tree = review.query_one("#browse", Tree)
             wide = child(child(child(tree.root, "Retail"), "ACCT1"), "Account-wide")
             details = await self.open_node(review, pilot, child(wide, "Details.lua"))
@@ -159,7 +159,7 @@ class EditValueTest(SvEditTestBase):
             review, elv, default = await self.elv_default(app, pilot)
             for node in (child(default, "general"), elv, elv.parent):
                 await self.press_on(review, pilot, node, "e")
-                self.assertIs(app.screen, review, node.label.plain)
+                self.assertIs(app.screen, review, one_piece(node))
 
 
     async def test_enter_on_the_boolean_checkbox_presses_ok_and_space_ticks(self):
@@ -176,7 +176,7 @@ class EditValueTest(SvEditTestBase):
             await pilot.press("enter")  # Enter is OK, as the hint says: never a flip of the value
             await settle(app, pilot)
             self.assertIs(app.screen, review)
-            self.assertEqual(child(general, "autoRepair").label.plain, "autoRepair = true  ✎ false")
+            self.assertEqual(one_piece(child(general, "autoRepair")), "autoRepair = true  ✎ false")
 
     async def test_a_staged_value_is_where_the_popup_starts(self):
         app = self.make_app()
@@ -209,7 +209,7 @@ class EditValueTest(SvEditTestBase):
 class RenameKeyTest(SvEditTestBase):
     async def test_rename_checks_empty_and_duplicate_keys_then_stages(self):
         app = self.make_app()
-        async with app.run_test(size=BASE) as pilot:
+        async with app.run_test(size=LARGE) as pilot:
             review, general = await self.general(app, pilot)
             popup = await self.press_on(review, pilot, child(general, "font ="), "k")
             self.assertIsInstance(popup, RenameKeyScreen)
@@ -229,7 +229,7 @@ class RenameKeyTest(SvEditTestBase):
             await pilot.press("enter")
             await settle(app, pilot)
             self.assertIs(app.screen, review)
-            self.assertEqual(child(general, "font =").label.plain, 'font = "Friz Quadrata TT"  → Font')
+            self.assertEqual(one_piece(child(general, "font =")), 'font = "Friz Quadrata TT"  → Font')
             # renaming another key to the new name is now a duplicate; [5] is a number key
             popup = await self.press_on(review, pilot, child(general, "scale"), "k")
             popup.query_one("#prompt", Input).value = "Font"
@@ -240,7 +240,7 @@ class RenameKeyTest(SvEditTestBase):
             popup.query_one("#prompt", Input).value = "[5]"
             await pilot.click("#ok")
             await settle(app, pilot)
-            self.assertEqual(child(general, "scale").label.plain, "scale = 0.6000000000000001  → [5]")
+            self.assertEqual(one_piece(child(general, "scale")), "scale = 0.6000000000000001  → [5]")
             edit = review.staging.edit_for(review.docs[child(general, "scale").data[1].path],
                                            child(general, "scale").data[2])
             self.assertEqual((edit.new_key, type(edit.new_key)), (5, int))
@@ -257,7 +257,7 @@ class RenameKeyTest(SvEditTestBase):
             popup.query_one("#value-text", Input).value = "13"
             await pilot.press("enter")
             await settle(app, pilot)
-            self.assertEqual(child(general, "fontSize").label.plain, "fontSize = 12  → size  ✎ 13")
+            self.assertEqual(one_piece(child(general, "fontSize")), "fontSize = 12  → size  ✎ 13")
             self.assertEqual(self.pending(review), "Staged: 1 edit in 1 file")
 
     async def test_k_is_refused_on_top_level_and_array_entries(self):
@@ -271,7 +271,7 @@ class RenameKeyTest(SvEditTestBase):
             bars = await self.open_node(review, pilot, child(glob, "bars"))
             for node in (child(elv, "ElvDB"), bars.children[0]):
                 await self.press_on(review, pilot, node, "k")
-                self.assertIs(app.screen, review, node.label.plain)
+                self.assertIs(app.screen, review, one_piece(node))
                 self.assertTrue(review.query_one("#act-rename", Button).disabled)
 
 
@@ -295,8 +295,8 @@ class DeleteKeyTest(SvEditTestBase):
             await pilot.press("y")
             await settle(app, pilot)
             self.assertIs(app.screen, review)
-            self.assertEqual(unit.label.plain, "unitframe {6}  ✗ deleted")
-            self.assertEqual(child(unit, "barFont").label.plain, 'barFont = "Expressway"')  # its edit went
+            self.assertEqual(one_piece(unit), "unitframe {6}  ✗ deleted")
+            self.assertEqual(one_piece(child(unit, "barFont")), 'barFont = "Expressway"')  # its edit went
             self.assertEqual(self.pending(review), "Staged: 1 edit in 1 file")
             # nothing can be staged inside it now: the bar is off there, and e says why
             await self.press_on(review, pilot, child(unit, "barFont"), "e")
@@ -338,7 +338,7 @@ class DeleteKeyTest(SvEditTestBase):
 class UnstageTest(SvEditTestBase):
     async def test_backspace_unstages_the_highlighted_node(self):
         app = self.make_app()
-        async with app.run_test(size=BASE) as pilot:
+        async with app.run_test(size=LARGE) as pilot:
             review, general = await self.general(app, pilot)
             self.assertTrue(review.query_one("#act-unstage", Button).disabled)
             await self.press_on(review, pilot, child(general, "scale"), "d")
@@ -349,7 +349,7 @@ class UnstageTest(SvEditTestBase):
             with capture_events() as events:
                 await self.press_on(review, pilot, child(general, "scale"), "backspace")
             self.assertIn("svb.unstaged", [e["event"] for e in events])
-            self.assertEqual(child(general, "scale").label.plain, "scale = 0.6000000000000001")
+            self.assertEqual(one_piece(child(general, "scale")), "scale = 0.6000000000000001")
             self.assertEqual(self.pending(review), "Staged: 0 edits in 0 files")
             self.assertTrue(review.query_one("#act-unstage", Button).disabled)
             self.assertTrue(review.query_one("#btn-apply", Button).disabled)

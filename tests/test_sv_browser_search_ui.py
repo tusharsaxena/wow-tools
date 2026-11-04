@@ -8,8 +8,8 @@ from unittest import mock
 
 from textual.widgets import Button, Input, Select, Static, Tree
 
-from tests.fixtures import BASE, TINY, assert_keys_on_buttons, settle, submit_filter
-from tests.test_sv_browser_app import SvBrowserTestBase, child, labels, select, walk
+from tests.fixtures import BASE, LARGE, TINY, assert_keys_on_buttons, settle, submit_filter
+from tests.test_sv_browser_app import SvBrowserTestBase, one_piece, assert_counts, child, labels, select, walk
 from tests.test_sv_browser_edit import SvEditTestBase, error_text
 from wowtools.core.events import capture_events
 from wowtools.core.svfiles import OWNER_ACCOUNT_WIDE
@@ -27,7 +27,7 @@ FRIZ = "Friz Quadrata TT"
 
 def hits_of(node) -> list[str]:
     """The labels of the hit leaves under node."""
-    return [n.label.plain for n in walk(node) if n.data is not None and n.data[0] == "hit"]
+    return [one_piece(n) for n in walk(node) if n.data is not None and n.data[0] == "hit"]
 
 
 class SearchTestBase(SvBrowserTestBase):
@@ -173,7 +173,7 @@ class SearchPopupTest(SearchTestBase):
 class SearchResultsTest(SearchTestBase):
     async def test_find_runs_with_the_progress_popup_and_fills_the_results_all_ticked(self):
         app = self.make_app()
-        async with app.run_test(size=BASE) as pilot:
+        async with app.run_test(size=LARGE) as pilot:
             review = await self.open_review(app, pilot)
             progress = []
             real = review_screen.SearchProgressScreen
@@ -197,7 +197,7 @@ class SearchResultsTest(SearchTestBase):
             self.assertEqual(review.ticked, set(range(7)))
             root = self.tree_root(review)
             retail = child(root, "✔ Retail")
-            self.assertIn("6 results", retail.label.plain)
+            self.assertEqual(one_piece(retail), "✔ Retail  6 items")
             elv = child(child(child(retail, "✔ ACCT1"), "✔ Account-wide"), "✔ ElvUI.lua")
             self.assertEqual(labels(elv), [
                 f'✔ ElvDB › profiles › Default › general › font = "{FRIZ}"',
@@ -256,7 +256,7 @@ class SearchResultsTest(SearchTestBase):
 class ResultsTicksTest(SearchTestBase):
     async def test_space_a_n_and_the_filter(self):
         app = self.make_app()
-        async with app.run_test(size=BASE) as pilot:
+        async with app.run_test(size=LARGE) as pilot:
             review = await self.open_review(app, pilot)
             await self.search(review, pilot, search_value=FRIZ)
             tree = review.query_one("#browse", Tree)
@@ -267,15 +267,15 @@ class ResultsTicksTest(SearchTestBase):
             await pilot.press("space")
             await settle(app, pilot)
             self.assertEqual(len(review.ticked), 6)
-            self.assertTrue(elv.children[1].label.plain.startswith("✘"))
-            self.assertTrue(elv.label.plain.startswith("◩"))
+            self.assertTrue(one_piece(elv.children[1]).startswith("✘"))
+            self.assertTrue(one_piece(elv).startswith("◩"))
             self.assertEqual(self.pending(review).splitlines()[2], "Ticked: 6 results")
             await pilot.press("space")  # ticked again
             await settle(app, pilot)
             select(tree, elv)  # on a file: unticks what it holds
             await pilot.press("space")
             await settle(app, pilot)
-            self.assertTrue(elv.label.plain.startswith("✘"))
+            self.assertTrue(one_piece(elv).startswith("✘"))
             self.assertEqual(len(review.ticked), 5)
             await pilot.press("a")
             await settle(app, pilot)
@@ -311,7 +311,7 @@ class ResultsTicksTest(SearchTestBase):
             self.assertEqual(review.view, BROWSE)
             self.assertEqual(review.sub_title, "Saved Variables Browser · All flavors · Browse")
             self.assertEqual(hits_of(self.tree_root(review)), [])
-            self.assertTrue(child(self.tree_root(review), "Retail").label.plain.startswith("Retail"))
+            self.assertTrue(one_piece(child(self.tree_root(review), "Retail")).startswith("Retail"))
             await pilot.press("n")
             await settle(app, pilot)
             self.assertEqual(len(review.ticked), 7)  # the ticks are the Results view's
@@ -364,7 +364,7 @@ class BulkEditTest(SvEditTestBase, SearchTestBase):
 
     async def test_edit_value_on_the_ticked_hits_stages_one_edit_each(self):
         app = self.make_app()
-        async with app.run_test(size=BASE) as pilot:
+        async with app.run_test(size=LARGE) as pilot:
             review = await self.open_review(app, pilot)
             await self.search(review, pilot, search_value=FRIZ)
             with mock.patch.object(review, "notify") as notify, capture_events() as events:
@@ -404,7 +404,7 @@ class BulkEditTest(SvEditTestBase, SearchTestBase):
                                                                                      child(db, "profiles")),
                                                                 "Default"))
             general = await self.open_node(review, pilot, child(default, "general"))
-            self.assertTrue(child(general, "font =").label.plain.endswith('✎ "Arial"'))
+            self.assertTrue(one_piece(child(general, "font =")).endswith('✎ "Arial"'))
 
     async def test_matched_text_or_whole_value_after_a_contains_search(self):
         app = self.make_app()
@@ -450,11 +450,11 @@ class BulkEditTest(SvEditTestBase, SearchTestBase):
             await pilot.press("backspace")
             await settle(app, pilot)
             self.assertEqual(review.staging.count, 0)
-            self.assertNotIn("✎", leaf.label.plain)
+            self.assertNotIn("✎", one_piece(leaf))
 
     async def test_a_hit_with_an_edit_staged_in_browse_is_left_out(self):
         app = self.make_app()
-        async with app.run_test(size=BASE) as pilot:
+        async with app.run_test(size=LARGE) as pilot:
             review, general = await self.general(app, pilot)
             popup = await self.press_on(review, pilot, child(general, "font ="), "e")
             popup.query_one("#value-text", Input).value = "Expressway"
@@ -469,8 +469,8 @@ class BulkEditTest(SvEditTestBase, SearchTestBase):
             self.assertEqual(notify.call_args.kwargs["severity"], "warning")
             self.assertEqual(self.values(review), {"Expressway", "Arial"})
             leaf = next(n for n in walk(self.tree_root(review))
-                        if n.data is not None and n.data[0] == "hit" and "general › font" in n.label.plain)
-            self.assertTrue(leaf.label.plain.endswith('✎ "Expressway"'))
+                        if n.data is not None and n.data[0] == "hit" and "general › font" in one_piece(n))
+            self.assertTrue(one_piece(leaf).endswith('✎ "Expressway"'))
 
     async def test_a_file_opened_in_browse_then_changed_on_disk_leaves_its_hits_out(self):
         """D39: the review passes the loaded documents' hashes, so a hit read from newer bytes than the document Browse
@@ -666,3 +666,37 @@ class ReviewKeysTest(SearchTestBase):
             self.assertIn(key, review._loading)
             review._loaded(key, review._generation)
             self.assertNotIn(key, review._loading)
+
+
+class ResultsCountsAndColumnsTest(SearchTestBase):
+    """Feedback round 2 R2, R4 (STD-7.27, STD-7.28) in Results: every group counts the hits the tree shows below it,
+    after the filter too; the hits under a file are columns (path · old value · staged marks) aligned with each
+    other."""
+
+    async def test_results_groups_count_the_hits_they_show(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.search(review, pilot, search_value=FRIZ)
+            tree = review.query_one("#browse", Tree)
+            self.assertEqual(tree.root.label.plain, "All flavors  7 items")
+            retail = child(tree.root, "✔ Retail")
+            self.assertEqual(retail.label.plain, "✔ Retail  6 items")
+            elv = child(child(child(retail, "✔ ACCT1"), "✔ Account-wide"), "✔ ElvUI.lua")
+            self.assertEqual(elv.label.plain, "✔ ElvUI.lua  2 items")
+            assert_counts(self, tree, "hit")
+            submit_filter(review, "unitframe")
+            await settle(app, pilot)
+            self.assertEqual(tree.root.label.plain, "All flavors  1 item")
+            self.assertEqual(labels(tree.root), ["✔ Retail  1 item"])
+            assert_counts(self, tree, "hit")
+
+    async def test_hit_rows_are_aligned_columns(self):
+        app = self.make_app()
+        async with app.run_test(size=LARGE) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.search(review, pilot, search_value=FRIZ)
+            tree = review.query_one("#browse", Tree)
+            elv = child(child(child(child(tree.root, "✔ Retail"), "✔ ACCT1"), "✔ Account-wide"), "✔ ElvUI.lua")
+            self.assertEqual([n.label.plain for n in elv.children], [f'✔ ElvDB › profiles › Default › general › font    = "{FRIZ}"',
+                                           f'✔ ElvDB › profiles › Default › unitframe › Font  = "{FRIZ}"'])

@@ -3,12 +3,14 @@ flavors, the USE AT YOUR OWN RISK warning once per app session (L4), and the rev
 lazy loading, the child cap, x / c, the filter on loaded labels, the buttons, leaving with staged edits)."""
 from __future__ import annotations
 
+import re
 import tempfile
 from pathlib import Path
 
+from rich.cells import cell_len
 from textual.widgets import Button, Tree
 
-from tests.fixtures import (BASE, TINY, TuiTestCase, accept_disclaimer, assert_keys_on_buttons, build_sv_tree,
+from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, accept_disclaimer, assert_keys_on_buttons, build_sv_tree,
                             make_config, settle, submit_filter)
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
@@ -34,13 +36,28 @@ def walk(node):
         stack.extend(reversed(current.children))
 
 
+def one_piece(node) -> str:
+    """A node's label with a key or hit row's column padding taken out (`key = value  ✎ new`, the row as the filter
+    and the bottom line read it): the pad where a sibling's ▶ is goes, the gap before the value is one space and
+    the one before the marks two. The columns themselves are pinned in NodeCountsAndColumnsTest."""
+    text = node.label.plain
+    if node.data is None or node.data[0] not in ("node", "hit"):
+        return text
+    text = re.sub(r" {2,}(?=[={])", " ", text.lstrip(" "), count=1)
+    return re.sub(r" +(?=[→✎✗])", "  ", text, count=1)
+
+
 def labels(node) -> list[str]:
-    return [child.label.plain for child in node.children]
+    return [one_piece(child) for child in node.children]
 
 
 def child(node, start: str):
-    """The child of node whose label starts with `start`."""
-    found = [c for c in node.children if c.label.plain.startswith(start)]
+    """The child of node whose label (in one piece) starts with `start`; else, where the pane cut the labels (80
+    columns), the one whose file or key is `start`."""
+    found = [c for c in node.children if one_piece(c).startswith(start)]
+    if not found:
+        found = [c for c in node.children if c.data is not None and c.data[0] in ("file", "node")
+                 and (c.data[1].path.name if c.data[0] == "file" else c.data[2].key) == start]
     assert len(found) == 1, (start, labels(node))
     return found[0]
 
@@ -250,7 +267,7 @@ class SvBrowseViewTest(SvBrowserTestBase):
             wide = child(acct1, "Account-wide")
             names = [n.split("  ")[0] for n in labels(wide)]
             self.assertEqual(sorted(names), ["Blizzard_Console.lua", "Broken.lua", "Details.lua", "ElvUI.lua"])
-            self.assertRegex(child(wide, "ElvUI.lua").label.plain, r"^ElvUI\.lua  \d+(\.\d)? (B|KB)$")
+            self.assertRegex(one_piece(child(wide, "ElvUI.lua")), r"^ElvUI\.lua {2,}\d+(\.\d)? (B|KB)$")
             realm = child(acct1, "Realm1")
             self.assertEqual([n.split("  ")[0] for n in labels(realm)], ["Kaelys"])
             self.assertEqual([n.split("  ")[0] for n in labels(child(realm, "Kaelys"))], ["ElvUI.lua"])
@@ -258,7 +275,7 @@ class SvBrowseViewTest(SvBrowserTestBase):
 
     async def test_opening_a_file_and_a_table_loads_them_in_a_worker(self):
         app = self.make_app()
-        async with app.run_test(size=BASE) as pilot:
+        async with app.run_test(size=LARGE) as pilot:
             review = await self.open_review(app, pilot, "_retail_")
             root = review.query_one("#browse", Tree).root
             wide = child(child(child(root, "Retail"), "ACCT1"), "Account-wide")
@@ -292,7 +309,7 @@ class SvBrowseViewTest(SvBrowserTestBase):
             with capture_events() as events:
                 broken = await self.open_node(review, pilot, child(wide, "Broken.lua"))
             self.assertIn("svb.file_unreadable", [e["event"] for e in events])
-            self.assertTrue(broken.label.plain.endswith("can't read"), broken.label.plain)
+            self.assertTrue(one_piece(broken).endswith("can't read"), one_piece(broken))
             self.assertTrue(labels(broken)[0].startswith("can't read: Broken.lua is not readable Lua"),
                             labels(broken))
             tree = review.query_one("#browse", Tree)
@@ -328,7 +345,7 @@ class SvBrowseViewTest(SvBrowserTestBase):
             self.assertEqual(len(files), 9)
             self.assertEqual([n for n in files if n.is_expanded], [])
             groups = [n for n in walk(tree.root) if n.children]
-            self.assertEqual([n.label.plain for n in groups if not n.is_expanded], [])
+            self.assertEqual([one_piece(n) for n in groups if not n.is_expanded], [])
             self.assertEqual(review.docs, {})  # x reads nothing
             await pilot.press("c")
             await settle(app, pilot)
@@ -352,11 +369,11 @@ class SvBrowseViewTest(SvBrowserTestBase):
             await self.open_node(review, pilot, child(default, "general"))
             submit_filter(review, "autorepair")
             await settle(app, pilot)
-            shown = [n.label.plain for n in walk(tree.root) if n.data is not None and n.data[0] == "node"]
+            shown = [one_piece(n) for n in walk(tree.root) if n.data is not None and n.data[0] == "node"]
             self.assertEqual(shown, ["ElvDB {1}", "profiles {1}", "Default {2}", "general {4}", "autoRepair = true"])
             submit_filter(review, "kaelys")  # a group's name: everything in it shows
             await settle(app, pilot)
-            files = [n.label.plain.split("  ")[0] for n in walk(tree.root) if n.data and n.data[0] == "file"]
+            files = [one_piece(n).split("  ")[0] for n in walk(tree.root) if n.data and n.data[0] == "file"]
             self.assertEqual(files, ["ElvUI.lua"])
 
     async def test_the_buttons_follow_the_highlighted_node(self):
@@ -375,7 +392,7 @@ class SvBrowseViewTest(SvBrowserTestBase):
                                    (child(db, "profiles"), ["act-rename", "act-delete"])):
                 select(tree, node)
                 await settle(app, pilot)
-                self.assertEqual(enabled(), expected, node.label.plain)
+                self.assertEqual(enabled(), expected, one_piece(node))
             for button in ("#btn-apply", "#btn-dry-run", "#btn-undo"):  # nothing staged, nothing to undo
                 self.assertTrue(review.query_one(button, Button).disabled, button)
             self.assertFalse(review.query_one("#btn-search", Button).disabled)
@@ -417,3 +434,145 @@ class SvBrowseViewTest(SvBrowserTestBase):
                 widget.focus()
                 await pilot.pause()
                 self.assertIs(review.focused, widget, selector)
+
+
+GROUP_DATA = ("root", "flavor", "account", "realm", "owner", "r-flavor", "r-account", "r-owner", "r-file")
+
+
+def drawn(node) -> str:
+    """A node's line as the tree draws it behind its guides: its ▶ / ▼ (none on a leaf), then its label."""
+    return ("▼ " if node.is_expanded else "▶ ") * node.allow_expand + node.label.plain
+
+
+def depth(node) -> int:
+    """How many levels below the root a node is (its guides)."""
+    levels = 0
+    while node.parent is not None:
+        node, levels = node.parent, levels + 1
+    return levels
+
+
+def leaves_below(node, kind: str) -> int:
+    return sum(1 for n in walk(node) if n is not node and n.data is not None and n.data[0] == kind)
+
+
+def assert_counts(test, tree, leaf: str) -> None:
+    """Every group's label ends with the number of `leaf` rows the tree shows below it (STD-7.27)."""
+    groups = [n for n in walk(tree.root) if n.data is not None and n.data[0] in GROUP_DATA]
+    test.assertTrue(groups)
+    for node in groups:
+        n = leaves_below(node, leaf)
+        test.assertTrue(node.label.plain.endswith(f"  {n} item" + ("s" if n != 1 else "")), node.label.plain)
+
+
+class NodeCountsAndColumnsTest(SvBrowserTestBase):
+    """Feedback round 2 R2, R4 (STD-7.27, STD-7.28): in Browse every group (the root, a flavor, an account, a realm,
+    a character or Account-wide) counts the SavedVariables files the tree shows below it, before any is read; in
+    Results every group counts its hits. File, key and hit rows are columns aligned between siblings and fitted to
+    the pane (the Results view: test_sv_browser_search_ui.ResultsCountsAndColumnsTest)."""
+
+    async def test_every_group_counts_the_files_below_it_before_any_is_read(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#browse", Tree)
+            tree.focus()
+            await pilot.press("x")
+            await settle(app, pilot)
+            self.assertEqual(review.docs, {})
+            self.assertEqual(tree.root.label.plain, "All flavors  9 items")
+            retail = child(tree.root, "Retail")
+            self.assertEqual(retail.label.plain, "Retail  7 items")
+            self.assertEqual(child(tree.root, "Classic Era").label.plain, "Classic Era  2 items")
+            acct1 = child(retail, "ACCT1")
+            self.assertEqual(acct1.label.plain, "ACCT1  5 items")
+            self.assertEqual(child(acct1, "Account-wide").label.plain, "Account-wide  4 items")
+            realm = child(acct1, "Realm1")
+            self.assertEqual(realm.label.plain, "Realm1  1 item")
+            self.assertEqual(child(realm, "Kaelys").label.plain, "Kaelys  1 item")
+            assert_counts(self, tree, "file")
+            wide = child(acct1, "Account-wide")
+            await self.open_node(review, pilot, child(wide, "ElvUI.lua"))  # reading a file changes no count
+            self.assertEqual(child(child(child(tree.root, "Retail"), "ACCT1"), "Account-wide").label.plain,
+                             "Account-wide  4 items")
+            assert_counts(self, tree, "file")
+
+    async def test_counts_follow_the_filter(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#browse", Tree)
+            submit_filter(review, "kaelys")
+            await settle(app, pilot)
+            self.assertEqual(tree.root.label.plain, "All flavors  2 items")
+            self.assertEqual(child(tree.root, "Retail").label.plain, "Retail  1 item")
+            self.assertEqual(child(tree.root, "Classic Era").label.plain, "Classic Era  1 item")
+            assert_counts(self, tree, "file")
+            submit_filter(review, "details")
+            await settle(app, pilot)
+            self.assertEqual(labels(tree.root), ["Retail  2 items"])
+            self.assertEqual(child(child(tree.root, "Retail"), "ACCT2").label.plain, "ACCT2  1 item")
+            assert_counts(self, tree, "file")
+
+    async def test_file_and_key_rows_are_aligned_columns(self):
+        app = self.make_app()
+        async with app.run_test(size=LARGE) as pilot:
+            review = await self.open_review(app, pilot, "_retail_")
+            tree = review.query_one("#browse", Tree)
+            wide = child(child(child(tree.root, "Retail"), "ACCT1"), "Account-wide")
+            sizes = {drawn(n).index(n.label.plain.split()[-2]) for n in wide.children}  # the size column
+            self.assertEqual(len(sizes), 1, [drawn(n) for n in wide.children])
+            elv = await self.open_node(review, pilot, child(wide, "ElvUI.lua"))
+            # the scalar row does not open: padded where its siblings' ▶ is, so the value column lines up
+            self.assertEqual([n.label.plain for n in elv.children], ["ElvDB         {1}", "ElvPrivateDB  {1}", "  ElvVersion    = nil"])
+            self.assertEqual({re.search("[{=]", drawn(n)).start() for n in elv.children}, {16})
+            db = await self.open_node(review, pilot, child(elv, "ElvDB"))
+            profiles = await self.open_node(review, pilot, child(db, "profiles"))
+            default = await self.open_node(review, pilot, child(profiles, "Default"))
+            general = await self.open_node(review, pilot, child(default, "general"))
+            self.assertEqual([n.label.plain for n in general.children], ['font        = "Friz Quadrata TT"', "fontSize    = 12",
+                                               "scale       = 0.6000000000000001", "autoRepair  = true"])
+            doc = review.docs[elv.data[1].path]
+            self.assertTrue(review.staging.set_value(doc, child(general, "fontSize").data[2], 14).ok)
+            review._refresh_labels()
+            await settle(app, pilot)
+            # the staged mark is a third column, after the widest value
+            self.assertEqual(child(general, "fontSize").label.plain, "fontSize    = 12                  ✎ 14")
+            self.assertEqual(child(general, "font ").label.plain, 'font        = "Friz Quadrata TT"')
+
+    async def test_rows_fit_the_pane(self):
+        def by_name(node, name: str):
+            """The child whose file or key is `name` (at 80 columns the labels are cut to the pane)."""
+            found = [c for c in node.children if c.data is not None
+                     and (c.data[1].path.name if c.data[0] == "file" else c.data[2].key) == name]
+            assert len(found) == 1, (name, labels(node))
+            return found[0]
+
+        for size in (BASE, TINY):
+            app = self.make_app()
+            async with app.run_test(size=size) as pilot:
+                review = await self.open_review(app, pilot, "_retail_")
+                tree = review.query_one("#browse", Tree)
+                tree.focus()
+                await pilot.press("x")
+                await settle(app, pilot)
+                wide = child(child(child(tree.root, "Retail"), "ACCT1"), "Account-wide")
+                node = await self.open_node(review, pilot, by_name(wide, "ElvUI.lua"))
+                for key in ("ElvDB", "profiles", "Default"):
+                    node = await self.open_node(review, pilot, by_name(node, key))
+                general = await self.open_node(review, pilot, by_name(node, "general"))
+                await self.open_node(review, pilot, by_name(node, "unitframe"))
+                room = tree.size.width - tree.styles.scrollbar_size_vertical
+                for row in walk(tree.root):
+                    if row.data is None:
+                        continue
+                    guides = depth(row) * tree.guide_depth
+                    if guides + 2 >= room:
+                        continue  # the guides and the ▶ already fill the pane
+                    self.assertLessEqual(guides + cell_len(drawn(row)), room, (size, drawn(row)))
+                if size == BASE:  # the value is cut to the pane there
+                    self.assertEqual(general.children[0].label.plain, 'font       = "Friz Quadrata T…')
+                # the bottom line names the highlighted key and its value in full, whatever the row shows
+                select(tree, by_name(general, "font"))
+                await settle(app, pilot)
+                self.assertIn('general › font = "Friz Quadrata TT"', review.summary_text)

@@ -217,6 +217,21 @@ def table_text(count: int | None) -> str:
     return "{…}" if count is None else f"{{{count:,}}}"
 
 
+def value_cell(value: object, raw: bytes | None = None) -> str:
+    """A scalar's value column (feedback round 2 R4): `= "Expressway"`, `= 12`."""
+    return f"= {scalar_text(value, raw)}"
+
+
+def node_cells(node: Node, data: bytes | None) -> tuple[str, str]:
+    """A key row's columns (feedback round 2 R4): its key, then its size (`{N}`) or its value (`= value`). The
+    tree draws them aligned with the sibling rows; node_text is the same row in one piece (the filter, the bottom
+    line)."""
+    if node.is_table:
+        return key_text(node.key), table_text(node.count)
+    scalar = node.value
+    return key_text(node.key), value_cell(scalar.value, data[scalar.start:scalar.end] if data is not None else None)
+
+
 def node_text(node: Node, data: bytes | None) -> str:
     """The tree label of a node: `key = value`, `key {N}`, `… N more` or `can't read: …`."""
     if node.kind == MORE:

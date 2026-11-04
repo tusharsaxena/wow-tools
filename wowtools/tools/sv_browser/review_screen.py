@@ -16,6 +16,7 @@ from collections.abc import Callable, Collection, Hashable, Iterable, Iterator, 
 from pathlib import Path
 from typing import ClassVar
 
+from rich.cells import cell_len
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -36,19 +37,22 @@ from wowtools.tools.sv_browser.edit_actions import SvEditActions
 from wowtools.tools.sv_browser.editor import ApplyError, MultiApplyResult, apply_plan
 from wowtools.tools.sv_browser.events import SV_TOOL
 from wowtools.tools.sv_browser.journal import latest_undoable, read_journal, resolve_journal_dir
-from wowtools.tools.sv_browser.model import ERROR, MORE, Node, SvDocument, key_text, node_text, scalar_text
+from wowtools.tools.sv_browser.model import (ERROR, MORE, Node, SvDocument, key_text, node_cells, node_text,
+                                             scalar_text, value_cell)
 from wowtools.tools.sv_browser.ops import FieldEdit, Plan, Staging, path_text, typed_path
 from wowtools.tools.sv_browser.popups import SearchProgressScreen, SearchScreen
 from wowtools.tools.sv_browser.report import (BROWSE, FILE_COLUMNS, RESULTS, STAGE_TITLES, UNDO_COLUMNS, apply_confirm,
                                               apply_groups, file_rows, recovery_text, summary_rows, undo_confirm,
                                               undo_detail_rows, undo_summary_rows)
 from wowtools.tools.sv_browser.result_screen import TITLE, SvResultScreen
-from wowtools.tools.sv_browser.scanner import FlavorFiles, ScanResult, scan_flavors
+from wowtools.tools.sv_browser.scanner import ScanResult, scan_flavors
 from wowtools.tools.sv_browser.search import Hit, SearchResult, SearchSpec, run_search
 from wowtools.tools.sv_browser.settings import load_settings, resolve_root
 from wowtools.tools.sv_browser.undo import (UndoError, UndoResult, leave, pending_recovery, recover, undo_flavors,
                                             undo_run)
 from wowtools.ui.branding import BottomBar
+from wowtools.ui.columns import Cell, ColumnLayout, column_text, cut_middle, fit_columns, natural_widths
+from wowtools.ui.counts import COUNT_GAP, COUNT_STYLE, count_text
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                  UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
 from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, SvRecoveryActions, TickModel, WowCheck
@@ -77,6 +81,19 @@ TREE_ACTIONS = (
 )
 # The marks of a staged key (D12), after its label: its new name, its new value, or deleted.
 RENAME_MARK, VALUE_MARK, DELETE_MARK = "→", "✎", "✗ deleted"
+# The leaf each view counts (feedback round 2 R2, STD-7.27): Browse a SavedVariables file (the scan lists them; a
+# key is only known once its file is read, D18), Results a hit. A file is a leaf itself: its keys are its contents,
+# and a table's size `{N}` its value column, not a count.
+LEAF_KIND = {BROWSE: "file", RESULTS: "hit"}
+ROW_KINDS = ("file", "node", "hit")  # rows that line up with their siblings (padded where a sibling's ▶ is)
+# The column rows (R4, STD-7.28). A file: name · size (or `can't read`). A key: key · size (`{N}`) or value
+# (`= value`) · its staged marks; a hit the same with its path. The value gives way first, then the marks, then
+# the key (cut in its middle); the size of a file is never cut, only dropped; past the drops the key alone.
+KEY_COLUMNS = ColumnLayout(caps=(48, 62, 48), minimums=(8, 6, 8), shrink=((1,), (2,), (0,)), drop=(1, 2))
+FILE_ROW_COLUMNS = ColumnLayout(caps=(48, None), minimums=(8, 0), shrink=((0,),), drop=(1,))
+TOGGLE_WIDTH = 2  # the tree's ▶ / ▼ in front of a node that opens
+MARK_WIDTH = 2  # the tick mark in front of a Results label
+GROUP_NAME_MINIMUM = 4  # a group's name is cut (in its middle) down to this so its count fits the pane
 
 
 class RunProgressScreen(ProgressScreen):
@@ -206,6 +223,14 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
         self._tree_nodes: dict[Hashable, TreeNode] = {}  # the tree's nodes by ident, for a load that finishes
         self._loading: set[Hashable] = set()  # nodes whose file or table is being read in a worker
         self._generation = 0  # a rescan drops what a load still running would add
+        # The labels' counts and columns (feedback round 2 R2, R4), worked out once per rebuild
+        self._counts: dict[Hashable, int] = {}  # a group's leaves the tree shows, by ident
+        self._depths: dict[int, int] = {}  # by id(data): levels below the root (its guides)
+        self._toggles: set[int] = set()  # rows drawn behind a ▶ / ▼, their own or (padded) two spaces in its place
+        self._padded: set[int] = set()  # rows that don't open beside siblings that do
+        self._siblings: dict[int, list] = {}  # a row's data -> the data of the sibling rows it aligns with
+        self._natural: dict[int, tuple[int, ...]] = {}  # id(sibling list) -> natural widths (until a relabel)
+        self._fitted_width = 0  # the tree's width the labels were fitted to
         self._scanning = False
         self._checking = False
         self._stale = False  # an Apply or Undo changed the files: read them again when the review is shown
@@ -479,7 +504,9 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
         """The label a node is matched on by the filter (in Results: names and the hit, no ticks or counts)."""
         if data[0] == "hit" or data[0] in RESULT_GROUPS:
             return self._result_name(data)
-        return self._body(data).plain
+        if data[0] == "node":
+            return self._key_plain(data)
+        return self._place_name(data)  # a group's or a file's name (never its count: worked out from this filter)
 
     def _model_filter(self) -> ModelFilter:
         return self.model_filter(self._model(), lambda n: n.children, lambda n: (self._filter_text(n.data),),
@@ -509,12 +536,17 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
         cursor = tree.cursor_node
         cursor_id = ident(cursor.data) if cursor is not None and cursor.data is not None else None
         kept = self._model_filter()
+        models = self._model()
+        self._counts = {}
+        self._counts[("root",)] = sum(self._count(m, kept) for m in models if kept.shows(m))
         tree.clear()
         tree.root.data = ("root",)
+        self._depths, self._toggles = {id(tree.root.data): 0}, {id(tree.root.data)}
+        self._padded, self._siblings, self._natural = set(), {}, {}
+        self._fitted_width = tree.size.width
         tree.root.set_label(self._label(tree.root.data))
         self._tree_nodes = {}
-        for flavor in self._model():
-            self._add(tree.root, flavor, kept)
+        self._add_children(tree.root, models, kept)
         self.note_no_match(tree.root)
         if self.view == RESULTS and not self.hits and not self.filtering:
             tree.root.add_leaf(Text(NOTHING_FOUND, style="dim"))
@@ -524,6 +556,15 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
         if target is not None and target.line >= 0:
             tree.move_cursor(target)
         self._update_summary()
+        self.call_after_refresh(self._fit_rows)  # built before the tree was laid out (hidden during the scan)
+
+    def _count(self, model: ModelNode, kept: ModelFilter) -> int:
+        """Post-order: the leaves (LEAF_KIND) the filter keeps below a model node, kept per group (R2)."""
+        if model.data[0] == LEAF_KIND[self.view]:
+            return 1
+        n = sum(self._count(child, kept) for child in model.children if kept.shows(child))
+        self._counts[ident(model.data)] = n
+        return n
 
     def _expandable(self, model: ModelNode) -> bool:
         data = model.data
@@ -536,17 +577,36 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
             return node.is_table and node.count != 0
         return kind != "problem" and bool(model.children)
 
+    def _add_children(self, parent: TreeNode, models: Iterable[ModelNode], kept: ModelFilter) -> None:
+        """Add the models the filter keeps under parent; its file, key and hit rows align with each other (R4):
+        one sibling list for their columns, and a row that doesn't open beside one that does is padded where its
+        ▶ is."""
+        shown = [m for m in models if kept.shows(m)]
+        rows = [m for m in shown if m.data[0] in ROW_KINDS]
+        if rows:
+            siblings = [m.data for m in rows]
+            opens = [self._expandable(m) for m in rows]
+            for model, expandable in zip(rows, opens):
+                self._siblings[id(model.data)] = siblings
+                if any(opens) and not expandable:
+                    self._padded.add(id(model.data))
+        for model in shown:
+            self._add(parent, model, kept)
+
     def _add(self, parent: TreeNode, model: ModelNode, kept: ModelFilter) -> None:
         if not kept.shows(model):
             return
         data, key = model.data, ident(model.data)
-        if self._expandable(model):
+        self._depths[id(data)] = self._depths.get(id(parent.data), 0) + 1
+        expandable = self._expandable(model)
+        if expandable or id(data) in self._padded:
+            self._toggles.add(id(data))
+        if expandable:
             node = parent.add(self._label(data), data=data, allow_expand=True)
         else:
             node = parent.add_leaf(self._label(data), data=data)
         self._tree_nodes[key] = node
-        for child in model.children:
-            self._add(node, child, kept)
+        self._add_children(node, model.children, kept)
         if key in self._loading:
             node.add_leaf(Text(READING, style="dim"))
         opens = kept.opens(model) if kept.active else self._expanded.get(key, data[0] in OPEN_KINDS)
@@ -602,11 +662,21 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
             return
         node.remove_children()
         everything = ModelFilter(TextFilter(), [], lambda n: n.children, lambda n: ())
-        for child in self._children_model(node.data):
-            self._add(node, child, everything)
-        node.set_label(self._label(node.data))  # a file that can't be read is red now
+        self._add_children(node, self._children_model(node.data), everything)
         if not node.children:
             node.allow_expand = False
+            key = id(node.data)
+            self._toggles.discard(key)
+            if node.parent is not None and any(s.allow_expand for s in node.parent.children):
+                self._padded.add(key)  # it lines up with its siblings that open
+                self._toggles.add(key)
+        # a file that can't be read is red now, `can't read` in its size column: its siblings refit to it
+        siblings = self._siblings.get(id(node.data))
+        if siblings is not None:
+            self._natural.pop(id(siblings), None)
+        for row in node.parent.children if node.parent is not None else (node,):
+            if row.data is not None:
+                row.set_label(self._label(row.data))
         self._update_summary()
 
     def action_expand_all(self) -> None:
@@ -621,9 +691,6 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
         self._keep_cursor(tree, cursor)
 
     # --- labels ----------------------------------------------------------------------------------
-    def _files_text(self, files: int) -> tuple[str, str]:
-        return f"  {plural(files, 'file')}", "dim"
-
     def _result_name(self, data) -> str:
         """A Results node's name: the flavor, account, owner or file; a hit's `path = old`."""
         kind = data[0]
@@ -636,81 +703,152 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
             return data[1].path.name
         return data[-2]  # an account's or owner's name
 
-    def _result_body(self, data) -> Text:
-        """A Results node's label: its tick mark, its name, how many hits a group holds; a hit's staged edit with
-        Browse's marks (D39), or struck through under a staged delete."""
-        kind, keys = data[0], self.node_tick_keys_of(data)
-        mark = self.shown_tick_mark(keys) if keys else ("", "")
-        name = self._result_name(data)
-        if kind == "hit":
-            hit = self.hits[data[1]]
-            edit = self.staging.hit_edit(hit)
-            if edit is not None:
-                return Text.assemble(mark, name, *self._marks(edit))
-            return Text.assemble(mark, (name, "dim strike" if self.staging.hit_deleted_above(hit) else ""))
-        count = (f"  {plural(len(data[-1]), 'result')}", "dim")
-        if kind == "r-flavor":
-            return Text.assemble(mark, (name, ACCENT), count)
-        return Text.assemble(mark, (name, "" if kind == "r-file" else "bold"), count)
+    def _key_plain(self, data) -> str:
+        """A key node in one piece, as the filter matches it and the bottom line names it: `key = value`, `key {N}`
+        and its marks, `… N more`, `can't read: …`."""
+        doc, node = self.docs.get(data[1].path), data[2]
+        text = node_text(node, doc.data if doc is not None else None)
+        edit = self.staging.edit_for(doc, node) if doc is not None and node.kind not in (MORE, ERROR) else None
+        return text + "".join(f"  {mark}" for mark, _ in self._marks(edit)) if edit is not None else text
 
-    def _body(self, data) -> Text:
-        """A node's label (ticks only in the Results view)."""
+    def _row(self, data) -> tuple[list[Cell], tuple[str, ...], ColumnLayout] | None:
+        """A column row's cells, their styles and its layout (R4): a file, a key or a hit; None for anything else.
+        A key or hit under a staged delete is dim and struck through."""
         kind = data[0]
-        error = f"bold {theme_colour(self.app, 'error')}"
-        if kind == "root":
-            return Text(self.scope_label)
-        if kind == "hit" or kind in RESULT_GROUPS:
-            return self._result_body(data)
-        if kind == "flavor":
-            flavor: FlavorFiles = data[1]
-            return Text.assemble((flavor.flavor.display_name, ACCENT), self._files_text(len(flavor.files())))
-        if kind == "problem":
-            return Text(f"⚠ {data[2]}", style=error)
-        if kind == "account":
-            return Text.assemble((data[2].name, "bold"), self._files_text(len(data[2].files())))
-        if kind == "realm":
-            return Text(data[3], style="bold")
-        if kind == "owner":
-            owner = data[3]
-            name = owner.label if owner.character is None else owner.character.name
-            return Text.assemble((name, "bold"), self._files_text(len(owner.files)))
         if kind == "file":
             file: SvFile = data[1]
             doc = self.docs.get(file.path)
             if doc is not None and doc.error:
-                return Text.assemble((file.path.name, error), ("  can't read", error))
-            return Text.assemble(file.path.name, (f"  {human_size(file.size)}", "dim"))
-        doc, node = self.docs.get(data[1].path), data[2]
-        text = node_text(node, doc.data if doc is not None else None)
-        if node.kind == ERROR:
-            return Text(text, style=error)
-        if node.kind == MORE:
-            return Text(text, style="dim")
-        edit = self.staging.edit_for(doc, node) if doc is not None else None
-        if edit is None:
-            return Text(text, style="dim strike" if doc is not None and self.staging.deleted_above(doc, node) else "")
-        return Text.assemble(text, *self._marks(edit))
+                error = f"bold {theme_colour(self.app, 'error')}"
+                return [file.path.name, "can't read"], (error, error), FILE_ROW_COLUMNS
+            return [file.path.name, human_size(file.size)], ("", "dim"), FILE_ROW_COLUMNS
+        if kind == "hit":
+            hit = self.hits[data[1]]
+            edit = self.staging.hit_edit(hit)
+            struck = edit is None and self.staging.hit_deleted_above(hit)
+            cells: list[Cell] = [path_text(hit.path), value_cell(hit.old, hit.old_bytes), self._marks_cell(edit)]
+        elif kind == "node" and data[2].kind not in (MORE, ERROR):
+            doc, node = self.docs.get(data[1].path), data[2]
+            edit = self.staging.edit_for(doc, node) if doc is not None else None
+            struck = edit is None and doc is not None and self.staging.deleted_above(doc, node)
+            cells = [*node_cells(node, doc.data if doc is not None else None), self._marks_cell(edit)]
+        else:
+            return None
+        style = "dim strike" if struck else ""
+        return cells, (style, style, ""), KEY_COLUMNS
 
-    def _marks(self, edit: FieldEdit) -> list[tuple[str, str]]:
-        """What is staged on a key, after its label (D12): `→ new name`, `✎ new value`, `✗ deleted`."""
+    def _natural_for(self, data) -> tuple[int, ...]:
+        """The natural column widths of a row's sibling rows (worked out once until the next relabel)."""
+        siblings = self._siblings.get(id(data), [data])
+        natural = self._natural.get(id(siblings))
+        if natural is None:
+            rows = [row[0] for row in map(self._row, siblings) if row is not None]
+            natural = self._natural[id(siblings)] = natural_widths(rows)
+        return natural
+
+    def _room(self, data) -> int | None:
+        """The cells a node's label may take behind its guides, its ▶ / ▼ (or the pad in its place) and, in
+        Results, its tick mark; None before the tree is laid out (no limit)."""
+        tree = self.query_one("#browse", Tree)
+        if tree.size.width <= 0:
+            return None
+        width = tree.size.width - tree.styles.scrollbar_size_vertical  # a scrollbar may come with more rows
+        key = id(data)
+        lead = self._depths.get(key, 0) * tree.guide_depth + (TOGGLE_WIDTH if key in self._toggles else 0)
+        if data[0] == "hit" or data[0] in RESULT_GROUPS:
+            lead += MARK_WIDTH
+        return max(0, width - lead)
+
+    def _row_text(self, data, row: tuple[list[Cell], tuple[str, ...], ColumnLayout]) -> Text:
+        cells, styles, layout = row
+        widths, gap = fit_columns(self._natural_for(data), self._room(data), layout)
+        text = column_text(cells, widths, styles, gap, middle=(0,))
+        text.rstrip()  # a row with no marks beside one with marks leaves no padding behind
+        return text
+
+    def _group(self, data, name: str, style: str) -> Text:
+        """A group's name and its dim count (R2), fitted to the pane."""
+        return _group_text(name, style, self._counts.get(ident(data), 0), self._room(data))
+
+    def _result_body(self, data) -> Text:
+        """A Results node's label: its tick mark, then a group's name and how many hits it shows (R2), or a hit's
+        columns: its path, its old value and its staged edit with Browse's marks (D39), struck through under a
+        staged delete."""
+        kind, keys = data[0], self.node_tick_keys_of(data)
+        mark = self.shown_tick_mark(keys) if keys else ("", "")
+        if kind == "hit":
+            row = self._row(data)
+            assert row is not None
+            return Text.assemble(mark, self._row_text(data, row))
+        style = ACCENT if kind == "r-flavor" else "" if kind == "r-file" else "bold"
+        return Text.assemble(mark, self._group(data, self._result_name(data), style))
+
+    def _body(self, data) -> Text:
+        """A node's label (ticks only in the Results view): a group's name and count, a row's columns."""
+        kind = data[0]
+        error = f"bold {theme_colour(self.app, 'error')}"
+        if kind == "root":
+            return self._group(data, self.scope_label, "")
+        if kind == "hit" or kind in RESULT_GROUPS:
+            return self._result_body(data)
+        if kind == "flavor":
+            return self._group(data, data[1].flavor.display_name, ACCENT)
+        if kind == "problem":
+            return Text(f"⚠ {data[2]}", style=error)
+        if kind in ("account", "realm", "owner"):
+            return self._group(data, self._place_name(data), "bold")
+        row = self._row(data)
+        if row is not None:
+            return self._row_text(data, row)
+        node = data[2]  # a `… N more` or `can't read: …` line
+        return Text(self._key_plain(data), style=error if node.kind == ERROR else "dim")
+
+    def _marks(self, edit: FieldEdit | None) -> list[tuple[str, str]]:
+        """What is staged on a key (D12): `→ new name`, `✎ new value`, `✗ deleted`."""
+        if edit is None:
+            return []
         if edit.delete:
-            return [(f"  {DELETE_MARK}", f"bold {theme_colour(self.app, 'error')}")]
+            return [(DELETE_MARK, f"bold {theme_colour(self.app, 'error')}")]
         style = f"bold {theme_colour(self.app, 'warning')}"
         marks = []
         if edit.rename:
-            marks.append((f"  {RENAME_MARK} {key_text(edit.new_key)}", style))
+            marks.append((f"{RENAME_MARK} {key_text(edit.new_key)}", style))
         if edit.set_value:
-            marks.append((f"  {VALUE_MARK} {scalar_text(edit.value)}", style))
+            marks.append((f"{VALUE_MARK} {scalar_text(edit.value)}", style))
         return marks
+
+    def _marks_cell(self, edit: FieldEdit | None) -> Text:
+        """A row's marks column: its marks two spaces apart."""
+        text = Text()
+        for i, (mark, style) in enumerate(self._marks(edit)):
+            text.append(f"{'  ' if i else ''}{mark}", style)
+        return text
 
     def _label(self, data) -> Text:
         if data is None:
             return Text("")
-        return self._body(data)
+        body = self._body(data)
+        return Text.assemble("  ", body) if id(data) in self._padded else body
+
+    def on_resize(self) -> None:
+        self.call_after_refresh(self._fit_rows)  # once the tree has its new width
+
+    def _fit_rows(self) -> None:
+        """Fit every label to the tree pane's width again when it changed (R4)."""
+        if not self.is_attached or self.scan is None:
+            return
+        tree = self.query_one("#browse", Tree)
+        if tree.size.width == self._fitted_width:
+            return
+        self._fitted_width = tree.size.width
+        for node in self._walk_tree():
+            if node.data is not None:
+                node.set_label(self._label(node.data))
 
     def _refresh_labels(self, node: TreeNode | None = None) -> None:
         """After a tick (node's branch) or a staging change (None: every label, a staged delete strikes keys
         anywhere below it)."""
+        self._natural = {}  # a staged mark widens its row's marks column
         relabel_branch(self.query_one("#browse", Tree), node, self._label)
         self._update_summary()
 
@@ -766,6 +904,8 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
             return key_text(data[2].key)
         if kind == "hit" or kind in RESULT_GROUPS:
             return self._result_name(data)
+        if kind == "node":
+            return self._key_plain(data)
         return self._body(data).plain
 
     def _where(self, node: TreeNode | None) -> str:
@@ -773,7 +913,7 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
         key (`Retail › ACCT1 › Account-wide › ElvUI.lua › ElvDB › font = "Expressway"`)."""
         if node is None or node.data is None or node.data[0] == "root":
             return self.scope_label
-        names = [self._body(node.data).plain if node.data[0] == "node" else self._place_name(node.data)]
+        names = [self._key_plain(node.data) if node.data[0] == "node" else self._place_name(node.data)]
         parent = node.parent
         while parent is not None and parent.data is not None and parent.data[0] != "root":
             names.append(self._place_name(parent.data))
@@ -1132,3 +1272,14 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
 def _under(nodes: list[ModelNode]) -> tuple[int, ...]:
     """The hit indexes under these Results groups (each group's data ends with its own)."""
     return tuple(i for node in nodes for i in node.data[-1])
+
+
+def _group_text(name: str, style: str, n: int, room: int | None) -> Text:
+    """A group's name and its dim count (R2), the name cut in its middle so the count fits the pane; with no room
+    for both, the name alone, cut to the room."""
+    count = f"{COUNT_GAP}{count_text(n)}"
+    if room is not None and cell_len(name) + cell_len(count) > room:
+        if room - cell_len(count) < GROUP_NAME_MINIMUM:
+            return Text(cut_middle(name, max(1, room)), style=style)
+        name = cut_middle(name, room - cell_len(count))
+    return Text.assemble((name, style), (count, COUNT_STYLE))
