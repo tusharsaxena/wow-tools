@@ -572,10 +572,8 @@ class ShotsAppTest(TuiTestCase):
             items = plan.selectable
         elif kind == "flavor":
             items = data[1].selectable
-        elif kind in ("filed", "conflicts", "skipped"):
-            items = {"filed": data[1].filed, "conflicts": data[1].conflicts, "skipped": data[1].skipped}[kind]
-            if kind != "filed":
-                return len(items)  # the filter tests below do not narrow these
+        elif kind == "filed":
+            items = data[1].filed
         else:
             fp = data[1]
             if kind == "day":
@@ -595,7 +593,11 @@ class ShotsAppTest(TuiTestCase):
                 continue
             if kind == "flavor" and not node.allow_expand:
                 continue  # nothing under it: it says why instead (test_tree_lists_every_chosen_flavor)
-            count = plural(self.expected_count(review, node.data), "item")
+            if kind in ("conflicts", "skipped"):  # read-only rows, no filter keys: the rows the tree shows below
+                expected = len(node.children)
+            else:
+                expected = self.expected_count(review, node.data)
+            count = plural(expected, "item")
             plain = str(node.label)
             with self.subTest(node=plain):
                 self.assertIn(f"  {count}", plain)
@@ -633,6 +635,36 @@ class ShotsAppTest(TuiTestCase):
             submit_filter(review, A[:-4])
             await settle(app, pilot)
             self.assertTrue(str(tree.root.label).endswith("  1 item"), str(tree.root.label))
+            self.assert_counts(review)
+
+    async def test_conflict_and_skipped_counts_follow_the_filter(self):
+        self.save_tool_cfg()  # in place
+        target = self.shots / "2019" / "07" / "31"
+        target.mkdir(parents=True)
+        (target / A).write_bytes(b"another size")  # a conflict
+        (self.shots / "2019" / "08" / "01").mkdir(parents=True)
+        (self.shots / "2019" / "08" / "01" / "WoWScrnShot_080119_101010.PNG").write_bytes(b"other size")  # a conflict
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#shots", Tree)
+
+            def group(kind):
+                return next(n for n in _walk(tree.root) if n.data and n.data[0] == kind)
+
+            self.assertTrue(str(group("conflicts").label).startswith("Conflicts  2 items"))
+            self.assertTrue(str(group("skipped").label).startswith("Skipped  2 items"))
+            submit_filter(review, "notes")  # 1 of the 2 skipped rows (notes.txt)
+            await settle(app, pilot)
+            skipped = group("skipped")
+            self.assertEqual(len(skipped.children), 1)
+            self.assertTrue(str(skipped.label).startswith("Skipped  1 item  "), str(skipped.label))
+            self.assert_counts(review)
+            submit_filter(review, "080119")  # 1 of the 2 conflict rows
+            await settle(app, pilot)
+            conflicts = group("conflicts")
+            self.assertEqual(len(conflicts.children), 1)
+            self.assertTrue(str(conflicts.label).startswith("Conflicts  1 item  "), str(conflicts.label))
             self.assert_counts(review)
 
     async def test_conflicts_and_duplicates_are_aligned_columns(self):
