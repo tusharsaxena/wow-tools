@@ -181,10 +181,11 @@ the reference.") above the value.
 
 **Add** puts a CVar into every ticked file, or the highlighted one. Under the name is a list of every CVar the
 knowledge base knows for the file's game version and level that the file (or any of the ticked files) doesn't set
-yet; typing narrows it (the first 200 matches show, then how many more). Press `↓` to move into the list and `Enter`
-to pick one, or click it: its name and its default go into the fields, and the note under them says what it does
-and where the game keeps it. Change the value if you like and press `Enter` or **OK**. A name that isn't in the
-list can still be typed and added; the note then says the knowledge base doesn't know it.
+yet; typing narrows it (the first 200 matches show, then how many more). `Enter` picks the highlighted match (the
+first, or press `↓` to move into the list and choose another), or click one: its name and its default go into the
+fields, and the note under them says what it does and where the game keeps it. Change the value if you like and
+press `Enter` or **OK**. A name that isn't in the list can still be typed and added (`Enter` adds it when nothing
+matches, **OK** always); the note then says the knowledge base doesn't know it.
 
 **Reset** takes
 the line out, since a CVar a file doesn't set takes the game's default; **Remove** does the same for any CVar,

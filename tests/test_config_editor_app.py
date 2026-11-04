@@ -600,6 +600,74 @@ class ConfigEditorAppTest(TuiTestCase):
             self.assertIs(app.screen, review)
             self.assertEqual(review.staged.sets, {bob: {"floatingCombatTextCombatDamage": "0"}})
 
+    async def test_add_enter_in_the_name_picks_the_highlighted_match(self):
+        """FB4 review: a partial name with a match highlighted, Enter picks it (as a dropdown would); a name that is
+        itself a known CVar, Enter is OK."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            add = await self.open_add(app, pilot, review, character_node(tree, "Bob"))
+            await pilot.press(*"zoom")
+            await settle(app, pilot)
+            self.assertEqual(self.listed(add), ["cameraDistanceMaxZoomFactor"])
+            await pilot.press("enter")  # picks it: still open, the value field next
+            await settle(app, pilot)
+            self.assertIs(app.screen, add)
+            self.assertEqual(add.values(), ("cameraDistanceMaxZoomFactor", "1.9"))
+            self.assertIs(add.focused, add.query_one("#cvar-value", Input))
+            await pilot.press("enter")  # Enter in the value: OK
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            bob = character_node(tree, "Bob").data.character.path / CONFIG_CACHE
+            self.assertEqual(review.staged.sets, {bob: {"cameraDistanceMaxZoomFactor": "1.9"}})
+            # the full name of a known CVar typed: Enter is OK, nothing to pick
+            add = await self.open_add(app, pilot, review, character_node(tree, "Bob"))
+            add.query_one("#cvar-value", Input).value = "1"
+            await pilot.press(*"nameplateshowfriends")
+            await settle(app, pilot)
+            self.assertEqual(self.listed(add), ["nameplateShowFriends"])
+            await pilot.press("enter")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(review.staged.sets[bob]["nameplateshowfriends"], "1")
+
+    async def test_add_arrows_leave_the_list_at_its_ends(self):
+        """FB4 review: ↑ on the list's top row goes back to the name, ↓ on its last row on to the value."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            add = await self.open_add(app, pilot, review, character_node(tree, "Bob"))
+            name, options = add.query_one("#cvar-name", Input), add.query_one("#cvar-options", OptionList)
+            value = add.query_one("#cvar-value", Input)
+            await pilot.press("down")
+            await settle(app, pilot)
+            self.assertIs(add.focused, options)
+            self.assertEqual(options.highlighted, 0)
+            await pilot.press("up")
+            await settle(app, pilot)
+            self.assertIs(add.focused, name)
+            await pilot.press("down", "down")  # inside the list ↓ moves the highlight
+            await settle(app, pilot)
+            self.assertIs(add.focused, options)
+            self.assertEqual(options.highlighted, 1)
+            last = options.option_count - 1
+            options.highlighted = last
+            await pilot.press("down")  # the last row: on to the value, no wrap round
+            await settle(app, pilot)
+            self.assertIs(add.focused, value)
+            self.assertEqual(options.highlighted, last)
+            await pilot.press("up")  # back into the list, then up its rows and out to the name
+            await settle(app, pilot)
+            self.assertIs(add.focused, options)
+            await pilot.press(*["up"] * (last + 1))
+            await settle(app, pilot)
+            self.assertIs(add.focused, name)
+            await pilot.press("escape")
+            await settle(app, pilot)
+            self.assertEqual(review.staged.count(), 0)
+
     async def test_add_list_capped_and_unknown_name_still_added(self):
         app = self.make_app()
         many = {f"zzCvar{n:04}": {"default": "0", "help": "", "category": "game", "scope": "character",

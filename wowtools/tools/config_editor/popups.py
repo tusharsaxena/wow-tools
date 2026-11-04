@@ -25,15 +25,39 @@ from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, Na
 __all__ = ["AddCvarScreen", "RecommendScreen"]
 
 
+class EdgeOptionList(OptionList):
+    """An OptionList whose ↑ on its first enabled row and ↓ on its last move the focus (to the field above or
+    below) instead of wrapping round, so the popup's ↑↓ walk passes through the list both ways."""
+
+    def _enabled(self) -> list[int]:
+        return [index for index, option in enumerate(self.options) if not option.disabled]
+
+    def action_cursor_up(self) -> None:
+        enabled = self._enabled()
+        if not enabled or self.highlighted is None or self.highlighted <= enabled[0]:
+            self.screen.focus_previous()
+            return
+        super().action_cursor_up()
+
+    def action_cursor_down(self) -> None:
+        enabled = self._enabled()
+        if not enabled or self.highlighted is not None and self.highlighted >= enabled[-1]:
+            self.screen.focus_next()
+            return
+        super().action_cursor_down()
+
+
 class AddCvarScreen(EnterGuard, ModalScreen[tuple[str, str] | None]):
     """Add a CVar (CE5, CF6): name and value. Under the name, a list of `known` (the CVars the knowledge base knows
     for the files that none of them sets, ops.add_candidates) narrowed by the name as it is typed, at most
-    ops.ADD_LIST_CAP of them and then how many more; picking one (Enter or a click) puts its name in the field and
-    its default in the value (editable), and moves to the value. Any name can still be typed, known or not.
+    ops.ADD_LIST_CAP of them and then how many more; picking one (Enter in the list or a click, or Enter in the name
+    field while a match is highlighted and the name typed is not itself a known one) puts its name in the field and
+    its default in the value (editable), and moves to the value. ↑ on the list's top row goes back to the name, ↓ on
+    its last to the value (EdgeOptionList). Any name can still be typed, known or not.
     `describe(name)` is the note under the fields (what the knowledge base knows of the name, what it does, or that
     it is unknown, and a scope warning; never a refusal); `check(name, value)` a problem that keeps the popup open
-    (an empty name, a space or a quote in it, a line break in the value) or None. OK, or Enter in a field, dismisses
-    with (name, value), Cancel or Esc with None; Enter on a button waits for the EnterGuard, as in the other
+    (an empty name, a space or a quote in it, a line break in the value) or None. OK, Enter in the value, or Enter in
+    the name with no match to pick, dismisses with (name, value), Cancel or Esc with None; Enter on a button waits for the EnterGuard, as in the other
     popups."""
 
     DEFAULT_CSS = popup_css("AddCvarScreen", list_rows=6) + """
@@ -57,14 +81,14 @@ class AddCvarScreen(EnterGuard, ModalScreen[tuple[str, str] | None]):
             yield Static(Text(self.body_text), classes="popup-body")
             yield Input("", placeholder="CVar name: type to narrow the list, or any name", id="cvar-name",
                         compact=True)
-            yield OptionList(id="cvar-options", compact=True)
+            yield EdgeOptionList(id="cvar-options", compact=True)
             yield Input("", placeholder="value", id="cvar-value", compact=True)
             yield Static("", id="cvar-note")
             yield Static("", id="cvar-error", classes="popup-error")
             with ButtonRow(classes="popup-buttons"):
                 yield action_button("OK", "confirm", id="ok")
                 yield action_button("Cancel", "cancel", "escape", id="cancel")
-            yield NavHint("Enter OK · ↓ the list, Enter picks · ↑↓/Tab move · ←→ buttons")
+            yield NavHint("Enter picks the highlighted CVar, then OK · ↑↓/Tab move · ←→ buttons")
 
     def on_mount(self) -> None:
         self.start_guard()
@@ -99,16 +123,36 @@ class AddCvarScreen(EnterGuard, ModalScreen[tuple[str, str] | None]):
         self._note()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Enter in the value field is OK. Enter in the name field picks the highlighted CVar of the list when the
+        name typed is not itself a known one (as a dropdown would), and is OK when it is, or when nothing matches
+        (a name the reference doesn't know)."""
         event.stop()
+        if event.input.id == "cvar-name" and self._pick_highlighted():
+            return
         self._ok()
 
+    def _pick_highlighted(self) -> bool:
+        name = self.values()[0].casefold()
+        if any(known.casefold() == name for known in self._by_name):
+            return False
+        options = self.query_one("#cvar-options", OptionList)
+        if not options.display or options.highlighted is None:
+            return False
+        option = options.get_option_at_index(options.highlighted)
+        if option.disabled or option.id not in self._by_name:
+            return False
+        self._pick(self._by_name[option.id])
+        return True
+
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        """A CVar picked from the list: its name, its default as the value (empty when none is known), then the
-        value field, ready to edit."""
+        """A CVar picked from the list (Enter or a click)."""
         event.stop()
         info = self._by_name.get(event.option.id or "")
-        if info is None:
-            return
+        if info is not None:
+            self._pick(info)
+
+    def _pick(self, info: CvarInfo) -> None:
+        """Its name, its default as the value (empty when none is known), then the value field, ready to edit."""
         self.query_one("#cvar-name", Input).value = info.name
         value = self.query_one("#cvar-value", Input)
         value.value = info.default or ""
