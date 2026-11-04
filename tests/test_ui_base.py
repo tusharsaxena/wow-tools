@@ -654,6 +654,19 @@ class ActionColoursTest(unittest.TestCase):
         backgrounds = [background for background, _ in ACTION_COLOURS.values()]
         self.assertEqual(len(set(backgrounds)), 9)  # nine kinds, nine colours
 
+    def test_cvar_state_and_category_colours(self):
+        """CF3: the Config Editor's state column (amber, dim green, dim grey) and one colour per category group,
+        each readable on the dark background and each group its own."""
+        from wowtools.core.kb import CATEGORY_GROUPS
+        from wowtools.ui.theme import BACKGROUND, CVAR_CATEGORY_COLOURS, CVAR_STATE_COLOURS, KA0S_THEME, contrast
+        self.assertEqual(list(CVAR_STATE_COLOURS), ["changed", "default", "unknown"])
+        self.assertEqual(CVAR_STATE_COLOURS["changed"], KA0S_THEME.warning)
+        self.assertEqual(list(CVAR_CATEGORY_COLOURS), list(CATEGORY_GROUPS))
+        self.assertEqual(len(set(CVAR_CATEGORY_COLOURS.values())), len(CATEGORY_GROUPS))
+        for name, colour in {**CVAR_STATE_COLOURS, **CVAR_CATEGORY_COLOURS}.items():
+            with self.subTest(name=name):
+                self.assertGreaterEqual(contrast(colour, BACKGROUND), 4.5)
+
     def test_button_colours_keep_clear_of_the_wtf_criterion_colours(self):
         """The WTF review shows its criteria in colour next to its Clean (red), Dry run (cyan), Rescan (lime) and
         Undo (violet) buttons: only red is shared (not installed means deleted); the others are other hues."""

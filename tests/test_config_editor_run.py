@@ -190,20 +190,19 @@ class ConfigRunTest(unittest.TestCase):
         self.assertIn("cvar.file_removed", [e["event"] for e in events])
 
     # --- text ---------------------------------------------------------------------------------
-    def test_row_text(self):
+    def test_row_cells(self):
         aella = self.target("MAIN/Realm1/Aellâ")
-        found = {r.name: report.row_text(r) for r in rows(aella, CVARS, show_all_known=True, category=None,
-                                                          changed_only=False, search="")}
-        self.assertEqual(found["cameraDistanceMaxZoomFactor"],
-                         f"cameraDistanceMaxZoomFactor = 2.6 (default 1.9)  {report.CHANGED}")
-        self.assertEqual(found["assistedCombatHighlight"], "assistedCombatHighlight = 1 (default 1)")
-        self.assertEqual(found["myAddonThing"], f"myAddonThing = Dænerys  {report.UNKNOWN}")
-        self.assertEqual(found["nameplateShowFriends"], f"nameplateShowFriends = 1 (default 0)  {report.CHANGED}")
+        found = {r.name: report.row_cells(r) for r in rows(aella, CVARS, show_all_known=True, category=None,
+                                                           changed_only=False, search="")}
+        self.assertEqual(found["cameraDistanceMaxZoomFactor"][1:4], ("2.6", "1.9", report.CHANGED))
+        self.assertEqual(found["assistedCombatHighlight"][1:4], ("1", "1", report.DEFAULT_STATE))
+        self.assertEqual(found["myAddonThing"][1:4], ("Dænerys", "", report.UNKNOWN))
+        self.assertEqual(found["nameplateShowFriends"][1:4], ("1", "0", report.CHANGED))
         self.assertNotIn("gxMaximize", found)  # machine scope: not a character's CVar to show
         bob = self.target("MAIN/Realm1/Bob")
-        found = {r.name: report.row_text(r) for r in rows(bob, CVARS, show_all_known=True, category=None,
-                                                          changed_only=False, search="")}
-        self.assertEqual(found["nameplateShowFriends"], f"nameplateShowFriends  {report.NOT_SET} (default 0)")
+        found = {r.name: report.row_cells(r) for r in rows(bob, CVARS, show_all_known=True, category=None,
+                                                           changed_only=False, search="")}
+        self.assertEqual(found["nameplateShowFriends"][1:4], (report.NOT_SET, "0", report.DEFAULT_STATE))
 
     def test_help_lines(self):
         aella = self.target("MAIN/Realm1/Aellâ")

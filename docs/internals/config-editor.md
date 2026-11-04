@@ -51,6 +51,9 @@ guide's "If a change comes back" asks users to report a revert. `Config.wtf` has
     tree: Config.wtf FileNode, then populate_characters(..., account_extra=Account config FileNode,
         character_extra=the character's file, rows loaded when the node opens)
         tick keys: FileKey(path); rows: ops.rows(target, cvars, filters, staged) → CvarNode leaves
+        a row's label: report.row_cells (name, value, default, state, category) cut to report.fit_columns
+        (the file's widest cells, capped 40/24/24, shrunk to the tree pane's room; refitted on resize),
+        state and category coloured by ui/theme.CVAR_STATE_COLOURS / CVAR_CATEGORY_COLOURS (CF1-CF3)
     edits (edit_actions.py) → ops.stage_set / stage_remove / stage_reset / stage_toggle on ConfigStaged
     Apply / Dry run → runner.run_apply(staged, targets) = changes_by_flavor(build_changes(...))
         → core/client_apply.apply_client_flavors (one run over every flavor: one journal, one Undo)

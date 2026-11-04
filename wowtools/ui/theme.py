@@ -2,7 +2,7 @@
 
 It also holds the action-kind button colours (spec D12): one colour per kind of action, the same in every tool, as
 theme variables `$act-<kind>` (plus `-lighten`, `-darken` and `-text` shades) that `ui/widgets.py` turns into
-button CSS."""
+button CSS; and the colours of a CVar's state and category group (Config Editor feedback spec CF3)."""
 from __future__ import annotations
 
 from textual.color import Color
@@ -43,6 +43,24 @@ ACTION_COLOURS: dict[str, tuple[str, str | None]] = {
     "refresh": ("#A8D94A", None),                   # reads the files again (Rescan): lime
     "navigate": ("#33425A", FOREGROUND),            # moves between screens (Tools, Other flavor, Search): grey
     "cancel": ("#1A2536", KA0S_THEME.secondary),    # backs out or declines (Cancel, No, Quit, Back): dim grey
+}
+# A CVar row's state column (CF3): changed in the theme's amber, default in a dim green, unknown in a dim grey.
+CVAR_STATE_COLOURS: dict[str, str] = {
+    "changed": KA0S_THEME.warning or "",
+    "default": "#5E9E7C",
+    "unknown": "#76869A",
+}
+# One colour per category group (core.kb.CATEGORY_GROUPS, in its order), each readable on the background and apart
+# from the others; "other" a warm stone grey, clear of the unknown state's cool grey.
+CVAR_CATEGORY_COLOURS: dict[str, str] = {
+    "graphics": "#6E9BFF",     # blue
+    "sound": "#C792EA",        # violet
+    "interface": KA0S_THEME.accent or "",  # cyan
+    "camera": "#E58FD0",       # pink
+    "nameplates": "#A6D96A",   # lime
+    "combat text": "#F07178",  # coral
+    "network": "#D7BA7D",      # sand
+    "other": "#A39E93",        # stone grey
 }
 SHADE = 0.15  # how much lighter / darker the top and bottom edges (and the hover background) are
 

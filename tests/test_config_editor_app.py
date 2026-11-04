@@ -18,13 +18,14 @@ from wowtools.core.kb import clear_cache
 from wowtools.tools import TOOLS
 from wowtools.tools.config_editor.model import CONFIG_CACHE, CONFIG_WTF
 from wowtools.tools.config_editor.popups import AddCvarScreen, RecommendScreen
-from wowtools.tools.config_editor.report import CHANGED, UNKNOWN
+from wowtools.tools.config_editor.report import CHANGED, DEFAULT_STATE, NOT_SET, UNKNOWN, row_cells
 from wowtools.tools.config_editor.review_screen import (CvarNode, ConfigResultScreen, ConfigReviewScreen, FileKey,
                                                         FileNode)
 from wowtools.ui.character_tree import CharacterNode
 from wowtools.ui.dialogs import ConfirmScreen, DiscardScreen, TextPromptScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
+from wowtools.ui.theme import CVAR_CATEGORY_COLOURS, CVAR_STATE_COLOURS
 from wowtools.ui.tree_filter import NO_MATCH_TEXT
 
 TOOL = "config-editor"
@@ -85,6 +86,20 @@ async def open_rows(pilot, owner) -> list:
 
 async def cvar_node(pilot, owner, name: str):
     return next(n for n in await open_rows(pilot, owner) if n.data.row.name == name)
+
+
+def cells(label: str) -> list[str]:
+    """A CVar row's columns, read back from its line (two or more spaces, or one, apart: the cells hold no runs of
+    spaces in these tests)."""
+    return label.split()
+
+
+def indent(node) -> int:
+    """The tree guides' width in front of a node's label."""
+    depth, parent = 0, node.parent
+    while parent is not None:
+        depth, parent = depth + 1, parent.parent
+    return depth * node.tree.guide_depth
 
 
 async def goto(pilot, tree: Tree, node) -> None:
@@ -176,13 +191,13 @@ class ConfigEditorAppTest(TuiTestCase):
             aella = character_node(tree, "Aellâ")
             self.assertEqual(aella.data.keys, (FileKey(self.aella()),))
             rows = {n.data.row.name: n.label.plain for n in await open_rows(pilot, aella)}
-            self.assertIn(f"cameraDistanceMaxZoomFactor = 2.6 (default 1.9)  {CHANGED}",
-                          rows["cameraDistanceMaxZoomFactor"])
-            self.assertIn(f"myAddonThing = Dænerys  {UNKNOWN}", rows["myAddonThing"])
-            for node in await open_rows(pilot, aella):  # CE4: each row ends with its category (T23w9)
-                self.assertTrue(node.label.plain.endswith(f"· {node.data.row.category}"), node.label.plain)
+            self.assertEqual(cells(rows["cameraDistanceMaxZoomFactor"])[1:], ["2.6", "1.9", CHANGED, "camera"])
+            self.assertEqual(cells(rows["myAddonThing"]), ["myAddonThing", "Dænerys", UNKNOWN, "other"])
+            for node in await open_rows(pilot, aella):  # CE4, CF1: each row ends with its category column
+                self.assertTrue(node.label.plain.endswith(f" {node.data.row.category}"), node.label.plain)
             machine = file_node(tree, CONFIG_WTF)
-            self.assertIn("gxMaximize = 1 (default 0)", (await cvar_node(pilot, machine, "gxMaximize")).label.plain)
+            self.assertEqual(cells((await cvar_node(pilot, machine, "gxMaximize")).label.plain),
+                             ["gxMaximize", "1", "0", CHANGED, "graphics"])
             await self.press_on(app, pilot, review, await cvar_node(pilot, aella, "cameraDistanceMaxZoomFactor"))
             help_text = str(review.query_one("#cvar-help-text", Static).render())
             self.assertIn("How far the camera can zoom out.", help_text)
@@ -198,6 +213,44 @@ class ConfigEditorAppTest(TuiTestCase):
             self.assertEqual(tree.root.children[0].data[0], "flavor")
             self.assertIn(CONFIG_WTF, tree.root.children[0].children[0].label.plain)
 
+    async def test_rows_are_aligned_coloured_columns(self):
+        """CF1-CF3: a file's rows are five aligned columns (name, value, default, state, category), a 300-character
+        value is cut with … and the state and category still show, the state and category carry their colours, and
+        a row fits the tree pane at 120x30; at 80x24 (the floor) the columns shrink to their minimums."""
+        blob = "v21##" + "7" * 295
+        self.aella().write_bytes(CONFIG_AELLA + f'SET collapsedCurrencyCategoryDefaults "{blob}"\r\n'.encode())
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            await open_rows(pilot, character_node(tree, "Aellâ"))
+            await settle(app, pilot)
+            nodes = [n for n in character_node(tree, "Aellâ").children if isinstance(n.data, CvarNode)]
+            room = tree.size.width - tree.styles.scrollbar_size_vertical
+            starts = set()
+            for node in nodes:
+                label = node.label
+                name, _, _, state, category = row_cells(node.data.row)
+                with self.subTest(name=name):
+                    self.assertTrue(label.plain.endswith(category), label.plain)
+                    starts.add(len(label.plain) - len(category))  # every row's category starts in one column
+                    self.assertIn(state, label.plain)
+                    self.assertLessEqual(indent(node) + label.cell_len, room)
+                    styles = {label.plain[span.start:span.end].strip(): str(span.style) for span in label.spans}
+                    self.assertEqual(styles[state], CVAR_STATE_COLOURS[state])
+                    self.assertEqual(styles[category], CVAR_CATEGORY_COLOURS[category])
+            self.assertEqual(len(starts), 1, starts)
+            blob_row = next(n for n in nodes if n.data.row.name == "collapsedCurrencyCategoryDefaults")
+            long, blob_category = blob_row.label.plain, blob_row.data.row.category
+            self.assertIn("…", long)
+            self.assertNotIn(blob, long)
+            self.assertEqual(cells(long)[-2:], [UNKNOWN, blob_category])  # the state and category still show
+            await pilot.resize_terminal(*TINY)
+            await settle(app, pilot)
+            small = next(n for n in nodes if n.data.row.name == "collapsedCurrencyCategoryDefaults").label.plain
+            self.assertLess(len(small), len(long))  # fitted again to the narrower pane
+            self.assertEqual(cells(small)[-2:], [UNKNOWN, blob_category])
+
     async def test_toggle_and_apply(self):
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
@@ -208,7 +261,7 @@ class ConfigEditorAppTest(TuiTestCase):
             self.assertEqual(review.staged.sets, {self.aella(): {"assistedCombatHighlight": "0"}})
             row = await cvar_node(pilot, character_node(tree, "Aellâ"), "assistedCombatHighlight")
             self.assertIn("✎", row.label.plain)
-            self.assertIn("assistedCombatHighlight = 0", row.label.plain)
+            self.assertEqual(cells(row.label.plain)[2], "0")  # ✎, the name (cut to fit), then the value
             # Space on a CVar that is not 0/1 stages nothing
             await self.press_on(app, pilot, review, await cvar_node(pilot, character_node(tree, "Aellâ"),
                                                              "cameraDistanceMaxZoomFactor"), "space")
@@ -230,7 +283,7 @@ class ConfigEditorAppTest(TuiTestCase):
             await self.press_on(app, pilot, review, row, "R")
             self.assertEqual(review.staged.removes, {self.aella(): {"cameraDistanceMaxZoomFactor"}})
             row = await cvar_node(pilot, character_node(tree, "Aellâ"), "cameraDistanceMaxZoomFactor")
-            self.assertIn("not set (default 1.9)", row.label.plain)
+            self.assertEqual(cells(row.label.plain)[2:], [*NOT_SET.split(), "1.9", DEFAULT_STATE, "camera"])
             await self.apply(app, pilot)
             self.assertNotIn(b"cameraDistanceMaxZoomFactor", self.aella().read_bytes())
             app.screen.dismiss("rescan")

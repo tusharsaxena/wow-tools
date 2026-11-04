@@ -71,10 +71,26 @@ log (`logs\config-editor`) records every file it wrote. **Undo last change** sti
 The tree lists the [three levels](#the-three-levels) of every game version you picked: **Config.wtf**, then
 each account's **Account config** and its characters by realm.
 
-Open a file to see its CVars, one per line: `name = value (default …)`, then its category (`· camera`). `✱changed` means
-the value differs from the game's default; `not set` means the file has no line for it, so the game uses its default;
-`unknown` means the editor knows nothing about that CVar (see [Unknown CVars](#unknown-cvars)). A changed CVar is marked
-`✎` until **Apply**, and a file with changes shows `✎` and how many. A character with no file yet says `no file`:
+Open a file to see its CVars, one per line in five columns:
+
+```
+cameraDistanceMaxZoomFactor     2.6      1.9  changed  camera
+floatingCombatTextCombatDamage  not set  1    default  combat text
+myAddonThing                    Dænerys       unknown  other
+```
+
+- **The CVar's name**, then **its value** in this file: `not set` means the file has no line for it, so the game
+  uses its default.
+- **The default**: the game's own value, blank when it isn't known.
+- **The state**, in colour: `changed` (amber) means the value differs from the default, `default` (green) that it
+  matches it or isn't set, `unknown` (grey) that there is no default to compare with: the editor knows nothing about
+  that CVar (see [Unknown CVars](#unknown-cvars)) or its list gives no default.
+- **The category** (graphics, sound, interface and so on), each in its own colour.
+
+The columns line up within each file. A long value (some CVars hold a whole list) is cut with `…` so the state and
+category stay in view: the help panel and **Set** show it whole. In a narrow window the value, the default and then
+the name are cut further. A changed CVar is marked `✎` until **Apply**, and a file with changes shows `✎` and how
+many. A character with no file yet says `no file`:
 setting a CVar there creates it. Folders that aren't characters, such as `Bob - Copy`, are not listed. A file that can't
 be read shows **read-only**: it is never ticked or written, and the **warnings view** lists it.
 

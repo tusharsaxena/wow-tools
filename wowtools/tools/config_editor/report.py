@@ -1,5 +1,5 @@
-"""Text for the Config Editor's browse screen, popups and result screen (config tools spec CE3-CE8): a file's and a
-CVar row's line in the tree (`name = value (default …) ✱changed`), the help panel's details of a CVar (CE4), the
+"""Text for the Config Editor's browse screen, popups and result screen (config tools spec CE3-CE8): a file's line
+and a CVar row's columns in the tree (name, value, default, state, category: feedback spec CF1, CF2), the help panel's details of a CVar (CE4), the
 Apply / Dry run confirm (counts, one group per file in its detail tree, the scope warnings of CE5 as listed entries)
 and the result rows, one per file. The progress stage titles, the Undo confirm, the unfinished-run text and the undo
 rows are the shared pipeline's (core/sv_report.py), re-exported here. UI-free."""
@@ -18,15 +18,26 @@ from wowtools.core.text import Listed, plural
 from wowtools.tools.config_editor.model import CONFIG_WTF, ConfigTarget, Row
 from wowtools.tools.config_editor.ops import ConfigStaged, build_changes, is_boolean
 
-__all__ = ["ACCOUNT_CONFIG", "CHANGED", "FILE_COLUMNS", "NOT_SET", "RESULT_TEXT", "STAGE_TITLES", "STATUS_COLOURS",
-           "UNDO_COLUMNS", "UNKNOWN", "apply_confirm", "apply_groups", "file_label", "file_rows", "help_lines",
-           "path_label", "recovery_text", "row_text", "scope_listed", "scope_text", "summary_rows", "target_text", "undo_confirm",
+__all__ = ["ACCOUNT_CONFIG", "CHANGED", "COLUMN_CAPS", "COLUMN_MINIMUMS", "DEFAULT_STATE", "FILE_COLUMNS", "NOT_SET",
+           "RESULT_TEXT", "STAGE_TITLES", "STATES", "STATUS_COLOURS", "UNDO_COLUMNS", "UNKNOWN", "apply_confirm",
+           "apply_groups", "file_label", "file_rows", "fit_columns", "help_lines", "path_label", "recovery_text",
+           "row_cells", "row_state", "scope_listed", "scope_text", "summary_rows", "target_text", "undo_confirm",
            "undo_detail_rows", "undo_summary_rows"]
 
 ACCOUNT_CONFIG = "Account config"
 NOT_SET = "not set"
-UNKNOWN = "unknown"  # CE5: a CVar the knowledge base has no entry for (still editable)
-CHANGED = "✱changed"  # CE4: set to something other than the KB default
+# The state column (CF1, U1): the value differs from the known default, matches it (or is not set, so the game uses
+# it), or there is no default to compare with (a CVar the knowledge base has no entry for, CE5, or no default for).
+CHANGED = "changed"
+DEFAULT_STATE = "default"
+UNKNOWN = "unknown"
+STATES = (CHANGED, DEFAULT_STATE, UNKNOWN)
+# The name, value and default columns (CF2): as wide as the file's widest cell up to the cap; when the tree pane is
+# narrower the value and the default give way first, then the name, down to the minimum (the state and category
+# columns are never cut). "not set" fits the value's minimum.
+COLUMN_CAPS = (40, 24, 24)
+COLUMN_MINIMUMS = (12, 7, 6)
+WIDE_GAP, NARROW_GAP = 2, 1  # spaces between two columns: two when everything fits so, else one
 FILE_COLUMNS = ("Flavor", "File", "Result")
 LEVEL_FILES: dict[str, str] = {
     "machine": "this computer's Config.wtf",
@@ -39,17 +50,46 @@ def _shown(value: str) -> str:
     return value if value else '""'
 
 
-def row_text(row: Row) -> str:
-    """A CVar's line in the tree: `name = value (default d) ✱changed`, `name  not set (default d)`, and `unknown`
-    for a CVar the knowledge base has no entry for (CE4, CE5)."""
-    text = row.name + (f" = {_shown(row.value)}" if row.value is not None else f"  {NOT_SET}")
-    if row.info is None:
-        text += f"  {UNKNOWN}"
-    elif row.default is not None:
-        text += f" (default {_shown(row.default)})"
+def row_state(row: Row) -> str:
+    """The state column (CF1): `changed`, `default` (also for a CVar not set: the game uses its default) or
+    `unknown` (the knowledge base has no entry or no default for it)."""
     if row.changed:
-        text += f"  {CHANGED}"
-    return text
+        return CHANGED
+    if row.info is None or row.default is None:
+        return UNKNOWN
+    return DEFAULT_STATE
+
+
+def row_cells(row: Row) -> tuple[str, str, str, str, str]:
+    """A CVar row's five cells, uncut (CF1): name, value (`not set` when the file has no line for it), default
+    (empty when not known), state and category."""
+    value = NOT_SET if row.value is None else _shown(row.value)
+    default = "" if row.default is None else _shown(row.default)
+    return row.name, value, default, row_state(row), row.category
+
+
+def fit_columns(natural: Sequence[int], room: int | None) -> tuple[tuple[int, ...], int]:
+    """The five column widths and the gap between them (CF2): each column's widest cell (`natural`), the name,
+    value and default capped at COLUMN_CAPS; when `room` (the cells the row may take, None: no limit) is too narrow
+    the value and the default shrink first (the wider of the two each time), then the name, never under
+    COLUMN_MINIMUMS. A row that still doesn't fit (an 80-column window) keeps the minimums."""
+    widths = [min(width, cap) for width, cap in zip(natural[:3], COLUMN_CAPS)] + list(natural[3:])
+
+    def total(gap: int) -> int:
+        return sum(widths) + gap * (len(widths) - 1)
+
+    if room is None or total(WIDE_GAP) <= room:
+        return tuple(widths), WIDE_GAP
+    excess = total(NARROW_GAP) - room
+    for columns in ((1, 2), (0,)):
+        while excess > 0:
+            shrinkable = [i for i in columns if widths[i] > COLUMN_MINIMUMS[i]]
+            if not shrinkable:
+                break
+            widest = max(shrinkable, key=lambda i: widths[i] - COLUMN_MINIMUMS[i])
+            widths[widest] -= 1
+            excess -= 1
+    return tuple(widths), NARROW_GAP
 
 
 def file_label(target: ConfigTarget) -> str:
@@ -105,7 +145,7 @@ def help_lines(target: ConfigTarget, row: Row | None, *, recommendation: Recomme
     if info is not None:
         head += f"; default {_shown(row.default)}" if row.default is not None else "; default not known"
         if row.changed:
-            head += f" ({CHANGED.removeprefix('✱')} from the default)"
+            head += f" ({CHANGED} from the default)"
     lines = [head]
     if info is None:
         lines.append(f"Unknown CVar: the knowledge base has no entry for it in {target.flavor.display_name}. You can "

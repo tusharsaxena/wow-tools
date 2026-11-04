@@ -13,8 +13,9 @@ rewrites these files when you log out or exit, and Apply and Undo refuse while i
 
 1. **Pick a game version**, or **All flavors**.
 2. The tree shows **Config.wtf** (this computer), each account's **Account config** and each character. Open one to
-   see its CVars: `name = value (default …)`, `✱changed` when it differs from the default, `unknown` when the
-   knowledge base has no entry for it (you can still change it).
+   see its CVars in columns: name, value, default, state and category. The state is `changed` when the value
+   differs from the default, `default` when it matches (or isn't set), `unknown` when there is no default to compare
+   with (you can still change it). A long value is cut with `…`: the help panel shows it whole.
 3. Highlight a CVar: the **help panel** (under the tree, or beside it in a wide window) says what it does, its
    default, where the game keeps it, whether it syncs it and any recommendation.
 4. Change what you like: nothing is written yet. Changed CVars are marked ✎.

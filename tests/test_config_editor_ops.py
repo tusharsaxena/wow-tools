@@ -15,6 +15,8 @@ from wowtools.core.kb import CvarInfo
 from wowtools.tools.config_editor.model import CATEGORIES, CONFIG_CACHE, ConfigTarget, category_of
 from wowtools.tools.config_editor.ops import (ConfigStaged, build_changes, rows, stage_remove, stage_reset,
                                               stage_set, stage_toggle)
+from wowtools.tools.config_editor.report import (CHANGED, COLUMN_CAPS, COLUMN_MINIMUMS, DEFAULT_STATE, NOT_SET,
+                                                 STATES, UNKNOWN, fit_columns, row_cells, row_state)
 from wowtools.tools.config_editor.scanner import scan_targets
 
 
@@ -276,6 +278,58 @@ class ConfigEditorOpsTest(unittest.TestCase):
             stage_set(staged, aella, "bad name", "1")
         with self.assertRaises(ValueError):
             stage_set(staged, aella, "fine", "two\nlines")
+
+
+    # CF1, CF2 (feedback round 1): a CVar row is five columns, name, value, default, state and category; the state is
+    # `changed`, `default` or `unknown`; the name, value and default columns are capped and shrink to fit.
+    def test_state_column(self):
+        self.assertEqual(STATES, (CHANGED, DEFAULT_STATE, UNKNOWN))
+        self.assertEqual(STATES, ("changed", "default", "unknown"))  # U1: the column's names only
+        aella = self.target("MAIN/Realm1/Aellâ")
+        staged = ConfigStaged()
+        stage_set(staged, aella, "lastSelectedClubId", "7")
+        cases = {"cameraDistanceMaxZoomFactor": CHANGED,  # 2.6, default 1.9
+                 "assistedCombatHighlight": DEFAULT_STATE,  # 1, default 1
+                 "floatingCombatTextCombatDamage": DEFAULT_STATE,  # not set: the game uses its default
+                 "myAddonThing": UNKNOWN,  # no KB entry
+                 "lastSelectedClubId": UNKNOWN}  # set, but the KB has no default
+        for name, state in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(row_state(self.row(aella, name, staged)), state)
+
+    def test_row_cells(self):
+        aella = self.target("MAIN/Realm1/Aellâ")
+        self.assertEqual(row_cells(self.row(aella, "cameraDistanceMaxZoomFactor")),
+                         ("cameraDistanceMaxZoomFactor", "2.6", "1.9", CHANGED, "camera"))
+        self.assertEqual(row_cells(self.row(aella, "floatingCombatTextCombatDamage")),
+                         ("floatingCombatTextCombatDamage", NOT_SET, "1", DEFAULT_STATE, "combat text"))
+        self.assertEqual(row_cells(self.row(aella, "myAddonThing")), ("myAddonThing", "Dænerys", "", UNKNOWN, "other"))
+        staged = ConfigStaged()
+        stage_set(staged, aella, "assistedCombatHighlight", "")
+        self.assertEqual(row_cells(self.row(aella, "assistedCombatHighlight", staged))[1], '""')
+
+    def test_columns_capped_without_a_width(self):
+        self.assertEqual(COLUMN_CAPS, (40, 24, 24))  # CF2: the name 40, the value and the default 24
+        widths, gap = fit_columns((300, 300, 300, 7, 11), None)
+        self.assertEqual((widths, gap), ((40, 24, 24, 7, 11), 2))
+        self.assertEqual(fit_columns((10, 3, 3, 7, 6), None), ((10, 3, 3, 7, 6), 2))
+
+    def test_columns_shrink_to_fit(self):
+        natural = (27, 300, 3, 7, 10)
+        widths, gap = fit_columns(natural, 200)  # room for all: capped only, two spaces apart
+        self.assertEqual((widths, gap), ((27, 24, 3, 7, 10), 2))
+        widths, gap = fit_columns(natural, 60)  # the value gives way first, one space apart
+        self.assertEqual(gap, 1)
+        self.assertEqual(sum(widths) + 4 * gap, 60)
+        self.assertEqual(widths[0], 27)
+        self.assertEqual(widths[2:], (3, 7, 10))
+        widths, gap = fit_columns(natural, 46)  # then the name
+        self.assertEqual(sum(widths) + 4 * gap, 46)
+        self.assertEqual(widths[1], COLUMN_MINIMUMS[1])
+        self.assertLess(widths[0], 27)
+        self.assertGreaterEqual(widths[0], COLUMN_MINIMUMS[0])
+        widths, _ = fit_columns(natural, 10)  # no room: every column at its minimum, the state and category whole
+        self.assertEqual(widths, (COLUMN_MINIMUMS[0], COLUMN_MINIMUMS[1], 3, 7, 10))
 
 
 if __name__ == "__main__":
