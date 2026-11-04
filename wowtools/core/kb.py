@@ -25,6 +25,15 @@ CATEGORY_GROUPS = ("graphics", "sound", "interface", "camera", "nameplates", "co
 # The client's console category (the dump's lowercased Enum.ConsoleCategory name) -> group. Any other word (debug,
 # console, combat, gm, reveal, none, a bare number) is "other". The name rules in category_group come first.
 CONSOLE_CATEGORY_GROUPS = {"graphics": "graphics", "sound": "sound", "net": "network", "game": "interface"}
+# The client files many graphics and sound CVars under no real category ("default", "none"): for those only, a name
+# prefix places them (T20f, read off the 12.1.5 and Classic dumps). A leading "raid" (the raid-quality copy of a
+# graphics setting, `RAIDfarclip`, `raidGraphicsSSAO`) is dropped first.
+_UNCATEGORISED = frozenset({"", "default", "none"})
+_GRAPHICS_PREFIXES = (
+    "graphics", "gx", "shadow", "ssao", "sunshafts", "volumefog", "farclip", "horizon", "terrainlod", "wmolod",
+    "lodobject", "groundeffect", "particle", "projectedtextures", "reflectionmode", "refraction", "rippledetail",
+    "waterdetail", "weatherdensity", "spellclutter", "entityshadow", "outlineengine", "renderscale", "resample",
+    "vsync", "brightness", "contrast", "gamma", "maxlightcount", "lowlatencymode")
 RETAIL_LIMITS = (120, 30)
 SCOPES = ("machine", "account", "character")
 
@@ -96,7 +105,13 @@ def category_group(name: str, raw: str) -> str:
         return "camera"
     if "floatingcombattext" in low or low.startswith("combattext"):
         return "combat text"
-    return CONSOLE_CATEGORY_GROUPS.get(str(raw).lower(), "other")
+    raw_low = str(raw).lower()
+    if raw_low in _UNCATEGORISED:
+        if low.startswith("sound_"):
+            return "sound"
+        if low.removeprefix("raid").startswith(_GRAPHICS_PREFIXES):
+            return "graphics"
+    return CONSOLE_CATEGORY_GROUPS.get(raw_low, "other")
 
 
 def _cvar_info(name: str, entry: dict, source: str) -> CvarInfo:

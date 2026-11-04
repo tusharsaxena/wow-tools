@@ -7,13 +7,19 @@ For each flavor folder of the WoW install given by `--wow`, it reads the newest
 `<out>/slash_commands/<flavor>.json`. A flavor without a dump (or with one it can't read) is skipped with a message
 and its older files are left as they are. Only the client's defaults, help and flags are kept, never the values the
 dumping character had set. `--wiki` layers the reviewed plain-English notes from `scripts/kb_dump/wiki_notes.json`
-(written in our own words, each with its warcraft.wiki.gg URL) onto the CVars the dump has. Nothing here uses the
-network. Run it again after a client patch; see scripts/kb_dump/README.md.
+(written in our own words, each with its warcraft.wiki.gg URL) onto the CVars the dump has.
+
+A dump from the current addon (`dumpVersion` 2) also gives the slash list without any addon's commands, with the
+emotes, and the client's macro limits, which go into `<out>/macro_limits.json`. A dump from the first addon version
+writes only the CVars. `--provisional FLAVOR=FROM` writes a flavor that has no dump as a copy of another flavor's
+files, marked `provisional`, until its own dump exists. Nothing here uses the network. Run it again after a client
+patch; see scripts/kb_dump/README.md.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -27,6 +33,9 @@ DUMP_NAME = "KaosKbDump.lua"
 DUMP_VARIABLE = "KaosKbDumpDB"
 DEFAULT_OUT = ROOT / "wowtools" / "kb"
 DEFAULT_WIKI_NOTES = ROOT / "scripts" / "kb_dump" / "wiki_notes.json"
+DUMP_VERSION = 2          # the addon version that marks addon commands and records emotes and macro limits
+MACRO_LIMITS = "macro_limits.json"
+_FLAVOR = re.compile(r"^_[A-Za-z0-9_]+_$")
 
 
 class DumpError(ValueError):
@@ -82,6 +91,11 @@ def _text(value: object) -> str:
 
 
 def cvar_entry(info: dict) -> dict:
+    if info.get("default") is None:
+        # GetCVarInfo gave nothing for it (no default, no flags): where it is kept is unknown, not "machine".
+        return {"default": None, "help": _text(info.get("help")), "category": _text(info.get("category")).lower(),
+                "scope": None, "synced": False, "locked": info.get("locked") is True,
+                "readonly": info.get("readonly") is True}
     scope = scope_of(info)
     return {
         "default": _text(info.get("default")),
@@ -106,14 +120,66 @@ def build_cvars(flavor: str, dump: dict, notes: dict[str, dict] | None = None) -
     return {"flavor": flavor, "build": build, "source": f"client dump {flavor} {build}", "cvars": cvars}
 
 
+def is_current(dump: dict) -> bool:
+    version = dump.get("dumpVersion")
+    return isinstance(version, int) and not isinstance(version, bool) and version >= DUMP_VERSION
+
+
 def build_slash(flavor: str, dump: dict) -> dict:
+    """The client's slash commands and emotes; the commands an addon registered (`addonCommands`) are left out."""
     build = dump["build"]
     commands: dict[str, str] = {}
     raw = dump.get("commands") if isinstance(dump.get("commands"), dict) else {}
+    addon = dump.get("addonCommands") if isinstance(dump.get("addonCommands"), dict) else {}
     for slash, key in sorted(raw.items(), key=lambda item: (str(item[0]).lower(), str(item[1]))):
-        if isinstance(slash, str) and isinstance(key, str) and slash.startswith("/"):
+        if isinstance(slash, str) and isinstance(key, str) and slash.startswith("/") and addon.get(key) is not True:
             commands.setdefault(slash.lower(), key)
     return {"flavor": flavor, "build": build, "source": f"client dump {flavor} {build}", "commands": commands}
+
+
+def macro_limits_entry(dump: dict) -> dict | None:
+    """`{account, character, build, source}` from the dump's `macroLimits`, None without two positive integers."""
+    raw = dump.get("macroLimits") if isinstance(dump.get("macroLimits"), dict) else {}
+    account, character = raw.get("account"), raw.get("character")
+    if isinstance(account, float) and account.is_integer():
+        account = int(account)
+    if isinstance(character, float) and character.is_integer():
+        character = int(character)
+    if not all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in (account, character)):
+        return None
+    return {"account": account, "character": character, "build": dump["build"],
+            "source": f"client dump {dump['flavor_folder']} {dump['build']}"}
+
+
+def provisional_copy(data: dict, flavor: str, origin: str) -> dict:
+    """A flavor's file as a copy of another flavor's, marked: its source still names the dump it comes from."""
+    return {**data, "flavor": flavor, "provisional": provisional_note(flavor, origin)}
+
+
+def provisional_note(flavor: str, origin: str) -> str:
+    return f"copied from {origin} until a {flavor} dump exists"
+
+
+def parse_provisional(values: list[str]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for value in values:
+        flavor, sep, origin = value.partition("=")
+        if not sep or not _FLAVOR.match(flavor) or not _FLAVOR.match(origin) or flavor == origin:
+            raise DumpError(f"--provisional {value!r}: use FLAVOR=FROM, two flavor folders such as _forever_=_retail_")
+        out[flavor] = origin
+    return out
+
+
+def read_limits(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"flavors": {}}
+    except (OSError, ValueError) as exc:
+        raise DumpError(f"{path}: {exc}") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("flavors"), dict):
+        raise DumpError(f"{path}: no \"flavors\" object")
+    return data
 
 
 def load_wiki_notes(path: Path) -> dict[str, dict]:
@@ -158,9 +224,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="the knowledge-base folder (wowtools/kb)")
     parser.add_argument("--wiki", action="store_true", help="layer the reviewed wiki notes onto the CVars")
     parser.add_argument("--wiki-notes", type=Path, default=DEFAULT_WIKI_NOTES, help="the wiki notes file")
+    parser.add_argument("--provisional", action="append", default=[], metavar="FLAVOR=FROM",
+                        help="write a flavor without a dump as a marked copy of another flavor's files")
     args = parser.parse_args(argv)
     try:
         notes = load_wiki_notes(args.wiki_notes) if args.wiki else None
+        provisional = parse_provisional(args.provisional)
+        limits = read_limits(args.out / MACRO_LIMITS)
     except DumpError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -169,6 +239,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: no flavor folders (_retail_ ...) in {args.wow}", file=sys.stderr)
         return 1
     written = 0
+    built: dict[str, tuple[dict, dict | None]] = {}
+    limits_changed = False
     for flavor in flavors:
         path = find_dump(flavor.path)
         if path is None:
@@ -177,21 +249,54 @@ def main(argv: list[str] | None = None) -> int:
             continue
         try:
             dump = read_dump(path)
+            dump["flavor_folder"] = flavor.folder
+            current = is_current(dump)
             cvars = build_cvars(flavor.folder, dump, notes)
-            slash = build_slash(flavor.folder, dump)
-            cvars_bytes, slash_bytes = render_json(cvars), render_json(slash)
+            slash = build_slash(flavor.folder, dump) if current else None
+            cvars_bytes = render_json(cvars)
+            slash_bytes = render_json(slash) if slash is not None else None
         except DumpError as exc:
             print(f"{flavor.folder}: skipped, {path} could not be read: {exc}")
             continue
         write_bytes(args.out / "cvars" / f"{flavor.folder}.json", cvars_bytes)
-        write_bytes(args.out / "slash_commands" / f"{flavor.folder}.json", slash_bytes)
-        noted = sum("wiki" in entry for entry in cvars["cvars"].values())
+        if slash_bytes is not None:
+            write_bytes(args.out / "slash_commands" / f"{flavor.folder}.json", slash_bytes)
+        entry = macro_limits_entry(dump) if current else None
+        if entry is not None:
+            limits["flavors"][flavor.folder] = entry
+            limits_changed = True
+        built[flavor.folder] = (cvars, slash)
+        noted = sum("wiki" in item for item in cvars["cvars"].values())
         print(f"{flavor.folder}: build {dump['build']} from {path}: {len(cvars['cvars'])} CVars "
-              f"({noted} with wiki notes), {len(slash['commands'])} slash commands")
+              f"({noted} with wiki notes), "
+              + (f"{len(slash['commands'])} slash commands" if slash is not None else
+                 "slash commands not written (a dump from the first addon version: /kbdump again with the "
+                 "current addon)")
+              + (f", macro limits {entry['account']}/{entry['character']}" if entry is not None else ""))
         written += 1
     if not written:
         print(f"error: no flavor had a readable {DUMP_NAME}; nothing written", file=sys.stderr)
         return 1
+    for flavor_folder, origin in sorted(provisional.items()):
+        if flavor_folder in built:
+            print(f"{flavor_folder}: has its own dump, no provisional copy")
+            continue
+        if origin not in built:
+            print(f"{flavor_folder}: no provisional copy, {origin} had no readable dump in this run")
+            continue
+        cvars, slash = built[origin]
+        write_bytes(args.out / "cvars" / f"{flavor_folder}.json",
+                    render_json(provisional_copy(cvars, flavor_folder, origin)))
+        if slash is not None:
+            write_bytes(args.out / "slash_commands" / f"{flavor_folder}.json",
+                        render_json(provisional_copy(slash, flavor_folder, origin)))
+        origin_limits = limits["flavors"].get(origin)
+        if isinstance(origin_limits, dict):
+            limits["flavors"][flavor_folder] = {**origin_limits, "provisional": provisional_note(flavor_folder, origin)}
+            limits_changed = True
+        print(f"{flavor_folder}: provisional copy of {origin}")
+    if limits_changed:
+        write_bytes(args.out / MACRO_LIMITS, render_json(limits))
     return 0
 
 

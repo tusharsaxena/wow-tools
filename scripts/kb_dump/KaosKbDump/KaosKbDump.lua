@@ -1,6 +1,7 @@
 -- KaosKbDump: a developer-only addon for wow-tools (see scripts/kb_dump/README.md). It never ships with the app.
 -- /kbdump records every CVar the client knows (help text, console category, default, current value, where it is
--- stored and its lock flags) and every slash command, into the KaosKbDumpDB SavedVariables. The game writes that
+-- stored and its lock flags), every slash command and emote (marking the ones an addon registered) and the macro
+-- limits, into the KaosKbDumpDB SavedVariables. The game writes that
 -- file at logout or /reload; scripts/refresh_kb.py turns it into wowtools/kb/. No libraries, no events: nothing
 -- runs until /kbdump is typed.
 
@@ -53,9 +54,12 @@ local function dumpCVars()
 end
 
 -- "/cast" -> "CAST", from the SLASH_<KEY><n> globals, then any hash_SlashCmdList entry they missed (its key found
--- by its handler in SlashCmdList). When two keys claim one slash, the alphabetically first wins, so reruns agree.
+-- by its handler in SlashCmdList), then the emotes ("/dance" -> "EMOTE35", from EMOTE<n>_CMD<m>). When two keys
+-- claim one slash, the alphabetically first wins, so reruns agree. A key whose SlashCmdList entry or SLASH_ global
+-- an addon set (issecurevariable says tainted) goes into addonCommands, so the refresh can leave it out.
 local function dumpCommands()
-    local commands, count = {}, 0
+    local commands, addon, count = {}, {}, 0
+    local secure = issecurevariable or function() return true end
     local function add(slash, key)
         if type(slash) ~= "string" or slash:sub(1, 1) ~= "/" or key == SELF_KEY then
             return
@@ -71,8 +75,14 @@ local function dumpCommands()
     for name, slash in pairs(_G) do
         if type(name) == "string" and type(slash) == "string" then
             local key = name:match("^SLASH_(.-)%d+$")
+            local emote = name:match("^(EMOTE%d+)_CMD%d+$")
             if key and key ~= "" then
                 add(slash, key)
+                if not secure(name) or not secure(SlashCmdList, key) then
+                    addon[key] = true
+                end
+            elseif emote then
+                add(slash, emote)
             end
         end
     end
@@ -83,9 +93,22 @@ local function dumpCommands()
     for slash, handler in pairs(hash_SlashCmdList or {}) do
         if type(slash) == "string" and commands[slash:lower()] == nil and keyOf[handler] then
             add(slash, keyOf[handler])
+            if not secure(SlashCmdList, keyOf[handler]) then
+                addon[keyOf[handler]] = true
+            end
         end
     end
-    return commands, count
+    return commands, addon, count
+end
+
+-- Account macros and macros per character, from the client's MacroConstants (or the older globals).
+local function macroLimits()
+    local constants = Constants and Constants.MacroConstants or {}
+    local account = constants.MAX_ACCOUNT_MACROS or MAX_ACCOUNT_MACROS
+    local character = constants.MAX_CHARACTER_MACROS or MAX_CHARACTER_MACROS
+    if type(account) == "number" and type(character) == "number" then
+        return { account = account, character = character }
+    end
 end
 
 local function run()
@@ -95,14 +118,17 @@ local function run()
         print("KaosKbDump: this client has no C_Console.GetAllCommands; nothing recorded.")
         return
     end
-    local commands, commandCount = dumpCommands()
+    local commands, addonCommands, commandCount = dumpCommands()
     KaosKbDumpDB = {
+        dumpVersion = 2,
         build = version .. " " .. build,
         flavor = WOW_PROJECT_ID,
         locale = GetLocale and GetLocale() or nil,
         when = date("%Y-%m-%d %H:%M:%S"),
         cvars = cvars,
         commands = commands,
+        addonCommands = addonCommands,
+        macroLimits = macroLimits(),
     }
     print(string.format("KaosKbDump: recorded %d CVars and %d slash commands for build %s %s. "
         .. "Log out (or /reload) so the game writes the file.", cvarCount, commandCount, version, build))

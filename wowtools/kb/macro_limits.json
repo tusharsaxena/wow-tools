@@ -1,6 +1,13 @@
 {
- "comment": "Macro slots per flavor (spec ME3): account macros and macros per character. A flavor not listed here uses Retail's values (core.kb.limits_known says False) and the Macro Editor marks its slots unconfirmed.",
+ "comment": "Macro slots per flavor (spec ME3): account macros and macros per character. A flavor not listed here uses Retail's values (core.kb.limits_known says False) and the Macro Editor marks its slots unconfirmed. scripts/refresh_kb.py writes a flavor's entry from its client dump (source \"client dump <flavor> <build>\"); an entry marked provisional is a copy of another flavor's until its own dump exists.",
  "flavors": {
+  "_forever_": {
+   "account": 120,
+   "build": "12.1.5 70688",
+   "character": 30,
+   "provisional": "copied from _retail_ until a _forever_ dump exists",
+   "source": "https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_APIDocumentationGenerated/MacroConstantsDocumentation.lua"
+  },
   "_retail_": {
    "account": 120,
    "build": "12.1.5 70688",

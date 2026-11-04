@@ -78,6 +78,16 @@ class StateListTest(KbTestCase):
         self.assertFalse(kb.is_state_cvar("showTutorials"))
         self.assertFalse(kb.is_state_cvar("SHOWTUTORIALS"))
 
+    def test_patterns_checked_against_every_dumped_flavor(self):
+        """CC5, T20e: each pattern's matches in the shipped dumps were read; the preferences it caught are exceptions
+        (the tutorials toggles), everything else it matches is state."""
+        for name in ("showTutorials", "showNPETutorials", "housingTutorialsEnabled"):
+            self.assertFalse(kb.is_state_cvar(name), name)
+        for name in ("flaggedTutorials", "closedInfoFramesAccountWide", "friendInvitesCollapsed", "lastTalkedToGM",
+                     "lastRenownForMajorFaction2590", "highestUnlockedDelvesTier", "newPvpSeason",
+                     "cameraSavedPetBattleDistance"):
+            self.assertTrue(kb.is_state_cvar(name), name)
+
     def test_exceptions_win_over_patterns(self):
         write_json(self.root / "cvar_state.json", {"source": "test", "names": ["keepMe"], "patterns": ["last*"],
                                                    "exceptions": ["lastPreference"]})
@@ -173,7 +183,13 @@ class CvarsTest(KbTestCase):
                  ("enableFloatingCombatText", "game"): "combat text", ("graphicsQuality", "graphics"): "graphics",
                  ("Sound_MasterVolume", "sound"): "sound", ("disableServerNagle", "net"): "network",
                  ("autoLootDefault", "game"): "interface", ("scriptErrors", "debug"): "other",
-                 ("assistAttack", "combat"): "other", ("x", ""): "other", ("y", "17"): "other"}
+                 ("assistAttack", "combat"): "other", ("x", ""): "other", ("y", "17"): "other",
+                 # T20f: the client files many graphics and sound CVars under no real category ("default").
+                 ("graphicsQuality", "default"): "graphics", ("RAIDfarclip", "default"): "graphics",
+                 ("raidGraphicsSSAO", "default"): "graphics", ("gxMaximize", "default"): "graphics",
+                 ("shadowMode", "default"): "graphics", ("vsync", "none"): "graphics",
+                 ("Sound_MasterVolume", "default"): "sound", ("readEULA", "default"): "other",
+                 ("raidFramesDisplayClassColor", "game"): "interface", ("shadowMode", "game"): "interface"}
         for (name, raw), group in cases.items():
             self.assertEqual(kb.category_group(name, raw), group, (name, raw))
             self.assertIn(group, kb.CATEGORY_GROUPS)
@@ -181,12 +197,81 @@ class CvarsTest(KbTestCase):
                                               "combat text", "network", "other"))
 
 
+class ShippedCvarsTest(KbTestCase):
+    """The CVar base built from the client dumps (X7, T20)."""
+
+    def shipped(self, flavor: str) -> dict:
+        return json.loads((kb.KB_ROOT / "cvars" / f"{flavor}.json").read_text(encoding="utf-8"))
+
+    def test_retail_base_covers_the_client_list(self):
+        data = self.shipped("_retail_")
+        self.assertTrue(data["source"].startswith("client dump _retail_ "), data["source"])
+        self.assertEqual(data["source"], f"client dump _retail_ {data['build']}")
+        cvars = data["cvars"]
+        self.assertGreater(len(cvars), 1000)
+        known = 0
+        for name, entry in cvars.items():
+            with self.subTest(cvar=name):
+                self.assertIn("default", entry)
+                self.assertIn(entry["scope"], ("machine", "account", "character", None))
+                # Default and scope come from one GetCVarInfo call: both known, or both unknown (T20a).
+                self.assertEqual(entry["default"] is None, entry["scope"] is None)
+                self.assertNotIn("value", entry, "the dumping character's own values never ship")
+                if entry["default"] is not None:
+                    self.assertIsInstance(entry["default"], str)
+                    self.assertEqual(entry["synced"], entry["scope"] != "machine")
+                    known += 1
+                if "wiki" in entry:
+                    self.assertTrue(entry["wiki"]["text"].strip())
+                    self.assertTrue(entry["wiki"]["source"].startswith("https://warcraft.wiki.gg/wiki/"))
+        self.assertGreater(known / len(cvars), 0.85)
+        loaded = kb.load_cvars("_retail_")
+        self.assertEqual(set(loaded), set(cvars))
+        for info in loaded.values():
+            self.assertEqual(info.source, data["source"])
+            self.assertEqual(bool(info.description), bool(info.description_source))
+        # The notes reach the CVars the recommendations and the issue's groups touch.
+        for name in ("cameraDistanceMaxZoomFactor", "cameraSmoothStyle", "nameplateMotion", "synchronizeConfig"):
+            self.assertTrue(loaded[name].description, name)
+
+    def test_every_dumped_flavor_ships(self):
+        for flavor in ("_retail_", "_classic_", "_classic_era_", "_anniversary_"):
+            with self.subTest(flavor=flavor):
+                data = self.shipped(flavor)
+                self.assertEqual(data["flavor"], flavor)
+                self.assertNotIn("provisional", data)
+                self.assertEqual(data["source"], f"client dump {flavor} {data['build']}")
+
+    def test_forever_is_a_marked_copy_of_retail(self):
+        """U1: Forever has no dump yet; it ships Retail's CVars, marked provisional, until its own dump exists."""
+        retail, forever = self.shipped("_retail_"), self.shipped("_forever_")
+        self.assertEqual(forever["provisional"], "copied from _retail_ until a _forever_ dump exists")
+        self.assertEqual(forever["flavor"], "_forever_")
+        self.assertEqual(forever["source"], retail["source"])
+        self.assertEqual(forever["cvars"], retail["cvars"])
+        self.assertEqual(set(kb.load_cvars("_forever_")), set(retail["cvars"]))
+
+    def test_wiki_notes_file_is_sourced(self):
+        from wowtools.core.bootstrap import REPO_ROOT
+        notes = json.loads((REPO_ROOT / "scripts" / "kb_dump" / "wiki_notes.json").read_text(encoding="utf-8"))
+        self.assertGreaterEqual(len(notes["cvars"]), 20)
+        retail = self.shipped("_retail_")["cvars"]
+        for name, note in notes["cvars"].items():
+            with self.subTest(cvar=name):
+                self.assertEqual(set(note), {"text", "source"})
+                self.assertTrue(note["source"].startswith("https://warcraft.wiki.gg/wiki/"), note["source"])
+                self.assertTrue(note["text"].strip().endswith("."), note["text"])
+                if name in retail:
+                    self.assertEqual(retail[name].get("wiki"), note)
+
+
 class MacroLimitsTest(KbTestCase):
     def test_macro_limits_retail(self):
         self.assertEqual(kb.macro_limits("_retail_"), (120, 30))
         self.assertTrue(kb.limits_known("_retail_"))
         data = json.loads((kb.KB_ROOT / "macro_limits.json").read_text(encoding="utf-8"))
-        self.assertTrue(data["flavors"]["_retail_"]["source"].startswith("https://"))
+        source = data["flavors"]["_retail_"]["source"]
+        self.assertTrue(source.startswith(("https://", "client dump _retail_ ")), source)
 
     def test_unknown_flavor_gets_retail_values_flagged(self):
         self.assertEqual(kb.macro_limits("_no_such_flavor_"), (120, 30))

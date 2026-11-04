@@ -13,10 +13,15 @@ it never ships with the app, and the app never runs it.
 - `cvars`: every console command of type CVar (`C_Console.GetAllCommands()`), each with its help text and console
   category, and from `C_CVar.GetCVarInfo()` its default, current value, whether the server stores it per account
   or per character, and its locked, secure and read-only flags.
-- `commands`: every slash command (`/cast` = `CAST`), from the `SLASH_*` globals and `hash_SlashCmdList`.
+- `commands`: every slash command (`/cast` = `CAST`), from the `SLASH_*` globals and `hash_SlashCmdList`, and every
+  emote (`/dance` = `EMOTE35`, from the `EMOTE<n>_CMD<m>` globals).
+- `addonCommands`: the keys of the commands an addon registered (`issecurevariable` says the entry is tainted).
+- `macroLimits`: how many account macros and macros per character the client allows (`MacroConstants`).
+- `dumpVersion`: 2. A dump without it comes from the first version of the addon, which recorded no emotes, did not
+  tell addon commands apart and had no macro limits: `refresh_kb.py` then writes only the CVars.
 
-`refresh_kb.py` keeps the defaults, help and flags. It drops the current values: those are your own settings, not
-the client's.
+`refresh_kb.py` keeps the defaults, help and flags, leaves the addon commands out and writes the macro limits into
+`macro_limits.json`. It drops the current values: those are your own settings, not the client's.
 
 ## Run it (once per flavor, again after a patch)
 
@@ -40,6 +45,15 @@ python3 scripts/refresh_kb.py --wow "/path/to/World of Warcraft" --wiki   # plus
 For each flavor it uses the newest `KaosKbDump.lua` of any account. A flavor with no dump is skipped with a message
 and keeps its older files, so the tools show its CVars as unknown until a dump arrives. `--out DIR` writes somewhere
 other than `wowtools/kb/`. The script never uses the network.
+
+A flavor you can't dump yet can stand in with another flavor's data:
+
+```sh
+python3 scripts/refresh_kb.py --wow "/path/to/World of Warcraft" --wiki --provisional _forever_=_retail_
+```
+
+writes `_forever_`'s files as a copy of `_retail_`'s from this run, marked `"provisional": "copied from _retail_ until a
+_forever_ dump exists"`. Once `_forever_` has its own dump, the same command writes the real files instead.
 
 `--wiki` adds plain-English notes from `scripts/kb_dump/wiki_notes.json` for CVars whose Blizzard help is empty or
 cryptic:

@@ -29,7 +29,7 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 | T17 | M4 | macro docs; push | done | (this commit) | 1 new test in test_docs.py (`test_macro_editor_guide_readme_and_notes`: guide V4/V5 sections before the steps, slots, action bars and the delete warning, cross-flavor warning (report.CROSS_FLAVOR), every KB template title and automatic optimizer rule title, spell names not checked, builder, safety net, backups layout, interrupted Apply, WoW running, every browse and edit-screen key; README Dry run / Undo / journals / Screenshots / FAQ rows; CLAUDE.md, CHANGELOG, architecture, internals (new Knowledge base section), releasing); test_config_copier_guide_readme_and_notes' README needle follows the moved Dry run sentence (STD-9.6). Guide gains How WoW keeps your macros, Macros and action bars, Slots, Keys on the edit screen, The conditional builder, Templates, The optimizer, Spell names are not checked, Across game versions, What the tool never touches, The safety net (Where your backups go, If an Apply was interrupted), WoW running, more FAQ and troubleshooting rows, and `edit.png` (T17c). Gate green: WSL 2258 OK (9 skipped), Windows 2258 OK (85 skipped), ruff clean, events.md current. Push (M4) left to the orchestrator. Review fix (fix: T17 review fixes): slots of a flavor without sourced limits are marked `unconfirmed` (ME3, T17r); Classic limits carried to T20; assertions added to 3 existing tests (app tree labels, slots_text, MacroSet.limit_known) and the guide needle; gate green: WSL 2258 OK (9 skipped), Windows 2258 OK (85 skipped), ruff clean, events.md current |
 | T18 | M5 | config model and edits | done | (this commit) | 10 new tests in test_config_editor_ops.py (the plan's nine plus test_scan_unreadable_file_is_read_only_and_logged); tests/fixtures.py gains build_config_tree; events cvar.scanned, cvar.file_unreadable and client_events("cvar") registered, docs/events.md regenerated; gate green: WSL 2268 OK (9 skipped), Windows 2268 OK (85 skipped), ruff clean, events.md current |
 | T19 | M5 | recommendations data | done | (this commit) | 5 new tests in test_kb.py (the plan's test_recommendations_all_sourced_and_known_cvars plus one per CVar and flavor, the schema, unsourced or odd entries dropped, missing or bad file) and recommendations.json in KbShipsTest's README check; 37 recommendations over 36 CVars; gate green: 2273 tests WSL and Windows (0 failures), ruff clean, events.md matches |
-| T20 | M5 | CVar base from dumps + wiki notes | todo | | needs the user's dumps (T4). Also CC5's state-list check (T8d, T8g): list every `cvar_state.json` pattern's matches in each flavor's dump, move any preference into `exceptions`, record the result here. Also (T17r) add a sourced `macro_limits.json` entry for every flavor from its client's `MacroConstants` (ME3), which drops that flavor's `unconfirmed` mark |
+| T20 | M5 | CVar base from dumps + wiki notes | waiting-user | (this commit) | CVars shipped for _retail_ 12.1.5, _classic_ 5.5.4, _anniversary_ 2.5.6, _classic_era_ 1.15.9 (1834/1595/1584/1578 CVars, 26-28 wiki notes each) and _forever_ as a marked copy of Retail (U1); 28 sourced wiki notes; CC5 state check done (T20e); category rules for uncategorised CVars (T20f). 10 new tests (5 test_refresh_kb: old dump, CVar without client info, macro limits from the dump, provisional copy, bad --provisional; 5 test_kb: test_retail_base_covers_the_client_list, every dumped flavor ships, Forever copy, wiki notes sourced, patterns checked against the dumps) plus new category cases. Gate green: WSL 2310 OK (9 skipped), Windows 2310 OK (85 skipped), ruff clean, events.md current. Waiting on the user: the addon now marks addon commands, records emotes and macro limits (dumpVersion 2); the four dumps predate it, so no slash_commands/*.json and no dump-sourced macro limits ship yet (T20b, T20c): /kbdump again per flavor, then rerun refresh_kb.py (user_action) |
 | T21 | M5 | config editor screens, apply, undo | done | (this commit) | 26 new tests: 13 in test_config_editor_run.py (runs across levels and flavors then Undo, created file, dry run, WoW running, changed since the scan, LF file, recovery, row text, help lines, confirm groups and scope entries, result rows, applicable recommendations), 13 TUI in test_config_editor_app.py (the plan's six plus registry, Set on ticked files, filters, leaving asks, WoW running, the help panel beside the tree at 160 columns, 80x24); the editor added to every meta-test table (look and feel incl. DESTRUCTIVE_REVIEWS, help, quit incl. STAGING_TOOLS, tool menu, toasts, warnings) and to test_structure (journals/undo, recovery, action mixins, banner, 10 tree screens); shared `TickActions.space_on_node` hook (T21a) and the compact tool menu (T21k); first guide, internals doc, README/CLAUDE.md/architecture/releasing rows, RELEASE_SHIPS, STD-7.10 list, CHANGELOG line, browse.png (T21j); events.md regenerated. Gate: ruff clean, events.md current, Windows 2299 OK (85 skipped); WSL 2299 OK except the two test_release_contents git-archive checks, which read HEAD and so fail until the new guide is committed (as T11, T15); re-run green after the commit; review fixes (T21r1, T21r2): Reset checks each ticked file's own flavor for a default, +1 TUI test; gate green (WSL and Windows 2300 OK) |
 | T22 | M5 | config editor docs; push | todo | | |
 | T23 | M6 | whole-branch review, gate, CI, ready to merge | todo | | |
@@ -577,3 +577,43 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
   cvars/_forever_.json and slash_commands/_forever_.json as a copy of Retail's, each with a top-level
   "provisional": "copied from _retail_ until a _forever_ dump exists" marker (and macro_limits likewise), and the
   user will supply the real _forever_ dump later; rerunning scripts/refresh_kb.py then replaces the copy.
+- T20a: a CVar the client lists but whose `GetCVarInfo` gave nothing (161 on Retail: `enableCombatText`,
+  `readEULA`, `removeChatDelay` ...) is written with `default` and `scope` null and `synced` false, not `""` and
+  `machine` (the addon's `flag(nil)` made them look machine-scoped); `core/kb.py` already reads null as unknown. So
+  test_retail_base_covers_the_client_list checks that every CVar has a `default` and a `scope` key, that both are known
+  or both unknown, and that over 85% are known (91% on Retail).
+- T20b: the four dumps carry the dumping client's addon commands (ACECONSOLE_*, DBM, ElvUI, TomTom ...) and no emotes
+  (`/dance` comes from `EMOTE<n>_CMD<m>`, not `SLASH_*`), so the Macro Editor would have flagged every emote as missing
+  and shipped one player's addon list. The addon (dumpVersion 2) now records emotes and puts every key whose
+  SlashCmdList entry or SLASH_ global is tainted (`issecurevariable`) in `addonCommands`; refresh_kb.py drops those and
+  writes `slash_commands/<flavor>.json` only from a dumpVersion 2 dump (an older list is kept, the run says why). No
+  slash list ships until the user dumps again; until then the Macro Editor flags no command as missing (as before).
+  The Lua was smoke-run under lua5.1 with stubbed APIs (scratchpad only).
+- T20c: macro limits (T17r) come from the client too: the addon records `Constants.MacroConstants` (or the
+  `MAX_ACCOUNT_MACROS` / `MAX_CHARACTER_MACROS` globals the Classic clients define in C) as `macroLimits`, and
+  refresh_kb.py writes the flavor's `macro_limits.json` entry with source `client dump <flavor> <build>`, keeping the
+  other entries and the comment. The Classic flavors stay `unconfirmed` until the new dumps arrive.
+- T20d: U1's Forever copy is `refresh_kb.py --provisional _forever_=_retail_`: for a flavor without a dump in the run it
+  writes the origin's files with `flavor` set, the source unchanged (it still names the Retail dump) and
+  `"provisional": "copied from _retail_ until a _forever_ dump exists"`, and copies the origin's `macro_limits.json`
+  entry with the same note (so Forever's slots read as known, 120/30). A flavor with its own dump is never replaced by
+  a copy. The tools don't read `provisional` (no UI change); the KB README and the dump README describe it.
+- T20e: CC5's per-pattern check against the four dumps: `*Tutorial*` caught two more preferences, `showNPETutorials`
+  ("display NPE tutorials") and `housingTutorialsEnabled`, now in `exceptions` beside `showTutorials`. Every other
+  match is state: `*Collapsed` (7, UI panels), `cameraSaved*` (4), `closed*` (4), `garrison*` (2), `highestUnlocked*`
+  (2), `last*` (41: renown, transmog set IDs, EULA/TOS, GM chat, character select), `latest*` (2), `new*Season` (3);
+  `saved*Config*` and `savedClassConfig*` match nothing in these clients and stay (the spec appendix names them).
+- T20f: the dumps file 453 Retail CVars under the console category `Default` (and a few under `None`), among them the
+  whole graphics menu (`graphicsQuality`, `RAIDfarclip`, `shadowMode`, `gxMaximize`) and the `Sound_*` volumes, which
+  T8c's table put in `other`. For an uncategorised CVar only, `category_group` now places `sound_*` in sound and a
+  list of graphics name prefixes (after dropping a leading `raid`) in graphics; a CVar with a real category keeps it.
+- T20g: wiki notes: 28 CVars with no (or a one-word) Blizzard help that have their own warcraft.wiki.gg page (found via
+  the MediaWiki API; `curl` on the page URLs gets 403) and are not marked removed there: camera (the zoom factor,
+  follow style and its speed, terrain tilt, water collision ...), graphics (render scale, sharpening, SSAO, view and
+  shadow settings ...), `nameplateMotion`, `Sound_AmbienceVolume`, `synchronizeConfig` / `synchronizeBindings` (V2),
+  `maxFPS`, two interface toggles. The recommendations' `cameraIndirect*` and `ResampleAlwaysSharpen` have no wiki page,
+  so they get no note (no unsourced text). Notes avoid the wiki's stated defaults (the client's own default is shown
+  beside them).
+- T20h: the dumps were read from the user's install read-only, only the four `KaosKbDump.lua` files, copied to a
+  scratch tree that refresh_kb.py was pointed at; no test reads them. No CHANGELOG line: the Config Editor's unreleased
+  `### Added` line covers the data.

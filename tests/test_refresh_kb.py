@@ -55,8 +55,36 @@ RETAIL_DUMP = (
     '["/cast"] = "CAST",\r\n'
     '["/CASTSEQUENCE"] = "CASTSEQUENCE",\r\n'
     '["/use"] = "USE",\r\n'
+    '["/dance"] = "EMOTE35",\r\n'
+    '["/dbm"] = "DEADLYBOSSMODS",\r\n'
     '},\r\n'
+    '["addonCommands"] = {\r\n'
+    '["DEADLYBOSSMODS"] = true,\r\n'
+    '},\r\n'
+    '["macroLimits"] = {\r\n'
+    '["account"] = 120,\r\n'
+    '["character"] = 18,\r\n'
+    '},\r\n'
+    '["dumpVersion"] = 2,\r\n'
     '}\r\n'
+)
+
+# A dump written by the first version of the addon (T4): no dumpVersion, so no addonCommands, emotes or macroLimits.
+OLD_DUMP = (RETAIL_DUMP.replace('["dumpVersion"] = 2,\r\n', "")
+            .replace('["/dance"] = "EMOTE35",\r\n', "")
+            .replace('["addonCommands"] = {\r\n["DEADLYBOSSMODS"] = true,\r\n},\r\n', "")
+            .replace('["macroLimits"] = {\r\n["account"] = 120,\r\n["character"] = 18,\r\n},\r\n', ""))
+
+NO_INFO_CVAR = (
+    '["enableCombatText"] = {\r\n'
+    '["help"] = "",\r\n'
+    '["category"] = "Default",\r\n'
+    '["account"] = false,\r\n'
+    '["character"] = false,\r\n'
+    '["locked"] = false,\r\n'
+    '["secure"] = false,\r\n'
+    '["readonly"] = false,\r\n'
+    '},\r\n'
 )
 
 
@@ -127,7 +155,82 @@ class RefreshKbTest(unittest.TestCase):
         self.assertEqual(data["flavor"], "_retail_")
         self.assertEqual(data["build"], "12.0.5 61234")
         self.assertEqual(data["source"], "client dump _retail_ 12.0.5 61234")
-        self.assertEqual(data["commands"], {"/cast": "CAST", "/castsequence": "CASTSEQUENCE", "/use": "USE"})
+        # The emote is kept (a macro may use it); the addon's own command is left out (T20b).
+        self.assertEqual(data["commands"], {"/cast": "CAST", "/castsequence": "CASTSEQUENCE", "/use": "USE",
+                                            "/dance": "EMOTE35"})
+
+    def test_old_dump_writes_cvars_but_no_slash_commands(self):
+        """T20b: a dump from the first addon version can't tell an addon's command from the client's and has no
+        emotes, so its slash list is not written (an older list is kept) and the run says why."""
+        self.write_dump("_retail_", OLD_DUMP)
+        self.out.joinpath("slash_commands").mkdir(parents=True)
+        kept = self.out / "slash_commands" / "_retail_.json"
+        kept.write_text('{"flavor": "_retail_"}\n', encoding="utf-8")
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+        self.assertTrue((self.out / "cvars" / "_retail_.json").is_file())
+        self.assertEqual(kept.read_text(encoding="utf-8"), '{"flavor": "_retail_"}\n')
+        self.assertIn("slash commands not written", output)
+        self.assertFalse((self.out / "macro_limits.json").exists())
+
+    def test_cvar_without_client_info_reads_unknown(self):
+        """T20a: GetCVarInfo gave nothing for some CVars (no default, no flags): default and scope are unknown
+        (null), never "" and "machine"."""
+        self.write_dump("_retail_", RETAIL_DUMP.replace('["gxWindow"] = {', NO_INFO_CVAR + '["gxWindow"] = {'))
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+        entry = self.read_json("cvars", "_retail_.json")["cvars"]["enableCombatText"]
+        self.assertIsNone(entry["default"])
+        self.assertIsNone(entry["scope"])
+        self.assertFalse(entry["synced"])
+
+    def test_macro_limits_from_the_dump(self):
+        """T20c: the client's own macro limits go into macro_limits.json with the dump as source; other flavors'
+        entries and the comment stay."""
+        self.out.mkdir(parents=True)
+        (self.out / "macro_limits.json").write_text(json.dumps({"comment": "c", "flavors": {
+            "_retail_": {"account": 120, "character": 30, "build": "b", "source": "https://x.example/r"}}}),
+            encoding="utf-8")
+        self.write_dump("_classic_")
+        code, output = self.run_main()
+        self.assertEqual(code, 0, output)
+        data = self.read_json("macro_limits.json")
+        self.assertEqual(data["comment"], "c")
+        self.assertEqual(data["flavors"]["_retail_"]["source"], "https://x.example/r")
+        self.assertEqual(data["flavors"]["_classic_"], {"account": 120, "character": 18, "build": "12.0.5 61234",
+                                                        "source": "client dump _classic_ 12.0.5 61234"})
+
+    def test_provisional_copy_for_a_flavor_without_a_dump(self):
+        """U1, T20d: --provisional _forever_=_retail_ writes Forever's files as a marked copy of Retail's; a flavor
+        with its own dump is never overwritten by a copy."""
+        self.write_dump("_retail_")
+        (self.wow / "_forever_").mkdir(parents=True)
+        code, output = self.run_main("--provisional", "_forever_=_retail_")
+        self.assertEqual(code, 0, output)
+        marker = "copied from _retail_ until a _forever_ dump exists"
+        for folder in ("cvars", "slash_commands"):
+            retail, forever = self.read_json(folder, "_retail_.json"), self.read_json(folder, "_forever_.json")
+            self.assertEqual(forever["provisional"], marker)
+            self.assertEqual(forever["flavor"], "_forever_")
+            self.assertEqual(forever["source"], retail["source"], "the copy keeps naming the dump it comes from")
+            body = "cvars" if folder == "cvars" else "commands"
+            self.assertEqual(forever[body], retail[body])
+        limits = self.read_json("macro_limits.json")["flavors"]
+        self.assertEqual(limits["_forever_"]["provisional"], marker)
+        self.assertEqual((limits["_forever_"]["account"], limits["_forever_"]["character"]), (120, 18))
+        self.write_dump("_forever_", RETAIL_DUMP.replace("12.0.5 61234", "1.60.1 70000"))
+        code, output = self.run_main("--provisional", "_forever_=_retail_")
+        self.assertEqual(code, 0, output)
+        self.assertNotIn("provisional", self.read_json("cvars", "_forever_.json"))
+        self.assertEqual(self.read_json("cvars", "_forever_.json")["build"], "1.60.1 70000")
+
+    def test_bad_provisional_argument_is_refused(self):
+        self.write_dump("_retail_")
+        for value in ("_forever_", "_forever_=_forever_", "../x=_retail_", "_forever_=retail"):
+            with self.subTest(value=value):
+                code, output = self.run_main("--provisional", value)
+                self.assertEqual(code, 1, output)
+        self.assertFalse(self.out.exists())
 
     def test_missing_dump_flavor_skipped_with_message(self):
         self.write_dump("_retail_")
@@ -234,7 +337,8 @@ class DumpAddonTest(unittest.TestCase):
         self.assertIn("## SavedVariables: KaosKbDumpDB", toc)
         self.assertIn("KaosKbDump.lua", toc)
         self.assertNotIn("LibStub", lua)
-        for api in ("C_Console.GetAllCommands", "C_CVar.GetCVarInfo", "SLASH_", "/kbdump", "GetBuildInfo"):
+        for api in ("C_Console.GetAllCommands", "C_CVar.GetCVarInfo", "SLASH_", "/kbdump", "GetBuildInfo",
+                    "issecurevariable", "EMOTE", "MAX_ACCOUNT_MACROS", "MAX_CHARACTER_MACROS", "dumpVersion = 2"):
             self.assertIn(api, lua)
         self.assertTrue((REPO_ROOT / "scripts" / "kb_dump" / "README.md").is_file())
 

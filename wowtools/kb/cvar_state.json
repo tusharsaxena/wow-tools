@@ -1,6 +1,8 @@
 {
  "comment": "CVars that record a character's state (progress, history, IDs, UI bookkeeping): the Config Copier keeps the target's own (spec CC5). Matched case-insensitively; patterns are fnmatch; an exception is never state.",
  "exceptions": [
+  "housingTutorialsEnabled",
+  "showNPETutorials",
   "showTutorials"
  ],
  "names": [

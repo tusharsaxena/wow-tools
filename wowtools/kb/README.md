@@ -18,13 +18,15 @@ without a source is not shipped.
 | `cvars/<flavor>.json` | Every CVar of one flavor (`_retail_`, `_classic_` ...) | `scripts/refresh_kb.py` from the dump addon |
 | `slash_commands/<flavor>.json` | The flavor's slash commands (`/cast` -> `CAST`) | `scripts/refresh_kb.py` from the dump addon |
 | `cvar_state.json` | The CVars that are a character's state, not a preference | by hand |
-| `macro_limits.json` | Macro slots per flavor | by hand, from the client's UI source |
+| `macro_limits.json` | Macro slots per flavor | by hand from the client's UI source, or `scripts/refresh_kb.py` from the dump addon |
 | `macro_reference.json` | Macro commands, conditionals and `@unit` targets, with help and plain-English phrases | by hand, from the wiki |
 | `macro_templates.json` | The Macro Editor's templates | by hand |
 | `optimizer_rules.json` | The Macro Editor's optimizer rules and why each is the same in game | by hand |
 | `recommendations.json` | The Config Editor's recommended CVar values, with the reason and the source of each | by hand, from the wiki |
 
-A flavor without a `cvars/<flavor>.json` has no CVar data yet: the tools treat each of its CVars as unknown.
+A flavor without a `cvars/<flavor>.json` has no CVar data yet: the tools treat each of its CVars as unknown. A file
+with a top-level `provisional` note (`"copied from _retail_ until a _forever_ dump exists"`) is another flavor's data
+standing in until that flavor's own dump exists; its `source` still names the dump it was copied from.
 
 ### `cvars/<flavor>.json`
 
@@ -36,13 +38,15 @@ A flavor without a `cvars/<flavor>.json` has no CVar data yet: the tools treat e
 ```
 
 `scope` is where the client keeps the CVar (`machine` = `WTF/Config.wtf`, `account`, `character`); `synced` is true
-when the server stores it. `category` is the client's console category, lowercased; `core/kb.py` maps it to the
+when the server stores it. A CVar the client listed but gave no details for has `default` and `scope` `null`
+(unknown), and `synced` false. `category` is the client's console category, lowercased; `core/kb.py` maps it to the
 Config Editor's groups (graphics, sound, interface, camera, nameplates, combat text, network, other). `wiki` is
 optional and is only used with its source. The dumping character's own values are never stored.
 
 ### `slash_commands/<flavor>.json`
 
-`{"flavor", "build", "source", "commands": {"/cast": "CAST", ...}}`, the slash in lower case.
+`{"flavor", "build", "source", "commands": {"/cast": "CAST", "/dance": "EMOTE35", ...}}`, the slash in lower case:
+the client's own commands and emotes, never an addon's.
 
 ### `cvar_state.json`
 
@@ -54,7 +58,8 @@ flavor's CVar list, add that name to `exceptions`.
 
 ### `macro_limits.json`
 
-`{"flavors": {"<flavor>": {"account": 120, "character": 30, "build": "...", "source": "<URL>"}}}`. A flavor with no
+`{"flavors": {"<flavor>": {"account": 120, "character": 30, "build": "...", "source": "<URL>"}}}`; the source is a
+URL or `client dump <flavor> <build>`, and an entry may carry a `provisional` note as above. A flavor with no
 entry here (or one without a source) uses Retail's values (`core.kb.limits_known` is then False); the Macro Editor
 counts with them and marks that flavor's slots `unconfirmed` in its tree.
 
