@@ -165,8 +165,11 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
   name · count · files · size · last backup (`report.last_backup_note`; `FLAVOR_COLUMNS`, natural widths over the
   flavors the filter keeps, `_flavor_widths`), and a flavor with nothing to back up keeps the name and count columns
   and its `skip_reason` after them; a part is name · files · size (`PART_COLUMNS`), a backup date and time · kind ·
-  parts · size (`BACKUP_COLUMNS`). Columns are dropped (last backup, size, files; parts, size, kind) before a name
-  is cut, and `_fit_keeping_count` cuts the name (in its middle) rather than lose the count. Ticks are on flavors with something to back up only
+  parts · size (`BACKUP_COLUMNS`). A flavor's last backup is cut at its end down to its date (minimum 16) before it
+  is dropped; past that columns are dropped (last backup, size, files; parts, size) before a name is cut, and
+  `_fit_keeping_count` cuts the name (in its middle) rather than lose the count. A backup row is drawn in its widest
+  form (`report.backup_cells`, `BACKUP_FORMS`: whole date, no year, no seconds, then `SAFETY_MARK` for a safety
+  zip's kind) that keeps its date and time whole and its kind (when the group holds a safety zip). Ticks are on flavors with something to back up only
   (and the root): `READ_ONLY` nodes keep their label on `relabel_branch`; ticks survive a rescan. The filter
   matches the flavors as `ModelNode`s (`_model`: names, part names, link paths, warning lines, "backup <when>";
   lazy groups included, and a group it opens gets its children at once); a flavor key shows (`filter_keys`) while

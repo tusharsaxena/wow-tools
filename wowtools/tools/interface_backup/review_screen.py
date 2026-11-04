@@ -29,8 +29,8 @@ from wowtools.core.process import wow_check_for
 from wowtools.tools.interface_backup.backup import BackupOutcome, back_up_all, skip_reason
 from wowtools.tools.interface_backup.catalog import BackupInfo, list_backups, read_parts, zips_dir
 from wowtools.tools.interface_backup.journal import latest_undoable, read_restore_journal, resolve_journal_dir
-from wowtools.tools.interface_backup.report import (BACKUP_RESULT_COLUMNS, PARTS_PENDING, STAGE_TITLES, WARNINGS_NOTE,
-                                                    backup_cells, backup_confirm, backup_detail, backup_result_rows,
+from wowtools.tools.interface_backup.report import (BACKUP_FORMS, BACKUP_RESULT_COLUMNS, PARTS_PENDING, STAGE_TITLES,
+                                                    WARNINGS_NOTE, backup_cells, backup_confirm, backup_detail, backup_result_rows,
                                                     backup_summary_rows, backups_note, flavor_cells, held_cells,
                                                     leftover_text, part_cells, restore_confirm, selection_text,
                                                     undo_confirm)
@@ -56,11 +56,13 @@ NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f fl
 READ_ONLY = ("part", "links", "link", "leftover", "warnings", "warning", "backups", "backup")
 # The rows drawn in columns (feedback round 2 R4, STD-7.28). The root and a flavor: name · count · files · size (a
 # flavor also · its last backup); a flavor with nothing to back up keeps the name and count columns and says why
-# after them. A part: name · files · size. A backup: date and time · kind · parts · size. Nothing is cut while a
-# column can be dropped instead (the last backup, the size, the files; a backup's parts, size, kind); the name is
-# cut (in its middle) only so the count stays, and a date and time only when it is all that is left.
+# after them. A part: name · files · size. A backup: date and time · kind · parts · size. A flavor's last backup is
+# cut (at its end, down to its date) before it is dropped; past that nothing is cut while a column can be dropped
+# instead (the last backup, the size, the files; a backup's parts, size); the name is cut (in its middle) only so
+# the count stays. A backup row keeps its date and time and its kind: when they do not fit, it takes a narrower
+# form (report.backup_cells: no year, then no seconds, then a safety zip marked S) before it cuts the date.
 ROOT_COLUMNS = ColumnLayout(caps=(None,) * 4, minimums=(6, 0, 0, 0), shrink=(), drop=(3, 2))
-FLAVOR_COLUMNS = ColumnLayout(caps=(None,) * 5, minimums=(6, 0, 0, 0, 0), shrink=(), drop=(4, 3, 2))
+FLAVOR_COLUMNS = ColumnLayout(caps=(None,) * 5, minimums=(6, 0, 0, 0, 16), shrink=((4,),), drop=(4, 3, 2))
 FLAVOR_STYLES = (ACCENT, COUNT_STYLE, "dim", "dim", "dim")
 PART_COLUMNS = ColumnLayout(caps=(None,) * 3, minimums=(3, 0, 0), shrink=(), drop=(2, 1))
 PART_STYLES = ("bold", "dim", "dim")
@@ -179,8 +181,9 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         self._kept: ModelFilter | None = None  # what the filter keeps (links, warnings and backups load on expand)
         self._counts: dict[tuple, int] = {}  # a node's leaf count (R2) by (kind, flavor folder), per rebuild
         self._flavor_widths: tuple[int, ...] = ()  # the flavor rows' natural widths (R4), per rebuild
-        # a part or backup row's columns (R4): id(row data) -> its cells and its siblings' natural widths
-        self._columns: dict[int, tuple[tuple[str, ...], tuple[int, ...]]] = {}
+        # a part or backup row's columns (R4): id(row data) -> its cells and its siblings' natural widths, one pair
+        # per form of the row, widest first (a part has one; a backup BACKUP_FORMS, see report.backup_cells)
+        self._columns: dict[int, list[tuple[tuple[str, ...], tuple[int, ...]]]] = {}
         self._fitted_width = 0
         self._scanning = False
         self._checking = False  # the running-WoW check is in its worker
@@ -430,7 +433,7 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
             parts = [child.data for child in flavor.children if child.data[0] == "part" and kept.shows(child)]
             natural = natural_widths((name, *part_cells(scan.parts[name])) for _, name, _ in parts)
             for data in parts:
-                self._columns[id(data)] = (data[1], *part_cells(scan.parts[data[1]])), natural
+                self._columns[id(data)] = [((data[1], *part_cells(scan.parts[data[1]])), natural)]
             for child in flavor.children:
                 if not kept.shows(child):
                     continue
@@ -628,21 +631,32 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         return (*head, "", "", "") if padded else head
 
     def _backup_columns(self, rows: list) -> None:
-        """Work out a Backups group's natural widths over its rows (with the parts read so far)."""
-        cells = [backup_cells(data[1], self.parts.get(data[1].path, PARTS_PENDING)) for data in rows]
-        natural = natural_widths(cells)
-        for data, row in zip(rows, cells):
-            self._columns[id(data)] = row, natural
+        """Work out a Backups group's natural widths over its rows (with the parts read so far), in every form."""
+        for data in rows:
+            self._columns[id(data)] = []
+        for form in range(BACKUP_FORMS):
+            cells = [backup_cells(data[1], self.parts.get(data[1].path, PARTS_PENDING), form) for data in rows]
+            natural = natural_widths(cells)
+            for data, row in zip(rows, cells):
+                self._columns[id(data)].append((row, natural))
 
     def _row_label(self, data) -> Text:
         """A part row (name · files · size) or a backup row (date and time · kind · parts · size) in columns as
-        wide as its siblings' widest cells, fitted to the pane (R4)."""
-        cells, natural = self._columns[id(data)]
+        wide as its siblings' widest cells, fitted to the pane (R4). A backup row takes its widest form that keeps
+        the date and time whole and the kind (when the group holds a safety zip); in the narrowest form a safety zip
+        is marked SAFETY_MARK, and what is still too wide is cut there."""
+        forms = self._columns[id(data)]
         tree = self.query_one("#flavors", Tree)
         if data[0] == "part":
+            cells, natural = forms[0]
             widths, gap = fit_columns(natural, tree_room(tree, 2, opens=False), PART_COLUMNS)
             return column_text(cells, widths, PART_STYLES, gap)
-        widths, gap = fit_columns(natural, tree_room(tree, 3, opens=False), BACKUP_COLUMNS)
+        room = tree_room(tree, 3, opens=False)
+        needs_kind = forms[-1][1][1] > 0  # the narrowest form's kind column is empty unless a safety zip is there
+        for cells, natural in forms:
+            widths, gap = fit_columns(natural, room, BACKUP_COLUMNS)
+            if widths[0] >= natural[0] and (widths[1] or not needs_kind):
+                break
         return column_text(cells, widths, BACKUP_STYLES, gap, middle=(0,))
 
     def on_resize(self, event: events.Resize) -> None:
@@ -987,5 +1001,5 @@ def _fit_keeping_count(natural: tuple[int, ...], room: int | None, layout: Colum
     name is cut (in its middle) so its count (column 1) stays (STD-7.27)."""
     widths, gap = fit_columns(natural, room, layout)
     if natural[1] and not widths[1]:
-        widths, gap = fit_columns(natural, room, layout._replace(shrink=((0,),)))
+        widths, gap = fit_columns(natural, room, layout._replace(shrink=(*layout.shrink, (0,))))
     return widths, gap

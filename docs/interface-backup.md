@@ -91,7 +91,8 @@ counted before you open them and, with a filter set, of what the filter shows. *
 count their own lines instead. The top line is **All flavors** (or the game version you picked): its count, then
 the files and size of everything ticked. Each game version's line shows, in columns that line up from one version
 to the next, its count, what a backup of it would hold (files and size) and its newest backup ("last 2026-10-04
-20:15:30", or "no backups yet"); when the tree is narrow the last columns are left out. A version with nothing to
+20:15:30", or "no backups yet"); when the tree is narrow the newest backup is cut to its date first, then the
+last columns are left out. A version with nothing to
 back up says why after its count ("no Interface or WTF folder"). Under it:
 
 | Line | Shows |
@@ -107,7 +108,9 @@ Each backup's line shows, in columns, the date and time, **backup** or **safety*
 restore), what the zip holds and its size, for example `2026-10-04 20:15:30  backup  Interface, WTF  84.2 MB`. What
 the zip holds fills in
 a moment after you open the list ("…" until then): "Interface, WTF", "Interface", "WTF", "none" (a safety backup taken
-when the restored folder didn't exist yet), or "?" when the zip can't be read.
+when the restored folder didn't exist yet), or "?" when the zip can't be read. In a narrow window the line keeps
+what tells the backups apart: the year goes first, then the seconds, and a safety backup is then marked **S**
+(`10-04 20:15 S`); the bottom line still names the highlighted backup in full.
 
 Every game version starts ticked, meaning "back this up". Ticks are on game versions only: a backup always holds
 a version's whole `Interface` and `WTF` folders. A game version with nothing to back up (no `Interface` or `WTF`
@@ -229,7 +232,7 @@ On the review screen, open the game version's **Backups** line, highlight a back
 `Enter` on the backup). The bottom bar names the highlighted backup in full ("Backup from 2026-10-04 20:15:30 ·
 Interface, WTF · 84.2 MB: Restore puts it back"). If no backup is highlighted, `e` tells you how to pick one.
 
-A safety backup (its line starts with **safety**) can be restored like any other backup. That's how you go back
+A safety backup (its line says **safety**) can be restored like any other backup. That's how you go back
 to the folders as they were before an older restore.
 
 ### The restore screen
@@ -359,8 +362,8 @@ and which game version. **Yes** is selected, in red.
   again, pointing where it did. If one can't be made again, that folder shows **Failed** and the Details column
   names the link and where it pointed, so you can make it by hand.
 - Undo only goes back **one restore**. After you undo, the button stays greyed out until your next restore. To go
-  back further, restore an older restore's safety backup from the game version's **Backups** (its line starts
-  with **safety**).
+  back further, restore an older restore's safety backup from the game version's **Backups** (its line says
+  **safety**).
 - If no folder could be put back (WoW had files locked, say), the undo doesn't count: close WoW and press
   **Undo last restore** again.
 
@@ -455,7 +458,7 @@ won't find them. Undo needs the safety backup in the folder the settings name.
 | How much space do backups take? | It depends on your addons. Addon files and settings are text, so a zip is often a fraction of the folders' size. The backup results show both. The newest 10 per game version are kept, plus a safety backup for each of the last 10 restores; both numbers can be changed in the shared settings. |
 | Can I restore just one addon, or one file? | Not from the app: it restores whole folders. To get one addon back, close WoW, open the zip, and extract its folder (for example `Interface\AddOns\WeakAuras`) into the game version's folder. |
 | Can I restore a Retail backup into Classic? | No. A backup only restores into the game version it came from. |
-| Can I undo a restore from last week? | **Undo last restore** only goes back to the most recent restore. For an older one, restore its safety backup: open the game version's **Backups** on the review screen; its line starts with **safety**. |
+| Can I undo a restore from last week? | **Undo last restore** only goes back to the most recent restore. For an older one, restore its safety backup: open the game version's **Backups** on the review screen; its line says **safety**. |
 | Does it back up on its own, on a schedule? | No. It only backs up when you press **Back up**. |
 | Can I open the zips myself? | Yes. They're ordinary zip files. Don't add or remove files in them, though: the app checks every file against the zip's `manifest.json` and refuses a zip that doesn't match. |
 | Why does the review screen show no sizes? | You're on WSL, a Mac or Linux. Reading every file's size there takes a disk round trip per file, so the review screen counts files only. The backup results show the sizes. |

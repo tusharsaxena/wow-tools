@@ -174,11 +174,23 @@ def parts_cell(parts: tuple[str, ...] | None) -> str:
 PARTS_PENDING = "…"  # a backup's parts until a worker has read its manifest
 
 
-def backup_cells(info: BackupInfo, parts: tuple[str, ...] | None | str = PARTS_PENDING) -> tuple[str, str, str, str]:
-    """A backup row's columns in the review tree (feedback round 2 R4): the whole date and time (what tells it
-    apart, as on the bottom line), its kind (backup or safety), its parts (PARTS_PENDING until read) and size."""
-    kind = "safety" if info.is_safety else "backup"
-    return info.when, kind, parts if isinstance(parts, str) else parts_cell(parts), human_size(info.size)
+SAFETY_MARK = "S"  # a safety zip's kind on a backup row too narrow for "safety" (the guide explains it)
+BACKUP_FORMS = 4  # the backup row's forms, widest first (backup_cells)
+
+
+def backup_cells(info: BackupInfo, parts: tuple[str, ...] | None | str = PARTS_PENDING,
+                 form: int = 0) -> tuple[str, str, str, str]:
+    """A backup row's columns in the review tree (feedback round 2 R4): the date and time (what tells it apart, as
+    on the bottom line), its kind (backup or safety), its parts (PARTS_PENDING until read) and size. `form` 0 is
+    the whole date and time; the narrower forms, for a narrow pane, keep what tells a flavor's zips apart: 1
+    leaves out the year (`10-04 15:30:12`), 2 the seconds too (`10-04 15:30`), 3 also marks a safety zip with
+    SAFETY_MARK in place of the kind (a backup's kind cell is then empty)."""
+    when = info.when if form == 0 else info.when[5:] if form == 1 else info.when[5:16]
+    if form >= 3:
+        kind = SAFETY_MARK if info.is_safety else ""
+    else:
+        kind = "safety" if info.is_safety else "backup"
+    return when, kind, parts if isinstance(parts, str) else parts_cell(parts), human_size(info.size)
 
 
 def backup_detail(info: BackupInfo, parts: tuple[str, ...] | None | str = PARTS_PENDING) -> str:

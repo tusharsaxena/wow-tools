@@ -72,6 +72,13 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(report.backup_cells(b, None), ("2026-10-04 15:30:12", "backup", "?", "2.0 KB"))
         self.assertEqual(report.backup_cells(info("20261003-010203", "pre-restore", 100), ()),
                          ("2026-10-03 01:02:03", "safety", "none", "100 B"))
+        # The narrower forms (G5r): no year, then no seconds, then a safety zip marked S in place of its kind.
+        s = info("20261003-010203", "pre-restore", 100)
+        self.assertEqual(report.BACKUP_FORMS, 4)
+        self.assertEqual([report.backup_cells(b, (), f)[:2] for f in range(1, 4)],
+                         [("10-04 15:30:12", "backup"), ("10-04 15:30", "backup"), ("10-04 15:30", "")])
+        self.assertEqual([report.backup_cells(s, (), f)[:2] for f in range(1, 4)],
+                         [("10-03 01:02:03", "safety"), ("10-03 01:02", "safety"), ("10-03 01:02", report.SAFETY_MARK)])
         self.assertEqual(report.backup_detail(b, ("Interface", "WTF")),
                          "Backup from 2026-10-04 15:30:12 · Interface, WTF · 2.0 KB")
         self.assertEqual(report.backup_detail(info("20261003-010203", "pre-restore", 100)),

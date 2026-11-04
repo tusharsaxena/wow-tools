@@ -29,6 +29,7 @@ from wowtools.tools.interface_backup.restore_screen import RestoreResultScreen, 
 from wowtools.tools.interface_backup.review_screen import (BackupProgressScreen, BackupResultScreen,
                                                            BackupReviewScreen)
 from wowtools.tools.interface_backup.settings import load_settings
+from wowtools.ui.columns import column_text
 from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import FlavorScreen
 from wowtools.ui.help_screen import HelpScreen
@@ -1756,8 +1757,8 @@ class InterfaceBackupAppTest(TuiTestCase):
             self.assertIs(app.screen, review)
             retail = self.flavor_nodes(review)["Retail"]
             self.assertRegex(str(retail.label), r"  2 items ")  # the zip and its safety zip
-            if " last " in str(retail.label):  # at BASE it is dropped when the sizes are known (Windows)
-                self.assertRegex(str(retail.label), r" last \d{4}-\d\d-\d\d \d\d:\d\d:\d\d$")
+            # its newest backup, at least its date (the column is cut at its end when the sizes are known: Windows)
+            self.assertRegex(str(retail.label), r" last \d{4}-\d\d-\d\d")
             group = self.child(retail, "backups")
             self.assertTrue(str(group.label).startswith("Backups  2 items  incl. 1 safety · "), str(group.label))
             group = await self.open_backups(app, pilot, review, "Retail")
@@ -1787,6 +1788,18 @@ class InterfaceBackupAppTest(TuiTestCase):
             text = " ".join(row[summary.region.x:summary.region.right].strip()
                             for row in rows[summary.region.y:summary.region.bottom])
             self.assertIn(info.when, text)  # the whole date, seconds and all, on screen
+            # At 80 columns each row still tells the two apart: month, day, hour and minute, the safety zip marked
+            # (G5r: a narrower form of the row, not the whole date cut in its middle).
+            await pilot.resize_terminal(*TINY)
+            await settle(app, pilot)
+            tiny = {}
+            for node in group.children:
+                tiny[node.data[1].is_safety] = label = str(node.label)
+                self.assertTrue(label.startswith(node.data[1].when[5:16]), label)
+                self.assertLessEqual(_indent(node) + node.label.cell_len,
+                                     tree.size.width - tree.styles.scrollbar_size_vertical)
+            self.assertRegex(tiny[True], r"^\d\d-\d\d \d\d:\d\d(:\d\d)?  ?(safety|S)\b", tiny)
+            self.assertNotIn("…", tiny[True] + tiny[False], tiny)
 
     async def test_restore_screen_shows_low_disk_space_in_the_tree(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
@@ -2347,6 +2360,23 @@ def _indent(node) -> int:
     while parent is not None:
         depth, parent = depth + 1, parent.parent
     return depth * node.tree.guide_depth + (2 if node.allow_expand else 0)
+
+
+class FlavorRowFitTest(TuiTestCase):
+    def test_last_backup_is_cut_to_its_date_before_it_is_dropped(self):
+        """G5r: at 120x30 with the sizes known (Windows) a flavor row has 58 cells; its newest backup is cut at its
+        end, the date kept, rather than dropped whole."""
+        cells = ("Classic Era", "2 items", "12408 files", "412.0 MB", "last 2026-10-04 15:30:12")
+        natural = tuple(len(c) for c in cells)
+        widths, gap = review_module._fit_keeping_count(natural, 58, review_module.FLAVOR_COLUMNS)
+        self.assertEqual(widths[:4], natural[:4])
+        self.assertEqual(sum(widths) + gap * 4, 58)
+        text = str(column_text(cells, widths, review_module.FLAVOR_STYLES, gap, middle=(0,)))
+        self.assertIn(" last 2026-10-04", text)
+        # too narrow for the date: the column is dropped, not cut below it
+        widths, gap = review_module._fit_keeping_count(natural, 52, review_module.FLAVOR_COLUMNS)
+        self.assertEqual(widths[4], 0)
+        self.assertEqual(widths[:2], natural[:2])
 
 
 class RestoreFilterKeyTest(TuiTestCase):
