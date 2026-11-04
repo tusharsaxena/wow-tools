@@ -8,7 +8,7 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-config-editor-feedback-
 | FB0 | curate a group for every shipped CVar (workflow pass, data handed to FB1) | done | (FB1's commit) | 1896 names: interface 673, other 250, camera 352, network 18, graphics 358, sound 68, combat text 71, nameplates 106 |
 | FB1 | category filter fix, cvar_categories.json, kb lookup | done | (this commit) | +7 tests (5 test_kb CuratedCategoriesTest, 2 test_config_editor_app), test_category_mapping and the kb README test extended; gate: run_tests --all WSL 2327 OK (10 skipped) + Windows 2327 OK (86 skipped), ruff clean, gen_event_docs --check OK |
 | FB2 | columnar rows, truncation, colours | done | abc8f59, review fixes (this commit) | review fixes FB2r1-FB2r3: +4 tests (2 test_config_editor_ops drop order and middle cut, 1 test_config_editor_app two flavors + Show all known at 120x30 and 80x30, the 80x24 step reworded to assert the fit), gate: run_tests --all WSL 2336 OK (10 skipped) + Windows 2336 OK (86 skipped), ruff clean, gen_event_docs --check OK; first commit +6 tests (4 test_config_editor_ops row columns, 1 test_ui_base colours, 1 test_config_editor_app aligned coloured columns), test_row_text became test_row_cells, row assertions in test_config_editor_app updated; gate: run_tests --all WSL 2333 OK (10 skipped) + Windows 2333 OK (86 skipped; first run hit a Windows asyncio socketpair error in an unrelated Config Copier test, --windows rerun clean), ruff clean, gen_event_docs --check OK |
-| FB3 | help panel layout | todo | | |
+| FB3 | help panel layout | done | (this commit) | +1 test (test_config_editor_app test_help_panel_layout: bold title and labels, state and category colours, blank lines, source bullets, panel height at 120x30); test_config_editor_run test_help_lines became test_help_panel (every fact of the old text, new layout); gate: run_tests --all WSL 2337 OK (10 skipped) + Windows 2337 OK (86 skipped), ruff clean, gen_event_docs --check OK |
 | FB4 | Set description, Add dropdown | todo | | |
 | FB5 | push, CI once, ready to merge | todo | | |
 
@@ -69,3 +69,21 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-config-editor-feedback-
   gives way when the category is long. The 80x24 test step now asserts every row fits the pane.
 - FB2r3 (review, minor, fixed): a cut name keeps its start and its end (`report.cut_name`, cut in the middle:
   `raidFra…ghlight` / `raidFra…ssColor`), so names sharing a long start stay apart; tested at BASE.
+- FB3a: `report.help_lines` (a list of strings) is replaced by `report.help_panel`, UI-free: a `HelpPanel` (title,
+  sections) of `HelpLine`s (label, text, kind `state` / `category` / `warning`, a plain tail, a bullet flag), with
+  `lines()` for the plain text. `review_screen.help_panel_text` renders it as Rich Text: the title bold, a blank
+  line before each section, labels bold and values in normal weight, the state and category in the CF3 row colours,
+  a warning (scope mismatch, read-only file, no CVar data) in bold amber, sources as `  • ` bullets.
+- FB3b: the sections of a CVar: (Value, Default, State, Category, Type), (Blizzard, Note; or `Description: No
+  description yet.`), (Scope and the scope warning), (Recommended), (Sources: one bullet each for Blizzard's dump,
+  our note's page and the recommendation's page). The sources moved out of the lines they followed into the bullets;
+  the old head line `name (category): value; default d (changed from the default)` became the title and the
+  labelled lines. The state line says what it means: `(differs from the default)`, `(matches the default)`, `(not
+  set: the game uses the default)` or `(no default to compare with)`. The category is shown as in the row column
+  (lower case). An unknown CVar has no Default line (as before) and its `Unknown CVar:` note as its own section.
+- FB3c: a file's panel: its flavor and label (`Retail › MAIN/Realm1/Aellâ`) as the bold title, then `File:` (name
+  and level), `Read-only:` (warning) / `No file yet:` / `CVars: n set in this file`, and the no-data warning.
+- FB3d: the spaced layout is about three times as tall, so the panel under the tree went from a fixed 5 rows to 40%
+  of the tree pane (min 5; about 10 rows at 120x30, tested >= 8 with the tree still taller); it scrolls with the
+  mouse when the content is longer. The side panel (160+ columns) is unchanged. The narrowed-search note and the
+  group hint stay plain text.

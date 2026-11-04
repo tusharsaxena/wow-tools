@@ -82,7 +82,7 @@ the sources rule in `wowtools/kb/README.md`), cached per path; tests pass `kb_ro
   with `description_source`, our note rewritten from warcraft.wiki.gg (`scripts/kb_dump/wiki_notes.json`), loaded only
   with its URL. Retail, Classic, Anniversary and Classic Era have their own dump; `_forever_` is a `provisional` copy
   of Retail's (U1), its `source` naming the Retail dump; a flavor with no file (PTR, Beta) gives `{}`, so every row is
-  `unknown` and `report.help_lines` says so on the file.
+  `unknown` and `report.help_panel` says so on the file.
 - `cvar_categories.json` → `curated_categories()` (CF4): the hand-curated group of every CVar in any shipped
   `cvars/<flavor>.json` (the client files most under `game`, `default` or `none`), matched in any case; `load_cvars`
   and `cvar_category(name, raw)` use it first, and `model.category_of` for a CVar the flavor's data doesn't know.
@@ -111,8 +111,10 @@ staged changes.
   `SvRecoveryActions`, `RunActions`, `ReviewBase`). Left pane: the risk banner (STD-7.10), the filter box (a CVar's
   name, help and note, or its file's group), Show (category select, Changed only, Show all known), the staged line,
   Apply / Dry run / Rescan / Undo last change. The bar under the tree: Set `e`, Add `N`, Remove `d`, Reset `R`,
-  Recommend… `m` (`edit_actions.TREE_ACTIONS`). The help panel (`report.help_lines`) sits under the tree, or beside
-  it from 160 columns (`HORIZONTAL_BREAKPOINTS`, the `-wide` class).
+  Recommend… `m` (`edit_actions.TREE_ACTIONS`). The help panel (`report.help_panel`: a `HelpPanel` of a title and
+  sections of `HelpLine`s, rendered by `review_screen.help_panel_text` with bold labels, the CF3 colours and a bullet
+  per source, CF5) sits under the tree (40% of the tree pane, scrolling) or beside it from 160 columns
+  (`HORIZONTAL_BREAKPOINTS`, the `-wide` class).
 - `popups.AddCvarScreen` (name, value, what the KB knows of the name), `RecommendScreen` (tick list, reason and
   source); Set is the shared `TextPromptScreen`.
 - `ConfigResultScreen` (the shared result screen), `ConfigProgressScreen` (one row per flavor).

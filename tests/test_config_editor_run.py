@@ -204,28 +204,72 @@ class ConfigRunTest(unittest.TestCase):
                                                            changed_only=False, search="")}
         self.assertEqual(found["nameplateShowFriends"][1:4], (report.NOT_SET, "0", report.DEFAULT_STATE))
 
-    def test_help_lines(self):
+    def test_help_panel(self):
+        """CF5: a bold title (the CVar's name), labelled lines in sections, the state and category marked for their
+        colours, the sources as bullets; the same facts as before the layout change (nothing lost)."""
         aella = self.target("MAIN/Realm1/Aellâ")
         by_name = {r.name: r for r in rows(aella, CVARS, show_all_known=False, category=None, changed_only=False,
                                            search="")}
         rec = Recommendation("nameplateShowFriends", "1", ("_retail_",), "See your group.", "https://example.org/x")
-        text = "\n".join(report.help_lines(aella, by_name["nameplateShowFriends"], recommendation=rec))
-        for needle in ("nameplateShowFriends (nameplates): 1 here; default 0 (changed from the default)",
-                       "Blizzard: Show friendly nameplates  (client dump _retail_ 1)", "Type: on or off",
-                       "per character", "Blizzard's servers", "Recommended: 1. See your group.  (https://example.org/x)"):
-            self.assertIn(needle, text)
-        text = "\n".join(report.help_lines(aella, by_name["cameraDistanceMaxZoomFactor"]))
-        self.assertIn("Note: How far the camera can zoom out.  (https://warcraft.wiki.gg/wiki/CVar_camera", text)
-        text = "\n".join(report.help_lines(aella, by_name["myAddonThing"]))
-        self.assertIn("Unknown CVar", text)
-        self.assertIn("You can still set or remove it", text)
+        panel = report.help_panel(aella, by_name["nameplateShowFriends"], recommendation=rec)
+        self.assertEqual(panel.title, "nameplateShowFriends")
+        self.assertEqual(panel.lines(), [
+            "nameplateShowFriends",
+            "",
+            "Value: 1 here",
+            "Default: 0",
+            "State: changed (differs from the default)",
+            "Category: nameplates",
+            "Type: on or off (1 or 0); Space toggles it.",
+            "",
+            "Blizzard: Show friendly nameplates",
+            "",
+            ("Scope: Kept per character (the character's config-cache.wtf); the game syncs it with Blizzard's "
+             "servers."),
+            "",
+            "Recommended: 1. See your group.",
+            "",
+            "Sources:",
+            "  • Blizzard: client dump _retail_ 1",
+            "  • Recommended: https://example.org/x",
+        ])
+        kinds = {line.label: line.kind for section in panel.sections for line in section}
+        self.assertEqual((kinds["State"], kinds["Category"], kinds["Value"]), ("state", "category", ""))
+        self.assertTrue(all(line.bullet for line in panel.sections[-1][1:]))
+        text = "\n".join(report.help_panel(aella, by_name["cameraDistanceMaxZoomFactor"]).lines())
+        self.assertIn("Note: How far the camera can zoom out.", text)
+        self.assertIn("  • Note: https://warcraft.wiki.gg/wiki/CVar_camera", text)
+        self.assertIn("State: changed", text)
+        text = "\n".join(report.help_panel(aella, by_name["assistedCombatHighlight"]).lines())
+        self.assertIn("State: default (matches the default)", text)
+        self.assertIn("Description: No description yet.", text)
+        unknown = report.help_panel(aella, by_name["myAddonThing"])
+        text = "\n".join(unknown.lines())
+        self.assertIn("State: unknown (no default to compare with)", text)
+        self.assertIn("Unknown CVar: the knowledge base has no entry for it in Retail. You can still set or remove "
+                      "it.", text)
+        self.assertNotIn("Default:", text)
+        self.assertNotIn("Sources:", text)
+        bob = self.target("MAIN/Realm1/Bob")
+        unset = next(r for r in rows(bob, CVARS, show_all_known=True, category=None, changed_only=False, search="")
+                     if r.name == "nameplateShowFriends")
+        text = "\n".join(report.help_panel(bob, unset).lines())
+        self.assertIn("Value: not set here (the game uses its default)", text)
+        self.assertIn("State: default (not set: the game uses the default)", text)
         stage_set(self.staged, aella, "nameplateShowAll", "1")  # an account CVar in a character file
         row = next(r for r in rows(aella, CVARS, show_all_known=False, category=None, changed_only=False, search="",
                                    staged=self.staged) if r.name == "nameplateShowAll")
-        self.assertIn("the game keeps this CVar at the account level", "\n".join(report.help_lines(aella, row)))
-        text = "\n".join(report.help_lines(self.target("MAIN/Realm1/Bob"), None, has_data=False))
-        self.assertIn("No file yet", text)
+        warning = next(line for section in report.help_panel(aella, row).sections for line in section
+                       if "the game keeps this CVar at the account level" in line.text)
+        self.assertEqual(warning.kind, "warning")
+        panel = report.help_panel(bob, None, has_data=False)
+        self.assertEqual(panel.title, "Retail › MAIN/Realm1/Bob")
+        text = "\n".join(panel.lines())
+        self.assertIn("File: config-cache.wtf, the character's config-cache.wtf.", text)
+        self.assertIn("No file yet: a CVar set here creates it.", text)
         self.assertIn("every CVar shows as unknown", text)
+        text = "\n".join(report.help_panel(aella, None).lines())
+        self.assertRegex(text, r"CVars: \d+ set in this file")
 
     def test_confirm_groups_and_scope_listed(self):
         self.stage_three_levels()

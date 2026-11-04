@@ -46,9 +46,9 @@ from wowtools.tools.config_editor.events import SV_TOOL
 from wowtools.tools.config_editor.journal import latest_undoable, read_journal, resolve_journal_dir
 from wowtools.tools.config_editor.model import CATEGORIES, CONFIG_CACHE, CONFIG_WTF, ConfigTarget, Row
 from wowtools.tools.config_editor.ops import ConfigStaged, build_changes, rows
-from wowtools.tools.config_editor.report import (ACCOUNT_CONFIG, FILE_COLUMNS, STAGE_TITLES, STATUS_COLOURS,
+from wowtools.tools.config_editor.report import (ACCOUNT_CONFIG, FILE_COLUMNS, STAGE_TITLES, STATUS_COLOURS, HelpPanel,
                                                  UNDO_COLUMNS, apply_confirm, apply_groups, cut_name, file_label,
-                                                 file_rows, fit_columns, help_lines, recovery_text, row_cells,
+                                                 file_rows, fit_columns, help_panel, recovery_text, row_cells,
                                                  scope_listed, summary_rows, undo_confirm, undo_detail_rows,
                                                  undo_summary_rows)
 from wowtools.tools.config_editor.runner import ApplyError, run_apply
@@ -78,6 +78,30 @@ STAGED_MARK = "✎"  # a CVar with a staged change, before its line (the Saved V
 WIDE = 160  # from this many columns the help panel sits beside the tree
 GROUP_HELP = "Open a file to see its CVars; highlight one for its help. Space ticks files: Set, Remove, Reset and " \
              "Add then act on every ticked file."
+
+
+def help_panel_text(panel: HelpPanel, warning: str) -> Text:
+    """The help panel as Rich Text (CF5): the title bold, a blank line before each section, each label bold and its
+    text in normal weight, the state and the category in their row colours (CF3), a warning in bold `warning`, a
+    source as a `•` bullet."""
+    text = Text()
+    text.append(panel.title, style="bold")
+    for section in panel.sections:
+        text.append("\n")
+        for line in section:
+            text.append("\n")
+            if line.bullet:
+                text.append("  • ")
+            if line.label:
+                text.append(f"{line.label}:", style="bold")
+                if line.text or line.tail:
+                    text.append(" ")
+            style = {"state": CVAR_STATE_COLOURS.get(line.text, ""),
+                     "category": CVAR_CATEGORY_COLOURS.get(line.text, ""),
+                     "warning": f"bold {warning}"}.get(line.kind, "")
+            text.append(line.text, style=style)
+            text.append(line.tail)
+    return text
 
 
 class FileKey(NamedTuple):
@@ -148,7 +172,7 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
     ConfigReviewScreen #main { width: 1fr; }
     ConfigReviewScreen #tree-pane { width: 2fr; }
     ConfigReviewScreen #cvars { height: 1fr; }
-    ConfigReviewScreen #cvar-help { height: 5; padding: 0 1; border-top: solid $accent 40%; }
+    ConfigReviewScreen #cvar-help { height: 40%; min-height: 5; padding: 0 1; border-top: solid $accent 40%; }
     ConfigReviewScreen #side-help { width: 1fr; padding: 0 1; border-left: solid $accent 40%; display: none; }
     ConfigReviewScreen #tree-actions { padding: 0 1; }
     ConfigReviewScreen #category { margin-top: 1; }
@@ -773,23 +797,25 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
             lines.append("Show all known adds the CVars the files don't set.")
         return "\n".join(lines)
 
-    def help_text(self) -> str:
+    def help_text(self) -> Text:
+        """The help panel's Text: the highlighted CVar's or file's panel (CF5), else the hint or why nothing shows."""
         data = self._cursor_data()
         target = self._node_target(data)
         if target is None:
             if self.scanned and self._nothing_shown():
-                return self.narrowed_help()
-            return GROUP_HELP if self.scanned else ""
+                return Text(self.narrowed_help())
+            return Text(GROUP_HELP if self.scanned else "")
         folder = target.flavor.folder
         row = data.row if isinstance(data, CvarNode) else None
         rec = None
         if row is not None:
             rec = next((r for r in self.recommendations_for(folder) if r.cvar.casefold() == row.name.casefold()),
                        None)
-        return "\n".join(help_lines(target, row, recommendation=rec, has_data=bool(self.cvars_for(folder))))
+        panel = help_panel(target, row, recommendation=rec, has_data=bool(self.cvars_for(folder)))
+        return help_panel_text(panel, theme_colour(self.app, "warning"))
 
     def _update_help(self) -> None:
-        text = Text(self.help_text())
+        text = self.help_text()
         self.query_one("#cvar-help-text", Static).update(text)
         self.query_one("#side-help-text", Static).update(text)
 

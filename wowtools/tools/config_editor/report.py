@@ -1,5 +1,5 @@
 """Text for the Config Editor's browse screen, popups and result screen (config tools spec CE3-CE8): a file's line
-and a CVar row's columns in the tree (name, value, default, state, category: feedback spec CF1, CF2), the help panel's details of a CVar (CE4), the
+and a CVar row's columns in the tree (name, value, default, state, category: feedback spec CF1, CF2), the help panel's details of a CVar (CE4, laid out by CF5), the
 Apply / Dry run confirm (counts, one group per file in its detail tree, the scope warnings of CE5 as listed entries)
 and the result rows, one per file. The progress stage titles, the Undo confirm, the unfinished-run text and the undo
 rows are the shared pipeline's (core/sv_report.py), re-exported here. UI-free."""
@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import NamedTuple
 
 from wowtools.core import sv_report
 from wowtools.core.install import Flavor, flavor_name
@@ -20,9 +21,9 @@ from wowtools.tools.config_editor.ops import ConfigStaged, build_changes, is_boo
 
 __all__ = ["ACCOUNT_CONFIG", "CHANGED", "COLUMN_CAPS", "COLUMN_MINIMUMS", "DEFAULT_STATE", "DROP_ORDER", "ELLIPSIS",
            "FILE_COLUMNS", "NOT_SET", "RESULT_TEXT", "STAGE_TITLES", "STATES", "STATUS_COLOURS", "UNDO_COLUMNS",
-           "UNKNOWN", "apply_confirm", "apply_groups", "cut_name", "file_label", "file_rows", "fit_columns",
-           "help_lines", "path_label", "recovery_text", "row_cells", "row_state", "scope_listed", "scope_text",
-           "summary_rows", "target_text", "undo_confirm", "undo_detail_rows", "undo_summary_rows"]
+           "UNKNOWN", "HelpLine", "HelpPanel", "apply_confirm", "apply_groups", "cut_name", "file_label", "file_rows",
+           "fit_columns", "help_panel", "path_label", "recovery_text", "row_cells", "row_state", "scope_listed",
+           "scope_text", "summary_rows", "target_text", "undo_confirm", "undo_detail_rows", "undo_summary_rows"]
 
 ACCOUNT_CONFIG = "Account config"
 NOT_SET = "not set"
@@ -150,50 +151,107 @@ def scope_text(info: CvarInfo) -> str:
     return f"Kept {where}; {synced}."
 
 
-def help_lines(target: ConfigTarget, row: Row | None, *, recommendation: Recommendation | None = None,
-               has_data: bool = True) -> list[str]:
-    """The help panel under the tree (CE4): for a CVar row its value here and the default, whether it differs, the
-    Blizzard text and our note (each with its source), the type where it is known, the scope and sync, the
-    recommendation and a scope warning; for a file (`row` None) where it is and what it holds."""
-    if row is None:
+class HelpLine(NamedTuple):
+    """One line of the help panel (CF5): a label (shown bold; "" none) and its text. `kind` names the colour the
+    screen gives the text (`state`, `category`: the row colours of CF3; `warning`; "" none) and `tail` follows it in
+    the plain style; a `bullet` line is one entry of a list (the sources)."""
+    label: str
+    text: str
+    kind: str = ""
+    tail: str = ""
+    bullet: bool = False
+
+    def plain(self) -> str:
+        head = f"{self.label}:" if self.label else ""
+        body = f"{self.text}{self.tail}"
+        line = f"{head} {body}" if head and body else head or body
+        return f"  • {line}" if self.bullet else line
+
+
+class HelpPanel(NamedTuple):
+    """The help panel's content (CF5): a title (shown bold) and its sections, a blank line between them."""
+    title: str
+    sections: tuple[tuple[HelpLine, ...], ...]
+
+    def lines(self) -> list[str]:
+        """The panel as plain lines: the title, then each section after a blank line."""
+        out = [self.title]
+        for section in self.sections:
+            out.append("")
+            out.extend(line.plain() for line in section)
+        return out
+
+
+# The state line's note (CF5): what the state word means for this CVar.
+STATE_NOTES: dict[str, str] = {
+    CHANGED: " (differs from the default)",
+    DEFAULT_STATE: " (matches the default)",
+    UNKNOWN: " (no default to compare with)",
+}
+NOT_SET_NOTE = " (not set: the game uses the default)"
+
+
+def _file_panel(target: ConfigTarget, has_data: bool) -> HelpPanel:
+    lines = [HelpLine("File", f"{target.path.name}, {LEVEL_FILES[target.level]}.")]
+    if target.read_only:
+        lines.append(HelpLine("Read-only", target.problem or "", "warning"))
+    elif not target.exists:
+        lines.append(HelpLine("No file yet", "a CVar set here creates it."))
+    else:
         count = len({line.name.casefold() for line in target.parsed.lines}) if target.parsed is not None else 0
-        lines = [f"{target_text(target)}: {target.path.name}, {LEVEL_FILES[target.level]}."]
-        if target.read_only:
-            lines.append(f"Read-only: {target.problem}")
-        elif not target.exists:
-            lines.append("No file yet: a CVar set here creates it.")
-        else:
-            lines.append(f"It sets {plural(count, 'CVar')}.")
-        if not has_data:
-            lines.append(f"No CVar data for {target.flavor.display_name} yet: every CVar shows as {UNKNOWN}.")
-        return lines
+        lines.append(HelpLine("CVars", f"{count} set in this file"))
+    if not has_data:
+        lines.append(HelpLine("", f"No CVar data for {target.flavor.display_name} yet: every CVar shows as {UNKNOWN}.",
+                              "warning"))
+    return HelpPanel(target_text(target), (tuple(lines),))
+
+
+def help_panel(target: ConfigTarget, row: Row | None, *, recommendation: Recommendation | None = None,
+               has_data: bool = True) -> HelpPanel:
+    """The help panel under the tree (CE4, laid out by CF5). For a CVar row: its name as the title; its value here,
+    the default, the state (with what it means), the category and the type where it is known; Blizzard's text and
+    our note; the scope and sync and a scope warning; the recommendation; then the source of each as a bullet. For a
+    file (`row` None): where it is and what it holds."""
+    if row is None:
+        return _file_panel(target, has_data)
     info = row.info
+    state = row_state(row)
     value = "not set here (the game uses its default)" if row.value is None else f"{_shown(row.value)} here"
-    head = f"{row.name} ({row.category}): {value}"
+    values = [HelpLine("Value", value)]
     if info is not None:
-        head += f"; default {_shown(row.default)}" if row.default is not None else "; default not known"
-        if row.changed:
-            head += f" ({CHANGED} from the default)"
-    lines = [head]
+        values.append(HelpLine("Default", _shown(row.default) if row.default is not None else "not known"))
+    note = NOT_SET_NOTE if state == DEFAULT_STATE and row.value is None else STATE_NOTES[state]
+    values += [HelpLine("State", state, "state", note), HelpLine("Category", row.category, "category")]
     if info is None:
-        lines.append(f"Unknown CVar: the knowledge base has no entry for it in {target.flavor.display_name}. You can "
-                     "still set or remove it.")
-        return lines
-    if info.help:
-        lines.append(f"Blizzard: {info.help}" + (f"  ({info.source})" if info.source else ""))
-    if info.description:
-        lines.append(f"Note: {info.description}  ({info.description_source})")
-    if not info.help and not info.description:
-        lines.append("No description yet.")
+        unknown = HelpLine("Unknown CVar", f"the knowledge base has no entry for it in {target.flavor.display_name}. "
+                                           "You can still set or remove it.")
+        return HelpPanel(row.name, (tuple(values), (unknown,)))
     if is_boolean(info.default):
-        lines.append("Type: on or off (1 or 0); Space toggles it.")
-    lines.append(scope_text(info))
+        values.append(HelpLine("Type", "on or off (1 or 0); Space toggles it."))
+    sections: list[tuple[HelpLine, ...]] = [tuple(values)]
+    described = []
+    sources = []
+    if info.help:
+        described.append(HelpLine("Blizzard", info.help))
+        if info.source:
+            sources.append(HelpLine("Blizzard", info.source, bullet=True))
+    if info.description:
+        described.append(HelpLine("Note", info.description))
+        if info.description_source:
+            sources.append(HelpLine("Note", info.description_source, bullet=True))
+    sections.append(tuple(described) or (HelpLine("Description", "No description yet."),))
+    scope = [HelpLine("Scope", scope_text(info))]
     if row.scope_mismatch:
-        lines.append(f"⚠ This file is the {target.level} level, but the game keeps this CVar at the {info.scope} "
-                     "level: it may ignore it here.")
+        scope.append(HelpLine("", f"⚠ This file is the {target.level} level, but the game keeps this CVar at the "
+                                  f"{info.scope} level: it may ignore it here.", "warning"))
+    sections.append(tuple(scope))
     if recommendation is not None:
-        lines.append(f"Recommended: {_shown(recommendation.value)}. {recommendation.reason}  ({recommendation.source})")
-    return lines
+        sections.append((HelpLine("Recommended", f"{_shown(recommendation.value)}. {recommendation.reason}"),))
+        if recommendation.source:
+            sources.append(HelpLine("Recommended", recommendation.source, bullet=True))
+    if sources:
+        sections.append((HelpLine("Sources", ""), *sources))
+    return HelpPanel(row.name, tuple(sections))
 
 
 def scope_listed(staged: ConfigStaged, targets: Sequence[ConfigTarget],

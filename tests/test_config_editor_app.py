@@ -613,6 +613,46 @@ class ConfigEditorAppTest(TuiTestCase):
             self.assertEqual(self.tree_bytes(), before)
             self.assertEqual((self.wtf / CONFIG_WTF).read_bytes(), CONFIG_MACHINE)
 
+    async def test_help_panel_layout(self):
+        """CF5: the help panel's Text has the CVar's name as a bold title, bold labels, the state and the category in
+        their row colours, a blank line between sections and a bullet per source; a file's panel a bold title too.
+        Under the tree the panel is tall enough for the sections at 120x30 and the tree keeps the larger part."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            aella = character_node(tree, "Aellâ")
+            await self.press_on(app, pilot, review, await cvar_node(pilot, aella, "cameraDistanceMaxZoomFactor"))
+            text = review.help_text()
+            plain = text.plain
+
+            def styles_of(fragment: str, inner: str | None = None) -> list[str]:
+                """The styles over `inner` (else the whole fragment) where `fragment` first appears."""
+                start = plain.index(fragment) + (fragment.index(inner) if inner else 0)
+                end = start + len(inner or fragment)
+                return [str(span.style) for span in text.spans if span.start <= start and span.end >= end]
+
+            self.assertTrue(plain.startswith("cameraDistanceMaxZoomFactor\n\n"), plain)
+            self.assertIn("bold", styles_of("cameraDistanceMaxZoomFactor"))
+            for label in ("Value:", "Default:", "State:", "Category:", "Note:", "Scope:", "Sources:"):
+                self.assertIn("bold", styles_of(label), label)
+            self.assertIn(CVAR_STATE_COLOURS[CHANGED].lower(), " ".join(styles_of("State: changed", "changed")).lower())
+            self.assertIn(CVAR_CATEGORY_COLOURS["camera"].lower(),
+                          " ".join(styles_of("Category: camera", "camera")).lower())
+            self.assertIn("\n\nScope:", plain)
+            self.assertIn("\n\nSources:\n  • Note: https://warcraft.wiki.gg", plain)
+            self.assertNotIn("bold", " ".join(styles_of("Default: 1.9", "1.9")))  # values are in normal weight
+            shown = review.query_one("#cvar-help-text", Static)
+            self.assertIn("Sources:", str(shown.render()))
+            under = review.query_one("#cvar-help")
+            self.assertGreaterEqual(under.region.height, 8)
+            self.assertGreater(tree.region.height, under.region.height)
+            await self.press_on(app, pilot, review, aella)
+            text = review.help_text()
+            self.assertTrue(text.plain.startswith("Retail › MAIN/Realm1/Aellâ\n\nFile: config-cache.wtf"),
+                            text.plain)
+            self.assertIn("bold", [str(span.style) for span in text.spans if span.start == 0])
+
     async def test_help_panel_moves_beside_the_tree_when_wide(self):
         """Under the tree up to 159 columns, the right column from 160 on (the plan's ≥ 160 cols)."""
         for size, side in ((BASE, False), (LARGE, True)):
