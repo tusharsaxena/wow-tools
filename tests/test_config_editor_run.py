@@ -218,6 +218,7 @@ class ConfigRunTest(unittest.TestCase):
             "",
             "Value: 1 here",
             "Default: 0",
+            "Recommended: 1. See your group.",
             "State: changed (differs from the default)",
             "Category: nameplates",
             "Type: on or off (1 or 0); Space toggles it.",
@@ -226,8 +227,6 @@ class ConfigRunTest(unittest.TestCase):
             "",
             ("Scope: Kept per character (the character's config-cache.wtf); the game syncs it with Blizzard's "
              "servers."),
-            "",
-            "Recommended: 1. See your group.",
             "",
             "Sources:",
             "  • Blizzard: client dump _retail_ 1",

@@ -209,8 +209,8 @@ def _file_panel(target: ConfigTarget, has_data: bool) -> HelpPanel:
 def help_panel(target: ConfigTarget, row: Row | None, *, recommendation: Recommendation | None = None,
                has_data: bool = True) -> HelpPanel:
     """The help panel under the tree (CE4, laid out by CF5). For a CVar row: its name as the title; its value here,
-    the default, the state (with what it means), the category and the type where it is known; Blizzard's text and
-    our note; the scope and sync and a scope warning; the recommendation; then the source of each as a bullet. For a
+    the default, the recommendation, the state (with what it means), the category and the type where it is known;
+    Blizzard's text and our note; the scope and sync and a scope warning; then the source of each as a bullet. For a
     file (`row` None): where it is and what it holds."""
     if row is None:
         return _file_panel(target, has_data)
@@ -220,6 +220,9 @@ def help_panel(target: ConfigTarget, row: Row | None, *, recommendation: Recomme
     values = [HelpLine("Value", value)]
     if info is not None:
         values.append(HelpLine("Default", _shown(row.default) if row.default is not None else "not known"))
+        if recommendation is not None:  # beside the value and the default, so the panel under the tree shows it
+            # without scrolling at 120x30 (FB3r1: it scrolls with the mouse only)
+            values.append(HelpLine("Recommended", f"{_shown(recommendation.value)}. {recommendation.reason}"))
     note = NOT_SET_NOTE if state == DEFAULT_STATE and row.value is None else STATE_NOTES[state]
     values += [HelpLine("State", state, "state", note), HelpLine("Category", row.category, "category")]
     if info is None:
@@ -245,10 +248,8 @@ def help_panel(target: ConfigTarget, row: Row | None, *, recommendation: Recomme
         scope.append(HelpLine("", f"⚠ This file is the {target.level} level, but the game keeps this CVar at the "
                                   f"{info.scope} level: it may ignore it here.", "warning"))
     sections.append(tuple(scope))
-    if recommendation is not None:
-        sections.append((HelpLine("Recommended", f"{_shown(recommendation.value)}. {recommendation.reason}"),))
-        if recommendation.source:
-            sources.append(HelpLine("Recommended", recommendation.source, bullet=True))
+    if recommendation is not None and recommendation.source:
+        sources.append(HelpLine("Recommended", recommendation.source, bullet=True))
     if sources:
         sections.append((HelpLine("Sources", ""), *sources))
     return HelpPanel(row.name, tuple(sections))

@@ -647,6 +647,12 @@ class ConfigEditorAppTest(TuiTestCase):
             under = review.query_one("#cvar-help")
             self.assertGreaterEqual(under.region.height, 8)
             self.assertGreater(tree.region.height, under.region.height)
+            # FB3r1: the recommendation sits with the value and the default, so the panel (which scrolls with the
+            # mouse only) shows it at 120x30 without scrolling, with the value section and the note
+            wrapped = [line.plain for line in text.wrap(app.console, under.scrollable_content_region.width)]
+            visible = wrapped[:under.scrollable_content_region.height]
+            for start in ("Value:", "Default:", "Recommended: 2.6. See more.", "State:", "Category:", "Note:"):
+                self.assertTrue(any(line.startswith(start) for line in visible), (start, visible))
             await self.press_on(app, pilot, review, aella)
             text = review.help_text()
             self.assertTrue(text.plain.startswith("Retail › MAIN/Realm1/Aellâ\n\nFile: config-cache.wtf"),

@@ -100,14 +100,13 @@ be read shows **read-only**: it is never ticked or written, and the **warnings v
 The panel under the tree (beside it in a window 160 columns wide or more) shows the highlighted CVar, its name in
 bold at the top, then short sections with a blank line between them and each line's label in bold:
 
-- **Value**, **Default**, **State** and **Category**: its value here and its default, the state (`changed`,
-  `default` or `unknown`, with what that means) and the category, both in the colours of their tree columns, and
-  **Type** when it is an on/off switch.
+- **Value**, **Default**, **Recommended**, **State** and **Category**: its value here, its default, the
+  recommendation for it if there is one, the state (`changed`, `default` or `unknown`, with what that means) and the
+  category, both in the colours of their tree columns, and **Type** when it is an on/off switch.
 - **Blizzard** and **Note**: Blizzard's own help text and our plain-English note.
 - **Scope**: where the game keeps it (this computer, the account or the character) and whether the game syncs it
   with Blizzard's servers. A CVar set in a file of the wrong level (an account CVar in a character's file) gets a
   warning here.
-- **Recommended**: the recommendation for it, if there is one.
 - **Sources**: one bullet for where each of the texts above comes from.
 
 On a file the panel names the file, its level and how many CVars it sets. Scroll the panel with the mouse when it
