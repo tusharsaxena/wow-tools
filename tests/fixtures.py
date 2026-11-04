@@ -717,3 +717,13 @@ def build_config_tree(root: Path) -> Path:
                       ("MAIN/Realm1/Bob - Copy", CONFIG_AELLA), ("MAIN/Realm2/Trâxex", CONFIG_TRAXEX)):
         _write_bytes(accounts / rel / "config-cache.wtf", data, FRESH)
     return root
+
+
+def stage_config_edit(review) -> None:
+    """Stage one CVar on a Config Editor review (what its Apply / Dry run needs): in the first file it can write,
+    Retail's first."""
+    from wowtools.tools.config_editor.ops import stage_set
+    target = next(t for t in sorted(review.all_targets(), key=lambda t: t.flavor.folder != "_retail_")
+                  if not t.read_only)
+    stage_set(review.staged, target, "testCVar", "1")
+    review.staging_changed()

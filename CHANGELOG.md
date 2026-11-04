@@ -14,6 +14,8 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
   them, copy and paste them between characters, accounts and game versions, and change text in many at once, with
   a dry run and Undo. Its editor suggests and explains commands and conditionals as you type, and has a
   conditional builder, an optimizer that shortens macros and templates for common macros.
+- **Config Editor**: see and change the CVars in `Config.wtf` and every account's and character's config, with help
+  for each CVar and sourced recommendations, set across many characters at once, with a dry run and Undo.
 
 ### Fixed
 

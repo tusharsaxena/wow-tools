@@ -30,7 +30,7 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 | T18 | M5 | config model and edits | done | (this commit) | 10 new tests in test_config_editor_ops.py (the plan's nine plus test_scan_unreadable_file_is_read_only_and_logged); tests/fixtures.py gains build_config_tree; events cvar.scanned, cvar.file_unreadable and client_events("cvar") registered, docs/events.md regenerated; gate green: WSL 2268 OK (9 skipped), Windows 2268 OK (85 skipped), ruff clean, events.md current |
 | T19 | M5 | recommendations data | done | (this commit) | 5 new tests in test_kb.py (the plan's test_recommendations_all_sourced_and_known_cvars plus one per CVar and flavor, the schema, unsourced or odd entries dropped, missing or bad file) and recommendations.json in KbShipsTest's README check; 37 recommendations over 36 CVars; gate green: 2273 tests WSL and Windows (0 failures), ruff clean, events.md matches |
 | T20 | M5 | CVar base from dumps + wiki notes | todo | | needs the user's dumps (T4). Also CC5's state-list check (T8d, T8g): list every `cvar_state.json` pattern's matches in each flavor's dump, move any preference into `exceptions`, record the result here. Also (T17r) add a sourced `macro_limits.json` entry for every flavor from its client's `MacroConstants` (ME3), which drops that flavor's `unconfirmed` mark |
-| T21 | M5 | config editor screens, apply, undo | todo | | |
+| T21 | M5 | config editor screens, apply, undo | done | (this commit) | 26 new tests: 13 in test_config_editor_run.py (runs across levels and flavors then Undo, created file, dry run, WoW running, changed since the scan, LF file, recovery, row text, help lines, confirm groups and scope entries, result rows, applicable recommendations), 13 TUI in test_config_editor_app.py (the plan's six plus registry, Set on ticked files, filters, leaving asks, WoW running, the help panel beside the tree at 160 columns, 80x24); the editor added to every meta-test table (look and feel incl. DESTRUCTIVE_REVIEWS, help, quit incl. STAGING_TOOLS, tool menu, toasts, warnings) and to test_structure (journals/undo, recovery, action mixins, banner, 10 tree screens); shared `TickActions.space_on_node` hook (T21a) and the compact tool menu (T21k); first guide, internals doc, README/CLAUDE.md/architecture/releasing rows, RELEASE_SHIPS, STD-7.10 list, CHANGELOG line, browse.png (T21j); events.md regenerated. Gate: ruff clean, events.md current, Windows 2299 OK (85 skipped); WSL 2299 OK except the two test_release_contents git-archive checks, which read HEAD and so fail until the new guide is committed (as T11, T15); re-run green after the commit |
 | T22 | M5 | config editor docs; push | todo | | |
 | T23 | M6 | whole-branch review, gate, CI, ready to merge | todo | | |
 
@@ -512,3 +512,57 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
   (cameraDistanceMaxZoomFactor: 2.6 on Retail, 4 on Classic). The two nameplate values taken from Retail's own
   defaults (nameplateOccludedAlphaMult 0.4, nameplateSelectedScale 1.2) are for the Classic flavors only.
 - T19d: no CHANGELOG line: the data has no user yet (the Config Editor lands in T21, whose CHANGELOG line covers it).
+- T21a: ticks pick files (`FileKey(path)`: Config.wtf, an Account config, a character; an account, realm or flavor
+  ticks its files). Set, Remove and Reset act on the highlighted CVar in every ticked file, else in the row's own
+  file; Add puts a CVar into every ticked file, else the highlighted one; Recommend… acts on the highlighted file
+  only (recommendations differ per flavor). Space on a CVar row switches it when its value as staged (else its
+  default) is 0 or 1 and says "use Set (e)" otherwise; on any other node it ticks (STD-8.8 keeps Space, a and n).
+  The shared `TickActions.action_toggle` gained one hook, `space_on_node(node)` (False by default), since no tool may
+  define its own `action_toggle` (test_review_machinery_lives_in_ui). The hint keeps REVIEW_HINT and adds "Space on
+  a 0/1 CVar toggle".
+- T21b: the plan's left-pane buttons Set, Add, Remove, Reset and Recommend… sit in the action bar under the tree
+  (`edit_actions.TREE_ACTIONS`, keys `e`, `N`, `d`, `R`, `m`; kinds overwrite, create, destructive, revert,
+  overwrite), as T15b did: the left pane keeps exactly Apply / Dry run / Rescan / Undo last change (the
+  look-and-feel meta-test). The left pane has the filter box, a **Show** heading, the category select (All
+  categories + the eight X8 groups), **Changed only** and **Show all known**.
+- T21c: Reset is offered only for a CVar whose KB default is known (it stages the removal, so the game uses that
+  default, CE5); Remove takes any CVar's lines out, an unknown one included. Neither asks first: both only stage,
+  and the Apply confirm lists every change.
+- T21d: the tree is (flavor ›) Config.wtf, then populate_characters: Account config (account_extra) and each
+  character, whose own node is its config-cache.wtf (no extra file node under it). A file's CVar rows load when it
+  opens (`on_tree_node_expanded`; a real file sets hundreds and Show all known adds the KB's), at once when the
+  search opens it or a rebuild keeps it open (the cursor goes back to the row). The search is the shared filter box:
+  a CVar matches on its name, Blizzard's help or our note, a file on its group texts (flavor, Config.wtf / account,
+  Account config / realm, character); a matching group shows all its rows, a file with no match is hidden.
+- T21e: the help panel (`report.help_lines`) is a 5-row scrolling panel under the tree; from 160 columns
+  (`Screen.HORIZONTAL_BREAKPOINTS`, class `-wide`) a right column a third of the tree pane wide instead (the tree keeps two thirds, so it still grows at 160x45). For a file it says where it
+  is, its level, how many CVars it sets (or "No file yet", or read-only) and, for a flavor without CVar data, that
+  every CVar shows as unknown. "Type" is said only for a CVar whose default is 0 or 1 (the KB has no type field).
+- T21f: Recommend… (`popups.RecommendScreen`) lists `ops.applicable_recommendations`: the flavor's recommendations
+  whose CVar the KB keeps at the file's level, or whose scope it doesn't know (until T20 that is every one); one
+  already at its value is listed dim and can't be ticked. Space or Enter ticks, OK stages the ticked ones.
+- T21g: Add (`popups.AddCvarScreen`) shows, as the name is typed, what the KB knows (default, scope, sync), or
+  `unknown`, and a scope warning; it never refuses for scope. The Apply confirm lists every CVar set at another level
+  than its KB scope (`report.scope_listed`, ConfirmScreen `listed=`). Set is the shared TextPromptScreen, opened on
+  the value as staged (else the default) and checked with ops.stage_set's own rules.
+- T21h: like the copier and the macro editor (T11r1, T15h): no USE AT YOUR OWN RISK popup, but the RiskBanner tops
+  the left pane (Remove and Reset take lines out): STD-7.10's list, test_structure's banner table,
+  DESTRUCTIVE_REVIEWS and test_docs' banner guides name it. The editor is in STAGING_TOOLS and every PREPARE table
+  (`tests/fixtures.stage_config_edit`).
+- T21i: the flow takes `kb_root` (tool_options; tests point it at a temp knowledge base). Until T20 ships the CVar
+  data, a real install shows every CVar as `unknown` (still editable) and Recommend… lists every recommendation of
+  the flavor. `cvar.started` registered, docs/events.md regenerated.
+- T21j: registering the tool makes the docs tests require its guide, internals doc, README / CLAUDE.md /
+  architecture / releasing rows, `RELEASE_SHIPS` entry, CHANGELOG `### Added` line and a screenshot, so first
+  versions land here, as T15j: `browse.png` is the app's own SVG at 120x30 of `build_config_tree` with the test
+  knowledge base (Retail, Aellâ open, one staged CVar, cameraDistanceMaxZoomFactor highlighted), through headless
+  Chrome at 1920x1013, no script committed. The README's practice-run, undo and journal sentences (pinned by
+  test_docs) and its Screenshots section are left for T22.
+- T21k: the tool menu's description is "See and change CVars in Config.wtf and each account and character, with
+  help." (77 characters), not the plan's 95-character text, which wrapped at 120 columns
+  (test_menu_shows_everything_at_base). An eighth tool no longer fit the menu either: at 120x30 the shield art made
+  the list scroll, at 80x30 the list scrolled even without it. So the blank row between "Choose a tool" and the list
+  is gone at every size (ToolArea counts no list margin), and once the art gives way to the name line the blank rows
+  above the banner and under the version go too (`ToolMenuScreen` class `-compact`). The hint now fits down to 80x14;
+  test_menu_hides_the_hint_below_tiny_rather_than_overlap checks (80, 13) and (80, 11), the same distance below the
+  new floor as (80, 16) and (80, 14) were below the old one.

@@ -18,11 +18,12 @@ from pathlib import Path
 
 from wowtools.core.client_apply import ClientChange
 from wowtools.core.cvarfile import apply_cvar_changes, parse_cvars
-from wowtools.core.kb import CvarInfo
+from wowtools.core.kb import CvarInfo, Recommendation
 from wowtools.tools.config_editor.model import ConfigTarget, Row
 
-__all__ = ["BOOLEAN_VALUES", "ConfigStaged", "build_changes", "effective_value", "is_boolean", "rows",
-           "same_value", "stage_remove", "stage_reset", "stage_set", "stage_toggle"]
+__all__ = ["BOOLEAN_VALUES", "ConfigStaged", "RecommendRow", "applicable_recommendations", "build_changes",
+           "effective_value", "is_boolean", "rows", "same_value", "stage_remove", "stage_reset", "stage_set",
+           "stage_toggle"]
 
 BOOLEAN_VALUES = ("0", "1")
 _EMPTY = parse_cvars(b"")
@@ -224,4 +225,29 @@ def build_changes(staged: ConfigStaged, targets: Sequence[ConfigTarget]) -> list
         if new == data and (target.exists or not new):
             continue
         out.append(ClientChange(target.path, new, target.sha256, _lines(target, sets, removes)))
+    return out
+
+
+@dataclass(frozen=True)
+class RecommendRow:
+    """One recommendation as Recommend… lists it for a file: `current` is the CVar's value there as staged (None:
+    not set), `done` whether that already is the recommended value (listed, never staged again)."""
+    recommendation: Recommendation
+    current: str | None
+    done: bool
+
+
+def applicable_recommendations(target: ConfigTarget, recommendations: Sequence[Recommendation],
+                               cvars: Mapping[str, CvarInfo], staged: ConfigStaged | None = None) -> list[RecommendRow]:
+    """The recommendations (already the target's flavor's, core.kb.load_recommendations) that belong in this file:
+    every one whose CVar the KB keeps at the file's level, or whose scope the KB does not know (no data yet: the
+    file is the user's call). In the given order."""
+    index = {name.casefold(): info for name, info in cvars.items()}
+    out: list[RecommendRow] = []
+    for rec in recommendations:
+        info = index.get(rec.cvar.casefold())
+        if info is not None and info.scope is not None and info.scope != target.level:
+            continue
+        current = effective_value(staged, target, rec.cvar)
+        out.append(RecommendRow(rec, current, current is not None and same_value(current, rec.value)))
     return out

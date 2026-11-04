@@ -390,6 +390,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `cvar.snapshot_failed` | error | The whole-WTF snapshot failed; nothing was changed. |
 | `cvar.snapshot_taken` | info | The whole-WTF snapshot was written and verified. |
 | `cvar.snapshots_pruned` | info | Older whole-WTF snapshots of the flavor were deleted to keep the newest N (keep_backups). |
+| `cvar.started` | info | The Config Editor opened its browse screen (flavors, label). |
 | `cvar.undo_completed` | info | Undo last change finished (logged at warning if any file was skipped or failed). |
 | `cvar.undo_failed` | error | Undo or recovery: a file could not be put back (its zip is missing or does not match). |
 | `cvar.undo_started` | info | Undo last change started, from the newest journal. |

@@ -34,7 +34,7 @@ def add_warnings(tool: str, review) -> None:
         review.scan.flavors[0].warnings.append(SvScanWarning(Path("/wow/WTF/Odd.lua"), "Odd.lua is not readable Lua"))
     elif tool == "sv-browser":
         review.scan.flavors[0].warnings.append(SvScanWarning(Path("/wow/WTF/x"), "skipped: under a link"))
-    elif tool in ("config-copier", "macro-editor"):
+    elif tool in ("config-copier", "macro-editor", "config-editor"):
         review.scan_warnings.append(WarningItem("Account/ACCT1/Realm1/CharA/chat-cache.txt", "Permission denied",
                                                 "Retail"))
     review._update_summary()

@@ -46,6 +46,9 @@ TOOLS: dict[str, Tool] = {tool.name: tool for tool in (
     Tool("macro-editor", "Macro Editor",
          "Browse, edit, copy and paste macros across characters, accounts and flavors.",
          "wowtools.tools.macro_editor.app", "macro_editor"),
+    Tool("config-editor", "Config Editor",
+         "See and change CVars in Config.wtf and each account and character, with help.",
+         "wowtools.tools.config_editor.app", "config_editor"),
 )}
 
 # Tools that changed name. At start-up each tool's old config file, logs/<old>/ folder and
