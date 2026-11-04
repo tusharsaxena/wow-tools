@@ -151,11 +151,22 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
   ("newest N per flavor" / "all backups"), the `FilterBar` (filter box and **Filter** button) (`/`; the pane's first control), the action row **Back up** (create), **Restore** (navigate: it opens the restore screen), **Rescan**, **Undo last
   restore** (revert; disabled when nothing is undoable), and the NavHint. Right: a `ReviewTree` (`#flavors`), filled
   after a worker scans (`scan_flavors`, `list_backups`, `latest_undoable`): the root (scope label, files and size
-  ticked) → a node per flavor (tick, `report.flavor_text`) → read-only children: `Interface` and `WTF`
-  (`part_text`), `Links (n)`, a leftover notice, `Scan warnings (n)` and `Backups (n)` (`backups_title`; safety
-  zips counted apart). Links, warnings and Backups load their children on expand; a Backups node lists the
-  flavor's zips newest first (`backup_text`: kind, date and time, parts, size), their parts read per
-  zip by a worker (`read_parts`; `PARTS_PENDING` until read). Ticks are on flavors with something to back up only
+  ticked) → a node per flavor (tick, `report.flavor_cells`) → read-only children: `Interface` and `WTF`
+  (`part_cells`), `Links`, a leftover notice, `Scan warnings` (`WARNINGS_NOTE`) and `Backups` (`backups_note`: the
+  safety zips among them). Links, warnings and Backups load their children on expand; a Backups node lists the
+  flavor's zips newest first (`backup_cells`: date and time, kind, parts, size), their parts read per
+  zip by a worker (`read_parts`; `PARTS_PENDING` until read; the group's columns realign once a zip's parts are in).
+  Leaf counts (feedback round 2 R2, STD-7.27): the leaf is a backup zip, a safety zip included. `_count_leaves`
+  counts them once per rebuild over the model (`_model`: the zips before Backups is opened), as the filter shows
+  them: the root, a flavor and its Backups count its zips; Links and Scan warnings, not backups, count their own
+  lines and are left out of the flavor's count; a Backups node with no zips is a leaf, "none yet", with no count.
+  Columns (R4, STD-7.28), fitted by `ui/columns.fit_columns` to the pane (`restore_screen.tree_room`) and refitted
+  on a resize (`_fit_rows`): the root is scope · count · files · size (`held_cells`, `ROOT_COLUMNS`), a flavor
+  name · count · files · size · last backup (`report.last_backup_note`; `FLAVOR_COLUMNS`, natural widths over the
+  flavors the filter keeps, `_flavor_widths`), and a flavor with nothing to back up keeps the name and count columns
+  and its `skip_reason` after them; a part is name · files · size (`PART_COLUMNS`), a backup date and time · kind ·
+  parts · size (`BACKUP_COLUMNS`). Columns are dropped (last backup, size, files; parts, size, kind) before a name
+  is cut, and `_fit_keeping_count` cuts the name (in its middle) rather than lose the count. Ticks are on flavors with something to back up only
   (and the root): `READ_ONLY` nodes keep their label on `relabel_branch`; ticks survive a rescan. The filter
   matches the flavors as `ModelNode`s (`_model`: names, part names, link paths, warning lines, "backup <when>";
   lazy groups included, and a group it opens gets its children at once); a flavor key shows (`filter_keys`) while
@@ -189,10 +200,14 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
   `Ka0sCheckbox` (`#part-Interface`, `#part-WTF`; disabled for a part the backup lacks or that is a link; both off
   when a leftover, another flavor's backup or an unreadable zip blocks it), the `FilterBar` (filter box and **Filter** button), **Restore** (overwrite, `o`) and **Back**
   (the shared `RiskBanner` tops this pane, D37)
-  (`b`/Esc). Right: a `ReviewTree` (`#effects`) rooted at "<flavor> · <date>": "Will be removed (N files)" and
-  "Newer now than in the backup (N files)" (open, one node per folder group from `report.group_items`, files on
-  expand), "Links kept", "Links replaced", "Could not be read" (lines on expand), a low-space leaf, or "Nothing on
-  disk would be lost"; while loading, with no box ticked or when blocked, one line saying so. `open_backup` +
+  (`b`/Esc). Right: a `ReviewTree` (`#effects`) rooted at "<flavor> · <date>": "Will be removed" and
+  "Newer now than in the backup" (open, one node per folder group from `report.group_items`, files on
+  expand; a group row is name · count · parent folder, `group_cells` / `GROUP_COLUMNS`, the folder giving way first
+  and dropped before the count, refitted on a resize), "Links kept", "Links replaced", "Could not be read" (lines on expand), a low-space leaf, or "Nothing on
+  disk would be lost"; while loading, with no box ticked or when blocked, one line saying so (and the root has no
+  count). Leaf counts (R2, STD-7.27): the leaf is a path the restore touches (a file, a link, a place that could
+  not be read), counted in `_show_plan` as the filter shows them (a group's files before it opens): the root, an
+  effect and a folder group end with theirs; the notes are not counted. `open_backup` +
   `scan_flavor` run in one worker, `plan_restore` in another on every box change (a generation counter drops
   stale plans); **Restore** is enabled only once the current plan is in. `#summary` is `report.restore_summary`.
   The confirm shows `report.restore_confirm_alerts` (one counted line per kind);

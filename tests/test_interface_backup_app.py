@@ -17,6 +17,7 @@ from tests.fixtures import (BASE, TINY, TuiTestCase, assert_keys_on_buttons, bui
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
+from wowtools.core.text import human_size
 from wowtools.tools import TOOLS
 from wowtools.tools.interface_backup import app as app_module
 from wowtools.tools.interface_backup import backup as backup_module
@@ -250,7 +251,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             review = await self.open_review(app, pilot)
             tree = review.query_one("#flavors", Tree)
             ptr = self.flavor_nodes(review)["Retail PTR"]
-            self.assertIn("nothing to back up: no Interface or WTF folder", str(ptr.label))
+            self.assertIn("no Interface or WTF folder", str(ptr.label))  # after its count, in place of the data
             # "├── ▼ " in front of the label
             self.assertLessEqual(6 + ptr.label.cell_len, tree.scrollable_content_region.width, ptr.label)
 
@@ -286,9 +287,9 @@ class InterfaceBackupAppTest(TuiTestCase):
             kinds = [c.data[0] for c in retail.children]
             self.assertEqual(kinds, ["part", "part", "backups"])
             self.assertRegex(str(retail.children[0].label), r"^Interface  \d+ files")
-            self.assertIn("WTF  missing", str(nodes["Retail PTR"].children[1].label))
+            self.assertRegex(str(nodes["Retail PTR"].children[1].label), r"^WTF +missing$")
             ptr = str(nodes["Retail PTR"].label)
-            self.assertIn("nothing to back up: no Interface or WTF folder", ptr)
+            self.assertRegex(ptr, r"0 items  no Interface or WTF folder$")
             self.assertTrue(ptr.startswith("  Retail PTR"), ptr)  # no tick, as in the other tools
             self.assertIn("none yet", str(self.child(retail, "backups").label))
             summary = str(review.query_one("#summary", Static).render())
@@ -499,8 +500,8 @@ class InterfaceBackupAppTest(TuiTestCase):
                 await settle(app, pilot)
                 self.assertIs(app.screen, review)
                 retail = self.flavor_nodes(review)["Retail"]
-                self.assertIn("1 backup, last", str(retail.label))
-                self.assertIn("Backups (1)", str(self.child(retail, "backups").label))
+                self.assertRegex(str(retail.label), r"1 item .* last \d{4}-\d\d-\d\d \d\d:\d\d:\d\d$")
+                self.assertTrue(str(self.child(retail, "backups").label).startswith("Backups  1 item  "))
         zips = self.zips()
         self.assertTrue(any(n.startswith("backup-retail-") for n in zips))
         self.assertFalse(any(n.startswith("backup-ptr-") for n in zips))  # neither part: skipped
@@ -527,7 +528,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             async with app.run_test(size=SIZE) as pilot:
                 review = await self.open_review(app, pilot)
                 anniversary = str(self.flavor_nodes(review)["Anniversary"].label)
-                self.assertIn("nothing to back up: WTF is a link (not followed)", anniversary)  # the reason, no tick
+                self.assertRegex(anniversary, r"0 items  WTF is a link \(not followed\)$")  # the reason, no tick
                 self.assertTrue(anniversary.startswith("  Anniversary"), anniversary)
                 await pilot.press("b")
                 await settle(app, pilot)
@@ -867,10 +868,10 @@ class InterfaceBackupAppTest(TuiTestCase):
                 info = str(screen.query_one("#backup-info", Static).render())
                 self.assertIsNone(re.search(r"\d{4}-\d\d-\d\dT\d\d", info), info)  # never the raw ISO stamp
                 removed = self.effect(screen, "removed")
-                self.assertIn("Will be removed (1 file)", str(removed.label))
+                self.assertTrue(str(removed.label).startswith("Will be removed  1 item  "), str(removed.label))
                 self.assertTrue(removed.is_expanded)
                 group = removed.children[0]
-                self.assertEqual(str(group.label), "WeakAuras  Interface/AddOns · 1 file")  # the name first, then the parent
+                self.assertEqual(str(group.label), "WeakAuras  1 item  Interface/AddOns")  # the name, its count, the parent
                 self.assertFalse(group.children)  # files load on expand
                 group.expand()
                 await settle(app, pilot)
@@ -1024,7 +1025,7 @@ class InterfaceBackupAppTest(TuiTestCase):
                 await settle(app, pilot)
                 self.assertIs(app.screen, review)
                 await self.highlight(pilot, review, self.child(self.flavor_nodes(review)["Retail"], "backups"))
-                await pilot.press("enter")  # "Backups (0)": nothing to open
+                await pilot.press("enter")  # "Backups  none yet": nothing to open
                 await settle(app, pilot)
                 self.assertIs(app.screen, review)
         selections = [(r["data"].get("control"), r["data"].get("value")) for r in records
@@ -1364,7 +1365,7 @@ class InterfaceBackupAppTest(TuiTestCase):
             leftover = self.child(nodes["Classic Era"], "leftover")
             self.assertIn("Restore is blocked for this flavor", str(leftover.label))
             links = self.child(nodes["Retail"], "links")
-            self.assertIn("Links (1)", str(links.label))
+            self.assertTrue(str(links.label).startswith("Links  1 item  "), str(links.label))
             self.assertIn("not backed up; a restore keeps them", str(links.label))
             self.assertFalse(links.children)  # paths load on expand
             links.expand()
@@ -1394,7 +1395,7 @@ class InterfaceBackupAppTest(TuiTestCase):
                 review = await self.open_review(app, pilot)
                 first = review.query_one("#flavors", Tree).root.children[0]
                 node = self.child(first, "warnings")
-                self.assertIn("Scan warnings (3)", str(node.label))
+                self.assertTrue(str(node.label).startswith("⚠ Scan warnings  3 items  "), str(node.label))
                 node.expand()
                 await settle(app, pilot)
                 self.assertEqual([str(c.label) for c in node.children], ["X0: denied", "X1: denied", "X2: denied"])
@@ -1504,8 +1505,8 @@ class InterfaceBackupAppTest(TuiTestCase):
             screen = await self.open_restore(app, pilot)
             removed = self.effect(screen, "removed")
             labels = [str(c.label) for c in removed.children]
-            self.assertEqual(labels[:4], ["WeakAuras  Interface/AddOns · 2 files", "New0  Interface/AddOns · 1 file",
-                                          "New1  Interface/AddOns · 1 file", "New2  Interface/AddOns · 1 file"])
+            self.assertEqual(labels[:4], ["WeakAuras  2 items  Interface/AddOns", "New0       1 item   Interface/AddOns",
+                                          "New1       1 item   Interface/AddOns", "New2       1 item   Interface/AddOns"])
             tree = screen.query_one("#effects", Tree)
             shown = "\n".join(tree.render_line(y).text for y in range(tree.scrollable_content_region.height))
             self.assertIn(screen.flavor.display_name + " · " + screen.info.when, shown)  # the root, not cut
@@ -1513,7 +1514,7 @@ class InterfaceBackupAppTest(TuiTestCase):
                 self.assertRegex(shown, rf"\b{name}\b", shown)
             filters, hint = screen.query_one("#filters"), screen.query_one(NavHint)
             self.assertLessEqual(hint.region.bottom, filters.content_region.bottom, hint.region)  # not clipped
-            self.assertIn("Will be removed (14 files)", shown)
+            self.assertIn("Will be removed  14 items", shown)
             box = screen.query_one("#part-Interface", Checkbox)
             box.label = "Interface (link: restore by hand)"  # the longest label a box gets
             await settle(app, pilot)
@@ -1539,9 +1540,9 @@ class InterfaceBackupAppTest(TuiTestCase):
                 await pilot.press("r")
                 await settle(app, pilot)
                 screen = await self.open_restore(app, pilot)
-                expected = {"links_kept": ("Links kept (1)", "Interface/AddOns/Dev"),
-                            "links_removed": ("Links replaced (1)", "WTF/Account"),
-                            "unreadable": ("Could not be read (1)", "/wow/Interface/X: denied")}
+                expected = {"links_kept": ("Links kept  1 item", "Interface/AddOns/Dev"),
+                            "links_removed": ("Links replaced  1 item", "WTF/Account"),
+                            "unreadable": ("Could not be read  1 item", "/wow/Interface/X: denied")}
                 for kind, (title, child) in expected.items():
                     node = self.effect(screen, kind)
                     self.assertIn(title, str(node.label))
@@ -1754,9 +1755,11 @@ class InterfaceBackupAppTest(TuiTestCase):
             await settle(app, pilot)
             self.assertIs(app.screen, review)
             retail = self.flavor_nodes(review)["Retail"]
-            self.assertIn("1 backup, last", str(retail.label))
+            self.assertRegex(str(retail.label), r"  2 items ")  # the zip and its safety zip
+            if " last " in str(retail.label):  # at BASE it is dropped when the sizes are known (Windows)
+                self.assertRegex(str(retail.label), r" last \d{4}-\d\d-\d\d \d\d:\d\d:\d\d$")
             group = self.child(retail, "backups")
-            self.assertIn("Backups (1 + 1 safety)", str(group.label))  # counted as on the flavor's line
+            self.assertTrue(str(group.label).startswith("Backups  2 items  incl. 1 safety · "), str(group.label))
             group = await self.open_backups(app, pilot, review, "Retail")
             self.assertEqual(len(group.children), 2)
             await self.highlight(pilot, review, group.children[-1])
@@ -1769,11 +1772,11 @@ class InterfaceBackupAppTest(TuiTestCase):
                 line = node.line - tree.scroll_offset.y
                 self.assertTrue(0 <= line < region.height, f"{node.label} is scrolled out of view")
                 visible.append(rows[region.y + line][region.x:region.right].rstrip())
-            kinds = [v.split("─ ")[-1].split(" ")[0] for v in visible]
+            kinds = [v.split("─ ")[-1].split()[2] for v in visible]  # date, time, kind
             self.assertEqual(sorted(kinds), ["backup", "safety"], visible)
             self.assertEqual(len(set(visible)), 2, visible)
             for node, kind, line in zip(group.children, kinds, visible):
-                self.assertIn(f"{kind} {node.data[1].when} · ", line)  # the whole date and time
+                self.assertIn(f"{node.data[1].when}  {kind}  ", line)  # the whole date and time
             info = review.highlighted_backup()
             self.assertIs(info, group.children[-1].data[1])
             kind = "Safety backup (before a restore)" if info.is_safety else "Backup"
@@ -1826,11 +1829,12 @@ class InterfaceBackupAppTest(TuiTestCase):
                 group = await self.open_backups(app, pilot, review, name)
                 labels[name] = [str(c.label) for c in group.children]
             self.assertEqual(len(labels["Retail"]), 2)
-            self.assertIn("Backups (2)", str(self.child(self.flavor_nodes(review)["Retail"], "backups").label))
-            self.assertRegex(labels["Retail"][0], r"^backup \d{4}-\d\d-\d\d \d\d:\d\d:\d\d · Interface, WTF · ")  # newest first
-            self.assertTrue(labels["Retail"][1].startswith("backup 2000-01-01 00:00:00 · ? · "), labels)  # unreadable
-            self.assertIn(" · Interface, WTF · ", labels["Classic Era"][0])
-            self.assertIn(" · WTF · ", labels["Anniversary"][0])
+            self.assertTrue(str(self.child(self.flavor_nodes(review)["Retail"], "backups").label)
+                            .startswith("Backups  2 items  "))
+            self.assertRegex(labels["Retail"][0], r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d  backup  Interface, WTF  ")  # newest first
+            self.assertRegex(labels["Retail"][1], r"^2000-01-01 00:00:00  backup  \? +\S")  # unreadable
+            self.assertRegex(labels["Classic Era"][0], r"  backup  Interface, WTF  \S")
+            self.assertRegex(labels["Anniversary"][0], r"  backup  WTF  \S")
 
     async def test_backup_parts_read_in_a_worker(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
@@ -1860,7 +1864,7 @@ class InterfaceBackupAppTest(TuiTestCase):
                     if threads:
                         break
                 self.assertEqual(len(group.children), 1)
-                self.assertIn(" · …", str(group.children[0].label))  # listed before the parts are read
+                self.assertRegex(str(group.children[0].label), r"  backup  …  \S")  # listed before the parts are read
                 await pilot.press("t")  # leave while the worker is still reading
                 await pilot.pause()
                 self.assertIsInstance(app.screen, ToolMenuScreen)
@@ -2166,6 +2170,183 @@ class InterfaceBackupAppTest(TuiTestCase):
                         self.assertTrue(box.y <= r.y and r.bottom <= box.bottom, (r, box))
                         hint = screen.query_one(NavHint).region
                         self.assertTrue(hint.bottom <= box.bottom, (hint, box))
+
+    # --- leaf counts and columns (feedback round 2 R2 / R4, STD-7.27 / STD-7.28): on the review the leaf is a
+    #     backup zip (a safety zip too); the root, a flavor and its Backups count the ones the tree shows (before
+    #     Backups is opened too), Links and Scan warnings their own lines; on the restore screen the leaf is a path
+    #     the restore touches. Flavor, part and backup rows, and the restore's folder groups, are aligned columns
+    #     fitted to the pane --------------------------------------------------------------------------------
+    def assert_count(self, node, n: int) -> None:
+        """The node's label holds `n` as its dim count, two spaces after what comes before it."""
+        plain = str(node.label)
+        count = f"{n} item" if n == 1 else f"{n} items"
+        self.assertRegex(plain, rf"  {count}(\s|$)", plain)
+        spans = {plain[s.start:s.end].strip(): str(s.style) for s in node.label.spans}
+        self.assertEqual(spans.get(count), "dim", plain)
+        self.assertNotRegex(plain, r"\(\d+( \+ \d+ safety)?\)|\(\d+ files?\)", plain)  # the old counts are gone
+
+    async def backed_up_twice(self, app, pilot, review):
+        """Back up every flavor, add an unreadable Retail zip (parts "?"), rescan: Retail holds 2 zips, Classic Era
+        and Anniversary 1 each, Retail PTR none."""
+        await self.make_backup(app, pilot)
+        (self.bk / "interface-backup" / "backup" / "backup-retail-20000101-000000.zip").write_bytes(b"not a zip")
+        await pilot.press("r")
+        await settle(app, pilot)
+        self.assertIs(app.screen, review)
+
+    async def test_every_node_counts_the_backups_below_it(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.backed_up_twice(app, pilot, review)
+            tree = review.query_one("#flavors", Tree)
+            self.assert_count(tree.root, 4)
+            nodes = self.flavor_nodes(review)
+            for name, n in (("Retail", 2), ("Classic Era", 1), ("Anniversary", 1), ("Retail PTR", 0)):
+                with self.subTest(flavor=name):
+                    self.assert_count(nodes[name], n)
+                    self.assertNotRegex(str(nodes[name].label), r"\d+ backups?, last")  # the count says it
+            group = self.child(nodes["Retail"], "backups")
+            self.assertFalse(group.children)  # not opened yet: counted from the model
+            self.assertTrue(str(group.label).startswith("Backups  2 items"), str(group.label))
+            self.assert_count(group, 2)
+            empty = self.child(nodes["Retail PTR"], "backups")
+            self.assertFalse(empty.allow_expand)
+            self.assertEqual(str(empty.label), "Backups  none yet")  # nothing under it: no count
+
+    async def test_backup_counts_follow_the_filter(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.backed_up_twice(app, pilot, review)
+            tree = review.query_one("#flavors", Tree)
+            submit_filter(review, "2000-01-01")  # the unreadable zip's date
+            await settle(app, pilot)
+            self.assertEqual(list(self.flavor_nodes(review)), ["Retail"])
+            self.assert_count(tree.root, 1)
+            retail = self.flavor_nodes(review)["Retail"]
+            self.assert_count(retail, 1)
+            group = self.child(retail, "backups")
+            self.assertEqual(len(group.children), 1)  # opened by the filter
+            self.assert_count(group, 1)
+            submit_filter(review, "retail")  # Retail and Retail PTR, all of what they hold
+            await settle(app, pilot)
+            self.assertEqual(sorted(self.flavor_nodes(review)), ["Retail", "Retail PTR"])
+            self.assert_count(tree.root, 2)
+            self.assert_count(self.flavor_nodes(review)["Retail"], 2)
+
+    async def test_flavor_part_and_backup_rows_are_aligned_columns(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.backed_up_twice(app, pilot, review)
+            nodes = self.flavor_nodes(review)
+            labels = {name: str(node.label) for name, node in nodes.items()}
+            counts = {re.search(r"\d+ items?", text).start() for text in labels.values()}
+            self.assertEqual(len(counts), 1, labels)  # the count column lines up
+            files = {re.search(r"\d+ files?", text).start() for name, text in labels.items() if name != "Retail PTR"}
+            self.assertEqual(len(files), 1, labels)  # and the files column
+            self.assertIn("no Interface or WTF folder", labels["Retail PTR"])  # why, in place of the data columns
+            self.assertFalse(labels["Retail PTR"].lstrip().startswith(("✔", "✘", "◩")))
+            self.assertRegex(labels["Retail"], r"last \d{4}-\d\d-\d\d \d\d:\d\d:\d\d$")  # the newest real backup
+            parts = [str(c.label) for c in nodes["Retail"].children if c.data[0] == "part"]
+            self.assertEqual(len({re.search(r"\d+ files?", p).start() for p in parts}), 1, parts)
+            ptr_parts = [str(c.label) for c in nodes["Retail PTR"].children if c.data[0] == "part"]
+            self.assertRegex(ptr_parts[1], r"^WTF +missing$")
+            group = await self.open_backups(app, pilot, review, "Retail")
+            rows = [(str(c.label), c.data[1]) for c in group.children]
+            self.assertEqual(len(rows), 2)
+            self.assertRegex(rows[0][0], r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d  backup  Interface, WTF  ")  # newest first
+            self.assertRegex(rows[1][0], r"^2000-01-01 00:00:00  backup  \? +")  # unreadable: "?"
+            sizes = {len(text) - len(human_size(info.size)) for text, info in rows}
+            self.assertEqual(len(sizes), 1, rows)  # the size column lines up
+            self.assertTrue(all(text.endswith(human_size(info.size)) for text, info in rows), rows)
+
+    async def test_review_rows_are_cut_to_fit_the_pane(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.backed_up_twice(app, pilot, review)
+            tree = review.query_one("#flavors", Tree)
+            tree.focus()
+            await pilot.press("x")  # every line open: the zips load
+            await settle(app, pilot)
+            for size in (BASE, TINY):
+                await pilot.resize_terminal(*size)
+                await settle(app, pilot)
+                room = tree.size.width - tree.styles.scrollbar_size_vertical
+                rows = [n for n in _walk(tree.root) if n.data and n.data[0] in ("root", "flavor", "part", "backup")]
+                self.assertTrue(any(n.data[0] == "backup" for n in rows))
+                for node in rows:
+                    with self.subTest(size=size, row=str(node.label)):
+                        self.assertLessEqual(_indent(node) + node.label.cell_len, room)
+                        if node.data[0] in ("root", "flavor"):
+                            self.assertRegex(str(node.label), r"\d+ items?")  # the count is never dropped
+
+    async def test_restore_tree_counts_and_columns(self):
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        addons = self.root / "_retail_" / "Interface" / "AddOns"
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_review(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            for i in range(3):
+                (addons / f"New{i}").mkdir(parents=True)
+                (addons / f"New{i}" / "a.lua").write_text("a", encoding="utf-8")
+            (addons / "WeakAuras").mkdir(parents=True)
+            for name in ("wa.lua", "wb.lua"):
+                (addons / "WeakAuras" / name).write_text("w", encoding="utf-8")
+            screen = await self.open_restore(app, pilot)
+            tree = screen.query_one("#effects", Tree)
+            self.assert_count(tree.root, 5)
+            removed = self.effect(screen, "removed")
+            self.assertTrue(str(removed.label).startswith("Will be removed  5 items"), str(removed.label))
+            self.assert_count(removed, 5)
+            groups = list(removed.children)
+            labels = [str(g.label) for g in groups]
+            self.assertTrue(labels[0].startswith("WeakAuras  2 items  Interface/AddOns"), labels)
+            for group, n in zip(groups, (2, 1, 1, 1)):
+                self.assertFalse(group.children)  # not opened yet: counted from the plan
+                self.assert_count(group, n)
+            self.assertEqual(len({text.index("Interface/AddOns") for text in labels}), 1, labels)  # aligned
+            self.assertEqual(len({re.search(r"\d+ items?", text).start() for text in labels}), 1, labels)
+            submit_filter(screen, "wb.lua")
+            await settle(app, pilot)
+            self.assert_count(tree.root, 1)
+            removed = self.effect(screen, "removed")
+            self.assert_count(removed, 1)
+            (group,) = removed.children
+            self.assert_count(group, 1)
+            submit_filter(screen, "")
+            await settle(app, pilot)
+            for size in (BASE, TINY):
+                await pilot.resize_terminal(*size)
+                await settle(app, pilot)
+                room = tree.size.width - tree.styles.scrollbar_size_vertical
+                for node in self.effect(screen, "removed").children:
+                    with self.subTest(size=size, row=str(node.label)):
+                        self.assertLessEqual(_indent(node) + node.label.cell_len, room)
+                        self.assertRegex(str(node.label), r"\d+ items?")
+
+
+def _walk(node):
+    yield node
+    for child in node.children:
+        yield from _walk(child)
+
+
+def _indent(node) -> int:
+    """The cells in front of a node's label: the tree guides, and the ▶ / ▼ of a node that opens."""
+    depth, parent = 0, node.parent
+    while parent is not None:
+        depth, parent = depth + 1, parent.parent
+    return depth * node.tree.guide_depth + (2 if node.allow_expand else 0)
 
 
 class RestoreFilterKeyTest(TuiTestCase):
