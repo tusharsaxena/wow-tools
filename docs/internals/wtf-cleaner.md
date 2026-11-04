@@ -163,7 +163,21 @@ set, `clean.risk_warning_changed`, L8). `review_screen.py` holds:
   flavor (`core.process.wow_check_for(list)` lists the processes once). Blacklisted items (`Proposal.blacklisted`)
   stay in the tree, greyed and tagged "blacklisted", with no tick keys (`_paths` gives none, so Space / `a` / `n`
   skip them) and the shared blacklist mark (`ui.review.blacklisted_mark()`, `⊘`, dim, L15) in place of a tick mark;
-  group rows count and mark the cleanable items only. `b` is the shared
+  group rows count and mark the cleanable items only. Leaf counts (feedback round 2 R2, STD-7.27): the leaf is an
+  addon entry (a `ProposalItem`, cleanable; a blacklisted one is never counted, it is never cleaned). Every group
+  (the root, a flavor, an account, account-wide or a character) ends with `with_count(label, n)`; `_shown_count`
+  counts its items as the tree shows them (under a search, the ones with a file the filter keeps, which is how
+  `ModelFilter` keeps an addon row); a group with no cleanable items at all still says "nothing to clean" in the
+  count's place. An addon row is the leaf: its files are its `files` column, not a count. Columns (R4,
+  STD-7.28): an addon row is `report.item_cells` (name · reasons · files · size · age; the reasons cell
+  `blacklisted` on a blacklisted row), a file row `report.file_cells` (name · size · age), fitted by
+  `ui/columns.fit_columns` with `review_screen.ITEM_COLUMNS` / `FILE_COLUMNS` (caps and minimums from
+  `report.ITEM_CAPS` / `FILE_CAPS`: the reasons give way first, then the name, cut in its middle; files, size and
+  age are never cut, dropped in `report.ITEM_DROP` / `FILE_DROP` order). `_add_node` works out the natural widths
+  over the sibling rows the filter keeps and each row's indent (guides, plus the ▶ of an addon row) once per
+  rebuild; `_row_label` draws it (the reasons a Rich cell in their criteria's colours), and `_fit_rows` refits
+  every row when the tree pane's width changes (on resize, and after a rebuild made before the tree was laid out).
+  `b` is the shared
   `BlacklistAction` (`BLACKLIST_BINDING`, not in the footer: the left-pane hint names it): `blacklist_target` maps an
   item or file row to (its flavor folder, from `_item_flavor`, rebuilt per rebuild, so All flavors toggles per flavor;
   the addon), `toggle_blacklist` reloads the settings, applies `toggle_pair` over every flavor folder of the install,

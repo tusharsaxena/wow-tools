@@ -34,9 +34,16 @@ class ColumnLayout(NamedTuple):
     drop: tuple[int, ...] = ()
 
 
-def natural_widths(rows: Iterable[Sequence[str]]) -> tuple[int, ...]:
+Cell = str | Text  # a cell is plain text, or Rich text of its own colours (the WTF Cleaner's reasons)
+
+
+def _cells(cell: Cell) -> int:
+    return cell.cell_len if isinstance(cell, Text) else cell_len(cell)
+
+
+def natural_widths(rows: Iterable[Sequence[Cell]]) -> tuple[int, ...]:
     """Each column's widest cell, in terminal cells, over the sibling rows that align (() for no rows)."""
-    return tuple(max(map(cell_len, column)) for column in zip(*rows))
+    return tuple(max(map(_cells, column)) for column in zip(*rows))
 
 
 def _visible_total(widths: Sequence[int], gap: int) -> int:
@@ -99,16 +106,20 @@ def cut_middle(text: str, width: int) -> str:
     return _take(text, head) + ELLIPSIS + _take(text, width - 1 - head, from_end=True)
 
 
-def column_text(cells: Sequence[str], widths: Sequence[int], styles: Sequence[str], gap: int = WIDE_GAP, *,
+def column_text(cells: Sequence[Cell], widths: Sequence[int], styles: Sequence[str], gap: int = WIDE_GAP, *,
                 middle: Collection[int] = ()) -> Text:
     """A row's columns as Rich text: each cell in its style, cut with … to its width (in its middle for a column in
     `middle`, else at its end) and padded to it but the last, `gap` spaces apart; a column of width 0 is left out.
-    The caller puts the tick mark in front and fits `widths` to the pane (fit_columns)."""
+    A Rich-text cell keeps its own colours over its column's style (it is cut at its end). The caller puts the tick mark in front and fits `widths` to the pane (fit_columns)."""
     shown = [(i, cell, width, style) for i, (cell, width, style) in enumerate(zip(cells, widths, styles)) if width]
     text = Text()
     for position, (i, cell, width, style) in enumerate(shown):
         last = position == len(shown) - 1
-        piece = Text(cut_middle(cell, width) if i in middle else cell, style=style)
+        if isinstance(cell, Text):
+            piece = Text(style=style)
+            piece.append_text(cell)
+        else:
+            piece = Text(cut_middle(cell, width) if i in middle else cell, style=style)
         piece.truncate(width, overflow="ellipsis", pad=not last)
         text.append_text(piece)
         if not last:

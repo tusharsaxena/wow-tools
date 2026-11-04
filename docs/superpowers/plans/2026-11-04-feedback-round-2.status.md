@@ -7,7 +7,7 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-feedback-round-2.md`. R
 | G0 | re-sort the 250 "other" CVars (workflow pass, data handed to G2) | done | (this commit) | the 250: debug 92, game state 82, system 43, graphics 20, interface 9, network 3, other 1 (`repositionfrequency`); written into cvar_categories.json by G2 |
 | G1 | shared column and count helpers, two standards | done | (this commit) | 16 new tests in tests/test_ui_columns.py + test_structure::test_tree_label_helpers_live_in_ui; CE ops column tests on the shared fit. Gate: run_tests --all 2365 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
 | G2 | Config Editor R1, R2, R3, R5, R6 | done | (this commit) | 6 new tests (5 in test_config_editor_app: node counts, flavor counts, dropdown counts, not-set colour, help colours; test_kb::test_other_is_kept_to_a_handful), group lists / help styles / tree labels updated in test_config_editor_app, test_config_editor_ops, test_kb. Stale screenshots: config-editor/browse.png, recommend.png. Gate: run_tests --all 2371 tests, WSL OK (10 skipped) every run; Windows OK (86 skipped) on the --windows rerun, its --all runs each had one environmental error in an untouched test (WinError 10055 socket-buffer twice, as in T5/T6; one test_suite lock-timing KeyError under the doubled load); ruff clean; gen_event_docs --check OK. Review fixes (fix: G2 review fixes): kb/README.md cvars section lists the eleven groups; config-editor.md tree-count wording matches G2e (0 items included); docs only, gate run_tests --all 2371 WSL OK / Windows OK, ruff clean, gen_event_docs OK |
-| G3 | WTF Cleaner counts + columns | todo | | |
+| G3 | WTF Cleaner counts + columns | done | (this commit) | 7 new tests (test_ui_columns::test_a_rich_cell_keeps_its_own_colours; 6 in test_wtf_app NodeCountsAndColumnsTest: group counts, counts follow the search, blacklisted not counted, aligned addon and file columns, long name cut to the pane at 120x30 and 80x24, flavor counts); no existing test changed. Stale screenshots: wtf-cleaner/review.png (also in README.md). Gate: run_tests --all 2378 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
 | G4 | Screenshot Organizer counts + columns | todo | | |
 | G5 | Interface Backup counts + columns | todo | | |
 | G6 | Ace3 Profile Manager counts + columns | todo | | |
@@ -50,3 +50,20 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-feedback-round-2.md`. R
   `prevent(Select.Changed)` so the pick stays and no second rebuild runs; the prompt reads `All categories (N items)`.
 - G2g: no CHANGELOG line: the Config Editor is unreleased and its `[Unreleased]` Added line covers it; G10 adds the
   suite-wide counts and columns line.
+- G3a: the WTF Cleaner's leaf is a cleanable addon entry (a `ProposalItem`); a blacklisted row is shown but not
+  counted (it is never cleaned, as the group's tick mark already left it out). An addon row is the leaf itself: its
+  files are its `files` column, not an R2 count.
+- G3b: under a search a group counts the entries with a file `filter_keys` shows, the same test `ModelFilter` uses
+  to keep an addon row (its addon, a file or a group above it matches), so the count is what the tree shows.
+- G3c: a group with no cleanable entries at all keeps "nothing to clean" in the count's place (the guide and two
+  tests name it); a group with entries none of which the search shows says `0 items`.
+- G3d: columns: an addon row is name · reasons · files · size · age, a file row name · size · age (the ` · `
+  separators are gone). Caps 40 / 48 for the name and reasons (56 for a file name), minimums 12 / 13; the reasons
+  give way first, then the name (cut in its middle); files, size and age are never cut, dropped age, files, size
+  (a file row: age). A blacklisted row now shows the age column too, so it aligns with its cleanable siblings.
+- G3e: `ui/columns` takes a Rich `Text` cell as well as a string (`natural_widths` measures it, `column_text` keeps
+  its spans over the column's style and cuts it at its end), so the reasons keep a colour per criterion.
+- G3f: the natural widths are worked out over the sibling rows the search keeps, once per rebuild (`_add_node`),
+  with the ages as of that rebuild; `_fit_rows` refits on a resize and after a rebuild made before the tree was
+  laid out (the tree is hidden during the scan).
+- G3g: no CHANGELOG line here (G10 adds the suite-wide one).

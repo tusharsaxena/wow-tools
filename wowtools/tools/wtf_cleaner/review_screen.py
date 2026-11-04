@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from rich.text import Text
+from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -28,7 +29,9 @@ from wowtools.tools.wtf_cleaner.cleaner import CLEANED_SUBDIR, CleanError
 from wowtools.tools.wtf_cleaner.journal import latest_undoable, read_journal, resolve_journal_dir
 from wowtools.tools.wtf_cleaner.multi import (FlavorScan, MultiCleanResult, execute_flavors, nothing_deleted,
                                               scan_flavors)
-from wowtools.tools.wtf_cleaner.report import CRITERION_COLORS, CRITERION_SHORT, STAGE_TITLES, age_days, locker_warning
+from wowtools.tools.wtf_cleaner.report import (BLACKLISTED, CRITERION_COLORS, CRITERION_SHORT, FILE_CAPS, FILE_DROP,
+                                               FILE_MINIMUMS, ITEM_CAPS, ITEM_DROP, ITEM_MINIMUMS, STAGE_TITLES,
+                                               file_cells, item_cells, locker_warning)
 from wowtools.tools.wtf_cleaner.result_screen import ResultScreen, reasons_text
 from wowtools.tools.wtf_cleaner.rules import (CRITERIA, Proposal, ProposalItem, criterion_counts, evaluate,
                                              log_proposal_built, log_proposal_items)
@@ -37,6 +40,7 @@ from wowtools.tools.wtf_cleaner.safety import (MARKER_NAME, SNAPSHOT_SUBDIR, Mar
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir, save_settings
 from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
 from wowtools.ui.branding import BottomBar
+from wowtools.ui.columns import ColumnLayout, column_text, fit_columns, natural_widths
 from wowtools.ui.counts import with_count
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceScreen, ConfirmScreen,
                                 ProgressScreen, relabel_branch, two_pane_css)
@@ -50,6 +54,12 @@ from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, 
 WARNING_STYLE = "#E8B04B"
 ALL_FLAVORS_LABEL = "All flavors"
 __all__ = ["CleanProgressScreen", "RecoveryScreen", "ResultScreen", "ReviewScreen"]
+# The addon and file rows' columns as the shared fit takes them (feedback round 2 R4, STD-7.28): the reasons give
+# way first, then the name; files, size and age are never cut, only dropped (report.ITEM_DROP / FILE_DROP).
+ITEM_COLUMNS = ColumnLayout(caps=ITEM_CAPS, minimums=ITEM_MINIMUMS, shrink=((1,), (0,)), drop=ITEM_DROP)
+FILE_COLUMNS = ColumnLayout(caps=FILE_CAPS, minimums=FILE_MINIMUMS, shrink=((0,),), drop=FILE_DROP)
+MARK_WIDTH = 2  # the tick (or blacklist) mark in front of a row's columns
+TOGGLE_WIDTH = 2  # the tree's ▶ / ▼ in front of a row that opens (an addon row)
 NAV_HINT = (REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT
             + f"f flavors · t tools · 1-5 criteria · {BLACKLIST_KEY} blacklist")
 
@@ -158,6 +168,12 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         self._pending_recovery: tuple[Marker, Path] | None = None  # read while another screen was shown
         # what b saw (row ident -> expanded, the highlighted row's ident), put back by the rebuild it schedules
         self._kept_view: tuple[dict[tuple, bool], tuple | None] | None = None
+        # a row's columns (R4): id(row data) -> its siblings' natural widths and the cells in front of its label
+        # (the guides, and the ▶ of an addon row), worked out once per rebuild; the age is as of that rebuild
+        self._columns: dict[int, tuple[int, ...]] = {}
+        self._indents: dict[int, int] = {}
+        self._now = time.time()
+        self._fitted_width = 0
 
     # --- layout -------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -350,6 +366,8 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         tree.clear()
         tree.root.data = ("group", self.proposal.items, self._root_name())
         self._filter_texts = {}
+        self._columns, self._indents, self._now = {}, {}, time.time()
+        self._fitted_width = tree.size.width
         # The flavors (several) or the accounts (one); a (name, Text): a flavor not scanned, kept by the filter when
         # its name matches (as a flavor row is in every tool)
         top: list[ModelNode | tuple[str, Text]] = []
@@ -380,6 +398,7 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         tree.root.expand()
         self._restore_view(tree)
         self._update_summary()
+        self.call_after_refresh(self._fit_rows)  # built before the tree was laid out (shown after the scan)
 
     def _row_ident(self, node: TreeNode) -> tuple | None:
         """A row's identity across rebuilds (its data is rebuilt): a file's path, an addon in its flavor, a group's
@@ -458,18 +477,27 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
             accounts.append(account_node)
         return accounts
 
-    def _add_node(self, parent, node: ModelNode, kept: ModelFilter) -> None:
-        """Add node and what the filter keeps below it under parent: groups open (as before the filter), an addon
-        opens when the filter opens it (a file in it matches)."""
+    def _add_node(self, parent, node: ModelNode, kept: ModelFilter, depth: int = 1) -> None:
+        """Add node and what the filter keeps below it under parent (`depth` levels below the root): groups open
+        (as before the filter), an addon opens when the filter opens it (a file in it matches). The addon and file
+        rows among its children line up in columns over the ones the filter keeps (R4)."""
         if not kept.shows(node):
             return
         kind = node.data[0]
+        guides = depth * parent.tree.guide_depth
         if kind == "file":
+            self._indents[id(node.data)] = guides
             parent.add_leaf(self._label(node.data), data=node.data)
             return
+        if kind == "item":
+            self._indents[id(node.data)] = guides + TOGGLE_WIDTH
+        rows = [child.data for child in node.children if child.data[0] != "group" and kept.shows(child)]
+        if rows:
+            natural = natural_widths(self._row_cells(data) for data in rows)
+            self._columns.update((id(data), natural) for data in rows)
         added = parent.add(self._label(node.data), data=node.data, expand=kind == "group" or kept.opens(node))
         for child in node.children:
-            self._add_node(added, child, kept)
+            self._add_node(added, child, kept, depth + 1)
         if not added.children:
             added.allow_expand = False  # an account with nothing to clean
 
@@ -499,36 +527,71 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         return reasons_text(reasons)
 
     def _label(self, data) -> Text:
-        now = time.time()
-        mark = self._mark(self._paths(data))
         kind = data[0]
-        if kind in ("file", "item") and data[1].blacklisted:
-            return self._blacklisted_label(data, now)
-        if kind == "file":
-            sv = data[2]
-            return Text.assemble(mark, sv.name,
-                                 (f"  {human_size(sv.size)} · {age_days(sv.mtime, now)}d", "dim"))
-        if kind == "item":
-            item = data[1]
-            return Text.assemble(mark, (item.addon, "bold"), "  ", self._reasons(item.reasons),
-                                 ((f"  {plural(len(item.files), 'file')} · {human_size(item.total_size)} · "
-                                   f"{age_days(item.newest_mtime, now)}d"), "dim"))
+        if kind in ("file", "item"):
+            return self._row_label(data)
         items, name = data[1], data[2]
         if not items and data is not self.query_one("#proposal", Tree).root.data:
             return Text.assemble("  ", (name, ACCENT), ("  nothing to clean", "dim"))  # an account or flavor
-        return with_count(Text.assemble(mark, (name, ACCENT)), len(items))
+        return with_count(Text.assemble(self._mark(self._paths(data)), (name, ACCENT)), self._shown_count(items))
 
-    @staticmethod
-    def _blacklisted_label(data, now: float) -> Text:
-        """A blacklisted addon's row (or one of its files): greyed, the blacklist mark (⊘) in place of a tick mark,
-        tagged on the addon row."""
-        mark = blacklisted_mark()
-        if data[0] == "file":
-            sv = data[2]
-            return Text.assemble(mark, sv.name, f"  {human_size(sv.size)} · {age_days(sv.mtime, now)}d", style="dim")
+    def _shown_count(self, items: list[ProposalItem]) -> int:
+        """How many of a group's addon entries the tree shows (R2, STD-7.27): all of them, or under a search the
+        ones with a file it shows (an entry shows when its addon, a file or a group above it matches, as on the
+        model filter)."""
+        if not self.filtering:
+            return len(items)
+        shown = set(self.filter_keys([f.path for item in items for f in item.files]))
+        return sum(1 for item in items if any(f.path in shown for f in item.files))
+
+    def _row_cells(self, data) -> tuple[str, ...]:
+        return item_cells(data[1], self._now) if data[0] == "item" else file_cells(data[2], self._now)
+
+    def _row_room(self, data) -> int | None:
+        """The cells a row's columns may take in the tree pane (None before the tree is laid out)."""
+        tree = self.query_one("#proposal", Tree)
+        if tree.size.width <= 0:
+            return None
+        width = tree.size.width - tree.styles.scrollbar_size_vertical  # a scrollbar may come with more rows
+        return max(0, width - self._indents.get(id(data), 0) - MARK_WIDTH)
+
+    def _row_label(self, data) -> Text:
+        """An addon row (name · reasons · files · size · age) or a file row (name · size · age) in columns as wide
+        as its siblings' widest cells, fitted to the pane (R4): the name bold on an addon row and cut in its
+        middle, the reasons in their criteria's colours, the rest dim. A blacklisted addon's rows are greyed with
+        the blacklist mark (⊘) in place of a tick mark, `blacklisted` in the reasons column."""
         item = data[1]
-        return Text.assemble(mark, (item.addon, "bold"), "  ", ("blacklisted", f"not dim {WARNING_STYLE}"),
-                             f"  {plural(len(item.files), 'file')} · {human_size(item.total_size)}", style="dim")
+        cells = self._row_cells(data)
+        natural = self._columns.get(id(data)) or natural_widths([cells])
+        widths, gap = fit_columns(natural, self._row_room(data), ITEM_COLUMNS if data[0] == "item" else FILE_COLUMNS)
+        if data[0] == "item":
+            reasons = (Text(BLACKLISTED, f"not dim {WARNING_STYLE}") if item.blacklisted
+                       else self._reasons(item.reasons))
+            shown, styles = (cells[0], reasons, *cells[2:]), ("bold", "", "dim", "dim", "dim")
+        else:
+            shown, styles = cells, ("", "dim", "dim")
+        text = Text(style="dim" if item.blacklisted else "")
+        text.append(*(blacklisted_mark() if item.blacklisted else self._mark(self._paths(data))))
+        text.append_text(column_text(shown, widths, styles, gap, middle=(0,)))
+        return text
+
+    def on_resize(self, event: events.Resize) -> None:
+        self.call_after_refresh(self._fit_rows)
+
+    def _fit_rows(self) -> None:
+        """Fit the addon and file rows again to the tree pane's width when it changed (R4)."""
+        if not self.is_attached:
+            return
+        tree = self.query_one("#proposal", Tree)
+        if tree.size.width == self._fitted_width:
+            return
+        self._fitted_width = tree.size.width
+        stack = list(tree.root.children)
+        while stack:
+            node = stack.pop()
+            if node.data is not None and node.data[0] in ("item", "file"):
+                node.set_label(self._row_label(node.data))
+            stack.extend(node.children)
 
     def _refresh_labels(self, node=None) -> None:
         """Relabel node's branch and its ancestors (everything a tick there can change), or the whole tree."""

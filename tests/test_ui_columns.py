@@ -102,6 +102,20 @@ class ColumnTextTest(unittest.TestCase):
         text = column_text(("name", "reason", "3d"), (4, 0, 2), ("", "", ""), NARROW_GAP)
         self.assertEqual(text.plain, "name 3d")
 
+    def test_a_rich_cell_keeps_its_own_colours(self):
+        """A cell may be Rich text of several colours (the WTF Cleaner's reasons, each in its criterion's colour):
+        its spans stay, it is cut and padded like a plain cell, and natural_widths measures it the same."""
+        reasons = Text.assemble(("Not installed", "red"), ", ", ("Stray copies", "magenta"))
+        self.assertEqual(natural_widths([("Details", reasons)]), (7, 27))
+        text = column_text(("Details", reasons, "3d"), (7, 27, 2), ("bold", "", "dim"), WIDE_GAP)
+        self.assertEqual(text.plain, "Details  Not installed, Stray copies  3d")
+        spans = {text.plain[s.start:s.end]: str(s.style) for s in text.spans}
+        self.assertEqual((spans["Not installed"], spans["Stray copies"]), ("red", "magenta"))
+        self.assertEqual(reasons.plain, "Not installed, Stray copies")  # the cell itself is left as it was
+        cut = column_text(("Details", reasons, "3d"), (7, 16, 2), ("bold", "", "dim"), NARROW_GAP)
+        self.assertEqual(cut.plain, "Details Not installed, … 3d")
+        self.assertIn("red", {str(s.style) for s in cut.spans})
+
     def test_siblings_line_up(self):
         rows = [("Details", "unused", "2 files"), ("WeakAuras", "", "1 file")]
         widths, gap = fit_columns(natural_widths(rows), None, ColumnLayout((None,) * 3, (1, 1, 1), ((0,),)))

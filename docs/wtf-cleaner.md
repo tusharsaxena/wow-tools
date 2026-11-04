@@ -61,7 +61,13 @@ responsible for what you clean. It also tells you to close WoW first, and remind
 game version → account → account-wide settings or one character → addon → files
 
 Everything starts ticked, meaning "remove this". Untick an addon, a character or a whole account to keep it.
-An account or game version with nothing to remove says "nothing to clean".
+Each game version, account and character says, dimmed after its name, how many addons it holds that the list
+shows (`12 items`; a search narrows the counts too). An account or game version with nothing to remove says
+"nothing to clean".
+
+An addon's line reads in columns: its name, why it's suggested (each rule in its colour), how many files, their
+size and the age of the newest one in days. Its files, once you open it, line up the same way: name, size, age. In a
+narrow window a long name is cut with `…` and the short columns stay.
 
 **On the left** are a red `⚠ USE AT YOUR OWN RISK` line (a clean deletes files), the rules that decide what gets
 suggested (under **Criteria (keys 1-5)**), the age limit (**Max age in days**), and the buttons.
