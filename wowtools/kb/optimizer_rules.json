@@ -1,0 +1,35 @@
+{
+ "comment": "The Macro Editor's optimizer rules (spec ME10). Only automatic rules are applied; each reason says why the rewrite is the same in game.",
+ "rules": {
+  "target_to_at": {
+   "title": "target= to @",
+   "automatic": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "reason": "target= is the older spelling of @: both pick the unit the command acts on."
+  },
+  "duplicate_conditions": {
+   "title": "Drop a repeated conditional",
+   "automatic": true,
+   "source": "https://warcraft.wiki.gg/wiki/Secure_command_options",
+   "reason": "Conditionals inside one [] must all be true, so the same one twice adds nothing."
+  },
+  "strip_spaces": {
+   "title": "Drop spaces the parser ignores",
+   "automatic": true,
+   "source": "https://warcraft.wiki.gg/wiki/Making_a_macro",
+   "reason": "Spaces inside [], between [] blocks and after ; are ignored when the macro runs (the wiki's own `[@mouseover, help] [ ] Flash of Light` works as written)."
+  },
+  "showtooltip_same": {
+   "title": "#showtooltip without its spell",
+   "automatic": true,
+   "source": "https://warcraft.wiki.gg/wiki/Making_a_macro",
+   "reason": "With no spell named, #showtooltip shows the macro's first spell, and that is the spell it named."
+  },
+  "cast_to_use": {
+   "title": "/cast to /use (never applied)",
+   "automatic": false,
+   "source": "https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_ChatFrameBase/Shared/SlashCommands.lua",
+   "reason": "Not the same in every case: when a name is both a spell and an item, /cast picks the spell and /use the item, so the optimizer never swaps them."
+  }
+ }
+}

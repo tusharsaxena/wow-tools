@@ -218,7 +218,8 @@ class KbShipsTest(unittest.TestCase):
     def test_kb_folder_ships_inside_wowtools_with_its_readme(self):
         self.assertEqual(kb.KB_ROOT, Path(kb.__file__).resolve().parents[1] / "kb")
         readme = (kb.KB_ROOT / "README.md").read_text(encoding="utf-8")
-        for needle in ("cvar_state.json", "macro_limits.json", "cvars/<flavor>.json", "source"):
+        for needle in ("cvar_state.json", "macro_limits.json", "cvars/<flavor>.json", "source", "macro_reference.json",
+                       "macro_templates.json", "optimizer_rules.json"):
             self.assertIn(needle, readme)
 
     def test_kb_unreadable_is_registered_as_a_warning(self):

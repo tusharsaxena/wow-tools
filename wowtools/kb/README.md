@@ -19,6 +19,9 @@ without a source is not shipped.
 | `slash_commands/<flavor>.json` | The flavor's slash commands (`/cast` -> `CAST`) | `scripts/refresh_kb.py` from the dump addon |
 | `cvar_state.json` | The CVars that are a character's state, not a preference | by hand |
 | `macro_limits.json` | Macro slots per flavor | by hand, from the client's UI source |
+| `macro_reference.json` | Macro commands, conditionals and `@unit` targets, with help and plain-English phrases | by hand, from the wiki |
+| `macro_templates.json` | The Macro Editor's templates | by hand |
+| `optimizer_rules.json` | The Macro Editor's optimizer rules and why each is the same in game | by hand |
 
 A flavor without a `cvars/<flavor>.json` has no CVar data yet: the tools treat each of its CVars as unknown.
 
@@ -52,3 +55,26 @@ flavor's CVar list, add that name to `exceptions`.
 
 `{"flavors": {"<flavor>": {"account": 120, "character": 30, "build": "...", "source": "<URL>"}}}`. A flavor with no
 entry here (or one without a source) uses Retail's values, and the Macro Editor says they are unconfirmed.
+
+### `macro_reference.json`
+
+`{"commands": {"/cast": {...}}, "conditionals": {"help": {...}}, "units": {"mouseover": {...}}, "builder": {...}}`.
+Every entry has `help`, `source` and `flavors`: the flavor folders (`_retail_` ...) its source says it applies to, or
+`null` when the source does not say, in which case the Macro Editor never flags it as missing from a flavor.
+A command has `options` (true: its argument reads `[conditions]` and `;` clauses, as a secure command does; false:
+its argument is plain text, such as chat or Lua) and may have `aliases`. A conditional has `subject` (`unit`,
+`player`, `ui`), `explain` / `explain_no` (its plain-English phrase and that of its `no` form; `{unit}` stands for
+the macro's unit), and when it takes an argument `args`, `explain_arg` / `explain_no_arg` (`{arg}`) and optional
+`arg_names` (`shift` -> `Shift`). A unit has `explain`, and `numbered` for `party1`-style units (`{n}`). `builder`
+lists what the conditional builder offers: `targets`, `unit`, `states`. Whether a flavor has a command at all comes
+from its `slash_commands/<flavor>.json`, never from this file.
+
+### `macro_templates.json`
+
+`{"templates": [{"id", "title", "body", "placeholders", "source"}]}`. A placeholder is written `{name}` in the body.
+
+### `optimizer_rules.json`
+
+`{"rules": {"<id>": {"title", "reason", "source", "automatic"}}}`. Only rules with `automatic` true are applied, and
+only rewrites that are the same in game: `reason` says why. A rule listed with `automatic` false is kept for the
+record of why the optimizer does not make that rewrite.

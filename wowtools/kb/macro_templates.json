@@ -1,0 +1,117 @@
+{
+ "comment": "The Macro Editor's templates (spec ME11). Placeholders are written {name} in the body; the source is the page the macro's pattern comes from.",
+ "templates": [
+  {
+   "id": "mouseover-heal",
+   "title": "Mouseover heal (falls back to your target)",
+   "body": "#showtooltip\n/cast [@mouseover,help,nodead][] {Heal spell}",
+   "placeholders": [
+    "Heal spell"
+   ],
+   "source": "https://warcraft.wiki.gg/wiki/Making_a_macro"
+  },
+  {
+   "id": "cursor-ground",
+   "title": "Ground spell at the cursor, no targeting circle",
+   "body": "#showtooltip\n/cast [@cursor] {Ground spell}",
+   "placeholders": [
+    "Ground spell"
+   ],
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals"
+  },
+  {
+   "id": "focus-interrupt",
+   "title": "Interrupt your focus (or your target when there is no hostile focus)",
+   "body": "#showtooltip\n/cast [@focus,harm,nodead][] {Interrupt}",
+   "placeholders": [
+    "Interrupt"
+   ],
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals"
+  },
+  {
+   "id": "self-cast-fallback",
+   "title": "Heal a friendly target, else yourself",
+   "body": "#showtooltip\n/cast [help][@player] {Heal spell}",
+   "placeholders": [
+    "Heal spell"
+   ],
+   "source": "https://warcraft.wiki.gg/wiki/Making_a_macro"
+  },
+  {
+   "id": "stopcasting-interrupt",
+   "title": "Stop your own cast, then interrupt",
+   "body": "#showtooltip\n/stopcasting\n/cast {Interrupt}",
+   "placeholders": [
+    "Interrupt"
+   ],
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands"
+  },
+  {
+   "id": "modifier-alternate",
+   "title": "Another spell while Shift is held",
+   "body": "#showtooltip\n/cast [mod:shift] {Shift spell}; {Spell}",
+   "placeholders": [
+    "Shift spell",
+    "Spell"
+   ],
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals"
+  },
+  {
+   "id": "trinket-and-spell",
+   "title": "Use your top trinket with a spell",
+   "body": "#showtooltip {Spell}\n/use 13\n/cast {Spell}",
+   "placeholders": [
+    "Spell"
+   ],
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands"
+  },
+  {
+   "id": "pet-attack",
+   "title": "Send your pet at the unit under the mouse, else your target, then cast",
+   "body": "#showtooltip\n/petattack [@mouseover,harm,nodead][]\n/cast [@mouseover,harm,nodead][] {Spell}",
+   "placeholders": [
+    "Spell"
+   ],
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands"
+  },
+  {
+   "id": "target-of-target-help",
+   "title": "Heal your target, else your target's target, else yourself",
+   "body": "#showtooltip\n/cast [help,nodead][@targettarget,help,nodead][@player] {Heal spell}",
+   "placeholders": [
+    "Heal spell"
+   ],
+   "source": "https://warcraft.wiki.gg/wiki/Making_a_macro"
+  },
+  {
+   "id": "mount",
+   "title": "Flying mount where flying works, else a ground mount; press again to get off",
+   "body": "#showtooltip\n/cast [flyable,nomounted] {Flying mount}; [nomounted] {Ground mount}\n/dismount [mounted]",
+   "placeholders": [
+    "Flying mount",
+    "Ground mount"
+   ],
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals"
+  },
+  {
+   "id": "harm-or-help",
+   "title": "Damage a hostile target, heal a friendly one",
+   "body": "#showtooltip\n/cast [harm] {Damage spell}; {Heal spell}",
+   "placeholders": [
+    "Damage spell",
+    "Heal spell"
+   ],
+   "source": "https://warcraft.wiki.gg/wiki/Making_a_macro"
+  },
+  {
+   "id": "cast-sequence",
+   "title": "Two spells in turn, starting over on a new target",
+   "body": "#showtooltip\n/castsequence reset=target {First spell}, {Second spell}",
+   "placeholders": [
+    "First spell",
+    "Second spell"
+   ],
+   "source": "https://warcraft.wiki.gg/wiki/Making_a_macro"
+  }
+ ]
+}

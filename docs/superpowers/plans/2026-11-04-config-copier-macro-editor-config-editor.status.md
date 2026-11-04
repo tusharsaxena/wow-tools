@@ -23,7 +23,7 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 | T11 | M3 | copier run, undo, flow | done | (this commit) | 26 new tests: 16 in test_config_copier_run.py (the plan's 4 plus names, non-ASCII round trip, unknown macro layout (Review Focus 1), unchanged/no-source never written, change lines, WoW running, changed since review, recovery, leave, 3 report tests), 10 TUI in test_config_copier_app.py (the plan's 4 plus registry, unticked file, dry run then undo, WoW running, pair statuses, one flavor at 80x24); the copier added to every meta-test table (look and feel, help, quit, tool menu, toasts, warnings) and to test_structure; first guide, internals doc, README/CLAUDE.md/architecture/releasing rows, RELEASE_SHIPS and CHANGELOG line (T11j); events.md regenerated. Gate: ruff clean, events.md current, Windows 2163 OK (85 skipped); WSL 2163 OK except the two test_release_contents git-archive checks, which read HEAD and so fail until the new guide is committed; re-run green after the commit. Review fix (3d33355 review): the review carries the shared RiskBanner (T11r1: STD-7.10's list, test_structure, DESTRUCTIVE_REVIEWS, test_docs, guide and internals updated); the diff names a line-ending or non-text-only change instead of "The files are the same." (T11r2, `report.bytes_only`); 2 new tests (run: bytes_only cases, app: the diff screen line). Gate green: WSL 2165 OK (9 skipped), Windows 2165 OK (85 skipped), ruff clean, events.md current |
 | T12 | M3 | copier docs; push | done | (this commit) | 1 new test in test_docs.py (`test_config_copier_guide_readme_and_notes`: guide V1/V2 section, the five files, merge, macro warning, safety net, keys; README rows and FAQ; CLAUDE.md, CHANGELOG, architecture, internals sections, releasing); guide gains Why a copy sticks, What the tool never touches, The safety net (backups, interrupted copy), WoW running, more FAQ and troubleshooting rows; internals doc gains V1/V2, the merge, Safety, Events, Tests; README names the copier in its Dry run, Undo, journals and FAQ lines and shows its review; `review.png` re-rendered with the banner (T12b). Gate green: WSL 2166 OK (9 skipped), Windows 2166 OK (85 skipped), ruff clean, events.md current. Push (M3) left to the orchestrator. Review fix (fix: T12 review fixes): the internals doc's CC5 bullets and the guide's no-target sentence now say a target with no config-cache.wtf gets the source's file minus its state lines (non-SET lines kept), as merge.py does; 1 new test (`test_merge_without_target_file_keeps_the_sources_other_lines`). Gate green: WSL 2167 OK (9 skipped), Windows 2167 OK (85 skipped), ruff clean, events.md current |
 | T13 | M4 | macro model, ops, paste rules | done | d0c5c50, review fixes (this commit) | 19 new tests in test_macro_editor_ops.py (the plan's nine plus scan, read-only and unreadable sets, empty-set create, skip, edit back to the original, staged add edit/delete, delete, non-UTF-8 bytes, count/clear); `macro.*` events registered; gate green: WSL 2186 OK (9 skipped), Windows 2186 OK (85 skipped), ruff clean, events.md current. Review fixes: stage_edit keeps a macro's own name when it is unchanged and cuts only a new one, so Replace text on a file name over 16 characters changes only the body (ME13); a paste clash compares cut names on both sides, and rename_for_clash gets the cut names; 2 new tests; gate green: WSL 2188 OK (9 skipped), Windows 2188 OK (85 skipped), ruff clean, events.md current |
-| T14 | M4 | macro reference, explainer, optimizer, templates | todo | | |
+| T14 | M4 | macro reference, explainer, optimizer, templates | done | (this commit) | 28 new tests: 18 in test_macro_editor_syntax.py (the plan's seven syntax ones plus spaces and target=, chat text and comments, token_at, more explain blocks, a conditional the flavor lacks, command and conditional suggestions, reference aliases and builder lists, unsourced entries dropped, a bad reference file, fill_template's checks, unsourced templates dropped), 10 in test_macro_editor_optimizer.py (one per rule incl. cast_to_use never applied, the rules data, only KB rules applied, kept #showtooltip cases, rules together, spell text untouched); test_kb's README needles gain the three files; architecture.md `kb` row and wowtools/kb/README.md describe the new files and loaders. Gate green: WSL 2216 OK (9 skipped), Windows 2216 OK (85 skipped), ruff clean, events.md current. No CHANGELOG line: nothing a user sees yet (the tool is registered in T15) |
 | T15 | M4 | macro browse screen, apply, undo | todo | | |
 | T16 | M4 | macro edit screen and popups | todo | | |
 | T17 | M4 | macro docs; push | todo | | |
@@ -330,3 +330,41 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 - T13g: `build_changes` raises ValueError for staged changes of a set not passed, skips a set whose bytes would not
   change, and gives each ClientChange one line per change (`macros-cache.txt: added "X"`, `changed "X"`, `deleted
   "X"`).
+- T14a: `MacroReference`, `CommandInfo`, `ConditionalInfo`, `UnitInfo`, `MacroTemplate` and `RuleInfo` live in
+  `core/kb.py` beside their loaders (core can't import a tool); `templates.py` re-exports `MacroTemplate` and
+  `load_templates`. `load_macro_reference(flavor)` keys commands and conditionals by name and every alias, lower
+  case, units by name; `slash_commands` is the flavor's `slash_commands/<flavor>.json` set, None with no dump (no
+  dump is in the repo yet: until T4's dumps arrive no command is flagged in any flavor). `applies(entry)` is
+  True/False only when the entry's `flavors` is a list. An entry without `source` or `help` is not loaded. Beyond
+  the plan: `ConditionalInfo` carries `subject`, `explain`/`explain_no`, `explain_arg`/`explain_no_arg`, `args`,
+  `arg_names`; the reference has a `builder` section (targets, unit, states) for T16's builder (ME9).
+- T14b: sources. Conditionals, `@cursor`/`@none` and their patch notes from warcraft.wiki.gg/wiki/Macro_conditionals,
+  commands from Macro_commands, units from UnitId, the Making_a_macro page for `/castsequence`, `/startattack` and
+  `targettarget`; all help rewritten in our own words (X7, Q2). The `options` flag of each command (does its
+  argument read conditions) follows Blizzard's SlashCommands.lua (Gethe/wow-ui-source `live`): the commands whose
+  handler calls `SecureCmdOptionParse`; a command not in the reference is read as plain text. Every entry's
+  `flavors` is null (the pages don't say which flavors have what) except `advflyable` (Skyriding, patch 10.0.7) and
+  `house` (player housing, patch 11.2.7), marked `["_retail_"]` from the source's patch history: the only two the
+  data flags outside Retail (ME5). Reversible; T20 can widen it from the dumps.
+- T14c: tokens. A line is a command, a `#showtooltip`/`#show` directive (its argument read like `/cast`), a comment
+  (any other `#` line) or chat text. Only a command with `options` gets clauses, blocks, conditions and units; any
+  other command's argument is one `text` token, so `/say [help]` or `/run` code is never read or rewritten as a
+  condition. A condition block token comes before its conditionals; `token_at` gives the innermost token containing
+  the cursor or ending at it (a cursor right after `help` is on `help`).
+- T14d: `explain_block(block, ref, *, verb="Cast")`: "Cast on <unit>" (or "Cast"), then ", if " and the phrases
+  joined with "and", runs of "it's"/"your target is"/"you're" merged ("it's friendly and not dead"); `[]` is
+  "Always."; an unknown term reads "<term> (not in the reference)". Units: numbered (`party2`), and `<unit>target`
+  as "<unit>'s target" (`playertarget` = your target).
+- T14e: `suggestions` returns (completion, help) where the completion replaces the word after its last separator
+  (`/command` or `#directive` whole; after `@` the unit; after `[` or `,` the conditional, `no` forms offered once
+  `no` is typed; after `:` the argument from `arg_names`); nothing outside a `[` of a command with options.
+- T14f: optimizer rules (ME10): `target_to_at`, `duplicate_conditions` (an exact repeat in one block; conditionals are
+  case-sensitive), `strip_spaces` (inside `[]`, between blocks and after `;`, on command lines with options only;
+  the space between a block and the spell name is kept), `showtooltip_same` (only when the first command line is
+  `/cast` or `/use`, every clause names that spell, and the last clause can't fail: no block or an empty `[]`).
+  `/use`<->`/cast` is **not applied**: Blizzard's handlers differ (`/cast` prefers the spell, `/use` the item, when
+  a name is both; even a slot number goes through `C_Spell.DoesSpellExist` under `/cast`), so it is in the KB as
+  `cast_to_use` with `automatic` false and its reason, and `optimize` never makes it. `optimize(body, *, rules=None)`
+  takes the rules for tests; a Rewrite's before/after are whole lines.
+- T14g: twelve templates (the plan's ten plus harm-or-help and cast-sequence), each with at least one `{placeholder}`
+  and a source; `fill_template` fills in one pass and raises ValueError for a missing, empty or multi-line value.

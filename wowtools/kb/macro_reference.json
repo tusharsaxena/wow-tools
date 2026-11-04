@@ -1,0 +1,979 @@
+{
+ "comment": "The Macro Editor's macro reference (spec ME5, ME8, ME9): commands, conditionals and @unit targets, in our own words from the source page of each entry. flavors: the flavor folders the source says an entry applies to, null when it does not say (then the editor never flags it). The flavor's own slash commands come from slash_commands/<flavor>.json.",
+ "commands": {
+  "/cast": {
+   "help": "Casts a spell or uses an item; when a name is both, the spell wins.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null,
+   "aliases": [
+    "/spell"
+   ]
+  },
+  "/use": {
+   "help": "Uses an item (by name, slot number or bag and slot) or casts a spell; when a name is both, the item wins.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/castsequence": {
+   "help": "Casts the listed spells one after another, one per press; reset= starts it over.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Making_a_macro",
+   "flavors": null
+  },
+  "/castrandom": {
+   "help": "Casts one spell or uses one item picked at random from the list.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/userandom": {
+   "help": "Uses one item or casts one spell picked at random from the list.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/stopcasting": {
+   "help": "Stops the cast or channel in progress.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/stopspelltarget": {
+   "help": "Cancels a spell that is waiting for you to pick a target.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/cancelqueuedspell": {
+   "help": "Drops the spell queued to cast next.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/startattack": {
+   "help": "Starts auto-attacking the unit (your target by default).",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Making_a_macro",
+   "flavors": null
+  },
+  "/stopattack": {
+   "help": "Stops auto-attacking.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/cancelaura": {
+   "help": "Removes a buff from you by name.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/cancelform": {
+   "help": "Leaves your current shapeshift form.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/changeactionbar": {
+   "help": "Switches the main action bar to the page given.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/swapactionbar": {
+   "help": "Flips the main action bar between the two pages given.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/equip": {
+   "help": "Puts on an item in its usual slot.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/equipslot": {
+   "help": "Puts on an item in the slot number given.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/equipset": {
+   "help": "Puts on a saved Equipment Manager set.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/dismount": {
+   "help": "Gets you off your mount.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/leavevehicle": {
+   "help": "Gets you out of the vehicle you are in.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/click": {
+   "help": "Acts as if you clicked the named button (by its frame name).",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/stopmacro": {
+   "help": "Stops the macro here; the lines after it don't run.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/target": {
+   "help": "Targets a unit by name or unit id.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null,
+   "aliases": [
+    "/tar"
+   ]
+  },
+  "/targetexact": {
+   "help": "Targets a unit only when its name matches exactly.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/targetenemy": {
+   "help": "Cycles through nearby enemies.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/targetenemyplayer": {
+   "help": "Cycles through nearby enemy players.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/targetfriend": {
+   "help": "Cycles through nearby friends.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/targetfriendplayer": {
+   "help": "Cycles through nearby friendly players.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/targetparty": {
+   "help": "Cycles through your party.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/targetraid": {
+   "help": "Cycles through your raid.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/targetlastenemy": {
+   "help": "Targets the last enemy you had selected.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/targetlastfriend": {
+   "help": "Targets the last friend you had selected.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/targetlasttarget": {
+   "help": "Goes back to your previous target.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/cleartarget": {
+   "help": "Clears your target.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/assist": {
+   "help": "Targets your target's target (or the given unit's target).",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/focus": {
+   "help": "Sets your focus to the unit (your target by default).",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/clearfocus": {
+   "help": "Clears your focus.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/targetmarker": {
+   "help": "Puts a raid marker on your target or takes it off.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/worldmarker": {
+   "help": "Places a world marker on the ground.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/clearworldmarker": {
+   "help": "Removes world markers.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/petattack": {
+   "help": "Sends your pet to attack your target (or the given unit).",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/petfollow": {
+   "help": "Has your pet follow you.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/petstay": {
+   "help": "Has your pet stay where it is.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/petmoveto": {
+   "help": "Sends your pet to a spot on the ground and has it stay there.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/petpassive": {
+   "help": "Sets your pet to passive.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/petdefensive": {
+   "help": "Sets your pet to defensive.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/petassist": {
+   "help": "Sets your pet to assist.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/petautocaston": {
+   "help": "Turns autocast on for a pet spell.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/petautocastoff": {
+   "help": "Turns autocast off for a pet spell.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/petautocasttoggle": {
+   "help": "Flips autocast for a pet spell.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/petdismiss": {
+   "help": "Dismisses your pet.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/summonpet": {
+   "help": "Summons the battle pet you name.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/randompet": {
+   "help": "Summons a random non-combat pet.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/randomfavoritepet": {
+   "help": "Summons a random favorite battle pet.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/dismissbattlepet": {
+   "help": "Sends away your battle pet.",
+   "options": true,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/usetoy": {
+   "help": "Uses a toy from your toy box.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/script": {
+   "help": "Runs the Lua code that follows. Its text is code, never conditions.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null,
+   "aliases": [
+    "/run"
+   ]
+  },
+  "/say": {
+   "help": "Says the text to players near you.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null,
+   "aliases": [
+    "/s"
+   ]
+  },
+  "/yell": {
+   "help": "Yells the text to everyone in the zone.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null,
+   "aliases": [
+    "/y"
+   ]
+  },
+  "/emote": {
+   "help": "Shows the text as your own emote.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null,
+   "aliases": [
+    "/e",
+    "/me"
+   ]
+  },
+  "/party": {
+   "help": "Sends the text to your party.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null,
+   "aliases": [
+    "/p"
+   ]
+  },
+  "/raid": {
+   "help": "Sends the text to your raid.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null,
+   "aliases": [
+    "/ra"
+   ]
+  },
+  "/rw": {
+   "help": "Sends the text as a raid warning.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/guild": {
+   "help": "Sends the text to your guild.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null,
+   "aliases": [
+    "/g"
+   ]
+  },
+  "/officer": {
+   "help": "Sends the text to your guild's officers.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null,
+   "aliases": [
+    "/o"
+   ]
+  },
+  "/whisper": {
+   "help": "Sends the text to one player.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null,
+   "aliases": [
+    "/tell",
+    "/w"
+   ]
+  },
+  "/reply": {
+   "help": "Answers the last whisper you got.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null,
+   "aliases": [
+    "/r"
+   ]
+  },
+  "/follow": {
+   "help": "Follows your target.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/readycheck": {
+   "help": "Starts a ready check.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/random": {
+   "help": "Rolls a random number, 1 to 100 unless you give a range.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null,
+   "aliases": [
+    "/roll"
+   ]
+  },
+  "/reload": {
+   "help": "Reloads the user interface.",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  },
+  "/console": {
+   "help": "Shows or changes a client setting (a CVar).",
+   "options": false,
+   "source": "https://warcraft.wiki.gg/wiki/Macro_commands",
+   "flavors": null
+  }
+ },
+ "conditionals": {
+  "exists": {
+   "subject": "unit",
+   "help": "The unit is there (you have it targeted, it's under the mouse ...).",
+   "explain": "{unit} exists",
+   "explain_no": "{unit} doesn't exist",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "help": {
+   "subject": "unit",
+   "help": "Helpful spells can be cast on the unit (it's friendly).",
+   "explain": "{unit} is friendly",
+   "explain_no": "{unit} is not friendly",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "harm": {
+   "subject": "unit",
+   "help": "Harmful spells can be cast on the unit (it's hostile). nohelp is not the same as harm.",
+   "explain": "{unit} is hostile",
+   "explain_no": "{unit} is not hostile",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "dead": {
+   "subject": "unit",
+   "help": "The unit is there and dead.",
+   "explain": "{unit} is dead",
+   "explain_no": "{unit} is not dead",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "party": {
+   "subject": "unit",
+   "help": "The unit is in your party (you don't count).",
+   "explain": "{unit} is in your party",
+   "explain_no": "{unit} is not in your party",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "raid": {
+   "subject": "unit",
+   "help": "The unit is in your raid.",
+   "explain": "{unit} is in your raid",
+   "explain_no": "{unit} is not in your raid",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "unithasvehicleui": {
+   "subject": "unit",
+   "help": "The unit is in a vehicle.",
+   "explain": "{unit} is in a vehicle",
+   "explain_no": "{unit} is not in a vehicle",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "advflyable": {
+   "subject": "player",
+   "help": "You are where Skyriding works (added in patch 10.0.7).",
+   "explain": "you're where Skyriding works",
+   "explain_no": "you're not where Skyriding works",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": [
+    "_retail_"
+   ]
+  },
+  "canexitvehicle": {
+   "subject": "player",
+   "help": "You are in a vehicle you can leave.",
+   "explain": "you can leave your vehicle",
+   "explain_no": "you can't leave a vehicle",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "channeling": {
+   "subject": "player",
+   "help": "You are channeling a spell (or the spell named).",
+   "explain": "you're channeling",
+   "explain_no": "you're not channeling",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null,
+   "args": "spell name",
+   "explain_arg": "you're channeling {arg}",
+   "explain_no_arg": "you're not channeling {arg}"
+  },
+  "combat": {
+   "subject": "player",
+   "help": "You are in combat.",
+   "explain": "you're in combat",
+   "explain_no": "you're not in combat",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "equipped": {
+   "subject": "player",
+   "help": "You have an item of the given type equipped (a weapon or armor type).",
+   "explain": "you have it equipped",
+   "explain_no": "you don't have it equipped",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null,
+   "args": "item type",
+   "explain_arg": "you have {arg} equipped",
+   "explain_no_arg": "you don't have {arg} equipped",
+   "aliases": [
+    "worn"
+   ]
+  },
+  "flyable": {
+   "subject": "player",
+   "help": "You are where flying is allowed.",
+   "explain": "you're where flying works",
+   "explain_no": "you're not where flying works",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "flying": {
+   "subject": "player",
+   "help": "You are mounted or in flight form, in the air.",
+   "explain": "you're flying",
+   "explain_no": "you're not flying",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "form": {
+   "subject": "player",
+   "help": "You are in a shapeshift form or stance (form:1 is the first).",
+   "explain": "you're in a form",
+   "explain_no": "you're in no form",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null,
+   "args": "form number",
+   "explain_arg": "you're in form {arg}",
+   "explain_no_arg": "you're not in form {arg}",
+   "aliases": [
+    "stance"
+   ]
+  },
+  "group": {
+   "subject": "player",
+   "help": "You are in a group (group:party or group:raid for that kind).",
+   "explain": "you're in a group",
+   "explain_no": "you're not in a group",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null,
+   "args": "party or raid",
+   "explain_arg": "you're in a {arg}",
+   "explain_no_arg": "you're not in a {arg}"
+  },
+  "indoors": {
+   "subject": "player",
+   "help": "You are indoors.",
+   "explain": "you're indoors",
+   "explain_no": "you're not indoors",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "outdoors": {
+   "subject": "player",
+   "help": "You are outdoors.",
+   "explain": "you're outdoors",
+   "explain_no": "you're not outdoors",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "known": {
+   "subject": "player",
+   "help": "You know the spell named (or with that spell ID); added in patch 10.0.2.",
+   "explain": "you know the spell",
+   "explain_no": "you don't know the spell",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null,
+   "args": "spell name or ID",
+   "explain_arg": "you know {arg}",
+   "explain_no_arg": "you don't know {arg}"
+  },
+  "mounted": {
+   "subject": "player",
+   "help": "You are mounted.",
+   "explain": "you're mounted",
+   "explain_no": "you're not mounted",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "pet": {
+   "subject": "player",
+   "help": "You have a pet out (pet:name or pet:family for that pet).",
+   "explain": "you have a pet out",
+   "explain_no": "you have no pet out",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null,
+   "args": "pet name or family",
+   "explain_arg": "your pet is {arg}",
+   "explain_no_arg": "your pet is not {arg}"
+  },
+  "petbattle": {
+   "subject": "player",
+   "help": "You are in a pet battle.",
+   "explain": "you're in a pet battle",
+   "explain_no": "you're not in a pet battle",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "pvpcombat": {
+   "subject": "player",
+   "help": "Your PvP talents work where you are (added in patch 7.3.0).",
+   "explain": "your PvP talents work here",
+   "explain_no": "your PvP talents don't work here",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "resting": {
+   "subject": "player",
+   "help": "You are in a rest area (an inn or a city).",
+   "explain": "you're resting",
+   "explain_no": "you're not resting",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "spec": {
+   "subject": "player",
+   "help": "Your active specialization is the one given (spec:1, spec:1/2).",
+   "explain": "you have a specialization",
+   "explain_no": "you have no specialization",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null,
+   "args": "spec number",
+   "explain_arg": "your specialization is {arg}",
+   "explain_no_arg": "your specialization is not {arg}"
+  },
+  "stealth": {
+   "subject": "player",
+   "help": "You are stealthed.",
+   "explain": "you're stealthed",
+   "explain_no": "you're not stealthed",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "swimming": {
+   "subject": "player",
+   "help": "You are swimming.",
+   "explain": "you're swimming",
+   "explain_no": "you're not swimming",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "actionbar": {
+   "subject": "ui",
+   "help": "The main action bar shows the page given (bar:2, bar:1/2).",
+   "explain": "an action bar page is showing",
+   "explain_no": "no action bar page is showing",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null,
+   "args": "page number",
+   "explain_arg": "action bar page {arg} is showing",
+   "explain_no_arg": "action bar page {arg} is not showing",
+   "aliases": [
+    "bar"
+   ]
+  },
+  "bonusbar": {
+   "subject": "ui",
+   "help": "A bonus action bar is showing (bonusbar:n for that one).",
+   "explain": "a bonus bar is showing",
+   "explain_no": "no bonus bar is showing",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null,
+   "args": "bar number",
+   "explain_arg": "bonus bar {arg} is showing",
+   "explain_no_arg": "bonus bar {arg} is not showing"
+  },
+  "button": {
+   "subject": "ui",
+   "help": "The macro was run with the mouse button given (1 left, 2 right, 3 middle, 4 and up extra).",
+   "explain": "a mouse button was used",
+   "explain_no": "no mouse button was used",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null,
+   "args": "mouse button",
+   "explain_arg": "you clicked with {arg}",
+   "explain_no_arg": "you didn't click with {arg}",
+   "aliases": [
+    "btn"
+   ],
+   "arg_names": {
+    "1": "the left button",
+    "2": "the right button",
+    "3": "the middle button",
+    "4": "button 4",
+    "5": "button 5"
+   }
+  },
+  "cursor": {
+   "subject": "ui",
+   "help": "You are dragging a spell, item or macro with the mouse.",
+   "explain": "you're dragging something",
+   "explain_no": "you're not dragging anything",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "extrabar": {
+   "subject": "ui",
+   "help": "An extra action button is showing.",
+   "explain": "an extra action button is showing",
+   "explain_no": "no extra action button is showing",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "modifier": {
+   "subject": "ui",
+   "help": "A modifier key is held (mod:shift, mod:ctrl, mod:alt, or a left or right one).",
+   "explain": "a modifier key is held",
+   "explain_no": "no modifier key is held",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null,
+   "args": "key",
+   "explain_arg": "{arg} is held",
+   "explain_no_arg": "{arg} is not held",
+   "aliases": [
+    "mod"
+   ],
+   "arg_names": {
+    "shift": "Shift",
+    "ctrl": "Ctrl",
+    "alt": "Alt",
+    "lshift": "left Shift",
+    "rshift": "right Shift",
+    "lctrl": "left Ctrl",
+    "rctrl": "right Ctrl",
+    "lalt": "left Alt",
+    "ralt": "right Alt"
+   }
+  },
+  "overridebar": {
+   "subject": "ui",
+   "help": "An override bar has replaced the main action bar.",
+   "explain": "an override bar is showing",
+   "explain_no": "no override bar is showing",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "possessbar": {
+   "subject": "ui",
+   "help": "The possess bar is showing.",
+   "explain": "the possess bar is showing",
+   "explain_no": "the possess bar is not showing",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "shapeshift": {
+   "subject": "ui",
+   "help": "A temporary shapeshift bar has replaced the main action bar.",
+   "explain": "a shapeshift bar is showing",
+   "explain_no": "no shapeshift bar is showing",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "vehicleui": {
+   "subject": "ui",
+   "help": "The vehicle action bar is showing.",
+   "explain": "the vehicle bar is showing",
+   "explain_no": "the vehicle bar is not showing",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "house": {
+   "subject": "player",
+   "help": "Your player-housing state (house:inside, house:plot, house:editor, house:neighborhood); added in patch 11.2.7.",
+   "explain": "you're in your house or on your plot",
+   "explain_no": "you're not in your house or on your plot",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": [
+    "_retail_"
+   ],
+   "args": "housing state",
+   "explain_arg": "your housing state is {arg}",
+   "explain_no_arg": "your housing state is not {arg}"
+  }
+ },
+ "units": {
+  "player": {
+   "help": "You.",
+   "explain": "you",
+   "source": "https://warcraft.wiki.gg/wiki/UnitId",
+   "flavors": null
+  },
+  "target": {
+   "help": "Your current target.",
+   "explain": "your target",
+   "source": "https://warcraft.wiki.gg/wiki/UnitId",
+   "flavors": null
+  },
+  "focus": {
+   "help": "Your focus target.",
+   "explain": "your focus",
+   "source": "https://warcraft.wiki.gg/wiki/UnitId",
+   "flavors": null
+  },
+  "mouseover": {
+   "help": "The unit under the mouse, in the world or on a unit frame.",
+   "explain": "the unit under the mouse",
+   "source": "https://warcraft.wiki.gg/wiki/UnitId",
+   "flavors": null
+  },
+  "cursor": {
+   "help": "The ground under the mouse, for spells you place on the ground (added in patch 7.1.0).",
+   "explain": "the ground under the cursor",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "none": {
+   "help": "No unit: no self-cast, the spell asks you to pick a target.",
+   "explain": "no unit (you pick the target)",
+   "source": "https://warcraft.wiki.gg/wiki/Macro_conditionals",
+   "flavors": null
+  },
+  "pet": {
+   "help": "Your pet.",
+   "explain": "your pet",
+   "source": "https://warcraft.wiki.gg/wiki/UnitId",
+   "flavors": null
+  },
+  "vehicle": {
+   "help": "The vehicle you are in.",
+   "explain": "your vehicle",
+   "source": "https://warcraft.wiki.gg/wiki/UnitId",
+   "flavors": null
+  },
+  "party": {
+   "help": "A party member: party1 to party4.",
+   "explain": "party member {n}",
+   "source": "https://warcraft.wiki.gg/wiki/UnitId",
+   "flavors": null,
+   "numbered": true
+  },
+  "partypet": {
+   "help": "A party member's pet: partypet1 to partypet4.",
+   "explain": "party member {n}'s pet",
+   "source": "https://warcraft.wiki.gg/wiki/UnitId",
+   "flavors": null,
+   "numbered": true
+  },
+  "raid": {
+   "help": "A raid member: raid1 to raid40.",
+   "explain": "raid member {n}",
+   "source": "https://warcraft.wiki.gg/wiki/UnitId",
+   "flavors": null,
+   "numbered": true
+  },
+  "raidpet": {
+   "help": "A raid member's pet: raidpet1 to raidpet40.",
+   "explain": "raid member {n}'s pet",
+   "source": "https://warcraft.wiki.gg/wiki/UnitId",
+   "flavors": null,
+   "numbered": true
+  },
+  "arena": {
+   "help": "An arena enemy: arena1 to arena5.",
+   "explain": "arena enemy {n}",
+   "source": "https://warcraft.wiki.gg/wiki/UnitId",
+   "flavors": null,
+   "numbered": true
+  },
+  "boss": {
+   "help": "A boss: boss1 and up.",
+   "explain": "boss {n}",
+   "source": "https://warcraft.wiki.gg/wiki/UnitId",
+   "flavors": null,
+   "numbered": true
+  },
+  "targettarget": {
+   "help": "Your target's target. Adding target to any unit gives that unit's target.",
+   "explain": "your target's target",
+   "source": "https://warcraft.wiki.gg/wiki/Making_a_macro",
+   "flavors": null
+  }
+ },
+ "builder": {
+  "targets": [
+   "@mouseover",
+   "@cursor",
+   "@focus",
+   "@target",
+   "@player",
+   "@targettarget"
+  ],
+  "unit": [
+   "help",
+   "harm"
+  ],
+  "states": [
+   "dead",
+   "nodead",
+   "combat",
+   "nocombat",
+   "exists",
+   "mod:shift",
+   "mod:ctrl",
+   "mod:alt",
+   "channeling",
+   "stealth",
+   "mounted",
+   "flying",
+   "indoors",
+   "outdoors"
+  ]
+ }
+}
