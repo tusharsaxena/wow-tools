@@ -287,12 +287,12 @@ class TreeBuilder:
                      and self.text_filter.matches(*context, c.char)]
             if not chars and not self.text_filter.matches(*context):
                 continue
+            cells = list(row.shown_cells(chars))  # the count of the characters shown below it (R2)
             if row.deleted:
-                node = self._add(parent, ("deleted", key, row.name), Row(list(row.cells), ("dim",) * 3, "profile"),
+                node = self._add(parent, ("deleted", key, row.name), Row(cells, ("dim",) * 3, "profile"),
                                  held=locked)
             else:
-                node = self._add(parent, ("profile", key, row.name), Row(list(row.cells), (style, "dim", "dim"),
-                                                                          "profile"),
+                node = self._add(parent, ("profile", key, row.name), Row(cells, (style, "dim", "dim"), "profile"),
                                  () if locked else (("p", key, row.name),), held=locked)
             for char in chars:
                 if char.removed:

@@ -56,7 +56,12 @@ class ProfileRow:
     def cells(self) -> tuple[str, str, str]:
         """The row's columns (R4, STD-7.28): the profile, how many characters use it (none on a deleted one), its
         tags."""
-        live = "" if self.deleted else plural(sum(1 for c in self.chars if not c.removed), "character")
+        return self.shown_cells(self.chars)
+
+    def shown_cells(self, shown: list[CharRow]) -> tuple[str, str, str]:
+        """`cells` with the characters the tree shows under the row (R2, STD-7.27: after the search and the Show
+        boxes), so the count matches the rows below it; a removed character is not counted."""
+        live = "" if self.deleted else plural(sum(1 for c in shown if not c.removed), "character")
         return self.name, live, TAG_SEPARATOR.join(self.tags)
 
 

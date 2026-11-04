@@ -83,7 +83,8 @@ game version → account → addon → profile → the characters that use it
 - When one file holds more than one Ace3 database (ElvUI keeps `ElvDB` and `ElvPrivateDB` in one file), each
   database gets its own line under the addon.
 - A profile line shows, in columns that line up with the other profiles', its name, how many characters use it and
-  its tags, for example `Default  12 characters  Default`. A character's tags follow its name the same way. When
+  its tags, for example `Default  12 characters  Default`. Under a search or with Leftover characters off, the
+  count is of the characters shown under it. A character's tags follow its name the same way. When
   the tree is narrow the tags give way first, then the names are shortened with "…".
 
 **By character**:

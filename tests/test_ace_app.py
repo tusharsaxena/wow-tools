@@ -2258,6 +2258,42 @@ class NodeCountsAndColumnsTest(AceAppBase):
             self.assertLess(leaf_count(tree.root, LEAVES["addon"]), total)
             self.assert_counts(tree, "addon")
 
+    def assert_character_counts(self, tree) -> int:
+        """Every profile row's `N characters` is the live characters the tree shows under it (R2, STD-7.27)."""
+        checked = 0
+        for node in walk(tree.root):
+            if node.data and node.data[0] == "profile":
+                shown = sum(1 for c in node.children if c.data[0] == "char")
+                self.assertRegex(node.label.plain, rf"  {re.escape(plural(shown, 'character'))}(  |$)")
+                checked += 1
+        return checked
+
+    async def test_a_profile_counts_the_characters_it_shows(self):
+        """Under a search and with Leftover characters off, a profile's character count follows the rows below it
+        (G6 review), not every character in the database."""
+        app = self.make_app()
+        async with app.run_test(size=(140, 50)) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#profiles", Tree)
+            submit_filter(review, "mierin")
+            await settle(app, pilot)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            self.assertGreater(self.assert_character_counts(tree), 0)
+            default = next(n for n in walk(find_addon(tree, "KickCD")) if n.data[0] == "profile"
+                           and n.data[2] == "Default")
+            self.assertRegex(default.label.plain, r"Default +1 character  ")
+            submit_filter(review, "")
+            await settle(app, pilot)
+            review.query_one("#show-leftovers").value = False
+            await settle(app, pilot)
+            tree.root.expand_all()
+            await settle(app, pilot)
+            self.assertGreater(self.assert_character_counts(tree), 0)
+            default = next(n for n in walk(find_addon(tree, "KickCD")) if n.data[0] == "profile"
+                           and n.data[2] == "Default")
+            self.assertRegex(default.label.plain, r"Default +2 characters  ")
+
     async def test_a_deleted_profile_is_still_counted(self):
         """A pending delete stays a row of its addon until Apply (G6a): it is counted."""
         app = self.make_app()
