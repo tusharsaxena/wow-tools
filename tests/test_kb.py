@@ -214,12 +214,89 @@ class MacroLimitsTest(KbTestCase):
         self.assertEqual(len([r for r in records if r["event"] == "kb.unreadable"]), 1, records)
 
 
+class RecommendationsTest(KbTestCase):
+    def shipped(self) -> list[dict]:
+        data = json.loads((kb.KB_ROOT / "recommendations.json").read_text(encoding="utf-8"))
+        self.assertTrue(data.get("comment"))
+        return data["recommendations"]
+
+    def test_recommendations_all_sourced_and_known_cvars(self):
+        from wowtools.core.install import FLAVOR_NAMES
+        entries = self.shipped()
+        self.assertGreaterEqual(len(entries), 24)  # "a few dozen" (CE7)
+        groups = set()
+        for entry in entries:
+            with self.subTest(cvar=entry.get("cvar")):
+                self.assertEqual(set(entry), {"cvar", "value", "flavors", "reason", "source"})
+                self.assertTrue(entry["cvar"] and isinstance(entry["cvar"], str))
+                self.assertIsInstance(entry["value"], str)
+                self.assertTrue(entry["reason"].strip())
+                self.assertTrue(entry["source"].startswith("https://"), entry["source"])
+                self.assertTrue(entry["flavors"] and set(entry["flavors"]) <= set(FLAVOR_NAMES), entry["flavors"])
+                groups.add(kb.category_group(entry["cvar"], ""))
+                for flavor in entry["flavors"]:
+                    known = kb.load_cvars(flavor)
+                    if known:  # the flavor's CVar data exists (T20): the CVar must be in it
+                        names = {name.lower() for name in known}
+                        self.assertIn(entry["cvar"].lower(), names, flavor)
+        self.assertTrue({"nameplates", "camera", "combat text"} <= groups, groups)
+        # Every shipped entry loads: nothing is dropped by the loader's own checks.
+        for flavor in FLAVOR_NAMES:
+            expected = [e for e in entries if flavor in e["flavors"]]
+            loaded = kb.load_recommendations(flavor)
+            self.assertEqual([(r.cvar, r.value) for r in loaded], [(e["cvar"], e["value"]) for e in expected], flavor)
+
+    def test_shipped_recommendations_one_per_cvar_and_flavor(self):
+        seen = set()
+        for entry in self.shipped():
+            for flavor in entry["flavors"]:
+                key = (entry["cvar"].lower(), flavor)
+                self.assertNotIn(key, seen, key)
+                seen.add(key)
+
+    def test_load_recommendations_reads_the_schema(self):
+        write_json(self.root / "recommendations.json", {"recommendations": [
+            {"cvar": "nameplateMotion", "value": "1", "flavors": ["_retail_", "_classic_"], "reason": "Stack plates.",
+             "source": "https://warcraft.wiki.gg/wiki/CVar_nameplateMotion"},
+            {"cvar": "ffxGlow", "value": "0", "flavors": ["_classic_"], "reason": "Less glow.",
+             "source": "https://warcraft.wiki.gg/wiki/CVar_ffxGlow"},
+        ]})
+        retail = kb.load_recommendations("_retail_", root=self.root)
+        self.assertEqual(retail, [kb.Recommendation(
+            cvar="nameplateMotion", value="1", flavors=("_retail_", "_classic_"), reason="Stack plates.",
+            source="https://warcraft.wiki.gg/wiki/CVar_nameplateMotion")])
+        self.assertEqual([r.cvar for r in kb.load_recommendations("_classic_", root=self.root)],
+                         ["nameplateMotion", "ffxGlow"])
+        self.assertEqual(kb.load_recommendations("_classic_era_", root=self.root), [])
+
+    def test_unsourced_or_odd_recommendations_are_not_loaded(self):
+        good = {"cvar": "a", "value": "1", "flavors": ["_retail_"], "reason": "r", "source": "https://x.example/a"}
+        write_json(self.root / "recommendations.json", {"recommendations": [
+            {**good, "source": ""}, {**good, "source": "my own idea"}, {**good, "reason": " "},
+            {**good, "cvar": ""}, {**good, "value": 1}, {**good, "flavors": None}, {**good, "flavors": "_retail_"},
+            {k: v for k, v in good.items() if k != "source"}, "not a table", good,
+            {**good, "cvar": "A", "value": "0"},  # the same CVar again (names match in any case): the first wins
+        ]})
+        self.assertEqual([(r.cvar, r.value) for r in kb.load_recommendations("_retail_", root=self.root)], [("a", "1")])
+
+    def test_missing_or_bad_recommendations_file(self):
+        with capture_events() as records:
+            self.assertEqual(kb.load_recommendations("_retail_", root=self.root), [])
+        self.assertEqual([r for r in records if r["event"] == "kb.unreadable"], [])
+        for content in ("nope", json.dumps({"recommendations": {"a": 1}})):
+            with self.subTest(content=content):
+                kb.clear_cache()
+                (self.root / "recommendations.json").write_text(content, encoding="utf-8")
+                self.assertEqual(kb.load_recommendations("_retail_", root=self.root), [])
+        self.assertEqual(kb.load_recommendations("../evil", root=self.root), [])
+
+
 class KbShipsTest(unittest.TestCase):
     def test_kb_folder_ships_inside_wowtools_with_its_readme(self):
         self.assertEqual(kb.KB_ROOT, Path(kb.__file__).resolve().parents[1] / "kb")
         readme = (kb.KB_ROOT / "README.md").read_text(encoding="utf-8")
         for needle in ("cvar_state.json", "macro_limits.json", "cvars/<flavor>.json", "source", "macro_reference.json",
-                       "macro_templates.json", "optimizer_rules.json"):
+                       "macro_templates.json", "optimizer_rules.json", "recommendations.json"):
             self.assertIn(needle, readme)
 
     def test_kb_unreadable_is_registered_as_a_warning(self):

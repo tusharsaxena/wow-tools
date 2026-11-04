@@ -1,0 +1,469 @@
+{
+ "comment": "The Config Editor's recommendations (spec CE7): one CVar value each, for the flavors whose CVar list has the CVar (warcraft.wiki.gg's Console variables pages, Patch 12.1.5, 1.60.1, 5.5.4, 2.5.6 and 1.15.9). The reason is in our own words; the source is where the CVar's meaning comes from. An unsourced recommendation is not shipped.",
+ "recommendations": [
+  {
+   "cvar": "nameplateShowAll",
+   "value": "1",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Shows nameplates out of combat too, so you can see what is around you before a pull.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "nameplateShowEnemyMinions",
+   "value": "1",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Shows nameplates for enemy pets, guardians and totems, which you often need to see and kill.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "nameplateOccludedAlphaMult",
+   "value": "0.4",
+   "flavors": [
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Fades the nameplates of units behind walls or terrain, so the ones you can actually reach stand out. 0.4 is the value Retail ships with.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "nameplateSelectedScale",
+   "value": "1.2",
+   "flavors": [
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Draws your target's nameplate a little larger than the rest, so it is easy to find in a pack. 1.2 is the value Retail ships with.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "cameraDistanceMaxZoomFactor",
+   "value": "2.6",
+   "flavors": [
+    "_retail_"
+   ],
+   "reason": "Lets the camera zoom out to the farthest distance the client allows (2.6 times the base, about 39 yards) for a wider view in raids and battlegrounds.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_cameraDistanceMaxZoomFactor"
+  },
+  {
+   "cvar": "cameraDistanceMaxZoomFactor",
+   "value": "4",
+   "flavors": [
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Lets the camera zoom out to the farthest distance the Classic client allows (4 times the base, capped at 50 yards) for a wider view.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_cameraDistanceMaxZoomFactor"
+  },
+  {
+   "cvar": "cameraIndirectVisibility",
+   "value": "1",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Lets the camera pass small objects such as trees, rocks and lamp posts instead of jumping in close every time one gets between you and the camera.",
+   "source": "https://seekingaura.github.io/docs/gaming_notes/wow_retail/config"
+  },
+  {
+   "cvar": "cameraIndirectOffset",
+   "value": "10",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Works with cameraIndirectVisibility: a higher value than the default 6 further cuts the camera zooming in when small objects get in the way.",
+   "source": "https://seekingaura.github.io/docs/gaming_notes/wow_retail/config"
+  },
+  {
+   "cvar": "cameraSmoothStyle",
+   "value": "0",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Stops the camera from swinging behind your character on its own, so it only moves when you move it.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_cameraSmoothStyle"
+  },
+  {
+   "cvar": "CameraReduceUnexpectedMovement",
+   "value": "1",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Motion-sickness option: cuts down camera movement you did not cause yourself.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "ShakeStrengthCamera",
+   "value": "0",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Motion-sickness option: turns off the camera shake from spells and boss effects.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "AdvFlyingDynamicFOVEnabled",
+   "value": "0",
+   "flavors": [
+    "_retail_",
+    "_forever_"
+   ],
+   "reason": "Keeps the field of view steady while skyriding instead of widening it with speed, which some players find easier on the eyes.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_AdvFlyingDynamicFOVEnabled"
+  },
+  {
+   "cvar": "enableFloatingCombatText",
+   "value": "1",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Shows combat text about you (damage taken, heals received, dodges) over your character, not only the numbers you deal.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "floatingCombatTextCombatDamageDirectionalScale_v2",
+   "value": "0",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Makes your damage numbers rise straight up instead of flying off sideways, which is easier to read.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "floatingCombatTextCombatHealing_v2",
+   "value": "1",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Shows the healing you do as numbers over your targets, useful for healers.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "floatingCombatTextCombatDamageAllAutos_v2",
+   "value": "0",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Hides the routine auto-attack numbers so the hits that matter stand out.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "floatingCombatTextPetMeleeDamage_v2",
+   "value": "0",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Hides your pet's melee damage numbers, which clutter the screen for pet classes.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "floatingCombatTextPetSpellDamage_v2",
+   "value": "0",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Hides your pet's spell damage numbers, for less clutter on pet classes.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "maxFPSBk",
+   "value": "15",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Lowers the frame rate while WoW is in the background, so it uses less of your computer while you are tabbed out.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_maxFPSBk"
+  },
+  {
+   "cvar": "ffxGlow",
+   "value": "0",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Turns off the full-screen glow effect; turning it off can raise your frame rate.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_ffxGlow"
+  },
+  {
+   "cvar": "ffxDeath",
+   "value": "0",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Turns off the grey full-screen effect while you are dead; turning it off can raise your frame rate.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_ffxDeath"
+  },
+  {
+   "cvar": "ResampleAlwaysSharpen",
+   "value": "1",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Runs the sharpening pass even when FSR upscaling is off, for a crisper picture.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "screenshotQuality",
+   "value": "10",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Saves screenshots at the highest quality (the scale is 1 to 10).",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "Sound_EnableSoundWhenGameIsInBG",
+   "value": "1",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Keeps the game's sound on while WoW is in the background, so you still hear a ready check or a queue pop.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "Sound_EnableErrorSpeech",
+   "value": "0",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Silences your character's spoken error lines (\"Not enough mana\", \"I can't do that yet\").",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "autoLootDefault",
+   "value": "1",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Loots everything in one click; hold the auto-loot key (Shift) to pick items one at a time instead.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_autoLootDefault"
+  },
+  {
+   "cvar": "lootUnderMouse",
+   "value": "1",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Opens the loot window under your mouse instead of at the top left of the screen.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_lootUnderMouse"
+  },
+  {
+   "cvar": "alwaysCompareItems",
+   "value": "1",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Always shows your equipped item next to an item's tooltip, without holding Shift.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_alwaysCompareItems"
+  },
+  {
+   "cvar": "breakUpLargeNumbers",
+   "value": "1",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Puts thousands separators in large numbers, so gold and health totals are easier to read.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "showTargetOfTarget",
+   "value": "1",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Shows who your target is targeting, handy for knowing who a boss is attacking.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "countdownForCooldowns",
+   "value": "1",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Shows the seconds left on action button cooldowns as numbers, not only the clock sweep.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "autoDismountFlying",
+   "value": "1",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Dismounts you automatically when you cast while flying, instead of refusing the cast.",
+   "source": "https://warcraft.wiki.gg/wiki/CVar_autoDismountFlying"
+  },
+  {
+   "cvar": "showTutorials",
+   "value": "0",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Stops the tutorial popups, for players who already know the game.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "advancedCombatLogging",
+   "value": "1",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Turns on Advanced Combat Logging (Options, System, Network): the combat log then carries the extra details that log sites and addons read when you log a raid or dungeon.",
+   "source": "https://support.raider.io/kb/raider-dot-io-mythic-plus-addon/how-to-enable-advanced-combat-logging"
+  },
+  {
+   "cvar": "rawMouseEnable",
+   "value": "1",
+   "flavors": [
+    "_retail_",
+    "_forever_",
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Uses raw mouse input, so turning the camera follows your mouse alone, without the system's pointer settings in between.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "instantQuestText",
+   "value": "1",
+   "flavors": [
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Shows quest text at once instead of fading it in line by line.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  },
+  {
+   "cvar": "removeChatDelay",
+   "value": "1",
+   "flavors": [
+    "_classic_",
+    "_anniversary_",
+    "_classic_era_"
+   ],
+   "reason": "Removes the delay before the chat frame's tabs and buttons appear when you hover over it.",
+   "source": "https://warcraft.wiki.gg/wiki/Console_variables/Classic"
+  }
+ ]
+}

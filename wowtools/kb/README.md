@@ -22,6 +22,7 @@ without a source is not shipped.
 | `macro_reference.json` | Macro commands, conditionals and `@unit` targets, with help and plain-English phrases | by hand, from the wiki |
 | `macro_templates.json` | The Macro Editor's templates | by hand |
 | `optimizer_rules.json` | The Macro Editor's optimizer rules and why each is the same in game | by hand |
+| `recommendations.json` | The Config Editor's recommended CVar values, with the reason and the source of each | by hand, from the wiki |
 
 A flavor without a `cvars/<flavor>.json` has no CVar data yet: the tools treat each of its CVars as unknown.
 
@@ -79,3 +80,11 @@ from its `slash_commands/<flavor>.json`, never from this file.
 `{"rules": {"<id>": {"title", "reason", "source", "automatic"}}}`. Only rules with `automatic` true are applied, and
 only rewrites that are the same in game: `reason` says why. A rule listed with `automatic` false is kept for the
 record of why the optimizer does not make that rewrite.
+
+### `recommendations.json`
+
+`{"recommendations": [{"cvar", "value", "flavors", "reason", "source"}]}`. One recommended value of one CVar: `value`
+is the string to set, `flavors` the flavor folders whose CVar list has the CVar (as the source shows it; a flavor
+not listed gets no recommendation for it), `reason` why, in our own words, and `source` an https URL. An entry
+without any of them is not loaded, and of two entries for one CVar and flavor the first wins. When a flavor's
+`cvars/<flavor>.json` exists, every recommended CVar must be in it (`tests/test_kb.py` checks).

@@ -343,3 +343,37 @@ def load_optimizer_rules(*, root: Path | None = None) -> dict[str, RuleInfo]:
         if title and reason and source:
             out[rule_id] = RuleInfo(rule_id, title, reason, source, entry.get("automatic") is True)
     return out
+
+
+# --- The Config Editor's recommendations (CE7) ------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Recommendation:
+    cvar: str
+    value: str                         # the value to set, as the client writes it
+    flavors: tuple[str, ...]           # the flavor folders the source says it applies to
+    reason: str                        # why, in our own words
+    source: str                        # the https URL the recommendation comes from
+
+
+def load_recommendations(flavor_folder: str, *, root: Path | None = None) -> list[Recommendation]:
+    """The curated recommendations for a flavor (CE7), in file order. An entry without a cvar, a string value, a
+    reason, an https source or a list of flavors is not loaded (an unsourced recommendation is never shipped, X6);
+    of two for one CVar (names match in any case) the first wins."""
+    data = _read(_root(root) / "recommendations.json") or {}
+    raw = data.get("recommendations") if isinstance(data.get("recommendations"), list) else []
+    out: list[Recommendation] = []
+    seen: set[str] = set()
+    for entry in raw:
+        if not isinstance(entry, dict) or not isinstance(entry.get("flavors"), list):
+            continue
+        cvar, value, reason, source = (entry.get(key) for key in ("cvar", "value", "reason", "source"))
+        flavors = _flavors(entry["flavors"]) or ()
+        if not (isinstance(cvar, str) and cvar and isinstance(value, str) and _str(reason).strip()
+                and _str(source).startswith("https://") and flavor_folder in flavors):
+            continue
+        if cvar.lower() in seen:
+            continue
+        seen.add(cvar.lower())
+        out.append(Recommendation(cvar, value, flavors, reason.strip(), source))
+    return out
