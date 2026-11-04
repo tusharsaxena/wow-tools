@@ -165,7 +165,7 @@ class DocsTest(unittest.TestCase):
         readme = " ".join((REPO_ROOT / "README.md").read_text(encoding="utf-8").split())
         for needle in ("config\\config-copier.cfg", "](docs/config-copier.md)",
                        "](docs/assets/screenshots/config-copier/review.png)", "the Config Copier's last copy",
-                       "the Saved Variables Browser, the Config Copier and the Macro Editor can also do a practice run"):
+                       "the Saved Variables Browser, the Config Copier, the Macro Editor and the Config Editor can also do a practice run"):
             self.assertIn(needle, readme)
         faq = readme[readme.index("## FAQ"):]
         self.assertIn("Config Copier", faq[:faq.index("Windows says")])  # safe? changes the game? close WoW?
@@ -225,7 +225,7 @@ class DocsTest(unittest.TestCase):
         readme = " ".join((REPO_ROOT / "README.md").read_text(encoding="utf-8").split())
         for needle in ("config\\macro-editor.cfg", "](docs/macro-editor.md)",
                        "](docs/assets/screenshots/macro-editor/browse.png)", "the Macro Editor's last Apply",
-                       "the Config Copier and the Macro Editor can also do a practice run"):
+                       "the Config Copier, the Macro Editor and the Config Editor can also do a practice run"):
             self.assertIn(needle, readme)
         faq = readme[readme.index("## FAQ"):]
         self.assertIn("Macro Editor", faq[:faq.index("Windows says")])  # safe? changes the game? close WoW?
@@ -245,6 +245,64 @@ class DocsTest(unittest.TestCase):
             self.assertIn(needle, internals)
         releasing = (REPO_ROOT / "docs" / "releasing.md").read_text(encoding="utf-8")
         self.assertIn("`docs/macro-editor.md`", releasing)
+
+    def test_config_editor_guide_readme_and_notes(self):
+        """T22 (spec CE1-CE8, V1, V2, Q5): the guide explains in plain words the three levels, synced CVars and why an
+        edit sticks (the V2 evidence, cache.md5 and .old never touched), unknown CVars, where the descriptions and
+        recommendations come from, how to report a change that comes back, and the safety net; the README, CLAUDE.md,
+        architecture, internals doc and CHANGELOG name the tool."""
+        from wowtools.core.kb import CATEGORY_GROUPS
+        from wowtools.tools.config_editor.report import ACCOUNT_CONFIG, CHANGED, NOT_SET, UNKNOWN
+        guide = (REPO_ROOT / "docs" / "config-editor.md").read_text(encoding="utf-8")
+        flat = " ".join(guide.split())
+        self.assertTrue(guide.index("Close WoW") < guide.index("## Step by step"))
+        for section in ("## The three levels", "## Synced CVars and why an edit sticks"):
+            self.assertTrue(guide.index(section) < guide.index("## Step by step"), section)
+        for needle in ("## The three levels", "`WTF\\Config.wtf`", "`config-cache.wtf`", f"**{ACCOUNT_CONFIG}**",
+                       "## Synced CVars and why an edit sticks", "Blizzard's servers", "`cache.md5`", "fingerprint",
+                       "`.old`", "next login", "## If a change comes back", "](../README.md#reporting-a-bug)",
+                       "## Unknown CVars", f"`{UNKNOWN}`", f"`{NOT_SET}`", f"`{CHANGED}`",
+                       "## Where the help comes from", "warcraft.wiki.gg", "in our own words", "build",
+                       "Forever", "## Recommend…", "the page it comes from", "## The browse screen",
+                       "### The help panel", "### Show and search", "### Keys on the browse screen",
+                       "## Set, Add, Remove and Reset", "## What the tool never touches", "## Apply", "## Dry run",
+                       "## Undo last change", "## The safety net", "### Where your backups go",
+                       "snapshots\\snapshot-<flavor>-", "edited\\edited-<flavor>-all-", "edit-in-progress.json",
+                       "journal\\journal-", "### If an Apply was interrupted", "Put the originals back", "Leave as is",
+                       "## WoW running", "changed since", "keep_backups", "keep_journals", "config\\config-editor.cfg",
+                       "## Settings", "## FAQ", "## Troubleshooting", "](assets/screenshots/config-editor/",
+                       "Back to review", "read-only", "Bob - Copy"):
+            self.assertIn(needle, flat)
+        for group in CATEGORY_GROUPS:
+            self.assertIn(group, flat)
+        for key in ("`Space`", "`a`", "`n`", "`/`", "`x`", "`c`", "`e`", "`N`", "`d`", "`R`", "`m`", "`w`", "`y`",
+                    "`r`", "`z`", "`!`", "`f`", "`t`", "`s`", "`h`", "`q`", "`Esc`"):
+            self.assertIn(key, guide)
+        readme = " ".join((REPO_ROOT / "README.md").read_text(encoding="utf-8").split())
+        for needle in ("config\\config-editor.cfg", "](docs/config-editor.md)",
+                       "](docs/assets/screenshots/config-editor/browse.png)", "the Config Editor's last Apply",
+                       "the Macro Editor and the Config Editor can also do a practice run"):
+            self.assertIn(needle, readme)
+        rows = (REPO_ROOT / "README.md").read_text(encoding="utf-8").splitlines()
+        for question in ("| Is it safe?", "| Does it change the game itself?", "| Do I need to close WoW?"):
+            row = next(line for line in rows if line.startswith(question))
+            self.assertIn("Config Editor", row, question)
+        claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertIn("Config Editor (`config-editor`, package `tools/config_editor`)", claude)
+        changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertIn("- **Config Editor**", changelog)
+        architecture = " ".join((REPO_ROOT / "docs" / "architecture.md").read_text(encoding="utf-8").split())
+        for needle in ("](internals/config-editor.md)", "](config-editor.md)",
+                       "`config/config-editor.cfg` `[config_editor]`"):
+            self.assertIn(needle, architecture)
+        internals = (REPO_ROOT / "docs" / "internals" / "config-editor.md").read_text(encoding="utf-8")
+        for needle in ("## The files", "## Why an edit sticks (V1, V2)", "`cache.md5`", "## Data flow", "## Staging",
+                       "## Knowledge base", "`cvars/<flavor>.json`", "`recommendations.json`", "`load_cvars(flavor)`",
+                       "`load_recommendations(flavor)`", "`category_group(name, raw)`", "## Safety", "`ClientFileGuard`", "## Screens",
+                       "## Events", "`cvar.scanned`", "## Tests", "`tests/test_config_editor_ops.py`"):
+            self.assertIn(needle, internals)
+        releasing = (REPO_ROOT / "docs" / "releasing.md").read_text(encoding="utf-8")
+        self.assertIn("`docs/config-editor.md`", releasing)
 
     def test_guides_filter_on_submit_and_risk_banner(self):
         """Feedback round 1 (D37, D40, D41): every tree filter applies on Enter or its Filter button, never as you

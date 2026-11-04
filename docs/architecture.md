@@ -31,7 +31,7 @@ tool's data flow and screens are in [`docs/internals/`](internals/).
 | [internals/sv-browser.md](internals/sv-browser.md) | Saved Variables Browser: lazy document model, search, staging and bulk edits, apply, Undo, screens |
 | [internals/config-copier.md](internals/config-copier.md) | Config Copier: copy planning, the config merge, the run on the client-file pipeline, Undo, screens |
 | [internals/macro-editor.md](internals/macro-editor.md) | Macro Editor: macro sets, staging, paste review, the run over several flavors on the client-file pipeline, Undo, screens |
-| [internals/config-editor.md](internals/config-editor.md) | Config Editor: the three file levels, CVar rows and the KB help, staging on ticked files, the run over several flavors on the client-file pipeline, Undo, screens |
+| [internals/config-editor.md](internals/config-editor.md) | Config Editor: the three file levels, why an edit sticks (V1, V2), CVar rows and the KB help (CVar data, wiki notes, categories, recommendations), staging on ticked files, the run over several flavors on the client-file pipeline, Undo, screens |
 | [testing.md](testing.md) | How the suite runs (parallel runner, fixtures, TUI pilot, sizes) and what CI does (the `tests` workflow; the `virustotal` release scan) |
 | [common-tasks.md](common-tasks.md) | Recipes for the usual changes (a tool, a tool setting, a `[general]` setting, an event, a button, a tree screen, a shared helper, a WTF criterion, a button's colour or kind, a rename, the vendored libraries, a release): files in order, the rules, the green gate |
 | [adding-a-tool.md](adding-a-tool.md) | Step by step: package, registry, shared pieces, tests, docs, renaming a tool later |
