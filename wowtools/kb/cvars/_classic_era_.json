@@ -2219,24 +2219,6 @@
    "scope": "machine",
    "synced": false
   },
-  "PlayerInfoTempCache": {
-   "category": "game",
-   "default": null,
-   "help": "",
-   "locked": false,
-   "readonly": false,
-   "scope": null,
-   "synced": false
-  },
-  "PlayerInfoTempCacheDebug": {
-   "category": "game",
-   "default": null,
-   "help": "",
-   "locked": false,
-   "readonly": false,
-   "scope": null,
-   "synced": false
-  },
   "PlayerSpawnTracking": {
    "category": "default",
    "default": "0",

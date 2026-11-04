@@ -642,74 +642,74 @@
   },
   "CACHE-WGOB-GameObjectsHotfixCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WGOB-GameObjectsRecordCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WQST-QuestObjectiveHotfixCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WQST-QuestObjectiveRecordCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WQST-QuestObjectiveXEffectHotfixCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WQST-QuestObjectiveXEffectRecordCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WQST-QuestV2HotfixCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WQST-QuestV2RecordCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CMAA2ExtraSharpness": {
@@ -2221,24 +2221,6 @@
   },
   "PhaseHistory": {
    "category": "default",
-   "default": "0",
-   "help": "",
-   "locked": false,
-   "readonly": false,
-   "scope": "machine",
-   "synced": false
-  },
-  "PlayerInfoTempCache": {
-   "category": "game",
-   "default": "0",
-   "help": "",
-   "locked": false,
-   "readonly": false,
-   "scope": "machine",
-   "synced": false
-  },
-  "PlayerInfoTempCacheDebug": {
-   "category": "game",
    "default": "0",
    "help": "",
    "locked": false,
@@ -4268,15 +4250,6 @@
    "readonly": false,
    "scope": "character",
    "synced": true
-  },
-  "actionbook-encount-state": {
-   "category": "game",
-   "default": "",
-   "help": "",
-   "locked": false,
-   "readonly": false,
-   "scope": "machine",
-   "synced": false
   },
   "actionedAdventureJournalEntries": {
    "category": "game",
@@ -9753,9 +9726,9 @@
    "synced": true
   },
   "hideFastLoginLoadingScreen": {
-   "category": "net",
+   "category": "default",
    "default": "0",
-   "help": "Hide the loading screen when fast logging in",
+   "help": "",
    "locked": false,
    "readonly": false,
    "scope": "machine",
@@ -11551,9 +11524,9 @@
    "synced": true
   },
   "plunderstormRealm": {
-   "category": "net",
+   "category": "default",
    "default": "0",
-   "help": "REALM_ADDRESS to connect to when pressing the Plunderstorm button",
+   "help": "",
    "locked": false,
    "readonly": false,
    "scope": "machine",

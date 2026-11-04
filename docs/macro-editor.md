@@ -57,9 +57,9 @@ same number again, so log in once before you add macros to that file in another 
 ## Slots
 
 The game holds a fixed number of macros: 120 account macros per account and 30 macros per character in Retail.
-The editor knows Retail's numbers, and uses them for Forever too until Forever's own are recorded. It counts the
-Classic game versions with them as well and marks their slots `unconfirmed` (`3/30 unconfirmed`), since the game
-there may allow fewer. The tree shows the slots used (`3/30`), or
+The editor knows each game version's numbers, recorded from the game itself; Forever uses Retail's until its own
+are recorded. A game version it has no numbers for counts with Retail's and its slots are marked `unconfirmed`
+(`3/30 unconfirmed`), since the game there may allow fewer. The tree shows the slots used (`3/30`), or
 `30/30 FULL` when no macro can be added. **New** on a full set says so, and a paste puts in what fits and lists what it leaves out.
 
 ## Step by step

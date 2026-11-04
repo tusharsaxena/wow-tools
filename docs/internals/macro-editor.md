@@ -63,8 +63,9 @@ it is not loaded, so nothing is described from a guess.
 - `macro_templates.json` → `load_templates()`: the templates (ME11), each with `{placeholder}`s and a source.
 - `optimizer_rules.json` → `load_optimizer_rules()`: the optimizer's rules (ME10) with the reason each rewrite is the
   same in game; `optimizer.optimize` applies only the `automatic` ones (`cast_to_use` is listed, never applied).
-- `macro_limits.json` → `macro_limits(flavor)`: the slots (ME3), sourced for Retail (120 account, 30 per
-  character, from the client's `MacroConstants`). `_forever_` has a `provisional` copy of Retail's entry (T20d) with
+- `macro_limits.json` → `macro_limits(flavor)`: the slots (ME3), sourced per flavor (Retail from the client's
+  `MacroConstants`; `_classic_`, `_classic_era_` and `_anniversary_` from their client dumps, source
+  `client dump <flavor> <build>`). `_forever_` has a `provisional` copy of Retail's entry (T20d) with
   Retail's source, which the tools don't read: Forever counts as known (`limits_known` True) and is never marked. Any
   other flavor counts with Retail's values (`limits_known` False); `MacroSet.limit_known` carries that, and
   `report.slots_text` marks the set's slots `unconfirmed` (T17r).

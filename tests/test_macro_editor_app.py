@@ -140,6 +140,7 @@ class MacroEditorAppTest(MacroEditorTestBase):
         self.assertEqual(tool.description,
                          "Browse, edit, copy and paste macros across characters, accounts and flavors.")
 
+    @mock.patch("wowtools.tools.macro_editor.model.limits_known", lambda folder: folder != "_classic_era_")
     async def test_browse_lists_sets_with_slot_counts(self):
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
@@ -156,7 +157,7 @@ class MacroEditorAppTest(MacroEditorTestBase):
             self.assertIn("Aellâ  3/30", character_node(tree, "Aellâ").label.plain)
             self.assertIn("Trâxex  0/30", character_node(tree, "Trâxex").label.plain)
             self.assertIn("Account macros  1/120", account_set_node(tree, "MAIN").label.plain)
-            # ME3: Classic Era has no sourced limits, so its slots are Retail's and marked unconfirmed; Retail's are not
+            # ME3: a flavor with no sourced limits (Classic Era here, patched) counts with Retail's, marked unconfirmed
             self.assertTrue(character_node(tree, "Other", "_classic_era_").label.plain.endswith("/30 unconfirmed"))
             self.assertNotIn("unconfirmed", character_node(tree, "Aellâ").label.plain)
             self.assertNotIn("unconfirmed", account_set_node(tree, "MAIN").label.plain)

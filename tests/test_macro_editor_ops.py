@@ -6,6 +6,7 @@ import hashlib
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tests.fixtures import build_character_tree, macro_file_bytes
 from wowtools.core.events import capture_events
@@ -199,9 +200,11 @@ class MacroEditorOpsTest(unittest.TestCase):
     def test_cross_flavor_paste_allowed(self):
         self.put("ACCT/Realm1/Other", b"", flavor="_classic_era_")
         classic = Flavor("_classic_era_", self.root / "_classic_era_")
-        csets = scan_sets(classic)
-        other = self.set_of("ACCT/Other", csets)
-        self.assertEqual((other.limit, other.limit_known), (30, False))  # no sourced Classic Era entry: Retail's (ME3)
+        with mock.patch("wowtools.tools.macro_editor.model.limits_known", lambda folder: folder != "_classic_era_"):
+            csets = scan_sets(classic)
+            other = self.set_of("ACCT/Other", csets)
+            # a flavor with no sourced entry counts with Retail's values, marked unconfirmed (ME3)
+            self.assertEqual((other.limit, other.limit_known), (30, False))
         self.assertTrue(self.set_of("MAIN/Aellâ").limit_known)
         aella = self.set_of("MAIN/Aellâ")
         staged = Staged()

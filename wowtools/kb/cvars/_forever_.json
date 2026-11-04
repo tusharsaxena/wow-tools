@@ -687,74 +687,74 @@
   },
   "CACHE-WGOB-GameObjectsHotfixCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WGOB-GameObjectsRecordCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WQST-QuestObjectiveHotfixCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WQST-QuestObjectiveRecordCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WQST-QuestObjectiveXEffectHotfixCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WQST-QuestObjectiveXEffectRecordCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WQST-QuestV2HotfixCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WQST-QuestV2RecordCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CMAA2ExtraSharpness": {
@@ -2464,11 +2464,11 @@
   },
   "PraiseTheSun": {
    "category": "game",
-   "default": null,
+   "default": "0",
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": null,
+   "scope": "machine",
    "synced": false
   },
   "PreemptiveCastEnable": {
@@ -3505,9 +3505,9 @@
    "synced": false
   },
   "Sound_EnableAmbience": {
-   "category": "sound",
+   "category": "default",
    "default": "1",
-   "help": "Enable Ambience",
+   "help": "",
    "locked": false,
    "readonly": false,
    "scope": "machine",
@@ -3541,9 +3541,9 @@
    "synced": false
   },
   "Sound_EnableDialog": {
-   "category": "sound",
+   "category": "default",
    "default": "1",
-   "help": "all dialog",
+   "help": "",
    "locked": false,
    "readonly": false,
    "scope": "machine",
@@ -3658,7 +3658,7 @@
    "synced": false
   },
   "Sound_EnableSFX": {
-   "category": "sound",
+   "category": "default",
    "default": "1",
    "help": "",
    "locked": false,

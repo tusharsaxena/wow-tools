@@ -660,56 +660,56 @@
   },
   "CACHE-WQST-QuestObjectiveHotfixCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WQST-QuestObjectiveRecordCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WQST-QuestObjectiveXEffectHotfixCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WQST-QuestObjectiveXEffectRecordCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WQST-QuestV2HotfixCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CACHE-WQST-QuestV2RecordCount": {
    "category": "default",
-   "default": "",
+   "default": null,
    "help": "",
    "locked": false,
    "readonly": false,
-   "scope": "machine",
+   "scope": null,
    "synced": false
   },
   "CMAA2ExtraSharpness": {
@@ -2264,24 +2264,6 @@
    "scope": "machine",
    "synced": false
   },
-  "PlayerInfoTempCache": {
-   "category": "game",
-   "default": "0",
-   "help": "",
-   "locked": false,
-   "readonly": false,
-   "scope": "machine",
-   "synced": false
-  },
-  "PlayerInfoTempCacheDebug": {
-   "category": "game",
-   "default": "0",
-   "help": "",
-   "locked": false,
-   "readonly": false,
-   "scope": "machine",
-   "synced": false
-  },
   "PlayerSpawnTracking": {
    "category": "default",
    "default": "0",
@@ -3469,9 +3451,9 @@
    "synced": false
   },
   "Sound_NumChannels": {
-   "category": "sound",
+   "category": "default",
    "default": "64",
-   "help": "number of sound channels",
+   "help": "",
    "locked": false,
    "readonly": false,
    "scope": "machine",
