@@ -146,6 +146,8 @@ copy mode; `validate_dest` errors show inline). `review_screen.py` holds:
   row is `report.file_cells` (name · `possible duplicate` or nothing), a conflict row `report.conflict_cells`
   (name · `→` target folder, dim), fitted by `ui/columns.fit_columns` with `review_screen.FILE_COLUMNS` /
   `CONFLICT_COLUMNS` (the target gives way first, then the name, both cut in their middle; the note is never cut).
+  At 80 columns a day's guides leave a file row 4 cells, so its name keeps its 12-cell minimum and the row scrolls
+  sideways (STD-7.28, user decision U1) rather than read `✔ Wo…g` on every file.
   `_load_files` (a day's files, on expand) and `_add_node` (the conflicts) work out the natural widths over the
   sibling rows the filter keeps and each row's indent; `_fit_rows` refits them when the tree pane's width changes.
   A skipped row is its name only, not a column row. It uses the

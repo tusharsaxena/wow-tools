@@ -7,7 +7,8 @@ from unittest.mock import patch
 
 from textual.widgets import Button, DataTable, Input, OptionList, Tree
 
-from tests.fixtures import BASE, TINY, TuiTestCase, build_screenshot_tree, build_wow_tree, make_config, settle, submit_filter
+from tests.fixtures import (BASE, TINY, TuiTestCase, assert_fits_or_keeps_minimum, assert_siblings_distinct,
+                            build_screenshot_tree, build_wow_tree, make_config, settle, submit_filter)
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
@@ -16,6 +17,7 @@ from wowtools.tools.screenshot_organizer import planner as planner_module
 from wowtools.tools.screenshot_organizer import review_screen as review_module
 from wowtools.tools.screenshot_organizer.app import ScreenshotSettingsScreen
 from wowtools.tools.screenshot_organizer.journal import latest_undoable
+from wowtools.tools.screenshot_organizer.report import CONFLICT_MINIMUMS, FILE_MINIMUMS
 from wowtools.tools.screenshot_organizer.review_screen import ShotResultScreen, ShotReviewScreen
 from wowtools.tools.screenshot_organizer.settings import load_settings
 from wowtools.ui.dialogs import ConfirmScreen
@@ -702,6 +704,9 @@ class ShotsAppTest(TuiTestCase):
             self.assert_counts(review)
 
     async def test_rows_are_cut_to_fit_the_pane(self):
+        """At 120x30 every file and conflict row fits the pane; at 80x24 a day's guides leave a file row 4 cells,
+        so its name keeps its 12-cell minimum and the row scrolls sideways (STD-7.28, user decision U1: it read
+        `✔ Wo…g` on every row before), and the files of a day still read apart."""
         self.save_tool_cfg()
         target = self.shots / "2019" / "07" / "31"
         target.mkdir(parents=True)
@@ -722,10 +727,17 @@ class ShotsAppTest(TuiTestCase):
                 self.assertTrue(any(n.data[0] == "file" for n in rows))
                 for node in rows:
                     with self.subTest(size=size, row=str(node.label)):
-                        self.assertLessEqual(_indent(node) + node.label.cell_len, room)
+                        if size == BASE:
+                            self.assertLessEqual(_indent(node) + node.label.cell_len, room)
+                        minimum = (FILE_MINIMUMS if node.data[0] == "file" else CONFLICT_MINIMUMS)[0]
+                        assert_fits_or_keeps_minimum(self, node, _indent(node), room, node.data[1].src.name, minimum)
+                assert_siblings_distinct(self, rows)
                 (row,) = conflicts.children
                 self.assertIn("…", str(row.label))
                 if size == TINY:
+                    files = [n for n in rows if n.data[0] == "file"]
+                    self.assertNotIn("✔ Wo…g", [str(n.label) for n in files])
+                    self.assertTrue(all(_indent(n) + n.label.cell_len > room for n in files))  # they scroll
                     continue  # 80 columns: a day's guides alone take most of the pane, so its row scrolls (G4d)
                 for node in _walk(tree.root):  # a count is never pushed off by a note after it
                     if node.data and node.data[0] in ("day", "filed", "conflicts", "skipped"):

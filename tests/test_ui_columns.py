@@ -7,8 +7,8 @@ import unittest
 
 from rich.text import Text
 
-from wowtools.ui.columns import (ELLIPSIS, NARROW_GAP, WIDE_GAP, ColumnLayout, column_text, cut_middle, fit_columns,
-                                 fit_keeping_count, natural_widths)
+from wowtools.ui.columns import (ELLIPSIS, GROUP_NAME_MINIMUM, NARROW_GAP, WIDE_GAP, ColumnLayout, column_text,
+                                 cut_middle, cut_to_room, fit_columns, fit_keeping_count, natural_widths)
 from wowtools.ui.counts import COUNT_STYLE, count_text, with_count
 
 # name · reason · files · size · age (the WTF Cleaner's row, the user's example): the name and the reason give way,
@@ -50,14 +50,28 @@ class FitColumnsTest(unittest.TestCase):
         # every column at its minimum is 8+6+7+6+3 + 4 = 34 cells: the reason goes, the name takes room back
         self.assertEqual(fit_columns(natural, 28, LAYOUT), ((9, 0, 7, 6, 3), NARROW_GAP))
         self.assertEqual(fit_columns(natural, 26, LAYOUT), ((11, 0, 7, 6, 0), NARROW_GAP))  # then the age
-        # past the layout's drops every other column goes: the name alone, cut to the room (a row always fits)
+        # past the layout's drops every other column goes: the name alone, cut to the room
         self.assertEqual(fit_columns(natural, 18, LAYOUT), ((18, 0, 0, 0, 0), NARROW_GAP))
-        for room in (30, 20, 10, 3, 0):
+        for room in (30, 20, 10, 8):
             with self.subTest(room=room):
                 widths, _ = fit_columns(natural, room, LAYOUT)
                 shown = [w for w in widths if w]
-                self.assertLessEqual(sum(shown) + len(shown) - 1, max(room, 1))
-                self.assertGreaterEqual(widths[0], 1)  # the first column (the name) always shows
+                self.assertLessEqual(sum(shown) + len(shown) - 1, room)  # the row fits
+                self.assertGreaterEqual(widths[0], 8)  # the first column (the name) always shows
+
+    def test_the_name_never_goes_below_its_minimum(self):
+        """Narrower than the name's minimum (STD-7.28, user decision U1): the name keeps its minimum alone and the
+        row scrolls sideways past the pane, so sibling names stay apart; a name shorter than its minimum is whole."""
+        natural = (20, 30, 7, 6, 3)
+        for room in (7, 3, 1, 0):
+            with self.subTest(room=room):
+                self.assertEqual(fit_columns(natural, room, LAYOUT), ((8, 0, 0, 0, 0), NARROW_GAP))
+        self.assertEqual(fit_columns((5, 30, 7, 6, 3), 2, LAYOUT), ((5, 0, 0, 0, 0), NARROW_GAP))
+        rows = [("WoWScrnShot_073119_232713.jpg", ""), ("WoWScrnShot_073119_201530.jpg", "")]
+        widths, gap = fit_columns(natural_widths(rows), 4, ColumnLayout((48, None), (12, 0)))
+        self.assertEqual(widths, (12, 0))
+        lines = [column_text(row, widths, ("", ""), gap, middle=(0,)).plain for row in rows]
+        self.assertEqual(lines, ["WoWScr…3.jpg", "WoWScr…0.jpg"])  # never `Wo…g` twice
 
     def test_an_empty_column_takes_no_gap(self):
         self.assertEqual(fit_columns((10, 0, 3), 15, ColumnLayout((None,) * 3, (1, 1, 1), ((0,),))),
@@ -70,7 +84,7 @@ class FitColumnsTest(unittest.TestCase):
                              drop=(2, 4, 1, 3))
         self.assertEqual(fit_columns((27, 300, 3, 7, 10), 42, cvars), ((15, 7, 0, 7, 10), 1))
         self.assertEqual(fit_columns((30, 7, 6, 7, 11), 20, cvars), ((12, 0, 0, 7, 0), 1))
-        self.assertEqual(fit_columns((30, 7, 6, 7, 11), 0, cvars), ((1, 0, 0, 0, 0), 1))
+        self.assertEqual(fit_columns((30, 7, 6, 7, 11), 0, cvars), ((12, 0, 0, 0, 0), 1))  # the name's minimum
 
 
     def test_the_count_is_kept_by_cutting_the_name(self):
@@ -82,6 +96,7 @@ class FitColumnsTest(unittest.TestCase):
         self.assertEqual(fit_keeping_count(natural, 20, layout), ((12, 7, 0), NARROW_GAP))
         self.assertEqual(fit_keeping_count(natural, 50, layout), fit_columns(natural, 50, layout))  # it fits
         self.assertEqual(fit_keeping_count(natural, 10, layout), ((10, 0, 0), NARROW_GAP))  # no room for both
+        self.assertEqual(fit_keeping_count(natural, 2, layout), ((4, 0, 0), NARROW_GAP))  # the name's minimum
         self.assertEqual(fit_keeping_count((20, 0, 10), 20, layout), fit_columns((20, 0, 10), 20, layout))  # none
 
 class CutTest(unittest.TestCase):
@@ -95,6 +110,18 @@ class CutTest(unittest.TestCase):
         cut = cut_middle("日本語のテキスト", 7)
         self.assertLessEqual(Text(cut).cell_len, 7)
         self.assertTrue(cut.startswith("日") and ELLIPSIS in cut and cut.endswith("ト"))
+
+
+    def test_a_group_name_is_cut_to_the_room_but_not_below_its_minimum(self):
+        """cut_to_room: a group's name (a name and its count, not a column row) cut in its middle to the room, never
+        below its minimum (U1: the row scrolls past instead); whole with no room limit or when it fits."""
+        self.assertEqual(GROUP_NAME_MINIMUM, 4)
+        self.assertEqual(cut_to_room("Area 52", None), "Area 52")
+        self.assertEqual(cut_to_room("Area 52", 20), "Area 52")
+        self.assertEqual(cut_to_room("Argent Dawn", 6), "Arg…wn")
+        self.assertEqual([cut_to_room("Argent Dawn", room) for room in (4, 1, 0, -3)], ["Ar…n"] * 4)
+        self.assertEqual(cut_to_room("Argent Dawn", 0, minimum=8), "Arge…awn")
+        self.assertEqual(cut_to_room("EU", 0), "EU")
 
 
 class ColumnTextTest(unittest.TestCase):

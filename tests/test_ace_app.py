@@ -8,7 +8,8 @@ from unittest.mock import patch
 
 from textual.widgets import Button, DataTable, Input, Static, Tree
 
-from tests.fixtures import BASE, TINY, TuiTestCase, accept_disclaimer, build_ace_tree, make_config, settle, submit_filter
+from tests.fixtures import (BASE, TINY, TuiTestCase, accept_disclaimer, assert_fits_or_keeps_minimum,
+                            build_ace_tree, make_config, settle, submit_filter)
 from wowtools.core.backup import BackupEntry, create_backup
 from wowtools.core.blacklist import toggle_pair
 from wowtools.core.config import Config
@@ -26,8 +27,10 @@ from wowtools.tools.ace3_profile_manager.result_screen import ProfileResultScree
 from wowtools.tools.ace3_profile_manager.review_screen import ProfileReviewScreen
 from wowtools.tools.ace3_profile_manager.scanner import sha256_of
 from wowtools.tools.ace3_profile_manager.settings import load_settings
+from wowtools.tools.ace3_profile_manager.tree_view import GROUP, LAYOUTS
 from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult
 from wowtools.ui.account_screen import AccountScreen
+from wowtools.ui.columns import GROUP_NAME_MINIMUM
 from wowtools.ui.counts import count_text
 from wowtools.ui.dialogs import LISTED_ID, ConfirmScreen, InfoScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
@@ -2362,6 +2365,9 @@ class NodeCountsAndColumnsTest(AceAppBase):
             self.assertNotIn(" · ", "\n".join(labels(tree)))
 
     async def test_rows_fit_the_pane(self):
+        """Every row fits the pane at 120x30; at 80x24 the deepest rows (a character under a profile under a
+        database) keep their name's minimum and scroll sideways instead of reading `…` (STD-7.28, user decision
+        U1)."""
         for size in (BASE, TINY):
             app = self.make_app()
             async with app.run_test(size=size) as pilot:
@@ -2378,9 +2384,13 @@ class NodeCountsAndColumnsTest(AceAppBase):
                         if node.data is None or node.data[0] == "note":
                             continue
                         guides = depth(node) * tree.guide_depth + (2 if node.allow_expand else 0)
-                        if guides + 5 > room:  # a pad, the mark and one cell
-                            continue  # its guides and its mark fill the pane: nothing can fit (it scrolls, G6d)
-                        self.assertLessEqual(guides + node.label.cell_len, room, (size, view, node.label.plain))
+                        row = review._builder.rows.get(id(node.data))
+                        if row is None:
+                            self.assertLessEqual(guides + node.label.cell_len, room, (size, view, node.label.plain))
+                        else:  # where the name's minimum does not fit, the name keeps it and the row scrolls (U1)
+                            minimum = GROUP_NAME_MINIMUM if row.layout == GROUP else LAYOUTS[row.layout].minimums[0]
+                            with self.subTest(size=size, view=view, row=node.label.plain):
+                                assert_fits_or_keeps_minimum(self, node, guides, room, row.cells[0], minimum)
                         self.assertEqual(node.label.plain, node.label.plain.rstrip())  # no trailing padding
                         counted = ("root", "flavor", "account") + (("addon", "character") if size == BASE else ())
                         if node.data[0] in counted:  # the count kept (at 80 columns a group's only)

@@ -51,7 +51,8 @@ from wowtools.tools.sv_browser.settings import load_settings, resolve_root
 from wowtools.tools.sv_browser.undo import (UndoError, UndoResult, leave, pending_recovery, recover, undo_flavors,
                                             undo_run)
 from wowtools.ui.branding import BottomBar
-from wowtools.ui.columns import Cell, ColumnLayout, column_text, cut_middle, fit_columns, natural_widths
+from wowtools.ui.columns import (Cell, ColumnLayout, GROUP_NAME_MINIMUM, column_text, cut_middle, cut_to_room,
+                                 fit_columns, natural_widths)
 from wowtools.ui.counts import COUNT_GAP, COUNT_STYLE, count_text
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                  UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
@@ -94,7 +95,6 @@ KEY_COLUMNS = ColumnLayout(caps=(48, 62, 48), minimums=(8, 6, 8), shrink=((0, 1)
 FILE_ROW_COLUMNS = ColumnLayout(caps=(48, None), minimums=(8, 0), shrink=((0,),), drop=(1,))
 TOGGLE_WIDTH = 2  # the tree's ▶ / ▼ in front of a node that opens
 MARK_WIDTH = 2  # the tick mark in front of a Results label
-GROUP_NAME_MINIMUM = 4  # a group's name is cut (in its middle) down to this so its count fits the pane
 
 
 class RunProgressScreen(ProgressScreen):
@@ -1277,10 +1277,10 @@ def _under(nodes: list[ModelNode]) -> tuple[int, ...]:
 
 def _group_text(name: str, style: str, n: int, room: int | None) -> Text:
     """A group's name and its dim count (R2), the name cut in its middle so the count fits the pane; with no room
-    for both, the name alone, cut to the room."""
+    for both, the name alone, cut to the room but never below 4 cells (cut_to_room: the row scrolls, U1)."""
     count = f"{COUNT_GAP}{count_text(n)}"
     if room is not None and cell_len(name) + cell_len(count) > room:
         if room - cell_len(count) < GROUP_NAME_MINIMUM:
-            return Text(cut_middle(name, max(1, room)), style=style)
+            return Text(cut_to_room(name, room), style=style)
         name = cut_middle(name, room - cell_len(count))
     return Text.assemble((name, style), (count, COUNT_STYLE))

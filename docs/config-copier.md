@@ -64,7 +64,8 @@ game versions (**other flavor**): a copy stays within one game version. Folders 
 lists, dimmed (`Bob  5 items`), as the filter and the file boxes leave them.
 
 Nothing is ticked at first. Ticking a character ticks every file it can get; open it to untick a single file. Each
-file says what a copy does, in a column of its own beside the file's name:
+file says what a copy does, in a column of its own beside the file's name (in a very narrow window a name keeps a
+few letters at each end and the line scrolls sideways):
 
 | Status | Means |
 |---|---|

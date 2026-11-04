@@ -95,7 +95,8 @@ myAddonThing                    Dænerys       unknown  other
 The columns line up within each file. A long value (some CVars hold a whole list) is cut with `…` so the state and
 category stay in view: the help panel and **Set** show it whole. In a narrow window the value, the default and then
 the name are cut further (a long name in its middle, so names that start alike stay apart), and when even that is too
-wide the default, the category, the value and then the state are left out: the help panel still shows them. A changed CVar is marked `✎` until **Apply**, and a file with changes shows `✎` and how
+wide the default, the category, the value and then the state are left out: the help panel still shows them. A name
+is never cut below a few letters at each end: in a very narrow window the line scrolls sideways instead. A changed CVar is marked `✎` until **Apply**, and a file with changes shows `✎` and how
 many. A character with no file yet says `no file`:
 setting a CVar there creates it. Folders that aren't characters, such as `Bob - Copy`, are not listed. A file that can't
 be read shows **read-only**: it is never ticked or written, and the **warnings view** lists it.

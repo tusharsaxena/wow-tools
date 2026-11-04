@@ -12,8 +12,8 @@ from unittest.mock import patch
 
 from textual.widgets import Button, Checkbox, DataTable, Input, OptionList, Static, Tree
 
-from tests.fixtures import (BASE, TINY, TuiTestCase, assert_keys_on_buttons, build_interface_tree, build_wow_tree,
-                            make_config, settle, submit_filter)
+from tests.fixtures import (BASE, TINY, TuiTestCase, assert_keys_on_buttons, assert_siblings_distinct,
+                            build_interface_tree, build_wow_tree, make_config, settle, submit_filter)
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
@@ -2299,6 +2299,7 @@ class InterfaceBackupAppTest(TuiTestCase):
                         self.assertLessEqual(_indent(node) + node.label.cell_len, room)
                         if node.data[0] in ("root", "flavor"):
                             self.assertRegex(str(node.label), r"\d+ items?")  # the count is never dropped
+                assert_siblings_distinct(self, rows)  # the names keep their minimums and read apart (U1)
 
     async def test_restore_tree_counts_and_columns(self):
         self.save_tool_cfg(backup_dir=str(self.bk))
@@ -2346,6 +2347,7 @@ class InterfaceBackupAppTest(TuiTestCase):
                     with self.subTest(size=size, row=str(node.label)):
                         self.assertLessEqual(_indent(node) + node.label.cell_len, room)
                         self.assertRegex(str(node.label), r"\d+ items?")
+                assert_siblings_distinct(self, self.effect(screen, "removed").children)
 
 
 def _walk(node):

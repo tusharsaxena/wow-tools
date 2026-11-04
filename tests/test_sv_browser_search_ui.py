@@ -10,8 +10,8 @@ from rich.cells import cell_len
 from textual.widgets import Button, Input, Select, Static, Tree
 
 from tests.fixtures import BASE, LARGE, TINY, assert_keys_on_buttons, settle, submit_filter
-from tests.test_sv_browser_app import (SvBrowserTestBase, assert_counts, child, depth, drawn, labels, one_piece,
-                                       select, walk)
+from tests.test_sv_browser_app import (SvBrowserTestBase, assert_counts, assert_row_fits, child, depth, drawn, labels,
+                                       one_piece, select, walk)
 from tests.test_sv_browser_edit import SvEditTestBase, error_text
 from wowtools.core.events import capture_events
 from wowtools.core.svfiles import OWNER_ACCOUNT_WIDE
@@ -720,7 +720,8 @@ class ResultsCountsAndColumnsTest(SearchTestBase):
                                                                      f'✔ ElvDB › pro…rame › Font = "{FRIZ}"'])
 
     async def test_results_rows_fit_the_pane(self):
-        """Every Results row, its tick mark included, fits the pane at 120x30 and at 80x24 (STD-7.28)."""
+        """Every Results row, its tick mark included, fits the pane at 120x30 with no sideways scroll; at 80x24 a
+        row whose name's minimum does not fit keeps it and the tree scrolls sideways (STD-7.28, user decision U1)."""
         for size in (BASE, TINY):
             app = self.make_app()
             async with app.run_test(size=size) as pilot:
@@ -731,6 +732,9 @@ class ResultsCountsAndColumnsTest(SearchTestBase):
                 rows = [n for n in walk(tree.root) if n.data is not None]
                 self.assertTrue(any(n.data[0] == "hit" for n in rows))
                 for row in rows:
-                    self.assertLessEqual(depth(row) * tree.guide_depth + cell_len(drawn(row)), room,
-                                         (size, drawn(row)))
-                self.assertEqual(tree.max_scroll_x, 0, size)
+                    with self.subTest(size=size, row=drawn(row)):
+                        if size == BASE:
+                            self.assertLessEqual(depth(row) * tree.guide_depth + cell_len(drawn(row)), room)
+                        assert_row_fits(self, review, row, room)
+                if size == BASE:
+                    self.assertEqual(tree.max_scroll_x, 0)

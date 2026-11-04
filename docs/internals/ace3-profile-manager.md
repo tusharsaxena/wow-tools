@@ -212,8 +212,9 @@ per app session, L4; `ace.disclaimer_accepted` / `_declined`; Back returns to th
   build and pads a row that doesn't open beside siblings that do (`padded`: two spaces where their ▶ is), so the
   columns line up; the screen fits them (`_row_text`: `fit_columns`, or `fit_keeping_count` on a row with a count;
   a group's name is cut in its middle so its count fits, `_group_text`) to `_room` and refits every label on a
-  resize (`_fit_rows`). At 80 columns the deepest rows have only a few cells behind their guides and are cut to
-  them. The blacklist screen's root and flavors count the addons they show. Ticks are `("p", DbKey, profile)` and `("c", DbKey, char)`; groups tick their descendants; locked
+  resize (`_fit_rows`). At 80 columns the deepest rows have only a few cells behind their guides: a name keeps its
+  minimum (its layout's, 4 for a group's name, `ui/columns.cut_to_room`) and the row scrolls sideways (STD-7.28,
+  user decision U1). The blacklist screen's root and flavors count the addons they show. Ticks are `("p", DbKey, profile)` and `("c", DbKey, char)`; groups tick their descendants; locked
   addons, deleted profiles, removed characters and notes are read-only. Every row of a locked addon (in both views)
   is in `TreeBuilder.held` and shows the shared blacklist mark (`ui.review.blacklisted_mark()`, `⊘`, dim, L15) in
   place of a tick mark; an unlocked one takes ticks again. `#summary` is `report.selection_text` plus

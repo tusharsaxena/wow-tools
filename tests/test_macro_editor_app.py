@@ -13,19 +13,21 @@ from unittest import mock
 from textual.widgets import Checkbox, Input, OptionList, TextArea, Tree
 
 from tests.fixtures import (BASE, LARGE, MACRO_ACCOUNT, MACRO_AELLA, MACRO_BOB, MACRO_UNKNOWN, TINY, TuiTestCase,
-                            build_macro_tree, make_config, settle, submit_filter)
+                            assert_fits_or_keeps_minimum, build_macro_tree, make_config, settle, submit_filter)
 from wowtools.core.events import capture_events
+from wowtools.core.install import flavor_name
 from wowtools.core.macrofile import parse_macros
 from wowtools.core.text import plural
 from wowtools.tools import TOOLS
 from wowtools.tools.macro_editor.edit_screen import MacroEditScreen
 from wowtools.tools.macro_editor.model import MACRO_FILE
 from wowtools.tools.macro_editor.popups import PasteScreen, ReplaceTextScreen
-from wowtools.tools.macro_editor.report import DELETE_WARNING
+from wowtools.tools.macro_editor.report import ACCOUNT_MACROS, DELETE_WARNING, MACRO_MINIMUMS
 from wowtools.tools.macro_editor.review_screen import (MacroNode, MacroResultScreen, MacroReviewScreen, SetKey,
                                                        SetNode)
 from wowtools.ui import dialogs
 from wowtools.ui.character_tree import CharacterNode
+from wowtools.ui.columns import GROUP_NAME_MINIMUM
 from wowtools.ui.dialogs import CONFIRM_GUARD, ConfirmScreen, DiscardScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
@@ -581,6 +583,9 @@ class NodeCountsAndColumnsTest(MacroEditorTestBase):
             self.assertRegex(str(character_node(tree, "Dænerys").label), r"^ +Dænerys  read-only$")
 
     async def test_rows_fit_the_pane(self):
+        """Every line fits the pane at 120x30; at 80x24 a macro line 16 to 20 cells deep keeps its name's 6 cells
+        (a character or a realm its name's 4) and scrolls sideways instead of reading `He…s` (STD-7.28, user
+        decision U1)."""
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot)
@@ -594,10 +599,19 @@ class NodeCountsAndColumnsTest(MacroEditorTestBase):
                 await settle(app, pilot)
                 room = tree.size.width - tree.styles.scrollbar_size_vertical
                 for node in walk(tree.root):
-                    if node.data is None or indent(node) + 4 >= room:
-                        continue  # guides and the marks alone fill the pane (the G4r / U1 case, G9b)
+                    data = node.data
+                    if data is None:
+                        continue
+                    if isinstance(data, MacroNode):
+                        name, minimum = data.macro.name, MACRO_MINIMUMS[0]
+                    else:
+                        name = ACCOUNT_MACROS if isinstance(data, SetNode) else \
+                            data.text if isinstance(data, CharacterNode) else flavor_name(data[1])
+                        minimum = GROUP_NAME_MINIMUM
                     with self.subTest(size=size, row=str(node.label)):
-                        self.assertLessEqual(indent(node) + node.label.cell_len, room)
+                        if size == BASE:
+                            self.assertLessEqual(indent(node) + node.label.cell_len, room)
+                        assert_fits_or_keeps_minimum(self, node, indent(node), room, name, minimum)
                 if size == BASE:  # at 120 columns the names and lengths read in full
                     aella = character_node(tree, "Aellâ")
                     for node in aella.children:

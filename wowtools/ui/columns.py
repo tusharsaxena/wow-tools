@@ -1,11 +1,12 @@
 """A tree node's data in aligned columns, the suite standard (feedback round 2 spec R4, STD-7.28): wherever a node
 shows more than one piece of data (a name plus a reason, size, age, date, value, status...), each piece is a column
 as wide as its widest cell among the sibling rows it aligns with (`natural_widths`), up to the column's cap; when
-the pane is narrow `fit_columns` gives the free-text columns way first and drops whole columns last, so a row always
-fits; `column_text` builds the row's Rich text, long cells cut with `…`. A tool keeps its cells (a report function)
-and its `ColumnLayout`; the screen, which knows the pane's width, fits and draws. Pure functions over Rich, no
-Textual import: one implementation for every tool (moved out of the Config Editor, where the CVar rows started
-it, feedback round 1 CF2)."""
+the pane is narrow `fit_columns` gives the free-text columns way first and drops whole columns last, so a row fits
+while its name keeps its minimum (narrower still, the name keeps its minimum and the row scrolls sideways: user
+decision U1, so sibling names stay apart); `column_text` builds the row's Rich text, long cells cut with `…`. A tool
+keeps its cells (a report function) and its `ColumnLayout`; the screen, which knows the pane's width, fits and
+draws. Pure functions over Rich, no Textual import: one implementation for every tool (moved out of the Config
+Editor, where the CVar rows started it, feedback round 1 CF2)."""
 from __future__ import annotations
 
 from collections.abc import Collection, Iterable, Sequence
@@ -14,11 +15,12 @@ from typing import NamedTuple
 from rich.cells import cell_len
 from rich.text import Text
 
-__all__ = ["ELLIPSIS", "NARROW_GAP", "WIDE_GAP", "ColumnLayout", "column_text", "cut_middle", "fit_columns",
-           "fit_keeping_count", "natural_widths"]
+__all__ = ["ELLIPSIS", "GROUP_NAME_MINIMUM", "NARROW_GAP", "WIDE_GAP", "ColumnLayout", "column_text", "cut_middle",
+           "cut_to_room", "fit_columns", "fit_keeping_count", "natural_widths"]
 
 ELLIPSIS = "…"
 WIDE_GAP, NARROW_GAP = 2, 1  # spaces between two columns: two when everything fits so, else one
+GROUP_NAME_MINIMUM = 4  # a group's name (a name and its count) is never cut below this; its row scrolls past (U1)
 
 
 class ColumnLayout(NamedTuple):
@@ -27,7 +29,7 @@ class ColumnLayout(NamedTuple):
     that give way, in stages (within a stage the one furthest over its minimum first; the free-text ones: a reason,
     a value, then the name); a column in no stage (a status, a size, an age) is never cut, only dropped. `drop`: the
     columns dropped whole, one more each step, when the minimums still do not fit; past them every column but the
-    first goes, and the first (the name, never dropped) is cut to the room."""
+    first goes, and the first (the name, never dropped) is cut to the room, never below its minimum (U1)."""
     caps: tuple[int | None, ...]
     minimums: tuple[int, ...]
     shrink: tuple[tuple[int, ...], ...] = ((0,),)
@@ -55,8 +57,9 @@ def fit_columns(natural: Sequence[int], room: int | None, layout: ColumnLayout) 
     """The column widths and the gap between them: each column's widest cell (`natural`) up to its cap, two spaces
     apart when that fits `room` (the cells the row may take; None: no limit). Otherwise the gap drops to one space
     and the `shrink` stages give way down to their minimums; still too wide, the `drop` columns go one more each
-    step (the others take room back), then every column but the first, which is cut to the room. A width of 0 is a
-    column not shown (an empty column takes no gap)."""
+    step (the others take room back), then every column but the first, which is cut to the room but never below
+    its minimum (narrower than that the row is wider than the room and scrolls sideways, user decision U1; at least
+    one cell). A width of 0 is a column not shown (an empty column takes no gap)."""
     capped = [width if cap is None else min(width, cap) for width, cap in zip(natural, layout.caps)]
     if room is None or _visible_total(capped, WIDE_GAP) <= room:
         return tuple(capped), WIDE_GAP
@@ -78,7 +81,7 @@ def fit_columns(natural: Sequence[int], room: int | None, layout: ColumnLayout) 
                 excess -= 1
         if excess <= 0:
             return tuple(widths), NARROW_GAP
-    widths[0] = max(1, min(widths[0], room))  # the name alone, cut to the room
+    widths[0] = max(1, min(capped[0], layout.minimums[0]), min(widths[0], room))  # the name alone, cut to the room
     return tuple(widths), NARROW_GAP
 
 
@@ -113,6 +116,12 @@ def cut_middle(text: str, width: int) -> str:
         return ELLIPSIS[:max(width, 0)]
     head = width // 2
     return _take(text, head) + ELLIPSIS + _take(text, width - 1 - head, from_end=True)
+
+
+def cut_to_room(name: str, room: int | None, *, minimum: int = GROUP_NAME_MINIMUM) -> str:
+    """A group's name cut in its middle to `room` cells (None: no limit), never below `minimum` cells: narrower than
+    that the row scrolls sideways (user decision U1) rather than every sibling reading `…`."""
+    return name if room is None else cut_middle(name, max(room, minimum))
 
 
 def column_text(cells: Sequence[Cell], widths: Sequence[int], styles: Sequence[str], gap: int = WIDE_GAP, *,

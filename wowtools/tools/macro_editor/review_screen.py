@@ -54,7 +54,8 @@ from wowtools.tools.macro_editor.undo import (UndoError, UndoResult, leave, pend
                                               undo_run)
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.character_tree import CharacterNode, node_keys, populate_characters
-from wowtools.ui.columns import ColumnLayout, column_text, cut_middle, fit_columns, natural_widths
+from wowtools.ui.columns import (ColumnLayout, GROUP_NAME_MINIMUM, column_text, cut_middle, cut_to_room, fit_columns,
+                                 natural_widths)
 from wowtools.ui.counts import COUNT_GAP, COUNT_STYLE, count_text
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                  UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
@@ -73,7 +74,6 @@ CHANGED_MARK, NEW_MARK, DELETED_MARK = "✎", "+", "✗"
 MATCH_STYLE = "bold underline"  # a macro the search matches, while every macro is shown
 MARK_WIDTH = 2  # the tick mark in front of every line but the root's (and a staged mark's room, when a sibling has one)
 TOGGLE_WIDTH = 2  # the ▶ / ▼ in front of a node that opens
-GROUP_NAME_MINIMUM = 4  # a node's name is cut (in its middle) down to this so its count fits the pane
 # R4: a macro line (report.MACRO_CAPS / MACRO_MINIMUMS); a set's line, a character's or Account macros', is
 # name · slots (or read-only) · count: the name gives way, cut in its middle; the slots are never cut, only dropped,
 # and past that the name alone is cut to the room.
@@ -623,14 +623,14 @@ class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryAc
     def _group_text(self, name: str, style: str, note: tuple[str, str] | None, depth: int, *, opens: bool,
                     mark: int = MARK_WIDTH) -> Text:
         """A node's name and its dim count, the name cut in its middle so the count fits the pane; with no room
-        for both, the name alone, cut to the room."""
+        for both, the name alone, cut to the room but never below 4 cells (cut_to_room: the row scrolls, U1)."""
         room = self._room(depth, opens=opens, mark=mark)
         if note is None:
-            return Text(name if room is None else cut_middle(name, max(1, room)), style=style)
+            return Text(cut_to_room(name, room), style=style)
         after, after_style = note
         if room is not None and cell_len(name) + cell_len(after) > room:
             if room - cell_len(after) < GROUP_NAME_MINIMUM:
-                return Text(cut_middle(name, max(1, room)), style=style)
+                return Text(cut_to_room(name, room), style=style)
             name = cut_middle(name, room - cell_len(after))
         return Text.assemble((name, style), (after, after_style))
 

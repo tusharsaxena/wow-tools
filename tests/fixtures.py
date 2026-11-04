@@ -48,11 +48,14 @@ import unittest
 from unittest import mock
 from pathlib import Path
 
+from rich.cells import cell_len
+from rich.text import Text
 from textual.screen import ModalScreen
 from textual.widgets._footer import FooterKey
 
 from wowtools.core.config import Config
 from wowtools.ui.branding import KeyFooter, footer_bindings
+from wowtools.ui.columns import cut_middle
 from wowtools.ui.tree_filter import FILTER_BUTTON_ID, FilterInput
 from wowtools.ui.widgets import ActionButton, NavHint, button_keys, key_text, shown
 
@@ -550,6 +553,39 @@ def assert_keys_on_buttons(test, screen) -> None:
     covered = {screen.active_bindings[k].binding.action for k in on_buttons if k in screen.active_bindings}
     test.assertFalse({key.action for key in screen.query(FooterKey)} & covered, screen)
     test.assertEqual(len(listed), len(footer_bindings(screen)))
+
+
+def _cuts(name: str, width: int) -> set[str]:
+    """`name` cut to `width` cells: in its middle (a plain cell) or at its end (a Rich-text cell, an SV path)."""
+    end = Text(name)
+    end.truncate(width, overflow="ellipsis")
+    return {cut_middle(name, width), end.plain}
+
+
+def assert_fits_or_keeps_minimum(test, node, lead: int, room: int, name: str, minimum: int) -> None:
+    """STD-7.28 (user decision U1): a tree row's name shows at least its column minimum (cut in its middle, or
+    whole), and the row fits the pane (`lead`: the cells of its guides and ▶ / ▼ in front of the label, `room`: the
+    pane less its scrollbar) unless even that minimum does not fit: then the name is at its minimum and the row
+    scrolls sideways, never `…` alone."""
+    label = str(node.label)
+    keep = min(cell_len(name), minimum)
+    widths = range(keep, cell_len(name) + 1)
+    test.assertTrue(any(cut in label for width in widths for cut in _cuts(name, width)),
+                    f"{label!r} cuts {name!r} below its {minimum}-cell minimum")
+    if lead + node.label.cell_len > room:
+        test.assertTrue(any(cut in label for cut in _cuts(name, keep)),
+                        f"{label!r} is wider than the pane but its name is not at its {minimum}-cell minimum "
+                        f"(lead {lead} + {node.label.cell_len} cells > room {room})")
+
+
+def assert_siblings_distinct(test, nodes) -> None:
+    """Sibling rows read apart however narrow the pane (U1, the `✔ Wo…g` case): no two of them show the same
+    label."""
+    by_parent: dict[int, list[str]] = {}
+    for node in nodes:
+        by_parent.setdefault(id(node.parent), []).append(str(node.label))
+    for labels in by_parent.values():
+        test.assertEqual(len(labels), len(set(labels)), labels)
 
 
 @contextlib.contextmanager

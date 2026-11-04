@@ -8,16 +8,18 @@ import tempfile
 from pathlib import Path
 
 from rich.cells import cell_len
+from rich.text import Text
 from textual.widgets import Button, Tree
 
-from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, accept_disclaimer, assert_keys_on_buttons, build_sv_tree,
-                            make_config, settle, submit_filter)
+from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, accept_disclaimer, assert_fits_or_keeps_minimum,
+                            assert_keys_on_buttons, build_sv_tree, make_config, settle, submit_filter)
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.tools.sv_browser.app import SvBrowserSettingsScreen
 from wowtools.tools.sv_browser.model import CHILD_CAP
-from wowtools.tools.sv_browser.review_screen import READING, SvReviewScreen
+from wowtools.tools.sv_browser.review_screen import READING, RESULT_GROUPS, TOGGLE_WIDTH, SvReviewScreen
 from wowtools.tools.sv_browser.settings import load_settings
+from wowtools.ui.columns import GROUP_NAME_MINIMUM
 from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.disclaimer import ACCEPT, BACK, DISCLAIMER_TITLE, DisclaimerScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
@@ -444,6 +446,40 @@ def drawn(node) -> str:
     return ("▼ " if node.is_expanded else "▶ ") * node.allow_expand + node.label.plain
 
 
+def row_name(review, node) -> tuple[str, int] | None:
+    """A row's name in full and the cells it keeps however narrow the pane (STD-7.28, U1): a column row's first cell
+    and its layout's minimum, a group's name and GROUP_NAME_MINIMUM; None for any other line."""
+    data = node.data
+    row = review._row(data)
+    if row is not None:
+        name = row[0][0]
+        return (name.plain if isinstance(name, Text) else name), row[2].minimums[0]
+    kind = data[0]
+    if kind == "root":
+        name = review.scope_label
+    elif kind in RESULT_GROUPS:
+        name = review._result_name(data)
+    elif kind == "flavor":
+        name = data[1].flavor.display_name
+    elif kind in ("account", "realm", "owner"):
+        name = review._place_name(data)
+    else:
+        return None
+    return name, GROUP_NAME_MINIMUM
+
+
+def assert_row_fits(test, review, row, room: int) -> None:
+    """A row fits the pane, or keeps its name's minimum and scrolls sideways (U1); a `… N more` or problem line
+    fits unless its guides and ▶ already fill the pane."""
+    guides = depth(row) * row.tree.guide_depth
+    lead = guides + (TOGGLE_WIDTH if row.allow_expand else 0)
+    named = row_name(review, row)
+    if named is not None:
+        assert_fits_or_keeps_minimum(test, row, lead, room, *named)
+    elif guides + 2 < room:
+        test.assertLessEqual(guides + cell_len(drawn(row)), room, drawn(row))
+
+
 def depth(node) -> int:
     """How many levels below the root a node is (its guides)."""
     levels = 0
@@ -564,12 +600,13 @@ class NodeCountsAndColumnsTest(SvBrowserTestBase):
                 await self.open_node(review, pilot, by_name(node, "unitframe"))
                 room = tree.size.width - tree.styles.scrollbar_size_vertical
                 for row in walk(tree.root):
-                    if row.data is None:
-                        continue
-                    guides = depth(row) * tree.guide_depth
-                    if guides + 2 >= room:
-                        continue  # the guides and the ▶ already fill the pane
-                    self.assertLessEqual(guides + cell_len(drawn(row)), room, (size, drawn(row)))
+                    if row.data is not None:
+                        with self.subTest(size=size, row=drawn(row)):
+                            if size == BASE:
+                                self.assertLessEqual(depth(row) * tree.guide_depth + cell_len(drawn(row)), room)
+                            assert_row_fits(self, review, row, room)  # 80 columns: deep keys scroll (U1)
+                if size == TINY:  # a key deep in the tree keeps its 8 cells, never a bare `…` (G7r)
+                    self.assertNotIn("…", [c.label.plain for c in general.children])
                 if size == BASE:  # the value is cut to the pane there
                     self.assertEqual(general.children[0].label.plain, 'font       = "Friz Quadrata T…')
                 # the bottom line names the highlighted key and its value in full, whatever the row shows

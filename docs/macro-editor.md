@@ -80,7 +80,8 @@ are recorded. A game version it has no numbers for counts with Retail's and its 
 
 Each account shows its **Account macros** and its realms and characters. A character or Account macros line shows
 the slots used. Each macro shows its name, its first line and its length (`n/255`: a macro holds 255 characters),
-each in a column of its own; a narrow window cuts the first line first. Each game version, account, realm,
+each in a column of its own; a narrow window cuts the first line first, and a very narrow one scrolls the line
+sideways rather than cut a name below a few letters at each end. Each game version, account, realm,
 character and Account macros line ends with how many macros it lists, dimmed (`Aellâ  3/30  3 items`), as the search
 leaves them; a deleted macro still counts until **Apply**, while the slots already leave it out. Folders that aren't
 characters, such as `Bob - Copy`, are not listed.

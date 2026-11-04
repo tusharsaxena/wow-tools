@@ -44,7 +44,7 @@ from wowtools.tools.ace3_profile_manager.tree_view import (COUNTED, GROUP, LAYOU
                                                            TreeBuilder, counts, ident)
 from wowtools.tools.ace3_profile_manager.undo import UndoError, UndoResult, leave, recover, undo_flavors, undo_run
 from wowtools.ui.branding import BottomBar
-from wowtools.ui.columns import column_text, cut_middle, fit_columns, fit_keeping_count
+from wowtools.ui.columns import GROUP_NAME_MINIMUM, column_text, cut_middle, cut_to_room, fit_columns, fit_keeping_count
 from wowtools.ui.counts import COUNT_GAP
 from wowtools.ui.dialogs import (REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                 UnfinishedRunScreen, relabel_branch, theme_colour, tick_mark, two_pane_css)
@@ -64,7 +64,6 @@ GUIDE_MAX_ROWS = 2  # the guidance line leaves its per-node hint out rather than
 GROUP_KINDS = ("root", "flavor", "account")  # nodes too broad to stand for a selection when nothing is ticked
 TOGGLE_WIDTH = 2  # the tree's ▶ / ▼ in front of a node that opens
 MARK_WIDTH = 2  # the tick mark (or the blacklist mark) in front of every label
-GROUP_NAME_MINIMUM = 4  # a group's name is cut (in its middle) down to this so its count fits the pane
 # The action bar under the tree: (id, label, kind of action, action, key), staged changes first (amber; Copy is green: it
 # only adds a profile), then staged deletes (red), then the rest; a staging button takes the colour of the action it
 # stages (spec D12).
@@ -964,7 +963,7 @@ class ProfileReviewScreen(WarningsHost, ProfileStagingActions, ProfileBlacklistA
 
 def _group_text(row: Row, room: int | None) -> Text:
     """A group's name and its dim count (R2), the name cut in its middle so the count fits the pane; with no room
-    for both, the name alone, cut to the room."""
+    for both, the name alone, cut to the room but never below 4 cells (cut_to_room: the row scrolls, U1)."""
     (name, *count), (style, *count_style) = row.cells, row.styles
     if not count:
         return Text(name, style=style)
@@ -974,5 +973,5 @@ def _group_text(row: Row, room: int | None) -> Text:
         if room - tail >= GROUP_NAME_MINIMUM:
             name = cut_middle(name, room - tail)
         else:
-            return Text(cut_middle(name, max(1, room)), style=style)
+            return Text(cut_to_room(name, room), style=style)
     return Text.assemble((name, style), (f"{gap}{count[0]}", count_style[0]))

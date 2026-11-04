@@ -337,7 +337,8 @@ class ConfigEditorOpsTest(unittest.TestCase):
 
     def test_columns_dropped_when_the_minimums_do_not_fit(self):
         """FB2r: below the minimums whole columns go, the default first, then the category, the value and the state
-        (never cut), and a name left alone is cut to the room: the row always fits."""
+        (never cut), and a name left alone is cut to the room: the row fits while the name's 12-cell minimum does;
+        narrower, the name keeps its minimum and the row scrolls sideways (STD-7.28, user decision U1)."""
         self.assertEqual(DROP_ORDER, (2, 4, 1, 3))
         natural = (30, 7, 1, 7, 11)  # a character file under All flavors: 42 cells (FB2 review)
         # the 1-cell default still fits
@@ -345,14 +346,14 @@ class ConfigEditorOpsTest(unittest.TestCase):
         natural = (30, 7, 6, 7, 11)
         widths, gap = fit_columns(natural, 42, CVAR_COLUMNS)
         self.assertEqual((widths, gap), ((14, 7, 0, 7, 11), 1))  # the default goes, the name takes the room back
-        cases = {30: (14, 7, 0, 7, 0), 20: (12, 0, 0, 7, 0), 15: (15, 0, 0, 0, 0), 8: (8, 0, 0, 0, 0),
-                 0: (1, 0, 0, 0, 0)}
+        cases = {30: (14, 7, 0, 7, 0), 20: (12, 0, 0, 7, 0), 15: (15, 0, 0, 0, 0), 12: (12, 0, 0, 0, 0),
+                 8: (12, 0, 0, 0, 0), 0: (12, 0, 0, 0, 0)}
         for room, expected in cases.items():
             with self.subTest(room=room):
                 widths, _ = fit_columns(natural, room, CVAR_COLUMNS)
                 self.assertEqual(widths, expected)
                 shown = [w for w in widths if w]
-                self.assertLessEqual(sum(shown) + len(shown) - 1, max(room, 1))
+                self.assertLessEqual(sum(shown) + len(shown) - 1, max(room, COLUMN_MINIMUMS[0]))
         # an empty default: no gap for it
         self.assertEqual(fit_columns((10, 3, 0, 7, 6), 32, CVAR_COLUMNS), ((10, 3, 0, 7, 6), 2))
 

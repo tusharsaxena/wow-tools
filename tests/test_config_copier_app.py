@@ -11,18 +11,21 @@ from pathlib import Path
 
 from textual.widgets import Checkbox, Tree
 
-from tests.fixtures import (BASE, COPIER_ADDONS, COPIER_CHAT, COPIER_MACROS, TINY, TuiTestCase, build_copier_tree,
-                            make_config, settle, submit_filter)
+from tests.fixtures import (BASE, COPIER_ADDONS, COPIER_CHAT, COPIER_MACROS, TINY, TuiTestCase,
+                            assert_fits_or_keeps_minimum, assert_siblings_distinct, build_copier_tree, make_config,
+                            settle, submit_filter)
 from wowtools.core.events import capture_events
+from wowtools.core.install import flavor_name
 from wowtools.core.text import plural
 from wowtools.tools import TOOLS
 from wowtools.tools.config_copier.diff_screen import DiffScreen
 from wowtools.tools.config_copier.model import COPY_FILES, MACRO_WARNING
-from wowtools.tools.config_copier.report import WARNING_MARK, WARNING_SHORT, pair_text
+from wowtools.tools.config_copier.report import PAIR_MINIMUMS, WARNING_MARK, WARNING_SHORT, pair_cells, pair_text
 from wowtools.tools.config_copier.review_screen import (OTHER_FLAVOR_REASON, CopierResultScreen, CopierReviewScreen,
                                                         PairKey, PairNode)
 from wowtools.tools.config_copier.source_screen import SourceScreen
 from wowtools.ui.character_tree import CharacterNode
+from wowtools.ui.columns import GROUP_NAME_MINIMUM
 from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
@@ -521,6 +524,9 @@ class NodeCountsAndColumnsTest(CopierTestCase):
                                 plain)
 
     async def test_rows_fit_the_pane(self):
+        """Every line fits the pane at 120x30; at 80x24 a pair line 20 cells deep keeps its file name's 10 cells
+        (and a realm or character its name's 4) and scrolls sideways instead (STD-7.28, user decision U1), and the
+        five file names of a character still read apart."""
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot)
@@ -533,10 +539,19 @@ class NodeCountsAndColumnsTest(CopierTestCase):
                 await settle(app, pilot)
                 room = tree.size.width - tree.styles.scrollbar_size_vertical
                 for node in walk(tree.root):
-                    if node.data is None or indent(node) + 2 >= room:
-                        continue  # guides and the mark alone fill the pane (the G4r / U1 case, G9b)
+                    if node.data is None:
+                        continue
+                    data = node.data
+                    if isinstance(data, PairNode):
+                        name, minimum = pair_cells(data.plan)[0], PAIR_MINIMUMS[0]
+                    else:
+                        name = data.text if isinstance(data, CharacterNode) else flavor_name(data[1])
+                        minimum = GROUP_NAME_MINIMUM
                     with self.subTest(size=size, row=str(node.label)):
-                        self.assertLessEqual(indent(node) + node.label.cell_len, room)
+                        if size == BASE:
+                            self.assertLessEqual(indent(node) + node.label.cell_len, room)
+                        assert_fits_or_keeps_minimum(self, node, indent(node), room, name, minimum)
+                assert_siblings_distinct(self, [n for n in walk(tree.root) if isinstance(n.data, PairNode)])
                 if size == BASE:  # at 120 columns every status and warning reads in full, the names stay apart
                     for owner in ("Bob", "Trâxex", "Dænerys"):
                         rows = character_node(tree, owner).children

@@ -99,7 +99,9 @@ character folder. Leaving, quitting, a rescan and Undo ask before dropping stage
   one, so the names line up. A character's or Account macros' line is name · slots (or `read-only`) · count
   (`SET_COLUMNS`), aligned across a realm's characters (`_character_widths`); the slots are never cut, only
   dropped. An account's, realm's or flavor's name is cut in its middle so its count fits the pane
-  (`_group_text`); every line is fitted again on a resize (`_fit_rows`).
+  (`_group_text`), never below 4 cells (`ui/columns.cut_to_room`), and a macro name never below its 6: at 80
+  columns a line deeper than that scrolls sideways (STD-7.28, U1); every line is fitted again on a resize
+  (`_fit_rows`).
 - `edit_screen.MacroEditScreen` (New, Edit; ME8): name (cut at 16), icon, scope line, the `n / 255` meter (Save off
   over 255), `MacroTextArea` with the suggestion list (`syntax.suggestions`, replacing from `syntax.completion_start`;
   ↑/↓, Tab/Enter, Esc while it shows; Enter after a word that is itself an entry is a new line unless ↑/↓ moved the

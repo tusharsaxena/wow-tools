@@ -661,12 +661,17 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   (`natural_widths`, up to its cap), long cells are cut with `…` (`column_text`; a name in its middle,
   `cut_middle`), the secondary columns dim or coloured as the tool colours them, and the row refits when the pane
   narrows or resizes (`fit_columns`: the free-text columns give way first, the short status-like ones are never cut,
-  only dropped, and a row always fits, at 80 columns too). A node with only a name and its STD-7.27 count is not a
-  column row ([R4][fb2]).
+  only dropped, and a row fits the pane, at 80 columns too, as long as its name keeps its column minimum). A name
+  never shrinks below its minimum (its `ColumnLayout` minimum; a group's name, `GROUP_NAME_MINIMUM` through
+  `cut_to_room`): where the guides of a deep row leave less room than that, the name keeps its minimum alone and the
+  row scrolls sideways past the pane (user decision U1, 2026-11-05). A node with only a name and its STD-7.27 count
+  is not a column row ([R4][fb2]).
   *Why:* a row of data in columns is read at a glance down the tree; text run together with ` · ` is not (the
-  Config Editor's CVar rows, user feedback 2026-11-04).
+  Config Editor's CVar rows, user feedback 2026-11-04). A name cut to a few cells reads the same on every sibling
+  (`✔ Wo…g` on every screenshot of a day at 80 columns), so a row that scrolls is the readable one.
   *Enforced by:* `tests/test_ui_columns.py`, `tests/test_structure.py::test_tree_label_helpers_live_in_ui`, and each
-  tool's app test (sibling rows aligned, a long cell cut to the pane).
+  tool's app test (sibling rows aligned, a long cell cut to the pane, at 80x24 a name kept to its minimum:
+  `tests/fixtures.py::assert_fits_or_keeps_minimum`).
 
 ## 8. Keys and buttons
 

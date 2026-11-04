@@ -66,7 +66,8 @@ below it that can be sorted (`Retail  120 items`, `2024-01-02  3 items`), counte
 filter set, of what the filter shows. **Conflicts** and **Skipped** count their own files (they're never sorted, so
 the game version's count leaves them out). A game version with nothing under it says why: "no Screenshots folder"
 or "nothing to file". Screenshot lines line up in columns: the name, then "possible duplicate" where it applies; a
-conflict's line names the folder that already holds a different file of that name.
+conflict's line names the folder that already holds a different file of that name. In a very narrow window a name
+is never cut below a few letters at each end: the line scrolls sideways instead.
 
 **On the left** are the buttons, where screenshots will go, and whether they'll be moved or copied.
 

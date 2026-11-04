@@ -146,7 +146,8 @@ session, not on a second open of the tool, a new flavor pick or a rescan, and ne
   a table's `{N}` (its entries one level down, all it knows before it is opened) is its value column, not a count.
   Rows (`ROW_KINDS`): a file is name · size (`FILE_ROW_COLUMNS`, red `can't read` once it failed), a key is key ·
   `{N}` or `= value` (`model.node_cells`) · its marks, a hit path · `= old` · marks (`KEY_COLUMNS`: the value gives
-  way first, then the marks, then the key, cut in its middle; dropped value, marks). Each row aligns with its
+  way first, then the marks, then the key, cut in its middle, never below its 8 cells; dropped value, marks; a
+  group's name never below 4, `cut_to_room`: a row deeper than that scrolls sideways, U1). Each row aligns with its
   sibling rows (`_add_children`: one sibling list; `_natural_for` caches their natural widths until the next
   `_refresh_labels`, as a staged mark widens the marks column); a row that does not open beside one that does is
   padded two spaces where the ▶ is. `_room` is the pane less the scrollbar, the guides, the ▶ (or pad) and, in

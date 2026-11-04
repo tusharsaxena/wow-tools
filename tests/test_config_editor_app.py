@@ -13,13 +13,14 @@ from unittest import mock
 
 from textual.widgets import Checkbox, Input, OptionList, Select, Static, Tree
 
-from tests.fixtures import (BASE, CONFIG_AELLA, CONFIG_MACHINE, LARGE, TINY, TuiTestCase, build_config_tree,
-                            make_config, settle, submit_filter)
+from tests.fixtures import (BASE, CONFIG_AELLA, CONFIG_MACHINE, LARGE, TINY, TuiTestCase, assert_fits_or_keeps_minimum,
+                            assert_siblings_distinct, build_config_tree, make_config, settle, submit_filter)
 from wowtools.core.kb import clear_cache
 from wowtools.tools import TOOLS
 from wowtools.tools.config_editor.model import CATEGORIES, CONFIG_CACHE, CONFIG_WTF
 from wowtools.tools.config_editor.popups import AddCvarScreen, RecommendScreen
-from wowtools.tools.config_editor.report import CHANGED, DEFAULT_STATE, NO_DESCRIPTION, NOT_SET, UNKNOWN, row_cells
+from wowtools.tools.config_editor.report import (CHANGED, COLUMN_MINIMUMS, DEFAULT_STATE, NO_DESCRIPTION, NOT_SET,
+                                                UNKNOWN, row_cells)
 from wowtools.tools.config_editor.review_screen import (HELP_LABEL, CvarNode, ConfigResultScreen,
                                                         ConfigReviewScreen, FileKey, FileNode)
 from wowtools.ui import dialogs
@@ -221,8 +222,9 @@ class ConfigEditorAppTest(TuiTestCase):
     async def test_rows_are_aligned_coloured_columns(self):
         """CF1-CF3: a file's rows are five aligned columns (name, value, default, state, category), a 300-character
         value is cut with … and the state and category still show, the state and category carry their colours, and
-        a row fits the tree pane at 120x30; at 80x24 (the floor) the rows are fitted again and still fit the pane
-        (columns dropped, the name cut: FB2r)."""
+        a row fits the tree pane at 120x30; at 80x24 (the floor) the rows are fitted again (columns dropped, the
+        name cut: FB2r), the name down to its 12-cell minimum and the row scrolling sideways past it (STD-7.28,
+        user decision U1)."""
         blob = "v21##" + "7" * 295
         self.aella().write_bytes(CONFIG_AELLA + f'SET collapsedCurrencyCategoryDefaults "{blob}"\r\n'.encode())
         app = self.make_app()
@@ -254,9 +256,11 @@ class ConfigEditorAppTest(TuiTestCase):
             await pilot.resize_terminal(*TINY)
             await settle(app, pilot)
             room = tree.size.width - tree.styles.scrollbar_size_vertical
-            for node in nodes:  # fitted again to the narrower pane: every row still fits it (FB2r)
+            for node in nodes:  # fitted again to the narrower pane: it fits, or keeps the name's minimum (U1)
                 with self.subTest(name=node.data.row.name, size=TINY):
-                    self.assertLessEqual(indent(node) + node.label.cell_len, room)
+                    assert_fits_or_keeps_minimum(self, node, indent(node), room, node.data.row.name,
+                                                 COLUMN_MINIMUMS[0])
+            assert_siblings_distinct(self, nodes)
             small = next(n for n in nodes if n.data.row.name == "collapsedCurrencyCategoryDefaults").label.plain
             self.assertLess(len(small), len(long))
             self.assertTrue(small.strip().startswith("col"), small)  # the name's start is what is left
@@ -264,7 +268,8 @@ class ConfigEditorAppTest(TuiTestCase):
     async def test_rows_fit_with_two_flavors_and_show_all_known(self):
         """FB2r: a character file one level deeper (All flavors, two flavors) with Show all known ticked: at 120x30
         every row fits its pane, the state and category whole (the default column gives way first), names sharing a
-        long start are cut in their middle and stay apart; at 80x30 every row still fits (only the name is left)."""
+        long start are cut in their middle and stay apart; at 80x30 only the name is left, kept to its minimum
+        (the row scrolls sideways past the pane, U1), and the names still stay apart."""
         data = dict(KB_CVARS)
         for name in ("raidFramesDisplayAggroHighlight", "raidFramesDisplayClassColor"):
             data[name] = {"default": "1", "help": "", "category": "game", "scope": "character", "synced": True}
@@ -297,8 +302,10 @@ class ConfigEditorAppTest(TuiTestCase):
             room = tree.size.width - tree.styles.scrollbar_size_vertical
             for node in nodes:
                 with self.subTest(name=node.data.row.name, size=(80, 30)):
-                    self.assertLessEqual(indent(node) + node.label.cell_len, room)
+                    assert_fits_or_keeps_minimum(self, node, indent(node), room, node.data.row.name,
+                                                 COLUMN_MINIMUMS[0])
                     self.assertTrue(node.label.plain.strip(), node.label.plain)
+            assert_siblings_distinct(self, nodes)
 
     async def test_toggle_and_apply(self):
         app = self.make_app()

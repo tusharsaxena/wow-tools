@@ -67,7 +67,8 @@ shows (`12 items`; a search narrows the counts too). An account with nothing to 
 
 An addon's line reads in columns: its name, why it's suggested (each rule in its colour), how many files, their
 size and the age of the newest one in days. Its files, once you open it, line up the same way: name, size, age. In a
-narrow window a long name is cut with `…` and the short columns stay.
+narrow window a long name is cut with `…` and the short columns stay. In a very narrow window a name is never cut
+below a few letters at each end: the line scrolls sideways instead.
 
 **On the left** are a red `⚠ USE AT YOUR OWN RISK` line (a clean deletes files), the rules that decide what gets
 suggested (under **Criteria (keys 1-5)**), the age limit (**Max age in days**), and the buttons.

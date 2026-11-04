@@ -170,12 +170,13 @@ set, `clean.risk_warning_changed`, L8). `review_screen.py` holds:
   `ModelFilter` keeps an addon row); a group with rows below it but no cleanable item (only blacklisted rows, or
   accounts with nothing to clean) counts `0 items`, and only a group with no rows at all (`_group_rows` holds the
   others) says "nothing to clean" in the count's place. A group's name is cut in its middle (`_group_name`, from
-  `_row_room`) so its count always fits the pane, at 80 columns too. An addon row is the leaf: its files are its `files` column, not a count. Columns (R4,
+  `_row_room`) so its count always shows, never below 4 cells (`ui/columns.cut_to_room`; at 80 columns a row
+  deeper than that scrolls sideways, STD-7.28, user decision U1). An addon row is the leaf: its files are its `files` column, not a count. Columns (R4,
   STD-7.28): an addon row is `report.item_cells` (name · reasons · files · size · age; the reasons cell
   `blacklisted` on a blacklisted row), a file row `report.file_cells` (name · size · age), fitted by
   `ui/columns.fit_columns` with `review_screen.ITEM_COLUMNS` / `FILE_COLUMNS` (caps and minimums from
-  `report.ITEM_CAPS` / `FILE_CAPS`: the reasons give way first, then the name, cut in its middle; files, size and
-  age are never cut, dropped in `report.ITEM_DROP` / `FILE_DROP` order). `_add_node` works out the natural widths
+  `report.ITEM_CAPS` / `FILE_CAPS`: the reasons give way first, then the name, cut in its middle, never below its
+  12 cells; files, size and age are never cut, dropped in `report.ITEM_DROP` / `FILE_DROP` order). `_add_node` works out the natural widths
   over the sibling rows the filter keeps and each row's indent (guides, plus the ▶ of an addon row) once per
   rebuild; `_row_label` draws it (the reasons a Rich cell in their criteria's colours), and `_fit_rows` refits
   every row when the tree pane's width changes (on resize, and after a rebuild made before the tree was laid out).

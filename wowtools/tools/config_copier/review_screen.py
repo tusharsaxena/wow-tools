@@ -50,7 +50,8 @@ from wowtools.tools.config_copier.undo import (UndoError, UndoResult, leave, pen
                                                undo_run)
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.character_tree import CharacterNode, character_filter_texts, node_keys, populate_characters
-from wowtools.ui.columns import ColumnLayout, column_text, cut_middle, fit_columns, natural_widths
+from wowtools.ui.columns import (ColumnLayout, GROUP_NAME_MINIMUM, column_text, cut_middle, cut_to_room, fit_columns,
+                                 natural_widths)
 from wowtools.ui.counts import COUNT_GAP, COUNT_STYLE, count_text
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                  UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
@@ -68,7 +69,6 @@ NO_DIFF = "Highlight a replaced file first: Diff compares a target's file with w
 NO_MARK = "  "
 MARK_WIDTH = 2  # the tick mark in front of every line but the root's
 TOGGLE_WIDTH = 2  # the ▶ / ▼ in front of a node that opens
-GROUP_NAME_MINIMUM = 4  # a node's name is cut (in its middle) down to this so its count or reason fits the pane
 PAIR_COLUMNS = ColumnLayout(caps=PAIR_CAPS, minimums=PAIR_MINIMUMS, shrink=((1,), (0,)), drop=(2,))
 # A greyed character's name · reason (R4): the name gives way, cut in its middle; the reason is never cut, only dropped.
 REASON_COLUMNS = ColumnLayout(caps=(None, None), minimums=(GROUP_NAME_MINIMUM, 0), shrink=((0,),))
@@ -507,14 +507,15 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
     def _group_text(self, name: str, style: str, note: tuple[str, str] | None, depth: int, *, opens: bool,
                     mark: int = MARK_WIDTH) -> Text:
         """A node's name and its note (its dim count, R2), the name cut in its middle so the note fits the pane;
-        with no room for both, the name alone, cut to the room (a greyed character's reason: `_greyed_label`)."""
+        with no room for both, the name alone, cut to the room but never below 4 cells (cut_to_room: the row
+        scrolls, U1; a greyed character's reason: `_greyed_label`)."""
         room = self._room(depth, opens=opens, mark=mark) if self.is_attached else None
         if note is None:
-            return Text(name if room is None else cut_middle(name, max(1, room)), style=style)
+            return Text(cut_to_room(name, room), style=style)
         after, after_style = note
         if room is not None and cell_len(name) + cell_len(after) > room:
             if room - cell_len(after) < GROUP_NAME_MINIMUM:
-                return Text(cut_middle(name, max(1, room)), style=style)
+                return Text(cut_to_room(name, room), style=style)
             name = cut_middle(name, room - cell_len(after))
         return Text.assemble((name, style), (after, after_style))
 

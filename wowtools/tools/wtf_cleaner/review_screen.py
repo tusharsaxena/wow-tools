@@ -41,7 +41,7 @@ from wowtools.tools.wtf_cleaner.safety import (MARKER_NAME, SNAPSHOT_SUBDIR, Mar
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir, save_settings
 from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
 from wowtools.ui.branding import BottomBar
-from wowtools.ui.columns import ColumnLayout, column_text, cut_middle, fit_columns, natural_widths
+from wowtools.ui.columns import ColumnLayout, column_text, cut_to_room, fit_columns, natural_widths
 from wowtools.ui.counts import COUNT_GAP, count_text, with_count
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceScreen, ConfirmScreen,
                                 ProgressScreen, relabel_branch, two_pane_css)
@@ -549,7 +549,7 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         name, room = data[2], self._row_room(data)
         if room is None:
             return name
-        return cut_middle(name, max(1, room - cell_len(after)))
+        return cut_to_room(name, room - cell_len(after))
 
     def _shown_count(self, items: list[ProposalItem]) -> int:
         """How many of a group's addon entries the tree shows (R2, STD-7.27): all of them, or under a search the

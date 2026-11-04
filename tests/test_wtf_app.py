@@ -13,8 +13,8 @@ from unittest.mock import patch
 from textual.app import App
 from textual.widgets import Button, DataTable, Input, OptionList, ProgressBar, Static, Tree
 
-from tests.fixtures import (BASE, TINY, TuiTestCase, accept_disclaimer, build_wow_tree, make_config, settle,
-                            submit_filter)
+from tests.fixtures import (BASE, TINY, TuiTestCase, accept_disclaimer, assert_fits_or_keeps_minimum,
+                            assert_siblings_distinct, build_wow_tree, make_config, settle, submit_filter)
 from wowtools.core import activity
 from wowtools.core.backup import BackupError
 from wowtools.core.config import Config
@@ -27,7 +27,8 @@ from wowtools.tools.wtf_cleaner import review_screen as review_module
 from wowtools.tools.wtf_cleaner.app import CleanerSettingsScreen
 from wowtools.tools.wtf_cleaner.cleaner import CleanError, CleanResult, FileOutcome
 from wowtools.tools.wtf_cleaner.journal import resolve_journal_dir, latest_undoable
-from wowtools.tools.wtf_cleaner.report import CRITERION_COLORS, RESULT_COLUMNS, result_rows
+from wowtools.tools.wtf_cleaner.report import (CRITERION_COLORS, FILE_MINIMUMS, ITEM_MINIMUMS, RESULT_COLUMNS,
+                                               result_rows)
 from wowtools.tools.wtf_cleaner.review_screen import CleanProgressScreen, RecoveryScreen, ResultScreen, ReviewScreen
 from wowtools.tools.wtf_cleaner.rules import CRITERIA, criterion_counts
 from wowtools.tools.wtf_cleaner.safety import MARKER_NAME
@@ -35,6 +36,7 @@ from wowtools.tools.wtf_cleaner.scanner import scan
 from wowtools.tools.wtf_cleaner.settings import load_settings
 from wowtools.tools.wtf_cleaner.undo import UndoResult
 from wowtools.ui.account_screen import AccountScreen
+from wowtools.ui.columns import GROUP_NAME_MINIMUM
 from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.review import BLACKLIST_NO_TARGET, BLACKLISTED_MARK
@@ -2302,6 +2304,9 @@ class NodeCountsAndColumnsTest(AppTestCase):
             self.assert_aligned(files, lambda n: human_size(n.data[2].size))
 
     async def test_a_long_name_is_cut_to_fit_the_pane(self):
+        """At 120x30 every row fits the pane; at 80x24 a row deep in the tree keeps its name's minimum and scrolls
+        sideways past the pane rather than cut its name to a few cells (STD-7.28, user decision U1), so sibling
+        rows still read apart."""
         long = "VeryLongAddonName" * 9
         (self.sv / f"{long}.lua").write_text("x")
         app = self.make_app()
@@ -2316,9 +2321,19 @@ class NodeCountsAndColumnsTest(AppTestCase):
                 await settle(app, pilot)
                 room = tree.size.width - tree.styles.scrollbar_size_vertical
                 for node in _walk(tree.root):
-                    if node.data:  # every row, a group too: its count is never cut off (R2 at 80 columns)
-                        with self.subTest(size=size, row=str(node.label)):
+                    if not node.data:
+                        continue
+                    with self.subTest(size=size, row=str(node.label)):
+                        if size == BASE:  # every row, a group too: its count is never cut off (R2)
                             self.assertLessEqual(_indent(node) + node.label.cell_len, room)
+                        elif node.data[0] in ("item", "file"):  # 80 columns: the name keeps its minimum (U1)
+                            name = node.data[1].addon if node.data[0] == "item" else node.data[2].name
+                            minimum = (ITEM_MINIMUMS if node.data[0] == "item" else FILE_MINIMUMS)[0]
+                            assert_fits_or_keeps_minimum(self, node, _indent(node), room, name, minimum)
+                        else:
+                            assert_fits_or_keeps_minimum(self, node, _indent(node), room, node.data[2],
+                                                         GROUP_NAME_MINIMUM)
+                assert_siblings_distinct(self, [n for n in _walk(tree.root) if n.data])
                 if size == BASE:
                     plain = str(row.label)
                     self.assertIn("…", plain)
