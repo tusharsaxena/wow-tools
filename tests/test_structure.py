@@ -198,17 +198,19 @@ class StructureTest(unittest.TestCase):
         from wowtools.core import journal, undo
         from wowtools.tools.ace3_profile_manager import journal as ace_journal
         from wowtools.tools.ace3_profile_manager import undo as ace_undo
+        from wowtools.tools.config_copier import journal as copier_journal
+        from wowtools.tools.config_copier import undo as copier_undo
         from wowtools.tools.interface_backup import journal as ib_journal
         from wowtools.tools.screenshot_organizer import journal as shots_journal
         from wowtools.tools.sv_browser import journal as svb_journal
         from wowtools.tools.sv_browser import undo as svb_undo
         from wowtools.tools.wtf_cleaner import journal as wtf_journal
         from wowtools.tools.wtf_cleaner import undo as wtf_undo
-        for module in (ace_journal, ib_journal, shots_journal, svb_journal, wtf_journal):
+        for module in (ace_journal, copier_journal, ib_journal, shots_journal, svb_journal, wtf_journal):
             self.assertIsInstance(module.JOURNALS, journal.ToolJournals)
             self.assertEqual(module.resolve_journal_dir, module.JOURNALS.dir)
             self.assertEqual(module.latest_undoable, module.JOURNALS.latest_undoable)
-        for module in (ace_undo, svb_undo, wtf_undo):
+        for module in (ace_undo, copier_undo, svb_undo, wtf_undo):
             self.assertTrue(issubclass(module.UndoResult, undo.UndoResultBase))
         for path in ("wowtools/tools/wtf_cleaner/safety.py", "wowtools/core/sv_apply.py"):
             self.assertIn("wowtools.core.marker", imported_modules(tree(REPO / path)) | {
@@ -311,16 +313,17 @@ class StructureTest(unittest.TestCase):
         once; the Ace3 and SV Browser reviews supply only its hooks (STD-2.2, STD-2.3)."""
         shared = {"offer_recovery", "_recovery_chosen", "_after_recover_preflight", "_recovered"}
         where = {(rel(p), n) for p in modules("wowtools/ui", "wowtools/tools/ace3_profile_manager",
-                                              "wowtools/tools/sv_browser")
+                                              "wowtools/tools/sv_browser", "wowtools/tools/config_copier")
                  for n in defined_functions(tree(p)) & shared}
         self.assertEqual(where, {("wowtools/ui/review.py", n) for n in shared})
         classes = {(rel(p), node.name) for p in modules("wowtools") for node in ast.walk(tree(p))
                    if isinstance(node, ast.ClassDef) and node.name == "SvRecoveryActions"}
         self.assertEqual(classes, {("wowtools/ui/review.py", "SvRecoveryActions")})
         from wowtools.tools.ace3_profile_manager.review_screen import ProfileReviewScreen
+        from wowtools.tools.config_copier.review_screen import CopierReviewScreen
         from wowtools.tools.sv_browser.review_screen import SvReviewScreen
         from wowtools.ui.review import RunActions, SvRecoveryActions
-        for screen in (ProfileReviewScreen, SvReviewScreen):
+        for screen in (ProfileReviewScreen, SvReviewScreen, CopierReviewScreen):
             self.assertTrue(issubclass(screen, SvRecoveryActions), screen)
             mro = screen.__mro__
             self.assertLess(mro.index(SvRecoveryActions), mro.index(RunActions), screen)  # it uses RunActions
@@ -382,7 +385,7 @@ class StructureTest(unittest.TestCase):
         self.assertEqual(tools & {"action_focus_search", "matches"}, set())
         screens = [rel(p) for p in modules("wowtools/tools")
                    if p.name in ("review_screen.py", "restore_screen.py", "blacklist_screen.py")]
-        self.assertEqual(len(screens), 7)
+        self.assertEqual(len(screens), 8)
         self.assertEqual([p for p in screens if "on_input_changed" in defined_functions(tree(REPO / p))], [])
         from wowtools.tools.ace3_profile_manager.tree_view import Filters
         self.assertFalse({"search", "matches"} & set(dir(Filters())))

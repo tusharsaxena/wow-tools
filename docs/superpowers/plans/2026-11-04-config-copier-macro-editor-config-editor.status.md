@@ -20,7 +20,7 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 | T8 | M2 | KB loader, state list, macro limits | done | (this commit) | 17 new tests in test_kb.py (the plan's 4 plus case-insensitive state match, exceptions, unreadable state list, the refresh_kb schema, odd entries, unsafe flavor names, caching, the X8 category groups, unknown-flavor limits, every shipped limit sourced, bad limits, the KB folder and README, kb.unreadable registered); architecture.md Core modules row for `kb`; events.md regenerated. Gate green: WSL 2098 OK (9 skipped), Windows 2098 OK (85 skipped; the first --all run's Windows half reported FAILED with 0 failures and 0 errors after one shard hung 600 s on the executor join in test_ui_base, environmental, clean on the --windows rerun in 81 s), ruff clean, events.md current. No CHANGELOG line: nothing a user sees yet Review fix (fix: T8 review fixes): `highestUnlocked*` added to the state patterns, `showTutorials` made an exception (T8g); T20's row now carries CC5's per-pattern dump check; +1 test, gate green: WSL 2099 OK (9 skipped), Windows 2099 OK (85 skipped), ruff clean, events.md current |
 | T9 | M2 | shared character tree; push | done | (this commit) | 7 new tests in test_character_tree.py (the plan's 4 plus account_extra, shown=, populating under a flavor node without marks), on a toy ReviewBase screen over the new `build_character_tree` fixture; architecture.md UI row for `character_tree`. Gate green: WSL 2106 OK (9 skipped), Windows 2106 OK (85 skipped), ruff clean, events.md current. No CHANGELOG line: nothing a user sees yet. Push (M2) left to the orchestrator. Review fixes (T9c, T9d): `character_extra` hook, hooks' keys fold into parents, 5 more tests (12 in all) incl. a TreeFilter screen; gate green: WSL 2111 OK (9 skipped), Windows 2111 OK (85 skipped), ruff clean, events.md current |
 | T10 | M3 | copier planning and config merge | done | (this commit) | 24 new tests: 13 in test_config_copier_planner.py (the plan's 5 plus COPY_FILES order, unknown-layout macro warning, no warning when unchanged, config pair is the merge, config unchanged when only state differs, unreadable files and their events, bad arguments, nothing written), 11 in test_config_copier_merge.py (the plan's 4 plus line order and bytes, empty target, empty source, a duplicated line, LF and other lines kept, case-insensitive names, source duplicate); `copier.*` events registered, events.md regenerated. Gate green: WSL 2135 OK (9 skipped), Windows 2135 OK (85 skipped), ruff clean, events.md current. No CHANGELOG line: nothing a user sees yet (the tool is registered in T11). Review fix (f64164e review): core.cvarfile `_NAME` compiled with re.ASCII so `apply_cvar_changes` accepts every name `parse_cvars` reads (a source name holding U+00A0 made `merge_config`, and so `plan_copy`, raise); 2 new tests (cvarfile, merge) and an ASCII tab case in the bad-changes test. Gate green: WSL 2137 OK (9 skipped), Windows 2137 OK (85 skipped), ruff clean, events.md current |
-| T11 | M3 | copier run, undo, flow | todo | | |
+| T11 | M3 | copier run, undo, flow | done | (this commit) | 26 new tests: 16 in test_config_copier_run.py (the plan's 4 plus names, non-ASCII round trip, unknown macro layout (Review Focus 1), unchanged/no-source never written, change lines, WoW running, changed since review, recovery, leave, 3 report tests), 10 TUI in test_config_copier_app.py (the plan's 4 plus registry, unticked file, dry run then undo, WoW running, pair statuses, one flavor at 80x24); the copier added to every meta-test table (look and feel, help, quit, tool menu, toasts, warnings) and to test_structure; first guide, internals doc, README/CLAUDE.md/architecture/releasing rows, RELEASE_SHIPS and CHANGELOG line (T11j); events.md regenerated. Gate: ruff clean, events.md current, Windows 2163 OK (85 skipped); WSL 2163 OK except the two test_release_contents git-archive checks, which read HEAD and so fail until the new guide is committed; re-run green after the commit |
 | T12 | M3 | copier docs; push | todo | | |
 | T13 | M4 | macro model, ops, paste rules | todo | | |
 | T14 | M4 | macro reference, explainer, optimizer, templates | todo | | |
@@ -240,3 +240,43 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
   source's bytes minus its state lines (its own order, newline and other lines); an empty target file is merged like
   any target (CRLF for appended lines). The source's comment and other non-`SET` lines are not copied into a target.
   State is `core.kb.is_state_cvar` on the shipped list; the per-pattern dump check is still T20's.
+- T11a: the left pane keeps the shared four buttons (Write, Dry run, Rescan, Undo last change; the look-and-feel
+  meta-test pins Rescan third and Undo last), so **Diff** (navigate, `d`) sits in the action bar under the tree
+  (`BarTree` / `ActionBar`, as the SV Browser's), enabled on a highlighted `replace` pair. Diff on anything else says
+  why.
+- T11b: the copy button is **Write** (overwrite, `w`), not "Copy": "Copy" is the Ace3 action bar's create-kind label
+  (one label, one kind: test_structure), and "Copy files" made the row wider than the 50-column left pane. The confirm
+  is `kind="overwrite"` (dry run `simulate`) and lists the CC7 warnings in `listed=`; its title is "Copy the ticked
+  files?".
+- T11c: tick keys are `PairKey(target, name)`; nothing is ticked at first (CC2), the left pane's five file boxes are
+  all ticked (CC3). Only pairs that write something (new, replace) of a ticked file get a key; unchanged, no-source
+  and unreadable pairs show dim with no tick. `populate_characters`' own character key is never ticked:
+  `node_tick_keys` and the mark use only a character's pairs. What Write copies = ticked pair, ticked file, status
+  new/replace, filter-hidden ticks included (the confirm says how many are hidden). After a real run the ticks of
+  pairs that are now unchanged drop out; a dry run keeps them (Back to review).
+- T11d: no USE AT YOUR OWN RISK popup or risk banner (only the client's own five files, one game version, backups and
+  Undo; like Interface Backup's review). Ticks are a selection, not staged work: leaving asks nothing. The quit and
+  tool-menu meta-tests now take "staged" from `review.discard_question()` instead of "in PREPARE", and the leave
+  question test iterates `STAGING_TOOLS` (Ace3, SV Browser).
+- T11e: the source picker is its own screen (`SourceScreen`: the shared tree without marks under each flavor for All
+  flavors, the shared filter box, **Choose** (Enter) and **Back** (Esc), `t` to the tool menu); it dismisses with
+  `(flavor, character)`. The meta-tests reach a review through `tests/fixtures.py` `reach_review` (the disclaimer,
+  then `pick_source`: the first character with a file to copy) and walk the picker as a screen of its own (q, t,
+  h, toasts); `tick_copier_targets` is the copier's PREPARE.
+- T11f: the diff is unified (one column fits 80x24): plain files show each change with three lines around it and `…`
+  between parts; `config-cache.wtf` shows the whole file with its state lines noted "kept: the target's own".
+  Computed in `report.diff_rows` (UI-free); bytes decoded UTF-8 with replacement for display only.
+- T11g: the registry description is "Copy one character's macros, chat, layout, CVars and addons to others." instead
+  of the plan's longer line, which wrapped in the tool menu at 120 columns and made the list scroll, dropping the
+  shield art at 120x30.
+- T11h: the scan worker plans every real character of the source's flavor at once (`plan_copy` over all five files);
+  other flavors' characters are listed at rebuild without reading any file. Folder listing errors and unreadable
+  pairs feed the warnings view (`!`).
+- T11i: the tree marks a CC7 pair "⚠ action bars" (the tree is narrow); the full sentence is in the confirm.
+- T11j: registering the tool makes test_docs, test_help and test_release_contents require its guide, internals doc,
+  README / CLAUDE.md / architecture / releasing rows, `RELEASE_SHIPS` entry and screenshots, so a first version of
+  each lands here (screenshots `source.png` and `review.png` rendered from the app's own SVG screenshot of a fixture
+  tree with headless Chrome), with the CHANGELOG `### Added` line. T12 reviews and completes the docs.
+- T11k: test_structure pins the copier's journal and undo on the shared helpers and its review on
+  `SvRecoveryActions`; the tree-filter screen count is 8; test_sv_browser_skeleton finds the SV Browser by name, no
+  longer as the last registry entry.

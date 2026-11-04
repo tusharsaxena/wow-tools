@@ -6,6 +6,11 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 
 ## [Unreleased]
 
+### Added
+
+- **Config Copier**: copy one character's macros, enabled addons, chat windows, CVars and layout to other
+  characters, with a diff of every file it replaces, a dry run and Undo.
+
 ### Fixed
 
 - The launcher no longer closes its window before you can read an error: a double-clicked `wow-tools.cmd` waits

@@ -3,7 +3,7 @@
 Out-of-game World of Warcraft companion tools (Ka0s branded): one Python 3.10+ Textual TUI suite, run with
 `./wow-tools.sh` (Windows: `wow-tools.cmd`; `./wow-tools.sh update [--check]` updates it). The tool menu opens first;
 tools never start on their own and have no CLI mode. They share one in-repo library, `wowtools/core/` (UI-free)
-and `wowtools/ui/` (Textual); third-party code lives in `vendor/`. The five tools (`TOOLS` in
+and `wowtools/ui/` (Textual); third-party code lives in `vendor/`. The tools (`TOOLS` in
 `wowtools/tools/__init__.py`):
 
 - WTF Cleaner (`wtf-cleaner`, package `tools/wtf_cleaner`)
@@ -11,6 +11,7 @@ and `wowtools/ui/` (Textual); third-party code lives in `vendor/`. The five tool
 - Interface Backup (`interface-backup`, package `tools/interface_backup`)
 - Ace3 Profile Manager (`ace3-profile-manager`, package `tools/ace3_profile_manager`)
 - Saved Variables Browser (`sv-browser`, package `tools/sv_browser`)
+- Config Copier (`config-copier`, package `tools/config_copier`)
 
 ## Read first
 
@@ -65,7 +66,7 @@ before a release (STD-10.2).
 |---|---|---|
 | Developer | [docs/standards.md](docs/standards.md) | The MUST / SHOULD rules and the documented deviations |
 | Developer | [docs/architecture.md](docs/architecture.md) | The hub: layers, core and UI modules, config schema, look and feel, documentation map |
-| Developer | [docs/internals/](docs/internals/) | One per tool: [wtf-cleaner](docs/internals/wtf-cleaner.md), [screenshot-organizer](docs/internals/screenshot-organizer.md), [interface-backup](docs/internals/interface-backup.md), [ace3-profile-manager](docs/internals/ace3-profile-manager.md), [sv-browser](docs/internals/sv-browser.md) |
+| Developer | [docs/internals/](docs/internals/) | One per tool: [wtf-cleaner](docs/internals/wtf-cleaner.md), [screenshot-organizer](docs/internals/screenshot-organizer.md), [interface-backup](docs/internals/interface-backup.md), [ace3-profile-manager](docs/internals/ace3-profile-manager.md), [sv-browser](docs/internals/sv-browser.md), [config-copier](docs/internals/config-copier.md) |
 | Developer | [docs/testing.md](docs/testing.md) | The runner, CI, fixtures, Textual tests, the meta-tests |
 | Developer | [docs/common-tasks.md](docs/common-tasks.md) | Recipes: a tool, a setting, a `[general]` setting, an event, a button, a tree screen, a shared helper, a WTF Cleaner criterion, a button colour, a rename, vendoring, a release |
 | Developer | [docs/adding-a-tool.md](docs/adding-a-tool.md) | Adding a tool step by step, and renaming one |
@@ -73,7 +74,7 @@ before a release (STD-10.2).
 | Developer | [docs/vendoring.md](docs/vendoring.md) | `vendor/`, `requirements.lock` and `scripts/update_vendor.py` |
 | Developer | [docs/events.md](docs/events.md) | Every log event and its level (generated, never edited by hand) |
 | User | [README.md](README.md) | Install, run, update, settings, terms of use |
-| User | [docs/wtf-cleaner.md](docs/wtf-cleaner.md), [docs/screenshot-organizer.md](docs/screenshot-organizer.md), [docs/interface-backup.md](docs/interface-backup.md), [docs/ace3-profile-manager.md](docs/ace3-profile-manager.md), [docs/sv-browser.md](docs/sv-browser.md) | The user guide of each tool (also its in-app help link) |
+| User | [docs/wtf-cleaner.md](docs/wtf-cleaner.md), [docs/screenshot-organizer.md](docs/screenshot-organizer.md), [docs/interface-backup.md](docs/interface-backup.md), [docs/ace3-profile-manager.md](docs/ace3-profile-manager.md), [docs/sv-browser.md](docs/sv-browser.md), [docs/config-copier.md](docs/config-copier.md) | The user guide of each tool (also its in-app help link) |
 | User | [CHANGELOG.md](CHANGELOG.md) | Release notes, shown in-app on `c` |
 | Process | [docs/superpowers/specs/](docs/superpowers/specs/), [docs/superpowers/plans/](docs/superpowers/plans/) | Dated design specs (decision IDs), plans and their `.status.md` ledgers. Frozen |
 | Process | [reviews/](reviews/) | Dated review bundles. Frozen |

@@ -274,5 +274,41 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 
 | Event | Level | Description |
 |---|---|---|
+| `copier.apply_completed` | info | Apply finished (logged at warning if any file was skipped or failed). |
+| `copier.apply_started` | info | Apply (or a dry run) of the pending changes started. |
+| `copier.backup_failed` | error | The zip of the original files failed; nothing was changed. |
+| `copier.dry_run_completed` | info | A dry run finished. |
+| `copier.earlier_unfinished` | error | Apply was refused: an earlier Apply did not finish (its crash marker is there); nothing was changed. |
+| `copier.file_changed` | warning | A file changed since the scan; its changes were skipped. |
+| `copier.file_created` | info | A client file that did not exist was created with the pending changes. |
+| `copier.file_edited` | info | A client file (in an account or character folder, or Config.wtf) was rewritten with the pending changes. |
+| `copier.file_locked` | error | Apply or Undo stopped before changing anything: files are locked by another program. |
+| `copier.file_removed` | info | Undo or recovery: a file the run had created was deleted (it was still what the run wrote). |
+| `copier.file_restored` | info | Undo or recovery: a file was put back to its original bytes. |
+| `copier.file_skipped` | warning | Undo or recovery: a file was left alone (it changed since the run, or is outside the WTF folder). |
 | `copier.file_unreadable` | warning | A source or target client file could not be read while planning a copy, so its pairs are shown as unreadable and never copied (path, reason). |
+| `copier.files_backed_up` | info | The originals of the files to change were zipped and verified. |
+| `copier.flavors_stopped` | warning | An Apply over several flavors stopped at one flavor; the flavors after it were not started. |
+| `copier.journal_failed` | error | The run journal could not be written; nothing was changed. |
+| `copier.journal_pruned` | info | Older journals (and the zips only they used) were deleted to keep the newest N (keep_journals). |
+| `copier.marker_failed` | error | The crash marker could not be written; nothing was changed. |
+| `copier.marker_left` | warning | Apply finished but its crash marker could not be removed (another program held it); the next scan offers the run as unfinished, and putting the originals back then only removes the marker. |
+| `copier.marker_stale` | info | Recovery found that the run named by the crash marker had finished (its journal says so for every file it wrote, and the files it skipped are not at what it would have written): no file was changed, only the marker is removed (logged at warning with marker_left when it could not be removed either: the next scan offers it again). |
 | `copier.planned` | info | A copy was planned from a source character: source, targets, files and how many (target, file) pairs are new, replaced, unchanged, have no source file or could not be read (counts). |
+| `copier.probe_recovered` | warning | A client file left as <name>.wowtools-lockcheck by an interrupted lock check was renamed back. |
+| `copier.recovery_done` | info | The user chose what to do about an unfinished Apply (put back or leave); logged at warning with marker_left when its crash marker could not be removed (the next scan offers it again). |
+| `copier.recovery_offered` | warning | A marker from an Apply that did not finish was found by a scan (on opening or a rescan), or Apply was pressed while it is there. |
+| `copier.rollback_failed` | error | A file could not be put back after a failure; restore it from the zip the message names. |
+| `copier.rolled_back` | warning | After a failure, the files this run had already written were put back. |
+| `copier.snapshot_discarded` | info | A whole-WTF snapshot taken before an Undo whose other snapshot failed was deleted: nothing was changed, so it protected nothing. |
+| `copier.snapshot_failed` | error | The whole-WTF snapshot failed; nothing was changed. |
+| `copier.snapshot_taken` | info | The whole-WTF snapshot was written and verified. |
+| `copier.snapshots_pruned` | info | Older whole-WTF snapshots of the flavor were deleted to keep the newest N (keep_backups). |
+| `copier.started` | info | The Config Copier opened its review on a source character (flavors, source). |
+| `copier.undo_completed` | info | Undo last change finished (logged at warning if any file was skipped or failed). |
+| `copier.undo_failed` | error | Undo or recovery: a file could not be put back (its zip is missing or does not match). |
+| `copier.undo_started` | info | Undo last change started, from the newest journal. |
+| `copier.verify_failed` | error | An edited file did not re-read as expected; it was not written and the run stopped. |
+| `copier.would_edit` | info | Dry run: a file that would be rewritten, with its changes (checked, not written). |
+| `copier.wow_running` | warning | Apply or Undo was refused because WoW of that flavor is running. |
+| `copier.write_failed` | error | A client file could not be written; the run stopped. |

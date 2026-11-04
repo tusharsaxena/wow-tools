@@ -24,12 +24,14 @@ from textual.widgets import Input, Select
 
 import wowtools
 from tests.fixtures import (BASE, LARGE, TuiTestCase, accept_disclaimer, build_ace_tree, build_interface_tree,
-                            build_screenshot_tree, build_wow_tree, make_config, settle, stage_sv_edit)
+                            build_screenshot_tree, build_wow_tree, make_config, pick_source, reach_review, settle,
+                            stage_sv_edit, tick_copier_targets)
 from wowtools.core.events import capture_events
 from wowtools.core.lock import InstanceLock, LockInfo
 from wowtools.core.updater import ReleaseInfo
 from wowtools.tools import TOOLS
 from wowtools.tools.ace3_profile_manager.popups import TargetScreen
+from wowtools.tools.config_copier.source_screen import SourceScreen
 from wowtools.tools.interface_backup.restore_screen import RestoreScreen
 from wowtools.tools.sv_browser.popups import EditValueScreen
 from wowtools.ui.account_screen import AccountScreen
@@ -47,10 +49,11 @@ from wowtools.ui.warnings_view import WarningItem, WarningsScreen
 
 ACCOUNT_TOOLS = ("wtf-cleaner", "ace3-profile-manager")
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
-              "ace3-profile-manager": "dry_run", "sv-browser": "dry_run"}
+              "ace3-profile-manager": "dry_run", "sv-browser": "dry_run",
+              "config-copier": "dry_run"}
 PREPARE = {"ace3-profile-manager": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
                                                    review.refresh_view()),
-           "sv-browser": stage_sv_edit}
+           "sv-browser": stage_sv_edit, "config-copier": tick_copier_targets}
 DISCARD_TITLES = ("Leave and discard the pending changes?", "Leave and discard the staged edits?")
 BUSY_NOTICE = "A run is in progress. Wait for it to finish before going back to the tool menu."
 
@@ -104,8 +107,8 @@ class ToolMenuKeyTest(TuiTestCase):
         picker = await self.open_flavors(app, pilot, tool)
         picker.dismiss(ALL_FLAVORS)
         await settle(app, pilot)
-        await accept_disclaimer(app, pilot)
-        self.assertNotIsInstance(app.screen, (FlavorScreen, DisclaimerScreen))
+        await reach_review(app, pilot)
+        self.assertNotIsInstance(app.screen, (FlavorScreen, DisclaimerScreen, SourceScreen))
         return app.screen
 
     async def test_t_goes_back_from_the_changelog_help_settings_and_does_nothing_on_the_menu(self):
@@ -171,6 +174,12 @@ class ToolMenuKeyTest(TuiTestCase):
                         await settle(app, pilot)
                         self.assertIsInstance(app.screen, DisclaimerScreen)
                         await accept_disclaimer(app, pilot)
+                    if isinstance(app.screen, SourceScreen):  # the Config Copier's source picker
+                        await self.assert_to_menu(app, pilot, SourceScreen)
+                        picker = await self.open_flavors(app, pilot, name)
+                        picker.dismiss(ALL_FLAVORS)
+                        await settle(app, pilot)
+                        await pick_source(app, pilot)
                     review = app.screen
                     await pilot.press("slash", "t")  # the filter box types it
                     await settle(app, pilot)
@@ -208,8 +217,8 @@ class ToolMenuKeyTest(TuiTestCase):
                         await self.assert_to_menu(app, pilot, type(app.screen))
 
                     review = await self.open_review(app, pilot, name)
-                    staged = name in PREPARE
                     PREPARE.get(name, lambda r: None)(review)
+                    staged = review.discard_question() is not None  # ticks alone (Config Copier) ask nothing
                     getattr(review, f"action_{RUN_ACTION[name]}")()
                     await settle(app, pilot)
                     self.assertIsInstance(app.screen, ConfirmScreen)

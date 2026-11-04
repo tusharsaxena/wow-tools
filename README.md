@@ -23,6 +23,7 @@ when you're done.
 | **Interface Backup** | Zips a game version's `Interface` and `WTF` folders (your addons and their settings), and puts them back from a zip. | [Interface Backup guide](docs/interface-backup.md) |
 | **Ace3 Profile Manager** | Shows the profiles of every addon built on Ace3 and which characters use them, and lets you delete, rename and copy profiles or move characters between them. | [Ace3 Profile Manager guide](docs/ace3-profile-manager.md) |
 | **Saved Variables Browser** | Shows every SavedVariables file as a tree you can browse down to single values, and lets you edit, rename and delete keys, or find values and edit the results in bulk. Use at your own risk. | [Saved Variables Browser guide](docs/sv-browser.md) |
+| **Config Copier** | Copies one character's macros, enabled addons, chat windows, CVars and layout to other characters of the same game version, with a diff of every file it replaces. | [Config Copier guide](docs/config-copier.md) |
 
 Every tool works with every version of the game you have installed: Retail, Classic, Classic Era, Anniversary,
 and the PTR and Beta clients. You can work on one version at a time or all of them at once.
@@ -248,6 +249,8 @@ Each tool has its own guide, with pictures, that walks through every screen:
   and undo a change.
 - [Saved Variables Browser guide](docs/sv-browser.md): browse every addon's saved settings, edit them, and find
   values and edit the results in bulk.
+- [Config Copier guide](docs/config-copier.md): set up alts by copying a character's macros, addons, chat, CVars
+  and layout, and undo a copy.
 
 ## Updates
 
@@ -307,6 +310,7 @@ Your answers are saved in the `config` folder inside the app's folder, one file 
 | `config\interface-backup.cfg` | Interface Backup's settings |
 | `config\ace3-profile-manager.cfg` | The Ace3 Profile Manager's settings (`[ace3_profile_manager]`): backup folder, the blacklist of addons (each in one game version) it never changes and whether to show the USE AT YOUR OWN RISK warning (`skip_risk_warning`) |
 | `config\sv-browser.cfg` | The Saved Variables Browser's settings (`[sv_browser]`): backup folder and whether to show the USE AT YOUR OWN RISK warning (`skip_risk_warning`) |
+| `config\config-copier.cfg` | The Config Copier's settings (`[config_copier]`): backup folder |
 
 The easiest way to change them is to press `s` in the app: the first screen is the shared one (WoW folder, backups and
 journals to keep, game versions (and search files) to work on at once), then the tool's own. You can also open the

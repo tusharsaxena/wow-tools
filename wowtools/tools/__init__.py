@@ -40,6 +40,9 @@ TOOLS: dict[str, Tool] = {tool.name: tool for tool in (
     Tool("sv-browser", "Saved Variables Browser",
          "Browse and edit every SavedVariables file, with bulk find and replace.",
          "wowtools.tools.sv_browser.app", "sv_browser"),
+    Tool("config-copier", "Config Copier",
+         "Copy one character's macros, chat, layout, CVars and addons to others.",
+         "wowtools.tools.config_copier.app", "config_copier"),
 )}
 
 # Tools that changed name. At start-up each tool's old config file, logs/<old>/ folder and

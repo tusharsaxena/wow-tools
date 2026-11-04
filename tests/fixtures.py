@@ -230,6 +230,32 @@ async def accept_disclaimer(app, pilot) -> None:
         await settle(app, pilot)
 
 
+async def pick_source(app, pilot) -> None:
+    """The Config Copier's source picker comes after the flavor pick: choose the first character it lists that has a
+    file to copy, else the first one (any other tool: nothing to do)."""
+    from wowtools.tools.config_copier.model import COPY_FILES
+    from wowtools.tools.config_copier.source_screen import SourceScreen
+    if isinstance(app.screen, SourceScreen):
+        choices = app.screen.choices
+        app.screen.choose(*next((c for c in choices if any((c[1].path / n).is_file() for n in COPY_FILES)),
+                                choices[0]))
+        await settle(app, pilot)
+
+
+async def reach_review(app, pilot) -> None:
+    """From the flavor pick to a tool's review: the USE AT YOUR OWN RISK warning (accept_disclaimer), then the Config
+    Copier's source picker (pick_source)."""
+    await accept_disclaimer(app, pilot)
+    await pick_source(app, pilot)
+
+
+def tick_copier_targets(review) -> None:
+    """Tick every pair a Config Copier review can copy (what its Copy / Dry run needs)."""
+    review.tick_model().tick(review.all_tick_keys())
+    review._refresh_labels()
+    assert review.selected_plans(), "nothing to copy"
+
+
 def stage_sv_edit(review) -> None:
     """Stage one value edit on a Saved Variables Browser review (what its Apply / Dry run needs): the first string
     value found in the scanned files (Retail's first), read here in the test's thread, gets " (edited)" added."""
@@ -598,4 +624,38 @@ def build_character_tree(root: Path) -> Path:
     for rel in ("MAIN/Realm1/Aellâ", "MAIN/Realm1/Bob", "MAIN/Realm1/Bob - Copy", "MAIN/Realm1/Bob2",
                 "MAIN/Realm2/Trâxex", "MAIN/SavedVariables", "ALT/Realm1/Dænerys", "BARE"):
         (accounts / rel).mkdir(parents=True, exist_ok=True)
+    return root
+
+
+COPIER_MACROS = macro_file_bytes([("0100000000000001", "Heal Dænerys", "134400", "/cast [@mouseover] Flash Heal"),
+                                  ("0100000000000002", "D Up", "132360", "/cast Divine Protection")])
+COPIER_ADDONS = "Auctionator: enabled\r\nDetails: enabled\r\nDænerysPack: disabled\r\n".encode()
+COPIER_CHAT = b"VERSION 5\r\n\r\nWINDOW 1\r\nNAME General\r\nEND\r\n"
+COPIER_LAYOUT = b"LAYOUT 1\r\n"
+COPIER_CONFIG = cvar_file_bytes([("assistedCombatHighlight", "1"), ("nameplateMaxScaleDistance", "40"),
+                                 ("hardTrackedQuests", "111"), ("savedClassConfigOne", "src")])
+
+
+def build_copier_tree(root: Path) -> Path:
+    """A WoW folder for the Config Copier (config tools spec CC2-CC7), on build_character_tree's retail folders:
+    MAIN/Realm1/Aellâ, the source, has all five files; Bob has one macro, his own AddOns.txt and a config-cache.wtf
+    (state hardTrackedQuests, preference enableMultiActionBars); `Bob - Copy` (not a character) has macros too;
+    Trâxex has nothing; ALT/Realm1/Dænerys already has Aellâ's chat-cache.txt. _classic_era_ has ACCT/Realm1/Other
+    with an AddOns.txt (another flavor)."""
+    build_character_tree(root)
+    accounts = root / "_retail_" / "WTF" / "Account"
+    source = accounts / "MAIN" / "Realm1" / "Aellâ"
+    for name, data in (("macros-cache.txt", COPIER_MACROS), ("AddOns.txt", COPIER_ADDONS),
+                       ("chat-cache.txt", COPIER_CHAT), ("config-cache.wtf", COPIER_CONFIG),
+                       ("layout-local.txt", COPIER_LAYOUT)):
+        _write_bytes(source / name, data, FRESH)
+    bob = accounts / "MAIN" / "Realm1" / "Bob"
+    _write_bytes(bob / "macros-cache.txt", macro_file_bytes([("0100000000000001", "Bob", "134400", "/sit")]), FRESH)
+    _write_bytes(bob / "AddOns.txt", b"Auctionator: disabled\r\n", FRESH)
+    _write_bytes(bob / "config-cache.wtf", cvar_file_bytes([("hardTrackedQuests", "222"),
+                                                            ("enableMultiActionBars", "15")]), FRESH)
+    _write_bytes(accounts / "MAIN" / "Realm1" / "Bob - Copy" / "macros-cache.txt", COPIER_MACROS, FRESH)
+    _write_bytes(accounts / "ALT" / "Realm1" / "Dænerys" / "chat-cache.txt", COPIER_CHAT, FRESH)
+    _write_bytes(root / "_classic_era_" / "WTF" / "Account" / "ACCT" / "Realm1" / "Other" / "AddOns.txt",
+                 b"Questie: enabled\r\n", FRESH)
     return root

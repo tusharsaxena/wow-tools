@@ -10,8 +10,8 @@ from pathlib import Path
 
 from textual.widgets import Tree
 
-from tests.fixtures import (BASE, TINY, TuiTestCase, accept_disclaimer, build_ace_tree, build_interface_tree,
-                            build_screenshot_tree, build_sv_tree, build_wow_tree, make_config, settle)
+from tests.fixtures import (BASE, TINY, TuiTestCase, build_ace_tree, build_interface_tree, build_screenshot_tree,
+                            build_sv_tree, build_wow_tree, make_config, reach_review, settle)
 from wowtools.core.svfiles import SvScanWarning
 from wowtools.tools import TOOLS
 from wowtools.tools.screenshot_organizer.planner import PlanWarning
@@ -19,7 +19,7 @@ from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.help_screen import HelpScreen
 from wowtools.ui.suite_app import WowToolsApp
-from wowtools.ui.warnings_view import WARNINGS_BUTTON_ID, WarningsScreen
+from wowtools.ui.warnings_view import WARNINGS_BUTTON_ID, WarningItem, WarningsScreen
 
 
 def add_warnings(tool: str, review) -> None:
@@ -34,6 +34,9 @@ def add_warnings(tool: str, review) -> None:
         review.scan.flavors[0].warnings.append(SvScanWarning(Path("/wow/WTF/Odd.lua"), "Odd.lua is not readable Lua"))
     elif tool == "sv-browser":
         review.scan.flavors[0].warnings.append(SvScanWarning(Path("/wow/WTF/x"), "skipped: under a link"))
+    elif tool == "config-copier":
+        review.scan_warnings.append(WarningItem("Account/ACCT1/Realm1/CharA/chat-cache.txt", "Permission denied",
+                                                "Retail"))
     review._update_summary()
 
 
@@ -74,7 +77,7 @@ class WarningsViewToolsTest(TuiTestCase):
             await settle(app, pilot)
         app.screen.dismiss(ALL_FLAVORS)
         await settle(app, pilot)
-        await accept_disclaimer(app, pilot)
+        await reach_review(app, pilot)
         return app.screen
 
     async def test_every_review_opens_its_warnings(self):

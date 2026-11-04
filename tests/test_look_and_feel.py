@@ -13,9 +13,9 @@ from unittest import mock
 from textual.widgets import Button, Checkbox, DataTable, OptionList, Tree
 from textual.widgets._footer import FooterKey
 
-from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, accept_disclaimer, assert_keys_on_buttons, build_ace_tree,
-                            build_interface_tree, build_screenshot_tree, build_wow_tree, make_config, settle,
-                            stage_sv_edit, submit_filter)
+from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, assert_keys_on_buttons, build_ace_tree,
+                            build_interface_tree, build_screenshot_tree, build_wow_tree, make_config, reach_review,
+                            settle, stage_sv_edit, submit_filter, tick_copier_targets)
 from wowtools import __version__
 from wowtools.core.changelog import Changelog, parse_changelog
 from wowtools.core.lock import LockInfo
@@ -39,16 +39,18 @@ from wowtools.ui.widgets import CHECK_OFF, RISK_TEXT, NavHint, RiskBanner, actio
 POPUP_MAX_WIDTH = 100  # a popup or confirm at LARGE: a readable width, never stretched edge to edge
 FORM_MAX_WIDTH = 100  # a settings form, at any size
 # The tools whose screens are checked (the menu checks below cover every registered tool, TOOL_INFO).
-TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup", "ace3-profile-manager", "sv-browser")
+TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup", "ace3-profile-manager", "sv-browser",
+         "config-copier")
 # The action that leads to a result screen without a running-WoW popup in between (dry runs, a backup).
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
-              "ace3-profile-manager": "dry_run", "sv-browser": "dry_run"}
+              "ace3-profile-manager": "dry_run", "sv-browser": "dry_run",
+              "config-copier": "dry_run"}
 # The reviews that can destroy data: the risk banner tops their left pane (spec D37).
 DESTRUCTIVE_REVIEWS = ("wtf-cleaner", "ace3-profile-manager", "sv-browser")
 # What a review needs before its run action has something to do (the Ace3 Profile Manager runs staged changes).
 PREPARE = {"ace3-profile-manager": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
                                            review.refresh_view()),
-           "sv-browser": stage_sv_edit}
+           "sv-browser": stage_sv_edit, "config-copier": tick_copier_targets}
 
 
 def walk(node):
@@ -86,7 +88,7 @@ class LookAndFeelTest(TuiTestCase):
         self.assertIsInstance(app.screen, FlavorScreen)
         app.screen.dismiss(ALL_FLAVORS)
         await settle(app, pilot)
-        await accept_disclaimer(app, pilot)
+        await reach_review(app, pilot)
         return app.screen
 
     def assert_inside(self, widget, box):
@@ -207,7 +209,7 @@ class LookAndFeelTest(TuiTestCase):
                             await settle(app, pilot)
                         app.screen.dismiss(ALL_FLAVORS)
                         await settle(app, pilot)
-                        await accept_disclaimer(app, pilot)
+                        await reach_review(app, pilot)
                         screen = app.screen
                         if tool == "blacklist":
                             screen.action_edit_blacklist()
@@ -1133,7 +1135,7 @@ class LookAndFeelTest(TuiTestCase):
                     await settle(app, pilot)
                     app.screen.dismiss(ALL_FLAVORS)
                     await settle(app, pilot)
-                    await accept_disclaimer(app, pilot)
+                    await reach_review(app, pilot)
                     review = app.screen
                     await self.tab_through(app, pilot, "review")
                     PREPARE.get(tool, lambda r: None)(review)
