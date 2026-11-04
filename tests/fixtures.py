@@ -659,3 +659,38 @@ def build_copier_tree(root: Path) -> Path:
     _write_bytes(root / "_classic_era_" / "WTF" / "Account" / "ACCT" / "Realm1" / "Other" / "AddOns.txt",
                  b"Questie: enabled\r\n", FRESH)
     return root
+
+
+MACRO_AELLA = macro_file_bytes([("0100000000000001", "Heal Dænerys", "134400", "/cast [@mouseover,help,nodead] Flash Heal"),
+                                ("0100000000000002", "D Up", "132360", "/cast Divine Protection"),
+                                ("0100000000000003", "Fly", "134400", "/cast [advflyable] Swift Flight Form")])
+MACRO_BOB = macro_file_bytes([("0100000000000001", "Bob", "134400", "/sit"),
+                              ("0100000000000007", "D Up", "134400", "/cast Flash of Light")])
+MACRO_ACCOUNT = macro_file_bytes([("0000000000000001", "Mount", "134400", "/cast Swift Horse")])
+MACRO_UNKNOWN = b'VER 3 0100000000000001 "Old" "134400"\n/sit\nEND\n'  # LF only: a layout the reader doesn't know
+MACRO_ERA = macro_file_bytes([("0100000000000001", "Era", "134400", "/say hi")])
+
+
+def build_macro_tree(root: Path) -> Path:
+    """A WoW folder for the Macro Editor (config tools spec ME2-ME7, ME14), on build_character_tree's retail folders:
+    MAIN has account macros (Mount); MAIN/Realm1/Aellâ three macros (Heal Dænerys, D Up, Fly with the Retail-only
+    `advflyable`), Bob two (Bob, D Up), `Bob - Copy` (not a character) Aellâ's; Trâxex none; ALT/Realm1/Dænerys a
+    file in a layout the reader doesn't know (LF only: read-only). _classic_era_ has ACCT/Realm1/Other with one
+    macro (Era)."""
+    build_character_tree(root)
+    accounts = root / "_retail_" / "WTF" / "Account"
+    for rel, data in (("MAIN", MACRO_ACCOUNT), ("MAIN/Realm1/Aellâ", MACRO_AELLA), ("MAIN/Realm1/Bob", MACRO_BOB),
+                      ("MAIN/Realm1/Bob - Copy", MACRO_AELLA), ("ALT/Realm1/Dænerys", MACRO_UNKNOWN)):
+        _write_bytes(accounts / rel / "macros-cache.txt", data, FRESH)
+    _write_bytes(root / "_classic_era_" / "WTF" / "Account" / "ACCT" / "Realm1" / "Other" / "macros-cache.txt",
+                 MACRO_ERA, FRESH)
+    return root
+
+
+def stage_macro_edit(review) -> None:
+    """Stage one new macro on a Macro Editor review (what its Apply / Dry run needs): in the first set it can be
+    written to, Retail's first."""
+    from wowtools.tools.macro_editor.ops import stage_new
+    mset = next(s for s in sorted(review.all_sets(), key=lambda s: s.flavor.folder != "_retail_") if not s.read_only)
+    stage_new(review.staged, mset, name="Test", body="/sit")
+    review.staging_changed()

@@ -24,7 +24,7 @@ from textual.widgets._toast import Toast
 
 from tests.fixtures import (BASE, LARGE, TuiTestCase, accept_disclaimer, build_ace_tree, build_interface_tree,
                             build_screenshot_tree, build_wow_tree, make_config, pick_source, settle, stage_sv_edit,
-                            tick_copier_targets)
+                            tick_copier_targets, stage_macro_edit)
 from wowtools.core.install import Flavor
 from wowtools.core.lock import LockInfo
 from wowtools.core.updater import ReleaseInfo
@@ -57,10 +57,11 @@ CONTROLS = "Button, Input, TextArea, Checkbox, Switch, Select, RadioSet, OptionL
 ACCOUNT_TOOLS = ("wtf-cleaner", "ace3-profile-manager")
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
               "ace3-profile-manager": "dry_run", "sv-browser": "dry_run",
-              "config-copier": "dry_run"}
+              "config-copier": "dry_run", "macro-editor": "dry_run"}
 PREPARE = {"ace3-profile-manager": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
                                                    review.refresh_view()),
-           "sv-browser": stage_sv_edit, "config-copier": tick_copier_targets}
+           "sv-browser": stage_sv_edit, "config-copier": tick_copier_targets,
+           "macro-editor": stage_macro_edit}
 
 
 def bars(app) -> list[Region]:

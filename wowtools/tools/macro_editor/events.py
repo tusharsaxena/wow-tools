@@ -8,6 +8,7 @@ TOOL_NAME = "macro-editor"
 SV_TOOL = SvTool(TOOL_NAME, "macro")  # on the client-file write pipeline (core/client_apply.py)
 
 EVENTS: dict[str, EventSpec] = {
+    "macro.started": EventSpec("info", "The Macro Editor opened its browse screen (flavors, label)."),
     "macro.scanned": EventSpec("info", "The macro files of a flavor were read (flavor, sets, macros, read-only "
                                        "sets)."),
     "macro.file_unreadable": EventSpec("warning", "A macros-cache.txt could not be read, so its set is shown "

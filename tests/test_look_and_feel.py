@@ -15,7 +15,7 @@ from textual.widgets._footer import FooterKey
 
 from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, assert_keys_on_buttons, build_ace_tree,
                             build_interface_tree, build_screenshot_tree, build_wow_tree, make_config, reach_review,
-                            settle, stage_sv_edit, submit_filter, tick_copier_targets)
+                            settle, stage_sv_edit, submit_filter, tick_copier_targets, stage_macro_edit)
 from wowtools import __version__
 from wowtools.core.changelog import Changelog, parse_changelog
 from wowtools.core.lock import LockInfo
@@ -40,17 +40,18 @@ POPUP_MAX_WIDTH = 100  # a popup or confirm at LARGE: a readable width, never st
 FORM_MAX_WIDTH = 100  # a settings form, at any size
 # The tools whose screens are checked (the menu checks below cover every registered tool, TOOL_INFO).
 TOOLS = ("wtf-cleaner", "screenshot-organizer", "interface-backup", "ace3-profile-manager", "sv-browser",
-         "config-copier")
+         "config-copier", "macro-editor")
 # The action that leads to a result screen without a running-WoW popup in between (dry runs, a backup).
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
               "ace3-profile-manager": "dry_run", "sv-browser": "dry_run",
-              "config-copier": "dry_run"}
+              "config-copier": "dry_run", "macro-editor": "dry_run"}
 # The reviews that can destroy data: the risk banner tops their left pane (spec D37).
-DESTRUCTIVE_REVIEWS = ("wtf-cleaner", "ace3-profile-manager", "sv-browser", "config-copier")
+DESTRUCTIVE_REVIEWS = ("wtf-cleaner", "ace3-profile-manager", "sv-browser", "config-copier", "macro-editor")
 # What a review needs before its run action has something to do (the Ace3 Profile Manager runs staged changes).
 PREPARE = {"ace3-profile-manager": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
                                            review.refresh_view()),
-           "sv-browser": stage_sv_edit, "config-copier": tick_copier_targets}
+           "sv-browser": stage_sv_edit, "config-copier": tick_copier_targets,
+           "macro-editor": stage_macro_edit}
 
 
 def walk(node):

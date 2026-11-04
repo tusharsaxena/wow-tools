@@ -12,8 +12,8 @@ from unittest.mock import patch
 
 from tests.fixtures import build_wow_tree
 from wowtools.core import client_apply, sv_apply, sv_journal
-from wowtools.core.client_apply import (ClientChange, ClientFileGuard, apply_client_changes, client_destination,
-                                        client_undo_flavors, recover_client_run, undo_client_run)
+from wowtools.core.client_apply import (ClientChange, ClientFileGuard, apply_client_changes, apply_client_flavors,
+                                        client_destination, client_undo_flavors, recover_client_run, undo_client_run)
 from wowtools.core.events import TOOL_REGISTRIES, capture_events, register_events
 from wowtools.core.fsutil import atomic_write_bytes
 from wowtools.core.install import WowInstall
@@ -398,6 +398,40 @@ class ClientApplyTest(unittest.TestCase):
         self.assertEqual(len(undone.restored), 2)
         self.assertEqual(macros.read_bytes(), body)
         self.assertFalse((char / "chat-cache.txt").exists())
+
+    def test_several_flavors_in_one_run_and_one_undo(self):
+        """The Macro Editor's Apply across flavors (ME13): every flavor's changes in one journal, one Undo; each
+        flavor's guard only takes its own folder, and the WoW check runs once for them all."""
+        era = WowInstall(self.wow).flavor("_classic_era_")
+        era_macros = era.account_dir / "ACCT1" / "macros-cache.txt"
+        checked = []
+        progress = []
+        result = apply_client_flavors(
+            TOOL, [(self.flavor, [self.change(self.macros, NEW_MACROS)]),
+                   (era, [self.change(era_macros, MACROS, absent=True)])],
+            names=NAMES, root=self.root, journal_dir=self.journals, keep_journals=5, keep_snapshots=2,
+            dry_run=False, wow_check=lambda: checked.append(1) or [], now=WHEN,
+            progress=lambda flavor, stage, *rest: progress.append(flavor.folder))
+        self.assertEqual(checked, [1])
+        self.assertIsNone(result.stopped)
+        self.assertEqual([run.flavor.folder for run in result.runs], ["_retail_", "_classic_era_"])
+        self.assertEqual(len(result.edited), 2)
+        self.assertEqual(set(progress), {"_retail_", "_classic_era_"})
+        self.assertEqual((self.macros.read_bytes(), era_macros.read_bytes()), (NEW_MACROS, MACROS))
+        journal = sv_journal.read_edit_journal(result.journal_path)
+        self.assertEqual(sorted({e["flavor"] for e in journal.entries}), ["_classic_era_", "_retail_"])
+        undone = self.undo(result.journal_path)
+        self.assertEqual(len(undone.restored), 2)
+        self.assertEqual(self.macros.read_bytes(), MACROS)
+        self.assertFalse(era_macros.exists())
+
+    def test_a_flavor_guard_refuses_another_flavors_file(self):
+        era = WowInstall(self.wow).flavor("_classic_era_")
+        result = apply_client_flavors(
+            TOOL, [(era, [self.change(self.macros, NEW_MACROS)])], names=NAMES, root=self.root,
+            journal_dir=self.journals, keep_journals=5, keep_snapshots=2, dry_run=False, wow_check=None, now=WHEN)
+        self.assertIsNotNone(result.stopped)
+        self.assertEqual(self.macros.read_bytes(), MACROS)
 
     def test_never_writes_cache_md5_or_old_files(self):
         self.run_apply([self.change(self.macros, NEW_MACROS), self.change(self.chat, CHAT, absent=True)])

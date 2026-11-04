@@ -182,7 +182,8 @@ def check_for_update(cfg: Config, *, current: str = __version__, now: datetime |
 RELEASE_SHIPS = (
     "wowtools/", "vendor/", "wow-tools.sh", "wow-tools.cmd", "LICENSE", "CHANGELOG.md", "README.md",
     "docs/wtf-cleaner.md", "docs/screenshot-organizer.md", "docs/interface-backup.md",
-    "docs/ace3-profile-manager.md", "docs/sv-browser.md", "docs/config-copier.md", "docs/assets/screenshots/",
+    "docs/ace3-profile-manager.md", "docs/sv-browser.md", "docs/config-copier.md", "docs/macro-editor.md",
+    "docs/assets/screenshots/",
 )
 RELEASE_STAYS_OUT = (
     "tests/", "scripts/", ".github/",

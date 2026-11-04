@@ -14,7 +14,7 @@ client does; a body over BODY_LIMIT characters, or one the file layout can't hol
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
@@ -24,9 +24,10 @@ from wowtools.core.macrofile import (BODY_LIMIT, ICON_DEFAULT, NAME_LIMIT, Macro
                                      apply_macro_changes, next_macro_id, parse_macros)
 from wowtools.tools.macro_editor.model import MACRO_FILE, MacroSet
 
-__all__ = ["ClashChoice", "ReplaceRow", "Staged", "body_length", "build_changes", "check_macro", "cut_name",
-           "effective_macros", "free_slots", "preview_replace", "rename_for_clash", "stage_delete", "stage_edit",
-           "stage_new", "stage_paste", "stage_replace_text"]
+__all__ = ["ClashChoice", "PasteClash", "PastePreview", "ReplaceRow", "Staged", "body_length", "build_changes",
+           "check_macro", "clash_key", "copy_staged", "cut_name", "effective_macros", "free_slots", "preview_paste",
+           "preview_replace", "rename_for_clash", "stage_delete", "stage_edit", "stage_new", "stage_paste",
+           "stage_replace_text"]
 
 ClashChoice = Literal["skip", "rename", "overwrite"]
 _EMPTY = parse_macros(b"")
@@ -233,6 +234,49 @@ def _paste_one(staged: Staged, macro: Macro, target: MacroSet,
     if problem is None:
         _add(staged, target, name, macro.icon, macro.body)
     return problem
+
+
+@dataclass(frozen=True)
+class PasteClash:
+    """A pasted macro whose (cut) name a macro of the target already has, and what is done about it."""
+    target: MacroSet
+    pasted: Macro
+    existing: Macro
+    choice: ClashChoice
+
+
+@dataclass
+class PastePreview:
+    """What a paste would do (ME4): `staged`, a copy of the review's staging with the paste in it; every clash met
+    with the choice it got; one refusal line per macro not pasted (stage_paste's)."""
+    staged: Staged
+    clashes: list[PasteClash]
+    refusals: list[str]
+
+
+def copy_staged(staged: Staged) -> Staged:
+    """A copy of `staged` that can be changed without touching it."""
+    return Staged({path: list(changes) for path, changes in staged.changes.items()})
+
+
+def clash_key(target: MacroSet, pasted: Macro) -> tuple[Path, str]:
+    """How a clash's choice is looked up: the target set and the pasted macro's cut name."""
+    return target.path, cut_name(pasted.name)
+
+
+def preview_paste(staged: Staged, macros: Sequence[Macro], targets: Sequence[MacroSet],
+                  choices: Mapping[tuple[Path, str], ClashChoice], default: ClashChoice = "skip") -> PastePreview:
+    """Paste `macros` into each of `targets` in order on a copy of `staged`: a clash takes its choice from `choices`
+    (clash_key), else `default`. The review shows the clashes and refusals and, once the user agrees, keeps the
+    copy as its staging; `staged` itself is never changed."""
+    preview = PastePreview(copy_staged(staged), [], [])
+    for target in targets:
+        def on_clash(pasted: Macro, existing: Macro, target: MacroSet = target) -> ClashChoice:
+            choice = choices.get(clash_key(target, pasted), default)
+            preview.clashes.append(PasteClash(target, pasted, existing, choice))
+            return choice
+        preview.refusals += stage_paste(preview.staged, macros, target, on_clash)
+    return preview
 
 
 def _replaced(body: str, find: str, new: str, case: bool) -> tuple[str, int]:

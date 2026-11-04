@@ -12,6 +12,7 @@ and `wowtools/ui/` (Textual); third-party code lives in `vendor/`. The tools (`T
 - Ace3 Profile Manager (`ace3-profile-manager`, package `tools/ace3_profile_manager`)
 - Saved Variables Browser (`sv-browser`, package `tools/sv_browser`)
 - Config Copier (`config-copier`, package `tools/config_copier`)
+- Macro Editor (`macro-editor`, package `tools/macro_editor`)
 
 ## Read first
 
@@ -66,7 +67,7 @@ before a release (STD-10.2).
 |---|---|---|
 | Developer | [docs/standards.md](docs/standards.md) | The MUST / SHOULD rules and the documented deviations |
 | Developer | [docs/architecture.md](docs/architecture.md) | The hub: layers, core and UI modules, config schema, look and feel, documentation map |
-| Developer | [docs/internals/](docs/internals/) | One per tool: [wtf-cleaner](docs/internals/wtf-cleaner.md), [screenshot-organizer](docs/internals/screenshot-organizer.md), [interface-backup](docs/internals/interface-backup.md), [ace3-profile-manager](docs/internals/ace3-profile-manager.md), [sv-browser](docs/internals/sv-browser.md), [config-copier](docs/internals/config-copier.md) |
+| Developer | [docs/internals/](docs/internals/) | One per tool: [wtf-cleaner](docs/internals/wtf-cleaner.md), [screenshot-organizer](docs/internals/screenshot-organizer.md), [interface-backup](docs/internals/interface-backup.md), [ace3-profile-manager](docs/internals/ace3-profile-manager.md), [sv-browser](docs/internals/sv-browser.md), [config-copier](docs/internals/config-copier.md), [macro-editor](docs/internals/macro-editor.md) |
 | Developer | [docs/testing.md](docs/testing.md) | The runner, CI, fixtures, Textual tests, the meta-tests |
 | Developer | [docs/common-tasks.md](docs/common-tasks.md) | Recipes: a tool, a setting, a `[general]` setting, an event, a button, a tree screen, a shared helper, a WTF Cleaner criterion, a button colour, a rename, vendoring, a release |
 | Developer | [docs/adding-a-tool.md](docs/adding-a-tool.md) | Adding a tool step by step, and renaming one |
@@ -74,7 +75,7 @@ before a release (STD-10.2).
 | Developer | [docs/vendoring.md](docs/vendoring.md) | `vendor/`, `requirements.lock` and `scripts/update_vendor.py` |
 | Developer | [docs/events.md](docs/events.md) | Every log event and its level (generated, never edited by hand) |
 | User | [README.md](README.md) | Install, run, update, settings, terms of use |
-| User | [docs/wtf-cleaner.md](docs/wtf-cleaner.md), [docs/screenshot-organizer.md](docs/screenshot-organizer.md), [docs/interface-backup.md](docs/interface-backup.md), [docs/ace3-profile-manager.md](docs/ace3-profile-manager.md), [docs/sv-browser.md](docs/sv-browser.md), [docs/config-copier.md](docs/config-copier.md) | The user guide of each tool (also its in-app help link) |
+| User | [docs/wtf-cleaner.md](docs/wtf-cleaner.md), [docs/screenshot-organizer.md](docs/screenshot-organizer.md), [docs/interface-backup.md](docs/interface-backup.md), [docs/ace3-profile-manager.md](docs/ace3-profile-manager.md), [docs/sv-browser.md](docs/sv-browser.md), [docs/config-copier.md](docs/config-copier.md), [docs/macro-editor.md](docs/macro-editor.md) | The user guide of each tool (also its in-app help link) |
 | User | [CHANGELOG.md](CHANGELOG.md) | Release notes, shown in-app on `c` |
 | Process | [docs/superpowers/specs/](docs/superpowers/specs/), [docs/superpowers/plans/](docs/superpowers/plans/) | Dated design specs (decision IDs), plans and their `.status.md` ledgers. Frozen |
 | Process | [reviews/](reviews/) | Dated review bundles. Frozen |

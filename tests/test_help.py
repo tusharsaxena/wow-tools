@@ -14,7 +14,7 @@ from textual.widgets._footer import FooterKey
 
 from tests.fixtures import (BASE, TINY, TuiTestCase, accept_disclaimer, build_ace_tree, build_interface_tree,
                             build_screenshot_tree, build_wow_tree, footer_keys, make_config, pick_source, reach_review,
-                            settle, stage_sv_edit, tick_copier_targets)
+                            settle, stage_sv_edit, tick_copier_targets, stage_macro_edit)
 from wowtools import __version__
 from wowtools.core.install import WowInstall
 from wowtools.tools import TOOLS
@@ -36,10 +36,11 @@ URL = re.compile(r"https://[^\s)\]>]+")
 # The action that leads to a result screen without a running-WoW popup in between, and what it needs first.
 RUN_ACTION = {"wtf-cleaner": "dry_run", "screenshot-organizer": "dry_run", "interface-backup": "back_up",
               "ace3-profile-manager": "dry_run", "sv-browser": "dry_run",
-              "config-copier": "dry_run"}
+              "config-copier": "dry_run", "macro-editor": "dry_run"}
 PREPARE = {"ace3-profile-manager": lambda review: (review.staging.everyone_to_default(list(review.staging.states)),
                                                    review.refresh_view()),
-           "sv-browser": stage_sv_edit, "config-copier": tick_copier_targets}
+           "sv-browser": stage_sv_edit, "config-copier": tick_copier_targets,
+           "macro-editor": stage_macro_edit}
 
 
 def url_target(url: str) -> Path:

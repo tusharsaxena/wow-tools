@@ -34,8 +34,8 @@ from wowtools.core.sv_undo import UndoResult
 from wowtools.core.svfiles import SvFile, SvFileError, lstat_or_none
 from wowtools.core.undo import safe_destination
 
-__all__ = ["CONFIG_WTF", "EXISTS", "ClientChange", "ClientFileGuard", "apply_client_changes", "client_destination",
-           "client_rel_ok", "client_undo_flavors", "recover_client_run", "undo_client_run"]
+__all__ = ["CONFIG_WTF", "EXISTS", "ClientChange", "ClientFileGuard", "apply_client_changes", "apply_client_flavors",
+           "client_destination", "client_rel_ok", "client_undo_flavors", "recover_client_run", "undo_client_run"]
 
 CONFIG_WTF = "Config.wtf"  # the machine-level file, directly in <flavor>/WTF
 EXISTS = sv_apply.EXISTS
@@ -155,18 +155,33 @@ def apply_client_changes(tool: SvTool, flavor: Flavor, changes: Sequence[ClientC
     nothing written). A change refused by the guard stops the run before anything is written (result.stopped); one
     whose file changed since the review (or, to be created, exists) is skipped and the rest are written, as in
     every run of the pipeline. write and create are the file writers (tests replace them)."""
-    guard = ClientFileGuard(flavor, names)
-    units = [(_unit_file(flavor, change), change) for change in changes]
+    report = None if progress is None else (lambda _flavor, *args: progress(*args))
+    return apply_client_flavors(tool, [(flavor, changes)], names=names, root=root, journal_dir=journal_dir,
+                                keep_journals=keep_journals, keep_snapshots=keep_snapshots, dry_run=dry_run,
+                                wow_check=wow_check, now=now, progress=report, write=write, create=create)
 
+
+def apply_client_flavors(tool: SvTool, plan: Sequence[tuple[Flavor, Sequence[ClientChange]]], *,
+                         names: frozenset[str], root: Path, journal_dir: Path, keep_journals: int,
+                         keep_snapshots: int, dry_run: bool, wow_check: Callable[[], list[str] | None] | None,
+                         now: datetime | None = None,
+                         progress: Callable[[Flavor, str, int, int, str], None] | None = None,
+                         write: Callable[[Path, bytes], None] = atomic_write_bytes,
+                         create: Callable[[Path, bytes], None] = atomic_create_bytes) -> MultiApplyResult:
+    """apply_client_changes over several flavors (the Macro Editor's Apply, ME13): each (flavor, changes) in order
+    under one journal, so one Undo puts them all back. wow_check runs once, before anything (it should cover every
+    flavor of the plan); each flavor has its own guard, so a change outside its flavor's folder stops that flavor
+    before it writes, and the flavors after it are not started (sv_apply.apply_flavors)."""
     def apply_one(one: Flavor, payload: list[tuple[SvFile, ClientChange]], **kwargs: Any) -> sv_apply.ApplyResult:
-        return sv_apply.apply_flavor(tool, one, payload, _compile, _verify, guard=guard, write=write, create=create,
+        return sv_apply.apply_flavor(tool, one, payload, _compile, _verify, guard=ClientFileGuard(one, names),
+                                     write=write, create=create,
                                      started={"files": len(payload),
                                               "created": sum(c.expected_sha256 is None for _, c in payload)},
                                      **kwargs)
-    report = None if progress is None else (lambda _flavor, *args: progress(*args))
-    return sv_apply.apply_flavors(tool, [(flavor, units)], apply_one, root=root, journal_dir=journal_dir,
+    units = [(flavor, [(_unit_file(flavor, change), change) for change in changes]) for flavor, changes in plan]
+    return sv_apply.apply_flavors(tool, units, apply_one, root=root, journal_dir=journal_dir,
                                   keep_journals=keep_journals, keep_snapshots=keep_snapshots, dry_run=dry_run,
-                                  wow_check=wow_check, now=now, progress=report)
+                                  wow_check=wow_check, now=now, progress=progress)
 
 
 def undo_client_run(tool: SvTool, journal_path: Path, *, wow_root: Path, root: Path, keep_snapshots: int,

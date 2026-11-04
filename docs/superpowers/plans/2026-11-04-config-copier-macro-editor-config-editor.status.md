@@ -24,7 +24,7 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 | T12 | M3 | copier docs; push | done | (this commit) | 1 new test in test_docs.py (`test_config_copier_guide_readme_and_notes`: guide V1/V2 section, the five files, merge, macro warning, safety net, keys; README rows and FAQ; CLAUDE.md, CHANGELOG, architecture, internals sections, releasing); guide gains Why a copy sticks, What the tool never touches, The safety net (backups, interrupted copy), WoW running, more FAQ and troubleshooting rows; internals doc gains V1/V2, the merge, Safety, Events, Tests; README names the copier in its Dry run, Undo, journals and FAQ lines and shows its review; `review.png` re-rendered with the banner (T12b). Gate green: WSL 2166 OK (9 skipped), Windows 2166 OK (85 skipped), ruff clean, events.md current. Push (M3) left to the orchestrator. Review fix (fix: T12 review fixes): the internals doc's CC5 bullets and the guide's no-target sentence now say a target with no config-cache.wtf gets the source's file minus its state lines (non-SET lines kept), as merge.py does; 1 new test (`test_merge_without_target_file_keeps_the_sources_other_lines`). Gate green: WSL 2167 OK (9 skipped), Windows 2167 OK (85 skipped), ruff clean, events.md current |
 | T13 | M4 | macro model, ops, paste rules | done | d0c5c50, review fixes (this commit) | 19 new tests in test_macro_editor_ops.py (the plan's nine plus scan, read-only and unreadable sets, empty-set create, skip, edit back to the original, staged add edit/delete, delete, non-UTF-8 bytes, count/clear); `macro.*` events registered; gate green: WSL 2186 OK (9 skipped), Windows 2186 OK (85 skipped), ruff clean, events.md current. Review fixes: stage_edit keeps a macro's own name when it is unchanged and cuts only a new one, so Replace text on a file name over 16 characters changes only the body (ME13); a paste clash compares cut names on both sides, and rename_for_clash gets the cut names; 2 new tests; gate green: WSL 2188 OK (9 skipped), Windows 2188 OK (85 skipped), ruff clean, events.md current |
 | T14 | M4 | macro reference, explainer, optimizer, templates | done | (this commit) | 28 new tests: 18 in test_macro_editor_syntax.py (the plan's seven syntax ones plus spaces and target=, chat text and comments, token_at, more explain blocks, a conditional the flavor lacks, command and conditional suggestions, reference aliases and builder lists, unsourced entries dropped, a bad reference file, fill_template's checks, unsourced templates dropped), 10 in test_macro_editor_optimizer.py (one per rule incl. cast_to_use never applied, the rules data, only KB rules applied, kept #showtooltip cases, rules together, spell text untouched); test_kb's README needles gain the three files; architecture.md `kb` row and wowtools/kb/README.md describe the new files and loaders. Gate green: WSL 2216 OK (9 skipped), Windows 2216 OK (85 skipped), ruff clean, events.md current. No CHANGELOG line: nothing a user sees yet (the tool is registered in T15). Review fixes (T14r): duplicate_conditions keeps unit segments, `no` suggestions read their explain_no; test_duplicate_units_are_kept and a nodead help assertion added; gate green: 2217 OK on WSL and Windows, ruff clean, events.md current |
-| T15 | M4 | macro browse screen, apply, undo | todo | | |
+| T15 | M4 | macro browse screen, apply, undo | done | (this commit) | 24 new tests: 11 in test_macro_editor_run.py (the run across files then Undo, across flavors, dry run, WoW running, changed since the scan, unknown layout never written, paste preview clashes/choices/refusals, cross-flavor warnings, texts, confirm and result rows), 11 TUI in test_macro_editor_app.py (the plan's seven plus registry, leaving asks, WoW running, 80x24), 2 in test_client_apply.py (several flavors in one run and one Undo, a flavor's guard refuses another's file); the editor added to every meta-test table (look and feel incl. DESTRUCTIVE_REVIEWS, help, quit incl. STAGING_TOOLS, tool menu, toasts, warnings) and to test_structure (journals/undo, recovery, action mixins, banner, 9 tree screens); first guide, internals doc, README/CLAUDE.md/architecture/releasing rows, RELEASE_SHIPS, STD-7.10 list, CHANGELOG line (T15j); events.md regenerated. Gate: ruff clean, events.md current, Windows 2241 OK (85 skipped); WSL 2241 OK except the two test_release_contents git-archive checks, which read HEAD and so fail until the new guide is committed (as T11); re-run green after the commit |
 | T16 | M4 | macro edit screen and popups | todo | | |
 | T17 | M4 | macro docs; push | todo | | |
 | T18 | M5 | config model and edits | todo | | |
@@ -372,3 +372,39 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
   in one block one wins, and dropping a repeat could change which, so `[@focus,@target,@focus]` stays as it is
   (conditionals are still deduplicated). A `no` completion in `suggestions` takes its help from the conditional's
   `explain_no` (`{unit}` read as "the unit", capitalised, a full stop), not the positive form's help.
+- T15a: one Apply over several flavors (ME13 with All flavors) is one run: `core/client_apply.apply_client_flavors(tool,
+  [(flavor, changes)], ...)` (`apply_client_changes` now wraps it) runs `sv_apply.apply_flavors` with a guard per
+  flavor, the WoW check once for all, one journal and so one Undo. `runner.changes_by_flavor` groups
+  `ops.build_changes` by flavor in scan order; `runner.NAMES` is `{"macros-cache.txt"}`.
+- T15b: the left pane keeps the shared four buttons (Apply `w` destructive, Dry run, Rescan, Undo last change: the
+  look-and-feel meta-test), so New `N`, Edit `e`, Delete `d`, Copy `k`, Paste… `p` and Replace text… `R` sit in the
+  action bar under the tree (`edit_actions.TREE_ACTIONS`, as the SV Browser's), keys clear of a/n/x/c/s/t/f/q/h.
+  Copy keeps Ace3's `create` kind and Rename (paste review) Ace3's `overwrite` (one label, one kind).
+- T15c: tick keys are `SetKey(path)` (a Paste… target) and `MacroKey(path, id)`; Space on a character or on Account
+  macros ticks the set and its macros (X2). Copy, Delete and Replace text… act on the ticked macros, else the
+  highlighted one; Copy clears the ticks so the next ticks pick the targets; Paste… takes the ticked sets. A
+  read-only set (ME14) has no keys and refuses New; it is listed in the warnings view ("read-only: <problem>").
+- T15d: the search is the shared filter box: **Names** / **Bodies** boxes choose a macro's own texts, and the group
+  texts (flavor, account, realm, character or Account macros) match as on every tree (a matching group keeps all its
+  macros). "Show all / matching" is the **Only matching macros** box (ticked at first); unticked, every macro stays,
+  the matches are underlined and a / n / Space act on everything (`narrowing`, `filter_keys`, `tree_narrowed`).
+- T15e: the paste review (`popups.PasteScreen`) lists the clashes with their choice, **Skip** by default (nothing is
+  overwritten unless asked), Skip / Rename / Overwrite buttons, **Apply to all**, Enter on a clash cycles its choice;
+  it re-runs `ops.preview_paste` (new: `PasteClash`, `PastePreview`, `copy_staged`, `clash_key`) on a copy of the
+  staging and shows the refusals and `report.paste_warnings` (one ME5 line per (from, into) pair of flavors, then
+  each macro's `unknown_terms` in the target flavor's reference). Paste keeps the copy as the staging.
+- T15f: until T16's edit screen, New and Edit open `popups.MacroFormScreen`: name (max 16), icon (empty = `134400`),
+  body `TextArea`, `n / 255` meter, Save (`Ctrl+S`) off over 255, the staging's `check_macro` refusal under the fields.
+- T15g: staged marks are short symbols before the macro's line (`✎` changed, `+` new, `✗` deleted and struck), not
+  after it as on the SV Browser: a macro line (`name · first line · n/255`) is usually wider than the tree.
+- T15h: like the copier (T11d, T11r1): no USE AT YOUR OWN RISK popup (only `macros-cache.txt`, every change staged and
+  reviewed, backups and Undo), but the `RiskBanner` tops the left pane (Delete and Overwrite remove macros):
+  STD-7.10's list, test_structure's banner table, `DESTRUCTIVE_REVIEWS` and test_docs' banner guides name it.
+- T15i: staged edits ask before leaving, quitting, a rescan or Undo drops them (the SV Browser's "staged edits"
+  wording); the macro editor is in `STAGING_TOOLS` and `PREPARE` (`tests/fixtures.stage_macro_edit`: a new macro in
+  Retail's first writable set). The Delete confirm (destructive) only stages, with the ME6 action bar sentence
+  (`report.DELETE_WARNING`), which the Apply confirm repeats while a delete is staged.
+- T15j: registering the tool makes the docs tests require its guide, internals doc, README / CLAUDE.md /
+  architecture / releasing rows, `RELEASE_SHIPS` entry, CHANGELOG `### Added` line and a screenshot, so first
+  versions land here (`browse.png`: the app's own SVG at 120x30 of `build_macro_tree`, Retail, an edit and a new
+  macro staged, through headless Chrome at 1920x1013; no script committed, as T11/T12). T17 completes the docs.
