@@ -36,6 +36,7 @@ macro_file_bytes(macros) and cvar_file_bytes(pairs) synthesize a macros-cache.tx
 the way the Retail client writes them (config tools spec V4): never copied from a real install.
 build_character_tree(root) builds account › realm › character folders for the shared character tree (see its
 docstring): non-ASCII names, copies that are not characters, an account with none.
+build_config_tree(root) adds Config.wtf and config-cache.wtf files on it for the Config Editor (see its docstring).
 """
 from __future__ import annotations
 
@@ -694,3 +695,25 @@ def stage_macro_edit(review) -> None:
     mset = next(s for s in sorted(review.all_sets(), key=lambda s: s.flavor.folder != "_retail_") if not s.read_only)
     stage_new(review.staged, mset, name="Test", body="/sit")
     review.staging_changed()
+
+
+CONFIG_MACHINE = cvar_file_bytes([("gxMaximize", "1"), ("Sound_MasterVolume", "0.5")])
+CONFIG_ACCOUNT = cvar_file_bytes([("autoLootDefault", "1"), ("nameplateShowAll", "1")])
+CONFIG_AELLA = cvar_file_bytes([("nameplateShowFriends", "1"), ("cameraDistanceMaxZoomFactor", "2.6"),
+                                ("assistedCombatHighlight", "1"), ("myAddonThing", "Dænerys")])
+CONFIG_TRAXEX = b'SET nameplateShowFriends "0"\n# not a SET line\nSET floatingCombatTextCombatDamage "1"'  # LF, no end
+
+
+def build_config_tree(root: Path) -> Path:
+    """A WoW folder for the Config Editor (config tools spec CE3), on build_character_tree's retail folders:
+    WTF/Config.wtf (machine); MAIN has an account config-cache.wtf; MAIN/Realm1/Aellâ a character one (with a CVar
+    no KB knows, `myAddonThing`), Bob none, `Bob - Copy` (not a character) one; MAIN/Realm2/Trâxex one with LF
+    endings, a line that is not a SET line and no final newline; ALT and BARE have no files."""
+    build_character_tree(root)
+    wtf = root / "_retail_" / "WTF"
+    accounts = wtf / "Account"
+    _write_bytes(wtf / "Config.wtf", CONFIG_MACHINE, FRESH)
+    for rel, data in (("MAIN", CONFIG_ACCOUNT), ("MAIN/Realm1/Aellâ", CONFIG_AELLA),
+                      ("MAIN/Realm1/Bob - Copy", CONFIG_AELLA), ("MAIN/Realm2/Trâxex", CONFIG_TRAXEX)):
+        _write_bytes(accounts / rel / "config-cache.wtf", data, FRESH)
+    return root

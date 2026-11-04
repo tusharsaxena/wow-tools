@@ -355,3 +355,45 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `macro.would_edit` | info | Dry run: a file that would be rewritten, with its changes (checked, not written). |
 | `macro.wow_running` | warning | Apply or Undo was refused because WoW of that flavor is running. |
 | `macro.write_failed` | error | A client file could not be written; the run stopped. |
+
+## `config-editor` events
+
+| Event | Level | Description |
+|---|---|---|
+| `cvar.apply_completed` | info | Apply finished (logged at warning if any file was skipped or failed). |
+| `cvar.apply_started` | info | Apply (or a dry run) of the pending changes started. |
+| `cvar.backup_failed` | error | The zip of the original files failed; nothing was changed. |
+| `cvar.dry_run_completed` | info | A dry run finished. |
+| `cvar.earlier_unfinished` | error | Apply was refused: an earlier Apply did not finish (its crash marker is there); nothing was changed. |
+| `cvar.file_changed` | warning | A file changed since the scan; its changes were skipped. |
+| `cvar.file_created` | info | A client file that did not exist was created with the pending changes. |
+| `cvar.file_edited` | info | A client file (in an account or character folder, or Config.wtf) was rewritten with the pending changes. |
+| `cvar.file_locked` | error | Apply or Undo stopped before changing anything: files are locked by another program. |
+| `cvar.file_removed` | info | Undo or recovery: a file the run had created was deleted (it was still what the run wrote). |
+| `cvar.file_restored` | info | Undo or recovery: a file was put back to its original bytes. |
+| `cvar.file_skipped` | warning | Undo or recovery: a file was left alone (it changed since the run, or is outside the WTF folder). |
+| `cvar.file_unreadable` | warning | A Config.wtf or config-cache.wtf could not be read, so it is shown read-only and never written (path, reason). |
+| `cvar.files_backed_up` | info | The originals of the files to change were zipped and verified. |
+| `cvar.flavors_stopped` | warning | An Apply over several flavors stopped at one flavor; the flavors after it were not started. |
+| `cvar.journal_failed` | error | The run journal could not be written; nothing was changed. |
+| `cvar.journal_pruned` | info | Older journals (and the zips only they used) were deleted to keep the newest N (keep_journals). |
+| `cvar.marker_failed` | error | The crash marker could not be written; nothing was changed. |
+| `cvar.marker_left` | warning | Apply finished but its crash marker could not be removed (another program held it); the next scan offers the run as unfinished, and putting the originals back then only removes the marker. |
+| `cvar.marker_stale` | info | Recovery found that the run named by the crash marker had finished (its journal says so for every file it wrote, and the files it skipped are not at what it would have written): no file was changed, only the marker is removed (logged at warning with marker_left when it could not be removed either: the next scan offers it again). |
+| `cvar.probe_recovered` | warning | A client file left as <name>.wowtools-lockcheck by an interrupted lock check was renamed back. |
+| `cvar.recovery_done` | info | The user chose what to do about an unfinished Apply (put back or leave); logged at warning with marker_left when its crash marker could not be removed (the next scan offers it again). |
+| `cvar.recovery_offered` | warning | A marker from an Apply that did not finish was found by a scan (on opening or a rescan), or Apply was pressed while it is there. |
+| `cvar.rollback_failed` | error | A file could not be put back after a failure; restore it from the zip the message names. |
+| `cvar.rolled_back` | warning | After a failure, the files this run had already written were put back. |
+| `cvar.scanned` | info | The CVar files of a flavor were read (flavor, files, files that exist, read-only files). |
+| `cvar.snapshot_discarded` | info | A whole-WTF snapshot taken before an Undo whose other snapshot failed was deleted: nothing was changed, so it protected nothing. |
+| `cvar.snapshot_failed` | error | The whole-WTF snapshot failed; nothing was changed. |
+| `cvar.snapshot_taken` | info | The whole-WTF snapshot was written and verified. |
+| `cvar.snapshots_pruned` | info | Older whole-WTF snapshots of the flavor were deleted to keep the newest N (keep_backups). |
+| `cvar.undo_completed` | info | Undo last change finished (logged at warning if any file was skipped or failed). |
+| `cvar.undo_failed` | error | Undo or recovery: a file could not be put back (its zip is missing or does not match). |
+| `cvar.undo_started` | info | Undo last change started, from the newest journal. |
+| `cvar.verify_failed` | error | An edited file did not re-read as expected; it was not written and the run stopped. |
+| `cvar.would_edit` | info | Dry run: a file that would be rewritten, with its changes (checked, not written). |
+| `cvar.wow_running` | warning | Apply or Undo was refused because WoW of that flavor is running. |
+| `cvar.write_failed` | error | A client file could not be written; the run stopped. |
