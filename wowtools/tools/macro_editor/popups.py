@@ -1,7 +1,7 @@
-"""The Macro Editor's popups, styled like ConfirmScreen (ui.dialogs.popup_css): the macro form of New and Edit (name,
-icon, body and its `n / 255` meter, ME8; the full edit screen with suggestions and help is T16's), the paste review
-(ME4, ME5: every name clash with Skip, Rename or Overwrite, "Apply to all", the macros a full or read-only set
-refuses and the cross-flavor warnings) and Replace text… (ME7: find, replace, Match case and a before/after preview).
+"""The Macro Editor's popups, styled like ConfirmScreen (ui.dialogs.popup_css): the paste review (ME4, ME5: every name
+clash with Skip, Rename or Overwrite, "Apply to all", the macros a full or read-only set refuses and the cross-flavor
+warnings) and Replace text… (ME7: find, replace, Match case and a before/after preview). The edit screen of New and
+Edit and its builder, optimizer, template and reference screens are in their own *_screen.py modules.
 Each dismisses with what the user chose; the review stages it (edit_actions.py). Nothing is written here."""
 from __future__ import annotations
 
@@ -14,104 +14,19 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Checkbox, Input, OptionList, Static, TextArea
+from textual.widgets import Button, Checkbox, Input, OptionList, Static
 from textual.widgets.option_list import Option
 
-from wowtools.core.macrofile import BODY_LIMIT, ICON_DEFAULT, NAME_LIMIT
 from wowtools.core.text import plural
-from wowtools.tools.macro_editor.ops import ClashChoice, PastePreview, ReplaceRow, body_length, clash_key
-from wowtools.ui.dialogs import ALERT_STYLE, popup_css, show_error
+from wowtools.tools.macro_editor.ops import ClashChoice, PastePreview, ReplaceRow, clash_key
+from wowtools.ui.dialogs import ALERT_STYLE, popup_css
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
-__all__ = ["CHOICE_TEXT", "MacroFormScreen", "PasteScreen", "ReplaceTextScreen"]
+__all__ = ["CHOICE_TEXT", "PasteScreen", "ReplaceTextScreen"]
 
 CHOICE_TEXT = {"skip": "skip", "rename": "rename", "overwrite": "overwrite"}
 CHOICES: tuple[ClashChoice, ...] = ("skip", "rename", "overwrite")
 PREVIEW_ROWS = 6  # Replace text… shows this many macros, then "and n more"
-
-
-class MacroFormScreen(ModalScreen[tuple[str, str, str] | None]):
-    """New or Edit: the name (cut at NAME_LIMIT as typed, V4), the icon (a file id or a texture name; empty is the
-    "?" icon) and the body, with its `n / 255` meter; Save is off while the body is over BODY_LIMIT (ME8). `check`
-    returns why the macro can't be staged (the staging's refusal) or None, shown under the fields. Dismisses with
-    (name, icon, body), or None."""
-
-    DEFAULT_CSS = popup_css("MacroFormScreen") + """
-    MacroFormScreen TextArea { height: 8; margin-top: 1; }
-    MacroFormScreen #macro-meter { height: 1; }
-    """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"),
-                                         Binding("ctrl+s", "save", "Save", show=False), *NAV_BINDINGS]
-
-    def __init__(self, title: str, where: str, name: str = "", icon: str = ICON_DEFAULT, body: str = "",
-                 check: Callable[[str, str, str], str | None] | None = None) -> None:
-        super().__init__()
-        self.title_text = title
-        self.where = where
-        self.macro_name, self.macro_icon, self.macro_body = name, icon, body
-        self.check = check or (lambda name, icon, body: None)
-
-    def compose(self) -> ComposeResult:
-        with Vertical(classes="popup-box"):
-            yield Static(Text(self.title_text), classes="title")
-            yield Static(Text(self.where), classes="popup-body")
-            yield Input(self.macro_name, placeholder=f"name (up to {NAME_LIMIT} characters)", max_length=NAME_LIMIT,
-                        id="macro-name", compact=True)
-            yield Input(self.macro_icon, placeholder=f"icon: a file id or a texture name ({ICON_DEFAULT} is ?)",
-                        id="macro-icon", compact=True)
-            yield TextArea(self.macro_body, id="macro-body", soft_wrap=True, compact=True)
-            yield Static("", id="macro-meter")
-            yield Static("", id="macro-error", classes="popup-error")
-            with ButtonRow(classes="popup-buttons"):
-                yield action_button("Save", "confirm", "ctrl+s", id="ok")
-                yield action_button("Cancel", "cancel", "escape", id="cancel")
-            yield NavHint("Ctrl+S save · Tab move · Enter in the body starts a new line · ←→ buttons")
-
-    def on_mount(self) -> None:
-        self._meter()
-        self.query_one("#macro-name", Input).focus()
-
-    def values(self) -> tuple[str, str, str]:
-        icon = self.query_one("#macro-icon", Input).value.strip() or ICON_DEFAULT
-        return self.query_one("#macro-name", Input).value, icon, self.query_one("#macro-body", TextArea).text
-
-    def _meter(self) -> None:
-        length = body_length(self.query_one("#macro-body", TextArea).text)
-        over = length > BODY_LIMIT
-        self.query_one("#macro-meter", Static).update(
-            Text(f"{length} / {BODY_LIMIT}", style=ALERT_STYLE if over else "dim"))
-        self.query_one("#ok", Button).disabled = over
-
-    def on_text_area_changed(self, event: TextArea.Changed) -> None:
-        self._meter()
-        show_error(self.query_one("#macro-error", Static), None)
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        show_error(self.query_one("#macro-error", Static), None)
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        event.stop()
-        self.action_save()
-
-    def action_save(self) -> None:
-        if self.query_one("#ok", Button).disabled:
-            return
-        name, icon, body = self.values()
-        problem = self.check(name, icon, body)
-        if problem is not None:
-            show_error(self.query_one("#macro-error", Static), problem)
-            return
-        self.dismiss((name, icon, body))
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        event.stop()
-        if event.button.id == "ok":
-            self.action_save()
-        else:
-            self.dismiss(None)
-
-    def action_cancel(self) -> None:
-        self.dismiss(None)
 
 
 class PasteScreen(ModalScreen[dict[tuple[Path, str], ClashChoice] | None]):

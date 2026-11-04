@@ -191,7 +191,8 @@ settings screen. The full data flow and every screen of each tool are in its int
   (`core/client_apply.py`, events `copier.*`); a diff per replaced pair, Undo removes the files a copy created.
   [Internals](internals/config-copier.md) · [guide](config-copier.md)
 - **Macro Editor** (`macro-editor`, `tools/macro_editor`, `MacroEditorFlow`). Lists every `macros-cache.txt` of the
-  chosen flavors (account macros and real characters) with slot use, stages New, Edit, Delete, Copy / Paste… (clash
+  chosen flavors (account macros and real characters) with slot use, stages New, Edit (an edit screen with
+  suggestions, a help panel, the conditional builder, optimizer and templates from the KB), Delete, Copy / Paste… (clash
   review, cross-flavor warnings from the KB macro reference) and Replace text…, and applies them in one run over every
   flavor through the client-file pipeline (`core/client_apply.apply_client_flavors`, events `macro.*`); one Undo.
   [Internals](internals/macro-editor.md) · [guide](macro-editor.md)

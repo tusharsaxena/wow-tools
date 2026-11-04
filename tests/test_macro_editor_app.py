@@ -16,8 +16,9 @@ from tests.fixtures import (BASE, MACRO_ACCOUNT, MACRO_AELLA, MACRO_BOB, MACRO_U
 from wowtools.core.events import capture_events
 from wowtools.core.macrofile import parse_macros
 from wowtools.tools import TOOLS
+from wowtools.tools.macro_editor.edit_screen import MacroEditScreen
 from wowtools.tools.macro_editor.model import MACRO_FILE
-from wowtools.tools.macro_editor.popups import MacroFormScreen, PasteScreen, ReplaceTextScreen
+from wowtools.tools.macro_editor.popups import PasteScreen, ReplaceTextScreen
 from wowtools.tools.macro_editor.report import DELETE_WARNING
 from wowtools.tools.macro_editor.review_screen import (MacroNode, MacroResultScreen, MacroReviewScreen, SetKey,
                                                        SetNode)
@@ -62,7 +63,10 @@ async def goto(pilot, tree: Tree, node) -> None:
     await pilot.pause()
 
 
-class MacroEditorAppTest(TuiTestCase):
+class MacroEditorTestBase(TuiTestCase):
+    """The temp WoW folder (build_macro_tree), the app and the steps to the browse screen; shared with
+    tests/test_macro_editor_edit.py."""
+
     def setUp(self):
         t = tempfile.TemporaryDirectory()
         self.addCleanup(t.cleanup)
@@ -126,6 +130,8 @@ class MacroEditorAppTest(TuiTestCase):
         await settle(app, pilot)
         self.assertIsInstance(app.screen, MacroResultScreen)
 
+
+class MacroEditorAppTest(MacroEditorTestBase):
     async def test_registered_in_the_menu(self):
         tool = TOOLS[TOOL]
         self.assertEqual((tool.title, tool.section), ("Macro Editor", "macro_editor"))
@@ -270,7 +276,7 @@ class MacroEditorAppTest(TuiTestCase):
             await pilot.press("e")
             await settle(app, pilot)
             form = app.screen
-            self.assertIsInstance(form, MacroFormScreen)
+            self.assertIsInstance(form, MacroEditScreen)
             form.query_one("#macro-body", TextArea).text = "/sit\n/wave"
             await settle(app, pilot)
             self.assertIn("10 / 255", str(form.query_one("#macro-meter").render()))
@@ -287,7 +293,7 @@ class MacroEditorAppTest(TuiTestCase):
             await pilot.press("N")
             await settle(app, pilot)
             form = app.screen
-            self.assertIsInstance(form, MacroFormScreen)
+            self.assertIsInstance(form, MacroEditScreen)
             form.query_one("#macro-name", Input).value = "Hello"
             form.query_one("#macro-body", TextArea).text = "/wave"
             await settle(app, pilot)

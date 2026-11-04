@@ -1,5 +1,6 @@
 """The Macro Editor browse screen's macro actions (config tools spec ME3-ME8), mixed into MacroReviewScreen: the bar
-under the tree. New (on the highlighted set) and Edit (the highlighted macro) open the macro form; Delete asks
+under the tree. New (on the highlighted set) and Edit (the highlighted macro) open the edit screen (edit_screen.py:
+suggestions, help, builder, optimizer, templates); Delete asks
 first, with the ME6 action bar warning; Copy takes the ticked macros (else the highlighted one) as they are staged;
 Paste… pastes them into the ticked sets after the paste review (clashes, slots, cross-flavor warnings); Replace
 text… acts on the ticked (else the highlighted) macros' bodies. Each stages on the review's Staged (ops.py): nothing
@@ -9,12 +10,13 @@ from __future__ import annotations
 
 from wowtools.core.events import log_event
 from wowtools.core.text import plural
+from wowtools.tools.macro_editor.edit_screen import MacroEditScreen
 from wowtools.tools.macro_editor.model import MacroSet
 from wowtools.tools.macro_editor.ops import (Staged, check_macro, cut_name, free_slots, preview_paste,
                                              preview_replace, stage_delete, stage_edit, stage_new,
                                              stage_replace_text)
-from wowtools.tools.macro_editor.popups import MacroFormScreen, PasteScreen, ReplaceTextScreen
-from wowtools.tools.macro_editor.report import DELETE_WARNING, paste_warnings, set_text
+from wowtools.tools.macro_editor.popups import PasteScreen, ReplaceTextScreen
+from wowtools.tools.macro_editor.report import DELETE_WARNING, paste_warnings, scope_text, set_text
 from wowtools.ui.dialogs import ConfirmScreen
 
 __all__ = ["NOTHING_COPIED", "NOTHING_PICKED", "NO_TARGETS", "TREE_ACTIONS", "MacroEditActions"]
@@ -71,7 +73,8 @@ class MacroEditActions:
                 return
             log_event("ui.selection", screen=self.LOG_SCREEN, control="new_macro", value=set_text(mset))
             self.staging_changed()
-        self.app.push_screen(MacroFormScreen("New macro", set_text(mset), check=check), done)
+        self.app.push_screen(MacroEditScreen("New macro", set_text(mset), scope_text(mset),
+                                             flavor=mset.flavor.folder, check=check), done)
 
     def action_edit_macro(self) -> None:
         picked = self.highlighted_macro()
@@ -97,8 +100,10 @@ class MacroEditActions:
             log_event("ui.selection", screen=self.LOG_SCREEN, control="edit_macro",
                       value=f"{set_text(mset)} › {macro.name}")
             self.staging_changed()
-        self.app.push_screen(MacroFormScreen("Edit macro", f"{set_text(mset)} (the macro keeps its id)",
-                                             macro.name, macro.icon, macro.body, check), done)
+        self.app.push_screen(MacroEditScreen("Edit macro", set_text(mset),
+                                             f"{scope_text(mset)} It keeps its id, so its action bar buttons stay.",
+                                             flavor=mset.flavor.folder, name=macro.name, icon=macro.icon,
+                                             body=macro.body, check=check), done)
 
     # --- Delete --------------------------------------------------------------------------------
     def action_delete_macros(self) -> None:

@@ -62,8 +62,14 @@ character folder. Leaving, quitting, a rescan and Undo ask before dropping stage
   `SvRecoveryActions`, `RunActions`, `ReviewBase`). Left pane: the risk banner (STD-7.10), the filter box with
   Names / Bodies / Only matching macros, the staged line, Apply / Dry run / Rescan / Undo last change. The bar under
   the tree: New `N`, Edit `e`, Delete `d`, Copy `k`, Paste… `p`, Replace text… `R` (`edit_actions.TREE_ACTIONS`).
-- `popups.MacroFormScreen` (New, Edit: name, icon, body and its meter; T16 replaces it with the full edit screen),
-  `PasteScreen` (clashes, Skip / Rename / Overwrite, Apply to all, refusals and warnings), `ReplaceTextScreen`.
+- `edit_screen.MacroEditScreen` (New, Edit; ME8): name (cut at 16), icon, scope line, the `n / 255` meter (Save off
+  over 255), `MacroTextArea` with the suggestion list (`syntax.suggestions`, replacing from `syntax.completion_start`;
+  ↑/↓, Tab/Enter, Esc while it shows) and the help panel (`explain.describe_at`, plus `unknown_terms` for the flavor).
+  Ctrl+B `builder_screen.BuilderScreen` (ME9: `builder.read_block` / `write_block`, an unchanged block stays as
+  written, unshown items kept), Ctrl+O `optimize_screen.OptimizeScreen` (ME10: each `Rewrite` with its reason and
+  source; OK takes the body), Ctrl+T `template_screen.TemplateScreen` (ME11: fill the placeholders, inserted as whole
+  lines after the cursor's line), F1 `reference_screen.ReferenceScreen` (`explain.reference_lines`).
+- `popups.PasteScreen` (clashes, Skip / Rename / Overwrite, Apply to all, refusals and warnings), `ReplaceTextScreen`.
 - `MacroResultScreen` (the shared result screen), `MacroProgressScreen` (one row per flavor).
 
 ## Events
@@ -74,6 +80,7 @@ character folder. Leaving, quitting, a rescan and Undo ask before dropping stage
 ## Tests
 
 `tests/test_macro_editor_ops.py` (staging and the bytes), `tests/test_macro_editor_syntax.py` and
-`tests/test_macro_editor_optimizer.py` (the reference, explainer, optimizer and templates), `tests/test_macro_editor_run.py`
+`tests/test_macro_editor_optimizer.py` (the reference, explainer, optimizer and templates), `tests/test_macro_editor_edit.py`
+(the edit screen, builder, optimizer, template and reference screens, and their UI-free halves), `tests/test_macro_editor_run.py`
 (runs across files and flavors, dry run, WoW running, a file changed since, the paste preview and warnings, texts) and
 `tests/test_macro_editor_app.py` (the browse screen end to end), on `tests/fixtures.py` `build_macro_tree`.

@@ -81,9 +81,21 @@ Leaving with changes not applied yet asks first.
 
 ## New and Edit
 
-**New** and **Edit** open a form with the macro's name (up to 16 characters, as in the game), its icon (a file id
-such as `134400`, the question mark, or a texture name) and its text, with a `n / 255` meter. **Save** is greyed out
-while the text is too long. An edited macro keeps its place on your action bars.
+**New** and **Edit** open the edit screen: the macro's name (up to 16 characters, as in the game), its icon (a file
+id such as `134400`, the question mark, or a texture name) and its text, with a `n / 255` meter. **Save** (`Ctrl+S`)
+is greyed out while the text is too long. An edited macro keeps its place on your action bars.
+
+As you type a `/command`, a conditional after `[` or `,`, or a unit after `@`, a list of suggestions opens under the
+text: ↑/↓ choose, Tab or Enter take one, Esc closes the list. The help panel on the right explains whatever is under
+the cursor and reads a whole `[...]` block out in plain English, with the page it comes from. Spell names are free
+text and never checked.
+
+| Key | What it does |
+|---|---|
+| `Ctrl+B` | **Builder…**: pick the target, help or harm, and states such as `nodead` or `mod:shift` for the `[...]` block under the cursor (or a new one) |
+| `Ctrl+O` | **Optimize…**: shows each rewrite that makes the macro shorter and why it is the same in game; **OK** takes them |
+| `Ctrl+T` | **Template…**: pick a common macro (mouseover heal, focus interrupt, ...), fill in the spell names, insert it |
+| `F1` | **Reference**: every command, conditional and unit the editor knows, with its source |
 
 ## Delete
 

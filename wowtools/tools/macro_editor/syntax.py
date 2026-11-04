@@ -14,8 +14,8 @@ from typing import Literal
 
 from wowtools.core.kb import ConditionalInfo, MacroReference, load_macro_reference
 
-__all__ = ["DIRECTIVES", "Clause", "Line", "Token", "lines", "option_commands", "parse_line", "suggestions", "token_at",
-           "tokenize"]
+__all__ = ["DIRECTIVES", "Clause", "Line", "Token", "completion_start", "lines", "no_help", "option_commands",
+           "parse_line", "suggestions", "token_at", "tokenize"]
 
 DIRECTIVES = ("#showtooltip", "#show")  # written in lower case, or the client skips the line
 TokenKind = Literal["command", "condition_block", "condition", "unit", "text", "comment", "directive"]
@@ -208,11 +208,26 @@ def suggestions(body: str, offset: int, ref: MacroReference) -> list[tuple[str, 
         if name.startswith(low):
             out.add((name, info.help))
         if low.startswith("no") and f"no{name}".startswith(low):
-            out.add((f"no{name}", _no_help(info)))
+            out.add((f"no{name}", no_help(info)))
     return sorted(out)
 
 
-def _no_help(info: ConditionalInfo) -> str:
+def completion_start(body: str, offset: int) -> int:
+    """Where the text a suggestion replaces starts (it ends at the cursor): the start of a `/command` or
+    `#directive` word, else just after the last `[`, `,`, `@` or `:` before the cursor (and the spaces after it),
+    as suggestions() reads the word."""
+    start = body.rfind("\n", 0, offset) + 1
+    before = body[start:offset]
+    word = before.lstrip()
+    if re.fullmatch(r"[/#]\S*", word):
+        return offset - len(word)
+    cut = max(before.rfind(sep) for sep in "[,@:") + 1
+    while cut < len(before) and before[cut].isspace():
+        cut += 1
+    return start + cut
+
+
+def no_help(info: ConditionalInfo) -> str:
     """The short help of a conditional's `no` form, from its explain_no: "The unit is not dead."."""
     text = info.explain_no.replace("{unit}", "the unit")
     return text[:1].upper() + text[1:] + ("" if text.endswith(".") else ".")

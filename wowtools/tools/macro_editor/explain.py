@@ -7,12 +7,19 @@ from __future__ import annotations
 
 import re
 
-from wowtools.core.kb import ConditionalInfo, MacroReference
-from wowtools.tools.macro_editor.syntax import lines, option_commands
+from wowtools.core.install import flavor_name
+from wowtools.core.kb import CommandInfo, ConditionalInfo, MacroReference, UnitInfo
+from wowtools.tools.macro_editor.syntax import Token, lines, no_help, option_commands
 
-__all__ = ["explain_block", "explain_unit", "read_conditional", "unknown_terms"]
+__all__ = ["SPELL_TEXT", "describe_at", "explain_block", "explain_unit", "read_conditional", "reference_lines",
+           "unknown_terms"]
 
 UNKNOWN = "(not in the reference)"
+SPELL_TEXT = "A spell or item name: free text, not checked against any spell list."
+CHAT_TEXT = "Text the command takes as it is (never read as conditions)."
+COMMENT_TEXT = "A # line that is not #showtooltip or #show: the client skips it."
+VERBS = {"/cast": "Cast", "/spell": "Cast", "/castsequence": "Cast", "/castrandom": "Cast", "/use": "Use",
+         "/userandom": "Use"}
 _NUMBERED = re.compile(r"^([a-z]+?)(\d+)$")
 _MERGE = ("it's ", "your target is ", "you're ")
 
@@ -122,3 +129,82 @@ def unknown_terms(body: str, ref: MacroReference) -> list[str]:
                 if info is not None and ref.applies(info) is False:
                     flag(f"@{info.name}")
     return out
+
+
+def _verb(command: str) -> str:
+    return VERBS.get(command.lower(), f"Run {command.lower()}")
+
+
+def _source(entry: CommandInfo | ConditionalInfo | UnitInfo) -> str:
+    return f"Source: {entry.source}"
+
+
+def _flavor_note(entry: CommandInfo | ConditionalInfo | UnitInfo, ref: MacroReference) -> str:
+    """"Not in <flavor> (by its source)." when the entry's source leaves the reference's flavor out, else ""."""
+    if ref.applies(entry) is False:
+        return f"Not in {flavor_name(ref.flavor)}, by its source."
+    return ""
+
+
+def describe_at(body: str, offset: int, ref: MacroReference) -> list[str]:
+    """The help panel's lines for the cursor (ME8): what the token under it is, from the reference with its source;
+    inside a [...] block also the whole block read out in plain English. No lines between tokens."""
+    for line in lines(body, option_commands(ref) or option_commands()):
+        if not line.start <= offset <= line.start + len(line.text):
+            continue
+        inside = [t for t in line.tokens if t.start <= offset <= t.end]
+        if not inside:
+            return []
+        token = min(inside, key=lambda t: t.end - t.start)
+        verb = _verb(line.head.text) if line.head is not None and line.head.kind == "command" else "Show"
+        block = next((t for t in inside if t.kind == "condition_block"), None)
+        out = _describe(token, line.head, ref)
+        if block is not None:
+            out.append(explain_block(block.text, ref, verb=verb))
+        return [text for text in out if text]
+    return []
+
+
+def _describe(token: Token, head: Token | None, ref: MacroReference) -> list[str]:
+    if token.kind == "command":
+        info = ref.commands.get(token.text.lower())
+        if info is None:
+            return [f"{token.text} {UNKNOWN}"]
+        return [f"{token.text}: {info.help}", _flavor_note(info, ref), _source(info)]
+    if token.kind == "directive":
+        return [f"{token.text}: a metacommand {UNKNOWN}"]
+    if token.kind == "comment":
+        return [COMMENT_TEXT]
+    if token.kind == "condition":
+        info, negated, _ = read_conditional(token.text, ref)
+        if info is None:
+            return [f"{token.text} {UNKNOWN}"]
+        return [f"{token.text}: {no_help(info) if negated else info.help}", _flavor_note(info, ref), _source(info)]
+    if token.kind == "unit":
+        name = _unit_name(token.text)
+        info = ref.units.get(name) or ref.units.get(_NUMBERED.sub(r"\1", name))
+        text = f"@{name}: {explain_unit(name, ref)}"
+        if info is None:
+            return [text]
+        return [text, info.help, _flavor_note(info, ref), _source(info)]
+    if token.kind == "condition_block":
+        return []
+    # text: a clause's spell or item name on a command that reads conditions, else the argument as it is
+    options = head is not None and head.kind in ("command", "directive") and (
+        head.kind == "directive" or head.text.lower() in (option_commands(ref) or option_commands()))
+    return [SPELL_TEXT if options else CHAT_TEXT]
+
+
+def reference_lines(ref: MacroReference) -> list[tuple[str, str, str, str, str]]:
+    """The full reference (F1): (section, name, help, source, flavor note) for every command, conditional and unit,
+    each once (aliases named in the help), sorted by name within its section."""
+    rows: list[tuple[str, str, str, str, str]] = []
+    for section, entries, label in (("Commands", ref.commands, lambda e: e.name),
+                                    ("Conditionals", ref.conditionals, lambda e: e.name),
+                                    ("Units", ref.units, lambda e: f"@{e.name}1" if e.numbered else f"@{e.name}")):
+        unique = {id(entry): entry for entry in entries.values()}.values()
+        for entry in sorted(unique, key=lambda e: e.name):
+            aliases = getattr(entry, "aliases", ())
+            text = entry.help + (f" (also {', '.join(aliases)})" if aliases else "")
+            rows.append((section, label(entry), text, entry.source, _flavor_note(entry, ref)))
+    return rows

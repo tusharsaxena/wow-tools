@@ -25,7 +25,7 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 | T13 | M4 | macro model, ops, paste rules | done | d0c5c50, review fixes (this commit) | 19 new tests in test_macro_editor_ops.py (the plan's nine plus scan, read-only and unreadable sets, empty-set create, skip, edit back to the original, staged add edit/delete, delete, non-UTF-8 bytes, count/clear); `macro.*` events registered; gate green: WSL 2186 OK (9 skipped), Windows 2186 OK (85 skipped), ruff clean, events.md current. Review fixes: stage_edit keeps a macro's own name when it is unchanged and cuts only a new one, so Replace text on a file name over 16 characters changes only the body (ME13); a paste clash compares cut names on both sides, and rename_for_clash gets the cut names; 2 new tests; gate green: WSL 2188 OK (9 skipped), Windows 2188 OK (85 skipped), ruff clean, events.md current |
 | T14 | M4 | macro reference, explainer, optimizer, templates | done | (this commit) | 28 new tests: 18 in test_macro_editor_syntax.py (the plan's seven syntax ones plus spaces and target=, chat text and comments, token_at, more explain blocks, a conditional the flavor lacks, command and conditional suggestions, reference aliases and builder lists, unsourced entries dropped, a bad reference file, fill_template's checks, unsourced templates dropped), 10 in test_macro_editor_optimizer.py (one per rule incl. cast_to_use never applied, the rules data, only KB rules applied, kept #showtooltip cases, rules together, spell text untouched); test_kb's README needles gain the three files; architecture.md `kb` row and wowtools/kb/README.md describe the new files and loaders. Gate green: WSL 2216 OK (9 skipped), Windows 2216 OK (85 skipped), ruff clean, events.md current. No CHANGELOG line: nothing a user sees yet (the tool is registered in T15). Review fixes (T14r): duplicate_conditions keeps unit segments, `no` suggestions read their explain_no; test_duplicate_units_are_kept and a nodead help assertion added; gate green: 2217 OK on WSL and Windows, ruff clean, events.md current |
 | T15 | M4 | macro browse screen, apply, undo | done | (this commit) | 24 new tests: 11 in test_macro_editor_run.py (the run across files then Undo, across flavors, dry run, WoW running, changed since the scan, unknown layout never written, paste preview clashes/choices/refusals, cross-flavor warnings, texts, confirm and result rows), 11 TUI in test_macro_editor_app.py (the plan's seven plus registry, leaving asks, WoW running, 80x24), 2 in test_client_apply.py (several flavors in one run and one Undo, a flavor's guard refuses another's file); the editor added to every meta-test table (look and feel incl. DESTRUCTIVE_REVIEWS, help, quit incl. STAGING_TOOLS, tool menu, toasts, warnings) and to test_structure (journals/undo, recovery, action mixins, banner, 9 tree screens); first guide, internals doc, README/CLAUDE.md/architecture/releasing rows, RELEASE_SHIPS, STD-7.10 list, CHANGELOG line (T15j); events.md regenerated. Gate: ruff clean, events.md current, Windows 2241 OK (85 skipped); WSL 2241 OK except the two test_release_contents git-archive checks, which read HEAD and so fail until the new guide is committed (as T11); re-run green after the commit. Review fix (T15r): architecture.md's `client_apply` row names `apply_client_flavors` (one journal and one Undo over several flavors, a guard per flavor, the WoW check once, stops at the first failing flavor); docs only, no new tests; gate green: 2241 OK on WSL (9 skipped) and Windows (85 skipped), ruff clean, events.md current |
-| T16 | M4 | macro edit screen and popups | todo | | |
+| T16 | M4 | macro edit screen and popups | done | (this commit) | 14 new tests in test_macro_editor_edit.py (the plan's seven TUI ones plus 4 builder read/write/block_at, describe_at, reference_lines, completion_start); test_macro_editor_app's setUp and helpers moved to `MacroEditorTestBase` (shared), its New/Edit steps now on MacroEditScreen (T15f's MacroFormScreen removed); guide New and Edit section, internals Screens/Tests, architecture row and the CHANGELOG Macro Editor line name the editor. Gate green: WSL 2255 OK (9 skipped), Windows 2255 OK (85 skipped), ruff clean, events.md current |
 | T17 | M4 | macro docs; push | todo | | |
 | T18 | M5 | config model and edits | todo | | |
 | T19 | M5 | recommendations data | todo | | |
@@ -408,3 +408,30 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
   architecture / releasing rows, `RELEASE_SHIPS` entry, CHANGELOG `### Added` line and a screenshot, so first
   versions land here (`browse.png`: the app's own SVG at 120x30 of `build_macro_tree`, Retail, an edit and a new
   macro staged, through headless Chrome at 1920x1013; no script committed, as T11/T12). T17 completes the docs.
+- T16a: the edit screen's keys are Ctrl+B (builder), Ctrl+O (optimize), Ctrl+T (template), F1 (reference) and
+  Ctrl+S (Save), not the plan's bare `b`, `o`, `t`: the focus sits in the name, icon or body boxes, where a letter
+  types (STD-8.8), and `t` is the suite's tool-menu key that a screen may bind to nothing else (STD-8.11). The
+  letters stay as the Ctrl mnemonics; every popup's OK / Insert is Ctrl+S too.
+- T16b: the builder, optimizer and template popups are `builder_screen.py`, `optimize_screen.py` and
+  `template_screen.py`, not the plan's `*_popup.py`: STD-1.7's front-end module names (`*_screen.py`, `popups.py`,
+  ...) are the only ones that may import textual (test_only_front_end_modules_import_the_ui). Their UI-free halves:
+  `builder.py` (`BlockChoice`, `read_block`, `write_block`, `block_at`), `explain.describe_at` /
+  `reference_lines`, `syntax.completion_start`, `report.scope_text`.
+- T16c: the edit screen is a full screen (Header, the body and the help panel side by side, a WrapButtonRow of six
+  compact buttons, BottomBar), so the help panel has room; Esc closes the suggestion list first, then cancels. The
+  optimizer's and builder's confirm button is **OK** (confirm), not "Apply": Apply is the destructive run label
+  everywhere (STD-8.3) and these popups only change the editor's text. With no rewrite to make, Ctrl+O shows a
+  notice instead of an empty popup.
+- T16d: suggestions open on typing only (a cursor move closes them, so ↑/↓ keep moving the cursor), list what
+  `syntax.suggestions` gives minus the word already typed in full, and replace from `completion_start` to the
+  cursor; while they show, ↑/↓ choose and Tab/Enter take one, else Enter is a new line and Tab the next control.
+- T16e: builder (ME9): the target radio list is none + the reference's builder targets, plus the block's own unit
+  when the list lacks it (`@party1`); `target=x` reads as `@x`; help/harm/either; a checkbox per builder state,
+  ticking one unticks its `no` opposite. An unchanged choice writes the block back exactly as written (spacing
+  kept); a change keeps every item's place and spelling, drops unticked ones, puts a new target or reaction first
+  and new states last, and keeps items the builder doesn't show (`spec:2`). Outside a block OK inserts a new one
+  at the cursor, with a space before the spell name or after the command if none is there.
+- T16f: a template replaces an empty body, else goes in as whole lines after the cursor's line. The help panel
+  reads directives as "a metacommand (not in the reference)" (the KB has no directive entries) and adds the
+  flavor's `unknown_terms` line (ME5) under the cursor's help. The name box keeps a file name longer than 16 as it
+  is (its max length is the longer of 16 and the name), so an edit that leaves the name alone never cuts it (T13r).

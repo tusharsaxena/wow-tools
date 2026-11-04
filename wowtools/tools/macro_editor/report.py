@@ -22,7 +22,7 @@ from wowtools.tools.macro_editor.ops import Staged, body_length, build_changes
 
 __all__ = ["ACCOUNT_MACROS", "DELETE_WARNING", "FILE_COLUMNS", "RESULT_TEXT", "STAGE_TITLES", "STATUS_COLOURS",
            "UNDO_COLUMNS", "apply_confirm", "apply_groups", "file_rows", "macro_text", "paste_warnings",
-           "recovery_text", "set_text", "slots_text", "summary_rows", "undo_confirm", "undo_detail_rows",
+           "recovery_text", "scope_text", "set_text", "slots_text", "summary_rows", "undo_confirm", "undo_detail_rows",
            "undo_summary_rows"]
 
 ACCOUNT_MACROS = "Account macros"
@@ -48,6 +48,13 @@ def macro_text(macro: Macro) -> str:
 def set_text(mset: MacroSet) -> str:
     """`Retail › MAIN/Account macros`, `Retail › MAIN/Realm1/Aellâ`: a set in a confirm or a warning."""
     return f"{mset.flavor.display_name} › {mset.label}"
+
+
+def scope_text(mset: MacroSet) -> str:
+    """The edit screen's scope line (ME8): whose macro this is."""
+    if mset.character is None:
+        return f"Account macro: every character of {mset.account.name} has it."
+    return f"Character macro: only {mset.character.name} ({mset.character.realm}) has it."
 
 
 def paste_warnings(picked: Sequence[tuple[MacroSet, Macro]], targets: Sequence[MacroSet]) -> list[str]:
