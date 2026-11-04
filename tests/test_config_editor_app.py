@@ -241,6 +241,33 @@ class ConfigEditorAppTest(TuiTestCase):
             self.assertIsInstance(app.screen, ConfigResultScreen)
             self.assertEqual(self.aella().read_bytes(), CONFIG_AELLA)
 
+    async def test_reset_checks_each_ticked_file_flavor(self):
+        # Classic Era has no CVar data, so no default: Reset across both flavors stages only Retail's file,
+        # whichever file's row is highlighted (T21 review fix)
+        era = self.root / "_classic_era_" / "WTF"
+        (era / "Account" / "ACCT" / "Realm1" / "Other").mkdir(parents=True)
+        (era / CONFIG_WTF).write_bytes(b'SET cameraDistanceMaxZoomFactor "2.0"\r\n')
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot, ALL_FLAVORS)
+            tree = review.query_one("#cvars", Tree)
+            era_file = next(n for n in walk(tree.root) if isinstance(n.data, FileNode)
+                            and n.data.target.flavor.folder == "_classic_era_" and n.data.target.label == CONFIG_WTF)
+            for node in (era_file, character_node(tree, "Aellâ")):
+                await self.press_on(app, pilot, review, node, "space")
+            self.assertEqual(len(review.ticked), 2)
+            await self.press_on(app, pilot, review, await cvar_node(pilot, era_file, "cameraDistanceMaxZoomFactor"),
+                                "R")
+            self.assertEqual(review.staged.removes, {self.aella(): {"cameraDistanceMaxZoomFactor"}})
+            self.assertTrue(any("no known default in 1 file" in n.message for n in app._notifications))
+            # only the Era file ticked: refused, nothing more staged
+            await self.press_on(app, pilot, review, character_node(tree, "Aellâ"), "space")
+            self.assertEqual(len(review.ticked), 1)
+            await self.press_on(app, pilot, review, await cvar_node(pilot, era_file, "cameraDistanceMaxZoomFactor"),
+                                "R")
+            self.assertEqual(review.staged.removes, {self.aella(): {"cameraDistanceMaxZoomFactor"}})
+            self.assertTrue(any("Remove (d) takes its line out" in n.message for n in app._notifications))
+
     async def test_recommend_batch_staged(self):
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:

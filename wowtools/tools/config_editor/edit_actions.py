@@ -1,11 +1,12 @@
 """The Config Editor browse screen's CVar edits (config tools spec CE5, CE7), mixed into ConfigReviewScreen: the bar
 under the tree and Space on a boolean row. Set (the highlighted CVar), Remove and Reset act on the highlighted CVar
-in every ticked file, else in the file of the highlighted row; Add puts a CVar into the ticked files, else the
-highlighted one; Recommend… lists the recommendations for the highlighted file and stages the ticked ones as a
-batch; Space on a CVar whose value is 0 or 1 toggles it there. Each stages on the review's ConfigStaged (ops.py):
-nothing is written until Apply. A scope mismatch (CE5) is a warning, never a refusal; an unknown CVar can be set,
-removed and added like any other. The screen supplies `staged`, `ticked`, `idle`, cvars_for(flavor),
-recommendations_for(flavor), highlighted_target(), highlighted_row(), picked_targets() and staging_changed()."""
+in every ticked file, else in the file of the highlighted row (Reset only where the file's own flavor knows the
+CVar's default; the others are named and left); Add puts a CVar into the ticked files, else the highlighted one;
+Recommend… lists the recommendations for the highlighted file and stages the ticked ones as a batch; Space on a CVar
+whose value is 0 or 1 toggles it there. Each stages on the review's ConfigStaged (ops.py): nothing is written until
+Apply. A scope mismatch (CE5) is a warning, never a refusal; an unknown CVar can be set, removed and added like any
+other. The screen supplies `staged`, `ticked`, `idle`, cvars_for(flavor), recommendations_for(flavor),
+highlighted_target(), highlighted_row(), picked_targets() and staging_changed()."""
 from __future__ import annotations
 
 from wowtools.core.events import log_event
@@ -120,9 +121,16 @@ class ConfigEditActions:
             return
         _, row, targets = found
         what = "Reset" if reset else "Remove"
-        if reset and (row.info is None or row.default is None):
-            self.notify(f"{row.name} has no known default: Remove (d) takes its line out.", title="Reset")
-            return
+        if reset:
+            known = [t for t in targets if self._known_default(t, row.name)]
+            if not known:
+                self.notify(f"{row.name} has no known default: Remove (d) takes its line out.", title="Reset")
+                return
+            skipped = [t for t in targets if t not in known]
+            if skipped:
+                self.notify(f"{row.name} has no known default in {files_text(skipped)}: left as it is there.",
+                            title="Reset", severity="warning")
+            targets = known
         for each in targets:
             try:
                 (stage_reset if reset else stage_remove)(self.staged, each, row.name)
@@ -131,6 +139,12 @@ class ConfigEditActions:
         log_event("ui.selection", screen=self.LOG_SCREEN, control="reset_cvar" if reset else "remove_cvar",
                   value=row.name, files=len(targets))
         self.staging_changed()
+
+    def _known_default(self, target: ConfigTarget, name: str) -> bool:
+        """Whether the knowledge base of the target's own flavor knows a default for the CVar (Reset needs one)."""
+        index = {n.casefold(): i for n, i in self.cvars_for(target.flavor.folder).items()}
+        info = index.get(name.casefold())
+        return info is not None and info.default is not None
 
     def action_remove_cvar(self) -> None:
         """Take the CVar's SET lines out (any CVar, known or not)."""

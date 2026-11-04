@@ -149,13 +149,13 @@ screen `s` opens.
 |----------|--------|
 | Will the game undo my change from its servers? | No: a file changed with WoW closed is what the game uses at the next login. |
 | What does `unknown` mean? | The knowledge base has no entry for that CVar in this game version. You can still change it. |
-| Is Reset the same as Remove? | Both take the line out, so the game uses its default. Reset is only offered when the default is known. |
+| Is Reset the same as Remove? | Both take the line out, so the game uses its default. Reset is only offered when the default is known: in ticked files of several game versions, it skips the files whose version has no default for it. |
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
 | **Apply** is greyed out | Nothing is changed yet. |
-| Space does nothing on a CVar | It isn't `0` or `1`: use **Set** (`e`). |
+| Space on a CVar only says to use **Set** | It isn't `0` or `1`: use **Set** (`e`). |
 | A character is missing | Its folder name isn't a character name (`Bob - Copy`, `Bob2`): rename or remove the folder. |
 | Something else looks wrong | Follow [Reporting a bug](../README.md#reporting-a-bug) in the main README. |
