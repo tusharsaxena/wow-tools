@@ -12,6 +12,7 @@ Back to [architecture](../architecture.md#tools). Decisions: spec `ME1`-`ME14`, 
 - [The file and its IDs (V4, V5)](#the-file-and-its-ids-v4-v5)
 - [Data flow](#data-flow)
 - [Staging](#staging)
+- [Knowledge base](#knowledge-base)
 - [Safety](#safety)
 - [Screens](#screens)
 - [Events](#events)
@@ -48,12 +49,34 @@ default; `clash_key` = target path and cut name); Paste keeps that copy. `report
 for another game version: one per (from, into) pair, then each macro's `explain.unknown_terms` against the target
 version's `core.kb.load_macro_reference`.
 
+## Knowledge base
+
+The editor's help, suggestions, warnings, builder, optimizer and templates are data under `wowtools/kb/`, read by
+`core/kb.py` (X6; schema and the sources rule in `wowtools/kb/README.md`). Every entry carries a `source`; one without
+it is not loaded, so nothing is described from a guess.
+
+- `macro_reference.json` → `load_macro_reference(flavor)`: commands, conditionals and `@unit` targets with their help
+  and plain-English phrases (`explain_block`, the help panel, `F1`), and the `builder` lists (ME9). An entry's
+  `flavors` names the flavors its source says it applies to; `null` (not stated) is never flagged by
+  `explain.unknown_terms` (ME5). Whether a flavor has a command at all comes only from its
+  `slash_commands/<flavor>.json` dump (X7); with no dump yet, no command is flagged as missing.
+- `macro_templates.json` → `load_templates()`: the templates (ME11), each with `{placeholder}`s and a source.
+- `optimizer_rules.json` → `load_optimizer_rules()`: the optimizer's rules (ME10) with the reason each rewrite is the
+  same in game; `optimizer.optimize` applies only the `automatic` ones (`cast_to_use` is listed, never applied).
+- `macro_limits.json` → `macro_limits(flavor)`: the slots (ME3), sourced for Retail only (120 account, 30 per
+  character, from the client's `MacroConstants`). Another flavor counts with Retail's values (`limits_known` False);
+  the tool does not mark them, and the guide says they may not match (T17b).
+
+Spell names are free text (ME12): there is no spell data, nothing checks or suggests them, and the optimizer never
+changes them (`showtooltip_same` only compares the directive's spell with the first one cast;
+`test_optimize_never_changes_spell_text`).
+
 ## Safety
 
 Every write goes through `core/client_apply.py` (X5): refused while that game version's WoW runs, Dry run that writes
 nothing, SHA-256 recheck against the scan, whole-WTF snapshot per flavor, originals zip, crash marker and journal
 before the first write, atomic write and read-back, Undo of the last Apply, recovery after a crash. `NAMES` is
-`{"macros-cache.txt"}`, so the guard refuses `cache.md5`, `.old` files and anything outside an account or real
+`{"macros-cache.txt"}`, so each flavor's `ClientFileGuard` refuses `cache.md5`, `.old` files and anything outside an account or real
 character folder. Leaving, quitting, a rescan and Undo ask before dropping staged changes.
 
 ## Screens

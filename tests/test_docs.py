@@ -165,7 +165,7 @@ class DocsTest(unittest.TestCase):
         readme = " ".join((REPO_ROOT / "README.md").read_text(encoding="utf-8").split())
         for needle in ("config\\config-copier.cfg", "](docs/config-copier.md)",
                        "](docs/assets/screenshots/config-copier/review.png)", "the Config Copier's last copy",
-                       "the Saved Variables Browser and the Config Copier can also do a practice run"):
+                       "the Saved Variables Browser, the Config Copier and the Macro Editor can also do a practice run"):
             self.assertIn(needle, readme)
         faq = readme[readme.index("## FAQ"):]
         self.assertIn("Config Copier", faq[:faq.index("Windows says")])  # safe? changes the game? close WoW?
@@ -184,6 +184,66 @@ class DocsTest(unittest.TestCase):
             self.assertIn(needle, internals)
         releasing = (REPO_ROOT / "docs" / "releasing.md").read_text(encoding="utf-8")
         self.assertIn("`docs/config-copier.md`", releasing)
+
+    def test_macro_editor_guide_readme_and_notes(self):
+        """T17 (spec ME1-ME14, V4, V5): the guide explains in plain words how WoW keeps macros (one file per account
+        and character, numbers, names cut at 16, re-sorted by WoW), why an edit or an overwrite keeps the action bars
+        and a delete doesn't, the slot limits, the cross-flavor warning, the templates and optimizer rules (every one
+        the KB ships), that spell names are not checked, and the safety net; the README, CLAUDE.md, architecture,
+        internals doc and CHANGELOG name the tool."""
+        from wowtools.core.kb import load_optimizer_rules, load_templates, macro_limits
+        from wowtools.tools.macro_editor.report import CROSS_FLAVOR, DELETE_WARNING
+        guide = (REPO_ROOT / "docs" / "macro-editor.md").read_text(encoding="utf-8")
+        flat = " ".join(guide.split())
+        self.assertTrue(guide.index("Close WoW") < guide.index("## Step by step"))
+        self.assertTrue(guide.index("## How WoW keeps your macros") < guide.index("## Step by step"))
+        account, character = macro_limits("_retail_")
+        for needle in ("## How WoW keeps your macros", "`macros-cache.txt`", "16 characters", "sorts them by name",
+                       "## Macros and action bars", "number", "keeps its number", "the next free number",
+                       "**Overwrite**", DELETE_WARNING, "## Slots", f"{account} account macros",
+                       f"{character} macros per character", "`30/30 FULL`",
+                       "## Across game versions", CROSS_FLAVOR, "## Templates", "## The optimizer",
+                       "never swaps `/cast` and `/use`", "## Spell names are not checked", "## The conditional builder",
+                       "## What the tool never touches", "`cache.md5`", "`.old`",
+                       "## Apply", "## Dry run", "## Undo last change", "## The safety net", "### Where your backups go",
+                       "snapshots\\snapshot-<flavor>-", "edited\\edited-<flavor>-all-", "edit-in-progress.json",
+                       "journal\\journal-", "### If an Apply was interrupted", "Put the originals back", "Leave as is",
+                       "## WoW running", "changed since", "keep_backups", "keep_journals", "config\\macro-editor.cfg",
+                       "## Settings", "## FAQ", "## Troubleshooting", "](assets/screenshots/macro-editor/",
+                       "Back to review", "read-only"):
+            self.assertIn(needle, flat)
+        for template in load_templates():
+            self.assertIn(template.title, flat)
+        for rule in load_optimizer_rules().values():
+            if rule.automatic:
+                self.assertIn(rule.title, flat)
+        for key in ("`Space`", "`a`", "`n`", "`/`", "`x`", "`c`", "`N`", "`e`", "`d`", "`k`", "`p`", "`R`", "`w`",
+                    "`y`", "`r`", "`z`", "`!`", "`f`", "`t`", "`s`", "`h`", "`q`", "`Ctrl+S`", "`Ctrl+B`",
+                    "`Ctrl+O`", "`Ctrl+T`", "`F1`", "`Esc`"):
+            self.assertIn(key, guide)
+        readme = " ".join((REPO_ROOT / "README.md").read_text(encoding="utf-8").split())
+        for needle in ("config\\macro-editor.cfg", "](docs/macro-editor.md)",
+                       "](docs/assets/screenshots/macro-editor/browse.png)", "the Macro Editor's last Apply",
+                       "the Config Copier and the Macro Editor can also do a practice run"):
+            self.assertIn(needle, readme)
+        faq = readme[readme.index("## FAQ"):]
+        self.assertIn("Macro Editor", faq[:faq.index("Windows says")])  # safe? changes the game? close WoW?
+        claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertIn("Macro Editor (`macro-editor`, package `tools/macro_editor`)", claude)
+        changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertIn("- **Macro Editor**", changelog)
+        architecture = " ".join((REPO_ROOT / "docs" / "architecture.md").read_text(encoding="utf-8").split())
+        for needle in ("](internals/macro-editor.md)", "](macro-editor.md)",
+                       "`config/macro-editor.cfg` `[macro_editor]`"):
+            self.assertIn(needle, architecture)
+        internals = (REPO_ROOT / "docs" / "internals" / "macro-editor.md").read_text(encoding="utf-8")
+        for needle in ("## The file and its IDs (V4, V5)", "## Data flow", "## Staging", "## Knowledge base",
+                       "`macro_reference.json`", "`macro_templates.json`", "`optimizer_rules.json`",
+                       "`macro_limits.json`", "## Safety", "`ClientFileGuard`", "## Screens", "## Events",
+                       "`macro.scanned`", "## Tests", "`tests/test_macro_editor_ops.py`"):
+            self.assertIn(needle, internals)
+        releasing = (REPO_ROOT / "docs" / "releasing.md").read_text(encoding="utf-8")
+        self.assertIn("`docs/macro-editor.md`", releasing)
 
     def test_guides_filter_on_submit_and_risk_banner(self):
         """Feedback round 1 (D37, D40, D41): every tree filter applies on Enter or its Filter button, never as you

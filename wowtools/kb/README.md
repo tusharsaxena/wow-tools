@@ -54,7 +54,8 @@ flavor's CVar list, add that name to `exceptions`.
 ### `macro_limits.json`
 
 `{"flavors": {"<flavor>": {"account": 120, "character": 30, "build": "...", "source": "<URL>"}}}`. A flavor with no
-entry here (or one without a source) uses Retail's values, and the Macro Editor says they are unconfirmed.
+entry here (or one without a source) uses Retail's values (`core.kb.limits_known` is then False); the Macro Editor
+counts with them as they are and its guide says they may not match that flavor.
 
 ### `macro_reference.json`
 
