@@ -63,9 +63,11 @@ it is not loaded, so nothing is described from a guess.
 - `macro_templates.json` → `load_templates()`: the templates (ME11), each with `{placeholder}`s and a source.
 - `optimizer_rules.json` → `load_optimizer_rules()`: the optimizer's rules (ME10) with the reason each rewrite is the
   same in game; `optimizer.optimize` applies only the `automatic` ones (`cast_to_use` is listed, never applied).
-- `macro_limits.json` → `macro_limits(flavor)`: the slots (ME3), sourced for Retail only (120 account, 30 per
-  character, from the client's `MacroConstants`). Another flavor counts with Retail's values (`limits_known` False);
-  `MacroSet.limit_known` carries that, and `report.slots_text` marks the set's slots `unconfirmed` (T17r).
+- `macro_limits.json` → `macro_limits(flavor)`: the slots (ME3), sourced for Retail (120 account, 30 per
+  character, from the client's `MacroConstants`). `_forever_` has a `provisional` copy of Retail's entry (T20d) with
+  Retail's source, which the tools don't read: Forever counts as known (`limits_known` True) and is never marked. Any
+  other flavor counts with Retail's values (`limits_known` False); `MacroSet.limit_known` carries that, and
+  `report.slots_text` marks the set's slots `unconfirmed` (T17r).
 
 Spell names are free text (ME12): there is no spell data, nothing checks or suggests them, and the optimizer never
 changes them (`showtooltip_same` only compares the directive's spell with the first one cast;

@@ -49,8 +49,10 @@ Because a button points at a macro's number, the editor never changes the number
 - **A deleted macro's buttons go with it.** The Delete confirm says so: "Action bar buttons that use the deleted
   macros will be removed." The Apply confirm repeats it while a delete is waiting.
 
-A number is never given to a new macro in the same Apply that deletes the old one, so a button can't silently move
-from a deleted macro to a new one.
+Within one Apply, the number of a macro it deletes is never given to a new macro, so a button can't silently move
+from a deleted macro to a new one there. The game only removes a deleted macro's buttons when it next loads the
+file, though. After an Apply that deletes a file's highest-numbered macro, the next new macro in that file gets the
+same number again, so log in once before you add macros to that file in another Apply.
 
 ## Slots
 

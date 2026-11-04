@@ -71,12 +71,12 @@ log (`logs\config-editor`) records every file it wrote. **Undo last change** sti
 The tree lists the [three levels](#the-three-levels) of every game version you picked: **Config.wtf**, then
 each account's **Account config** and its characters by realm.
 
-Open a file to see its CVars, one per line: `name = value (default …)`. `✱changed` means the value differs from the
-game's default; `not set` means the file has no line for it, so the game uses its default; `unknown` means the editor
-knows nothing about that CVar (see [Unknown CVars](#unknown-cvars)). A changed CVar is marked `✎` until **Apply**, and a
-file with changes shows `✎` and how many. A character with no file yet says `no file`: setting a CVar there creates it.
-Folders that aren't characters, such as `Bob - Copy`, are not listed. A file that can't be read shows **read-only**: it
-is never ticked or written, and the **warnings view** lists it.
+Open a file to see its CVars, one per line: `name = value (default …)`, then its category (`· camera`). `✱changed` means
+the value differs from the game's default; `not set` means the file has no line for it, so the game uses its default;
+`unknown` means the editor knows nothing about that CVar (see [Unknown CVars](#unknown-cvars)). A changed CVar is marked
+`✎` until **Apply**, and a file with changes shows `✎` and how many. A character with no file yet says `no file`:
+setting a CVar there creates it. Folders that aren't characters, such as `Bob - Copy`, are not listed. A file that can't
+be read shows **read-only**: it is never ticked or written, and the **warnings view** lists it.
 
 ### The help panel
 
@@ -158,7 +158,8 @@ including one with no known default.
 
 **Recommend…** lists the recommendations for the highlighted file: each with the value, the reason and the page it
 comes from. Tick the ones you want (`Space` or `Enter`) and press **OK**; they are staged like any other change.
-A recommendation already at its value is listed but can't be ticked. Only the recommendations for the file's level
+A recommendation already at its value is listed but can't be ticked (`already set`), and so is one the file doesn't
+set whose game default already is that value (`already the default`). Only the recommendations for the file's level
 are listed (an account CVar is recommended in **Account config**, not in a character's file).
 
 There are a few dozen, picked by hand for nameplates, the camera, combat text, graphics and the interface, each for

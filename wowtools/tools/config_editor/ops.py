@@ -231,7 +231,8 @@ def build_changes(staged: ConfigStaged, targets: Sequence[ConfigTarget]) -> list
 @dataclass(frozen=True)
 class RecommendRow:
     """One recommendation as Recommend… lists it for a file: `current` is the CVar's value there as staged (None:
-    not set), `done` whether that already is the recommended value (listed, never staged again)."""
+    not set), `done` whether that already is the recommended value, or, not set, the KB's default is (listed, never
+    staged again)."""
     recommendation: Recommendation
     current: str | None
     done: bool
@@ -249,5 +250,6 @@ def applicable_recommendations(target: ConfigTarget, recommendations: Sequence[R
         if info is not None and info.scope is not None and info.scope != target.level:
             continue
         current = effective_value(staged, target, rec.cvar)
-        out.append(RecommendRow(rec, current, current is not None and same_value(current, rec.value)))
+        in_force = current if current is not None else (info.default if info is not None else None)
+        out.append(RecommendRow(rec, current, in_force is not None and same_value(in_force, rec.value)))
     return out

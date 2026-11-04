@@ -361,9 +361,13 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
             return lambda c: OTHER_FLAVOR_REASON
         return lambda c: SOURCE_REASON if c.path == self.source.path else None
 
+    def _target_texts(self, character: Character) -> tuple[str, ...]:
+        """A source-flavor target's filter texts: its flavor first, as for the greyed flavors and the source picker."""
+        return (self.source_flavor.display_name, *character_filter_texts(character))
+
     def _pair_texts(self, key: PairKey) -> tuple[str, ...]:
         plan = self.plans[key]
-        return (*character_filter_texts(plan.target), key.name)
+        return (*self._target_texts(plan.target), key.name)
 
     def _pairs_of(self, character: Character) -> list[PairKey]:
         ckey = target_key(character)
@@ -374,12 +378,12 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
             return None
         if flavor.path != self.source_flavor.path:
             return lambda c: self.text_filter.path_matches((flavor.display_name, *character_filter_texts(c)))
-        return lambda c: self.text_filter.path_matches(character_filter_texts(c)) or any(
+        return lambda c: self.text_filter.path_matches(self._target_texts(c)) or any(
             self.text_filter.path_matches(self._pair_texts(k)) for k in self._pairs_of(c))
 
     def _add_pairs(self, character: Character, node: TreeNode) -> list[PairKey]:
         keys = []
-        whole = not self.filtering or self.text_filter.path_matches(character_filter_texts(character))
+        whole = not self.filtering or self.text_filter.path_matches(self._target_texts(character))
         for key in self._pairs_of(character):
             if not whole and not self.text_filter.path_matches(self._pair_texts(key)):
                 continue
@@ -520,7 +524,7 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         if isinstance(data, CharacterNode):
             return tuple(k for k in node_keys(node) if isinstance(k, PairKey))
         if isinstance(data, list) and data and data[0] == "flavor":
-            return tuple(data[2])
+            return tuple(k for k in data[2] if isinstance(k, PairKey))  # not the characters' own keys
         return ()
 
     def tick_log_key(self, node, keys) -> str:

@@ -19,14 +19,14 @@ SH_LAUNCHER = REPO_ROOT / "wow-tools.sh"
 PAUSE_PROMPT = "Press any key to close this window."  # the launcher's own prompt (pause's own text is localised)
 
 # A stand-in for the real package: optionally rewrites the launcher while "running" (as a zip update does),
-# then exits with the code given as its last argument.
+# then exits with the code given as its last argument (with none, as a double-click runs it: WOWTOOLS_TEST_RC's).
 FAKE_MAIN = '''
-import pathlib, sys
+import os, pathlib, sys
 launcher = pathlib.Path(__file__).resolve().parents[1] / "wow-tools.cmd"
 if "rewrite" in sys.argv:
     launcher.write_bytes(b"@rem " + b"x" * 200 + b"\\r\\n" + launcher.read_bytes())
 print("fake app ran")
-sys.exit(int(sys.argv[-1]))
+sys.exit(int(sys.argv[-1] if len(sys.argv) > 1 else os.environ["WOWTOOLS_TEST_RC"]))
 '''
 
 
@@ -69,6 +69,14 @@ class LauncherStructureTest(unittest.TestCase):
             self.assertLess(text.index(event), text.index("-m wowtools %*"), event)
         self.assertIn("Installing Python", text)
 
+    def test_double_click_needs_explorers_closing_quote(self):
+        # Explorer and a shortcut run cmd.exe /c ""<script>" "; PowerShell's ""<script>"" and a script's cmd /c
+        # <script> name it too, so the script's name alone must not mean a double-click (T23w1).
+        text = LAUNCHER.read_text(encoding="utf-8")
+        self.assertIn('set "WOWTOOLS_CUT=!WOWTOOLS_CL:%~nx0" "=!"', text)
+        self.assertIn('if /i not "!WOWTOOLS_CUT!"=="!WOWTOOLS_CL!"', text)
+        self.assertNotIn("!WOWTOOLS_CL:%~nx0=!", text)
+
     def test_crlf_line_endings(self):
         data = LAUNCHER.read_bytes()
         self.assertEqual(data.count(b"\n"), data.count(b"\r\n"))
@@ -85,10 +93,10 @@ class LauncherOnWindowsTest(unittest.TestCase):
         (self.dir / "wowtools" / "__init__.py").write_text("")
         (self.dir / "wowtools" / "__main__.py").write_text(FAKE_MAIN)
 
-    def run_launcher(self, *args: str, command: list[str] | None = None, path: str | None = None,
+    def run_launcher(self, *args: str, command: list[str] | str | None = None, path: str | None = None,
                      extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
-        """Run the copy as Explorer does (cmd /c with the script's name), or `command` when given. stdin is a key
-        press, so a pause never waits."""
+        """Run the copy as a script does (cmd /c with the script's name and `args`), or `command` when given (a
+        string is cmd.exe's command line as it is). stdin is a key press, so a pause never waits."""
         env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
         if path is not None:
             env["PATH"] = path
@@ -114,17 +122,35 @@ class LauncherOnWindowsTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 3)
         self.assertTrue((self.dir / "wow-tools.cmd").read_bytes().startswith(b"@rem xxx"))
 
+    def double_click(self, code: str, path: str | None = None) -> subprocess.CompletedProcess:
+        """Run the copy as Explorer or a shortcut does: cmd.exe /c ""<script>" " (a space and a quote after it)."""
+        return self.run_launcher(command=f'cmd.exe /c ""{self.dir / "wow-tools.cmd"}" "', path=path,
+                                 extra_env={"WOWTOOLS_TEST_RC": code})
+
     def test_double_click_pauses_on_failure(self):
-        proc = self.run_launcher("3")
+        proc = self.double_click("3")
         self.assertIn("fake app ran", proc.stdout)
         self.assertIn(PAUSE_PROMPT, proc.stdout)
         self.assertEqual(proc.returncode, 3, proc.stderr)
 
     def test_double_click_success_does_not_pause(self):
-        proc = self.run_launcher("0")
+        proc = self.double_click("0")
         self.assertIn("fake app ran", proc.stdout)
         self.assertNotIn(PAUSE_PROMPT, proc.stdout)
         self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_powershell_and_script_runs_do_not_pause(self):
+        # PowerShell runs a .cmd as cmd.exe /c ""<script>"" (and ""<script>" args"); a script or a scheduled task
+        # as cmd /c <script> args. Each names the script after /c, but none is a double-click (T23w1): `update
+        # --check` returns 10 when an update is waiting, and nobody is there to press a key.
+        script = self.dir / "wow-tools.cmd"
+        for command, code in ((f'cmd.exe /c ""{script}""', "3"), (f'cmd.exe /c ""{script}" 10"', "10"),
+                              (["cmd.exe", "/d", "/c", str(script), "10"], "10")):
+            with self.subTest(command=command):
+                proc = self.run_launcher(command=command, extra_env={"WOWTOOLS_TEST_RC": code})
+                self.assertIn("fake app ran", proc.stdout)
+                self.assertNotIn(PAUSE_PROMPT, proc.stdout)
+                self.assertEqual(proc.returncode, int(code), proc.stderr)
 
     def test_terminal_run_does_not_pause(self):
         # From an open terminal, cmd.exe's command line does not name the script: here it only holds a variable.
@@ -158,7 +184,7 @@ class LauncherOnWindowsTest(unittest.TestCase):
 
     def test_missing_python_message(self):
         system32 = str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32")
-        proc = self.run_launcher("0", path=system32)
+        proc = self.double_click("0", path=system32)
         self.assertNotIn("fake app ran", proc.stdout)
         self.assertIn("Installing Python", proc.stdout)
         self.assertIn(PAUSE_PROMPT, proc.stdout)
@@ -174,7 +200,7 @@ class LauncherOnWindowsTest(unittest.TestCase):
         bin_dir.mkdir()
         (bin_dir / "python.bat").write_bytes(b"@echo 3.8\r\n@exit /b 3\r\n")
         system32 = str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32")
-        proc = self.run_launcher("0", path=f"{system32};{bin_dir}")
+        proc = self.double_click("0", path=f"{system32};{bin_dir}")
         self.assertNotIn("fake app ran", proc.stdout)
         self.assertIn("is Python 3.8.", proc.stdout)
         self.assertIn("Installing Python", proc.stdout)

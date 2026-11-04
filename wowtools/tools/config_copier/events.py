@@ -13,9 +13,9 @@ EVENTS: dict[str, EventSpec] = {
     "copier.planned": EventSpec("info", "A copy was planned from a source character: source, targets, files and "
                                         "how many (target, file) pairs are new, replaced, unchanged, have no source "
                                         "file or could not be read (counts)."),
-    "copier.file_unreadable": EventSpec("warning", "A source or target client file could not be read while planning "
-                                                   "a copy, so its pairs are shown as unreadable and never copied "
-                                                   "(path, reason)."),
+    "copier.file_unreadable": EventSpec("warning", "A source or target client file could not be read (or a "
+                                                   "config-cache.wtf merged) while planning a copy, so its pairs are "
+                                                   "shown as unreadable and never copied (path, reason)."),
     **client_events(SV_TOOL.prefix),
 }
 

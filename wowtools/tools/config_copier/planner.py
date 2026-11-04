@@ -3,7 +3,8 @@ files, never writes one.
 
 Every (target, file) pair gets a status: `new` (the target has no such file), `replace`, `unchanged` (the target
 already holds exactly what it would get), `no-source` (the source has no such file: nothing is copied and the
-target's file is left alone) or `unreadable` (the source's or the target's file could not be read: never copied).
+target's file is left alone) or `unreadable` (the source's or the target's file could not be read, or a
+config-cache.wtf could not be merged: never copied).
 Plain files are copied byte for byte (CC6), an empty one as empty; config-cache.wtf is merged (CC5). A
 macros-cache.txt replacing a target's file that holds macros, or that the reader can't parse, carries the CC7
 warning.
@@ -58,7 +59,15 @@ def _pair(target: Character, name: str, source: bytes | None | _Unreadable) -> P
         old = _read(target.path / name)
     except _Unreadable as exc:
         return PairPlan(target, name, "unreadable", None, None, None, problem=str(exc))
-    new = merge_config(source, old) if name == CONFIG_FILE else source
+    if name == CONFIG_FILE:
+        try:
+            new = merge_config(source, old)
+        except ValueError as exc:  # a source value the target's file can't hold (a line break in it)
+            log_event("copier.file_unreadable", path=str(target.path / name), reason=str(exc))
+            return PairPlan(target, name, "unreadable", None, None, None,
+                            problem=f"{name} could not be merged: {exc}")
+    else:
+        new = source
     if old is None:
         return PairPlan(target, name, "new", new, None, None)
     old_sha = hashlib.sha256(old).hexdigest()

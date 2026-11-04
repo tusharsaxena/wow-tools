@@ -125,6 +125,7 @@ class MacroEditScreen(Screen[tuple[str, str, str] | None]):
         self._complete = False                    # the word typed is itself a reference entry
         self._moved = False                       # ↑/↓ moved the highlight since the list was made
         self._taken: str | None = None            # the body a taken suggestion makes: its Changed lists nothing
+        self._shown_body = body                   # the body as the text box holds it (set on mount)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -154,6 +155,7 @@ class MacroEditScreen(Screen[tuple[str, str, str] | None]):
         yield BottomBar()
 
     def on_mount(self) -> None:
+        self._shown_body = self.area.text  # the body as the text box holds it, before any edit
         self.sub_title = f"Macro Editor · {self.title_text.lower()}"
         self.query_one("#suggestions", OptionList).display = False
         show_error(self.query_one("#macro-error", Static), None)
@@ -178,8 +180,14 @@ class MacroEditScreen(Screen[tuple[str, str, str] | None]):
         area.focus()
 
     def values(self) -> tuple[str, str, str]:
-        icon = self.query_one("#macro-icon", Input).value.strip() or ICON_DEFAULT
-        return self.query_one("#macro-name", Input).value, icon, self.area.text
+        """Name, icon and body. The text box splits lines on more than \n (U+0085, U+2028, \x0c ...) and the icon
+        is trimmed, so a body or icon the user left as it was comes back as it was given, byte for byte (ME13)."""
+        icon = self.query_one("#macro-icon", Input).value.strip()
+        icon = self.macro_icon if icon == self.macro_icon.strip() else icon or ICON_DEFAULT
+        body = self.area.text
+        if body == self._shown_body:
+            body = self.macro_body
+        return self.query_one("#macro-name", Input).value, icon, body
 
     def _meter(self) -> None:
         length = body_length(self.area.text)

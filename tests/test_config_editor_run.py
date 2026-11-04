@@ -272,6 +272,17 @@ class ConfigRunTest(unittest.TestCase):
         self.assertEqual([r.recommendation.cvar for r in machine], ["gxMaximize", "someNewCVar"])
         self.assertEqual((machine[0].current, machine[0].done), ("1", True))
 
+    def test_recommendation_already_the_default_is_done(self):
+        # Not set in the file, but the game's default already is the recommended value: nothing to stage (T23w8).
+        recs = [Recommendation("assistedCombatHighlight", "1", ("_retail_",), "r1", "https://a"),
+                Recommendation("nameplateShowFriends", "1", ("_retail_",), "r2", "https://b")]
+        aella = self.target("MAIN/Realm1/Aellâ")
+        stage_remove(self.staged, aella, "assistedCombatHighlight")
+        stage_remove(self.staged, aella, "nameplateShowFriends")
+        found = applicable_recommendations(aella, recs, CVARS, self.staged)
+        self.assertEqual([(r.recommendation.cvar, r.current, r.done) for r in found],
+                         [("assistedCombatHighlight", None, True), ("nameplateShowFriends", None, False)])
+
 
 if __name__ == "__main__":
     unittest.main()

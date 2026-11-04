@@ -200,9 +200,9 @@ settings screen. The full data flow and every screen of each tool are in its int
 - **Config Editor** (`config-editor`, `tools/config_editor`, `ConfigEditorFlow`). Lists `WTF/Config.wtf` and every
   account and real character `config-cache.wtf` of the chosen flavors, each file opening to its CVars with the KB's
   default, help, scope and recommendation (the help panel), filtered by category, changed only, show all known and
-  the search; stages Set, Add, Remove, Reset, Recommend… and Space on a 0/1 CVar (on the ticked files), and applies
-  them in one run over every flavor through the client-file pipeline (`core/client_apply.apply_client_flavors`,
-  events `cvar.*`); one Undo. [Internals](internals/config-editor.md) · [guide](config-editor.md)
+  the search; stages Set, Add, Remove and Reset (on the ticked files, else the highlighted one), Recommend… (the
+  highlighted file) and Space on a 0/1 CVar (in place), and applies them in one run over every flavor through the
+  client-file pipeline (`core/client_apply.apply_client_flavors`, events `cvar.*`); one Undo. [Internals](internals/config-editor.md) · [guide](config-editor.md)
 
 ## UI
 

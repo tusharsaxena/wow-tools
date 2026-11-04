@@ -13,6 +13,7 @@ from textual.widgets import Checkbox, Input, OptionList, RadioButton, RadioSet, 
 
 from tests.fixtures import BASE, TINY, assert_keys_on_buttons, settle
 from tests.test_macro_editor_app import MacroEditorTestBase, character_node, goto, macro_node
+from tests.test_ui_shared_screens import Host
 from wowtools.core.kb import load_macro_reference
 from wowtools.core.macrofile import BODY_LIMIT, ICON_DEFAULT, NAME_LIMIT
 from wowtools.tools.macro_editor.builder import BlockChoice, block_at, read_block, write_block
@@ -157,6 +158,24 @@ class MacroEditScreenTest(MacroEditorTestBase):
             bob = next(s for s in review.all_sets() if s.label == "MAIN/Realm1/Bob")
             self.assertEqual([m.body for m in effective_macros(review.staged, bob) if m.name == "Bob"],
                              ["x" * BODY_LIMIT])
+
+    async def test_untouched_body_and_icon_come_back_as_they_were(self):
+        # The text box splits lines on more than \n (U+0085, U+2028, \x0c ...): a body the user did not change comes
+        # back byte for byte, and so does an icon that differs from the box only by its spaces (ME13, T23w7).
+        body = "/say a\x85b\n/say c\u2028d\x0ce"
+        screen = MacroEditScreen("Edit", "MAIN/Realm1/Bob", "Character macro", flavor="_retail_", name="Bob",
+                                 icon=" 134400 ", body=body)
+        app = Host(screen)
+        async with app.run_test(size=BASE) as pilot:
+            await pilot.pause()
+            self.assertNotEqual(screen.area.text, body)  # the box's own line breaks
+            self.assertEqual(screen.values(), ("Bob", " 134400 ", body))
+            screen.query_one("#macro-name", Input).value = "Bob2"
+            await pilot.pause()
+            self.assertEqual(screen.values(), ("Bob2", " 134400 ", body))
+            screen.query_one("#macro-icon", Input).value = " 134401 "
+            await self.set_body(app, pilot, screen, "/say x")
+            self.assertEqual(screen.values(), ("Bob2", "134401", "/say x"))
 
     async def test_name_cut_at_16(self):
         app = self.make_app()

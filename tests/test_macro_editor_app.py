@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from unittest import mock
 
 from textual.widgets import Checkbox, Input, OptionList, TextArea, Tree
 
@@ -22,8 +23,9 @@ from wowtools.tools.macro_editor.popups import PasteScreen, ReplaceTextScreen
 from wowtools.tools.macro_editor.report import DELETE_WARNING
 from wowtools.tools.macro_editor.review_screen import (MacroNode, MacroResultScreen, MacroReviewScreen, SetKey,
                                                        SetNode)
+from wowtools.ui import dialogs
 from wowtools.ui.character_tree import CharacterNode
-from wowtools.ui.dialogs import ConfirmScreen, DiscardScreen
+from wowtools.ui.dialogs import CONFIRM_GUARD, ConfirmScreen, DiscardScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
 from wowtools.ui.warnings_view import WarningsScreen
@@ -185,6 +187,31 @@ class MacroEditorAppTest(MacroEditorTestBase):
             self.assertGreater(len(shown()), 2)
             up = macro_node(tree, character_node(tree, "Bob"), "D Up")
             self.assertTrue(any("underline" in str(span.style) for span in up.label.spans), up.label.spans)
+
+    async def test_paste_button_waits_for_the_enter_guard(self):
+        # With no clash the popup opens on Paste: a held or double Enter must not stage at once (STD-7.15, T23w5).
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot, "_retail_")
+            tree = review.query_one("#macros", Tree)
+            await self.copy_aella(app, pilot, review, "Fly")
+            await self.tick(app, pilot, review, character_node(tree, "Trâxex"))
+            now = [1000.0]
+            self.confirm_guard(CONFIRM_GUARD)
+            with mock.patch.object(dialogs, "monotonic", lambda: now[0]):
+                await pilot.press("p")
+                await settle(app, pilot)
+                paste = app.screen
+                self.assertIsInstance(paste, PasteScreen)
+                self.assertEqual(paste.focused.id, "ok")
+                await pilot.press("enter")
+                await settle(app, pilot)
+                self.assertIs(app.screen, paste)
+                now[0] += CONFIRM_GUARD
+                await pilot.press("enter")
+                await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(review.pending, 1)
 
     async def test_copy_paste_to_two_characters(self):
         app = self.make_app()

@@ -178,6 +178,8 @@ class ConfigEditorAppTest(TuiTestCase):
             self.assertIn(f"cameraDistanceMaxZoomFactor = 2.6 (default 1.9)  {CHANGED}",
                           rows["cameraDistanceMaxZoomFactor"])
             self.assertIn(f"myAddonThing = Dænerys  {UNKNOWN}", rows["myAddonThing"])
+            for node in await open_rows(pilot, aella):  # CE4: each row ends with its category (T23w9)
+                self.assertTrue(node.label.plain.endswith(f"· {node.data.row.category}"), node.label.plain)
             machine = file_node(tree, CONFIG_WTF)
             self.assertIn("gxMaximize = 1 (default 0)", (await cvar_node(pilot, machine, "gxMaximize")).label.plain)
             await self.press_on(app, pilot, review, await cvar_node(pilot, aella, "cameraDistanceMaxZoomFactor"))

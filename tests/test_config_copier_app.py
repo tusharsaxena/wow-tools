@@ -12,12 +12,12 @@ from pathlib import Path
 from textual.widgets import Checkbox, Tree
 
 from tests.fixtures import (BASE, COPIER_ADDONS, COPIER_CHAT, COPIER_MACROS, TINY, TuiTestCase, build_copier_tree,
-                            make_config, settle)
+                            make_config, settle, submit_filter)
 from wowtools.core.events import capture_events
 from wowtools.tools import TOOLS
 from wowtools.tools.config_copier.diff_screen import DiffScreen
 from wowtools.tools.config_copier.model import COPY_FILES, MACRO_WARNING
-from wowtools.tools.config_copier.review_screen import CopierReviewScreen, CopierResultScreen, PairNode
+from wowtools.tools.config_copier.review_screen import CopierReviewScreen, CopierResultScreen, PairKey, PairNode
 from wowtools.tools.config_copier.source_screen import SourceScreen
 from wowtools.ui.character_tree import CharacterNode
 from wowtools.ui.dialogs import ConfirmScreen
@@ -314,6 +314,48 @@ class CopierAppTest(TuiTestCase):
             await settle(app, pilot)
             self.assertEqual({p.target.name for p in review.selected_plans()}, {"Bob", "Trâxex", "Dænerys"})
             self.assertFalse(any(p.target.name == "Other" for p in review.selected_plans()))
+
+    async def test_space_on_a_flavor_node_ticks_only_pairs(self):
+        # The source flavor's node holds its characters' own keys too: Space ticks only the pairs, and with a filter
+        # applied it must not crash on a character key (T23w2).
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#targets", Tree)
+            flavor = next(n for n in tree.root.children if isinstance(n.data, list) and n.data[1] == "_retail_")
+            tree.focus()
+            await goto(pilot, tree, flavor)
+            await pilot.press("space")
+            await settle(app, pilot)
+            self.assertTrue(review.ticked)
+            self.assertTrue(all(isinstance(k, PairKey) for k in review.ticked), review.ticked)
+            await pilot.press("space")
+            await settle(app, pilot)
+            submit_filter(review, "Bob")
+            await settle(app, pilot)
+            flavor = next(n for n in tree.root.children if isinstance(n.data, list) and n.data[1] == "_retail_")
+            await goto(pilot, tree, flavor)
+            await pilot.press("space")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertTrue(all(isinstance(k, PairKey) for k in review.ticked), review.ticked)
+            self.assertEqual({p.target.name for p in review.selected_plans()}, {"Bob"})
+
+    async def test_filter_matches_the_source_flavor_name(self):
+        # The source flavor's name matches its targets, as the other flavors' names match theirs (T23w3).
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#targets", Tree)
+            name = next(f.display_name for f in review.flavors if f.folder == "_retail_")
+            submit_filter(review, name)
+            await settle(app, pilot)
+            folders = [n.data[1] for n in tree.root.children if isinstance(n.data, list)]
+            self.assertIn("_retail_", folders)
+            self.assertEqual(character_node(tree, "Bob").data.character.name, "Bob")
+            await pilot.press("a")
+            await settle(app, pilot)
+            self.assertEqual({p.target.name for p in review.selected_plans()}, {"Bob", "Trâxex", "Dænerys"})
 
     async def test_pair_statuses_in_the_tree(self):
         app = self.make_app()

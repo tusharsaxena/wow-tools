@@ -19,7 +19,7 @@ from textual.widgets.option_list import Option
 
 from wowtools.core.text import plural
 from wowtools.tools.macro_editor.ops import ClashChoice, PastePreview, ReplaceRow, clash_key
-from wowtools.ui.dialogs import ALERT_STYLE, popup_css
+from wowtools.ui.dialogs import ALERT_STYLE, GUARD_BINDING, EnterGuard, popup_css
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, action_button
 
 __all__ = ["CHOICE_TEXT", "PasteScreen", "ReplaceTextScreen"]
@@ -29,18 +29,18 @@ CHOICES: tuple[ClashChoice, ...] = ("skip", "rename", "overwrite")
 PREVIEW_ROWS = 6  # Replace text… shows this many macros, then "and n more"
 
 
-class PasteScreen(ModalScreen[dict[tuple[Path, str], ClashChoice] | None]):
+class PasteScreen(EnterGuard, ModalScreen[dict[tuple[Path, str], ClashChoice] | None]):
     """The paste review (ME4, ME5): `preview(choices)` is ops.preview_paste on the review's staging. The list shows
     every name clash with its choice (skip at first); Skip, Rename and Overwrite set the highlighted one's, or every
     one's with Apply to all ticked; Enter on a clash moves it to the next choice. Under it, the macros that can't be
     pasted (a full or read-only set) and `warnings` (another game version, ME5). Paste dismisses with the choices,
-    Cancel with None."""
+    Cancel with None. It opens on Paste when nothing clashes, so Enter waits for the EnterGuard (STD-7.15)."""
 
     DEFAULT_CSS = popup_css("PasteScreen", list_rows=8) + """
     PasteScreen #paste-notes { height: auto; max-height: 8; overflow-y: auto; margin-top: 1; }
     PasteScreen #clash-buttons { height: auto; margin-top: 1; }
     """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), GUARD_BINDING, *NAV_BINDINGS]
 
     def __init__(self, title: str, body: str, preview: Callable[[dict], PastePreview],
                  warnings: Sequence[str] = ()) -> None:
@@ -69,6 +69,7 @@ class PasteScreen(ModalScreen[dict[tuple[Path, str], ClashChoice] | None]):
             yield NavHint("↑↓/Tab move · Enter on a clash: next choice · ←→ buttons")
 
     def on_mount(self) -> None:
+        self.start_guard()
         self._show()
         clashes = self.query_one("#clashes", OptionList)
         (clashes if self.result.clashes else self.query_one("#ok", Button)).focus()

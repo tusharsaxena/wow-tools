@@ -9,12 +9,14 @@ setlocal
 set "PYTHONPATH=%~dp0;%PYTHONPATH%"
 set "WOWTOOLS_LOG=%~dp0logs\suite\launcher.log"
 if not exist "%~dp0logs\suite\" mkdir "%~dp0logs\suite" >nul 2>nul
-rem Double-clicked (Explorer or a shortcut runs cmd.exe /c with this script's name): keep the window open on failure.
+rem Double-clicked: keep the window open on failure. Explorer or a shortcut runs cmd.exe /c ""<this script>" ", with
+rem a space and a quote after the script's name; PowerShell and scripts run cmd.exe /c with the name too, never so.
 set "WOWTOOLS_DBLCLICK="
 setlocal EnableDelayedExpansion
 set "WOWTOOLS_CL=!cmdcmdline!"
+set "WOWTOOLS_CUT=!WOWTOOLS_CL:%~nx0" "=!"
 set "WOWTOOLS_DC="
-if /i not "!WOWTOOLS_CL:%~nx0=!"=="!WOWTOOLS_CL!" if /i not "!WOWTOOLS_CL:/c=!"=="!WOWTOOLS_CL!" set "WOWTOOLS_DC=1"
+if /i not "!WOWTOOLS_CUT!"=="!WOWTOOLS_CL!" if /i not "!WOWTOOLS_CL:/c=!"=="!WOWTOOLS_CL!" set "WOWTOOLS_DC=1"
 endlocal & set "WOWTOOLS_DBLCLICK=%WOWTOOLS_DC%"
 set "WOWTOOLS_PY=python"
 where py >nul 2>nul && set "WOWTOOLS_PY=py -3"

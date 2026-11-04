@@ -156,6 +156,22 @@ class PlannerTest(unittest.TestCase):
         [planned] = [e for e in events if e["event"] == "copier.planned"]
         self.assertEqual(planned["data"]["counts"], {"new": 1, "unreadable": 3})
 
+    def test_config_value_the_merge_cannot_write_is_unreadable(self):
+        # A lone CR inside a source value can't be written back into a target's file: that pair is unreadable and
+        # every other pair still plans (T23w4).
+        self.put(self.source, "config-cache.wtf", b'SET foo "a\rb"\r\n')
+        self.put(self.bob, "config-cache.wtf", b'SET foo "x"\r\n')
+        self.put(self.source, "AddOns.txt", ADDONS)
+        with capture_events() as events:
+            plans = plan_copy(self.source, [self.bob, self.traxex], ["AddOns.txt", "config-cache.wtf"])
+        self.assertEqual(self.pairs(plans), [
+            ("Bob", "AddOns.txt", "new"), ("Bob", "config-cache.wtf", "unreadable"),
+            ("Trâxex", "AddOns.txt", "new"), ("Trâxex", "config-cache.wtf", "new")])
+        self.assertIn("line break", plans[1].problem)
+        self.assertIsNone(plans[1].new)
+        self.assertEqual([Path(e["data"]["path"]).parent.name for e in events
+                          if e["event"] == "copier.file_unreadable"], ["Bob"])
+
     def test_bad_arguments(self):
         with self.assertRaises(ValueError):
             plan_copy(self.source, [self.bob], ["bindings-cache.wtf"])  # X4 / CC3: only the five files

@@ -624,8 +624,8 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
                 return
 
     def _cvar_label(self, data: CvarNode) -> Text:
-        """The staged mark (before the line), then `name = value (default …) ✱changed`; a CVar not set is dim, an
-        unknown one italic."""
+        """The staged mark (before the line), then `name = value (default …) ✱changed` and the category, dim (CE4);
+        a CVar not set is dim, an unknown one italic."""
         row = data.row
         parts: list[tuple[str, str]] = [(NO_MARK, "")]
         parts.append((f"{STAGED_MARK} ", f"bold {theme_colour(self.app, 'warning')}") if row.staged else ("  ", ""))
@@ -633,6 +633,7 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
         if row.info is None:
             style = f"{style} italic".strip()
         parts.append((row_text(row), style))
+        parts.append((f"  · {row.category}", "dim"))
         return Text.assemble(*parts)
 
     def _label(self, data) -> Text:

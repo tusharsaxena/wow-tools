@@ -286,7 +286,7 @@ and call `register_events(TOOL_NAME, EVENTS)` there; import that module from the
 | `copier.file_removed` | info | Undo or recovery: a file the run had created was deleted (it was still what the run wrote). |
 | `copier.file_restored` | info | Undo or recovery: a file was put back to its original bytes. |
 | `copier.file_skipped` | warning | Undo or recovery: a file was left alone (it changed since the run, or is outside the WTF folder). |
-| `copier.file_unreadable` | warning | A source or target client file could not be read while planning a copy, so its pairs are shown as unreadable and never copied (path, reason). |
+| `copier.file_unreadable` | warning | A source or target client file could not be read (or a config-cache.wtf merged) while planning a copy, so its pairs are shown as unreadable and never copied (path, reason). |
 | `copier.files_backed_up` | info | The originals of the files to change were zipped and verified. |
 | `copier.flavors_stopped` | warning | An Apply over several flavors stopped at one flavor; the flavors after it were not started. |
 | `copier.journal_failed` | error | The run journal could not be written; nothing was changed. |

@@ -669,3 +669,37 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 - T23r2: the branch is one commit ahead of origin (the T23 ledger commit), so T23 step 3's push is still owed.
   Rejected for this agent, not for the run: this run's agents never push (T23c), so the push is the orchestrator's
   milestone push. The commits since the last CI run (789d7b3) change only the ledger, so CI need not be checked again.
+- T23w1: the double-click check in `wow-tools.cmd` (LN1) now needs Explorer's and a shortcut's own command line,
+  `cmd.exe /c ""<script>" "` (a space and a quote after the script's name, from `cmdfile`'s `"%1" %*`). Before, any
+  `/c` line that named the script counted, so PowerShell (`/c ""<script>""`), a script or a scheduled task
+  (`cmd /c wow-tools.cmd update --check`, which returns 10 when an update waits) stopped at "Press any key" on a
+  non-zero exit. test_launcher runs the Explorer, PowerShell and script lines on Windows and pins the check.
+- T23w2: Space on the source flavor's node (All flavors) ticks only its pairs: `node_tick_keys` drops the
+  characters' own keys there as the character branch and `mark()` already did. With a filter applied it raised
+  KeyError in `_pair_texts` and closed the app; without one it put the character keys in `ticked`.
+- T23w3: the review's filter matches the source flavor's name too (`_target_texts`: the flavor, then account, realm
+  and name), as it does for the greyed flavors and the source picker, in the tree, the marks and the hidden-tick
+  count alike.
+- T23w4: a source `config-cache.wtf` value that `apply_cvar_changes` can't write (a lone CR in it) makes only that
+  pair `unreadable` (logged as `copier.file_unreadable`, its description now names the merge) instead of failing the
+  whole scan. A target with no such file still plans as `new` (its source values are not merged).
+- T23w5: PasteScreen mixes in EnterGuard (GUARD_BINDING, `start_guard()` on mount): with no clash it opens on Paste,
+  so STD-7.15 applies.
+- T23w6: the guide's id sentence is narrowed to one Apply, and says to log in once after an Apply that deletes a
+  file's highest-numbered macro before adding to that file in another (its number is given out again). No code
+  change: keeping a per-file high-water id across Applies is not in the spec.
+- T23w7: MacroEditScreen.values() gives back the body and icon as they were when the user left them: the TextArea
+  splits lines on U+0085, U+2028 and the like, and the icon box is trimmed, so a name-only edit rewrote untouched
+  body lines (ME13).
+- T23w8: Recommend… counts a recommendation as done when the file doesn't set the CVar and the KB default already
+  is the value (`already the default`, never ticked); the guide says so. `cameraIndirectVisibility` (default 1 in
+  every dump) stays in `recommendations.json`: it now shows as already the default, and `cameraIndirectOffset`'s
+  reason refers to it.
+- T23w9: each CVar row ends with its category, dim (`· camera`), as CE4 asks; the guide names it. The help panel
+  still opens with it.
+- T23w10: architecture.md's Config Editor line says which actions use the ticked files (Set, Add, Remove, Reset,
+  else the highlighted one), which the highlighted file (Recommend…) and which act in place (Space on a 0/1 CVar).
+- T23w11: no CHANGELOG line: every fix is inside a tool or launcher change this branch already lists under
+  `[Unreleased]`. The Config Editor screenshots (`browse.png`, `recommend.png`, T22c) were taken before T23w8 and
+  T23w9 and are not retaken here: they lack the category suffix and may show a default-valued recommendation as
+  tickable. A retake is left for the next screenshot pass.

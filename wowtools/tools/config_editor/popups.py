@@ -137,7 +137,8 @@ class RecommendScreen(ModalScreen[list[RecommendRow] | None]):
         rec = row.recommendation
         now = "not set" if row.current is None else row.current
         if row.done:
-            return Text.assemble(("  ", ""), (f"{rec.cvar} = {rec.value}", "dim"), ("  already set", "dim italic"))
+            done = "  already the default" if row.current is None else "  already set"
+            return Text.assemble(("  ", ""), (f"{rec.cvar} = {rec.value}", "dim"), (done, "dim italic"))
         mark = CHECK_ON if index in self.ticked else CHECK_OFF
         return Text.assemble((f"{mark} ", "bold"), f"{rec.cvar} → {rec.value}", (f"  (now {now})", "dim"))
 
