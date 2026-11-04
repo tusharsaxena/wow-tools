@@ -15,8 +15,9 @@ from wowtools.core.kb import CvarInfo
 from wowtools.tools.config_editor.model import CATEGORIES, CONFIG_CACHE, ConfigTarget, category_of
 from wowtools.tools.config_editor.ops import (ConfigStaged, build_changes, rows, stage_remove, stage_reset,
                                               stage_set, stage_toggle)
-from wowtools.tools.config_editor.report import (CHANGED, COLUMN_CAPS, COLUMN_MINIMUMS, DEFAULT_STATE, NOT_SET,
-                                                 STATES, UNKNOWN, fit_columns, row_cells, row_state)
+from wowtools.tools.config_editor.report import (CHANGED, COLUMN_CAPS, COLUMN_MINIMUMS, DEFAULT_STATE, DROP_ORDER,
+                                                 NOT_SET, STATES, UNKNOWN, cut_name, fit_columns, row_cells,
+                                                 row_state)
 from wowtools.tools.config_editor.scanner import scan_targets
 
 
@@ -328,8 +329,36 @@ class ConfigEditorOpsTest(unittest.TestCase):
         self.assertEqual(widths[1], COLUMN_MINIMUMS[1])
         self.assertLess(widths[0], 27)
         self.assertGreaterEqual(widths[0], COLUMN_MINIMUMS[0])
-        widths, _ = fit_columns(natural, 10)  # no room: every column at its minimum, the state and category whole
-        self.assertEqual(widths, (COLUMN_MINIMUMS[0], COLUMN_MINIMUMS[1], 3, 7, 10))
+        # every column at its minimum is one cell over: the default goes and the name takes the room back
+        self.assertEqual(fit_columns(natural, 42), ((15, 7, 0, 7, 10), 1))
+
+    def test_columns_dropped_when_the_minimums_do_not_fit(self):
+        """FB2r: below the minimums whole columns go, the default first, then the category, the value and the state
+        (never cut), and a name left alone is cut to the room: the row always fits."""
+        self.assertEqual(DROP_ORDER, (None, 2, 4, 1, 3))
+        natural = (30, 7, 1, 7, 11)  # a character file under All flavors: 42 cells (FB2 review)
+        self.assertEqual(fit_columns(natural, 42), ((12, 7, 1, 7, 11), 1))  # the 1-cell default still fits
+        natural = (30, 7, 6, 7, 11)
+        widths, gap = fit_columns(natural, 42)
+        self.assertEqual((widths, gap), ((14, 7, 0, 7, 11), 1))  # the default goes, the name takes the room back
+        cases = {30: (14, 7, 0, 7, 0), 20: (12, 0, 0, 7, 0), 15: (15, 0, 0, 0, 0), 8: (8, 0, 0, 0, 0),
+                 0: (1, 0, 0, 0, 0)}
+        for room, expected in cases.items():
+            with self.subTest(room=room):
+                widths, _ = fit_columns(natural, room)
+                self.assertEqual(widths, expected)
+                shown = [w for w in widths if w]
+                self.assertLessEqual(sum(shown) + len(shown) - 1, max(room, 1))
+        self.assertEqual(fit_columns((10, 3, 0, 7, 6), 32), ((10, 3, 0, 7, 6), 2))  # an empty default: no gap for it
+
+    def test_name_cut_in_its_middle(self):
+        """FB2r: a cut name keeps its start and its end, so names sharing a long start stay apart."""
+        self.assertEqual(cut_name("assistedCombatHighlight", 30), "assistedCombatHighlight")
+        first, second = cut_name("raidFramesDisplayAggroHighlight", 15), cut_name("raidFramesDisplayClassColor", 15)
+        self.assertEqual((first, second), ("raidFra…ghlight", "raidFra…ssColor"))
+        self.assertEqual(cut_name("nameplateShowFriends", 2), "n…")
+        self.assertEqual(cut_name("nameplateShowFriends", 1), "…")
+        self.assertEqual(cut_name("nameplateShowFriends", 0), "")
 
 
 if __name__ == "__main__":

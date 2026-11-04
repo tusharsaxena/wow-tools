@@ -216,7 +216,8 @@ class ConfigEditorAppTest(TuiTestCase):
     async def test_rows_are_aligned_coloured_columns(self):
         """CF1-CF3: a file's rows are five aligned columns (name, value, default, state, category), a 300-character
         value is cut with … and the state and category still show, the state and category carry their colours, and
-        a row fits the tree pane at 120x30; at 80x24 (the floor) the columns shrink to their minimums."""
+        a row fits the tree pane at 120x30; at 80x24 (the floor) the rows are fitted again and still fit the pane
+        (columns dropped, the name cut: FB2r)."""
         blob = "v21##" + "7" * 295
         self.aella().write_bytes(CONFIG_AELLA + f'SET collapsedCurrencyCategoryDefaults "{blob}"\r\n'.encode())
         app = self.make_app()
@@ -247,9 +248,52 @@ class ConfigEditorAppTest(TuiTestCase):
             self.assertEqual(cells(long)[-2:], [UNKNOWN, blob_category])  # the state and category still show
             await pilot.resize_terminal(*TINY)
             await settle(app, pilot)
+            room = tree.size.width - tree.styles.scrollbar_size_vertical
+            for node in nodes:  # fitted again to the narrower pane: every row still fits it (FB2r)
+                with self.subTest(name=node.data.row.name, size=TINY):
+                    self.assertLessEqual(indent(node) + node.label.cell_len, room)
             small = next(n for n in nodes if n.data.row.name == "collapsedCurrencyCategoryDefaults").label.plain
-            self.assertLess(len(small), len(long))  # fitted again to the narrower pane
-            self.assertEqual(cells(small)[-2:], [UNKNOWN, blob_category])
+            self.assertLess(len(small), len(long))
+            self.assertTrue(small.strip().startswith("col"), small)  # the name's start is what is left
+
+    async def test_rows_fit_with_two_flavors_and_show_all_known(self):
+        """FB2r: a character file one level deeper (All flavors, two flavors) with Show all known ticked: at 120x30
+        every row fits its pane, the state and category whole (the default column gives way first), names sharing a
+        long start are cut in their middle and stay apart; at 80x30 every row still fits (only the name is left)."""
+        data = dict(KB_CVARS)
+        for name in ("raidFramesDisplayAggroHighlight", "raidFramesDisplayClassColor"):
+            data[name] = {"default": "1", "help": "", "category": "game", "scope": "character", "synced": True}
+        (self.kb / "cvars" / "_retail_.json").write_text(json.dumps(
+            {"source": "client dump _retail_ 1", "cvars": data}), encoding="utf-8")
+        clear_cache()
+        era = self.root / "_classic_era_" / "WTF"
+        (era / "Account" / "ACCT" / "Realm1" / "Other").mkdir(parents=True)
+        (era / CONFIG_WTF).write_bytes(b'SET gxMaximize "0"\r\n')
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot, ALL_FLAVORS)
+            review.query_one("#show-all", Checkbox).value = True
+            await settle(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            nodes = await open_rows(pilot, character_node(tree, "Aellâ"))
+            await settle(app, pilot)
+            self.assertIn("raidFramesDisplayClassColor", {n.data.row.name for n in nodes})
+            room = tree.size.width - tree.styles.scrollbar_size_vertical
+            for node in nodes:
+                name, _, _, state, category = row_cells(node.data.row)
+                with self.subTest(name=name, size=BASE):
+                    self.assertLessEqual(indent(node) + node.label.cell_len, room)
+                    self.assertEqual(node.label.plain.split()[-len(category.split()) - 1:],
+                                     [state, *category.split()])
+            names = {n.data.row.name: cells(n.label.plain)[0] for n in nodes}
+            self.assertNotEqual(names["raidFramesDisplayAggroHighlight"], names["raidFramesDisplayClassColor"])
+            await pilot.resize_terminal(80, 30)
+            await settle(app, pilot)
+            room = tree.size.width - tree.styles.scrollbar_size_vertical
+            for node in nodes:
+                with self.subTest(name=node.data.row.name, size=(80, 30)):
+                    self.assertLessEqual(indent(node) + node.label.cell_len, room)
+                    self.assertTrue(node.label.plain.strip(), node.label.plain)
 
     async def test_toggle_and_apply(self):
         app = self.make_app()

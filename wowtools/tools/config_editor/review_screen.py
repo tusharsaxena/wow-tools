@@ -4,8 +4,9 @@ shared character tree, (flavor ›) Config.wtf, account › Account config and r
 config-cache.wtf). A file opens to its CVar rows, loaded when it is opened (a file can set hundreds, and Show all
 known adds the knowledge base's): five aligned columns, name, value, default, state and category (feedback spec
 CF1-CF3; report.row_cells, report.fit_columns), each as wide as the file's widest cell up to a cap, cut with … to fit
-the tree pane (fitted again when the window is resized), the state and category in their theme colours. A file that can't be read is
-read-only: greyed, never ticked or written, and listed in the warnings view (`!`).
+the tree pane (columns dropped when even the minimums don't fit; fitted again when the window is resized), the
+state and category in their theme colours. A file that can't be read is read-only: greyed, never ticked or
+written, and listed in the warnings view (`!`).
 
 The left pane has the search (the shared filter box: a CVar's name, Blizzard's help and our note, or its file's
 group), the category select and the Changed only / Show all known boxes (CE6), the staged line and Apply / Dry run /
@@ -46,9 +47,10 @@ from wowtools.tools.config_editor.journal import latest_undoable, read_journal, 
 from wowtools.tools.config_editor.model import CATEGORIES, CONFIG_CACHE, CONFIG_WTF, ConfigTarget, Row
 from wowtools.tools.config_editor.ops import ConfigStaged, build_changes, rows
 from wowtools.tools.config_editor.report import (ACCOUNT_CONFIG, FILE_COLUMNS, STAGE_TITLES, STATUS_COLOURS,
-                                                 UNDO_COLUMNS, apply_confirm, apply_groups, file_label, file_rows,
-                                                 fit_columns, help_lines, recovery_text, row_cells, scope_listed,
-                                                 summary_rows, undo_confirm, undo_detail_rows, undo_summary_rows)
+                                                 UNDO_COLUMNS, apply_confirm, apply_groups, cut_name, file_label,
+                                                 file_rows, fit_columns, help_lines, recovery_text, row_cells,
+                                                 scope_listed, summary_rows, undo_confirm, undo_detail_rows,
+                                                 undo_summary_rows)
 from wowtools.tools.config_editor.runner import ApplyError, run_apply
 from wowtools.tools.config_editor.scanner import scan_targets
 from wowtools.tools.config_editor.settings import load_settings, resolve_root
@@ -650,8 +652,9 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
 
     def _cvar_label(self, data: CvarNode) -> Text:
         """The staged mark, then the five columns (CF1-CF3): name, value and default (a CVar not set dim, an
-        unknown one italic; the default always dim), cut with … to the file's column widths as they fit the pane,
-        the state and category in their colours."""
+        unknown one italic; the default always dim), cut with … to the file's column widths as they fit the pane
+        (the name in its middle), the state and category in their colours; a column the pane has no room for is
+        left out (fit_columns)."""
         row = data.row
         cells = row_cells(row)
         natural = self._columns.get(data.target.path) or tuple(map(cell_len, cells))
@@ -663,12 +666,13 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
         styles = (style, style, "dim", CVAR_STATE_COLOURS[state], CVAR_CATEGORY_COLOURS.get(category, ""))
         text = Text.assemble((NO_MARK, ""), (f"{STAGED_MARK} ", f"bold {theme_colour(self.app, 'warning')}")
                              if row.staged else ("  ", ""))
-        last = len(cells) - 1
-        for index, (cell, width, cell_style) in enumerate(zip(cells, widths, styles)):
-            piece = Text(cell, style=cell_style)
-            piece.truncate(width, overflow="ellipsis", pad=index < last)
+        shown = [(cell, width, cell_style) for cell, width, cell_style in zip(cells, widths, styles) if width]
+        for index, (cell, width, cell_style) in enumerate(shown):
+            last = index == len(shown) - 1
+            piece = Text(cut_name(cell, width) if index == 0 else cell, style=cell_style)
+            piece.truncate(width, overflow="ellipsis", pad=not last)
             text.append_text(piece)
-            if index < last:
+            if not last:
                 text.append(" " * gap)
         return text
 
