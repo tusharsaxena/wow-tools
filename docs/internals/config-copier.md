@@ -78,8 +78,9 @@ Modules (all UI-free except `app.py` and the `*_screen.py` files):
   preferences).
 
 A target whose preferences already match comes back byte-identical, so the planner calls it `unchanged` and it is
-never written (the anti-goal "a file changed where the user changed nothing"). The per-pattern check of the state
-list against each flavor's CVar dump is T20's (plan), once the dumps exist.
+never written (the anti-goal "a file changed where the user changed nothing"). Each pattern of the state
+list was checked against the 12.1.5 / 5.5.4 / 2.5.6 / 1.15.9 CVar dumps (T20): the tutorial toggles
+(`showNPETutorials`, `housingTutorialsEnabled`) are exceptions, kept with the preferences.
 
 ## Safety
 

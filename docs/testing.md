@@ -435,4 +435,5 @@ would otherwise finish.
 
 Some tests skip on purpose, with the reason in the decorator: POSIX-only behaviour (`chmod` read-only, hard links,
 `EXDEV`), symlinks (they need privileges on Windows), Windows-only launcher tests, and a config-save stress test
-Windows cannot run. On Linux the suite reports 2 skipped; on Windows more skip.
+Windows cannot run, and the run of the KaosKbDump addon's Lua when no `lua` interpreter is installed. On Linux the
+suite reports 2 skipped; on Windows more skip.

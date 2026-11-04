@@ -53,7 +53,8 @@ python3 scripts/refresh_kb.py --wow "/path/to/World of Warcraft" --wiki --provis
 ```
 
 writes `_forever_`'s files as a copy of `_retail_`'s from this run, marked `"provisional": "copied from _retail_ until a
-_forever_ dump exists"`. Once `_forever_` has its own dump, the same command writes the real files instead.
+_forever_ dump exists"`. Once `_forever_` has its own dump, the same command writes the real files instead; it takes a `dumpVersion` 2
+dump to replace the slash commands and macro limits (a first-version dump replaces only the CVars).
 
 `--wiki` adds plain-English notes from `scripts/kb_dump/wiki_notes.json` for CVars whose Blizzard help is empty or
 cryptic:

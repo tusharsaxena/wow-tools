@@ -54,22 +54,27 @@ local function dumpCVars()
 end
 
 -- "/cast" -> "CAST", from the SLASH_<KEY><n> globals, then any hash_SlashCmdList entry they missed (its key found
--- by its handler in SlashCmdList), then the emotes ("/dance" -> "EMOTE35", from EMOTE<n>_CMD<m>). When two keys
--- claim one slash, the alphabetically first wins, so reruns agree. A key whose SlashCmdList entry or SLASH_ global
--- an addon set (issecurevariable says tainted) goes into addonCommands, so the refresh can leave it out.
+-- by its handler in SlashCmdList), then the emotes ("/dance" -> "EMOTE35", from EMOTE<n>_CMD<m>). A key whose
+-- SlashCmdList entry or SLASH_ global an addon set (issecurevariable says tainted) goes into addonCommands, so the
+-- refresh can leave it out. When two keys claim one slash, the client's beats an addon's, and between two of a kind
+-- the alphabetically first wins, so reruns agree and an addon never hides a client command.
 local function dumpCommands()
-    local commands, addon, count = {}, {}, 0
+    local commands, tainted, addon, count = {}, {}, {}, 0
     local secure = issecurevariable or function() return true end
-    local function add(slash, key)
+    local function add(slash, key, isAddon)
         if type(slash) ~= "string" or slash:sub(1, 1) ~= "/" or key == SELF_KEY then
             return
         end
         slash = slash:lower()
-        if commands[slash] == nil then
+        local old = commands[slash]
+        if old == nil then
             count = count + 1
         end
-        if commands[slash] == nil or key < commands[slash] then
-            commands[slash] = key
+        if old == nil or (tainted[slash] and not isAddon) or (tainted[slash] == isAddon and key < old) then
+            commands[slash], tainted[slash] = key, isAddon
+        end
+        if isAddon then
+            addon[key] = true
         end
     end
     for name, slash in pairs(_G) do
@@ -77,12 +82,9 @@ local function dumpCommands()
             local key = name:match("^SLASH_(.-)%d+$")
             local emote = name:match("^(EMOTE%d+)_CMD%d+$")
             if key and key ~= "" then
-                add(slash, key)
-                if not secure(name) or not secure(SlashCmdList, key) then
-                    addon[key] = true
-                end
+                add(slash, key, not secure(name) or not secure(SlashCmdList, key))
             elseif emote then
-                add(slash, emote)
+                add(slash, emote, false)
             end
         end
     end
@@ -91,11 +93,9 @@ local function dumpCommands()
         keyOf[handler] = key
     end
     for slash, handler in pairs(hash_SlashCmdList or {}) do
-        if type(slash) == "string" and commands[slash:lower()] == nil and keyOf[handler] then
-            add(slash, keyOf[handler])
-            if not secure(SlashCmdList, keyOf[handler]) then
-                addon[keyOf[handler]] = true
-            end
+        local key = keyOf[handler]
+        if type(slash) == "string" and commands[slash:lower()] == nil and key then
+            add(slash, key, not secure(SlashCmdList, key))
         end
     end
     return commands, addon, count

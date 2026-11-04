@@ -6,6 +6,8 @@ import importlib.util
 import io
 import json
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -326,8 +328,36 @@ class RefreshKbTest(unittest.TestCase):
         self.assertNotIn("wiki", self.read_json("cvars", "_retail_.json")["cvars"]["gxWindow"])
 
 
+# Stubs just enough of the client for the addon's /kbdump, then prints the slash commands it recorded.
+LUA_HARNESS = r"""
+SlashCmdList, hash_SlashCmdList = {}, {}
+local tainted = { SLASH_ACECONSOLE_FOO1 = true, ACECONSOLE_FOO = true, SLASH_ZADDON1 = true, ZADDON = true }
+function issecurevariable(t, name)
+    return not tainted[name or t]
+end
+local function handler() end
+SLASH_ACECONSOLE_FOO1, SlashCmdList.ACECONSOLE_FOO = "/stopwatch", handler
+SLASH_STOPWATCH1, SlashCmdList.STOPWATCH = "/stopwatch", handler
+SLASH_ZADDON1, SlashCmdList.ZADDON = "/zz", handler
+SLASH_BADDON1, SlashCmdList.BADDON = "/dance", handler
+EMOTE35_CMD1 = "/dance"
+C_Console = { GetAllCommands = function() return {} end }
+function GetBuildInfo() return "12.1.5", "1" end
+function date() return "now" end
+function print() end
+dofile(...)
+SlashCmdList.KAOSKBDUMP()
+local lines = {}
+for slash, key in pairs(KaosKbDumpDB.commands) do lines[#lines + 1] = slash .. "=" .. key end
+for key in pairs(KaosKbDumpDB.addonCommands) do lines[#lines + 1] = "addon:" .. key end
+table.sort(lines)
+io.write(table.concat(lines, "\n"))
+"""
+
+
 class DumpAddonTest(unittest.TestCase):
-    """The Lua is not unit-tested (plan T4): these pin its shape so it stays small and library-free."""
+    """The Lua has no harness of its own (plan T4): these pin its shape so it stays small and library-free, and run
+    its slash-command rule under a plain `lua` when one is installed."""
     ADDON = REPO_ROOT / "scripts" / "kb_dump" / "KaosKbDump"
 
     def test_addon_files_and_size(self):
@@ -341,6 +371,21 @@ class DumpAddonTest(unittest.TestCase):
                     "issecurevariable", "EMOTE", "MAX_ACCOUNT_MACROS", "MAX_CHARACTER_MACROS", "dumpVersion = 2"):
             self.assertIn(api, lua)
         self.assertTrue((REPO_ROOT / "scripts" / "kb_dump" / "README.md").is_file())
+
+    @unittest.skipUnless(shutil.which("lua"), "needs a lua interpreter")
+    def test_client_command_beats_an_addon_key_on_the_same_slash(self):
+        """T20r: an addon key that sorts first must not take a client's slash (the refresh drops addon keys)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            harness = Path(tmp) / "harness.lua"
+            harness.write_text(LUA_HARNESS, encoding="utf-8")
+            result = subprocess.run([shutil.which("lua"), str(harness), str(self.ADDON / "KaosKbDump.lua")],
+                                    capture_output=True, text=True, timeout=30, check=True)
+        lines = result.stdout.splitlines()
+        self.assertIn("/stopwatch=STOPWATCH", lines)
+        self.assertIn("/zz=ZADDON", lines)
+        self.assertIn("/dance=BADDON", lines)
+        self.assertEqual([line for line in lines if line.startswith("addon:")],
+                         ["addon:ACECONSOLE_FOO", "addon:ZADDON"])
 
 
 if __name__ == "__main__":
