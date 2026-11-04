@@ -92,8 +92,8 @@ The editor never goes online: everything it knows about CVars ships with it, and
 comes from.
 
 - **Blizzard's help text, the defaults, the levels and whether a CVar is synced** come from the game itself. A small
-  addon of ours, run once in each game version, asked the game for its whole CVar list; the help panel names the game
-  version and build it was read from (`client dump _retail_ 12.1.5 …`). Retail, Classic, Classic Era and Anniversary
+  addon of ours, run once in each game version, asked the game for its whole CVar list; beside Blizzard's text the
+  help panel names the game version and build it was read from (`client dump _retail_ 12.1.5 …`). Retail, Classic, Classic Era and Anniversary
   have their own lists; Forever uses Retail's list for now, and the PTR and Beta have none yet, so their CVars all
   show as `unknown`.
 - **Our notes** (`Note:`) are for CVars whose Blizzard text is missing or says little: written in our own words from
@@ -106,8 +106,8 @@ Nothing is guessed: what the lists don't cover shows as `unknown` or `No descrip
 
 A CVar marked `unknown` is one the editor's list has no entry for in that game version: an addon's own CVar, one
 the game added after the list was made or took out before it, or any CVar of a game version with no list yet. It has
-no help, default or level, so **Reset** isn't offered for it and **Show all known** doesn't list it; you can still
-**Set** it, **Remove** it, or **Add** it by name. Check the name before you add one: the game ignores a CVar it
+no help, default or level, so **Reset** refuses it (it says there is no known default; use **Remove** instead) and
+**Show all known** doesn't list it; you can still **Set** it, **Remove** it, or **Add** it by name. Check the name before you add one: the game ignores a CVar it
 doesn't know.
 
 ### Show and search

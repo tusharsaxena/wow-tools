@@ -62,8 +62,10 @@ guide's "If a change comes back" asks users to report a revert. `Config.wtf` has
 Reset act on the highlighted CVar in every ticked file (else its own file), Add on the ticked files (else the
 highlighted one), Space on a 0/1 row toggles it in place (`stage_toggle`), Recommend… lists
 `ops.applicable_recommendations` (the CVar's KB scope is the file's level, or unknown) and stages the ticked ones.
-Reset is remove (CE5) and is offered only for a CVar with a known default; Remove takes any CVar's lines out. A set in
-a file whose level is not the KB scope is allowed; the confirm lists it (`report.scope_listed`).
+Reset is remove (CE5) and acts only where the CVar has a known default: a file without one is skipped with a warning,
+and with none at all it refuses with a notice pointing at Remove (the button stays enabled, since ticked files may
+differ); Remove takes any CVar's lines out. A set in a file whose level is not the KB scope is allowed; the confirm
+lists it (`report.scope_listed`).
 
 ## Knowledge base
 

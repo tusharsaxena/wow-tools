@@ -261,7 +261,7 @@ class DocsTest(unittest.TestCase):
         for needle in ("## The three levels", "`WTF\\Config.wtf`", "`config-cache.wtf`", f"**{ACCOUNT_CONFIG}**",
                        "## Synced CVars and why an edit sticks", "Blizzard's servers", "`cache.md5`", "fingerprint",
                        "`.old`", "next login", "## If a change comes back", "](../README.md#reporting-a-bug)",
-                       "## Unknown CVars", f"`{UNKNOWN}`", f"`{NOT_SET}`", f"`{CHANGED}`",
+                       "## Unknown CVars", "**Reset** refuses it", f"`{UNKNOWN}`", f"`{NOT_SET}`", f"`{CHANGED}`",
                        "## Where the help comes from", "warcraft.wiki.gg", "in our own words", "build",
                        "Forever", "## Recommend…", "the page it comes from", "## The browse screen",
                        "### The help panel", "### Show and search", "### Keys on the browse screen",
