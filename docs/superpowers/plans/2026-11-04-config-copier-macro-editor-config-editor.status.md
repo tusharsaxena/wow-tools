@@ -22,7 +22,7 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 | T10 | M3 | copier planning and config merge | done | (this commit) | 24 new tests: 13 in test_config_copier_planner.py (the plan's 5 plus COPY_FILES order, unknown-layout macro warning, no warning when unchanged, config pair is the merge, config unchanged when only state differs, unreadable files and their events, bad arguments, nothing written), 11 in test_config_copier_merge.py (the plan's 4 plus line order and bytes, empty target, empty source, a duplicated line, LF and other lines kept, case-insensitive names, source duplicate); `copier.*` events registered, events.md regenerated. Gate green: WSL 2135 OK (9 skipped), Windows 2135 OK (85 skipped), ruff clean, events.md current. No CHANGELOG line: nothing a user sees yet (the tool is registered in T11). Review fix (f64164e review): core.cvarfile `_NAME` compiled with re.ASCII so `apply_cvar_changes` accepts every name `parse_cvars` reads (a source name holding U+00A0 made `merge_config`, and so `plan_copy`, raise); 2 new tests (cvarfile, merge) and an ASCII tab case in the bad-changes test. Gate green: WSL 2137 OK (9 skipped), Windows 2137 OK (85 skipped), ruff clean, events.md current |
 | T11 | M3 | copier run, undo, flow | done | (this commit) | 26 new tests: 16 in test_config_copier_run.py (the plan's 4 plus names, non-ASCII round trip, unknown macro layout (Review Focus 1), unchanged/no-source never written, change lines, WoW running, changed since review, recovery, leave, 3 report tests), 10 TUI in test_config_copier_app.py (the plan's 4 plus registry, unticked file, dry run then undo, WoW running, pair statuses, one flavor at 80x24); the copier added to every meta-test table (look and feel, help, quit, tool menu, toasts, warnings) and to test_structure; first guide, internals doc, README/CLAUDE.md/architecture/releasing rows, RELEASE_SHIPS and CHANGELOG line (T11j); events.md regenerated. Gate: ruff clean, events.md current, Windows 2163 OK (85 skipped); WSL 2163 OK except the two test_release_contents git-archive checks, which read HEAD and so fail until the new guide is committed; re-run green after the commit. Review fix (3d33355 review): the review carries the shared RiskBanner (T11r1: STD-7.10's list, test_structure, DESTRUCTIVE_REVIEWS, test_docs, guide and internals updated); the diff names a line-ending or non-text-only change instead of "The files are the same." (T11r2, `report.bytes_only`); 2 new tests (run: bytes_only cases, app: the diff screen line). Gate green: WSL 2165 OK (9 skipped), Windows 2165 OK (85 skipped), ruff clean, events.md current |
 | T12 | M3 | copier docs; push | done | (this commit) | 1 new test in test_docs.py (`test_config_copier_guide_readme_and_notes`: guide V1/V2 section, the five files, merge, macro warning, safety net, keys; README rows and FAQ; CLAUDE.md, CHANGELOG, architecture, internals sections, releasing); guide gains Why a copy sticks, What the tool never touches, The safety net (backups, interrupted copy), WoW running, more FAQ and troubleshooting rows; internals doc gains V1/V2, the merge, Safety, Events, Tests; README names the copier in its Dry run, Undo, journals and FAQ lines and shows its review; `review.png` re-rendered with the banner (T12b). Gate green: WSL 2166 OK (9 skipped), Windows 2166 OK (85 skipped), ruff clean, events.md current. Push (M3) left to the orchestrator. Review fix (fix: T12 review fixes): the internals doc's CC5 bullets and the guide's no-target sentence now say a target with no config-cache.wtf gets the source's file minus its state lines (non-SET lines kept), as merge.py does; 1 new test (`test_merge_without_target_file_keeps_the_sources_other_lines`). Gate green: WSL 2167 OK (9 skipped), Windows 2167 OK (85 skipped), ruff clean, events.md current |
-| T13 | M4 | macro model, ops, paste rules | todo | | |
+| T13 | M4 | macro model, ops, paste rules | done | (this commit) | 19 new tests in test_macro_editor_ops.py (the plan's nine plus scan, read-only and unreadable sets, empty-set create, skip, edit back to the original, staged add edit/delete, delete, non-UTF-8 bytes, count/clear); `macro.*` events registered; gate green: WSL 2186 OK (9 skipped), Windows 2186 OK (85 skipped), ruff clean, events.md current |
 | T14 | M4 | macro reference, explainer, optimizer, templates | todo | | |
 | T15 | M4 | macro browse screen, apply, undo | todo | | |
 | T16 | M4 | macro edit screen and popups | todo | | |
@@ -300,3 +300,33 @@ Statuses: `todo`, `in-progress`, `done`, `waiting-user`, `blocked`.
 - T12c: the README's Screenshots section gains the copier's review; its "Terms of use" popup paragraph stays as is,
   since the copier has the banner but no USE AT YOUR OWN RISK popup (T11d, T11r1). The README test badge count is
   left for the release (releasing.md), as in T1-T11.
+- T13a: `MacroSet.sha256` is `str | None` (None: no file, the run creates it) and the set gains `read_only` and
+  `label` (`MAIN/Account macros`, `MAIN/Realm1/Aellâ`; no flavor in it). A missing file is an empty, writable set
+  (`data` b""); a file that can't be read is a read-only set whose `parsed.problem` says why, logged once as
+  `macro.file_unreadable` (warning); `scan_sets` logs `macro.scanned`. Event prefix `macro` (`SvTool("macro-editor",
+  "macro")`, `client_events`). `scanner.read_set` reads one set (for a rescan after Apply).
+- T13b: `Staged` keeps at most one `MacroChange` per id and file, folded as the user works: editing a staged add
+  keeps it an add with the new text, deleting it drops it, an edit back to the file's own text drops the change.
+  `stage_edit(staged, mset, macro_id, *, name, icon, body)`, `stage_new(staged, mset, *, name, body, icon=ICON_DEFAULT)
+  -> id`, `stage_delete(staged, mset, macro_id)` raise ValueError (read-only or full set, unknown or deleted id, a
+  macro the file can't hold); `effective_macros` and `free_slots` give the set as staged, which every operation
+  works on (a second Replace text sees the first's text; pastes count earlier pastes' slots). `Staged.count()` and
+  `clear()`.
+- T13c: a new or pasted id is the highest of its prefix plus one over every id the file holds as read and every
+  staged add, so a macro deleted in the same run never gives its id to a new one (an action bar button of the
+  deleted macro must not start firing the new one); an add dropped before Apply never reached the file, so its id
+  is free again.
+- T13d: a clash is the same (cut) name, case-sensitive, among the target's macros as staged; `on_clash(pasted,
+  existing)`. Overwrite needs no slot; rename and a plain paste do. Refusals are one line per macro not pasted:
+  `<label>: <why>; <name> was not pasted.` (read-only, `no free macro slot (n/limit)`, a body over 255 or one the
+  layout can't hold). Names are cut at 16 everywhere (`cut_name`), as the client does; an empty name is refused.
+- T13e: the 255 limit counts characters with a line break as one (`body_length`: the client's MacroFrame counts
+  letters, `GetNumLetters`, not bytes). `check_macro(name, icon, body)` is the one check (limits, then the file
+  layout's own rules from `core.macrofile` by a probe add).
+- T13f: Replace text acts on bodies only (ME7: reworking spell names); `preview_replace(staged, picks, find, new, *,
+  case) -> list[ReplaceRow]` gives one row per macro with a match (before, after, count, refusal) in pick order and
+  stages nothing; `stage_replace_text` stages the rows without a refusal and returns how many. An empty find matches
+  nothing.
+- T13g: `build_changes` raises ValueError for staged changes of a set not passed, skips a set whose bytes would not
+  change, and gives each ClientChange one line per change (`macros-cache.txt: added "X"`, `changed "X"`, `deleted
+  "X"`).
