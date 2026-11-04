@@ -265,6 +265,88 @@ class ShippedCvarsTest(KbTestCase):
                     self.assertEqual(retail[name].get("wiki"), note)
 
 
+class CuratedCategoriesTest(KbTestCase):
+    """cvar_categories.json (spec CF4): a hand-curated group for every shipped CVar, used before the name and
+    console-category rules of category_group, which still place a CVar the file doesn't list."""
+
+    def curated(self, categories: object) -> None:
+        write_json(self.root / "cvar_categories.json", {"comment": "test", "categories": categories})
+
+    def flavor_file(self, cvars: dict) -> None:
+        write_json(self.root / "cvars" / "_retail_.json", {"source": "client dump _retail_ 1", "cvars": cvars})
+
+    def test_a_curated_name_gets_its_group_in_any_case(self):
+        self.curated({"cursorSizePreferred": "interface", "ChatSoundVolume": "sound", "agentUID": "network"})
+        self.flavor_file({"CURSORSIZEPREFERRED": {"default": "-1", "category": "default"},
+                          "ChatSoundVolume": {"default": "0.4", "category": "game"},
+                          "agentuid": {"default": "", "category": "none"}})
+        loaded = kb.load_cvars("_retail_", root=self.root)
+        self.assertEqual({name: info.category for name, info in loaded.items()},
+                         {"CURSORSIZEPREFERRED": "interface", "ChatSoundVolume": "sound", "agentuid": "network"})
+        self.assertEqual(kb.cvar_category("chatsoundvolume", "game", root=self.root), "sound")
+
+    def test_an_unlisted_name_falls_back_to_the_rules(self):
+        self.curated({"cursorSizePreferred": "interface"})
+        self.flavor_file({"nameplateBrandNew": {"default": "1", "category": "game"},
+                          "Sound_BrandNew": {"default": "1", "category": "default"},
+                          "brandNewThing": {"default": "1", "category": "game"}})
+        loaded = kb.load_cvars("_retail_", root=self.root)
+        self.assertEqual({name: info.category for name, info in loaded.items()},
+                         {"nameplateBrandNew": "nameplates", "Sound_BrandNew": "sound", "brandNewThing": "interface"})
+        self.assertEqual(kb.cvar_category("cameraBrandNew", "", root=self.root), "camera")
+
+    def test_no_file_or_a_bad_entry_falls_back(self):
+        self.flavor_file({"cursorSizePreferred": {"default": "-1", "category": "game"}})
+        self.assertEqual(kb.load_cvars("_retail_", root=self.root)["cursorSizePreferred"].category, "interface")
+        kb.clear_cache()
+        self.curated({"cursorSizePreferred": "mouse", "Sound_X": 3, "": "sound"})  # not a group: the rules decide
+        self.assertEqual(kb.cvar_category("cursorSizePreferred", "debug", root=self.root), "other")
+        self.assertEqual(kb.cvar_category("Sound_X", "default", root=self.root), "sound")
+        for content in ("{not json", json.dumps({"categories": [1]})):
+            with self.subTest(content=content):
+                kb.clear_cache()
+                (self.root / "cvar_categories.json").write_text(content, encoding="utf-8")
+                with capture_events() as records:
+                    self.assertEqual(kb.cvar_category("cursorSizePreferred", "game", root=self.root), "interface")
+                self.assertEqual([r["event"] for r in records], ["kb.unreadable"])
+
+    def test_every_shipped_cvar_has_a_curated_group(self):
+        path = kb.KB_ROOT / "cvar_categories.json"
+        raw = path.read_bytes()
+        self.assertNotIn(b"\r", raw)
+        data = json.loads(raw.decode("utf-8"))
+        self.assertEqual(set(data), {"comment", "categories"})
+        self.assertTrue(data["comment"].strip())
+        categories = data["categories"]
+        self.assertEqual(raw.decode("utf-8"), json.dumps(data, ensure_ascii=False, indent=1) + "\n")
+        self.assertEqual(list(categories), sorted(categories))
+        self.assertEqual(len({name.lower() for name in categories}), len(categories))  # no name twice in any case
+        self.assertLessEqual(set(categories.values()), set(kb.CATEGORY_GROUPS))
+        self.assertEqual(set(categories.values()), set(kb.CATEGORY_GROUPS))  # every group is used
+        listed = {name.lower() for name in categories}
+        for cvars in sorted((kb.KB_ROOT / "cvars").glob("*.json")):
+            with self.subTest(flavor=cvars.stem):
+                names = json.loads(cvars.read_text(encoding="utf-8"))["cvars"]
+                self.assertEqual(sorted(n for n in names if n.lower() not in listed), [])
+                loaded = kb.load_cvars(cvars.stem)
+                by_lower = {name.lower(): group for name, group in categories.items()}
+                for name, info in loaded.items():
+                    self.assertEqual(info.category, by_lower[name.lower()], name)
+
+    def test_the_curated_groups_put_misfiled_cvars_right(self):
+        """The client files these under game or none, which the rules alone made interface or other (CF4)."""
+        retail = kb.load_cvars("_retail_")
+        for name, group in {"ChatSoundVolume": "sound", "FootstepSounds": "sound", "audioLocale": "sound",
+                            "mouseInvertPitch": "camera", "AdvFlyingDynamicFOVEnabled": "camera",
+                            "SoftTargetNameplateEnemy": "nameplates", "UnitNameEnemyPlayerName": "nameplates",
+                            "WorldTextScale": "combat text", "CombatDamage": "combat text",
+                            "useIPv6": "network", "realmName": "network", "maxFPS": "graphics",
+                            "cursorSizePreferred": "interface", "scriptErrors": "other"}.items():
+            with self.subTest(cvar=name):
+                self.assertIn(name, retail)
+                self.assertEqual(retail[name].category, group)
+
+
 class MacroLimitsTest(KbTestCase):
     def test_macro_limits_retail(self):
         self.assertEqual(kb.macro_limits("_retail_"), (120, 30))
@@ -381,7 +463,7 @@ class KbShipsTest(unittest.TestCase):
         self.assertEqual(kb.KB_ROOT, Path(kb.__file__).resolve().parents[1] / "kb")
         readme = (kb.KB_ROOT / "README.md").read_text(encoding="utf-8")
         for needle in ("cvar_state.json", "macro_limits.json", "cvars/<flavor>.json", "source", "macro_reference.json",
-                       "macro_templates.json", "optimizer_rules.json", "recommendations.json"):
+                       "macro_templates.json", "optimizer_rules.json", "recommendations.json", "cvar_categories.json"):
             self.assertIn(needle, readme)
 
     def test_kb_unreadable_is_registered_as_a_warning(self):

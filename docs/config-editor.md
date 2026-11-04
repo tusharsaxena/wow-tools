@@ -116,6 +116,9 @@ doesn't know.
 **Filter**; the files with a match open. Under **Show**, pick a category (graphics, sound, interface, camera,
 nameplates, combat text, network, other), tick **Changed only** for the CVars set to something other than their
 default, or tick **Show all known** to list every CVar the knowledge base knows for that file's level, set or not.
+The search and the **Show** choices narrow the list together: a search you applied earlier still applies when you
+pick a category. When the two leave nothing, the help panel says which search and category it is; `Esc` in the
+filter box clears the search, and **All categories** shows every category.
 
 ### Keys on the browse screen
 

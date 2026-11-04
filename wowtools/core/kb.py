@@ -39,6 +39,7 @@ SCOPES = ("machine", "account", "character")
 
 _SAFE_FLAVOR = re.compile(r"^[A-Za-z0-9_]+$")
 _cache: dict[Path, dict | None] = {}
+_curated: dict[Path, dict[str, str]] = {}  # cvar_categories.json by path: lowercased name -> group
 _cache_lock = threading.Lock()
 
 
@@ -58,6 +59,7 @@ class CvarInfo:
 def clear_cache() -> None:
     with _cache_lock:
         _cache.clear()
+        _curated.clear()
 
 
 def _read(path: Path) -> dict | None:
@@ -96,8 +98,8 @@ def _str(value: object) -> str:
 
 
 def category_group(name: str, raw: str) -> str:
-    """The X8 group of a CVar: by name first (nameplates, camera, combat text cut across the client's categories),
-    then by the client's console category."""
+    """The X8 group of a CVar by rule: by name first (nameplates, camera, combat text cut across the client's
+    categories), then by the client's console category. cvar_category puts the curated list (CF4) before these."""
     low = name.lower()
     if low.startswith("nameplate"):
         return "nameplates"
@@ -114,7 +116,32 @@ def category_group(name: str, raw: str) -> str:
     return CONSOLE_CATEGORY_GROUPS.get(raw_low, "other")
 
 
-def _cvar_info(name: str, entry: dict, source: str) -> CvarInfo:
+def curated_categories(*, root: Path | None = None) -> dict[str, str]:
+    """cvar_categories.json (spec CF4): the hand-curated group of each CVar, keyed by the lowercased name (the client
+    matches CVar names in any case). An entry whose group is not one of CATEGORY_GROUPS is left out; {} with no
+    file, and a file without a "categories" object is logged once as `kb.unreadable`."""
+    path = _root(root) / "cvar_categories.json"
+    with _cache_lock:
+        if path in _curated:
+            return _curated[path]
+    data = _read(path)
+    raw = data.get("categories") if data is not None else {}
+    if not isinstance(raw, dict):
+        log_event("kb.unreadable", path=str(path), reason='no "categories" object')
+        raw = {}
+    groups = {name.lower(): group for name, group in raw.items()
+              if isinstance(name, str) and name and group in CATEGORY_GROUPS}
+    with _cache_lock:
+        return _curated.setdefault(path, groups)
+
+
+def cvar_category(name: str, raw: str = "", *, root: Path | None = None) -> str:
+    """The X8 group of a CVar: its curated group (cvar_categories.json, CF4) when the file lists it, else the name
+    and console-category rules of category_group (a CVar a newer dump adds)."""
+    return curated_categories(root=root).get(name.lower()) or category_group(name, raw)
+
+
+def _cvar_info(name: str, entry: dict, source: str, curated: Mapping[str, str]) -> CvarInfo:
     wiki = entry.get("wiki") if isinstance(entry.get("wiki"), dict) else {}
     text, wiki_source = _str(wiki.get("text")).strip(), _str(wiki.get("source"))
     if not (text and wiki_source):
@@ -123,7 +150,8 @@ def _cvar_info(name: str, entry: dict, source: str) -> CvarInfo:
     default = entry.get("default")
     return CvarInfo(name=name, default=default if isinstance(default, str) else None, help=_str(entry.get("help")),
                     description=text, description_source=wiki_source,
-                    category=category_group(name, _str(entry.get("category"))), scope=scope,
+                    category=curated.get(name.lower()) or category_group(name, _str(entry.get("category"))),
+                    scope=scope,
                     synced=entry.get("synced") is True, source=source)
 
 
@@ -139,8 +167,8 @@ def load_cvars(flavor_folder: str, *, root: Path | None = None) -> dict[str, Cva
         with _cache_lock:
             _cache[path] = None
         return {}
-    source = _str(data.get("source"))
-    return {name: _cvar_info(name, entry, source) for name, entry in cvars.items()
+    source, curated = _str(data.get("source")), curated_categories(root=root)
+    return {name: _cvar_info(name, entry, source, curated) for name, entry in cvars.items()
             if isinstance(name, str) and name and isinstance(entry, dict)}
 
 

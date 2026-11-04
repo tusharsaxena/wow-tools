@@ -18,6 +18,7 @@ without a source is not shipped.
 | `cvars/<flavor>.json` | Every CVar of one flavor (`_retail_`, `_classic_` ...) | `scripts/refresh_kb.py` from the dump addon |
 | `slash_commands/<flavor>.json` | The flavor's slash commands (`/cast` -> `CAST`) | `scripts/refresh_kb.py` from the dump addon |
 | `cvar_state.json` | The CVars that are a character's state, not a preference | by hand |
+| `cvar_categories.json` | The Config Editor's group of every CVar in any `cvars/<flavor>.json` | by hand, from each CVar's name and help |
 | `macro_limits.json` | Macro slots per flavor | by hand from the client's UI source, or `scripts/refresh_kb.py` from the dump addon |
 | `macro_reference.json` | Macro commands, conditionals and `@unit` targets, with help and plain-English phrases | by hand, from the wiki |
 | `macro_templates.json` | The Macro Editor's templates | by hand |
@@ -39,9 +40,10 @@ standing in until that flavor's own dump exists; its `source` still names the du
 
 `scope` is where the client keeps the CVar (`machine` = `WTF/Config.wtf`, `account`, `character`); `synced` is true
 when the server stores it. A CVar the client listed but gave no details for has `default` and `scope` `null`
-(unknown), and `synced` false. `category` is the client's console category, lowercased; `core/kb.py` maps it to the
-Config Editor's groups (graphics, sound, interface, camera, nameplates, combat text, network, other). `wiki` is
-optional and is only used with its source. The dumping character's own values are never stored.
+(unknown), and `synced` false. `category` is the client's console category, lowercased; for a CVar
+`cvar_categories.json` doesn't list, `core/kb.py` maps it (with name rules) to the Config Editor's groups (graphics,
+sound, interface, camera, nameplates, combat text, network, other). `wiki` is optional and is only used with its
+source. The dumping character's own values are never stored.
 
 ### `slash_commands/<flavor>.json`
 
@@ -55,6 +57,15 @@ matches one of the `patterns` (fnmatch: `*` is any run of characters), unless it
 without regard to case, as the client matches CVar names. Every other CVar is a preference. The Config Copier keeps
 the target character's state CVars and copies the source's preferences. When a pattern catches a real preference in a
 flavor's CVar list, add that name to `exceptions`.
+
+### `cvar_categories.json`
+
+`{"comment", "categories": {"<CVar name>": "<group>"}}`, sorted by name: the Config Editor's group (one of graphics,
+sound, interface, camera, nameplates, combat text, network, other) of every CVar any `cvars/<flavor>.json` holds,
+decided by hand from the CVar's name and Blizzard's help text, since the client files most CVars under `game`,
+`default` or `none`. Names match without regard to case. `core/kb.py` uses this group first; a CVar not listed (one a
+newer dump adds) gets the group of the name and console-category rules. After `scripts/refresh_kb.py` brings new
+CVars, add them here: `tests/test_kb.py` checks that every shipped CVar is listed and every group is one of the eight.
 
 ### `macro_limits.json`
 

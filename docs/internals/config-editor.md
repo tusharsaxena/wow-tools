@@ -79,7 +79,11 @@ the sources rule in `wowtools/kb/README.md`), cached per path; tests pass `kb_ro
   with its URL. Retail, Classic, Anniversary and Classic Era have their own dump; `_forever_` is a `provisional` copy
   of Retail's (U1), its `source` naming the Retail dump; a flavor with no file (PTR, Beta) gives `{}`, so every row is
   `unknown` and `report.help_lines` says so on the file.
-- `category_group(name, raw)` (X8) puts each CVar in one of `CATEGORY_GROUPS`: name rules first (`nameplate*`,
+- `cvar_categories.json` → `curated_categories()` (CF4): the hand-curated group of every CVar in any shipped
+  `cvars/<flavor>.json` (the client files most under `game`, `default` or `none`), matched in any case; `load_cvars`
+  and `cvar_category(name, raw)` use it first, and `model.category_of` for a CVar the flavor's data doesn't know.
+  `tests/test_kb.py` checks every shipped CVar is listed. For a name it doesn't list (a newer dump),
+  `category_group(name, raw)` (X8) puts the CVar in one of `CATEGORY_GROUPS`: name rules first (`nameplate*`,
   `*camera*`, `*floatingCombatText*` / `combatText*`), then the console category (`graphics`, `sound`, `net` →
   network, `game` → interface); for an uncategorised CVar (`default`, `none`) the `sound_` and graphics name prefixes
   (T20f); anything else is `other`.

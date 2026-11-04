@@ -234,7 +234,9 @@ class ConfigEditorOpsTest(unittest.TestCase):
                                ("cameraSmoothStyle", "camera"), ("test_cameraOverShoulder", "camera"),
                                ("floatingCombatTextCombatHealing", "combat text"),
                                ("CombatTextFloatMode", "combat text"), ("enableFloatingCombatText", "combat text"),
-                               ("whatever", "other")):
+                               ("whatever", "other"),
+                               # CF4: a CVar the flavor's data doesn't know still gets the shipped curated group
+                               ("ChatSoundVolume", "sound"), ("useIPv6", "network"), ("CURSORSIZEPREFERRED", "interface")):
             with self.subTest(name=name):
                 self.assertEqual(category_of(None, name), expected)
         self.assertEqual(category_of(CVARS["gxMaximize"], "gxMaximize"), "graphics")

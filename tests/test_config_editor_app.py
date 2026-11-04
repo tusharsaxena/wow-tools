@@ -25,6 +25,7 @@ from wowtools.ui.character_tree import CharacterNode
 from wowtools.ui.dialogs import ConfirmScreen, DiscardScreen, TextPromptScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
+from wowtools.ui.tree_filter import NO_MATCH_TEXT
 
 TOOL = "config-editor"
 KB_CVARS = {
@@ -419,6 +420,73 @@ class ConfigEditorAppTest(TuiTestCase):
             self.assertTrue(character_node(tree, "Aellâ").is_expanded)
             self.assertFalse([n for n in walk(tree.root) if isinstance(n.data, FileNode)
                               and n.data.target.level == "machine"])
+
+    async def test_each_category_lists_its_cvars_at_every_level(self):
+        """CF4a: with Show all known ticked, every category lists its CVars in Config.wtf, an account's config and a
+        character's file. The client files them all under `game` (the curated groups, CF4b, place them)."""
+        levels = {"machine": CONFIG_WTF, "account": "MAIN", "character": "Aellâ"}
+        groups = {"sound": "Sound_Test", "camera": "cameraTest", "nameplates": "nameplateTest",
+                  "combat text": "WorldTextTest", "network": "netTest", "graphics": "gxTest", "other": "debugTest"}
+        cvars = dict(KB_CVARS)
+        curated = {}
+        for group, stem in groups.items():
+            for level in levels:
+                name = f"{stem}{level.capitalize()}"
+                cvars[name] = {"default": "1", "help": "", "category": "game", "scope": level, "synced": True}
+                curated[name] = group
+        (self.kb / "cvars" / "_retail_.json").write_text(json.dumps(
+            {"source": "client dump _retail_ 1", "cvars": cvars}), encoding="utf-8")
+        (self.kb / "cvar_categories.json").write_text(json.dumps({"comment": "test", "categories": curated}),
+                                                      encoding="utf-8")
+        clear_cache()
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            review.query_one("#show-all", Checkbox).value = True
+            await settle(app, pilot)
+            for group, stem in groups.items():
+                review.query_one("#category", Select).value = group
+                await settle(app, pilot)
+                for level, label in levels.items():
+                    with self.subTest(group=group, level=level):
+                        owner = file_node(tree, label) if level != "character" else character_node(tree, label)
+                        names = [n.data.row.name for n in await open_rows(pilot, owner)]
+                        self.assertIn(f"{stem}{level.capitalize()}", names)
+                        self.assertEqual({n.data.row.category for n in await open_rows(pilot, owner)}, {group})
+
+    async def test_a_search_left_applied_is_named_when_a_category_shows_nothing(self):
+        """The user's smoke test (CF4a, from its log): a search ("gra") applied earlier stays applied, so Sound,
+        Camera ... showed only "Nothing matches the filter". That line stays (STD-7.8); the help panel names the
+        search and the category that together match nothing, and how to clear each."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            review.query_one("#show-all", Checkbox).value = True
+            submit_filter(review, "gra")
+            await settle(app, pilot)
+            review.query_one("#category", Select).value = "sound"
+            await settle(app, pilot)
+            self.assertEqual([str(n.label) for n in tree.root.children], [NO_MATCH_TEXT])
+            help_text = str(review.query_one("#cvar-help-text", Static).render())
+            self.assertIn('the search "gra"', help_text)
+            self.assertIn("Sound", help_text)
+            self.assertIn("Esc in the filter box", help_text)
+            self.assertIn("All categories", help_text)
+            review.query_one("#changed-only", Checkbox).value = True
+            await settle(app, pilot)
+            self.assertIn("Changed only", str(review.query_one("#cvar-help-text", Static).render()))
+            review.query_one("#changed-only", Checkbox).value = False
+            review.query_one("#category", Select).clear()
+            submit_filter(review, "")
+            await settle(app, pilot)
+            review.query_one("#category", Select).value = "sound"  # the category alone: Config.wtf's sound CVars
+            await settle(app, pilot)
+            self.assertNotIn(NO_MATCH_TEXT, [str(n.label) for n in tree.root.children])
+            self.assertIn("Sound_MasterVolume",
+                          [n.data.row.name for n in await open_rows(pilot, file_node(tree, CONFIG_WTF))])
+            self.assertNotIn('the search', str(review.query_one("#cvar-help-text", Static).render()))
 
     async def test_leaving_with_staged_edits_asks_first(self):
         app = self.make_app()

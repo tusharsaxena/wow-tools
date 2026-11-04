@@ -695,10 +695,35 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
             self._update_summary()
 
     # --- the help panel ----------------------------------------------------------------------------
+    def _nothing_shown(self) -> bool:
+        """True when the search leaves the tree empty (it shows only NO_MATCH_TEXT)."""
+        if not self.filtering:
+            return False
+        return not any(node.data is not None for node in self.query_one("#cvars", Tree).root.children)
+
+    def narrowed_help(self) -> str:
+        """Why the tree is empty (CF4a): the search and the Show choices narrow it together, so a search applied
+        earlier still applies when a category is picked. Names each and how to clear it."""
+        shown = []
+        if self.category is not None:
+            shown.append(f"in the {self.category.capitalize()} category")
+        if self.changed_only:
+            shown.append("with Changed only ticked")
+        lines = [" ".join([f'Nothing matches the search "{self.text_filter.text.strip()}"', *shown]) + "."]
+        if shown:
+            lines.append("The search and the Show choices narrow the list together.")
+        lines.append("Esc in the filter box clears the search" + ("; All categories shows every category"
+                                                                  if self.category is not None else "") + ".")
+        if not self.show_all:
+            lines.append("Show all known adds the CVars the files don't set.")
+        return "\n".join(lines)
+
     def help_text(self) -> str:
         data = self._cursor_data()
         target = self._node_target(data)
         if target is None:
+            if self.scanned and self._nothing_shown():
+                return self.narrowed_help()
             return GROUP_HELP if self.scanned else ""
         folder = target.flavor.folder
         row = data.row if isinstance(data, CvarNode) else None

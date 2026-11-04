@@ -13,7 +13,7 @@ from typing import Literal
 from wowtools.core.client_apply import CONFIG_WTF
 from wowtools.core.cvarfile import CvarFile
 from wowtools.core.install import Account, Character, Flavor
-from wowtools.core.kb import CATEGORY_GROUPS, CvarInfo, category_group
+from wowtools.core.kb import CATEGORY_GROUPS, CvarInfo, cvar_category
 
 __all__ = ["CATEGORIES", "CONFIG_CACHE", "CONFIG_WTF", "FILE_NAMES", "ConfigTarget", "Level", "Row", "category_of"]
 
@@ -61,11 +61,11 @@ class ConfigTarget:
 
 
 def category_of(info: CvarInfo | None, name: str) -> str:
-    """The X8 group of a CVar: the KB's (client category plus the name rules of core.kb.category_group), or from
-    the name alone for a CVar the KB doesn't know."""
+    """The X8 group of a CVar: the KB's (its curated group, else the rules of core.kb.category_group), or, for a CVar
+    the flavor's data doesn't know, the curated group of the name (the shipped list, CF4) or the name rules."""
     if info is not None and info.category in CATEGORIES:
         return info.category
-    return category_group(name, "")
+    return cvar_category(name, "")
 
 
 @dataclass(frozen=True)
