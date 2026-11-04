@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from textual.widgets import Button, DataTable, Input, Static, Tree
 
-from tests.fixtures import (BASE, TINY, TuiTestCase, accept_disclaimer, assert_fits_or_keeps_minimum,
+from tests.fixtures import (BASE, COUNT_AFTER, TINY, TuiTestCase, accept_disclaimer, assert_fits_or_keeps_minimum,
                             build_ace_tree, make_config, settle, submit_filter)
 from wowtools.core.backup import BackupEntry, create_backup
 from wowtools.core.blacklist import toggle_pair
@@ -2389,11 +2389,13 @@ class NodeCountsAndColumnsTest(AceAppBase):
                             self.assertLessEqual(guides + node.label.cell_len, room, (size, view, node.label.plain))
                         else:  # where the name's minimum does not fit, the name keeps it and the row scrolls (U1)
                             minimum = GROUP_NAME_MINIMUM if row.layout == GROUP else LAYOUTS[row.layout].minimums[0]
+                            counted_row = len(row.cells) > 1 if row.layout == GROUP else \
+                                row.layout in COUNTED_ROWS and bool(row.cells[1])
                             with self.subTest(size=size, view=view, row=node.label.plain):
-                                assert_fits_or_keeps_minimum(self, node, guides, room, row.cells[0], minimum)
+                                assert_fits_or_keeps_minimum(self, node, guides, room, row.cells[0], minimum,
+                                                             after=COUNT_AFTER if counted_row else "")
                         self.assertEqual(node.label.plain, node.label.plain.rstrip())  # no trailing padding
-                        counted = ("root", "flavor", "account") + (("addon", "character") if size == BASE else ())
-                        if node.data[0] in counted:  # the count kept (at 80 columns a group's only)
+                        if node.data[0] in ("root", "flavor", "account", "addon", "character"):  # the count kept
                             self.assertRegex(node.label.plain, r"\d+ items?|no Ace3 data", (size, node.label.plain))
 
     async def test_the_blacklist_tree_counts_its_addons(self):

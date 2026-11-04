@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import ClassVar
 
 from rich.text import Text
-from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -37,7 +36,7 @@ from wowtools.ui.counts import with_count
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                 relabel_branch, two_pane_css)
 from wowtools.ui.result_screen import ResultBase, result_bindings, status_style
-from wowtools.ui.review import ReviewBase, ReviewTree, TickModel
+from wowtools.ui.review import MARK_WIDTH, FittedRows, ReviewBase, ReviewTree, TickModel, tree_room
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TreeFilter
 from wowtools.ui.warnings_view import (WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost,
                                        scan_warning_items)
@@ -57,7 +56,6 @@ CONFLICT_STYLE = "bold #E8C547"
 FILE_COLUMNS = ColumnLayout(caps=FILE_CAPS, minimums=FILE_MINIMUMS, shrink=((0,),))
 CONFLICT_COLUMNS = ColumnLayout(caps=CONFLICT_CAPS, minimums=CONFLICT_MINIMUMS, shrink=((1,), (0,)))
 ROW_KINDS = ("file", "conflict")  # the rows drawn in columns
-MARK_WIDTH = 2  # the tick mark in front of a file row's columns (a conflict row has none)
 
 
 class ShotProgressScreen(ProgressScreen):
@@ -103,7 +101,7 @@ class ShotResultScreen(ResultBase):
                           *(Text(c) for c in rest))
 
 
-class ShotReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
+class ShotReviewScreen(WarningsHost, TreeFilter, FittedRows, ReviewBase, Screen[str]):
     TREE_SELECTOR = "#shots"
     WARNINGS_TITLE = "Folders not read"
     WARNINGS_NOUN = "unreadable folder"
@@ -150,7 +148,6 @@ class ShotReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         # of its label (the tree's guides)
         self._columns: dict[int, tuple[int, ...]] = {}
         self._indents: dict[int, int] = {}
-        self._fitted_width = 0
         self._progress_screen: ShotProgressScreen | None = None
         self._last_filter: Widget | None = None
         self._scanning = False
@@ -409,7 +406,8 @@ class ShotReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
                                               key=self._ident)
         self._counts = self._count_leaves(plan, kept)
         tree = self.query_one("#shots", Tree)
-        self._columns, self._indents, self._fitted_width = {}, {}, tree.size.width
+        self._columns, self._indents = {}, {}
+        self.rows_built(tree)  # fitted again once the tree is laid out (shown after the scan)
         tree.clear()
         tree.root.data = ("root",)
         tree.root.set_label(self._label(tree.root.data))
@@ -419,7 +417,6 @@ class ShotReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         self.note_no_match(tree.root)
         tree.root.expand()
         self._update_summary()
-        self.call_after_refresh(self._fit_rows)  # built before the tree was laid out (shown after the scan)
 
     @staticmethod
     def _count_key(data) -> tuple:
@@ -542,12 +539,8 @@ class ShotReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
 
     def _row_room(self, data) -> int | None:
         """The cells a row's columns may take in the tree pane (None before the tree is laid out)."""
-        tree = self.query_one("#shots", Tree)
-        if tree.size.width <= 0:
-            return None
-        width = tree.size.width - tree.styles.scrollbar_size_vertical  # a scrollbar may come with more rows
-        mark = MARK_WIDTH if data[0] == "file" else 0
-        return max(0, width - self._indents.get(id(data), 0) - mark)
+        return tree_room(self.query_one("#shots", Tree), indent=self._indents.get(id(data), 0),
+                         mark=MARK_WIDTH if data[0] == "file" else 0)
 
     def _row_label(self, data) -> Text:
         """A file row (name · possible duplicate) or a conflict row (name · target folder, dim) in columns as wide
@@ -567,17 +560,8 @@ class ShotReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         text.append_text(columns)
         return text
 
-    def on_resize(self, event: events.Resize) -> None:
-        self.call_after_refresh(self._fit_rows)
-
-    def _fit_rows(self) -> None:
-        """Fit the file and conflict rows again to the tree pane's width when it changed (R4)."""
-        if not self.is_attached:
-            return
-        tree = self.query_one("#shots", Tree)
-        if tree.size.width == self._fitted_width:
-            return
-        self._fitted_width = tree.size.width
+    def refit_rows(self, tree: Tree) -> None:
+        """Fit the file and conflict rows again to the tree pane's width (R4, FittedRows)."""
         stack = list(tree.root.children)
         while stack:
             node = stack.pop()

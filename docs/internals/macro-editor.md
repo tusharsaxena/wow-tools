@@ -98,10 +98,11 @@ character folder. Leaving, quitting, a rescan and Undo ask before dropping stage
   only dropped (after the first line). The staged mark's room is kept blank on the other lines of a set that has
   one, so the names line up. A character's or Account macros' line is name · slots (or `read-only`) · count
   (`SET_COLUMNS`), aligned across a realm's characters (`_character_widths`); the slots are never cut, only
-  dropped. An account's, realm's or flavor's name is cut in its middle so its count fits the pane
-  (`_group_text`), never below 4 cells (`ui/columns.cut_to_room`), and a macro name never below its 6: at 80
-  columns a line deeper than that scrolls sideways (STD-7.28, U1); every line is fitted again on a resize
-  (`_fit_rows`).
+  dropped (`ui/columns.fit_keeping_count`: then the name and the count). An account's, realm's or flavor's name is
+  cut in its middle so its count fits the pane (`ui/columns.group_text`), never below 4 cells, its count kept, and a
+  macro name never below its 6: at 80 columns a line deeper than that scrolls sideways, a macro line's first line
+  and length dropped first (STD-7.28, U1); every line is fitted again when the tree's width changes
+  (`ui/review.FittedRows`).
 - `edit_screen.MacroEditScreen` (New, Edit; ME8): name (cut at 16), icon, scope line, the `n / 255` meter (Save off
   over 255), `MacroTextArea` with the suggestion list (`syntax.suggestions`, replacing from `syntax.completion_start`;
   ↑/↓, Tab/Enter, Esc while it shows; Enter after a word that is itself an entry is a new line unless ↑/↓ moved the

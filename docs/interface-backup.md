@@ -89,7 +89,8 @@ game version → `Interface`, `WTF`, links, warnings and **Backups** → one lin
 Every line with something under it ends its name with a dimmed count of the backups below it (`Retail  3 items`),
 counted before you open them and, with a filter set, of what the filter shows. **Links** and **Scan warnings**
 count their own lines instead. The top line is **All flavors** (or the game version you picked): its count, then
-the files and size of everything ticked. Each game version's line shows, in columns that line up from one version
+the files and size of every game version with something to back up, ticked or not (the bottom line sums what is
+ticked). Each game version's line shows, in columns that line up from one version
 to the next, its count, what a backup of it would hold (files and size) and its newest backup ("last 2026-10-04
 20:15:30", or "no backups yet"); when the tree is narrow the newest backup is cut to its date first, then the
 last columns are left out. A version with nothing to

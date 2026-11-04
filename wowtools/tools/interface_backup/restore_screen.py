@@ -7,7 +7,6 @@ from collections.abc import Callable, Sequence
 from typing import ClassVar
 
 from rich.text import Text
-from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -31,7 +30,7 @@ from wowtools.ui.columns import ColumnLayout, column_text, fit_columns, natural_
 from wowtools.ui.counts import COUNT_STYLE, count_text, with_count
 from wowtools.ui.dialogs import ACCENT, TREE_BINDINGS, TREE_HINT, TwoPaneFocus, review_hint, theme_colour, two_pane_css
 from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
-from wowtools.ui.review import ButtonActions, ReviewTree
+from wowtools.ui.review import TOGGLE_WIDTH, ButtonActions, FittedRows, ReviewTree, tree_room
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, FilterBox, ModelFilter, ModelNode
 from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, WarningItem, WarningsHost
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button
@@ -66,7 +65,6 @@ def _error_text(exc: Exception) -> str:
 # (both cut in their middle); the count is never cut, and the folder is dropped when the minimums do not fit.
 GROUP_COLUMNS = ColumnLayout(caps=(32, None, None), minimums=(8, 0, 8), shrink=((2,), (0,)), drop=(2,))
 GROUP_STYLES = ("bold", COUNT_STYLE, "dim")
-TOGGLE_WIDTH = 2  # the ▶ / ▼ in front of a node that opens
 
 
 def group_cells(name: str, files: int | None) -> tuple[str, str, str]:
@@ -76,16 +74,7 @@ def group_cells(name: str, files: int | None) -> tuple[str, str, str]:
     return last, "" if files is None else count_text(files), parent
 
 
-def tree_room(tree: Tree, depth: int, *, opens: bool, mark: int = 0) -> int | None:
-    """The cells a row's columns may take in `tree` for a node at `depth` (the root is 0) behind its guides, its ▶ /
-    ▼ when it `opens` and a tick mark `mark` cells wide; None before the tree is laid out (no limit)."""
-    if tree.size.width <= 0:
-        return None
-    width = tree.size.width - tree.styles.scrollbar_size_vertical  # a scrollbar may come with more rows
-    return max(0, width - depth * tree.guide_depth - (TOGGLE_WIDTH if opens else 0) - mark)
-
-
-class RestoreScreen(WarningsHost, FilterBox, ButtonActions, TwoPaneFocus, Screen[RestorePlan | None]):
+class RestoreScreen(WarningsHost, FilterBox, ButtonActions, FittedRows, TwoPaneFocus, Screen[RestorePlan | None]):
     """Two panes, like the review: on the left the backup's details, a box per part, the tree filter (nothing to
     tick in the tree: the filter only narrows it) and Restore / Back; on the right a tree of what the restore
     changes (worked out in a worker each time a box changes); a summary line below. Dismisses with the plan to
@@ -122,9 +111,9 @@ class RestoreScreen(WarningsHost, FilterBox, ButtonActions, TwoPaneFocus, Screen
         self._generation = 0  # bumped per replan: a plan worked out for older boxes is dropped
         self._kept: ModelFilter | None = None  # what the filter keeps of the plan (files load on expand)
         self._last_filter: Widget | None = None
-        # a folder group's row (R4): id(row data) -> its cells and its siblings' natural widths
-        self._columns: dict[int, tuple[tuple[str, str, str], tuple[int, ...]]] = {}
-        self._fitted_width = 0
+        # a folder group's row (R4): id(row data) -> its cells, its siblings' natural widths and whether it is
+        # padded where its siblings' ▶ / ▼ is (a group that is one file, beside groups that open)
+        self._columns: dict[int, tuple[tuple[str, str, str], tuple[int, ...], bool]] = {}
 
     @property
     def root_title(self) -> Text:
@@ -353,7 +342,8 @@ class RestoreScreen(WarningsHost, FilterBox, ButtonActions, TwoPaneFocus, Screen
         filter shows them, a group's files before it is opened too; folder groups are aligned columns (R4)."""
         tree = self.query_one("#effects", Tree)
         tree.clear()
-        self._columns, self._fitted_width = {}, tree.size.width
+        self._columns = {}
+        self.rows_built(tree)  # fitted again once the tree is laid out
         warning = f"bold {theme_colour(self.app, 'warning')}"
         effects = self._model(plan)
         kept = self._kept = self._model_filter(effects)
@@ -375,8 +365,9 @@ class RestoreScreen(WarningsHost, FilterBox, ButtonActions, TwoPaneFocus, Screen
                 cells = [group_cells(child.data[2], files[id(child)] if child.data[0] == "group" else None)
                          for child in rows]
                 natural = natural_widths(cells)
+                opens = any(child.data[0] == "group" for child in rows)
                 for child, row in zip(rows, cells):
-                    self._columns[id(child.data)] = row, natural
+                    self._columns[id(child.data)] = row, natural, opens and child.data[0] == "file"
                     if child.data[0] == "file":
                         node.add_leaf(self._group_label(child.data), data=child.data)
                     else:
@@ -396,27 +387,19 @@ class RestoreScreen(WarningsHost, FilterBox, ButtonActions, TwoPaneFocus, Screen
             tree.root.add_leaf(Text.assemble(("Nothing on disk would be lost", success),
                                              ("  everything is in the backup", "dim")), data=("note",))
         tree.root.expand()
-        self.call_after_refresh(self._fit_rows)  # built before the tree was laid out, maybe
 
     def _group_label(self, data) -> Text:
         """A folder group's row (name · count · folder) in columns as wide as its siblings' widest cells, fitted
-        to the pane (R4)."""
-        cells, natural = self._columns[id(data)]
-        room = tree_room(self.query_one("#effects", Tree), 2, opens=data[0] == "group")
+        to the pane (R4); a group that is one file, beside groups that open, is padded where their ▶ / ▼ is, so the
+        columns line up."""
+        cells, natural, padded = self._columns[id(data)]
+        room = tree_room(self.query_one("#effects", Tree), 2, opens=data[0] == "group" or padded)
         widths, gap = fit_columns(natural, room, GROUP_COLUMNS)
-        return column_text(cells, widths, GROUP_STYLES, gap, middle=(0, 2))
+        return Text.assemble(" " * TOGGLE_WIDTH if padded else "", column_text(cells, widths, GROUP_STYLES, gap,
+                                                                               middle=(0, 2)))
 
-    def on_resize(self, event: events.Resize) -> None:
-        self.call_after_refresh(self._fit_rows)
-
-    def _fit_rows(self) -> None:
-        """Fit the folder group rows again to the tree pane's width when it changed (R4)."""
-        if not self.is_attached:
-            return
-        tree = self.query_one("#effects", Tree)
-        if tree.size.width == self._fitted_width:
-            return
-        self._fitted_width = tree.size.width
+    def refit_rows(self, tree: Tree) -> None:
+        """Fit the folder group rows again to the tree pane's width (R4, FittedRows)."""
         for effect in tree.root.children:
             for node in effect.children:
                 if node.data is not None and id(node.data) in self._columns:

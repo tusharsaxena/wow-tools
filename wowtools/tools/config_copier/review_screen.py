@@ -18,9 +18,7 @@ from collections.abc import Collection, Hashable, Iterable, Sequence
 from pathlib import Path
 from typing import ClassVar, NamedTuple
 
-from rich.cells import cell_len
 from rich.text import Text
-from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -50,13 +48,13 @@ from wowtools.tools.config_copier.undo import (UndoError, UndoResult, leave, pen
                                                undo_run)
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.character_tree import CharacterNode, character_filter_texts, node_keys, populate_characters
-from wowtools.ui.columns import (ColumnLayout, GROUP_NAME_MINIMUM, column_text, cut_middle, cut_to_room, fit_columns,
-                                 natural_widths)
-from wowtools.ui.counts import COUNT_GAP, COUNT_STYLE, count_text
+from wowtools.ui.columns import ColumnLayout, GROUP_NAME_MINIMUM, column_text, fit_columns, group_text, natural_widths
+from wowtools.ui.counts import count_text
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                  UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
 from wowtools.ui.result_screen import ResultScreen
-from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, SvRecoveryActions, TickModel, WowCheck
+from wowtools.ui.review import (MARK_WIDTH, ActionBar, BarTree, FittedRows, ReviewBase, RunActions, SvRecoveryActions,
+                                TickModel, WowCheck, tree_room)
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, TreeFilter
 from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost, where_text
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button
@@ -67,8 +65,6 @@ SOURCE_REASON = "source"
 OTHER_FLAVOR_REASON = "other flavor"  # X1: one flavor per run, the source's
 NO_DIFF = "Highlight a replaced file first: Diff compares a target's file with what it gets."
 NO_MARK = "  "
-MARK_WIDTH = 2  # the tick mark in front of every line but the root's
-TOGGLE_WIDTH = 2  # the ▶ / ▼ in front of a node that opens
 PAIR_COLUMNS = ColumnLayout(caps=PAIR_CAPS, minimums=PAIR_MINIMUMS, shrink=((1,), (0,)), drop=(2,))
 # A greyed character's name · reason (R4): the name gives way, cut in its middle; the reason is never cut, only dropped.
 REASON_COLUMNS = ColumnLayout(caps=(None, None), minimums=(GROUP_NAME_MINIMUM, 0), shrink=((0,),))
@@ -122,7 +118,7 @@ class CopierResultScreen(ResultScreen):
         self.title_text = title
 
 
-class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions, ReviewBase, Screen[str]):
+class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions, FittedRows, ReviewBase, Screen[str]):
     """The targets of a copy from `source` (a character of `source_flavor`), over `flavors` (the flavor picked, or
     all of them). `wow_check` (tests inject one) stands for the running-WoW check."""
 
@@ -190,7 +186,6 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         self._counts: Counter[Hashable] = Counter()  # the pair lines the tree shows under each node (R2), per build
         self._pair_widths: dict[Path, tuple[int, ...]] = {}  # a target's pair columns (R4), per build
         self._reason_widths: dict[Path, tuple[int, ...]] = {}  # a realm's greyed characters' columns (R4), per build
-        self._fitted_width = 0  # the tree's width the labels were last fitted to
 
     # --- layout ------------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -420,7 +415,7 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         tree.clear()
         self._counts.clear()
         self._pair_widths.clear()
-        self._fitted_width = tree.size.width
+        self.rows_built(tree)  # fitted again once the tree is laid out
         many = len(self.flavors) > 1
         for flavor in self.flavors:
             source_flavor = flavor.path == self.source_flavor.path
@@ -441,7 +436,6 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         tree.root.expand()
         self._restore_cursor(tree, cursor)
         self._update_summary()
-        self.call_after_refresh(self._fit_rows)  # a build before the tree was laid out fits once it is
 
     @staticmethod
     def _greyed_widths(tree: Tree) -> dict[Path, tuple[int, ...]]:
@@ -463,7 +457,7 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         cells = (data.text, data.reason or "")
         natural = (self._reason_widths.get(data.character.path.parent) if data.character is not None else None) \
             or natural_widths([cells])
-        room = self._room(depth, opens=opens) if self.is_attached else None
+        room = self._room(depth, opens=opens)
         widths, gap = fit_columns(natural, room, REASON_COLUMNS)
         text = column_text(cells, widths, ("dim", "dim italic"), gap, middle=(0,))
         text.rstrip()
@@ -471,20 +465,11 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
 
     def _relabel_all(self, tree: Tree) -> None:
         relabel_branch(tree, None, self._label)
-        tree.root.set_label(self._group_text(self.scope_label, ACCENT, self._count_note(("root",)), 0, opens=True,
-                                             mark=0))
+        tree.root.set_label(group_text(self.scope_label, ACCENT, self._count_note(("root",)),
+                                       self._room(0, opens=True, mark=0)))
 
-    def on_resize(self, event: events.Resize) -> None:
-        self.call_after_refresh(self._fit_rows)
-
-    def _fit_rows(self) -> None:
-        """Fit every line again to the tree pane's width when it changed (R4)."""
-        if not self.is_attached:
-            return
-        tree = self.query_one("#targets", Tree)
-        if tree.size.width == self._fitted_width:
-            return
-        self._fitted_width = tree.size.width
+    def refit_rows(self, tree: Tree) -> None:
+        """Fit every line again to the tree pane's width (R4, FittedRows)."""
         self._relabel_all(tree)
 
     def _depth(self, kind: str) -> int:
@@ -495,29 +480,10 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
     def _room(self, depth: int, *, opens: bool, mark: int = MARK_WIDTH) -> int | None:
         """The cells a line may take behind its guides, its ▶ / ▼ when it `opens` and its tick mark (None before
         the tree is laid out)."""
-        tree = self.query_one("#targets", Tree)
-        if tree.size.width <= 0:
-            return None
-        width = tree.size.width - tree.styles.scrollbar_size_vertical  # a scrollbar may come with more lines
-        return max(0, width - depth * tree.guide_depth - (TOGGLE_WIDTH if opens else 0) - mark)
+        return tree_room(self.query_one("#targets", Tree), depth, opens=opens, mark=mark) if self.is_attached else None
 
-    def _count_note(self, ident: Hashable) -> tuple[str, str]:
-        return f"{COUNT_GAP}{count_text(self._counts[ident])}", COUNT_STYLE
-
-    def _group_text(self, name: str, style: str, note: tuple[str, str] | None, depth: int, *, opens: bool,
-                    mark: int = MARK_WIDTH) -> Text:
-        """A node's name and its note (its dim count, R2), the name cut in its middle so the note fits the pane;
-        with no room for both, the name alone, cut to the room but never below 4 cells (cut_to_room: the row
-        scrolls, U1; a greyed character's reason: `_greyed_label`)."""
-        room = self._room(depth, opens=opens, mark=mark) if self.is_attached else None
-        if note is None:
-            return Text(cut_to_room(name, room), style=style)
-        after, after_style = note
-        if room is not None and cell_len(name) + cell_len(after) > room:
-            if room - cell_len(after) < GROUP_NAME_MINIMUM:
-                return Text(cut_to_room(name, room), style=style)
-            name = cut_middle(name, room - cell_len(after))
-        return Text.assemble((name, style), (after, after_style))
+    def _count_note(self, ident: Hashable) -> str:
+        return count_text(self._counts[ident])
 
     def _restore_cursor(self, tree: Tree, data) -> None:
         if data is None:
@@ -552,7 +518,7 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
             styles = ("dim", warning if plan.status == "unreadable" else "dim", warning)
         cells = pair_cells(plan)
         natural = self._pair_widths.get(plan.target.path) or natural_widths([cells])
-        room = self._room(self._depth("pair"), opens=False) if self.is_attached else None
+        room = self._room(self._depth("pair"), opens=False)
         widths, gap = fit_columns(natural, room, PAIR_COLUMNS)
         text = Text.assemble(mark)
         text.append_text(column_text(cells, widths, styles, gap, middle=(0,)))
@@ -577,8 +543,8 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
             name = self._greyed_label(data, depth, opens=opens)
         else:
             style = "" if data.kind == "character" else "bold"
-            name = self._group_text(data.text, style, self._count_note(self._character_ident(data)) if opens
-                                    else None, depth, opens=opens)
+            name = group_text(data.text, style, self._count_note(self._character_ident(data)) if opens else None,
+                              self._room(depth, opens=opens))
         text = Text.assemble(mark)
         text.append_text(name)
         return text
@@ -590,8 +556,8 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
             return self._character_label(data)
         mark = self.mark(data[2]) if data[2] else (NO_MARK, "")
         text = Text.assemble(mark)
-        text.append_text(self._group_text(flavor_name(data[1]), "bold", self._count_note(("flavor", data[1])), 1,
-                                          opens=True))
+        text.append_text(group_text(flavor_name(data[1]), "bold", self._count_note(("flavor", data[1])),
+                                    self._room(1, opens=True)))
         return text
 
     def _refresh_labels(self, node: TreeNode | None = None) -> None:

@@ -81,9 +81,10 @@ variables → keys
 - Every game version, account, realm and character, and the top line, ends with how many files it holds, dimmed
   (`Retail  312 items`, `Kaelys  14 items`): the files the filter shows, counted before any is read.
 - The rows line up in columns: a file's size under its neighbours' sizes, a value under its neighbours' values,
-  a staged change after the widest value. When the panel is narrow, a long value is cut short with `…` first,
-  then the change marks, then the key (never below a few letters at each end: in a very narrow window the line
-  scrolls sideways instead); the bottom bar always names the highlighted key and its value in full.
+  a staged change after the widest value. When the panel is narrow, a long key and a long value are cut short
+  with `…` together, the wider first, then the change marks (a key never below a few letters at each end: in a
+  very narrow window only the key is left and the line scrolls sideways); the bottom bar always names the
+  highlighted key and its value in full.
 
 - Nothing is read until you open a file, so the scan is quick even with thousands of files. Opening a file reads it
   and shows its variables; opening a table shows its keys. A big file takes a moment: a dim "Reading…" line shows

@@ -116,10 +116,10 @@ backups go under `settings.resolve_root()` (`<backup_dir or <wow_path>/wow-tools
   is columns (STD-7.28, `report.pair_cells`, `PAIR_COLUMNS`): file · status · `⚠ action bars`, as wide as the
   target's widest cells; a status is never cut (its minimum is the longest, `source has no file`), only a long
   problem; then the file name gives way, cut in its middle (`macros…e.txt`); the warning is dropped, never cut. A
-  node's name is cut in its middle so its count or reason fits the pane (`_group_text`), never below 4 cells
-  (`ui/columns.cut_to_room`; a file name never below its 10: at 80 columns a pair line keeps them and scrolls
-  sideways, STD-7.28, U1); every line is fitted again
-  on a resize (`_fit_rows`). Left pane: the source, a box per file, the filter, **Write**, **Dry
+  node's name is cut in its middle so its count fits the pane (`ui/columns.group_text`; a greyed character's
+  reason: `REASON_COLUMNS`), never below 4 cells, its count kept (a file name never below its 10: at 80 columns a
+  line deeper than that keeps them and scrolls sideways, its status and warning dropped first, STD-7.28, U1);
+  every line is fitted again when the tree's width changes (`ui/review.FittedRows`). Left pane: the source, a box per file, the filter, **Write**, **Dry
   run**, **Rescan**, **Undo last change**; **Diff** in the bar under the tree. Ticks are a selection, not staged
   work, so leaving asks nothing.
 - `diff_screen.DiffScreen`: the unified diff of one replaced pair, read-only.

@@ -160,14 +160,15 @@ tree, bottom `#summary` line, popups for confirm and progress) and its shared CS
   counts them once per rebuild over the model (`_model`: the zips before Backups is opened), as the filter shows
   them: the root, a flavor and its Backups count its zips; Links and Scan warnings, not backups, count their own
   lines and are left out of the flavor's count; a Backups node with no zips is a leaf, "none yet", with no count.
-  Columns (R4, STD-7.28), fitted by `ui/columns.fit_columns` to the pane (`restore_screen.tree_room`) and refitted
-  on a resize (`_fit_rows`): the root is scope · count · files · size (`held_cells`, `ROOT_COLUMNS`), a flavor
+  Columns (R4, STD-7.28), fitted by `ui/columns.fit_columns` to the pane (`ui/review.tree_room`) and refitted
+  when the tree's width changes (`ui/review.FittedRows`): the root is scope · count · files · size (`held_cells`, `ROOT_COLUMNS`), a flavor
   name · count · files · size · last backup (`report.last_backup_note`; `FLAVOR_COLUMNS`, natural widths over the
   flavors the filter keeps, `_flavor_widths`), and a flavor with nothing to back up keeps the name and count columns
   and its `skip_reason` after them; a part is name · files · size (`PART_COLUMNS`), a backup date and time · kind ·
   parts · size (`BACKUP_COLUMNS`). A flavor's last backup is cut at its end down to its date (minimum 16) before it
   is dropped; past that columns are dropped (last backup, size, files; parts, size) before a name is cut, and
-  `ui/columns.fit_keeping_count` cuts the name (in its middle) rather than lose the count. A backup row is drawn in
+  `ui/columns.fit_keeping_count` keeps the name and the count alone, the name cut (in its middle, never below its
+  minimum: narrower the row scrolls sideways) rather than lose the count. A backup row is drawn in
   its widest form (`report.backup_cells`, `BACKUP_FORMS`: whole date, no year, no seconds, then `SAFETY_MARK` for a safety
   zip's kind) that keeps its date and time whole and its kind (when the group holds a safety zip). Ticks are on flavors with something to back up only
   (and the root): `READ_ONLY` nodes keep their label on `relabel_branch`; ticks survive a rescan. The filter

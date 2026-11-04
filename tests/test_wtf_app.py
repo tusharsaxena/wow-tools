@@ -2332,7 +2332,8 @@ class NodeCountsAndColumnsTest(AppTestCase):
                             assert_fits_or_keeps_minimum(self, node, _indent(node), room, name, minimum)
                         else:
                             assert_fits_or_keeps_minimum(self, node, _indent(node), room, node.data[2],
-                                                         GROUP_NAME_MINIMUM)
+                                                         GROUP_NAME_MINIMUM,
+                                                         after=r"  (\d+ items?|nothing to clean)")
                 assert_siblings_distinct(self, [n for n in _walk(tree.root) if n.data])
                 if size == BASE:
                     plain = str(row.label)

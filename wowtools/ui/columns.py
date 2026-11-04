@@ -3,7 +3,9 @@ shows more than one piece of data (a name plus a reason, size, age, date, value,
 as wide as its widest cell among the sibling rows it aligns with (`natural_widths`), up to the column's cap; when
 the pane is narrow `fit_columns` gives the free-text columns way first and drops whole columns last, so a row fits
 while its name keeps its minimum (narrower still, the name keeps its minimum and the row scrolls sideways: user
-decision U1, so sibling names stay apart); `column_text` builds the row's Rich text, long cells cut with `…`. A tool
+decision U1, so sibling names stay apart); `column_text` builds the row's Rich text, long cells cut with `…`;
+`fit_keeping_count` fits a row with a leaf count and `group_text` a group's name and count, the count always kept
+(STD-7.27: the name gives way, never below its minimum, and the row scrolls past the pane instead). A tool
 keeps its cells (a report function) and its `ColumnLayout`; the screen, which knows the pane's width, fits and
 draws. Pure functions over Rich, no Textual import: one implementation for every tool (moved out of the Config
 Editor, where the CVar rows started it, feedback round 1 CF2)."""
@@ -15,12 +17,14 @@ from typing import NamedTuple
 from rich.cells import cell_len
 from rich.text import Text
 
+from wowtools.ui.counts import COUNT_GAP, COUNT_STYLE
+
 __all__ = ["ELLIPSIS", "GROUP_NAME_MINIMUM", "NARROW_GAP", "WIDE_GAP", "ColumnLayout", "column_text", "cut_middle",
-           "cut_to_room", "fit_columns", "fit_keeping_count", "natural_widths"]
+           "cut_to_room", "fit_columns", "fit_keeping_count", "group_text", "natural_widths"]
 
 ELLIPSIS = "…"
 WIDE_GAP, NARROW_GAP = 2, 1  # spaces between two columns: two when everything fits so, else one
-GROUP_NAME_MINIMUM = 4  # a group's name (a name and its count) is never cut below this; its row scrolls past (U1)
+GROUP_NAME_MINIMUM = 4  # a group's name (a name and its count) is never cut below this; its line scrolls past (U1)
 
 
 class ColumnLayout(NamedTuple):
@@ -85,13 +89,20 @@ def fit_columns(natural: Sequence[int], room: int | None, layout: ColumnLayout) 
     return tuple(widths), NARROW_GAP
 
 
-def fit_keeping_count(natural: Sequence[int], room: int | None, layout: ColumnLayout) -> tuple[tuple[int, ...], int]:
-    """fit_columns for a row whose column 1 is its leaf count (STD-7.27): the name whole while a column can be
-    dropped instead; when only the name would be left, the name is cut (down to its minimum) so the count stays."""
+def fit_keeping_count(natural: Sequence[int], room: int | None, layout: ColumnLayout, *,
+                      count: int = 1) -> tuple[tuple[int, ...], int]:
+    """fit_columns for a row with a leaf count in column `count` (STD-7.27): the row as fit_columns fits it while
+    that keeps the count; where it would drop the count, the name and the count alone, the name cut (in its middle)
+    so the count fits, never below its minimum (narrower than that the row scrolls sideways past the pane, U1, its
+    count kept). The name never narrows as the room grows."""
     widths, gap = fit_columns(natural, room, layout)
-    if natural[1] and not widths[1]:
-        widths, gap = fit_columns(natural, room, layout._replace(shrink=(*layout.shrink, (0,))))
-    return widths, gap
+    if room is None or not natural[count] or widths[count]:
+        return widths, gap
+    name = natural[0] if layout.caps[0] is None else min(natural[0], layout.caps[0])
+    shown = [0] * len(natural)
+    shown[count] = natural[count] if layout.caps[count] is None else min(natural[count], layout.caps[count])
+    shown[0] = max(1, min(name, layout.minimums[0]), min(name, room - NARROW_GAP - shown[count]))
+    return tuple(shown), NARROW_GAP
 
 
 def _take(text: str, cells: int, *, from_end: bool = False) -> str:
@@ -122,6 +133,20 @@ def cut_to_room(name: str, room: int | None, *, minimum: int = GROUP_NAME_MINIMU
     """A group's name cut in its middle to `room` cells (None: no limit), never below `minimum` cells: narrower than
     that the row scrolls sideways (user decision U1) rather than every sibling reading `…`."""
     return name if room is None else cut_middle(name, max(room, minimum))
+
+
+def group_text(name: str, style: str, note: str | None, room: int | None, *, note_style: str = COUNT_STYLE,
+               minimum: int = GROUP_NAME_MINIMUM) -> Text:
+    """A group's line (a name and its dim count, STD-7.27; not a column row): the name in `style`, then `note` (its
+    count, `27 items`, or a note in its place) two spaces after it, the name cut in its middle so the note fits
+    `room` (None: no limit) but never below `minimum` cells. Narrower than that the line scrolls sideways past the
+    pane with its count kept (user decision U1). `note` None: the name alone, cut to the room."""
+    if note is None:
+        return Text(cut_to_room(name, room, minimum=minimum), style=style)
+    after = f"{COUNT_GAP}{note}"
+    if room is not None:
+        name = cut_to_room(name, room - cell_len(after), minimum=minimum)
+    return Text.assemble((name, style), (after, note_style))
 
 
 def column_text(cells: Sequence[Cell], widths: Sequence[int], styles: Sequence[str], gap: int = WIDE_GAP, *,

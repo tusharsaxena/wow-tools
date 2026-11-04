@@ -26,7 +26,6 @@ from typing import ClassVar, NamedTuple
 
 from rich.cells import cell_len
 from rich.text import Text
-from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -64,7 +63,8 @@ from wowtools.ui.counts import count_text, with_count
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                  UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
 from wowtools.ui.result_screen import ResultScreen
-from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, SvRecoveryActions, TickModel, WowCheck
+from wowtools.ui.review import (MARK_WIDTH, ActionBar, BarTree, FittedRows, ReviewBase, RunActions, SvRecoveryActions,
+                                TickModel, WowCheck, tree_room)
 from wowtools.ui.theme import CVAR_CATEGORY_COLOURS, CVAR_STATE_COLOURS, NOT_SET_COLOUR, TITLE_GOLD
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, TreeFilter
 from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost, where_text
@@ -76,7 +76,6 @@ NAV_HINT = (REVIEW_HINT + "Space on a 0/1 CVar toggle · a all · n none · " + 
 READ_ONLY = "read-only"
 NO_FILE = "no file"
 NO_MARK = "  "
-MARK_WIDTH = 4  # NO_MARK and the staged mark (or two spaces) in front of a CVar's columns
 # The CVar row's five columns as the shared fit takes them (CF2, FB2r): the name, value and default capped and cut
 # (the value and the default first, then the name), the state and category never cut, only dropped (DROP_ORDER).
 CVAR_COLUMNS = ColumnLayout(caps=(*COLUMN_CAPS, None, None), minimums=(*COLUMN_MINIMUMS, 0, 0),
@@ -162,8 +161,8 @@ class ConfigResultScreen(ResultScreen):
         self.title_text = title
 
 
-class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecoveryActions, RunActions, ReviewBase,
-                         Screen[str]):
+class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecoveryActions, RunActions, FittedRows,
+                         ReviewBase, Screen[str]):
     """The CVar files of `flavors` (the flavor picked, or all of them). `wow_check` (tests inject one) stands for the
     running-WoW check; `kb_root` (tests) is the knowledge base folder (None: the one shipped in wowtools/kb)."""
 
@@ -242,10 +241,9 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
         self._stale = False  # an Apply or Undo changed the files: read them again when the review is shown
         self._keep_open: set[Hashable] = set()  # the files a rebuild opens again (their rows are loaded at once)
         # CF1, CF2: per file, its rows' widest cells (the natural column widths) and the tree guides' width in
-        # front of its rows; the tree width the rows were last fitted to
+        # front of its rows
         self._columns: dict[Path, tuple[int, ...]] = {}
         self._indents: dict[Path, int] = {}
-        self._fitted_width: int | None = None
         # R2, R5: per file, the CVar rows the tree shows under the filters; the sums per tree group (("root",),
         # ("flavor", folder), ("account", path), ("realm", path, realm)); the rows per category with every other
         # filter applied (the category select's counts)
@@ -664,6 +662,7 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
         cursor = tree.cursor_node.data if tree.cursor_node is not None else None
         self._keep_open = self._opened(tree)
         tree.clear()
+        self.rows_built(tree)  # fitted again once the tree is laid out (behind its loading indicator, a rebuild)
         self._count_rows()
         many = len(self.flavors) > 1
         for flavor in self.flavors:
@@ -745,11 +744,8 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
 
     def _row_room(self, path: Path) -> int | None:
         """The cells a row of the file may take in the tree pane (None before the tree is laid out)."""
-        tree = self.query_one("#cvars", Tree)
-        width = tree.size.width - tree.styles.scrollbar_size_vertical  # a scrollbar may come with more rows
-        if tree.size.width <= 0:
-            return None
-        return max(0, width - self._indents.get(path, 0) - MARK_WIDTH)
+        # NO_MARK and the staged mark (or two spaces) in front of a CVar's columns
+        return tree_room(self.query_one("#cvars", Tree), indent=self._indents.get(path, 0), mark=2 * MARK_WIDTH)
 
     def _cvar_label(self, data: CvarNode) -> Text:
         """The staged mark, then the five columns (CF1-CF3): name, value and default (a CVar not set in
@@ -772,17 +768,8 @@ class ConfigReviewScreen(WarningsHost, ConfigEditActions, TreeFilter, SvRecovery
         text.append_text(column_text(cells, widths, styles, gap, middle=(0,)))
         return text
 
-    def on_resize(self, event: events.Resize) -> None:
-        self.call_after_refresh(self._fit_rows)
-
-    def _fit_rows(self) -> None:
-        """Fit the CVar rows again to the tree pane's new width (CF2)."""
-        if not self.is_attached:
-            return
-        tree = self.query_one("#cvars", Tree)
-        if tree.size.width == self._fitted_width:
-            return
-        self._fitted_width = tree.size.width
+    def refit_rows(self, tree: Tree) -> None:
+        """Fit the CVar rows again to the tree pane's new width (CF2, FittedRows)."""
         for node in self._walk(tree):
             if isinstance(node.data, CvarNode):
                 node.set_label(self._cvar_label(node.data))

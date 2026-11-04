@@ -11,7 +11,7 @@ from pathlib import Path
 
 from textual.widgets import Checkbox, Tree
 
-from tests.fixtures import (BASE, COPIER_ADDONS, COPIER_CHAT, COPIER_MACROS, TINY, TuiTestCase,
+from tests.fixtures import (BASE, COUNT_AFTER, COPIER_ADDONS, COPIER_CHAT, COPIER_MACROS, TINY, TuiTestCase,
                             assert_fits_or_keeps_minimum, assert_siblings_distinct, build_copier_tree, make_config,
                             settle, submit_filter)
 from wowtools.core.events import capture_events
@@ -550,7 +550,8 @@ class NodeCountsAndColumnsTest(CopierTestCase):
                     with self.subTest(size=size, row=str(node.label)):
                         if size == BASE:
                             self.assertLessEqual(indent(node) + node.label.cell_len, room)
-                        assert_fits_or_keeps_minimum(self, node, indent(node), room, name, minimum)
+                        assert_fits_or_keeps_minimum(self, node, indent(node), room, name, minimum,
+                                                     after=COUNT_AFTER if node.allow_expand else "")
                 assert_siblings_distinct(self, [n for n in walk(tree.root) if isinstance(n.data, PairNode)])
                 if size == BASE:  # at 120 columns every status and warning reads in full, the names stay apart
                     for owner in ("Bob", "Trâxex", "Dænerys"):

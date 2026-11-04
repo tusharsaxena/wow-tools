@@ -1,6 +1,7 @@
 """The review screens' shared machinery (spec D9): the tree with its ← key, ticks over a tick model of either
 polarity, Space (tick, press, toggle or type), select all / none over the keys the tree shows, leaving, the
-running-WoW check in a worker, the debounced rebuild, the scan box and button-id dispatch. A review screen mixes
+running-WoW check in a worker, the debounced rebuild, the scan box, button-id dispatch, and the room of a tree
+label and its refit when the tree's width changes (`tree_room`, `FittedRows`, STD-7.28). A review screen mixes
 `ReviewBase` in before `Screen`; a screen with buttons only (no ticks) can take `ButtonActions` alone. A review that
 runs the shared SavedVariables pipeline (Ace3, SV Browser) also mixes in `RunActions` (before `ReviewBase`): its
 apply / undo / recover plumbing, and `SvRecoveryActions` (before `RunActions`): the recovery of an Apply that did not
@@ -13,7 +14,9 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from rich.text import Text
+from textual import events
 from textual.binding import Binding
+from textual.message import Message
 from textual.screen import Screen
 from textual.widgets import Button, Checkbox, Input, ProgressBar, Static, Tree
 from textual.widgets.tree import TreeNode
@@ -29,17 +32,75 @@ from wowtools.ui.dialogs import BUSY_STYLE, DiscardScreen, ProgressScreen, TwoPa
 from wowtools.ui.widgets import WrapButtonRow
 
 __all__ = ["BLACKLISTED_MARK", "BLACKLISTED_STYLE", "BLACKLIST_BINDING", "BLACKLIST_KEY", "BLACKLIST_NO_TARGET",
-           "ActionBar", "BarTree", "BlacklistAction", "ButtonActions", "NotTicked", "Preflight", "ReviewBase",
-           "ReviewTree", "RunActions", "ScheduledRebuild", "SvRecoveryActions", "TickActions", "TickModel",
-           "blacklist_toast", "blacklisted_mark"]
+           "MARK_WIDTH", "TOGGLE_WIDTH", "ActionBar", "BarTree", "BlacklistAction", "ButtonActions", "FittedRows",
+           "NotTicked", "Preflight", "ReviewBase", "ReviewTree", "RunActions", "ScheduledRebuild", "SvRecoveryActions",
+           "TickActions", "TickModel", "blacklist_toast", "blacklisted_mark", "tree_room"]
 
 WowCheck = Callable[[], "list[str] | None"]
 
 
+TOGGLE_WIDTH = 2  # the tree's ▶ / ▼ in front of a node that opens
+MARK_WIDTH = 2  # a tick mark (or the blacklist mark) in front of a label
+
+
 class ReviewTree(Tree):
-    """A review screen's tree. ← jumps to the left pane (`screen.focus_filters`) instead of scrolling sideways."""
+    """A review screen's tree. ← jumps to the left pane (`screen.focus_filters`) instead of scrolling sideways. A
+    new size is told to its screen (`Resized`, for `FittedRows`): Textual sends a widget's Resize to it alone."""
 
     BINDINGS: ClassVar[list[Binding]] = [Binding("left", "screen.focus_filters", "Filters", show=False)]
+
+    class Resized(Message):
+        """The tree took a new size (its first layout too)."""
+
+        def __init__(self, tree: ReviewTree) -> None:
+            super().__init__()
+            self.tree = tree
+
+    def on_resize(self, event: events.Resize) -> None:
+        self.post_message(self.Resized(self))
+
+
+def tree_room(tree: Tree, depth: int = 0, *, indent: int = 0, opens: bool = False, mark: int = 0) -> int | None:
+    """The cells a node's label may take in `tree` (STD-7.28) behind the guides of a node `depth` levels below the
+    root (or `indent` cells of them, worked out by the caller), its ▶ / ▼ when it `opens` and a mark `mark` cells
+    wide, less the vertical scrollbar (it may come with more rows); None before the tree is laid out (no limit)."""
+    if tree.size.width <= 0:
+        return None
+    lead = depth * tree.guide_depth + indent + (TOGGLE_WIDTH if opens else 0) + mark
+    return max(0, tree.size.width - tree.styles.scrollbar_size_vertical - lead)
+
+
+class FittedRows:
+    """A screen whose tree labels are fitted to the pane's width (STD-7.28): they are fitted again whenever the tree
+    (a ReviewTree, TREE_SELECTOR) takes a new width, its first layout included, so a build made before the tree
+    was laid out (hidden during a scan, or behind its loading indicator) is fitted once it is. The screen calls
+    `rows_built(tree)` when it (re)builds the tree, before it labels the rows, and supplies `refit_rows(tree)`,
+    which relabels the fitted rows."""
+
+    TREE_SELECTOR: ClassVar[str] = "Tree"
+    _fitted_width = 0  # the tree's width the labels were last fitted to
+
+    def refit_rows(self, tree: Tree) -> None:
+        raise NotImplementedError
+
+    def rows_built(self, tree: Tree) -> None:
+        """The rows are being labelled for the tree's width now; fit them again once it is laid out."""
+        self._fitted_width = tree.size.width
+        self.call_after_refresh(self.fit_rows)
+
+    def fit_rows(self) -> None:
+        """Relabel the fitted rows when the tree's width changed since they were fitted."""
+        if not self.is_attached:
+            return
+        tree = self.query_one(self.TREE_SELECTOR, Tree)
+        if tree.size.width == self._fitted_width:
+            return
+        self._fitted_width = tree.size.width
+        self.refit_rows(tree)
+
+    def on_review_tree_resized(self, event: ReviewTree.Resized) -> None:
+        if event.tree is self.query_one(self.TREE_SELECTOR, Tree):
+            self.fit_rows()
 
 
 class BarTree(ReviewTree):

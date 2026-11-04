@@ -43,6 +43,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import re
 import time
 import unittest
 from unittest import mock
@@ -562,20 +563,30 @@ def _cuts(name: str, width: int) -> set[str]:
     return {cut_middle(name, width), end.plain}
 
 
-def assert_fits_or_keeps_minimum(test, node, lead: int, room: int, name: str, minimum: int) -> None:
+COUNT_AFTER = r" {1,2}\d+ items?"  # what follows a counted row's name when it scrolls: its STD-7.27 count, kept
+LEAD_MARK_CELLS = 4  # the most a label puts in front of its name: a pad and a tick mark, or two marks
+
+
+def assert_fits_or_keeps_minimum(test, node, lead: int, room: int, name: str, minimum: int, *,
+                                 after: str = "") -> None:
     """STD-7.28 (user decision U1): a tree row's name shows at least its column minimum (cut in its middle, or
     whole), and the row fits the pane (`lead`: the cells of its guides and ▶ / ▼ in front of the label, `room`: the
-    pane less its scrollbar) unless even that minimum does not fit: then the name is at its minimum and the row
-    scrolls sideways, never `…` alone."""
+    pane less its scrollbar) unless even that minimum does not fit: then the name is at its minimum, alone but for
+    its marks in front and what `after` (a regex: COUNT_AFTER for a counted row, STD-7.27) matches behind, and the
+    row scrolls sideways, never `…` alone."""
     label = str(node.label)
     keep = min(cell_len(name), minimum)
     widths = range(keep, cell_len(name) + 1)
     test.assertTrue(any(cut in label for width in widths for cut in _cuts(name, width)),
                     f"{label!r} cuts {name!r} below its {minimum}-cell minimum")
     if lead + node.label.cell_len > room:
-        test.assertTrue(any(cut in label for cut in _cuts(name, keep)),
-                        f"{label!r} is wider than the pane but its name is not at its {minimum}-cell minimum "
-                        f"(lead {lead} + {node.label.cell_len} cells > room {room})")
+        found = [match for cut in _cuts(name, keep)
+                 if (match := re.fullmatch(f"(?P<marks>.*?){re.escape(cut)}{after}", label.rstrip()))]
+        test.assertTrue(found, f"{label!r} is wider than the pane but is not its name at its {minimum}-cell minimum"
+                               f" alone (lead {lead} + {node.label.cell_len} cells > room {room})")
+        marks = found[0]["marks"]
+        test.assertTrue(cell_len(marks) <= LEAD_MARK_CELLS and not any(c.isalnum() for c in marks),
+                        f"{label!r} has {marks!r} in front of its name")
 
 
 def assert_siblings_distinct(test, nodes) -> None:

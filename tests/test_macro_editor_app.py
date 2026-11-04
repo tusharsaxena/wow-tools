@@ -12,8 +12,9 @@ from unittest import mock
 
 from textual.widgets import Checkbox, Input, OptionList, TextArea, Tree
 
-from tests.fixtures import (BASE, LARGE, MACRO_ACCOUNT, MACRO_AELLA, MACRO_BOB, MACRO_UNKNOWN, TINY, TuiTestCase,
-                            assert_fits_or_keeps_minimum, build_macro_tree, make_config, settle, submit_filter)
+from tests.fixtures import (BASE, COUNT_AFTER, LARGE, MACRO_ACCOUNT, MACRO_AELLA, MACRO_BOB, MACRO_UNKNOWN, TINY,
+                            TuiTestCase, assert_fits_or_keeps_minimum, assert_siblings_distinct, build_macro_tree,
+                            make_config, settle, submit_filter)
 from wowtools.core.events import capture_events
 from wowtools.core.install import flavor_name
 from wowtools.core.macrofile import parse_macros
@@ -611,7 +612,9 @@ class NodeCountsAndColumnsTest(MacroEditorTestBase):
                     with self.subTest(size=size, row=str(node.label)):
                         if size == BASE:
                             self.assertLessEqual(indent(node) + node.label.cell_len, room)
-                        assert_fits_or_keeps_minimum(self, node, indent(node), room, name, minimum)
+                        assert_fits_or_keeps_minimum(self, node, indent(node), room, name, minimum,
+                                                     after=COUNT_AFTER if node.allow_expand else "")
+                assert_siblings_distinct(self, [n for n in walk(tree.root) if isinstance(n.data, MacroNode)])
                 if size == BASE:  # at 120 columns the names and lengths read in full
                     aella = character_node(tree, "Aellâ")
                     for node in aella.children:

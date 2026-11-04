@@ -149,7 +149,8 @@ copy mode; `validate_dest` errors show inline). `review_screen.py` holds:
   At 80 columns a day's guides leave a file row 4 cells, so its name keeps its 12-cell minimum and the row scrolls
   sideways (STD-7.28, user decision U1) rather than read `✔ Wo…g` on every file.
   `_load_files` (a day's files, on expand) and `_add_node` (the conflicts) work out the natural widths over the
-  sibling rows the filter keeps and each row's indent; `_fit_rows` refits them when the tree pane's width changes.
+  sibling rows the filter keeps and each row's indent; `ui/review.FittedRows` refits them when the tree pane's
+  width changes.
   A skipped row is its name only, not a column row. It uses the
   shared `ConfirmScreen`. On mount and on Rescan it shows the scan box first ("Checking the destination folder",
   Organize, Dry run and Undo off); the scan worker then runs `validate_dest` (it lists the flavors and resolves the

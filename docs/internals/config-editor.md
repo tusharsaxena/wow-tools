@@ -55,7 +55,8 @@ guide's "If a change comes back" asks users to report a revert. `Config.wtf` has
         ui/columns.fit_columns with review_screen.CVAR_COLUMNS (the file's widest cells, ui/columns.natural_widths,
         capped 40/24/24, shrunk to the tree pane's room, then whole columns dropped in report.DROP_ORDER so a row
         fits; the name cut in its middle by ui/columns.cut_middle, never below its 12 cells: narrower, the row
-        scrolls sideways, STD-7.28 / U1; drawn by column_text; refitted on resize),
+        scrolls sideways, STD-7.28 / U1; drawn by column_text; refitted whenever the tree's width changes, after a
+        rebuild behind the loading indicator too: ui/review.FittedRows),
         state and category coloured by ui/theme.CVAR_STATE_COLOURS / CVAR_CATEGORY_COLOURS (CF1-CF3); a row the
         file doesn't set in ui/theme.NOT_SET_COLOUR, darker than dim (R3)
         leaf counts (feedback round 2 R2, STD-7.27): the leaf is a CVar row. _count_rows, at the start of every

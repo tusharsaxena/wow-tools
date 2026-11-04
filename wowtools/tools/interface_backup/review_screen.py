@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from rich.text import Text
-from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -35,8 +34,7 @@ from wowtools.tools.interface_backup.report import (BACKUP_FORMS, BACKUP_RESULT_
                                                     leftover_text, part_cells, restore_confirm, selection_text,
                                                     undo_confirm)
 from wowtools.tools.interface_backup.restore import RestoreError, RestorePlan, RestoreResult, RestoreStopped, restore
-from wowtools.tools.interface_backup.restore_screen import (RestoreResultScreen, RestoreScreen, flavor_warning_items,
-                                                            tree_room)
+from wowtools.tools.interface_backup.restore_screen import RestoreResultScreen, RestoreScreen, flavor_warning_items
 from wowtools.tools.interface_backup.scanner import CHEAP_STATS, PARTS, FlavorScan, scan_flavors
 from wowtools.tools.interface_backup.settings import load_settings, resolve_backup_root
 from wowtools.tools.interface_backup.undo import undo_restore
@@ -46,7 +44,7 @@ from wowtools.ui.counts import COUNT_STYLE, count_text, with_count
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                 relabel_branch, theme_colour, two_pane_css)
 from wowtools.ui.result_screen import ResultBase, ResultButton, result_bindings, status_colour, status_style
-from wowtools.ui.review import ReviewBase, ReviewTree, TickModel, WowCheck
+from wowtools.ui.review import MARK_WIDTH, FittedRows, ReviewBase, ReviewTree, TickModel, WowCheck, tree_room
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TreeFilter
 from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
@@ -68,7 +66,6 @@ PART_COLUMNS = ColumnLayout(caps=(None,) * 3, minimums=(3, 0, 0), shrink=(), dro
 PART_STYLES = ("bold", "dim", "dim")
 BACKUP_COLUMNS = ColumnLayout(caps=(None,) * 4, minimums=(10, 0, 0, 0), shrink=(), drop=(2, 3, 1))
 BACKUP_STYLES = ("", "dim", "dim", "dim")
-MARK_WIDTH = 2  # the tick mark in front of the root's and a flavor's columns
 
 
 def free_bytes(path: Path | None, disk_usage: Callable = shutil.disk_usage) -> int | None:
@@ -125,7 +122,7 @@ class BackupResultScreen(ResultBase):
             table.add_row(Text(flavor), Text(kind, style=style), *(Text(c) for c in rest))
 
 
-class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
+class BackupReviewScreen(WarningsHost, TreeFilter, FittedRows, ReviewBase, Screen[str]):
     """The chosen flavors as a tree (what Interface and WTF hold, links, warnings, the flavor's backups) with
     flavor ticks for Back up, a highlighted backup for Restore, and Undo. Dismisses with "flavors", "tools" or
     "quit"."""
@@ -184,7 +181,6 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         # a part or backup row's columns (R4): id(row data) -> its cells and its siblings' natural widths, one pair
         # per form of the row, widest first (a part has one; a backup BACKUP_FORMS, see report.backup_cells)
         self._columns: dict[int, list[tuple[tuple[str, ...], tuple[int, ...]]]] = {}
-        self._fitted_width = 0
         self._scanning = False
         self._checking = False  # the running-WoW check is in its worker
         # What a result screen asked for once its rescan is done: ("restore", None) for Restore (e), or ("undo",
@@ -422,7 +418,8 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         self._flavor_widths = natural_widths(self._flavor_cells(flavor.data[1], padded=True) for flavor in model)
         tree = self.query_one("#flavors", Tree)
         tree.clear()
-        self._backup_nodes, self._columns, self._fitted_width = {}, {}, tree.size.width
+        self._backup_nodes, self._columns = {}, {}
+        self.rows_built(tree)  # fitted again once the tree is laid out (hidden during the scan)
         tree.root.data = ("root",)
         tree.root.set_label(self._label(tree.root.data))
         warning = f"bold {theme_colour(self.app, 'warning')}"
@@ -465,7 +462,6 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         self.note_no_match(tree.root)
         tree.root.expand()
         self._update_summary()
-        self.call_after_refresh(self._fit_rows)  # built before the tree was laid out (hidden during the scan)
 
     def _count_leaves(self, model: list[ModelNode], kept: ModelFilter) -> dict[tuple, int]:
         """Every node's leaf count (R2, STD-7.27), once per rebuild, as the tree shows them (under a filter, what it
@@ -659,17 +655,10 @@ class BackupReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
                 break
         return column_text(cells, widths, BACKUP_STYLES, gap, middle=(0,))
 
-    def on_resize(self, event: events.Resize) -> None:
-        self.call_after_refresh(self._fit_rows)
-
-    def _fit_rows(self) -> None:
-        """Fit the column rows again to the tree pane's width when it changed (R4)."""
-        if not self.is_attached or self.scans is None:
+    def refit_rows(self, tree: Tree) -> None:
+        """Fit the column rows again to the tree pane's width (R4, FittedRows)."""
+        if self.scans is None:
             return
-        tree = self.query_one("#flavors", Tree)
-        if tree.size.width == self._fitted_width:
-            return
-        self._fitted_width = tree.size.width
         stack = [tree.root]
         while stack:
             node = stack.pop()

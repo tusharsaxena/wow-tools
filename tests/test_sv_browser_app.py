@@ -6,23 +6,29 @@ from __future__ import annotations
 import re
 import tempfile
 from pathlib import Path
+from unittest import mock
 
 from rich.cells import cell_len
 from rich.text import Text
+from textual import events
+from textual.geometry import Size
 from textual.widgets import Button, Tree
 
-from tests.fixtures import (BASE, LARGE, TINY, TuiTestCase, accept_disclaimer, assert_fits_or_keeps_minimum,
-                            assert_keys_on_buttons, build_sv_tree, make_config, settle, submit_filter)
+from tests.fixtures import (BASE, COUNT_AFTER, LARGE, TINY, TuiTestCase, accept_disclaimer,
+                            assert_fits_or_keeps_minimum, assert_keys_on_buttons, build_sv_tree, make_config, settle,
+                            submit_filter)
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
 from wowtools.tools.sv_browser.app import SvBrowserSettingsScreen
 from wowtools.tools.sv_browser.model import CHILD_CAP
-from wowtools.tools.sv_browser.review_screen import READING, RESULT_GROUPS, TOGGLE_WIDTH, SvReviewScreen
+from wowtools.tools.sv_browser.review_screen import READING, RESULT_GROUPS, SvReviewScreen
 from wowtools.tools.sv_browser.settings import load_settings
-from wowtools.ui.columns import GROUP_NAME_MINIMUM
+from wowtools.ui.columns import GROUP_NAME_MINIMUM, cut_middle
+from wowtools.ui.counts import COUNT_GAP
 from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.disclaimer import ACCEPT, BACK, DISCLAIMER_TITLE, DisclaimerScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
+from wowtools.ui.review import TOGGLE_WIDTH
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.tree_filter import NO_MATCH_TEXT
 from wowtools.ui.widgets import RISK_TEXT, RiskBanner, action_kind
@@ -55,11 +61,14 @@ def labels(node) -> list[str]:
 
 def child(node, start: str):
     """The child of node whose label (in one piece) starts with `start`; else, where the pane cut the labels (80
-    columns), the one whose file or key is `start`."""
+    columns), the one whose file or key is `start`, or the group whose name is `start` cut in its middle."""
     found = [c for c in node.children if one_piece(c).startswith(start)]
     if not found:
         found = [c for c in node.children if c.data is not None and c.data[0] in ("file", "node")
                  and (c.data[1].path.name if c.data[0] == "file" else c.data[2].key) == start]
+    if not found:
+        cuts = {cut_middle(start, width) for width in range(2, len(start))}
+        found = [c for c in node.children if one_piece(c).split(COUNT_GAP)[0] in cuts]
     assert len(found) == 1, (start, labels(node))
     return found[0]
 
@@ -474,8 +483,9 @@ def assert_row_fits(test, review, row, room: int) -> None:
     guides = depth(row) * row.tree.guide_depth
     lead = guides + (TOGGLE_WIDTH if row.allow_expand else 0)
     named = row_name(review, row)
-    if named is not None:
-        assert_fits_or_keeps_minimum(test, row, lead, room, *named)
+    if named is not None:  # a group keeps its count (STD-7.27)
+        after = COUNT_AFTER if review._row(row.data) is None else ""
+        assert_fits_or_keeps_minimum(test, row, lead, room, *named, after=after)
     elif guides + 2 < room:
         test.assertLessEqual(guides + cell_len(drawn(row)), room, drawn(row))
 
@@ -613,3 +623,37 @@ class NodeCountsAndColumnsTest(SvBrowserTestBase):
                 select(tree, by_name(general, "font"))
                 await settle(app, pilot)
                 self.assertIn('general › font = "Friz Quadrata TT"', review.summary_text)
+
+    async def test_rows_are_fitted_when_the_tree_is_laid_out_after_the_build(self):
+        """G9bf, the G10 review: a build made while the tree has no width yet, whose after-refresh fit runs before
+        the tree is laid out (the screen idles first, under load), is fitted when the tree takes its width. Textual
+        sends that Resize to the tree alone; the tree tells its screen (ReviewTree.Resized, ui.review.FittedRows)."""
+        real = SvReviewScreen._rebuild
+        builds = []
+
+        def rebuild(screen):
+            builds.append(screen)
+            if len(builds) > 1:
+                return real(screen)
+            tree = screen.query_one("#browse", Tree)
+            with mock.patch.object(type(tree), "size", new=property(lambda _: Size(0, 0))), \
+                    mock.patch.object(screen, "call_after_refresh", lambda callback, *args: callback(*args)):
+                return real(screen)
+
+        with mock.patch.object(SvReviewScreen, "_rebuild", rebuild):
+            app = self.make_app()
+            async with app.run_test(size=TINY) as pilot:
+                review = await self.open_review(app, pilot, "_retail_")
+                tree = review.query_one("#browse", Tree)
+                tree.focus()
+                await pilot.press("x")  # every group open (a toggle, no rebuild)
+                await settle(app, pilot)
+                tree.post_message(events.Resize(tree.size, tree.virtual_size))  # the tree's own first layout
+                await settle(app, pilot)
+                self.assertEqual(len(builds), 1)
+                room = tree.size.width - tree.styles.scrollbar_size_vertical
+                rows = [row for row in walk(tree.root) if row.data is not None]
+                self.assertTrue(rows)
+                for row in rows:
+                    with self.subTest(row=drawn(row)):
+                        assert_row_fits(self, review, row, room)

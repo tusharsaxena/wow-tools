@@ -650,7 +650,9 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   on (an addon entry, a CVar row, a macro, a file pair, a profile, a screenshot, a backup, a SavedVariables key...),
   named in the tool's internals doc; the count is of what the tree currently shows (after the search and the tool's
   own Show filters), and a node whose children load on expand counts them from the model, so it never shows
-  `0 items` before it is opened ([R2][fb2]).
+  `0 items` before it is opened. The count is never dropped for want of room: the name gives way (never below its
+  STD-7.28 minimum) and a line narrower than that scrolls sideways with its count (`group_text`,
+  `fit_keeping_count` in `ui/columns.py`) ([R2][fb2]).
   *Why:* the user reads how much sits under a flavor, account, realm or character without opening it, the same
   way in every tool (WTF Cleaner's look, user feedback 2026-11-04).
   *Enforced by:* `tests/test_ui_columns.py::CountTest`, `tests/test_structure.py::test_tree_label_helpers_live_in_ui`,
@@ -660,12 +662,13 @@ Manager, SV Browser). Interface Backup and Screenshot Organizer meet the same go
   `ColumnLayout`; each column is as wide as its widest cell among the sibling rows it aligns with
   (`natural_widths`, up to its cap), long cells are cut with `…` (`column_text`; a name in its middle,
   `cut_middle`), the secondary columns dim or coloured as the tool colours them, and the row refits when the pane
-  narrows or resizes (`fit_columns`: the free-text columns give way first, the short status-like ones are never cut,
-  only dropped, and a row fits the pane, at 80 columns too, as long as its name keeps its column minimum). A name
-  never shrinks below its minimum (its `ColumnLayout` minimum; a group's name, `GROUP_NAME_MINIMUM` through
-  `cut_to_room`): where the guides of a deep row leave less room than that, the name keeps its minimum alone and the
-  row scrolls sideways past the pane (user decision U1, 2026-11-05). A node with only a name and its STD-7.27 count
-  is not a column row ([R4][fb2]).
+  narrows or resizes (the room through `ui/review.py`'s `tree_room`, the refit whenever the tree's width changes
+  through its `FittedRows`; `fit_columns`: the free-text columns give way first, the short status-like ones are
+  never cut, only dropped, and a row fits the pane, at 80 columns too, as long as its name keeps its column
+  minimum). A name never shrinks below its minimum (its `ColumnLayout` minimum; a group's name,
+  `GROUP_NAME_MINIMUM` through `cut_to_room`): where the guides of a deep row leave less room than that, the name
+  keeps its minimum, alone but for its STD-7.27 count, and the row scrolls sideways past the pane (user decision
+  U1, 2026-11-05). A node with only a name and its STD-7.27 count is not a column row ([R4][fb2]).
   *Why:* a row of data in columns is read at a glance down the tree; text run together with ` · ` is not (the
   Config Editor's CVar rows, user feedback 2026-11-04). A name cut to a few cells reads the same on every sibling
   (`✔ Wo…g` on every screenshot of a day at 80 columns), so a row that scrolls is the readable one.

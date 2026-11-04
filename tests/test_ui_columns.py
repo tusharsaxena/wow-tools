@@ -8,7 +8,8 @@ import unittest
 from rich.text import Text
 
 from wowtools.ui.columns import (ELLIPSIS, GROUP_NAME_MINIMUM, NARROW_GAP, WIDE_GAP, ColumnLayout, column_text,
-                                 cut_middle, cut_to_room, fit_columns, fit_keeping_count, natural_widths)
+                                 cut_middle, cut_to_room, fit_columns, fit_keeping_count, group_text,
+                                 natural_widths)
 from wowtools.ui.counts import COUNT_STYLE, count_text, with_count
 
 # name · reason · files · size · age (the WTF Cleaner's row, the user's example): the name and the reason give way,
@@ -88,16 +89,43 @@ class FitColumnsTest(unittest.TestCase):
 
 
     def test_the_count_is_kept_by_cutting_the_name(self):
-        """fit_keeping_count (moved out of the Interface Backup, G6c): where the shared fit would leave the name
-        alone, the name is cut (to its minimum at most) so the count column (1) stays (STD-7.27)."""
+        """fit_keeping_count (moved out of the Interface Backup, G6c): where the shared fit would drop the count
+        column (1), the name and the count alone, the name cut so the count fits; narrower than the name's minimum
+        and the count, the name keeps its minimum and the count stays (the row scrolls, U1; STD-7.27)."""
         layout = ColumnLayout(caps=(None,) * 3, minimums=(4, 0, 0), shrink=(), drop=(2,))
         natural = (20, 7, 10)
         self.assertEqual(fit_columns(natural, 20, layout), ((20, 0, 0), NARROW_GAP))
         self.assertEqual(fit_keeping_count(natural, 20, layout), ((12, 7, 0), NARROW_GAP))
         self.assertEqual(fit_keeping_count(natural, 50, layout), fit_columns(natural, 50, layout))  # it fits
-        self.assertEqual(fit_keeping_count(natural, 10, layout), ((10, 0, 0), NARROW_GAP))  # no room for both
-        self.assertEqual(fit_keeping_count(natural, 2, layout), ((4, 0, 0), NARROW_GAP))  # the name's minimum
+        self.assertEqual(fit_keeping_count(natural, 10, layout), ((4, 7, 0), NARROW_GAP))  # the minimum, scrolls
+        self.assertEqual(fit_keeping_count(natural, 2, layout), ((4, 7, 0), NARROW_GAP))  # the name's minimum
+        self.assertEqual(fit_keeping_count((3, 7, 10), 2, layout), ((3, 7, 0), NARROW_GAP))  # a short name whole
         self.assertEqual(fit_keeping_count((20, 0, 10), 20, layout), fit_columns((20, 0, 10), 20, layout))  # none
+        self.assertEqual(fit_keeping_count(natural, None, layout), fit_columns(natural, None, layout))
+
+    def test_the_count_may_be_any_column(self):
+        """A count in the last column (the Macro Editor's name · slots · count) is kept the same way."""
+        layout = ColumnLayout(caps=(None,) * 3, minimums=(4, 0, 0), shrink=((0,),), drop=(1,))
+        self.assertEqual(fit_keeping_count((10, 4, 7), 15, layout, count=2), ((7, 0, 7), NARROW_GAP))
+        self.assertEqual(fit_keeping_count((10, 4, 7), 6, layout, count=2), ((4, 0, 7), NARROW_GAP))
+
+    def test_keeping_the_count_never_narrows_the_name_as_the_room_grows(self):
+        """The G10 review case: over the Ace3 addon row (name · count · character · status) and the Interface
+        Backup's flavor and root rows, a wider pane never gives the name fewer cells, and the count always shows."""
+        cases = [
+            (ColumnLayout(caps=(32, None, 28, None), minimums=(6, 0, 8, 0), shrink=((2,),), drop=(2, 3)),
+             (25, 8, 0, 11)),
+            (ColumnLayout(caps=(None,) * 5, minimums=(6, 0, 0, 0, 16), shrink=((4,),), drop=(4, 3, 2)),
+             (20, 9, 8, 10, 30)),
+            (ColumnLayout(caps=(None,) * 4, minimums=(6, 0, 0, 0), shrink=(), drop=(3, 2)), (20, 10, 9, 8)),
+        ]
+        for layout, natural in cases:
+            names = []
+            for room in range(80):
+                widths, _ = fit_keeping_count(natural, room, layout)
+                self.assertTrue(widths[1], (natural, room, widths))
+                names.append(widths[0])
+            self.assertEqual(names, sorted(names), natural)
 
 class CutTest(unittest.TestCase):
     def test_cut_in_the_middle_keeps_the_start_and_the_end(self):
@@ -122,6 +150,20 @@ class CutTest(unittest.TestCase):
         self.assertEqual([cut_to_room("Argent Dawn", room) for room in (4, 1, 0, -3)], ["Ar…n"] * 4)
         self.assertEqual(cut_to_room("Argent Dawn", 0, minimum=8), "Arge…awn")
         self.assertEqual(cut_to_room("EU", 0), "EU")
+
+    def test_a_group_keeps_its_count_and_cuts_its_name(self):
+        """group_text (STD-7.27, U1): the name and its dim count, the name cut in its middle so the count fits, never
+        below its minimum: narrower than that the count still follows and the line scrolls."""
+        self.assertEqual(group_text("Argent Dawn", "bold", "5 items", None).plain, "Argent Dawn  5 items")
+        self.assertEqual(group_text("Argent Dawn", "bold", "5 items", 20).plain, "Argent Dawn  5 items")
+        self.assertEqual(group_text("Argent Dawn", "bold", "5 items", 15).plain, "Arg…wn  5 items")
+        self.assertEqual(group_text("Argent Dawn", "bold", "5 items", 3).plain, "Ar…n  5 items")
+        self.assertEqual(group_text("EU", "bold", "5 items", 3).plain, "EU  5 items")
+        self.assertEqual(group_text("Argent Dawn", "bold", None, 6).plain, "Arg…wn")
+        text = group_text("Argent Dawn", "bold", "nothing to clean", 0, note_style="italic")
+        self.assertEqual([(text.plain[s.start:s.end], str(s.style)) for s in text.spans],
+                         [("Ar…n", "bold"), ("  nothing to clean", "italic")])
+        self.assertEqual(str(group_text("A", "", "1 item", None).spans[-1].style), COUNT_STYLE)
 
 
 class ColumnTextTest(unittest.TestCase):

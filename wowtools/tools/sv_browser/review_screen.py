@@ -16,7 +16,6 @@ from collections.abc import Callable, Collection, Hashable, Iterable, Iterator, 
 from pathlib import Path
 from typing import ClassVar
 
-from rich.cells import cell_len
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -51,12 +50,12 @@ from wowtools.tools.sv_browser.settings import load_settings, resolve_root
 from wowtools.tools.sv_browser.undo import (UndoError, UndoResult, leave, pending_recovery, recover, undo_flavors,
                                             undo_run)
 from wowtools.ui.branding import BottomBar
-from wowtools.ui.columns import (Cell, ColumnLayout, GROUP_NAME_MINIMUM, column_text, cut_middle, cut_to_room,
-                                 fit_columns, natural_widths)
-from wowtools.ui.counts import COUNT_GAP, COUNT_STYLE, count_text
+from wowtools.ui.columns import Cell, ColumnLayout, column_text, fit_columns, group_text, natural_widths
+from wowtools.ui.counts import count_text
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                  UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
-from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, SvRecoveryActions, TickModel, WowCheck
+from wowtools.ui.review import (MARK_WIDTH, ActionBar, BarTree, FittedRows, ReviewBase, RunActions, SvRecoveryActions,
+                                TickModel, WowCheck, tree_room)
 from wowtools.ui.tree_filter import (FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TextFilter,
                                      TreeFilter)
 from wowtools.ui.warnings_view import (WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost,
@@ -93,8 +92,6 @@ ROW_KINDS = ("file", "node", "hit")  # rows that line up with their siblings (pa
 # size of a file is never cut, only dropped; past the drops the key alone.
 KEY_COLUMNS = ColumnLayout(caps=(48, 62, 48), minimums=(8, 6, 8), shrink=((0, 1), (2,)), drop=(1, 2))
 FILE_ROW_COLUMNS = ColumnLayout(caps=(48, None), minimums=(8, 0), shrink=((0,),), drop=(1,))
-TOGGLE_WIDTH = 2  # the tree's ▶ / ▼ in front of a node that opens
-MARK_WIDTH = 2  # the tick mark in front of a Results label
 
 
 class RunProgressScreen(ProgressScreen):
@@ -143,7 +140,7 @@ def ident(data) -> Hashable:
     return kind, folder, account, data[3].label  # owner
 
 
-class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions, RunActions, ReviewBase,
+class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions, RunActions, FittedRows, ReviewBase,
                      Screen[str]):
     """The SavedVariables files of the chosen flavors. `wow_check` (tests inject one) stands for the running-WoW
     check of every flavor."""
@@ -231,7 +228,6 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
         self._padded: set[int] = set()  # rows that don't open beside siblings that do
         self._siblings: dict[int, list] = {}  # a row's data -> the data of the sibling rows it aligns with
         self._natural: dict[int, tuple[int, ...]] = {}  # id(sibling list) -> natural widths (until a relabel)
-        self._fitted_width = 0  # the tree's width the labels were fitted to
         self._scanning = False
         self._checking = False
         self._stale = False  # an Apply or Undo changed the files: read them again when the review is shown
@@ -544,7 +540,7 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
         tree.root.data = ("root",)
         self._depths, self._toggles = {id(tree.root.data): 0}, {id(tree.root.data)}
         self._padded, self._siblings, self._natural = set(), {}, {}
-        self._fitted_width = tree.size.width
+        self.rows_built(tree)  # fitted again once the tree is laid out (hidden during the scan)
         tree.root.set_label(self._label(tree.root.data))
         self._tree_nodes = {}
         self._add_children(tree.root, models, kept)
@@ -557,7 +553,6 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
         if target is not None and target.line >= 0:
             tree.move_cursor(target)
         self._update_summary()
-        self.call_after_refresh(self._fit_rows)  # built before the tree was laid out (hidden during the scan)
 
     def _count(self, model: ModelNode, kept: ModelFilter) -> int:
         """Post-order: the leaves (LEAF_KIND) the filter keeps below a model node, kept per group (R2)."""
@@ -750,15 +745,9 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
     def _room(self, data) -> int | None:
         """The cells a node's label may take behind its guides, its ▶ / ▼ (or the pad in its place) and, in
         Results, its tick mark; None before the tree is laid out (no limit)."""
-        tree = self.query_one("#browse", Tree)
-        if tree.size.width <= 0:
-            return None
-        width = tree.size.width - tree.styles.scrollbar_size_vertical  # a scrollbar may come with more rows
         key = id(data)
-        lead = self._depths.get(key, 0) * tree.guide_depth + (TOGGLE_WIDTH if key in self._toggles else 0)
-        if data[0] == "hit" or data[0] in RESULT_GROUPS:
-            lead += MARK_WIDTH
-        return max(0, width - lead)
+        return tree_room(self.query_one("#browse", Tree), self._depths.get(key, 0), opens=key in self._toggles,
+                         mark=MARK_WIDTH if data[0] == "hit" or data[0] in RESULT_GROUPS else 0)
 
     def _row_text(self, data, row: tuple[list[Cell], tuple[str, ...], ColumnLayout]) -> Text:
         cells, styles, layout = row
@@ -769,7 +758,7 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
 
     def _group(self, data, name: str, style: str) -> Text:
         """A group's name and its dim count (R2), fitted to the pane."""
-        return _group_text(name, style, self._counts.get(ident(data), 0), self._room(data))
+        return group_text(name, style, count_text(self._counts.get(ident(data), 0)), self._room(data))
 
     def _result_body(self, data) -> Text:
         """A Results node's label: its tick mark, then a group's name and how many hits it shows (R2), or a hit's
@@ -831,17 +820,10 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
         body = self._body(data)
         return Text.assemble("  ", body) if id(data) in self._padded else body
 
-    def on_resize(self) -> None:
-        self.call_after_refresh(self._fit_rows)  # once the tree has its new width
-
-    def _fit_rows(self) -> None:
-        """Fit every label to the tree pane's width again when it changed (R4)."""
-        if not self.is_attached or self.scan is None:
+    def refit_rows(self, tree: Tree) -> None:
+        """Fit every label to the tree pane's width again (R4, FittedRows)."""
+        if self.scan is None:
             return
-        tree = self.query_one("#browse", Tree)
-        if tree.size.width == self._fitted_width:
-            return
-        self._fitted_width = tree.size.width
         for node in self._walk_tree():
             if node.data is not None:
                 node.set_label(self._label(node.data))
@@ -1273,14 +1255,3 @@ class SvReviewScreen(WarningsHost, SvEditActions, TreeFilter, SvRecoveryActions,
 def _under(nodes: list[ModelNode]) -> tuple[int, ...]:
     """The hit indexes under these Results groups (each group's data ends with its own)."""
     return tuple(i for node in nodes for i in node.data[-1])
-
-
-def _group_text(name: str, style: str, n: int, room: int | None) -> Text:
-    """A group's name and its dim count (R2), the name cut in its middle so the count fits the pane; with no room
-    for both, the name alone, cut to the room but never below 4 cells (cut_to_room: the row scrolls, U1)."""
-    count = f"{COUNT_GAP}{count_text(n)}"
-    if room is not None and cell_len(name) + cell_len(count) > room:
-        if room - cell_len(count) < GROUP_NAME_MINIMUM:
-            return Text(cut_to_room(name, room), style=style)
-        name = cut_middle(name, room - cell_len(count))
-    return Text.assemble((name, style), (count, COUNT_STYLE))

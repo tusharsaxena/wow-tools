@@ -7,9 +7,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import ClassVar
 
-from rich.cells import cell_len
 from rich.text import Text
-from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -41,12 +39,12 @@ from wowtools.tools.wtf_cleaner.safety import (MARKER_NAME, SNAPSHOT_SUBDIR, Mar
 from wowtools.tools.wtf_cleaner.settings import load_settings, resolve_backup_dir, save_settings
 from wowtools.tools.wtf_cleaner.undo import UndoResult, undo_clean
 from wowtools.ui.branding import BottomBar
-from wowtools.ui.columns import ColumnLayout, column_text, cut_to_room, fit_columns, natural_widths
-from wowtools.ui.counts import COUNT_GAP, count_text, with_count
+from wowtools.ui.columns import ColumnLayout, column_text, fit_columns, group_text, natural_widths
+from wowtools.ui.counts import count_text
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ChoiceScreen, ConfirmScreen,
                                 ProgressScreen, relabel_branch, two_pane_css)
-from wowtools.ui.review import (BLACKLIST_BINDING, BLACKLIST_KEY, BlacklistAction, ReviewBase, ReviewTree, TickModel,
-                               blacklisted_mark)
+from wowtools.ui.review import (BLACKLIST_BINDING, BLACKLIST_KEY, MARK_WIDTH, TOGGLE_WIDTH, BlacklistAction, FittedRows,
+                                ReviewBase, ReviewTree, TickModel, blacklisted_mark, tree_room)
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, ModelFilter, ModelNode, TreeFilter
 from wowtools.ui.warnings_view import (WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost,
                                        scan_warning_items)
@@ -54,14 +52,12 @@ from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, 
 
 WARNING_STYLE = "#E8B04B"
 ALL_FLAVORS_LABEL = "All flavors"
-NOTHING_TO_CLEAN = "  nothing to clean"
+NOTHING_TO_CLEAN = "nothing to clean"  # dim, two spaces after a group's name in place of its count
 __all__ = ["CleanProgressScreen", "RecoveryScreen", "ResultScreen", "ReviewScreen"]
 # The addon and file rows' columns as the shared fit takes them (feedback round 2 R4, STD-7.28): the reasons give
 # way first, then the name; files, size and age are never cut, only dropped (report.ITEM_DROP / FILE_DROP).
 ITEM_COLUMNS = ColumnLayout(caps=ITEM_CAPS, minimums=ITEM_MINIMUMS, shrink=((1,), (0,)), drop=ITEM_DROP)
 FILE_COLUMNS = ColumnLayout(caps=FILE_CAPS, minimums=FILE_MINIMUMS, shrink=((0,),), drop=FILE_DROP)
-MARK_WIDTH = 2  # the tick (or blacklist) mark in front of a row's columns
-TOGGLE_WIDTH = 2  # the tree's ▶ / ▼ in front of a row that opens (an addon row)
 NAV_HINT = (REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT
             + f"f flavors · t tools · 1-5 criteria · {BLACKLIST_KEY} blacklist")
 
@@ -105,7 +101,7 @@ class RecoveryScreen(ChoiceScreen):
             self.dismiss("remind")
 
 
-class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen[str]):
+class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, FittedRows, ReviewBase, Screen[str]):
     TREE_SELECTOR = "#proposal"
     LOG_SCREEN = "review"
     HIDDEN_NOUN = "file"
@@ -176,7 +172,6 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         self._indents: dict[int, int] = {}
         self._group_rows: set[int] = set()  # id(group data) of the groups with rows below them (blacklisted too)
         self._now = time.time()
-        self._fitted_width = 0
 
     # --- layout -------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -371,7 +366,7 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         self._filter_texts = {}
         self._columns, self._indents, self._now = {}, {}, time.time()
         self._group_rows = set()
-        self._fitted_width = tree.size.width
+        self.rows_built(tree)  # fitted again once the tree is laid out (shown after the scan)
         # The flavors (several) or the accounts (one); a (name, Text): a flavor not scanned, kept by the filter when
         # its name matches (as a flavor row is in every tool)
         top: list[ModelNode | tuple[str, Text]] = []
@@ -402,7 +397,6 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         tree.root.expand()
         self._restore_view(tree)
         self._update_summary()
-        self.call_after_refresh(self._fit_rows)  # built before the tree was laid out (shown after the scan)
 
     def _row_ident(self, node: TreeNode) -> tuple | None:
         """A row's identity across rebuilds (its data is rebuilt): a file's path, an addon in its flavor, a group's
@@ -538,18 +532,10 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         items = data[1]
         if not items and id(data) not in self._group_rows and data is not self.query_one("#proposal", Tree).root.data:
             # an account or flavor with no rows at all (STD-7.27 covers a node with children only)
-            return Text.assemble("  ", (self._group_name(data, NOTHING_TO_CLEAN), ACCENT), (NOTHING_TO_CLEAN, "dim"))
-        count = self._shown_count(items)
-        return with_count(Text.assemble(self._mark(self._paths(data)),
-                                        (self._group_name(data, f"{COUNT_GAP}{count_text(count)}"), ACCENT)), count)
-
-    def _group_name(self, data, after: str) -> str:
-        """A group's name, cut in its middle when the row (its mark, the name and `after`, its count) would not fit
-        the tree pane, so the count always shows (R2 at 80 columns)."""
-        name, room = data[2], self._row_room(data)
-        if room is None:
-            return name
-        return cut_to_room(name, room - cell_len(after))
+            return Text.assemble("  ", group_text(data[2], ACCENT, NOTHING_TO_CLEAN, self._row_room(data),
+                                                  note_style="dim"))
+        count = count_text(self._shown_count(items))
+        return Text.assemble(self._mark(self._paths(data)), group_text(data[2], ACCENT, count, self._row_room(data)))
 
     def _shown_count(self, items: list[ProposalItem]) -> int:
         """How many of a group's addon entries the tree shows (R2, STD-7.27): all of them, or under a search the
@@ -565,11 +551,8 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
 
     def _row_room(self, data) -> int | None:
         """The cells a row's columns may take in the tree pane (None before the tree is laid out)."""
-        tree = self.query_one("#proposal", Tree)
-        if tree.size.width <= 0:
-            return None
-        width = tree.size.width - tree.styles.scrollbar_size_vertical  # a scrollbar may come with more rows
-        return max(0, width - self._indents.get(id(data), TOGGLE_WIDTH) - MARK_WIDTH)  # the root: its ▼ only
+        return tree_room(self.query_one("#proposal", Tree), indent=self._indents.get(id(data), TOGGLE_WIDTH),
+                         mark=MARK_WIDTH)  # the root: its ▼ only
 
     def _row_label(self, data) -> Text:
         """An addon row (name · reasons · files · size · age) or a file row (name · size · age) in columns as wide
@@ -591,17 +574,8 @@ class ReviewScreen(WarningsHost, BlacklistAction, TreeFilter, ReviewBase, Screen
         text.append_text(column_text(shown, widths, styles, gap, middle=(0,)))
         return text
 
-    def on_resize(self, event: events.Resize) -> None:
-        self.call_after_refresh(self._fit_rows)
-
-    def _fit_rows(self) -> None:
-        """Fit the rows (groups too) again to the tree pane's width when it changed (R4)."""
-        if not self.is_attached:
-            return
-        tree = self.query_one("#proposal", Tree)
-        if tree.size.width == self._fitted_width:
-            return
-        self._fitted_width = tree.size.width
+    def refit_rows(self, tree: Tree) -> None:
+        """Fit the rows (groups too) again to the tree pane's width (R4, FittedRows)."""
         stack = list(tree.root.children)
         while stack:
             node = stack.pop()

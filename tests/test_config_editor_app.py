@@ -307,6 +307,32 @@ class ConfigEditorAppTest(TuiTestCase):
                     self.assertTrue(node.label.plain.strip(), node.label.plain)
             assert_siblings_distinct(self, nodes)
 
+    async def test_rows_fit_again_after_a_rebuild(self):
+        """G10 review: a rebuild runs behind the tree's loading indicator (no width), so its rows are fitted once
+        the tree is shown again: after a Space toggle and after a search, every CVar row of an open file fits the
+        pane at 120x30 (STD-7.28)."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+
+            def assert_rows_fit(step: str) -> None:
+                room = tree.size.width - tree.styles.scrollbar_size_vertical
+                rows = [n for n in walk(tree.root) if isinstance(n.data, CvarNode)]
+                self.assertTrue(rows, step)
+                for node in rows:
+                    self.assertLessEqual(indent(node) + node.label.cell_len, room, (step, node.label.plain))
+
+            await self.press_on(app, pilot, review, await cvar_node(pilot, character_node(tree, "Aellâ"),
+                                                             "assistedCombatHighlight"), "space")
+            self.assertEqual(review.staged.count(), 1)
+            assert_rows_fit("toggle")
+            review.query_one("#show-all", Checkbox).value = True
+            await settle(app, pilot)
+            submit_filter(review, "camera")
+            await settle(app, pilot)
+            assert_rows_fit("search")
+
     async def test_toggle_and_apply(self):
         app = self.make_app()
         async with app.run_test(size=BASE) as pilot:

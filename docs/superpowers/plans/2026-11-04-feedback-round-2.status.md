@@ -13,8 +13,8 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-feedback-round-2.md`. R
 - **G9 (Macro Editor) finished and gated 2026-11-05** (feat commit); its review and fixes follow as for the other
   tasks.
 - **G9b (U1, STD-7.28 amendment) finished and gated 2026-11-05** (one commit, decisions G9ba-G9bg below).
-- **Next:** G10 (CHANGELOG, whole-branch review, push, CI). The G9 review is not recorded in this ledger yet: run it
-  (and its fixes) before G10 if it has not run.
+- **G10 in progress:** the CHANGELOG line and the whole-branch review fixes are committed and gated (G10ra-G10rl);
+  **next:** push and CI. No separate G9 review is recorded; the whole-branch review covered G9's and G9b's commits.
 - **U1 (user, 2026-11-05): option (b) for the 80-column finding (G4r).** Amend STD-7.28 for every tool: a name never
   shrinks below its column minimum; at very narrow widths the row scrolls sideways instead. Change the shared
   `wowtools/ui/columns.py` fallback accordingly (all tools), and update the tests that expect a cut name at 80
@@ -37,7 +37,7 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-feedback-round-2.md`. R
 | G8 | Config Copier counts + columns | done | (this commit) | 5 new tests: 4 in test_config_copier_app NodeCountsAndColumnsTest (every node counts the pairs below it, counts follow the search and the file boxes, pair lines are aligned columns, every line fits the pane at 120x30 and 80x24) and test_config_copier_run::test_pair_cells; the app tests moved onto a CopierTestCase base (setUp and steps), none changed or loosened. Stale screenshots: config-copier/review.png (also in README.md). Gate: run_tests --all 2413 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK. Review fixes (G8r, fix commit): a greyed character's name · reason are aligned columns per realm (`REASON_COLUMNS`, `_greyed_widths`); 1 new test (test_greyed_reasons_are_aligned_columns: a second other-flavor character made in the test, reasons start at the same cell, fit at 80x24 with the reason whole or dropped). Gate: 2414 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
 | G9 | Macro Editor counts + columns | done | (this commit) | 4 new tests in test_macro_editor_app NodeCountsAndColumnsTest (every node counts the macro lines below it, a staged delete included; counts follow the search, Only matching macros and the Names / Bodies boxes; macro and character rows are aligned columns, a staged mark keeping its siblings' names in line; every row fits the pane at 120x30 and 80x24). Existing assertions updated to the new labels, none loosened: test_browse_lists_sets_with_slot_counts (flavor `Retail  6 items`, `/30 unconfirmed  1 item`, the Heal row pinned exactly as fitted at 120x30: `Heal Dænerys /cast [@mouseover,help,… 41/255`) and test_macro_editor_run::test_set_and_macro_texts (`macro_cells` replaces `macro_text`). Stale screenshots: macro-editor/browse.png (also in README.md). Gate: run_tests --all 2418 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
 | G9b | STD-7.28 amendment: names keep their minimum, rows scroll (U1) | done | (this commit) | 2 new tests in test_ui_columns (test_the_name_never_goes_below_its_minimum, test_a_group_name_is_cut_to_the_room_but_not_below_its_minimum) and new shared assertions tests/fixtures.py `assert_fits_or_keeps_minimum` / `assert_siblings_distinct`; the 80-column fit tests moved onto them, none loosened: SO test_rows_are_cut_to_fit_the_pane (no `✔ Wo…g`, file rows keep 12 cells and scroll, a day's files distinct), WTF test_a_long_name_is_cut_to_fit_the_pane (+ distinct), Ace3 / SV Browser / Config Copier / Macro Editor test_rows_fit_the_pane (their G6e / G7e / G7r / G8e / G9g skips replaced by the minimum assertion; Copier + distinct pair lines), SV test_results_rows_fit_the_pane (no sideways scroll asserted at 120x30 only), CE test_rows_are_aligned_coloured_columns and test_rows_fit_with_two_flavors_and_show_all_known (+ distinct), CE ops test_columns_dropped_when_the_minimums_do_not_fit (rooms 8 and 0 keep 12), test_ui_columns fit / fit_keeping_count cases; IB review and restore fit tests + distinct. Each changed tool test but IB's (its rows fit at 80x24 either way) fails on the old fallback. Gate: run_tests --all 2420 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK (the first --all run had a one-off Windows failure in test_sv_browser_app::test_rows_fit_the_pane, G9bf, plus an import-order slip, fixed) |
-| G10 | CHANGELOG, whole-branch review, push, CI | todo | | |
+| G10 | CHANGELOG, whole-branch review, push, CI | in progress | 9a3d234 (CHANGELOG), (review fix commit) | CHANGELOG line (9a3d234). Whole-branch review: 4 reviewers, 19 findings (STD-2.2 copies of the room / group line / refit in 8 screens, STD-7.27 counts dropped at 80 columns, `fit_keeping_count` not monotonic, the CE rows not refitted after a rebuild, the SV refit race G9bf, the IB restore file row out of line, a weak shared fit assertion, doc drift). Fixed (G10ra-G10rh): one `group_text` and a monotonic `fit_keeping_count` in ui/columns.py, `tree_room` / `FittedRows` / `ReviewTree.Resized` / `TOGGLE_WIDTH` / `MARK_WIDTH` in ui/review.py used by every fitted screen, the count kept everywhere (STD-7.27 / 7.28 text reconciled), the CE rebuild refit, the restore file row pad, the stronger `assert_fits_or_keeps_minimum`, test_structure pins, the guides, internals docs and architecture.md. 6 new tests (test_ui_columns: the count may be any column, keeping the count never narrows the name, a group keeps its count; CE test_rows_fit_again_after_a_rebuild; SV test_rows_are_fitted_when_the_tree_is_laid_out_after_the_build; IB test_restore_tree_lines_a_file_up_with_its_folder_groups), Macro Editor sibling rows distinct; each new app test fails on the old code. Rejected / deferred: G10ri-G10rl. Gate: run_tests --all 2426 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK. Push and CI still to come |
 
 ## Decisions taken during the build
 
@@ -360,3 +360,58 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-feedback-round-2.md`. R
   letters at each end; the internals docs and architecture.md's `columns` row name the minimums and `cut_to_room`.
   No CHANGELOG line here (G10 adds the suite-wide one). No stale screenshot: the rows at 120x30
   are unchanged (every 120x30 fit assertion holds as before).
+- G10ra: the whole-branch review (4 reviewers, 19 findings, several the same finding seen from two slices) was
+  verified against the code; every important finding was real. The count is now kept wherever the room runs out
+  (supersedes G9ba's "the count still goes"): STD-7.27 is a MUST with no narrow-pane carve-out, and U1 names the
+  name only, so the four tools that dropped it (Ace3, SV Browser, Config Copier, Macro Editor) now do what the WTF
+  Cleaner did: the name gives way, never below its minimum, and the line scrolls sideways with its count. STD-7.27
+  says so in one sentence and STD-7.28's "the name keeps its minimum alone" reads "alone but for its STD-7.27
+  count", so the two MUSTs agree; not a deviation (no row), the behaviour meets both. test_docs pins none of it.
+- G10rb: `ui/columns.fit_keeping_count(natural, room, layout, *, count=1)`: the row as `fit_columns` fits it while
+  that keeps the count; else the name and the count alone, the name `min(name, room - 1 - count)` floored at its
+  minimum. The old retry appended a name stage to every drop step, so it squeezed the name to keep secondary
+  columns and a wider pane could shrink the name (Ace3 addon room 26 -> 17 cells, room 28 -> 7). `count=2` serves
+  the Macro Editor's name · slots · count (`SET_COLUMNS`), which now keeps its count too.
+- G10rc: STD-2.2: one `ui/columns.group_text(name, style, note, room, *, note_style, minimum)` (a group's name and
+  its count, or the WTF Cleaner's `nothing to clean` in its place) replaces Ace3's and the SV Browser's
+  `_group_text`, the Config Copier's and Macro Editor's methods and the WTF Cleaner's `_group_name`. ui/review.py
+  gains `TOGGLE_WIDTH`, `MARK_WIDTH` (the eight local copies gone; the Config Editor's 4 is `2 * MARK_WIDTH`),
+  `tree_room(tree, depth, *, indent, opens, mark)` (the pane less its scrollbar and the lead: the only
+  `scrollbar_size_vertical` in wowtools/) and `FittedRows`. A tool still says what is in front of its rows (its
+  `_room` / `_row_room`, an indents map) and which nodes to relabel (`refit_rows`). test_structure pins
+  `cut_to_room`, `group_text`, `tree_room`, `rows_built`, `fit_rows`, `FittedRows`, the three constants and the
+  scrollbar attribute, and that `_group_text`, `_group_name` and `_fit_rows` are defined nowhere.
+- G10rd: G9bf was a real race, not a test artefact: Textual sends a widget's Resize to that widget alone, so a
+  build made while the tree had no width, whose single after-refresh fit ran first, was never refitted.
+  `ReviewTree.on_resize` now posts `ReviewTree.Resized` and `FittedRows.on_review_tree_resized` refits when the
+  width changed; the screens' own `on_resize` refits are gone (Ace3 keeps its `on_resize` for the guide line). The
+  new SV test drives the losing order and posts the tree's own Resize; it fails without the message.
+- G10re: the Config Editor's `_rebuild` (behind the tree's loading indicator, no width) now calls `rows_built`, so
+  its CVar rows are refitted after a Space toggle, an edit, a search or a filter change (wrong since before this
+  round, as the review found on a `71773549` tree).
+- G10rf: the Interface Backup restore tree pads a group that is one file by `TOGGLE_WIDTH` (and gives it the room of
+  a row that opens) when a sibling group opens, as Ace3 and the SV Browser do, so its folder lines up.
+- G10rg: `tests/fixtures.assert_fits_or_keeps_minimum` now checks the "alone" half: a row wider than the pane must
+  be its marks (at most `LEAD_MARK_CELLS`, no letters) then its name at its minimum, then only what `after` matches
+  (`COUNT_AFTER` on a counted row, the WTF Cleaner's `nothing to clean`); the Ace3, SV, Copier, Macro Editor and
+  WTF callers pass it. The SV test's `child` finds a group whose name is cut. Macro Editor: sibling macro rows
+  distinct at both sizes (G9be).
+- G10rh: docs: architecture.md's `columns` row names `fit_keeping_count` and `group_text`, its `review` row
+  `tree_room` / `FittedRows`; the internals docs name the shared helpers in place of the retired copies; the SV
+  Browser guide and internals give G7r's shrink order (key or path and value together, then the marks); the
+  Screenshot Organizer guide says the count comes before the note on Already filed, Conflicts and Skipped; the
+  Interface Backup guide says the top line holds every flavor with something to back up, ticked or not (the code
+  is right: the bottom line sums the ticks). No CHANGELOG line beyond 9a3d234's (counts and columns in every tool).
+- G10ri: rejected, the tools-c finding that a row past its name's minimum should keep its status columns (the
+  Copier's status and greyed reason, the Macro Editor's first line, length and slots): STD-7.28 (user decision U1)
+  has the name keep its minimum alone, and keeping secondary columns would widen every scrolled row. The Config
+  Copier and Macro Editor guides (and the Screenshot Organizer's, SV Browser's) now say a very narrow window leaves
+  only the name (and its count) and scrolls, instead of implying the rest is a scroll away.
+- G10rj: deferred, the Config Editor's group lines (files, accounts, realms, characters) are not cut at 80 columns,
+  so their counts sit past the pane: they carry notes beside the name (`✎ n`, `no file`) that `group_text` does not
+  model, U1 lets them scroll, and the count is there to scroll to; a candidate for a follow-up.
+- G10rk: deferred, a second long Macro Editor fixture name sharing a start and an end with another (the TINY
+  middle-cut case): the distinct-siblings assertion is in, the fixture is left as it is.
+- G10rl: not changed, the per-tool lead and walk: each screen keeps a thin `_room` / `_row_room` (what sits in front
+  of its rows: guides by depth or its indents map, ▶, mark) over the shared `tree_room`, the Screenshot Organizer
+  its `_guides`, and its own `refit_rows` (which nodes are fitted rows), as the review's own fix left them.

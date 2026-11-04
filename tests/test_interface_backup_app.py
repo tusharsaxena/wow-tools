@@ -2349,6 +2349,43 @@ class InterfaceBackupAppTest(TuiTestCase):
                         self.assertRegex(str(node.label), r"\d+ items?")
                 assert_siblings_distinct(self, self.effect(screen, "removed").children)
 
+    async def test_restore_tree_lines_a_file_up_with_its_folder_groups(self):
+        """The G10 review: a group that is one file (a leaf, no ▶) beside folder groups that open is padded where
+        their ▶ is, so its parent folder starts in their folder's column (STD-7.28), at 120x30 and 80x24."""
+        self.save_tool_cfg(backup_dir=str(self.bk))
+        retail = self.root / "_retail_"
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_review(app, pilot)
+            await self.make_backup(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            (retail / "Interface" / "AddOns" / "WeakAuras").mkdir(parents=True)
+            for name in ("wa.lua", "wb.lua"):
+                (retail / "Interface" / "AddOns" / "WeakAuras" / name).write_text("w", encoding="utf-8")
+            (retail / "WTF" / "NewFile.txt").write_text("x", encoding="utf-8")
+            screen = await self.open_restore(app, pilot)
+            tree = screen.query_one("#effects", Tree)
+            for size in (BASE, TINY):
+                await pilot.resize_terminal(*size)
+                await settle(app, pilot)
+                room = tree.size.width - tree.styles.scrollbar_size_vertical
+                rows = list(self.effect(screen, "removed").children)
+                self.assertEqual(sorted(r.allow_expand for r in rows), [False, True], [str(r.label) for r in rows])
+                starts = set()
+                for row in rows:
+                    label = str(row.label)
+                    with self.subTest(size=size, row=label):
+                        self.assertLessEqual(_indent(row) + row.label.cell_len, room)
+                        folder = re.search(r"(Interface/AddOns|WTF)$", label)
+                        if size == BASE or folder is not None:
+                            self.assertIsNotNone(folder, label)
+                            starts.add(_indent(row) + folder.start())
+                        name = "WeakAuras" if row.allow_expand else "NewFile.txt"
+                        starts_at = _indent(row) + label.index(name[:3])
+                        self.assertEqual(starts_at, 2 * row.tree.guide_depth + 2, label)  # where a ▶ ends
+                self.assertLessEqual(len(starts), 1, [str(r.label) for r in rows])
+
 
 def _walk(node):
     yield node

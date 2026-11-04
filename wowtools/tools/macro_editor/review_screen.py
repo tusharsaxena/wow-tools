@@ -20,9 +20,7 @@ from collections.abc import Collection, Hashable, Iterable, Sequence
 from pathlib import Path
 from typing import ClassVar, NamedTuple
 
-from rich.cells import cell_len
 from rich.text import Text
-from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -54,13 +52,14 @@ from wowtools.tools.macro_editor.undo import (UndoError, UndoResult, leave, pend
                                               undo_run)
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.character_tree import CharacterNode, node_keys, populate_characters
-from wowtools.ui.columns import (ColumnLayout, GROUP_NAME_MINIMUM, column_text, cut_middle, cut_to_room, fit_columns,
-                                 natural_widths)
-from wowtools.ui.counts import COUNT_GAP, COUNT_STYLE, count_text
+from wowtools.ui.columns import (ColumnLayout, GROUP_NAME_MINIMUM, column_text, fit_columns, fit_keeping_count,
+                                 group_text, natural_widths)
+from wowtools.ui.counts import COUNT_STYLE, count_text
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                  UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
 from wowtools.ui.result_screen import ResultScreen
-from wowtools.ui.review import ActionBar, BarTree, ReviewBase, RunActions, SvRecoveryActions, TickModel, WowCheck
+from wowtools.ui.review import (MARK_WIDTH, ActionBar, BarTree, FittedRows, ReviewBase, RunActions, SvRecoveryActions,
+                                TickModel, WowCheck, tree_room)
 from wowtools.ui.tree_filter import FILTER_BINDINGS, FILTER_HINT, FilterBar, TreeFilter
 from wowtools.ui.warnings_view import WARNINGS_BINDING, SummaryBar, SummaryLine, WarningItem, WarningsHost, where_text
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, Ka0sCheckbox, NavHint, RiskBanner, action_button
@@ -72,11 +71,9 @@ NO_MARK = "  "
 # The marks of a staged macro (the Saved Variables Browser's symbols, D12), before its line.
 CHANGED_MARK, NEW_MARK, DELETED_MARK = "✎", "+", "✗"
 MATCH_STYLE = "bold underline"  # a macro the search matches, while every macro is shown
-MARK_WIDTH = 2  # the tick mark in front of every line but the root's (and a staged mark's room, when a sibling has one)
-TOGGLE_WIDTH = 2  # the ▶ / ▼ in front of a node that opens
 # R4: a macro line (report.MACRO_CAPS / MACRO_MINIMUMS); a set's line, a character's or Account macros', is
 # name · slots (or read-only) · count: the name gives way, cut in its middle; the slots are never cut, only dropped,
-# and past that the name alone is cut to the room.
+# and past that the name and the count (ui.columns.fit_keeping_count: the name never below its minimum).
 MACRO_COLUMNS = ColumnLayout(caps=MACRO_CAPS, minimums=MACRO_MINIMUMS, shrink=((1,), (0,)), drop=(1, 2))
 SET_COLUMNS = ColumnLayout(caps=(None, None, None), minimums=(GROUP_NAME_MINIMUM, 0, 0), shrink=((0,),), drop=(1,))
 
@@ -153,8 +150,8 @@ class MacroResultScreen(ResultScreen):
         self.title_text = title
 
 
-class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryActions, RunActions, ReviewBase,
-                        Screen[str]):
+class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryActions, RunActions, FittedRows,
+                        ReviewBase, Screen[str]):
     """The macro sets of `flavors` (the flavor picked, or all of them). `wow_check` (tests inject one) stands for
     the running-WoW check."""
 
@@ -226,7 +223,6 @@ class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryAc
         self._macro_widths: dict[Path, tuple[tuple[int, ...], bool]] = {}  # a set's macro columns and whether one
         # of its shown lines has a staged mark (R4), per build
         self._set_widths: dict[Hashable, tuple[int, ...]] = {}  # a realm's characters' columns, per build
-        self._fitted_width = 0  # the tree's width the labels were last fitted to
 
     # --- layout ------------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -545,7 +541,7 @@ class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryAc
         tree.clear()
         self._counts.clear()
         self._macro_widths.clear()
-        self._fitted_width = tree.size.width
+        self.rows_built(tree)  # fitted again once the tree is laid out
         many = len(self.flavors) > 1
         for flavor in self.flavors:
             parent = tree.root.add(Text(flavor.display_name), data=["flavor", flavor.folder, ()],
@@ -568,7 +564,6 @@ class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryAc
         self._reopen(tree, opened)
         self._restore_cursor(tree, cursor)
         self._update_summary()
-        self.call_after_refresh(self._fit_rows)  # a build before the tree was laid out fits once it is
 
     # --- labels: counts (R2) and columns (R4) ----------------------------------------------------
     def _character_widths(self, tree: Tree) -> dict[Hashable, tuple[int, ...]]:
@@ -583,20 +578,11 @@ class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryAc
 
     def _relabel_all(self, tree: Tree) -> None:
         relabel_branch(tree, None, self._label)
-        tree.root.set_label(self._group_text(self.scope_label, ACCENT, self._count_ident(("root",)), 0, opens=True,
-                                             mark=0))
+        tree.root.set_label(group_text(self.scope_label, ACCENT, self._count_ident(("root",)),
+                                       self._room(0, opens=True, mark=0)))
 
-    def on_resize(self, event: events.Resize) -> None:
-        self.call_after_refresh(self._fit_rows)
-
-    def _fit_rows(self) -> None:
-        """Fit every line again to the tree pane's width when it changed (R4)."""
-        if not self.is_attached:
-            return
-        tree = self.query_one("#macros", Tree)
-        if tree.size.width == self._fitted_width:
-            return
-        self._fitted_width = tree.size.width
+    def refit_rows(self, tree: Tree) -> None:
+        """Fit every line again to the tree pane's width (R4, FittedRows)."""
         self._relabel_all(tree)
 
     def _depth(self, kind: str) -> int:
@@ -608,31 +594,11 @@ class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryAc
     def _room(self, depth: int, *, opens: bool, mark: int = MARK_WIDTH) -> int | None:
         """The cells a line may take behind its guides, its ▶ / ▼ when it `opens` and its marks (None before the
         tree is laid out)."""
-        if not self.is_attached:
-            return None
-        tree = self.query_one("#macros", Tree)
-        if tree.size.width <= 0:
-            return None
-        width = tree.size.width - tree.styles.scrollbar_size_vertical  # a scrollbar may come with more lines
-        return max(0, width - depth * tree.guide_depth - (TOGGLE_WIDTH if opens else 0) - mark)
+        return tree_room(self.query_one("#macros", Tree), depth, opens=opens, mark=mark) if self.is_attached else None
 
-    def _count_ident(self, ident: Hashable) -> tuple[str, str] | None:
-        """A node's dim count (R2), once the scan is in (before it, no node has its macros yet)."""
-        return (f"{COUNT_GAP}{count_text(self._counts[ident])}", COUNT_STYLE) if self.scanned else None
-
-    def _group_text(self, name: str, style: str, note: tuple[str, str] | None, depth: int, *, opens: bool,
-                    mark: int = MARK_WIDTH) -> Text:
-        """A node's name and its dim count, the name cut in its middle so the count fits the pane; with no room
-        for both, the name alone, cut to the room but never below 4 cells (cut_to_room: the row scrolls, U1)."""
-        room = self._room(depth, opens=opens, mark=mark)
-        if note is None:
-            return Text(cut_to_room(name, room), style=style)
-        after, after_style = note
-        if room is not None and cell_len(name) + cell_len(after) > room:
-            if room - cell_len(after) < GROUP_NAME_MINIMUM:
-                return Text(cut_to_room(name, room), style=style)
-            name = cut_middle(name, room - cell_len(after))
-        return Text.assemble((name, style), (after, after_style))
+    def _count_ident(self, ident: Hashable) -> str | None:
+        """A node's count (R2), once the scan is in (before it, no node has its macros yet)."""
+        return count_text(self._counts[ident]) if self.scanned else None
 
     def _set_cells(self, data: CharacterNode | SetNode) -> tuple[str, str, str]:
         """A character's or Account macros' cells (R4): its name, its slot use (or read-only) and its count, ""
@@ -661,7 +627,7 @@ class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryAc
                    if isinstance(data, CharacterNode) else None) or natural_widths([cells])
         read_only = cells[1] == READ_ONLY
         styles = ("dim" if read_only else name_style, "dim italic" if read_only else "", COUNT_STYLE)
-        widths, gap = fit_columns(natural, self._room(depth, opens=bool(cells[2])), SET_COLUMNS)
+        widths, gap = fit_keeping_count(natural, self._room(depth, opens=bool(cells[2])), SET_COLUMNS, count=2)
         text = Text.assemble(mark)
         text.append_text(column_text(cells, widths, styles, gap, middle=(0,)))
         text.rstrip()  # a set with no count beside one with it leaves no padding behind
@@ -739,10 +705,10 @@ class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryAc
             if data.kind == "character":
                 return self._set_label(data, self._depth("character"), "")
             ident = ("realm", data.account.path, data.realm) if data.kind == "realm" else ("account", data.account.path)
-            name = self._group_text(data.text, "bold", self._count_ident(ident), self._depth(data.kind), opens=True)
+            name = group_text(data.text, "bold", self._count_ident(ident), self._room(self._depth(data.kind), opens=True))
         else:
-            name = self._group_text(flavor_name(data[1]), "bold", self._count_ident(("flavor", data[1])),
-                                    self._depth("flavor"), opens=True)
+            name = group_text(flavor_name(data[1]), "bold", self._count_ident(("flavor", data[1])),
+                              self._room(self._depth("flavor"), opens=True))
         keys = data.keys if isinstance(data, CharacterNode) else data[2]
         text = Text.assemble(self.mark(keys) if keys else (NO_MARK, ""))
         text.append_text(name)
