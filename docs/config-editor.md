@@ -69,8 +69,9 @@ log (`logs\config-editor`) records every file it wrote. **Undo last change** sti
 ![The Config Editor](assets/screenshots/config-editor/browse.png)
 
 The tree lists the [three levels](#the-three-levels) of every game version you picked: **Config.wtf**, then
-each account's **Account config** and its characters by realm. Each line with CVars below it says, dimmed after its
-name, how many it holds as the filters show them (`Retail  340 items`, `Aellâ  27 items`), even before you open it.
+each account's **Account config** and its characters by realm. Each game version, account and realm, and each file or
+character with CVars, says dimmed after its name how many CVars it holds as the filters show them
+(`Retail  340 items`, `Aellâ  27 items`; `0 items` when none), even before you open it.
 
 Open a file to see its CVars, one per line in five columns:
 

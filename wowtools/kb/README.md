@@ -42,7 +42,7 @@ standing in until that flavor's own dump exists; its `source` still names the du
 when the server stores it. A CVar the client listed but gave no details for has `default` and `scope` `null`
 (unknown), and `synced` false. `category` is the client's console category, lowercased; for a CVar
 `cvar_categories.json` doesn't list, `core/kb.py` maps it (with name rules) to the Config Editor's groups (graphics,
-sound, interface, camera, nameplates, combat text, network, other). `wiki` is optional and is only used with its
+sound, interface, camera, nameplates, combat text, network, game state, debug, system, other). `wiki` is optional and is only used with its
 source. The dumping character's own values are never stored.
 
 ### `slash_commands/<flavor>.json`
