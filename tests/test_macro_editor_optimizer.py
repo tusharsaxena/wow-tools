@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from wowtools.core import kb
+from wowtools.tools.macro_editor.explain import explain_block
 from wowtools.tools.macro_editor.optimizer import RULES, Rewrite, optimize
 from wowtools.tools.macro_editor.syntax import lines
 
@@ -75,6 +76,17 @@ class RuleTest(OptimizerCase):
     def test_rule_duplicate_conditions(self):
         # Conditionals in one [] are joined by AND, so a repeated one adds nothing.
         self.assertRule("/cast [help,nodead,help] Renew", "/cast [help,nodead] Renew", "duplicate_conditions")
+
+    def test_duplicate_units_are_kept(self):
+        # Of several units in one [] one wins; dropping a repeat could change which, so units are never dropped.
+        ref = kb.load_macro_reference("_retail_")
+        for body in ("/cast [@focus,@target,@focus] Polymorph", "/cast [target=focus,@target,@focus] Polymorph"):
+            with self.subTest(body=body):
+                got, _ = optimize(body)
+                self.assertIn("[@focus,@target,@focus]", got)
+                block = got[got.index("["):got.index("]") + 1]
+                self.assertEqual(explain_block(block, ref), explain_block(body[body.index("["):body.index("]") + 1], ref))
+        self.assertEqual(optimize("/cast [@focus,help,@focus,help] Renew")[0], "/cast [@focus,help,@focus] Renew")
 
     def test_rule_showtooltip_same_spell(self):
         # With no argument #showtooltip shows the macro's first spell, which is the one named.

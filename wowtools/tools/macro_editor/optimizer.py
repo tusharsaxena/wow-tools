@@ -51,6 +51,9 @@ def _duplicate_conditions(line: Line, _all: list[Line], _index: int) -> str:
             keep = []
             for segment in segments:
                 word = segment.strip()
+                if word.lower().startswith(("@", "target=")):
+                    keep.append(segment)  # never drop a unit: which of several wins is not ours to guess
+                    continue
                 if word and word in seen:
                     continue
                 seen.add(word)

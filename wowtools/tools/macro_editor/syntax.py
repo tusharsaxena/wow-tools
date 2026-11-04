@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Literal
 
-from wowtools.core.kb import MacroReference, load_macro_reference
+from wowtools.core.kb import ConditionalInfo, MacroReference, load_macro_reference
 
 __all__ = ["DIRECTIVES", "Clause", "Line", "Token", "lines", "option_commands", "parse_line", "suggestions", "token_at",
            "tokenize"]
@@ -208,5 +208,11 @@ def suggestions(body: str, offset: int, ref: MacroReference) -> list[tuple[str, 
         if name.startswith(low):
             out.add((name, info.help))
         if low.startswith("no") and f"no{name}".startswith(low):
-            out.add((f"no{name}", info.help))
+            out.add((f"no{name}", _no_help(info)))
     return sorted(out)
+
+
+def _no_help(info: ConditionalInfo) -> str:
+    """The short help of a conditional's `no` form, from its explain_no: "The unit is not dead."."""
+    text = info.explain_no.replace("{unit}", "the unit")
+    return text[:1].upper() + text[1:] + ("" if text.endswith(".") else ".")

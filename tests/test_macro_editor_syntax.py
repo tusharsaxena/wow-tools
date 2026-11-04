@@ -129,6 +129,8 @@ class ExplainTest(KbCase):
         self.assertIn("/stopcasting", commands)
         conditions = dict(suggestions("/cast [help,nod", 15, self.ref))
         self.assertIn("nodead", conditions)
+        self.assertNotEqual(conditions["nodead"], dict(suggestions("/cast [help,d", 13, self.ref))["dead"])
+        self.assertEqual(conditions["nodead"], "The unit is not dead.")  # the `no` form's own reading
         self.assertEqual(suggestions("/say hel", 8, self.ref), [])  # chat text gets nothing
 
 
