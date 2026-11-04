@@ -162,11 +162,13 @@ def stage_new(staged: Staged, mset: MacroSet, *, name: str, body: str, icon: str
 
 
 def stage_edit(staged: Staged, mset: MacroSet, macro_id: str, *, name: str, icon: str, body: str) -> None:
-    """Stage new text for a macro, keeping its id (ME6). Raises ValueError on a read-only set, an id it lacks (or
-    already deleted), or a macro the file can't hold."""
+    """Stage new text for a macro, keeping its id (ME6). A new name is cut to NAME_LIMIT; the macro's own name, even
+    one the file holds over the limit, is kept as it is (ME13). Raises ValueError on a read-only set, an id it lacks
+    (or already deleted), or a macro the file can't hold."""
     _writable(mset)
     macro = _find(staged, mset, macro_id)
-    name = cut_name(name)
+    if name != macro.name:
+        name = cut_name(name)
     problem = check_macro(name, icon, body)
     if problem:
         raise ValueError(f"{mset.label}: {problem}")
@@ -194,8 +196,8 @@ def rename_for_clash(name: str, taken: Collection[str]) -> str:
 
 def stage_paste(staged: Staged, macros: Sequence[Macro], target: MacroSet,
                 on_clash: Callable[[Macro, Macro], ClashChoice]) -> list[str]:
-    """Stage `macros` (from any set, any flavor: ME5) into `target`, in order. A macro whose cut name a target macro
-    already has is a clash: on_clash(pasted, existing) says skip, rename (rename_for_clash, a new macro) or
+    """Stage `macros` (from any set, any flavor: ME5) into `target`, in order. A macro whose cut name a target macro's
+    cut name matches is a clash: on_clash(pasted, existing) says skip, rename (rename_for_clash, a new macro) or
     overwrite (the existing macro's id keeps, its name, icon and body are the pasted one's: ME6). A new macro needs
     a free slot (ME3). Returns one line per macro not pasted (read-only target, no free slot, a macro the file
     can't hold); the rest are staged."""
@@ -214,7 +216,7 @@ def _paste_one(staged: Staged, macro: Macro, target: MacroSet,
         return f"read-only ({target.parsed.problem})"
     name = cut_name(macro.name)
     current = effective_macros(staged, target)
-    clash = next((m for m in current if m.name == name), None)
+    clash = next((m for m in current if cut_name(m.name) == name), None)
     if clash is not None:
         choice = on_clash(macro, clash)
         if choice == "skip":
@@ -224,7 +226,7 @@ def _paste_one(staged: Staged, macro: Macro, target: MacroSet,
             if problem is None:
                 _put(staged, target, MacroChange("replace", clash.id, name, macro.icon, macro.body))
             return problem
-        name = rename_for_clash(name, {m.name for m in current})
+        name = rename_for_clash(name, {cut_name(m.name) for m in current})
     if len(current) >= target.limit:
         return f"no free macro slot ({len(current)}/{target.limit})"
     problem = check_macro(name, macro.icon, macro.body)

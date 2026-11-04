@@ -308,6 +308,36 @@ class MacroEditorOpsTest(unittest.TestCase):
         self.assertEqual(len(effective_macros(staged, aella)[1].body), len("/cast  Protection") + 230)
         self.assertEqual(effective_macros(staged, aella)[2].body, "#showtooltip\n/cast Divine Shield")
 
+    def test_long_file_name_kept_by_replace_and_edit_but_a_new_name_is_cut(self):
+        long_name = "A very long macro name"  # over NAME_LIMIT: the client cuts names, the file need not
+        long_bob = macro_file_bytes([("0100000000000001", long_name, "134400", "/cast Flash Heal")])
+        self.put("MAIN/Realm1/Bob", long_bob)
+        bob = self.set_of("MAIN/Bob", scan_sets(self.flavor))
+        picks = [(bob, self.macro(bob, long_name))]
+        staged = Staged()
+        (row,) = preview_replace(staged, picks, "Flash", "Holy", case=True)
+        self.assertIsNone(row.refusal)
+        self.assertEqual(stage_replace_text(staged, picks, "Flash", "Holy", case=True), 1)
+        self.assertEqual(self.written(staged, [bob])[bob.path], long_bob.replace(b"Flash", b"Holy"))
+        self.assertEqual(build_changes(staged, [bob])[0].changes, (f'{MACRO_FILE}: changed "{long_name}"',))
+        stage_edit(staged, bob, "0100000000000001", name=long_name, icon="134400", body="/sit")  # name untouched
+        self.assertEqual(effective_macros(staged, bob)[0].name, long_name)
+        stage_edit(staged, bob, "0100000000000001", name="Another very long name", icon="134400", body="/sit")
+        self.assertEqual(effective_macros(staged, bob)[0].name, "Another very lon")
+
+    def test_paste_clashes_with_a_long_file_name_by_its_cut_name(self):
+        long_name = "A very long macro name"
+        self.put("MAIN/Realm1/Bob", macro_file_bytes([("0100000000000001", long_name, "134400", "/sit")]))
+        self.put("MAIN/Realm1/Aellâ", macro_file_bytes([("0100000000000001", long_name, "134400", "/dance")]))
+        sets = scan_sets(self.flavor)
+        aella, bob = self.set_of("MAIN/Aellâ", sets), self.set_of("MAIN/Bob", sets)
+        clashes = []
+        staged = Staged()
+        self.assertEqual(stage_paste(staged, aella.parsed.macros, bob,
+                                     lambda new, old: clashes.append(old.id) or "rename"), [])
+        self.assertEqual(clashes, ["0100000000000001"])
+        self.assertEqual([m.name for m in effective_macros(staged, bob)], [long_name, "A very long ma 2"])
+
     # bytes --------------------------------------------------------------------------------------------------------
 
     def test_build_changes_byte_exact_elsewhere(self):
