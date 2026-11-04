@@ -87,9 +87,10 @@ RENAME_MARK, VALUE_MARK, DELETE_MARK = "→", "✎", "✗ deleted"
 LEAF_KIND = {BROWSE: "file", RESULTS: "hit"}
 ROW_KINDS = ("file", "node", "hit")  # rows that line up with their siblings (padded where a sibling's ▶ is)
 # The column rows (R4, STD-7.28). A file: name · size (or `can't read`). A key: key · size (`{N}`) or value
-# (`= value`) · its staged marks; a hit the same with its path. The value gives way first, then the marks, then
-# the key (cut in its middle); the size of a file is never cut, only dropped; past the drops the key alone.
-KEY_COLUMNS = ColumnLayout(caps=(48, 62, 48), minimums=(8, 6, 8), shrink=((1,), (2,), (0,)), drop=(1, 2))
+# (`= value`) · its staged marks; a hit the same with its path. The key (or path, cut in its middle) and the value
+# give way together, the wider first (a deep hit's long path before the value searched for), then the marks; the
+# size of a file is never cut, only dropped; past the drops the key alone.
+KEY_COLUMNS = ColumnLayout(caps=(48, 62, 48), minimums=(8, 6, 8), shrink=((0, 1), (2,)), drop=(1, 2))
 FILE_ROW_COLUMNS = ColumnLayout(caps=(48, None), minimums=(8, 0), shrink=((0,),), drop=(1,))
 TOGGLE_WIDTH = 2  # the tree's ▶ / ▼ in front of a node that opens
 MARK_WIDTH = 2  # the tick mark in front of a Results label

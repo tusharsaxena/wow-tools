@@ -6,10 +6,12 @@ from __future__ import annotations
 
 from unittest import mock
 
+from rich.cells import cell_len
 from textual.widgets import Button, Input, Select, Static, Tree
 
 from tests.fixtures import BASE, LARGE, TINY, assert_keys_on_buttons, settle, submit_filter
-from tests.test_sv_browser_app import SvBrowserTestBase, one_piece, assert_counts, child, labels, select, walk
+from tests.test_sv_browser_app import (SvBrowserTestBase, assert_counts, child, depth, drawn, labels, one_piece,
+                                       select, walk)
 from tests.test_sv_browser_edit import SvEditTestBase, error_text
 from wowtools.core.events import capture_events
 from wowtools.core.svfiles import OWNER_ACCOUNT_WIDE
@@ -700,3 +702,35 @@ class ResultsCountsAndColumnsTest(SearchTestBase):
             elv = child(child(child(child(tree.root, "✔ Retail"), "✔ ACCT1"), "✔ Account-wide"), "✔ ElvUI.lua")
             self.assertEqual([n.label.plain for n in elv.children], [f'✔ ElvDB › profiles › Default › general › font    = "{FRIZ}"',
                                            f'✔ ElvDB › profiles › Default › unitframe › Font  = "{FRIZ}"'])
+
+    async def test_hit_rows_keep_their_value_at_120_columns(self):
+        """The path and the old value give way together, the wider first (R4): at 120x30 a deep hit's path is cut
+        in its middle and the value searched for stays whole."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            await self.search(review, pilot, search_value=FRIZ)
+            tree = review.query_one("#browse", Tree)
+            hits = [n for n in walk(tree.root) if n.data is not None and n.data[0] == "hit"]
+            self.assertTrue(hits)
+            for hit in hits:
+                self.assertIn(f'= "{FRIZ}"'.casefold(), hit.label.plain.casefold())
+            elv = child(child(child(child(tree.root, "✔ Retail"), "✔ ACCT1"), "✔ Account-wide"), "✔ ElvUI.lua")
+            self.assertEqual([n.label.plain for n in elv.children], [f'✔ ElvDB › pro…eral › font = "{FRIZ}"',
+                                                                     f'✔ ElvDB › pro…rame › Font = "{FRIZ}"'])
+
+    async def test_results_rows_fit_the_pane(self):
+        """Every Results row, its tick mark included, fits the pane at 120x30 and at 80x24 (STD-7.28)."""
+        for size in (BASE, TINY):
+            app = self.make_app()
+            async with app.run_test(size=size) as pilot:
+                review = await self.open_review(app, pilot)
+                await self.search(review, pilot, search_value=FRIZ)
+                tree = review.query_one("#browse", Tree)
+                room = tree.size.width - tree.styles.scrollbar_size_vertical
+                rows = [n for n in walk(tree.root) if n.data is not None]
+                self.assertTrue(any(n.data[0] == "hit" for n in rows))
+                for row in rows:
+                    self.assertLessEqual(depth(row) * tree.guide_depth + cell_len(drawn(row)), room,
+                                         (size, drawn(row)))
+                self.assertEqual(tree.max_scroll_x, 0, size)
