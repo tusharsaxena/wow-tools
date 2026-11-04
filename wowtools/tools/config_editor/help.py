@@ -26,8 +26,8 @@ rewrites these files when you log out or exit, and Apply and Undo refuse while i
 
 | Button | Key | Does |
 |---|---|---|
-| **Set** | `e` | A new value for the highlighted CVar |
-| **Add** | `N` | A CVar the file does not set yet (any name, known or not) |
+| **Set** | `e` | A new value for the highlighted CVar (it shows the default and what the setting does) |
+| **Add** | `N` | A CVar the file does not set yet: pick one from the list (typing narrows it), or type any name |
 | **Remove** | `d` | Takes the highlighted CVar's line out of the file |
 | **Reset** | `R` | Back to the default: the line goes, so the game uses its default |
 | **Recommend…** | `m` | Recommendations for the highlighted file, each with its reason and source: tick and stage them |

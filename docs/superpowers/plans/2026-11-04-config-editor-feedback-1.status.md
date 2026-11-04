@@ -9,7 +9,7 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-config-editor-feedback-
 | FB1 | category filter fix, cvar_categories.json, kb lookup | done | (this commit) | +7 tests (5 test_kb CuratedCategoriesTest, 2 test_config_editor_app), test_category_mapping and the kb README test extended; gate: run_tests --all WSL 2327 OK (10 skipped) + Windows 2327 OK (86 skipped), ruff clean, gen_event_docs --check OK |
 | FB2 | columnar rows, truncation, colours | done | abc8f59, review fixes (this commit) | review fixes FB2r1-FB2r3: +4 tests (2 test_config_editor_ops drop order and middle cut, 1 test_config_editor_app two flavors + Show all known at 120x30 and 80x30, the 80x24 step reworded to assert the fit), gate: run_tests --all WSL 2336 OK (10 skipped) + Windows 2336 OK (86 skipped), ruff clean, gen_event_docs --check OK; first commit +6 tests (4 test_config_editor_ops row columns, 1 test_ui_base colours, 1 test_config_editor_app aligned coloured columns), test_row_text became test_row_cells, row assertions in test_config_editor_app updated; gate: run_tests --all WSL 2333 OK (10 skipped) + Windows 2333 OK (86 skipped; first run hit a Windows asyncio socketpair error in an unrelated Config Copier test, --windows rerun clean), ruff clean, gen_event_docs --check OK |
 | FB3 | help panel layout | done | 382b474, review fixes (this commit) | review fix FB3r1: no new test, test_config_editor_app test_help_panel_layout now asserts Value, Default, Recommended, State, Category and Note are in the panel's visible rows at 120x30 (fails on 382b474: Recommended on row 9 of 9), test_config_editor_run test_help_panel takes the new order; gate: run_tests --all WSL 2337 OK (10 skipped) + Windows 2337 OK (86 skipped), ruff clean, gen_event_docs --check OK. FB3 build: +1 test (test_config_editor_app test_help_panel_layout: bold title and labels, state and category colours, blank lines, source bullets, panel height at 120x30); test_config_editor_run test_help_lines became test_help_panel (every fact of the old text, new layout); gate: run_tests --all WSL 2337 OK (10 skipped) + Windows 2337 OK (86 skipped), ruff clean, gen_event_docs --check OK |
-| FB4 | Set description, Add dropdown | todo | | |
+| FB4 | Set description, Add dropdown | done | (this commit) | +9 tests (4 test_config_editor_ops: what_it_does, add_candidates one file and several, match_candidates with the cap; 5 test_config_editor_app: Set's description for note / help / neither / unknown, Add's list for one file, the machine level and two ticked files, narrowing + pick prefills + mouse pick, the 200 cap with the count line + an unknown name added with Enter, the EnterGuard on OK); guide Set and Add, in-app help table and internals updated; gate: run_tests --all WSL 2346 OK (10 skipped) + Windows 2346 OK (86 skipped), ruff clean, gen_event_docs --check OK |
 | FB5 | push, CI once, ready to merge | todo | | |
 
 ## Decisions taken during the build
@@ -94,3 +94,21 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-config-editor-feedback-
   focusable: a focused VerticalScroll takes the arrow keys (up/down move focus, left/right switch panes on this
   screen) and the spec keeps the keys unchanged. Scope and Sources still sit below the fold at 120x30 (mouse scroll,
   or a window 160 columns wide for the side panel), as the guide says.
+- FB4a: `report.what_it_does(info)`: our note, else Blizzard's help, else `NO_DESCRIPTION` ("No description in the
+  reference."), whitespace and line breaks folded to one line. Set's body gets `What it does: …` as the line under
+  `Default:` (or under the unknown line for a CVar the knowledge base doesn't know, which gets the fallback text).
+  Add's note gets the same line under the CVar's default and scope, so it shows once a name is picked or typed.
+- FB4b: `ops.add_candidates(targets, cvars, staged)`: the union over the ticked (writable) files of the CVars each
+  file's flavor knows for that file's level (`scope == level`, as Show all known), minus every name any of the files
+  sets as staged (a staged add leaves the list, a staged remove comes back); once per name, case ignored, the first
+  file's flavor wins; sorted by name. Files of two levels list the CVars of both: the existing scope warning covers
+  a CVar set in a file of the other level.
+- FB4c: `ops.match_candidates(candidates, typed, cap=ADD_LIST_CAP)`: case-ignored substring of the name only (not the
+  help: the field is the name), names starting with the text first, at most 200 (`ADD_LIST_CAP`, the plan's call)
+  and a disabled dim `… n more, keep typing` line. Rebuilt on every keystroke of the name field (1900 names: no lag).
+- FB4d: the list sits between the name and the value fields (6 rows, `popup_css(list_rows=6)`) and is hidden when
+  nothing matches, so an unknown name leaves no empty box and Tab skips it. `↓` from the name moves into the list;
+  Enter or a click picks: the name and its default (empty when none is known) fill the fields and the focus moves to
+  the value. Enter in either field is OK, as before (so a typed unknown name adds with Enter); the popup takes the
+  EnterGuard (`GUARD_BINDING`, `start_guard`) for Enter on its buttons, as the other popups. The options show the
+  name only; the description shows in the note after the pick.

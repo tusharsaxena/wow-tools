@@ -9,8 +9,9 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
+from unittest import mock
 
-from textual.widgets import Checkbox, Input, Select, Static, Tree
+from textual.widgets import Checkbox, Input, OptionList, Select, Static, Tree
 
 from tests.fixtures import (BASE, CONFIG_AELLA, CONFIG_MACHINE, LARGE, TINY, TuiTestCase, build_config_tree,
                             make_config, settle, submit_filter)
@@ -18,11 +19,12 @@ from wowtools.core.kb import clear_cache
 from wowtools.tools import TOOLS
 from wowtools.tools.config_editor.model import CONFIG_CACHE, CONFIG_WTF
 from wowtools.tools.config_editor.popups import AddCvarScreen, RecommendScreen
-from wowtools.tools.config_editor.report import CHANGED, DEFAULT_STATE, NOT_SET, UNKNOWN, row_cells
+from wowtools.tools.config_editor.report import CHANGED, DEFAULT_STATE, NO_DESCRIPTION, NOT_SET, UNKNOWN, row_cells
 from wowtools.tools.config_editor.review_screen import (CvarNode, ConfigResultScreen, ConfigReviewScreen, FileKey,
                                                         FileNode)
+from wowtools.ui import dialogs
 from wowtools.ui.character_tree import CharacterNode
-from wowtools.ui.dialogs import ConfirmScreen, DiscardScreen, TextPromptScreen
+from wowtools.ui.dialogs import CONFIRM_GUARD, ConfirmScreen, DiscardScreen, TextPromptScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
 from wowtools.ui.theme import CVAR_CATEGORY_COLOURS, CVAR_STATE_COLOURS
@@ -486,6 +488,167 @@ class ConfigEditorAppTest(TuiTestCase):
             # Trâxex already has 0: nothing to stage there
             self.assertEqual(review.staged.sets, {self.aella(): {"nameplateShowFriends": "0"}})
             self.assertNotIn(traxex, review.staged.sets)
+
+    # CF6 (feedback round 1): Set says what the setting does; Add's name is a searchable list of the known CVars
+    # the files don't set yet.
+    async def test_set_says_what_the_setting_does(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            cases = {"cameraDistanceMaxZoomFactor": "How far the camera can zoom out.",  # our note
+                     "nameplateShowFriends": "Show friendly nameplates",  # Blizzard's help, no note
+                     "assistedCombatHighlight": NO_DESCRIPTION,  # neither
+                     "myAddonThing": NO_DESCRIPTION}  # unknown
+            for name, text in cases.items():
+                with self.subTest(name=name):
+                    row = await cvar_node(pilot, character_node(tree, "Aellâ"), name)
+                    await self.press_on(app, pilot, review, row, "e")
+                    prompt = app.screen
+                    self.assertIsInstance(prompt, TextPromptScreen)
+                    lines = prompt.body_text.split("\n")
+                    self.assertIn(f"What it does: {text}", lines)
+                    if name != "myAddonThing":  # under the Default line
+                        default = next(i for i, line in enumerate(lines) if line.startswith("Default:"))
+                        self.assertEqual(lines[default + 1], f"What it does: {text}")
+                    self.assertIn(text, str(prompt.query_one(".popup-body", Static).render()))
+                    await pilot.press("escape")
+                    await settle(app, pilot)
+                    self.assertIs(app.screen, review)
+            self.assertEqual(review.staged.count(), 0)
+
+    async def open_add(self, app, pilot, review, node) -> AddCvarScreen:
+        await self.press_on(app, pilot, review, node, "N")
+        add = app.screen
+        self.assertIsInstance(add, AddCvarScreen)
+        return add
+
+    @staticmethod
+    def listed(add: AddCvarScreen) -> list[str]:
+        options = add.query_one("#cvar-options", OptionList)
+        return [str(options.get_option_at_index(i).prompt) for i in range(options.option_count)]
+
+    async def test_add_lists_the_known_cvars_not_set(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            cases = {"Aellâ": ["floatingCombatTextCombatDamage"],  # the character CVars it doesn't set
+                     "Bob": ["assistedCombatHighlight", "cameraDistanceMaxZoomFactor",
+                             "floatingCombatTextCombatDamage", "nameplateShowFriends"],
+                     "Trâxex": ["assistedCombatHighlight", "cameraDistanceMaxZoomFactor"]}
+            for name, expected in cases.items():
+                with self.subTest(name=name):
+                    add = await self.open_add(app, pilot, review, character_node(tree, name))
+                    self.assertEqual(self.listed(add), expected)
+                    await pilot.press("escape")
+                    await settle(app, pilot)
+            add = await self.open_add(app, pilot, review, file_node(tree, CONFIG_WTF))  # the machine level
+            self.assertEqual(self.listed(add), [])
+            await pilot.press("escape")
+            await settle(app, pilot)
+            # several ticked files: a CVar set in any of them is left out
+            for name in ("Bob", "Trâxex"):
+                await self.press_on(app, pilot, review, character_node(tree, name), "space")
+            add = await self.open_add(app, pilot, review, character_node(tree, "Bob"))
+            self.assertIn("2 files", add.body_text)
+            self.assertEqual(self.listed(add), ["assistedCombatHighlight", "cameraDistanceMaxZoomFactor"])
+            await pilot.press("escape")
+            await settle(app, pilot)
+            self.assertEqual(review.staged.count(), 0)
+
+    async def test_add_narrows_picks_and_prefills(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            add = await self.open_add(app, pilot, review, character_node(tree, "Bob"))
+            self.assertIs(add.focused, add.query_one("#cvar-name", Input))
+            await pilot.press(*"CAM")  # typing narrows the list (case ignored)
+            await settle(app, pilot)
+            self.assertEqual(self.listed(add), ["cameraDistanceMaxZoomFactor"])
+            await pilot.press("backspace", "backspace", "backspace", *"combat")
+            await settle(app, pilot)
+            self.assertEqual(self.listed(add), ["assistedCombatHighlight", "floatingCombatTextCombatDamage"])
+            options = add.query_one("#cvar-options", OptionList)
+            options.focus()
+            options.highlighted = 1
+            await pilot.press("enter")  # picks it: the name, its default as the value, and what it does
+            await settle(app, pilot)
+            self.assertEqual(add.values(), ("floatingCombatTextCombatDamage", "1"))
+            self.assertIs(add.focused, add.query_one("#cvar-value", Input))
+            note = str(add.query_one("#cvar-note", Static).render())
+            self.assertIn("default 1", note)
+            self.assertIn(NO_DESCRIPTION, note)
+            add.query_one("#cvar-value", Input).value = "0"  # the value stays editable
+            await pilot.press("enter")  # Enter in the value: OK
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            bob = character_node(tree, "Bob").data.character.path / CONFIG_CACHE
+            self.assertEqual(review.staged.sets, {bob: {"floatingCombatTextCombatDamage": "0"}})
+            # picking with the mouse, and a note shown for a CVar with one; the list leaves out the one just staged
+            add = await self.open_add(app, pilot, review, character_node(tree, "Bob"))
+            self.assertNotIn("floatingCombatTextCombatDamage", self.listed(add))
+            await pilot.press(*"zoom")
+            await settle(app, pilot)
+            await pilot.click("#cvar-options", offset=(2, 0))
+            await settle(app, pilot)
+            self.assertEqual(add.values(), ("cameraDistanceMaxZoomFactor", "1.9"))
+            self.assertIn("How far the camera can zoom out.", str(add.query_one("#cvar-note", Static).render()))
+            await pilot.press("escape")  # Esc: nothing staged
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(review.staged.sets, {bob: {"floatingCombatTextCombatDamage": "0"}})
+
+    async def test_add_list_capped_and_unknown_name_still_added(self):
+        app = self.make_app()
+        many = {f"zzCvar{n:04}": {"default": "0", "help": "", "category": "game", "scope": "character",
+                                  "synced": True} for n in range(1500)}
+        (self.kb / "cvars" / "_retail_.json").write_text(json.dumps(
+            {"source": "client dump _retail_ 1", "cvars": KB_CVARS | many}), encoding="utf-8")
+        clear_cache()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            add = await self.open_add(app, pilot, review, character_node(tree, "Bob"))
+            listed = self.listed(add)
+            self.assertEqual(len(listed), 201)  # the cap, then the count of the rest
+            self.assertEqual(listed[-1], "… 1304 more, keep typing")
+            self.assertTrue(add.query_one("#cvar-options", OptionList).get_option_at_index(200).disabled)
+            await pilot.press(*"zzCvar149")
+            await settle(app, pilot)
+            self.assertEqual(self.listed(add), [f"zzCvar{n}" for n in range(1490, 1500)])
+            await pilot.press(*"9x")  # a name the reference doesn't know: nothing listed, still added
+            await settle(app, pilot)
+            self.assertEqual(self.listed(add), [])
+            self.assertIn(UNKNOWN, str(add.query_one("#cvar-note", Static).render()))
+            add.query_one("#cvar-value", Input).value = "5"
+            await pilot.press("enter")  # Enter in the name field: OK, as before
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            bob = character_node(tree, "Bob").data.character.path / CONFIG_CACHE
+            self.assertEqual(review.staged.sets, {bob: {"zzCvar1499x": "5"}})
+
+    async def test_add_enter_guard_on_its_buttons(self):
+        """Enter on a button right after the popup opens is ignored (EnterGuard, as the other popups); Esc never."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#cvars", Tree)
+            now = [1000.0]
+            self.confirm_guard(CONFIRM_GUARD)
+            with mock.patch.object(dialogs, "monotonic", lambda: now[0]):
+                add = await self.open_add(app, pilot, review, character_node(tree, "Bob"))
+                add.query_one("#cvar-name", Input).value = "brandNewThing"
+                add.query_one("#ok").focus()
+                await pilot.press("enter")
+                await settle(app, pilot)
+                self.assertIs(app.screen, add)
+                now[0] += CONFIRM_GUARD
+                await pilot.press("enter")
+                await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(review.staged.count(), 1)
 
     async def test_filters(self):
         app = self.make_app()

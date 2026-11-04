@@ -115,8 +115,12 @@ staged changes.
   sections of `HelpLine`s, rendered by `review_screen.help_panel_text` with bold labels, the CF3 colours and a bullet
   per source, CF5) sits under the tree (40% of the tree pane, scrolling) or beside it from 160 columns
   (`HORIZONTAL_BREAKPOINTS`, the `-wide` class).
-- `popups.AddCvarScreen` (name, value, what the KB knows of the name), `RecommendScreen` (tick list, reason and
-  source); Set is the shared `TextPromptScreen`.
+- `popups.AddCvarScreen` (name, value, what the KB knows of the name; CF6: the name narrows an `OptionList` of
+  `ops.add_candidates`, the known CVars of each file's flavor and level that none of the files sets as staged,
+  `ops.match_candidates` caps it at `ADD_LIST_CAP` (200) with a "… n more" line, and a pick fills the name and the
+  default; `EnterGuard` on its buttons), `RecommendScreen` (tick list, reason and source); Set is the shared
+  `TextPromptScreen`, its body ending with `report.what_it_does` (note, else Blizzard's help, else
+  `NO_DESCRIPTION`).
 - `ConfigResultScreen` (the shared result screen), `ConfigProgressScreen` (one row per flavor).
 
 ## Events

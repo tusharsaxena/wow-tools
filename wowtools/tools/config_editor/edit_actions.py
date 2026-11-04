@@ -1,7 +1,8 @@
 """The Config Editor browse screen's CVar edits (config tools spec CE5, CE7), mixed into ConfigReviewScreen: the bar
 under the tree and Space on a boolean row. Set (the highlighted CVar), Remove and Reset act on the highlighted CVar
 in every ticked file, else in the file of the highlighted row (Reset only where the file's own flavor knows the
-CVar's default; the others are named and left); Add puts a CVar into the ticked files, else the highlighted one;
+CVar's default; the others are named and left), Set saying what the setting does (CF6); Add puts a CVar into the
+ticked files, else the highlighted one, picked from the known CVars none of them sets or typed (CF6);
 Recommend… lists the recommendations for the highlighted file and stages the ticked ones as a batch; Space on a CVar
 whose value is 0 or 1 toggles it there. Each stages on the review's ConfigStaged (ops.py): nothing is written until
 Apply. A scope mismatch (CE5) is a warning, never a refusal; an unknown CVar can be set, removed and added like any
@@ -12,10 +13,10 @@ from __future__ import annotations
 from wowtools.core.events import log_event
 from wowtools.core.text import plural
 from wowtools.tools.config_editor.model import ConfigTarget, Row
-from wowtools.tools.config_editor.ops import (ConfigStaged, applicable_recommendations, stage_remove, stage_reset,
-                                              stage_set, stage_toggle)
+from wowtools.tools.config_editor.ops import (ConfigStaged, add_candidates, applicable_recommendations, stage_remove,
+                                              stage_reset, stage_set, stage_toggle)
 from wowtools.tools.config_editor.popups import AddCvarScreen, RecommendScreen
-from wowtools.tools.config_editor.report import UNKNOWN, scope_text, target_text
+from wowtools.tools.config_editor.report import UNKNOWN, scope_text, target_text, what_it_does
 from wowtools.ui.dialogs import TextPromptScreen
 
 __all__ = ["NO_CVAR", "NO_FILE", "TREE_ACTIONS", "ConfigEditActions"]
@@ -97,6 +98,7 @@ class ConfigEditActions:
             body.append(f"Default: {row.default}.")
         elif row.info is None:
             body.append(f"{name} is {UNKNOWN}: it is written as you type it.")
+        body.append(f"What it does: {what_it_does(row.info)}")  # CF6: under the Default line
 
         def check(value: str) -> str | None:
             return next((p for p in (stage_problem(t, name, value) for t in targets) if p), None)
@@ -177,6 +179,7 @@ class ConfigEditActions:
                     continue
                 default = f"default {info.default}" if info.default is not None else "default not known"
                 notes.append(f"{info.name} ({flavor.display_name}): {default}. {scope_text(info)}")
+                notes.append(f"What it does: {what_it_does(info)}")
                 levels = sorted({t.level for t in writable if t.flavor == flavor and info.scope is not None
                                  and t.level != info.scope})
                 if levels:
@@ -198,7 +201,9 @@ class ConfigEditActions:
             log_event("ui.selection", screen=self.LOG_SCREEN, control="add_cvar", value=f"{name} = {value}",
                       files=len(writable))
             self.staging_changed()
-        self.app.push_screen(AddCvarScreen("Add a CVar", files_text(writable), describe, check), done)
+        flavors = dict.fromkeys(t.flavor for t in writable)
+        known = add_candidates(writable, {f.folder: self.cvars_for(f.folder) for f in flavors}, self.staged)
+        self.app.push_screen(AddCvarScreen("Add a CVar", files_text(writable), describe, check, known), done)
 
     # --- Recommend… ------------------------------------------------------------------------------
     def action_recommend(self) -> None:

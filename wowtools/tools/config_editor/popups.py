@@ -1,6 +1,7 @@
 """The Config Editor's popups, styled like ConfirmScreen (ui.dialogs.popup_css): Add (CE5: a CVar's name and value,
-with what the knowledge base says about the name as it is typed: its default and scope, `unknown`, or the scope
-warning) and Recommend… (CE7: the recommendations for a file, each with its value, reason and source, ticked and
+with what the knowledge base says about the name as it is typed: its default, scope and what it does, `unknown`, or
+the scope warning; CF6: the name field narrows a list of the known CVars the files don't set, and picking one fills
+the name and its default) and Recommend… (CE7: the recommendations for a file, each with its value, reason and source, ticked and
 staged as a batch). Set is the shared TextPromptScreen. Each dismisses with what the user chose; the review stages
 it (edit_actions.py). Nothing is written here."""
 from __future__ import annotations
@@ -16,51 +17,75 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Input, OptionList, Static
 from textual.widgets.option_list import Option
 
-from wowtools.tools.config_editor.ops import RecommendRow
-from wowtools.ui.dialogs import popup_css, show_error
+from wowtools.core.kb import CvarInfo
+from wowtools.tools.config_editor.ops import RecommendRow, match_candidates
+from wowtools.ui.dialogs import GUARD_BINDING, EnterGuard, popup_css, show_error
 from wowtools.ui.widgets import CHECK_OFF, CHECK_ON, NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 __all__ = ["AddCvarScreen", "RecommendScreen"]
 
 
-class AddCvarScreen(ModalScreen[tuple[str, str] | None]):
-    """Add a CVar (CE5): name and value. `describe(name)` is the note under the fields (what the knowledge base
-    knows of the name, or that it is unknown, and a scope warning; never a refusal); `check(name, value)` a problem
-    that keeps the popup open (an empty name, a space or a quote in it, a line break in the value) or None. OK or
-    Enter dismisses with (name, value), Cancel or Esc with None."""
+class AddCvarScreen(EnterGuard, ModalScreen[tuple[str, str] | None]):
+    """Add a CVar (CE5, CF6): name and value. Under the name, a list of `known` (the CVars the knowledge base knows
+    for the files that none of them sets, ops.add_candidates) narrowed by the name as it is typed, at most
+    ops.ADD_LIST_CAP of them and then how many more; picking one (Enter or a click) puts its name in the field and
+    its default in the value (editable), and moves to the value. Any name can still be typed, known or not.
+    `describe(name)` is the note under the fields (what the knowledge base knows of the name, what it does, or that
+    it is unknown, and a scope warning; never a refusal); `check(name, value)` a problem that keeps the popup open
+    (an empty name, a space or a quote in it, a line break in the value) or None. OK, or Enter in a field, dismisses
+    with (name, value), Cancel or Esc with None; Enter on a button waits for the EnterGuard, as in the other
+    popups."""
 
-    DEFAULT_CSS = popup_css("AddCvarScreen") + """
+    DEFAULT_CSS = popup_css("AddCvarScreen", list_rows=6) + """
     AddCvarScreen #cvar-note { height: auto; margin-top: 1; }
     """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel"), GUARD_BINDING, *NAV_BINDINGS]
 
     def __init__(self, title: str, body: str, describe: Callable[[str], str],
-                 check: Callable[[str, str], str | None]) -> None:
+                 check: Callable[[str, str], str | None], known: Sequence[CvarInfo] = ()) -> None:
         super().__init__()
         self.title_text = title
         self.body_text = body
         self.describe = describe
         self.check = check
+        self.known = list(known)
+        self._by_name = {info.name: info for info in self.known}
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="popup-box"):
             yield Static(Text(self.title_text), classes="title")
             yield Static(Text(self.body_text), classes="popup-body")
-            yield Input("", placeholder="CVar name", id="cvar-name", compact=True)
+            yield Input("", placeholder="CVar name: type to narrow the list, or any name", id="cvar-name",
+                        compact=True)
+            yield OptionList(id="cvar-options", compact=True)
             yield Input("", placeholder="value", id="cvar-value", compact=True)
             yield Static("", id="cvar-note")
             yield Static("", id="cvar-error", classes="popup-error")
             with ButtonRow(classes="popup-buttons"):
                 yield action_button("OK", "confirm", id="ok")
                 yield action_button("Cancel", "cancel", "escape", id="cancel")
-            yield NavHint("Enter OK · ↑↓/Tab move · ←→ buttons")
+            yield NavHint("Enter OK · ↓ the list, Enter picks · ↑↓/Tab move · ←→ buttons")
 
     def on_mount(self) -> None:
+        self.start_guard()
+        self._options()
         self._note()
         self.query_one("#cvar-name", Input).focus()
 
     def values(self) -> tuple[str, str]:
         return self.query_one("#cvar-name", Input).value.strip(), self.query_one("#cvar-value", Input).value
+
+    def _options(self) -> None:
+        """The list narrowed to the name as typed: the capped matches, then a line counting the rest."""
+        shown, more = match_candidates(self.known, self.values()[0])
+        options = self.query_one("#cvar-options", OptionList)
+        options.clear_options()
+        options.add_options([Option(info.name, id=info.name) for info in shown])
+        if more:
+            options.add_option(Option(Text(f"… {more} more, keep typing", style="dim italic"), disabled=True))
+        options.display = bool(shown)
+        if shown:
+            options.highlighted = 0
 
     def _note(self) -> None:
         name = self.values()[0]
@@ -69,11 +94,25 @@ class AddCvarScreen(ModalScreen[tuple[str, str] | None]):
     def on_input_changed(self, event: Input.Changed) -> None:
         event.stop()
         show_error(self.query_one("#cvar-error", Static), None)
+        if event.input.id == "cvar-name":
+            self._options()
         self._note()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         event.stop()
         self._ok()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        """A CVar picked from the list: its name, its default as the value (empty when none is known), then the
+        value field, ready to edit."""
+        event.stop()
+        info = self._by_name.get(event.option.id or "")
+        if info is None:
+            return
+        self.query_one("#cvar-name", Input).value = info.name
+        value = self.query_one("#cvar-value", Input)
+        value.value = info.default or ""
+        value.focus()
 
     def _ok(self) -> None:
         name, value = self.values()

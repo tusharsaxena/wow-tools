@@ -176,8 +176,17 @@ Leaving with changes not applied yet asks first.
 
 **Set**, **Remove** and **Reset** act on the highlighted CVar in every ticked file, or only in its own file when
 nothing is ticked: tick your characters, highlight a CVar in one of them and **Set** it, and it is set in all of
-them. **Add** asks for a name and a value and puts the CVar into every ticked file, or the highlighted one; as you
-type the name it says whether the knowledge base knows it, its default and where the game keeps it. **Reset** takes
+them. **Set** shows the default and what the setting does (our note, else Blizzard's text, else "No description in
+the reference.") above the value.
+
+**Add** puts a CVar into every ticked file, or the highlighted one. Under the name is a list of every CVar the
+knowledge base knows for the file's game version and level that the file (or any of the ticked files) doesn't set
+yet; typing narrows it (the first 200 matches show, then how many more). Press `↓` to move into the list and `Enter`
+to pick one, or click it: its name and its default go into the fields, and the note under them says what it does
+and where the game keeps it. Change the value if you like and press `Enter` or **OK**. A name that isn't in the
+list can still be typed and added; the note then says the knowledge base doesn't know it.
+
+**Reset** takes
 the line out, since a CVar a file doesn't set takes the game's default; **Remove** does the same for any CVar,
 including one with no known default.
 

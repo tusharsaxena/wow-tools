@@ -1,5 +1,6 @@
 """Text for the Config Editor's browse screen, popups and result screen (config tools spec CE3-CE8): a file's line
-and a CVar row's columns in the tree (name, value, default, state, category: feedback spec CF1, CF2), the help panel's details of a CVar (CE4, laid out by CF5), the
+and a CVar row's columns in the tree (name, value, default, state, category: feedback spec CF1, CF2), the help
+panel's details of a CVar (CE4, laid out by CF5), what a CVar does for Set and Add (CF6), the
 Apply / Dry run confirm (counts, one group per file in its detail tree, the scope warnings of CE5 as listed entries)
 and the result rows, one per file. The progress stage titles, the Undo confirm, the unfinished-run text and the undo
 rows are the shared pipeline's (core/sv_report.py), re-exported here. UI-free."""
@@ -20,10 +21,11 @@ from wowtools.tools.config_editor.model import CONFIG_WTF, ConfigTarget, Row
 from wowtools.tools.config_editor.ops import ConfigStaged, build_changes, is_boolean
 
 __all__ = ["ACCOUNT_CONFIG", "CHANGED", "COLUMN_CAPS", "COLUMN_MINIMUMS", "DEFAULT_STATE", "DROP_ORDER", "ELLIPSIS",
-           "FILE_COLUMNS", "NOT_SET", "RESULT_TEXT", "STAGE_TITLES", "STATES", "STATUS_COLOURS", "UNDO_COLUMNS",
-           "UNKNOWN", "HelpLine", "HelpPanel", "apply_confirm", "apply_groups", "cut_name", "file_label", "file_rows",
-           "fit_columns", "help_panel", "path_label", "recovery_text", "row_cells", "row_state", "scope_listed",
-           "scope_text", "summary_rows", "target_text", "undo_confirm", "undo_detail_rows", "undo_summary_rows"]
+           "FILE_COLUMNS", "NOT_SET", "NO_DESCRIPTION", "RESULT_TEXT", "STAGE_TITLES", "STATES", "STATUS_COLOURS",
+           "UNDO_COLUMNS", "UNKNOWN", "HelpLine", "HelpPanel", "apply_confirm", "apply_groups", "cut_name", "file_label",
+           "file_rows", "fit_columns", "help_panel", "path_label", "recovery_text", "row_cells", "row_state",
+           "scope_listed", "scope_text", "summary_rows", "target_text", "undo_confirm", "undo_detail_rows",
+           "undo_summary_rows", "what_it_does"]
 
 ACCOUNT_CONFIG = "Account config"
 NOT_SET = "not set"
@@ -49,6 +51,16 @@ LEVEL_FILES: dict[str, str] = {
     "account": "the account's config-cache.wtf",
     "character": "the character's config-cache.wtf",
 }
+
+
+NO_DESCRIPTION = "No description in the reference."
+
+
+def what_it_does(info: CvarInfo | None) -> str:
+    """What a CVar does, on one line (feedback spec CF6: Set and Add show it): our note when there is one, else
+    Blizzard's help text, else NO_DESCRIPTION (also for a CVar the knowledge base doesn't know)."""
+    text = (info.description or info.help) if info is not None else ""
+    return " ".join(text.split()) or NO_DESCRIPTION
 
 
 def _shown(value: str) -> str:
