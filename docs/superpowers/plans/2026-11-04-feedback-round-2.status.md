@@ -8,7 +8,7 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-feedback-round-2.md`. R
 | G1 | shared column and count helpers, two standards | done | (this commit) | 16 new tests in tests/test_ui_columns.py + test_structure::test_tree_label_helpers_live_in_ui; CE ops column tests on the shared fit. Gate: run_tests --all 2365 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
 | G2 | Config Editor R1, R2, R3, R5, R6 | done | (this commit) | 6 new tests (5 in test_config_editor_app: node counts, flavor counts, dropdown counts, not-set colour, help colours; test_kb::test_other_is_kept_to_a_handful), group lists / help styles / tree labels updated in test_config_editor_app, test_config_editor_ops, test_kb. Stale screenshots: config-editor/browse.png, recommend.png. Gate: run_tests --all 2371 tests, WSL OK (10 skipped) every run; Windows OK (86 skipped) on the --windows rerun, its --all runs each had one environmental error in an untouched test (WinError 10055 socket-buffer twice, as in T5/T6; one test_suite lock-timing KeyError under the doubled load); ruff clean; gen_event_docs --check OK. Review fixes (fix: G2 review fixes): kb/README.md cvars section lists the eleven groups; config-editor.md tree-count wording matches G2e (0 items included); docs only, gate run_tests --all 2371 WSL OK / Windows OK, ruff clean, gen_event_docs OK |
 | G3 | WTF Cleaner counts + columns | done | (this commit) | 7 new tests (test_ui_columns::test_a_rich_cell_keeps_its_own_colours; 6 in test_wtf_app NodeCountsAndColumnsTest: group counts, counts follow the search, blacklisted not counted, aligned addon and file columns, long name cut to the pane at 120x30 and 80x24, flavor counts); no existing test changed. Stale screenshots: wtf-cleaner/review.png (also in README.md). Review fixes (fix: G3 review fixes, G3h/G3i): +1 test (test_a_group_of_blacklisted_rows_only_counts_zero), test_a_long_name_is_cut_to_fit_the_pane checks group rows too, test_flavor_with_nothing_to_clean_says_so changed (flavor `0 items`). Gate after the fixes: run_tests --all 2379 tests, WSL OK, Windows OK (86 skipped); ruff clean; gen_event_docs --check OK. Gate before the fixes: run_tests --all 2378 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
-| G4 | Screenshot Organizer counts + columns | todo | | |
+| G4 | Screenshot Organizer counts + columns | done | (this commit) | 5 new tests in test_screenshot_organizer_app (every node counts the screenshots below it, counts follow the filter, conflicts and duplicates are aligned columns, rows cut to fit the pane at 120x30 and 80x24, copy mode flavor counts its filed copies); 3 existing assertions updated to the new labels (`Skipped  2 items`, `Already filed  4 items`, flavor `4 items`), none loosened. Stale screenshots: screenshot-organizer/review.png (also in README.md). Gate: run_tests --all 2384 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
 | G5 | Interface Backup counts + columns | todo | | |
 | G6 | Ace3 Profile Manager counts + columns | todo | | |
 | G7 | Saved Variables Browser counts + columns | todo | | |
@@ -74,3 +74,23 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-feedback-round-2.md`. R
 - G3i (review fix): a group's name is cut in its middle so its count fits the pane (at 80 columns the 28-cell pane
   cut `account-wide  7 items` to `account-wide  7 `); `_fit_rows` refits group rows on a resize too, and the
   long-name test checks every row's width at 120 and 80 columns.
+- G4a: the Screenshot Organizer's leaf is a screenshot the run can file: a `ShotItem` to file or already filed
+  (`FlavorPlan.selectable`). The root and a flavor count both kinds, a year, a month and a day the ones to file,
+  Already filed its own. The tick keys are unchanged (a flavor still ticks only what is to file).
+- G4b: Conflicts and Skipped are read-only and never filed, so they are left out of the flavor's and the root's
+  count (as G3a leaves blacklisted rows out); they have children, so each counts its own rows (STD-7.27).
+- G4c: the count comes straight after a group's name, before its note (Already filed, Conflicts, Skipped: `Conflicts
+  2 items  a different file with the same name is already filed`), so a long note never pushes it off the pane; the
+  old `(N)` and `N shots` are gone. A flavor with no rows at all keeps its reason in the count's place; one with only
+  already-filed, conflict or skipped rows shows its count (`0 items` when only conflicts or skipped, as G3h) with no
+  tick mark.
+- G4d: columns: a file row is name · `possible duplicate` (or nothing), a conflict row name · `→ <target folder>`
+  (dim). Caps 48 for the name, minimums 12 (target 12); the target gives way first, then the name, both cut in
+  their middle (a path keeps its date folders); the note is never cut. A skipped row is its name only (not a column
+  row). At 80 columns a day's files sit 20 cells deep in the 28-cell tree pane, so the shared fit cuts the name to
+  the few cells left (STD-7.28: a row always fits); the year, month and day rows (a name and a count, not column
+  rows) scroll sideways there.
+- G4e: counts are worked out once per rebuild (`_count_leaves`, one pass over the plan, the filter's model nodes),
+  so a tick only relabels; natural widths are worked out once per day as its files load and once per Conflicts
+  node, and `_fit_rows` refits on a resize (Review Focus 5).
+- G4f: no CHANGELOG line here (G10 adds the suite-wide one).

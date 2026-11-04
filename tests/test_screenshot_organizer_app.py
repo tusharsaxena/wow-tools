@@ -7,10 +7,11 @@ from unittest.mock import patch
 
 from textual.widgets import Button, DataTable, Input, OptionList, Tree
 
-from tests.fixtures import BASE, TuiTestCase, build_screenshot_tree, build_wow_tree, make_config, settle, submit_filter
+from tests.fixtures import BASE, TINY, TuiTestCase, build_screenshot_tree, build_wow_tree, make_config, settle, submit_filter
 from wowtools.core import activity
 from wowtools.core.config import Config
 from wowtools.core.events import capture_events
+from wowtools.core.text import plural
 from wowtools.tools.screenshot_organizer import planner as planner_module
 from wowtools.tools.screenshot_organizer import review_screen as review_module
 from wowtools.tools.screenshot_organizer.app import ScreenshotSettingsScreen
@@ -274,7 +275,7 @@ class ShotsAppTest(TuiTestCase):
                              ["WoWScrnShot_073119_232713.jpg", "WoWScrnShot_073119_232800.jpg"])
             skipped = [n for n in _walk(tree.root) if n.data and n.data[0] == "skipped"]
             self.assertEqual(len(skipped), 1)  # _retail_ only: bad date + notes.txt
-            self.assertIn("Skipped (2)", str(skipped[0].label))
+            self.assertIn("Skipped  2 items", str(skipped[0].label))
             tree.focus()
             tree.move_cursor(skipped[0])
             await pilot.press("space")  # read-only: nothing changes
@@ -438,7 +439,7 @@ class ShotsAppTest(TuiTestCase):
             groups = [n for n in _walk(tree.root) if n.data and n.data[0] == "filed"]
             self.assertEqual(len(groups), 2)
             retail = next(g for g in groups if g.data[1].flavor.folder == "_retail_")
-            self.assertIn("Already filed (4)", str(retail.label))
+            self.assertIn("Already filed  4 items", str(retail.label))
             self.assertFalse([n for n in _walk(tree.root) if n.data and n.data[0] == "day"])
             tree.focus()
             tree.move_cursor(retail)
@@ -493,7 +494,7 @@ class ShotsAppTest(TuiTestCase):
             flavors = {n.data[1].flavor.folder: str(n.label) for n in tree.root.children}
             self.assertEqual(sorted(flavors), ["_anniversary_", "_classic_era_", "_retail_"])
             self.assertIn("no Screenshots folder", flavors["_anniversary_"])
-            self.assertIn("4 shots", flavors["_retail_"])
+            self.assertIn("4 items", flavors["_retail_"])
 
     async def test_action_buttons_share_the_suite_colours(self):
         from wowtools.ui.widgets import action_kind
@@ -558,6 +559,171 @@ class ShotsAppTest(TuiTestCase):
             await settle(app, pilot)
             self.assertEqual(self.shown_files(review), [A])
             self.assertEqual(review.filter_keys(review.all_tick_keys()), [self.shots / A])
+
+
+    # --- leaf counts and columns (feedback round 2 R2 / R4, STD-7.27 / STD-7.28): the leaf is a screenshot the
+    #     run can file (to file, or already filed); every node with children counts the ones below it the tree
+    #     shows, a day before it is opened too; Conflicts and Skipped count their own rows; file and conflict rows
+    #     are aligned columns fitted to the pane -------------------------------------------------------------
+    def expected_count(self, review, data) -> int:
+        """The leaves below a node, worked out from the plan (under the filter, those it shows)."""
+        kind, plan = data[0], review.plan
+        if kind == "root":
+            items = plan.selectable
+        elif kind == "flavor":
+            items = data[1].selectable
+        elif kind in ("filed", "conflicts", "skipped"):
+            items = {"filed": data[1].filed, "conflicts": data[1].conflicts, "skipped": data[1].skipped}[kind]
+            if kind != "filed":
+                return len(items)  # the filter tests below do not narrow these
+        else:
+            fp = data[1]
+            if kind == "day":
+                items = [i for i in fp.to_file if i.day == data[2]]
+            elif kind == "month":
+                items = [i for i in fp.to_file if f"{i.day.year:04d}" == data[2] and f"{i.day.month:02d}" == data[3]]
+            else:
+                items = [i for i in fp.to_file if f"{i.day.year:04d}" == data[2]]
+        shown = set(review.filter_keys([i.src for i in items]))
+        return sum(1 for i in items if i.src in shown)
+
+    def assert_counts(self, review) -> None:
+        tree = review.query_one("#shots", Tree)
+        for node in _walk(tree.root):
+            kind = node.data[0] if node.data else None
+            if kind not in ("root", "flavor", "year", "month", "day", "filed", "conflicts", "skipped"):
+                continue
+            if kind == "flavor" and not node.allow_expand:
+                continue  # nothing under it: it says why instead (test_tree_lists_every_chosen_flavor)
+            count = plural(self.expected_count(review, node.data), "item")
+            plain = str(node.label)
+            with self.subTest(node=plain):
+                self.assertIn(f"  {count}", plain)
+                spans = {plain[s.start:s.end].strip(): str(s.style) for s in node.label.spans}
+                self.assertEqual(spans.get(count), "dim", plain)
+                self.assertNotRegex(plain, r"\d+ shots?|\(\d+\)")  # the old counts are gone
+
+    async def test_every_node_counts_the_screenshots_below_it(self):
+        self.save_tool_cfg()
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#shots", Tree)
+            self.assertTrue(str(tree.root.label).endswith("  6 items"), str(tree.root.label))
+            retail = next(n for n in tree.root.children if n.data[1].flavor.folder == "_retail_")
+            self.assertTrue(str(retail.label).endswith("  4 items"), str(retail.label))
+            day = next(n for n in _walk(tree.root) if n.data and n.data[0] == "day"
+                       and n.data[2].isoformat() == "2019-07-31")
+            self.assertEqual(len(day.children), 0)  # not opened yet: counted from the plan
+            self.assertTrue(str(day.label).endswith("  2 items"), str(day.label))
+            skipped = next(n for n in _walk(tree.root) if n.data and n.data[0] == "skipped")
+            self.assertTrue(str(skipped.label).startswith("Skipped  2 items"), str(skipped.label))
+            self.assert_counts(review)
+
+    async def test_counts_follow_the_filter(self):
+        self.save_tool_cfg(dest_dir=str(self.dest))
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            submit_filter(review, "2019-07")
+            await settle(app, pilot)
+            tree = review.query_one("#shots", Tree)
+            self.assertTrue(str(tree.root.label).endswith("  2 items"), str(tree.root.label))
+            self.assert_counts(review)
+            submit_filter(review, A[:-4])
+            await settle(app, pilot)
+            self.assertTrue(str(tree.root.label).endswith("  1 item"), str(tree.root.label))
+            self.assert_counts(review)
+
+    async def test_conflicts_and_duplicates_are_aligned_columns(self):
+        self.save_tool_cfg()  # in place
+        target = self.shots / "2019" / "07" / "31"
+        target.mkdir(parents=True)
+        (target / A).write_bytes(b"another size")  # a conflict
+        (target / "WoWScrnShot_073119_232800.jpg").write_bytes(b"shot-b")  # same size: a possible duplicate
+        (self.shots / "2019" / "08" / "01").mkdir(parents=True)
+        (self.shots / "2019" / "08" / "01" / "WoWScrnShot_080119_101010.PNG").write_bytes(b"other size")  # a conflict
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#shots", Tree)
+            conflicts = next(n for n in _walk(tree.root) if n.data and n.data[0] == "conflicts")
+            self.assertTrue(str(conflicts.label).startswith("Conflicts  2 items"), str(conflicts.label))
+            conflicts.expand()
+            await settle(app, pilot)
+            rows = list(conflicts.children)
+            self.assertEqual(len(rows), 2)
+            starts = {str(n.label).index("→") for n in rows}
+            self.assertEqual(len(starts), 1, [str(n.label) for n in rows])  # the target column lines up
+            for node in rows:
+                plain = str(node.label)
+                self.assertNotIn("  →", plain[:plain.index(node.data[1].src.name)])
+            day = next(n for n in _walk(tree.root) if n.data and n.data[0] == "day"
+                       and n.data[2].isoformat() == "2019-07-31")
+            self.assertTrue(str(day.label).endswith("  1 item"), str(day.label))
+            day.expand()
+            await settle(app, pilot)
+            (row,) = day.children
+            plain = str(row.label)
+            spans = {plain[s.start:s.end].strip(): str(s.style) for s in row.label.spans}
+            self.assertEqual(spans.get("possible duplicate"), "dim", plain)
+            self.assert_counts(review)
+
+    async def test_rows_are_cut_to_fit_the_pane(self):
+        self.save_tool_cfg()
+        target = self.shots / "2019" / "07" / "31"
+        target.mkdir(parents=True)
+        (target / A).write_bytes(b"another size")  # a conflict: its target is a long path
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#shots", Tree)
+            conflicts = next(n for n in _walk(tree.root) if n.data and n.data[0] == "conflicts")
+            conflicts.expand()
+            await pilot.press("x")  # every line open: the day files load
+            await settle(app, pilot)
+            for size in (BASE, TINY):
+                await pilot.resize_terminal(*size)
+                await settle(app, pilot)
+                room = tree.size.width - tree.styles.scrollbar_size_vertical
+                rows = [n for n in _walk(tree.root) if n.data and n.data[0] in ("file", "conflict")]
+                self.assertTrue(any(n.data[0] == "file" for n in rows))
+                for node in rows:
+                    with self.subTest(size=size, row=str(node.label)):
+                        self.assertLessEqual(_indent(node) + node.label.cell_len, room)
+                (row,) = conflicts.children
+                self.assertIn("…", str(row.label))
+                if size == TINY:
+                    continue  # 80 columns: a day's guides alone take most of the pane, so its row scrolls (G4d)
+                for node in _walk(tree.root):  # a count is never pushed off by a note after it
+                    if node.data and node.data[0] in ("day", "filed", "conflicts", "skipped"):
+                        self.assertLessEqual(_indent(node) + str(node.label).index(" item") + 6, room, str(node.label))
+
+    async def test_copy_mode_flavor_counts_its_filed_copies(self):
+        from wowtools.core.install import WowInstall
+        from wowtools.tools.screenshot_organizer.organizer import execute
+        from wowtools.tools.screenshot_organizer.planner import scan
+        self.save_tool_cfg(copy_mode=True)
+        plan = scan(WowInstall(self.root).flavors(), None, copy=True)
+        execute(plan.selectable, dest_dir=None, copy=True, dry_run=False, journal_dir=None, keep_journals=10)
+        app = self.make_app()
+        async with app.run_test(size=SIZE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#shots", Tree)
+            retail = next(n for n in tree.root.children if n.data[1].flavor.folder == "_retail_")
+            self.assertTrue(str(retail.label).endswith("  4 items"), str(retail.label))
+            self.assertTrue(str(retail.label).startswith("  "))  # nothing to file: no tick mark
+            filed = next(n for n in retail.children if n.data[0] == "filed")
+            self.assertTrue(str(filed.label).endswith("an identical copy is already in its date folder"))
+            self.assert_counts(review)
+
+
+def _indent(node) -> int:
+    """The cells in front of a node's label: the tree guides, and the ▶ / ▼ of a node that opens."""
+    depth, parent = 0, node.parent
+    while parent is not None:
+        depth, parent = depth + 1, parent.parent
+    return depth * node.tree.guide_depth + (2 if node.allow_expand else 0)
 
 
 def _walk(node):

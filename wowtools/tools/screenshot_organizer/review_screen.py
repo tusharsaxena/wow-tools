@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from rich.text import Text
+from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -23,12 +24,16 @@ from wowtools.core.text import plural
 from wowtools.tools.screenshot_organizer.journal import latest_undoable, read_journal, resolve_journal_dir
 from wowtools.tools.screenshot_organizer.naming import day_parts
 from wowtools.tools.screenshot_organizer.organizer import OrganizeError, OrganizeResult, execute
-from wowtools.tools.screenshot_organizer.planner import MAYBE_DUPLICATE, Plan, ShotItem, scan
-from wowtools.tools.screenshot_organizer.report import (RESULT_COLUMNS, STAGE_TITLES, confirm_text, destination_label,
-                                                        kind_class, result_rows, stopped_text, summary_rows)
+from wowtools.tools.screenshot_organizer.planner import FILED, MAYBE_DUPLICATE, Plan, ShotItem, scan
+from wowtools.tools.screenshot_organizer.report import (CONFLICT_CAPS, CONFLICT_MINIMUMS, FILE_CAPS, FILE_MINIMUMS,
+                                                        RESULT_COLUMNS, STAGE_TITLES, confirm_text, conflict_cells,
+                                                        destination_label, file_cells, kind_class, result_rows,
+                                                        stopped_text, summary_rows)
 from wowtools.tools.screenshot_organizer.settings import load_settings, validate_dest
 from wowtools.tools.screenshot_organizer.undo import undo
 from wowtools.ui.branding import BottomBar
+from wowtools.ui.columns import ColumnLayout, column_text, fit_columns, natural_widths
+from wowtools.ui.counts import with_count
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                 relabel_branch, two_pane_css)
 from wowtools.ui.result_screen import ResultBase, result_bindings, status_style
@@ -43,6 +48,16 @@ READ_ONLY = ("conflicts", "skipped", "conflict", "skip")  # tree nodes that cann
 FILED_TITLE = "Already filed"
 CHECKING_DEST = "Checking the destination folder"
 READING = "Reading Screenshots folders"
+CONFLICTS_NOTE = "  a different file with the same name is already filed"
+SKIPPED_NOTE = "  name not recognised"
+FILED_NOTE = "  an identical copy is already in its date folder"
+CONFLICT_STYLE = "bold #E8C547"
+# The file and conflict rows' columns as the shared fit takes them (feedback round 2 R4, STD-7.28): the conflict's
+# target gives way first, then the name (both cut in their middle); a file row's note is never cut, only left out.
+FILE_COLUMNS = ColumnLayout(caps=FILE_CAPS, minimums=FILE_MINIMUMS, shrink=((0,),))
+CONFLICT_COLUMNS = ColumnLayout(caps=CONFLICT_CAPS, minimums=CONFLICT_MINIMUMS, shrink=((1,), (0,)))
+ROW_KINDS = ("file", "conflict")  # the rows drawn in columns
+MARK_WIDTH = 2  # the tick mark in front of a file row's columns (a conflict row has none)
 
 
 class ShotProgressScreen(ProgressScreen):
@@ -130,6 +145,12 @@ class ShotReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         self._items_by_key: dict[tuple, list[ShotItem]] = {}
         self._filter_texts: dict[Path, tuple[str, ...]] = {}  # a shot's labels from its flavor down: the filter's
         self._kept: ModelFilter | None = None  # what the filter keeps of the plan (files load on expand)
+        self._counts: dict[tuple, int] = {}  # a node's leaf count (R2) by its _count_key, worked out per rebuild
+        # a file or conflict row's columns (R4): id(row data) -> its siblings' natural widths and the cells in front
+        # of its label (the tree's guides)
+        self._columns: dict[int, tuple[int, ...]] = {}
+        self._indents: dict[int, int] = {}
+        self._fitted_width = 0
         self._progress_screen: ShotProgressScreen | None = None
         self._last_filter: Widget | None = None
         self._scanning = False
@@ -386,7 +407,9 @@ class ShotReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         flavors = self._model(plan)
         kept = self._kept = self.model_filter(flavors, lambda n: n.children, lambda n: (self._filter_name(n.data),),
                                               key=self._ident)
+        self._counts = self._count_leaves(plan, kept)
         tree = self.query_one("#shots", Tree)
+        self._columns, self._indents, self._fitted_width = {}, {}, tree.size.width
         tree.clear()
         tree.root.data = ("root",)
         tree.root.set_label(self._label(tree.root.data))
@@ -396,6 +419,45 @@ class ShotReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         self.note_no_match(tree.root)
         tree.root.expand()
         self._update_summary()
+        self.call_after_refresh(self._fit_rows)  # built before the tree was laid out (shown after the scan)
+
+    @staticmethod
+    def _count_key(data) -> tuple:
+        kind = data[0]
+        if kind in ("conflicts", "skipped"):
+            return kind, data[1].flavor.folder
+        return ShotReviewScreen._key(data)
+
+    def _count_leaves(self, plan: Plan, kept: ModelFilter) -> dict[tuple, int]:
+        """Every node's leaf count (R2, STD-7.27), once per rebuild, as the tree shows them (under a search, the
+        rows the filter keeps, a day's files before it is opened too): the root, a flavor, a year, a month and a
+        day count the screenshots to file below them, the root and a flavor the already-filed ones too (each a
+        screenshot the run can file); Already filed, Conflicts and Skipped count their own rows (Conflicts and
+        Skipped are never filed, so they are left out of the flavor's count)."""
+        counts: dict[tuple, int] = {}
+
+        def add(*keys: tuple) -> None:
+            for key in keys:
+                counts[key] = counts.get(key, 0) + 1
+
+        for fp in plan.flavors:
+            folder = fp.flavor.folder
+            for item in fp.selectable:
+                if not kept.shows(ModelNode(("file", item))):
+                    continue
+                add(("root",), ("flavor", folder))
+                if item.state == FILED:
+                    add(("filed", folder))
+                    continue
+                year, month, _ = day_parts(item.day)
+                add(("year", folder, year), ("month", folder, year, month), ("day", folder, item.day))
+            for item in fp.conflicts:
+                if kept.shows(ModelNode(("conflict", item))):
+                    add(("conflicts", folder))
+            for skipped in fp.skipped:
+                if kept.shows(ModelNode(("skip", skipped))):
+                    add(("skipped", folder))
+        return counts
 
     def _add_node(self, parent, node: ModelNode, kept: ModelFilter) -> None:
         """Add node and what the filter keeps below it. Flavors, years and months open; a day and Already filed
@@ -409,10 +471,14 @@ class ShotReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
                 added.expand()
             return
         if kind in ("conflict", "skip"):
-            name = data[1].src.name if kind == "conflict" else data[1].path.name
-            note = f"  → {data[1].dst.parent}" if kind == "conflict" else ""
-            parent.add_leaf(Text.assemble((name, "dim"), (note, "dim")), data=data)
+            if kind == "conflict":
+                self._indents[id(data)] = _guides(parent) + parent.tree.guide_depth
+            parent.add_leaf(self._label(data), data=data)
             return
+        if kind == "conflicts":
+            rows = [child.data for child in node.children if kept.shows(child)]
+            natural = natural_widths(conflict_cells(row[1]) for row in rows)
+            self._columns.update((id(row), natural) for row in rows)
         added = parent.add(self._label(data), data=data,
                            expand=kind in ("flavor", "year", "month") or kept.opens(node))
         for child in node.children:
@@ -429,45 +495,95 @@ class ShotReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
         if node.data is None or node.data[0] not in ("day", "filed") or node.children:
             return
         kept = self._kept
-        for item in self._items(node.data):
-            data = ("file", item)
-            if kept is None or kept.shows(ModelNode(data)):
-                node.add_leaf(self._label(data), data=data)
+        rows = [("file", item) for item in self._items(node.data)]
+        rows = [data for data in rows if kept is None or kept.shows(ModelNode(data))]
+        natural = natural_widths(file_cells(data[1]) for data in rows)
+        indent = _guides(node) + node.tree.guide_depth
+        for data in rows:
+            self._columns[id(data)], self._indents[id(data)] = natural, indent
+            node.add_leaf(self._label(data), data=data)
 
     def _mark(self, items: list[ShotItem]) -> tuple[str, str]:
         return self.shown_tick_mark(items, lambda i: i.src)
 
     def _label(self, data) -> Text:
+        """A node's label: a group ends with its leaf count (R2, STD-7.27; before a note it has, so a long note never
+        pushes the count off the pane), a file or conflict row is in columns (R4, STD-7.28)."""
         kind = data[0]
+        if kind in ROW_KINDS:
+            return self._row_label(data)
+        if kind == "skip":
+            return Text(data[1].path.name, style="dim")
+        count = self._counts.get(self._count_key(data), 0)
         if kind == "conflicts":
-            n = len(data[1].conflicts)
-            return Text(f"Conflicts ({n}): a different file with the same name is already filed",
-                        style="bold #E8C547")
+            return with_count(Text("Conflicts", style=CONFLICT_STYLE), count).append(CONFLICTS_NOTE, "dim")
         if kind == "skipped":
-            return Text(f"Skipped ({len(data[1].skipped)}): name not recognised", style="dim")
+            return with_count(Text("Skipped", style="dim"), count).append(SKIPPED_NOTE, "dim")
         items = self._items(data)
         mark = self._mark(items)
-        if kind == "file":
-            item = data[1]
-            extra = ("  possible duplicate", "dim") if item.state == MAYBE_DUPLICATE else ""
-            return Text.assemble(mark, item.src.name, extra)
         if kind == "filed":
-            return Text.assemble(mark, (f"{FILED_TITLE} ({len(items)})", ACCENT),
-                                 ("  an identical copy is already in its date folder", "dim"))
+            return with_count(Text.assemble(mark, (FILED_TITLE, ACCENT)), count).append(FILED_NOTE, "dim")
         if kind == "root":
             name = self.scope_label
         elif kind == "flavor":
             fp = data[1]
             name = fp.flavor.display_name
-            if not items:  # nothing selectable: say why instead of a tick and "0 shots"
+            if not fp.items and not fp.skipped:  # no rows under it: say why instead of a tick and "0 items"
                 why = ("no Screenshots folder" if fp.missing else "could not be read (see Warnings)" if fp.error
                        else "nothing to file")
                 return Text.assemble("  ", (name, ACCENT), (f"  {why}", "dim"))
+            if not items:
+                mark = ("  ", "")  # nothing to file (only already filed, conflicts or skipped): nothing to tick
         elif kind == "day":
             name = data[2].isoformat()
         else:
             name = data[-1]
-        return Text.assemble(mark, (name, ACCENT), (f"  {plural(len(items), 'shot')}", "dim"))
+        return with_count(Text.assemble(mark, (name, ACCENT)), count)
+
+    def _row_room(self, data) -> int | None:
+        """The cells a row's columns may take in the tree pane (None before the tree is laid out)."""
+        tree = self.query_one("#shots", Tree)
+        if tree.size.width <= 0:
+            return None
+        width = tree.size.width - tree.styles.scrollbar_size_vertical  # a scrollbar may come with more rows
+        mark = MARK_WIDTH if data[0] == "file" else 0
+        return max(0, width - self._indents.get(id(data), 0) - mark)
+
+    def _row_label(self, data) -> Text:
+        """A file row (name · possible duplicate) or a conflict row (name · target folder, dim) in columns as wide
+        as its siblings' widest cells, fitted to the pane (R4)."""
+        item = data[1]
+        if data[0] == "file":
+            cells, layout, styles = file_cells(item), FILE_COLUMNS, ("", "dim")
+        else:
+            cells, layout, styles = conflict_cells(item), CONFLICT_COLUMNS, ("dim", "dim")
+        natural = self._columns.get(id(data)) or natural_widths([cells])
+        widths, gap = fit_columns(natural, self._row_room(data), layout)
+        columns = column_text(cells, widths, styles, gap, middle=(0, 1))
+        if data[0] == "conflict":
+            return columns
+        text = Text()
+        text.append(*self._mark([item]))
+        text.append_text(columns)
+        return text
+
+    def on_resize(self, event: events.Resize) -> None:
+        self.call_after_refresh(self._fit_rows)
+
+    def _fit_rows(self) -> None:
+        """Fit the file and conflict rows again to the tree pane's width when it changed (R4)."""
+        if not self.is_attached:
+            return
+        tree = self.query_one("#shots", Tree)
+        if tree.size.width == self._fitted_width:
+            return
+        self._fitted_width = tree.size.width
+        stack = list(tree.root.children)
+        while stack:
+            node = stack.pop()
+            if node.data is not None and node.data[0] in ROW_KINDS:
+                node.set_label(self._row_label(node.data))
+            stack.extend(node.children)
 
     def _refresh_labels(self, node=None) -> None:
         """Relabel node's branch and its ancestors (everything a tick there can change), or the whole tree."""
@@ -657,3 +773,11 @@ class ShotReviewScreen(WarningsHost, TreeFilter, ReviewBase, Screen[str]):
             return
         self._run(ShotProgressScreen(first_stage="undo"),
                   lambda progress: undo(path, wow_root=wow_root, progress=progress))
+
+
+def _guides(node) -> int:
+    """The tree guides' cells in front of a node's label (the root has none: it is shown, at depth 0)."""
+    depth, parent = 0, node.parent
+    while parent is not None:
+        depth, parent = depth + 1, parent.parent
+    return depth * node.tree.guide_depth
