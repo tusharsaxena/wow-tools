@@ -1,7 +1,8 @@
 """The Macro Editor's browse screen (config tools spec ME2-ME7, ME13, ME14; X1-X5): every macro set of the chosen
 flavors (a scan in a worker, scanner.scan_sets) as the shared character tree, (flavor ›) account › "Account macros"
 and realm › character, each set with its slot use (`12/30`, `30/30 FULL`) and its macros under it, one line each:
-`name · first line · n/255`. A set in a layout the reader does not know (ME14) is read-only: greyed, never ticked or
+name, first line and `n/255` in aligned columns (feedback round 2 R4, STD-7.28); every node with children ends with
+the dim count of the macro lines the tree shows below it (R2, STD-7.27). A set in a layout the reader does not know (ME14) is read-only: greyed, never ticked or
 written, and listed in the warnings view (`!`).
 
 Ticks: a macro's tick picks it for Copy, Delete and Replace text…; a set's tick (Space on a character or on Account
@@ -14,11 +15,14 @@ run of the shared client-file pipeline (RunActions: WoW check, confirm, progress
 it all back. Leaving with staged changes asks first. Dismisses with "flavors", "tools" or "quit"."""
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Collection, Hashable, Iterable, Sequence
 from pathlib import Path
 from typing import ClassVar, NamedTuple
 
+from rich.cells import cell_len
 from rich.text import Text
+from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -39,17 +43,19 @@ from wowtools.tools.macro_editor.events import SV_TOOL
 from wowtools.tools.macro_editor.journal import latest_undoable, read_journal, resolve_journal_dir
 from wowtools.tools.macro_editor.model import MACRO_FILE, MacroSet
 from wowtools.tools.macro_editor.ops import Staged, build_changes, effective_macros
-from wowtools.tools.macro_editor.report import (ACCOUNT_MACROS, FILE_COLUMNS, STAGE_TITLES, STATUS_COLOURS,
-                                                UNDO_COLUMNS, apply_confirm, apply_groups, file_rows, macro_text,
-                                                recovery_text, slots_text, summary_rows, undo_confirm,
-                                                undo_detail_rows, undo_summary_rows)
+from wowtools.tools.macro_editor.report import (ACCOUNT_MACROS, FILE_COLUMNS, MACRO_CAPS, MACRO_MINIMUMS,
+                                                STAGE_TITLES, STATUS_COLOURS, UNDO_COLUMNS, apply_confirm,
+                                                apply_groups, file_rows, macro_cells, recovery_text, slots_text,
+                                                summary_rows, undo_confirm, undo_detail_rows, undo_summary_rows)
 from wowtools.tools.macro_editor.runner import ApplyError, run_apply
 from wowtools.tools.macro_editor.scanner import scan_sets
 from wowtools.tools.macro_editor.settings import load_settings, resolve_root
 from wowtools.tools.macro_editor.undo import (UndoError, UndoResult, leave, pending_recovery, recover, undo_flavors,
                                               undo_run)
 from wowtools.ui.branding import BottomBar
-from wowtools.ui.character_tree import CharacterNode, character_label, node_keys, populate_characters
+from wowtools.ui.character_tree import CharacterNode, node_keys, populate_characters
+from wowtools.ui.columns import ColumnLayout, column_text, cut_middle, fit_columns, natural_widths
+from wowtools.ui.counts import COUNT_GAP, COUNT_STYLE, count_text
 from wowtools.ui.dialogs import (ACCENT, REVIEW_HINT, TREE_BINDINGS, TREE_HINT, ConfirmScreen, ProgressScreen,
                                  UnfinishedRunScreen, relabel_branch, theme_colour, two_pane_css)
 from wowtools.ui.result_screen import ResultScreen
@@ -65,6 +71,14 @@ NO_MARK = "  "
 # The marks of a staged macro (the Saved Variables Browser's symbols, D12), before its line.
 CHANGED_MARK, NEW_MARK, DELETED_MARK = "✎", "+", "✗"
 MATCH_STYLE = "bold underline"  # a macro the search matches, while every macro is shown
+MARK_WIDTH = 2  # the tick mark in front of every line but the root's (and a staged mark's room, when a sibling has one)
+TOGGLE_WIDTH = 2  # the ▶ / ▼ in front of a node that opens
+GROUP_NAME_MINIMUM = 4  # a node's name is cut (in its middle) down to this so its count fits the pane
+# R4: a macro line (report.MACRO_CAPS / MACRO_MINIMUMS); a set's line, a character's or Account macros', is
+# name · slots (or read-only) · count: the name gives way, cut in its middle; the slots are never cut, only dropped,
+# and past that the name alone is cut to the room.
+MACRO_COLUMNS = ColumnLayout(caps=MACRO_CAPS, minimums=MACRO_MINIMUMS, shrink=((1,), (0,)), drop=(1, 2))
+SET_COLUMNS = ColumnLayout(caps=(None, None, None), minimums=(GROUP_NAME_MINIMUM, 0, 0), shrink=((0,),), drop=(1,))
 
 
 class SetKey(NamedTuple):
@@ -208,6 +222,11 @@ class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryAc
         self._offer_on_resume = False
         self.summary_text = ""
         self._stale = False  # an Apply or Undo changed the files: read them again when the review is shown
+        self._counts: Counter[Hashable] = Counter()  # the macro lines the tree shows under each node (R2), per build
+        self._macro_widths: dict[Path, tuple[tuple[int, ...], bool]] = {}  # a set's macro columns and whether one
+        # of its shown lines has a staged mark (R4), per build
+        self._set_widths: dict[Hashable, tuple[int, ...]] = {}  # a realm's characters' columns, per build
+        self._fitted_width = 0  # the tree's width the labels were last fitted to
 
     # --- layout ------------------------------------------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -465,12 +484,6 @@ class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryAc
     def _character_key(self, character: Character) -> SetKey:
         return SetKey(character.path / MACRO_FILE)
 
-    def _character_label(self, character: Character) -> str:
-        mset = self.sets.get(character.path / MACRO_FILE)
-        if mset is None or mset.read_only:
-            return character.name
-        return f"{character.name}  {slots_text(len(effective_macros(self.staged, mset)), mset.limit, mset.limit_known)}"
-
     def _disabled(self, character: Character) -> str | None:
         mset = self.sets.get(character.path / MACRO_FILE)
         return READ_ONLY if mset is not None and mset.read_only else None
@@ -479,10 +492,13 @@ class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryAc
         """The macro lines of a set under `node`; returns their tick keys. With the search narrowing, only the
         matching macros (all of them when the set's group matches), and the node opens."""
         whole = not self.narrowing or self.text_filter.path_matches(self.group_texts(mset))
+        shown = [(macro, state) for macro, state in macro_rows(self.staged, mset) if whole or self.macro_matches(macro)]
+        self._macro_widths[mset.path] = (natural_widths(macro_cells(macro) for macro, _ in shown),
+                                         any(state for _, state in shown))
+        for ident in self._set_idents(mset):
+            self._counts[ident] += len(shown)
         keys: list[Hashable] = []
-        for macro, state in macro_rows(self.staged, mset):
-            if not whole and not self.macro_matches(macro):
-                continue
+        for macro, state in shown:
             key = MacroKey(mset.path, macro.id) if state != "deleted" and not mset.read_only else None
             data = MacroNode("macro", mset, macro, key, state)
             node.add_leaf(self._macro_label(data), data=data)
@@ -491,6 +507,14 @@ class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryAc
         if self.narrowing and node.children:
             node.expand()
         return keys
+
+    def _set_idents(self, mset: MacroSet) -> tuple[Hashable, ...]:
+        """The nodes a set's macro lines are counted under (R2): its own (a character's or Account macros'), its
+        realm's, its account's, its flavor's and the root's."""
+        account = mset.account.path
+        own: tuple[Hashable, ...] = (("set", mset.path),) if mset.character is None else \
+            (("character", mset.character.path), ("realm", account, mset.character.realm))
+        return (*own, ("account", account), ("flavor", mset.flavor.folder), ("root",))
 
     def _character_extra(self, character: Character, node: TreeNode) -> list[Hashable] | None:
         mset = self.sets.get(character.path / MACRO_FILE)
@@ -519,12 +543,15 @@ class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryAc
         cursor = tree.cursor_node.data if tree.cursor_node is not None else None
         opened = self._opened(tree)
         tree.clear()
+        self._counts.clear()
+        self._macro_widths.clear()
+        self._fitted_width = tree.size.width
         many = len(self.flavors) > 1
         for flavor in self.flavors:
             parent = tree.root.add(Text(flavor.display_name), data=["flavor", flavor.folder, ()],
                                    expand=True) if many else tree.root
             scanned = self.scanned
-            keys = populate_characters(parent, flavor, key=self._character_key, label=self._character_label,
+            keys = populate_characters(parent, flavor, key=self._character_key, label=lambda c: c.name,
                                        disabled=self._disabled,
                                        account_extra=self._account_extra if scanned else None,
                                        character_extra=self._character_extra if scanned else None,
@@ -534,12 +561,111 @@ class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryAc
                     parent.remove()
                     continue
                 parent.data = ["flavor", flavor.folder, tuple(keys)]
-                parent.set_label(self._label(parent.data))
+        self._set_widths = self._character_widths(tree)
+        self._relabel_all(tree)  # populate_characters labels its nodes before their counts are known
         self.note_no_match(tree.root)
         tree.root.expand()
         self._reopen(tree, opened)
         self._restore_cursor(tree, cursor)
         self._update_summary()
+        self.call_after_refresh(self._fit_rows)  # a build before the tree was laid out fits once it is
+
+    # --- labels: counts (R2) and columns (R4) ----------------------------------------------------
+    def _character_widths(self, tree: Tree) -> dict[Hashable, tuple[int, ...]]:
+        """The name · slots · count columns of the characters the tree shows, per realm (R4): a realm's characters
+        line up."""
+        rows: dict[Hashable, list[tuple[str, ...]]] = {}
+        for node in self._walk(tree):
+            data = node.data
+            if isinstance(data, CharacterNode) and data.kind == "character" and data.character is not None:
+                rows.setdefault(("realm", data.account.path, data.realm), []).append(self._set_cells(data))
+        return {realm: natural_widths(cells) for realm, cells in rows.items()}
+
+    def _relabel_all(self, tree: Tree) -> None:
+        relabel_branch(tree, None, self._label)
+        tree.root.set_label(self._group_text(self.scope_label, ACCENT, self._count_ident(("root",)), 0, opens=True,
+                                             mark=0))
+
+    def on_resize(self, event: events.Resize) -> None:
+        self.call_after_refresh(self._fit_rows)
+
+    def _fit_rows(self) -> None:
+        """Fit every line again to the tree pane's width when it changed (R4)."""
+        if not self.is_attached:
+            return
+        tree = self.query_one("#macros", Tree)
+        if tree.size.width == self._fitted_width:
+            return
+        self._fitted_width = tree.size.width
+        self._relabel_all(tree)
+
+    def _depth(self, kind: str) -> int:
+        """How deep a node of `kind` sits below the root (a flavor's level only with All flavors); an account
+        macro's line is "set-macro", a character's "character-macro"."""
+        return {"flavor": 1, "account": 1, "set": 2, "realm": 2, "set-macro": 3, "character": 3,
+                "character-macro": 4}[kind] + (kind != "flavor" and len(self.flavors) > 1)
+
+    def _room(self, depth: int, *, opens: bool, mark: int = MARK_WIDTH) -> int | None:
+        """The cells a line may take behind its guides, its ▶ / ▼ when it `opens` and its marks (None before the
+        tree is laid out)."""
+        if not self.is_attached:
+            return None
+        tree = self.query_one("#macros", Tree)
+        if tree.size.width <= 0:
+            return None
+        width = tree.size.width - tree.styles.scrollbar_size_vertical  # a scrollbar may come with more lines
+        return max(0, width - depth * tree.guide_depth - (TOGGLE_WIDTH if opens else 0) - mark)
+
+    def _count_ident(self, ident: Hashable) -> tuple[str, str] | None:
+        """A node's dim count (R2), once the scan is in (before it, no node has its macros yet)."""
+        return (f"{COUNT_GAP}{count_text(self._counts[ident])}", COUNT_STYLE) if self.scanned else None
+
+    def _group_text(self, name: str, style: str, note: tuple[str, str] | None, depth: int, *, opens: bool,
+                    mark: int = MARK_WIDTH) -> Text:
+        """A node's name and its dim count, the name cut in its middle so the count fits the pane; with no room
+        for both, the name alone, cut to the room."""
+        room = self._room(depth, opens=opens, mark=mark)
+        if note is None:
+            return Text(name if room is None else cut_middle(name, max(1, room)), style=style)
+        after, after_style = note
+        if room is not None and cell_len(name) + cell_len(after) > room:
+            if room - cell_len(after) < GROUP_NAME_MINIMUM:
+                return Text(cut_middle(name, max(1, room)), style=style)
+            name = cut_middle(name, room - cell_len(after))
+        return Text.assemble((name, style), (after, after_style))
+
+    def _set_cells(self, data: CharacterNode | SetNode) -> tuple[str, str, str]:
+        """A character's or Account macros' cells (R4): its name, its slot use (or read-only) and its count, ""
+        when it has no macro lines (it doesn't open) or before the scan."""
+        if isinstance(data, SetNode):
+            mset, name, ident = data.mset, ACCOUNT_MACROS, ("set", data.mset.path)
+        else:
+            mset = self.sets.get(data.character.path / MACRO_FILE) if data.character is not None else None
+            name, ident = data.text, ("character", data.character.path if data.character is not None else None)
+        if mset is None:
+            slots = ""
+        elif mset.read_only:
+            slots = READ_ONLY
+        else:
+            slots = slots_text(len(effective_macros(self.staged, mset)), mset.limit, mset.limit_known)
+        count = count_text(self._counts[ident]) if self.scanned and self._counts[ident] else ""
+        return name, slots, count
+
+    def _set_label(self, data: CharacterNode | SetNode, depth: int, name_style: str) -> Text:
+        """A character's or Account macros' line: its tick mark, then name · slots · count in columns as wide as
+        its realm's characters' widest cells, fitted to the pane (R4)."""
+        cells = self._set_cells(data)
+        keys = data.keys
+        mark = self.mark(keys) if keys else (NO_MARK, "")
+        natural = (self._set_widths.get(("realm", data.account.path, data.realm))
+                   if isinstance(data, CharacterNode) else None) or natural_widths([cells])
+        read_only = cells[1] == READ_ONLY
+        styles = ("dim" if read_only else name_style, "dim italic" if read_only else "", COUNT_STYLE)
+        widths, gap = fit_columns(natural, self._room(depth, opens=bool(cells[2])), SET_COLUMNS)
+        text = Text.assemble(mark)
+        text.append_text(column_text(cells, widths, styles, gap, middle=(0,)))
+        text.rstrip()  # a set with no count beside one with it leaves no padding behind
+        return text
 
     @staticmethod
     def _node_ident(data) -> Hashable | None:
@@ -579,34 +705,48 @@ class MacroReviewScreen(WarningsHost, MacroEditActions, TreeFilter, SvRecoveryAc
                 return
 
     def _macro_label(self, data: MacroNode) -> Text:
-        """The tick, the staged mark (short, before the line: a macro line is often wider than the tree) and
-        `name · first line · n/255`."""
+        """The tick, the staged mark (short, before the line: a macro line is often wider than the tree; its room
+        kept blank on the other lines of a set that has one, so the names line up) and name · first line ·
+        `n/255` in columns as wide as the set's widest cells, fitted to the pane (R4)."""
         parts: list[tuple[str, str]] = [self.shown_tick_mark([data.key]) if data.key is not None else (NO_MARK, "")]
+        cells = macro_cells(data.macro)
+        natural, staged = self._macro_widths.get(data.mset.path) or (natural_widths([cells]), bool(data.state))
         if data.state == "deleted":
             parts.append((f"{DELETED_MARK} ", f"bold {theme_colour(self.app, 'error')}"))
         elif data.state:
             parts.append((f"{CHANGED_MARK if data.state == 'changed' else NEW_MARK} ",
                           f"bold {theme_colour(self.app, 'warning')}"))
+        elif staged:
+            parts.append((NO_MARK, ""))
         style = "dim strike" if data.state == "deleted" else "dim" if data.mset.read_only else ""
+        styles = (style, style, style)
         if data.state != "deleted" and not self.narrowing and self.macro_matches(data.macro):
-            style = MATCH_STYLE
-        parts.append((macro_text(data.macro), style))
-        return Text.assemble(*parts)
+            styles = (MATCH_STYLE, "", "")
+        kind = "set-macro" if data.mset.character is None else "character-macro"
+        room = self._room(self._depth(kind), opens=False, mark=MARK_WIDTH * (2 if staged else 1))
+        widths, gap = fit_columns(natural, room, MACRO_COLUMNS)
+        text = Text.assemble(*parts)
+        text.append_text(column_text(cells, widths, styles, gap, middle=(0,)))
+        text.rstrip()
+        return text
 
     def _label(self, data) -> Text:
         if isinstance(data, MacroNode):
             return self._macro_label(data)
         if isinstance(data, SetNode):
-            mset = data.mset
-            if mset.read_only:
-                return Text.assemble((NO_MARK, ""), (ACCOUNT_MACROS, "dim"), (f"  {READ_ONLY}", "dim italic"))
-            count = len(effective_macros(self.staged, mset))
-            return Text.assemble(self.mark(data.keys), (ACCOUNT_MACROS, "bold"),
-                                 (f"  {slots_text(count, mset.limit, mset.limit_known)}", ""))
+            return self._set_label(data, self._depth("set"), "bold")
         if isinstance(data, CharacterNode):
-            return character_label(data, self.mark)
-        mark = self.mark(data[2]) if data[2] else (NO_MARK, "")
-        return Text.assemble(mark, (flavor_name(data[1]), "bold"))
+            if data.kind == "character":
+                return self._set_label(data, self._depth("character"), "")
+            ident = ("realm", data.account.path, data.realm) if data.kind == "realm" else ("account", data.account.path)
+            name = self._group_text(data.text, "bold", self._count_ident(ident), self._depth(data.kind), opens=True)
+        else:
+            name = self._group_text(flavor_name(data[1]), "bold", self._count_ident(("flavor", data[1])),
+                                    self._depth("flavor"), opens=True)
+        keys = data.keys if isinstance(data, CharacterNode) else data[2]
+        text = Text.assemble(self.mark(keys) if keys else (NO_MARK, ""))
+        text.append_text(name)
+        return text
 
     def _refresh_labels(self, node: TreeNode | None = None) -> None:
         relabel_branch(self.query_one("#macros", Tree), node, self._label)

@@ -1,4 +1,4 @@
-"""Text for the Macro Editor's review, popups and result screen (config tools spec ME2-ME6): slot use, a macro's line,
+"""Text for the Macro Editor's review, popups and result screen (config tools spec ME2-ME6): slot use, a macro's cells,
 the cross-flavor paste warnings (ME5), the Apply / Dry run confirm (counts, one group per file in its detail tree,
 the ME6 action bar warning when a macro is deleted) and the result rows, one per file. The progress stage titles,
 the Undo confirm, the unfinished-run text and the undo rows are the shared pipeline's (core/sv_report.py),
@@ -20,10 +20,10 @@ from wowtools.tools.macro_editor.explain import unknown_terms
 from wowtools.tools.macro_editor.model import MacroSet
 from wowtools.tools.macro_editor.ops import Staged, body_length, build_changes
 
-__all__ = ["ACCOUNT_MACROS", "DELETE_WARNING", "FILE_COLUMNS", "RESULT_TEXT", "STAGE_TITLES", "STATUS_COLOURS",
-           "UNDO_COLUMNS", "apply_confirm", "apply_groups", "file_rows", "macro_text", "paste_warnings",
-           "recovery_text", "scope_text", "set_text", "slots_text", "summary_rows", "undo_confirm", "undo_detail_rows",
-           "undo_summary_rows"]
+__all__ = ["ACCOUNT_MACROS", "DELETE_WARNING", "FILE_COLUMNS", "MACRO_CAPS", "MACRO_MINIMUMS", "RESULT_TEXT",
+           "STAGE_TITLES", "STATUS_COLOURS", "UNDO_COLUMNS", "apply_confirm", "apply_groups", "file_rows",
+           "macro_cells", "paste_warnings", "recovery_text", "scope_text", "set_text", "slots_text", "summary_rows",
+           "undo_confirm", "undo_detail_rows", "undo_summary_rows"]
 
 ACCOUNT_MACROS = "Account macros"
 FILE_COLUMNS = ("Flavor", "Account", "Macros", "Result")
@@ -33,6 +33,11 @@ UNCONFIRMED = "unconfirmed"
 # ME6 (V5): an action bar button points at a macro id; a deleted macro's buttons go with it.
 DELETE_WARNING = "Action bar buttons that use the deleted macros will be removed."
 CROSS_FLAVOR = "a macro written for one game version may not work in another."
+# A macro line's columns (feedback round 2 R4, STD-7.28): name · first line · length. The first line gives way
+# first, cut at its end (cap 48, minimum 8), then the name, cut in its middle (minimum 6: a name is at most 16
+# characters); the length is never cut, only dropped (after the first line).
+MACRO_CAPS = (None, 48, None)
+MACRO_MINIMUMS = (6, 8, 0)
 
 
 def slots_text(count: int, limit: int, known: bool = True) -> str:
@@ -44,10 +49,10 @@ def slots_text(count: int, limit: int, known: bool = True) -> str:
     return f"{text} {UNCONFIRMED}" if not known else text
 
 
-def macro_text(macro: Macro) -> str:
-    """A macro's line in the tree: `name · first body line · n/255` (ME2)."""
+def macro_cells(macro: Macro) -> tuple[str, str, str]:
+    """A macro's line in the tree as its columns (ME2, R4): its name, its first body line and `n/255`."""
     first = macro.body.split("\n", 1)[0]
-    return f"{macro.name} · {first} · {body_length(macro.body)}/{BODY_LIMIT}"
+    return macro.name, first, f"{body_length(macro.body)}/{BODY_LIMIT}"
 
 
 def set_text(mset: MacroSet) -> str:

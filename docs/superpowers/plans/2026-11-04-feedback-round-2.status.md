@@ -10,7 +10,9 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-feedback-round-2.md`. R
   fixes follow as for the other tasks.
 - **G8 (Config Copier) finished and gated 2026-11-05** (feat commit); its review and fixes follow as for the other
   tasks.
-- **Then:** G9 Macro Editor, then **G9b** (new, user decision U1 below), then G10.
+- **G9 (Macro Editor) finished and gated 2026-11-05** (feat commit); its review and fixes follow as for the other
+  tasks.
+- **Then:** G9 review, then **G9b** (new, user decision U1 below), then G10.
 - **U1 (user, 2026-11-05): option (b) for the 80-column finding (G4r).** Amend STD-7.28 for every tool: a name never
   shrinks below its column minimum; at very narrow widths the row scrolls sideways instead. Change the shared
   `wowtools/ui/columns.py` fallback accordingly (all tools), and update the tests that expect a cut name at 80
@@ -18,7 +20,7 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-feedback-round-2.md`. R
 - **Workflow to resume with:** the script
   `~/.claude/projects/-mnt-d-Profile-Users-Tushar-Documents-GIT-wow-tools/28d84149-de96-442d-bbd6-be79f7db079a/workflows/scripts/feedback-round-2.js`
   takes `{"tasks": [...], "sizes": [125, 125]}`; its categorise step re-runs G0's re-sort (already applied by G2),
-  so on resume either drop that phase or run the tasks without it. Remaining tasks: G8 review, G9, G9b, G10.
+  so on resume either drop that phase or run the tasks without it. Remaining tasks: G9 review, G9b, G10.
 
 | Task | What | Status | Commit | Notes |
 |---|---|---|---|---|
@@ -31,7 +33,7 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-feedback-round-2.md`. R
 | G6 | Ace3 Profile Manager counts + columns | done | (this commit) | 8 new tests: 7 in test_ace_app NodeCountsAndColumnsTest (every node counts the profiles below it, counts follow the filter and the Show boxes, a pending delete is still counted, By character counts its addon rows incl. under a filter, sibling rows are aligned columns in both views, rows fit the pane at 120x30 and 80x24 with no trailing padding, the blacklist tree counts its addons incl. under a filter) and test_ui_columns::test_the_count_is_kept_by_cutting_the_name (fit_keeping_count moved to ui/columns, G6c). Existing tests updated to the new labels, none loosened: test_ace_report (3 `label` assertions now `cells`, +2 checks), test_ace_app ReviewTest (`Default  3 characters  Default`, `Gone - Realm1 +no character folder`, `KickCD +Default`; the locked deleted/removed rows check the mark behind the alignment pad), test_interface_backup_app FlavorRowFitTest (calls ui/columns' copy), test_structure (pins fit_keeping_count). Stale screenshots: ace3-profile-manager/review.png (also in README.md), review-by-character.png. Gate: run_tests --all 2399 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK. Review fixes (fix: G6 review fixes, G6r): a profile row's `N characters` counts the characters the tree shows under it (search, Leftover characters), not every character of the database; +1 test (test_a_profile_counts_the_characters_it_shows: `mierin` and Leftover characters off, every profile's count matches its visible live children); the user guide says so. Gate after the fixes: run_tests --all 2400 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
 | G7 | Saved Variables Browser counts + columns | done | (this commit) | 6 new tests: 4 in test_sv_browser_app NodeCountsAndColumnsTest (every group counts the files below it before any is read, counts follow the filter, file and key rows are aligned columns, rows fit the pane), 2 in test_sv_browser_search_ui ResultsCountsAndColumnsTest (Results groups count the hits they show, hit rows are aligned columns). Existing key and hit label checks read the row through `one_piece` (G7f), none loosened. Gate: run_tests --all 2406 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK. Review fixes (G7r, fix commit): key/path and value shrink together, the wider first; 2 new tests in ResultsCountsAndColumnsTest (a hit keeps its value at 120x30, Results rows fit the pane at 120x30 and 80x24); 80-column bare `…` deferred to G9b. Gate: 2408 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
 | G8 | Config Copier counts + columns | done | (this commit) | 5 new tests: 4 in test_config_copier_app NodeCountsAndColumnsTest (every node counts the pairs below it, counts follow the search and the file boxes, pair lines are aligned columns, every line fits the pane at 120x30 and 80x24) and test_config_copier_run::test_pair_cells; the app tests moved onto a CopierTestCase base (setUp and steps), none changed or loosened. Stale screenshots: config-copier/review.png (also in README.md). Gate: run_tests --all 2413 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK. Review fixes (G8r, fix commit): a greyed character's name · reason are aligned columns per realm (`REASON_COLUMNS`, `_greyed_widths`); 1 new test (test_greyed_reasons_are_aligned_columns: a second other-flavor character made in the test, reasons start at the same cell, fit at 80x24 with the reason whole or dropped). Gate: 2414 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
-| G9 | Macro Editor counts + columns | todo | | |
+| G9 | Macro Editor counts + columns | done | (this commit) | 4 new tests in test_macro_editor_app NodeCountsAndColumnsTest (every node counts the macro lines below it, a staged delete included; counts follow the search, Only matching macros and the Names / Bodies boxes; macro and character rows are aligned columns, a staged mark keeping its siblings' names in line; every row fits the pane at 120x30 and 80x24). Existing assertions updated to the new labels, none loosened: test_browse_lists_sets_with_slot_counts (flavor `Retail  6 items`, `/30 unconfirmed  1 item`, the Heal row pinned exactly as fitted at 120x30: `Heal Dænerys /cast [@mouseover,help,… 41/255`) and test_macro_editor_run::test_set_and_macro_texts (`macro_cells` replaces `macro_text`). Stale screenshots: macro-editor/browse.png (also in README.md). Gate: run_tests --all 2418 tests, WSL OK (10 skipped), Windows OK (86 skipped); ruff clean; gen_event_docs --check OK |
 | G9b | STD-7.28 amendment: names keep their minimum, rows scroll (U1) | todo | | |
 | G10 | CHANGELOG, whole-branch review, push, CI | todo | | |
 
@@ -285,3 +287,35 @@ Branch `feat/config-editor-feedback-1`. Plan `2026-11-04-feedback-round-2.md`. R
   its middle down to 4 cells, the reason is never cut, only dropped. The source's `source` stays a lone greyed row
   among counted targets (a count is not a column, STD-7.27). The shared fixture is unchanged (other tests count its
   characters); the test adds `Bobbington` to the other flavor's realm itself.
+- G9a: the Macro Editor's leaf is a macro line as `macro_rows` lists it under the search: a staged delete is still
+  counted (it stays a struck line until Apply, as G6a's pending delete), while the set's slots already leave it out
+  (`Bob  1/30  2 items`); a staged new or changed macro is counted like any line. A set in a layout the reader
+  doesn't know lists no macro (`parsed.macros` is empty), so a read-only character has no count, only `read-only`.
+- G9c: the root, a flavor, an account, a realm, a character and Account macros end with their count,
+  added up in `_add_macros` as the tree is built (`_set_idents`: the set's own node, its realm, account, flavor and
+  the root; every set is read by the scan, nothing loads on expand). A realm or an account with no macro lines says
+  `0 items` (it has children: characters, Account macros or `no characters`); a set with none is a leaf, no count.
+  Before the scan finishes no node shows a count (`_count_ident` None), so nothing reads `0 items` while loading.
+- G9d: a macro line is columns `report.macro_cells` (replaces `macro_text`; the ` · ` separators are gone): name ·
+  first line · `n/255`, widths per set over its shown lines. `MACRO_COLUMNS`: the first line gives way first, cut
+  at its end (cap 48, minimum 8), then the name, cut in its middle (minimum 6); dropped: the first line, then the
+  length; the length is never cut. At 120x30 with All flavors Aellâ's lines need a few cells more than the pane, so
+  their first lines are cut (`Heal Dænerys /cast [@mouseover,help,… 41/255`) and every name and length reads whole.
+- G9e: the staged mark (`✎` / `+` / `✗`) stays before the line, and the other lines of a set that has one keep its
+  two cells blank, so the names and columns still line up (a set with nothing staged has no extra room). A row's
+  style is as before (deleted `dim strike`, read-only `dim`) on every cell; a search match while every macro is
+  shown underlines the name only (`MATCH_STYLE`), so the alignment padding is not underlined.
+- G9f: a character's or Account macros' line is name · slots (or `read-only`, dim italic) · count (`SET_COLUMNS`),
+  the count in the last column so the line ends with it like every other node (STD-7.27), aligned across a realm's
+  shown characters (`_character_widths`, per build: `Aellâ  3/30  3 items` / `Bob    2/30  2 items`). The name
+  gives way, cut in its middle down to 4 cells; the slots are never cut, only dropped; past that the name alone
+  (the count goes too: the G8e case). The character label hook passes the bare name (`label=lambda c: c.name`),
+  the slots are drawn by the screen. Account, realm and flavor lines are name and count only (`_group_text`, the
+  copier's rule: not column rows).
+- G9g: `_room` / `_group_text` / `_fit_rows` are the Macro Editor's own copies (as G7g, G8c); with G5g's
+  `tree_room` they join the G10 whole-branch review's candidates for one `ui/` helper. At 80x24 a macro line sits
+  16 to 20 cells deep in the 26-cell pane, so the names are cut to a few cells (`He…s`) with the first line and the
+  length dropped, and realm and character lines lose their counts (name alone): STD-7.28 "a row always fits", the
+  G4r / G8e finding again, left to task G9b (U1); the fit test skips rows whose guides and marks already fill the pane.
+- G9h: no CHANGELOG line here (G10 adds the suite-wide one). Stale screenshot: `macro-editor/browse.png` (also in
+  README.md); the edit screen is unchanged.

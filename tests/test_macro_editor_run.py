@@ -180,8 +180,8 @@ class MacroRunTest(unittest.TestCase):
         self.assertEqual(report.slots_text(3, 30, known=False), "3/30 unconfirmed")  # ME3: Retail's, not sourced
         self.assertEqual(report.slots_text(30, 30, known=False), "30/30 FULL unconfirmed")
         heal = self.macro(aella, "Heal Dænerys")
-        self.assertEqual(report.macro_text(heal),
-                         "Heal Dænerys · /cast [@mouseover,help,nodead] Flash Heal · 41/255")
+        self.assertEqual(report.macro_cells(heal),
+                         ("Heal Dænerys", "/cast [@mouseover,help,nodead] Flash Heal", "41/255"))
 
     def test_confirm_and_result_rows(self):
         self.stage_three_files()
