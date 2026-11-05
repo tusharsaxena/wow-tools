@@ -12,7 +12,7 @@ jobs:
   tests:
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -37,7 +37,8 @@ jobs:
         run: python scripts/gen_event_docs.py --check
       - name: Tests
         # No -j: the default shard count (6 on a 4-vCPU runner; docs/testing.md). A fresh checkout has no
-        # .test-times-*.json (gitignored; no cache step), so CI deals its shards round-robin, never balanced. A slow
-        # Windows runner once took 594 s for one round-robin shard of 4; 900 s still fails a hang with its test's
-        # name well inside the job's 20 minutes (the 6-shard Windows job is checked against both at the merge).
-        run: python scripts/run_tests.py --timeout 900
+        # .test-times-*.json (gitignored; no cache step), so CI deals its shards round-robin, never balanced. At
+        # 2426 tests (2026-11-05) Linux's slowest round-robin shard took 844 s, and one run hit the old 900 s limit
+        # with every test passing; 1500 s leaves room to grow and still fails a hang with its test's name inside
+        # the job's 30 minutes (both jobs' slowest shards are checked against it at the merge).
+        run: python scripts/run_tests.py --timeout 1500
