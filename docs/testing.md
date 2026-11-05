@@ -117,14 +117,15 @@ release ([releasing.md](releasing.md#steps)). Each job runs, in bash:
 
 1. `python -m compileall -q wowtools scripts tests` (byte-compile: catches syntax newer than the interpreter).
 2. `python scripts/gen_event_docs.py --check`.
-3. `python scripts/run_tests.py --timeout 900`: no `-j`, so the [default shard count](#shard-count) applies:
+3. `python scripts/run_tests.py --timeout 1500`: no `-j`, so the [default shard count](#shard-count) applies:
    6 shards on a 4-vCPU runner (4 before spec F3; 1.5 per CPU was measured only on the 16-CPU machine, so CI's
    timings are checked when CI is next checked, before the merge). CI's shards are dealt round-robin, not
    [balanced](#balanced-shards): each job starts from a fresh checkout, the `.test-times-*.json` files are
    gitignored and the workflow has no cache step, so there are no recorded times (locally round-robin's slowest
-   shard took about 2.3 times its fastest). 900 s per shard, not the 600 s default, since a slow Windows runner has
-   taken 594 s for one round-robin shard (of 4); a hang still fails with its test's name inside the 20 minutes. The
-   Windows job's slowest shard at 6 shards is checked against 900 s and the job against 20 minutes before the merge.
+   shard took about 2.3 times its fastest). 1500 s per shard, not the 600 s default: at 2426 tests (2026-11-05)
+   Linux's slowest shard took 844 s, and one run went over the old 900 s with every test passing. A hang still fails
+   with its test's name inside the job's 30 minutes. Both jobs' slowest shards are checked against 1500 s, and the
+   jobs against 30 minutes, before the merge.
 
 Ruff is not part of CI (the suite stays stdlib-only); run it locally.
 
