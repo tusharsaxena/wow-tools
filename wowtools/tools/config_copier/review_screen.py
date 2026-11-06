@@ -35,7 +35,7 @@ from wowtools.core.install import Character, Flavor, flavor_name
 from wowtools.core.process import wow_check_for
 from wowtools.core.sv_apply import Marker, MultiApplyResult
 from wowtools.core.text import plural
-from wowtools.tools.config_copier.diff_screen import DiffScreen
+from wowtools.tools.config_copier.diff_screen import DiffScreen, DiffSession
 from wowtools.tools.config_copier.events import SV_TOOL
 from wowtools.tools.config_copier.journal import latest_undoable, read_journal, resolve_journal_dir
 from wowtools.tools.config_copier.model import COPY_FILES, PairPlan
@@ -203,7 +203,8 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
     ]
 
     def __init__(self, cfg: Config, tool_cfg: Config, flavors: list[Flavor], scope_label: str,
-                 source_flavor: Flavor, source: Character, *, wow_check: WowCheck | None = None) -> None:
+                 source_flavor: Flavor, source: Character, *, wow_check: WowCheck | None = None,
+                 diff_session: DiffSession | None = None) -> None:
         super().__init__()
         self.cfg = cfg  # the suite config (WoW folder)
         self.tool_cfg = tool_cfg  # config/config-copier.cfg
@@ -212,6 +213,7 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         self.source_flavor = source_flavor
         self.source = source
         self._injected_check = wow_check
+        self.diff_session = diff_session if diff_session is not None else DiffSession()  # CP4: the flow's, if any
         self.wow_root = cfg.wow_path  # the WoW folder these flavors were read from (see wow_folder_changed)
         self._leaving_for_new_folder = False
         self.plans: dict[PairKey, PairPlan] = {}  # every pair of every target, from the last scan
@@ -702,7 +704,7 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
             self.notify(NO_DIFF)
             return
         log_event("ui.selection", screen=self.LOG_SCREEN, control="diff", value=f"{plan.target.label}/{plan.name}")
-        self.app.push_screen(DiffScreen(plan, character_text(self.source)))
+        self.app.push_screen(DiffScreen(plan, character_text(self.source), self.diff_session))
 
     # --- runs: copy, dry run, undo (RunActions) --------------------------------------------------------
     def run_backup_dir(self) -> Path | None:

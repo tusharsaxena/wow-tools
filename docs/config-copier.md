@@ -87,7 +87,10 @@ right, a changed line beside its new version, with three lines around each chang
 `-5`, of a new one `+5`, and a long line is cut with `…`. For `config-cache.wtf` it shows the whole file and marks each
 line the target keeps as its own `kept` (see [How config-cache.wtf is merged](#how-config-cachewtf-is-merged)). When two files differ
 only in their line endings, or in bytes that are not text, the diff says **Only line endings or bytes that are not
-text differ.** **Back** (`Esc`) returns to the review. Diff works only on a replaced file: until one is highlighted
+text differ.** **View** (`v`) switches to the inline view (each lost line marked `-`, each new one `+`, one under
+the other) and back; the view you pick stays for the next diff until you close the tool. Until you press `v`, a
+window under 100 columns opens the diff inline and its head says **opened inline: the window is narrow**.
+**Back** (`Esc`) returns to the review. Diff works only on a replaced file: until one is highlighted
 the button is off and a dim line beside it says **highlight a replaced file to see its diff** (cut short in a narrow
 window). That line is empty while the files are read or a copy runs.
 
@@ -107,6 +110,7 @@ that match. Ticks the filter hides still count, and the bottom line says how man
 | `r` | **Rescan**: read the files again |
 | `z` | **Undo last change** |
 | `d` | **Diff** of the highlighted replaced file |
+| `v` | On the diff: switch between side by side and inline |
 | `!` | Open the files and folders that could not be read (only while there are any; the **⚠ … (!)** button at the bottom does the same) |
 | `p` | **Change source**: back to the source picker |
 | `f` | Back to the game versions |

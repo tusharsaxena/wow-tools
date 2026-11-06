@@ -19,7 +19,7 @@ from wowtools.core.events import capture_events
 from wowtools.core.install import flavor_name
 from wowtools.core.text import plural
 from wowtools.tools import TOOLS
-from wowtools.tools.config_copier.diff_screen import DiffScreen
+from wowtools.tools.config_copier.diff_screen import INLINE, NARROW_NOTE, SEPARATOR, SIDE, DiffScreen
 from wowtools.tools.config_copier.help import HELP
 from wowtools.tools.config_copier.model import COPY_FILES, MACRO_WARNING
 from wowtools.tools.config_copier.report import BYTES_ONLY, PAIR_MINIMUMS, WARNING_MARK, WARNING_SHORT, pair_cells, pair_text
@@ -35,7 +35,7 @@ from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.review import ActionBar
 from wowtools.ui.suite_app import WowToolsApp
 from wowtools.ui.theme import ACTION_COLOURS
-from wowtools.ui.widgets import action_kind
+from wowtools.ui.widgets import NavHint, action_kind
 
 TOOL = "config-copier"
 
@@ -757,6 +757,175 @@ class SideBySideDiffTest(CopierTestCase):
                     self.assertTrue(any(text in line for line in self.lines(app)))
                     await pilot.press("escape")
                     await settle(app, pilot)
+
+
+class DiffViewTest(CopierTestCase):
+    """Feedback round 1 CP4 (inline on v, the width rule, the session view): `v` (and the View button) switches the
+    diff between side by side and inline; the tool's session holds the view chosen with `v`, or none. With none, a
+    window under 100 columns opens the diff inline and its head says so; an explicit `v` wins over the width rule.
+    The width is read when the diff opens, never on a resize while it is open."""
+
+    lines = SideBySideDiffTest.lines
+    open_diff = SideBySideDiffTest.open_diff
+
+    def assert_view(self, app, diff: DiffScreen, view: str, *, note: bool) -> None:
+        self.assertEqual(diff.view, view)
+        lines = self.lines(app)
+        if view == INLINE:
+            self.assertTrue(any("- /sit" in line for line in lines), lines)
+            self.assertFalse(any(SEPARATOR in line and "/sit" in line for line in lines))
+        else:
+            self.assertTrue(any("/sit" in line and "/cast" in line for line in lines), lines)
+        self.assertEqual(NARROW_NOTE in diff.head_text().plain, note)
+        self.assertEqual(any(NARROW_NOTE in line for line in lines), note)
+
+    async def back_and_reopen(self, app, pilot, character="Bob", file="macros-cache.txt") -> DiffScreen:
+        await pilot.press("escape")
+        await settle(app, pilot)
+        review = app.screen
+        self.assertIsInstance(review, CopierReviewScreen)
+        tree = review.query_one("#targets", Tree)
+        tree.focus()
+        await goto(pilot, tree, pair_node(tree, character, file))
+        await pilot.press("d")
+        await settle(app, pilot)
+        self.assertIsInstance(app.screen, DiffScreen)
+        return app.screen
+
+    async def test_base_opens_side_by_side_with_no_note(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            diff = await self.open_diff(app, pilot, "Bob", "macros-cache.txt")
+            self.assert_view(app, diff, SIDE, note=False)
+            button = diff.query_one("#btn-view", Button)
+            self.assertEqual(action_kind(button), "navigate")
+            self.assertEqual(button.shortcut, "v")
+            self.assertIn("v ", diff.query_one(NavHint).hint)
+
+    async def test_tiny_opens_inline_with_the_note(self):
+        app = self.make_app()
+        async with app.run_test(size=TINY) as pilot:
+            diff = await self.open_diff(app, pilot, "Bob", "macros-cache.txt")
+            self.assert_view(app, diff, INLINE, note=True)
+
+    async def test_the_width_rule_is_100_columns(self):
+        for width, view in ((99, INLINE), (100, SIDE)):
+            with self.subTest(width=width):
+                app = self.make_app()
+                async with app.run_test(size=(width, 30)) as pilot:
+                    diff = await self.open_diff(app, pilot, "Bob", "macros-cache.txt")
+                    self.assert_view(app, diff, view, note=view == INLINE)
+
+    async def test_v_and_the_button_switch_both_ways(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            diff = await self.open_diff(app, pilot, "Bob", "macros-cache.txt")
+            with capture_events() as events:
+                await pilot.press("v")
+                await settle(app, pilot)
+            self.assert_view(app, diff, INLINE, note=False)
+            self.assertIn({"screen": "copier_diff", "control": "view", "value": INLINE},
+                          [{k: e["data"].get(k) for k in ("screen", "control", "value")} for e in events
+                           if e["event"] == "ui.selection"])
+            await pilot.press("v")
+            await settle(app, pilot)
+            self.assert_view(app, diff, SIDE, note=False)
+            await pilot.click("#btn-view")
+            await settle(app, pilot)
+            self.assert_view(app, diff, INLINE, note=False)
+            self.assertIs(app.screen, diff)
+            self.assertEqual(app.screen.focused, diff.query_one("#diff-scroll"))  # scrolling keys still work
+
+    async def test_v_at_tiny_drops_the_note_and_the_choice_carries(self):
+        app = self.make_app()
+        async with app.run_test(size=TINY) as pilot:
+            diff = await self.open_diff(app, pilot, "Bob", "macros-cache.txt")
+            await pilot.press("v")
+            await settle(app, pilot)
+            self.assert_view(app, diff, SIDE, note=False)
+            diff = await self.back_and_reopen(app, pilot)
+            self.assert_view(app, diff, SIDE, note=False)  # the explicit choice wins over the width rule
+            await pilot.press("v")
+            await settle(app, pilot)
+            diff = await self.back_and_reopen(app, pilot)
+            self.assert_view(app, diff, INLINE, note=False)  # chosen with v: no note
+
+    async def test_the_choice_carries_to_the_next_diff_at_base(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_diff(app, pilot, "Bob", "macros-cache.txt")
+            await pilot.press("v")
+            await settle(app, pilot)
+            diff = await self.back_and_reopen(app, pilot)
+            self.assert_view(app, diff, INLINE, note=False)
+
+    async def test_the_choice_lasts_the_session_not_longer(self):
+        """The view lives in the tool's flow: it outlives a Change source (a new review), and is gone once the tool
+        is closed and opened again (not a setting)."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_diff(app, pilot, "Bob", "macros-cache.txt")
+            await pilot.press("v")
+            await settle(app, pilot)
+            await pilot.press("escape")
+            await settle(app, pilot)
+            await pilot.press("p")
+            await settle(app, pilot)
+            sources = app.screen
+            self.assertIsInstance(sources, SourceScreen)
+            tree = sources.query_one("#sources", Tree)
+            tree.focus()
+            tree.move_cursor(character_node(tree, "Aellâ"))
+            await pilot.pause()
+            await pilot.press("enter")
+            await settle(app, pilot)
+            review = app.screen
+            self.assertIsInstance(review, CopierReviewScreen)
+            targets = review.query_one("#targets", Tree)
+            targets.focus()
+            await goto(pilot, targets, pair_node(targets, "Bob", "macros-cache.txt"))
+            await pilot.press("d")
+            await settle(app, pilot)
+            diff = app.screen
+            self.assert_view(app, diff, INLINE, note=False)
+            await pilot.press("escape")
+            await settle(app, pilot)
+            await pilot.press("t")
+            await settle(app, pilot)
+            self.assertIsNone(app.flow)
+            diff = await self.open_diff(app, pilot, "Bob", "macros-cache.txt")
+            self.assert_view(app, diff, SIDE, note=False)
+
+    async def test_a_resize_while_open_changes_nothing(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            diff = await self.open_diff(app, pilot, "Bob", "macros-cache.txt")
+            await pilot.resize_terminal(*TINY)
+            await settle(app, pilot)
+            self.assert_view(app, diff, SIDE, note=False)
+        app = self.make_app()
+        async with app.run_test(size=TINY) as pilot:
+            diff = await self.open_diff(app, pilot, "Bob", "macros-cache.txt")
+            await pilot.resize_terminal(*BASE)
+            await settle(app, pilot)
+            self.assert_view(app, diff, INLINE, note=True)
+
+    def test_help_and_the_guide_name_v(self):
+        self.assertIn("**View** (`v`)", HELP)
+        guide = (Path(__file__).resolve().parents[1] / "docs" / "config-copier.md").read_text(encoding="utf-8")
+        self.assertIn("**View** (`v`)", guide)
+        self.assertIn(NARROW_NOTE, guide)
+
+    async def test_the_inline_view_is_the_unified_diff(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            diff = await self.open_diff(app, pilot, "Bob", "macros-cache.txt")
+            await pilot.press("v")
+            await settle(app, pilot)
+            shown = "\n".join(self.lines(app))
+            for line in diff.diff_text().plain.splitlines():
+                if line.strip():
+                    self.assertIn(line.rstrip(), shown)
 
 
 def indent(node) -> int:

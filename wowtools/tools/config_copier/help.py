@@ -45,7 +45,9 @@ file; until one is highlighted the line beside it says so.
 filter box: type, then Enter or **Filter** shows only the targets and files that match. `x` / `c` expand or
 collapse the whole tree. `f` or `Esc` goes back to the game versions, `t` to the tool menu, `s` opens the settings,
 `q` quits. The results screen has **Rescan** (`r`), **Other flavor** (`f`), **Tools** (`t`) and **Quit** (`q`); after
-a dry run, **Back to review** (`Esc`). The diff screen's **Back** (`Esc`) returns to the review.
+a dry run, **Back to review** (`Esc`). The diff screen opens side by side (inline in a window under 100 columns);
+**View** (`v`) switches between side by side and inline, and the next diff opens in the view you picked. Its
+**Back** (`Esc`) returns to the review.
 
 ## Settings (`s`)
 

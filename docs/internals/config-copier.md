@@ -134,7 +134,11 @@ backups go under `settings.resolve_root()` (`<backup_dir or <wow_path>/wow-tools
   Rich grid (number, line, `│`, number, line, and a short `kept` column for `config-cache.wtf`, explained once in
   the head line; a removed or added line's number carries its `-` / `+`), the two line columns sharing
   the width, every line one row cut with `…` (never wrapped, so the sides stay aligned); `diff_text` is the unified
-  view of `diff_rows`. The head's counts come from `diff_rows` in both views.
+  view of `diff_rows`. The head's counts come from `diff_rows` in both views. `v` (and **View**) switches the two
+  (`action_switch_view`, logged as `ui.selection` `copier_diff` / `view`); the choice goes in a `DiffSession` the
+  `CopierFlow` holds and hands to every review it opens, so it carries to the next diff and across Change source,
+  and is gone when the tool closes (not a setting). With no choice, a screen under `NARROW_WIDTH` (100) columns
+  opens inline and the head adds `NARROW_NOTE`; the width is read in `on_mount` only, never on a resize.
 - `CopierResultScreen` (`ResultScreen`): the copy, dry run and Undo results.
 
 ## Events

@@ -4,9 +4,13 @@ each with its own line numbers, removed lines red on the left, added green on th
 row; three lines of context around each change, `…` between two parts, a long line cut with `…` so the two sides
 stay row-aligned, a removed or added line's number marked - / + so the change reads without colour. A
 config-cache.wtf shows the whole file, its state lines marked kept (the target's own, CC5; the head says so once).
-`diff_text` is the unified (inline) view of the same lines. Read-only; Back (Esc) returns to the review."""
+`diff_text` is the unified (inline) view of the same lines: `v` (and View) switches between the two. The view chosen
+with `v` lasts the tool's session (`DiffSession`, held by the flow), not saved; with none chosen, a window under
+NARROW_WIDTH columns opens the diff inline and the head says so. The width is read on open only. Read-only; Back
+(Esc) returns to the review."""
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import ClassVar
 
 from rich.console import Group, RenderableType
@@ -18,6 +22,7 @@ from textual.containers import Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Header, Static
 
+from wowtools.core.events import log_event
 from wowtools.core.text import plural
 from wowtools.tools.config_copier.model import CONFIG_FILE, PairPlan
 from wowtools.tools.config_copier.report import (BYTES_ONLY, GAP, SideRow, bytes_only, character_text, diff_rows,
@@ -26,10 +31,21 @@ from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import theme_colour
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-NAV_HINT = "↑↓ PgUp/PgDn scroll · Tab move"
+NAV_HINT = "↑↓ PgUp/PgDn scroll · v side by side / inline · Tab move"
 SAME = "The files are the same."
 SEPARATOR = "│"  # between the two sides
 KEPT_MARK = "kept"  # the side view's short note on a config-cache.wtf state line (the head line explains it)
+SIDE, INLINE = "side", "inline"  # the two views
+NARROW_WIDTH = 100  # under it (two sides of under about 45 cells each) a diff opens inline, unless v chose a view
+NARROW_NOTE = "opened inline: the window is narrow"  # the head's note when the width rule chose inline
+
+
+@dataclass
+class DiffSession:
+    """The diff view the user chose with `v` this session (SIDE or INLINE), or None: the width rule picks. The
+    tool's flow holds one, so the choice carries to the next diff and to a new review (Change source), and is gone
+    once the tool is closed (spec CP4: not a setting)."""
+    view: str | None = None
 
 
 class DiffScreen(Screen[None]):
@@ -40,14 +56,19 @@ class DiffScreen(Screen[None]):
     DiffScreen .buttons { height: auto; margin: 1 1 0 1; }
     DiffScreen NavHint { padding: 0 1; }
     """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "close", "Back", show=False), *NAV_BINDINGS]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "close", "Back", show=False),
+                                         Binding("v", "switch_view", "View", show=False), *NAV_BINDINGS]
+    LOG_SCREEN = "copier_diff"
 
-    def __init__(self, plan: PairPlan, source_text: str) -> None:
+    def __init__(self, plan: PairPlan, source_text: str, session: DiffSession | None = None) -> None:
         super().__init__()
         self.plan = plan
         self.source_text = source_text
+        self.session = session if session is not None else DiffSession()
         self.rows = diff_rows(plan)
         self.side_rows = side_by_side_rows(plan)
+        self.view = SIDE
+        self.narrow = False  # the width rule chose inline (the head's note)
 
     def head_text(self) -> Text:
         removed = sum(mark == "-" for mark, _, _ in self.rows)
@@ -57,7 +78,10 @@ class DiffScreen(Screen[None]):
         if self.plan.name == CONFIG_FILE:
             kept = sum(bool(note) for _, _, note in self.rows)
             line += f" {plural(kept, 'state line')} kept as they are, the target's own (marked {KEPT_MARK})."
-        return Text(line)
+        text = Text(line)
+        if self.narrow:
+            text.append(f"\n{NARROW_NOTE}", style="dim italic")
+        return text
 
     def _styles(self) -> dict[str, str]:
         return {"-": f"bold {theme_colour(self.app, 'error')}", "+": f"bold {theme_colour(self.app, 'success')}"}
@@ -128,18 +152,37 @@ class DiffScreen(Screen[None]):
                 yield Static(id="diff")
         with ButtonRow(classes="buttons"):
             yield action_button("Back", "cancel", "escape", id="btn-back")
+            yield action_button("View", "navigate", "v", id="btn-view")
         yield NavHint(NAV_HINT)
         yield BottomBar()
 
     def on_mount(self) -> None:
         self.sub_title = f"Config Copier · diff · {self.plan.name}"
-        self.query_one("#diff", Static).update(self.side_view())
+        chosen = self.session.view
+        self.narrow = chosen is None and self.app.size.width < NARROW_WIDTH  # the width on open only
+        self._show(chosen or (INLINE if self.narrow else SIDE))
+
+    def _show(self, view: str) -> None:
+        self.view = view
+        self.query_one("#diff-head", Static).update(self.head_text())
+        self.query_one("#diff", Static).update(self.side_view() if view == SIDE else self.diff_text())
         self.query_one("#diff-scroll").focus()
+
+    def action_switch_view(self) -> None:
+        """v: side by side <-> inline; the choice lasts the session and drops the width rule's note."""
+        view = INLINE if self.view == SIDE else SIDE
+        self.session.view = view
+        self.narrow = False
+        log_event("ui.selection", screen=self.LOG_SCREEN, control="view", value=view)
+        self._show(view)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-back":
             event.stop()
             self.action_close()
+        elif event.button.id == "btn-view":
+            event.stop()
+            self.action_switch_view()
 
     def action_close(self) -> None:
         self.dismiss(None)

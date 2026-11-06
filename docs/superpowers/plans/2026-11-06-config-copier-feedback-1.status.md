@@ -5,8 +5,9 @@ Branch `feat/config-copier-feedback-1`. Plan `2026-11-06-config-copier-feedback-
 
 ## Resume here
 
-- P1, P2 and P3 done (Change source on `p`; Diff a `confirm` button with its reason line; side-by-side diff rows
-  and screen). Next: **P4** (inline on `v`, the 100-column width rule, the session view, CP4; then push).
+- P1, P2, P3 and P4 done (Change source on `p`; Diff a `confirm` button with its reason line; side-by-side diff rows
+  and screen; inline on `v`, the 100-column width rule, the session view). P4's review and fixes come next, then the
+  milestone push (the builder does not push). Next task: **P5** (CHANGELOG, whole-branch review, push, CI).
 - Spec, plan and ledger committed. Build runs as a workflow: per task implement (test first), review, fix; each
   task's row goes `done` with its commits. Push after P4; P5 is the whole-branch review, push and CI. Merge into
   master needs the user's approval.
@@ -16,7 +17,7 @@ Branch `feat/config-copier-feedback-1`. Plan `2026-11-06-config-copier-feedback-
 | P1 | Change source on `p` (CP1) | done | bae360b, (this commit) | 6 new tests (`ChangeSourceTest`); gate green: 2432 tests on WSL and Windows, 0 failures (WSL 10 skipped, Windows 86), ruff clean, events doc in step. Review fixes: the fresh-review test now picks Dænerys (Bob stays the ticked target) and checks `files` too, so carried-over ticks fail it (checked against a shared-ticks mutant); `#source-row` margin dropped (the Files heading's own margin keeps one blank row, one row back at 80x24); gate green again, same counts |
 | P2 | Diff stands out: confirm kind, reason line (CP3) | done | 2825a5e | 5 new tests (`DiffReasonTest`: confirm kind and colour, the line on a character row and gone on a replaced pair at 120x30 and 80x24, refit on resize, empty during a scan and a run, `fit_reason` cuts) and `"Diff": "confirm"` pinned in `test_same_label_same_colour`; gate green: 2437 tests on WSL and Windows, 0 failures (WSL 10 skipped, Windows 86), ruff clean, events doc in step. Review fixes: `assert_fits_beside_the_button` now pins the button's place and full width and the line right after its gap, at 120x30 and 80x24 (P2r) |
 | P3 | Side-by-side diff rows and screen (CP4) | done | 01ddaf6, (this commit) | 12 new tests: 8 unit (`SideBySideRowsTest`: equal, delete, insert, replace of unequal lengths both ways, gaps and context as `diff_rows`, config file whole with KEPT notes, empty old or new file, bytes only) and 4 screen (`SideBySideDiffTest` at 120x30: both sides aligned with their numbers and colours, config kept notes, a long line cut with `…` on one row, bytes-only and same-files lines); gate green: 2449 tests on WSL and Windows, 0 failures (WSL 10 skipped, Windows 86), ruff clean, events doc in step. Review fixes (P3r): the note column is a short dim `kept` (head explains it once), so a changed config value shows on both sides at 100 columns; a removed / added line's number reads `-N` / `+N`; 3 new tests (100-column config values, marks without colour, CRLF-only config-cache.wtf side by side with its rows and BYTES_ONLY), the guide's pinned `kept` string moved in `test_docs.py`; gate green: 2452 tests on WSL and Windows, 0 failures (WSL 10 skipped, Windows 86), ruff clean, events doc in step. One WSL-only failure under `--all` in the untouched `test_restore_from_backup_result_goes_to_the_backup_just_made` (`'anniversary' != 'classic_era'`) passed on the rerun (environmental) |
-| P4 | Inline on `v`, width rule, session view (CP4) | todo | | |
+| P4 | Inline on `v`, width rule, session view (CP4) | done | (this commit) | 10 new tests (`DiffViewTest`: 120x30 opens side by side with no note and a `navigate` View (v) button and `v` on the hint; 80x24 opens inline with the note; the rule at 99 / 100 columns; `v` and the button switch both ways, logged, focus back on the scroll; `v` at 80x24 drops the note and the choice carries both ways; the choice carries at 120x30; it outlives Change source and is gone after the tool is closed; a resize while open changes nothing either way; the inline view is `diff_text`; help and guide name `v` and the note); gate green: 2462 tests on WSL and Windows, 0 failures (WSL 10 skipped, Windows 86), ruff clean, events doc in step |
 | P5 | CHANGELOG, whole-branch review, push, CI | todo | | |
 
 ## Decisions taken during the build
@@ -72,3 +73,18 @@ Branch `feat/config-copier-feedback-1`. Plan `2026-11-06-config-copier-feedback-
   `+5`, kept lines unmarked), one cell at most, not a column of its own, so kept rows lose no width.
 - P3r (review fix): finding 3 (minor, test gap) taken as written: a CRLF-only config-cache.wtf drawn side by side
   shows its rows and BYTES_ONLY, never `The files are the same.`
+- P4a (builder, my call): the session view is a `DiffSession` dataclass (`view`: `SIDE`, `INLINE` or None) in
+  `diff_screen.py`; `CopierFlow` makes one and hands it to every `CopierReviewScreen` it opens (`diff_session=`),
+  which passes it to each `DiffScreen`. So the choice carries to the next diff and across Change source, and dies
+  with the flow when the tool closes. A screen built without one (tests) makes its own.
+- P4b (builder, my call): the button is **View** (`v`), a `navigate` button beside Back on the diff screen's button
+  row, the label the SV Browser's `v` button already uses (one label, one kind); the hint line reads
+  `v side by side / inline`. After a switch the focus goes back to the diff's scroll, so a click on View leaves the
+  arrow keys scrolling.
+- P4c (builder, my call): the note is the spec's text as written, `opened inline: the window is narrow`, dim italic on
+  a second head line; `v` drops it for good (the width rule no longer applies once a view was chosen). The width
+  read is `app.size.width < NARROW_WIDTH` (100) in `on_mount`.
+- P4d (builder, my call): `v` logs `ui.selection` (`screen="copier_diff"`, `control="view"`, value the new view), as
+  the Ace3 Profile Manager's view switch does; no new event.
+- P4e (builder): the plan's milestone push after P4 is left to the workflow (this task's brief forbids the builder
+  to push).
