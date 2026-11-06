@@ -135,7 +135,6 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
                                                 "btn-source": "change_source"}
     DEFAULT_CSS = two_pane_css("CopierReviewScreen", "#targets") + """
     CopierReviewScreen #source { height: auto; }
-    CopierReviewScreen #source-row { margin-bottom: 1; }
     CopierReviewScreen #tree-pane { width: 1fr; }
     CopierReviewScreen #targets { height: 1fr; }
     CopierReviewScreen #tree-actions { padding: 0 1; }

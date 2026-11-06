@@ -443,14 +443,16 @@ class ChangeSourceTest(CopierTestCase):
             self.assertIsInstance(sources, SourceScreen)
             self.assertEqual(([f.folder for f in sources.flavors], sources.scope_label), (flavors, "All flavors"))
             self.assertNotIn(review, app.screen_stack)
-            fresh = await self.pick(app, pilot, sources, "Bob")
+            # a new source other than the ticked target, so a tick carried over from the old review would show
+            fresh = await self.pick(app, pilot, sources, "Dænerys")
             self.assertIsNot(fresh, review)
-            self.assertEqual(fresh.source.name, "Bob")
+            self.assertEqual(fresh.source.name, "Dænerys")
             self.assertEqual(fresh.scope_label, "All flavors")
             self.assertEqual(fresh.selected_plans(), [])  # ticks belonged to the old source
             self.assertEqual(fresh.ticked, set())
-            self.assertTrue(all(box.value for box in fresh.query(Checkbox)))  # every file box ticked again
-            self.assertIn("Bob", fresh.source_text())
+            self.assertEqual(fresh.files, set(COPY_FILES))  # every file ticked again, in the model ...
+            self.assertTrue(all(box.value for box in fresh.query(Checkbox)))  # ... and on screen
+            self.assertIn("Dænerys", fresh.source_text())
 
     async def test_p_keeps_the_one_flavor_choice(self):
         app = self.make_app()

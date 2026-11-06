@@ -12,7 +12,7 @@ Branch `feat/config-copier-feedback-1`. Plan `2026-11-06-config-copier-feedback-
 
 | Task | What | Status | Commit | Notes |
 |---|---|---|---|---|
-| P1 | Change source on `p` (CP1) | done | (this commit) | 6 new tests (`ChangeSourceTest`); gate green: 2432 tests on WSL and Windows, 0 failures (WSL 10 skipped, Windows 86), ruff clean, events doc in step |
+| P1 | Change source on `p` (CP1) | done | bae360b, (this commit) | 6 new tests (`ChangeSourceTest`); gate green: 2432 tests on WSL and Windows, 0 failures (WSL 10 skipped, Windows 86), ruff clean, events doc in step. Review fixes: the fresh-review test now picks Dænerys (Bob stays the ticked target) and checks `files` too, so carried-over ticks fail it (checked against a shared-ticks mutant); `#source-row` margin dropped (the Files heading's own margin keeps one blank row, one row back at 80x24); gate green again, same counts |
 | P2 | Diff stands out: confirm kind, reason line (CP3) | todo | | |
 | P3 | Side-by-side diff rows and screen (CP4) | todo | | |
 | P4 | Inline on `v`, width rule, session view (CP4) | todo | | |
@@ -32,3 +32,6 @@ Branch `feat/config-copier-feedback-1`. Plan `2026-11-06-config-copier-feedback-
   leaves at once; the scan's late result lands on the old review object (gone from the stack), never the new one.
 - P1c (builder, my call): `CopierFlow._review` wraps the shared `_after_review` in a closure that turns `"source"`
   into `_pick_source(flavors, label)`; `ToolFlow` is unchanged (no other tool has a source to change).
+- P1r (review fix, my call): `#source-row` loses its `margin-bottom: 1`; the `.section` heading under it already has
+  `margin-top: 1`, so the gap was two rows. One row comes back for the left pane at 80x24 (it still scrolls there,
+  as before this task; STD-7.23 makes 80x24 a floor, not a fit).
