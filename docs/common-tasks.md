@@ -261,9 +261,9 @@ Follow [vendoring.md](vendoring.md): edit `requirements.txt` (every transitive d
 ## 12. Cut a release
 
 Only with the user's go-ahead (merge and release are separate approvals). Follow [releasing.md](releasing.md):
-check that CI passes on both jobs, bump `__version__` in `wowtools/__init__.py`, add the `## [X.Y.Z] - YYYY-MM-DD`
-entry to `CHANGELOG.md`, commit, tag `vX.Y.Z`, push, run `python3 scripts/build_release.py`, and publish the zip and
-`SHA256SUMS` with `gh release create`.
+check that CI passes on both jobs, bump `__version__` in `wowtools/__init__.py`, retake the screenshots
+(`python3 scripts/take_screenshots.py`), add the `## [X.Y.Z] - YYYY-MM-DD` entry to `CHANGELOG.md`, commit, tag
+`vX.Y.Z`, push, run `python3 scripts/build_release.py`, and publish the zip and `SHA256SUMS` with `gh release create`.
 The README version badge must match `__version__` (`tests/test_docs.py`).
 
 **Rules:** STD-9.4, STD-11.1, STD-11.2, STD-11.5, STD-12.3. Then [the green gate](#the-green-gate).

@@ -122,7 +122,7 @@ untick it to keep every macro in the tree with the matches underlined.
 | `r` | **Rescan**: read the files again (asks first when it would drop your changes) |
 | `z` | **Undo last change** |
 | `!` | Open the files and folders that could not be read (only while there are any; the **⚠ … (!)** button at the bottom does the same) |
-| `f` | Back to the game versions |
+| `f` / `Esc` | Back to the game versions |
 | `t` | Back to the tool menu |
 | `s` | Settings |
 | `h` | Help |
@@ -156,7 +156,8 @@ whatever is under the cursor and reads a whole `[...]` block out in plain Englis
 | `F1` | **Reference**: every command, conditional and unit the editor knows for this game version, each with its source; **Back** (`Esc`) returns |
 | `Esc` | Close the suggestions; with none open, **Cancel**: the macro stays as it was |
 
-The keys use `Ctrl` because the cursor is always in a text box, where a plain letter types.
+The keys use `Ctrl` because the cursor is always in a text box, where a plain letter types. In the Builder, Template
+and Optimize windows, `Ctrl+S` presses **OK** (or **Insert**) and `Esc` cancels.
 
 ### The conditional builder
 

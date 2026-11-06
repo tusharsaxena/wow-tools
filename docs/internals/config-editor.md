@@ -118,13 +118,13 @@ staged changes.
 ## Screens
 
 - `review_screen.ConfigReviewScreen`: the shared two-pane review (`WarningsHost`, `ConfigEditActions`, `TreeFilter`,
-  `SvRecoveryActions`, `RunActions`, `ReviewBase`). Left pane: the risk banner (STD-7.10), the filter box (a CVar's
-  name, help and note, or its file's group), Show (category select, Changed only, Show all known), the staged line,
-  Apply / Dry run / Rescan / Undo last change. The bar under the tree: Set `e`, Add `N`, Remove `d`, Reset `R`,
-  Recommend… `m` (`edit_actions.TREE_ACTIONS`). The help panel (`report.help_panel`: a `HelpPanel` of a title and
-  sections of `HelpLine`s, rendered by `review_screen.help_panel_text` with the title in bold gold (`HELP_TITLE`) and the labels in bold
-  cyan (`HELP_LABEL`, R1), the CF3 colours and a bullet
-  per source, CF5) sits under the tree (40% of the tree pane, scrolling) or beside it from 160 columns
+  `SvRecoveryActions`, `RunActions`, `FittedRows`, `ReviewBase`). Left pane: the risk banner (STD-7.10), the
+  filter box (a CVar's name, help and note, or its file's group), Show (category select, Changed only, Show all
+  known), the staged line, Apply / Dry run / Rescan / Undo last change. The bar under the tree: Set `e`, Add `N`,
+  Remove `d`, Reset `R`, Recommend… `m` (`edit_actions.TREE_ACTIONS`). The help panel (`report.help_panel`: a
+  `HelpPanel` of a title and sections of `HelpLine`s, rendered by `review_screen.help_panel_text` with the title in
+  bold gold (`HELP_TITLE`) and the labels in bold cyan (`HELP_LABEL`, R1), the CF3 colours and a bullet per source,
+  CF5) sits under the tree (40% of the tree pane, scrolling) or beside it from 160 columns
   (`HORIZONTAL_BREAKPOINTS`, the `-wide` class).
 - `popups.AddCvarScreen` (name, value, what the KB knows of the name; CF6: the name narrows an `OptionList` of
   `ops.add_candidates`, the known CVars of each file's flavor and level that none of the files sets as staged,

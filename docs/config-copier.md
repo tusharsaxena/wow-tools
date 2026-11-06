@@ -43,12 +43,13 @@ reputation list. That is WoW, not the copy.
 2. **The first time only:** check the backup folder (empty is fine) and press **Save**.
 3. **Pick a game version**, or **All flavors**. `t` or `Esc` goes back to the tool menu.
 4. **Pick the source**, the character to copy from: highlight it and press Enter or **Choose**. **Back** returns to
-   the game versions.
+   the game versions. `/` filters the list, and `t` goes back to the tool menu.
 5. The review lists every character. Tick the **targets** (`Space`). Each target opens to its five files and what
    happens to each.
 6. Press **Dry run** (`y`) to check everything without writing, or **Write** (`w`), read the summary and press
    **Yes**.
-7. The results screen lists every file.
+7. The results screen lists every file. From there `r` scans again, `f` picks another game version, `t` goes back to
+   the tool menu and `q` quits.
 
 ![Choosing the source](assets/screenshots/config-copier/source.png)
 
@@ -94,6 +95,10 @@ until you close the tool. Until you press `v`, a window under 100 columns opens 
 until one is highlighted the button is off and a dim line beside it says **highlight a replaced file to see its diff**
 (cut short in a narrow window). That line is empty while the files are read or a copy runs.
 
+![The diff of a replaced macros-cache.txt, side by side: lost lines on red on the left, new lines on green on the right](assets/screenshots/config-copier/diff.png)
+
+![The same diff inline, after pressing v](assets/screenshots/config-copier/diff-inline.png)
+
 `/` goes to the filter box: type part of a name and press Enter or **Filter** to see only the characters (and files)
 that match. Ticks the filter hides still count, and the bottom line says how many.
 
@@ -113,7 +118,7 @@ that match. Ticks the filter hides still count, and the bottom line says how man
 | `v` | On the diff: switch between side by side and inline |
 | `!` | Open the files and folders that could not be read (only while there are any; the **⚠ … (!)** button at the bottom does the same) |
 | `p` | **Change source**: back to the source picker |
-| `f` | Back to the game versions |
+| `f` / `Esc` | Back to the game versions |
 | `t` | Back to the tool menu |
 | `s` | Settings |
 | `h` | Help |

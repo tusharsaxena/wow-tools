@@ -106,7 +106,7 @@ many ("3 selected shots are hidden by the filter").
 | `r` | Scan again |
 | `z` | **Undo last run** (asks first; **Yes** is selected, in red) |
 | `f` or `Esc` | Pick another game version |
-| `t` | Back to the tool menu |
+| `t` | Back to the tool menu (from any screen or popup; not while a run is writing) |
 | `s` | Settings |
 | `h` | Help: this tool's keys and steps, with a link to this guide |
 | `q` | Quit |
@@ -162,8 +162,8 @@ Sometimes a screenshot with the same name is already in its dated folder, for ex
 ## Files that aren't sorted
 
 Only files with WoW's screenshot name (`WoWScrnShot_` followed by a date and time) are sorted. Anything else in
-the `Screenshots` folder, such as a renamed picture or a note, stays where it is and is listed under "Skipped:
-name not recognised".
+the `Screenshots` folder, such as a renamed picture or a note, stays where it is and is listed under "Skipped",
+with the note "name not recognised".
 
 ## Copy mode
 

@@ -62,13 +62,15 @@ game version → account → account-wide settings or one character → addon �
 
 Everything starts ticked, meaning "remove this". Untick an addon, a character or a whole account to keep it.
 Each game version, account and character says, dimmed after its name, how many addons it holds that the list
-shows (`12 items`; a search narrows the counts too). An account with nothing to remove says "nothing to clean"
-(a game version holding only such accounts counts `0 items`).
+shows (`12 items`; a search narrows the counts too, and blacklisted addons aren't counted). An account with nothing
+to remove says "nothing to clean" (a game version holding only such accounts, or an account holding only
+blacklisted addons, counts `0 items`).
 
 An addon's line reads in columns: its name, why it's suggested (each rule in its colour), how many files, their
 size and the age of the newest one in days. Its files, once you open it, line up the same way: name, size, age. In a
-narrow window a long name is cut with `…` and the short columns stay. In a very narrow window a name is never cut
-below a few letters at each end: the line scrolls sideways instead.
+narrow window the reasons are cut first, then a long name (in its middle, with `…`). Narrower still, the age, the
+file count and the size drop out, in that order. In a very narrow window a name is never cut below a few letters at
+each end: the line scrolls sideways instead.
 
 **On the left** are a red `⚠ USE AT YOUR OWN RISK` line (a clean deletes files), the rules that decide what gets
 suggested (under **Criteria (keys 1-5)**), the age limit (**Max age in days**), and the buttons.
@@ -136,7 +138,8 @@ confirms it ("ElkBuffBars (Retail) is now on the blacklist.").
 
 - A blacklisted addon stays in the tree, greyed out and tagged **blacklisted**, so you can still see what the rules
   would suggest. Its lines show `⊘` where the tick goes, its files too. It has no tick: `Space`, `a` and `n` skip
-  it, and it's left out of the rule counts, the bottom bar, the confirmation, **Clean** and **Dry run**.
+  it, and it's left out of the rule counts, the tree's counts, the bottom bar, the confirmation, **Clean** and
+  **Dry run**.
 - An addon is blacklisted in one game version: blacklisting ElkBuffBars in Retail leaves ElkBuffBars in Classic
   Era to the rules. With **All flavors**, `b` works on the game version of the line you're on.
 - `b` on a blacklisted addon takes it off again. Either way it's saved at once.

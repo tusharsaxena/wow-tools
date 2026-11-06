@@ -110,7 +110,7 @@ backups go under `settings.resolve_root()` (`<backup_dir or <wow_path>/wow-tools
 - `source_screen.SourceScreen`: `populate_characters` without marks under each flavor (All flavors), the shared
   filter (`FilterBox`), **Choose** (Enter) and **Back** (Esc); `t` to the tool menu.
 - `review_screen.CopierReviewScreen` (`WarningsHost`, `TreeFilter`, `SvRecoveryActions`, `RunActions`,
-  `ReviewBase`): the scan worker plans every real character of the source's flavor; the tree is
+  `FittedRows`, `ReviewBase`): the scan worker plans every real character of the source's flavor; the tree is
   `populate_characters` with `disabled` (source, other flavor) and `character_extra` adding one `PairNode` per file
   (tick key `PairKey(target, name)` when it writes something). A character's own tick key is never ticked: its
   `node_tick_keys` and mark use only its pairs. The leaf (STD-7.27) is a pair line, whatever its status (an
@@ -132,9 +132,12 @@ backups go under `settings.resolve_root()` (`<backup_dir or <wow_path>/wow-tools
   again on resize; set by `_refresh_buttons`. Ticks are a selection, not staged work, so leaving asks nothing.
 - `diff_screen.DiffScreen`: the diff of one replaced pair, read-only: `side_view` draws `side_by_side_rows` as a
   Rich grid (number, line, `│`, number, line, and a short `kept` column for `config-cache.wtf`, explained once in
-  the head line; a removed or added line's number carries its `-` / `+`), the two line columns sharing
-  the width, every line one row cut with `…` (never wrapped, so the sides stay aligned); `diff_text` is the unified
-  view of `diff_rows`. The head's counts come from `diff_rows` in both views. `v` (and **View**) switches the two
+  the head line; a removed or added line's number carries its `-` / `+`), the two line columns sharing the width,
+  every line one row cut with `…` (never wrapped, so the sides stay aligned). A removed or added line is white on
+  red or green (`ui/theme.DIFF_TEXT` on `DIFF_REMOVED_BACKGROUND` / `DIFF_ADDED_BACKGROUND`, GitHub's look), the
+  colour filled from its number to its column's edge (`_filled`). The inline view is `inline_view`: `diff_text`
+  (the unified view of `diff_rows`) drawn line by line with the same fills. The head's counts come from `diff_rows`
+  in both views. Buttons: **Back** (Esc) and **View** (`v`, navigate). `v` (or **View**) switches the two
   (`action_switch_view`, logged as `ui.selection` `copier_diff` / `view`); the choice goes in a `DiffSession` the
   `CopierFlow` holds and hands to every review it opens, so it carries to the next diff and across Change source,
   and is gone when the tool closes (not a setting). With no choice, a screen under `NARROW_WIDTH` (100) columns
@@ -156,9 +159,12 @@ levels is in [events.md](../events.md).
   identity on equal preferences, line order and endings, odd names).
 - `tests/test_config_copier_run.py`: the run on the pipeline (two targets byte-identical, unticked pairs left alone,
   dry run, Undo removing created files, non-ASCII paths and bodies, an unknown macro layout, WoW running, a file
-  changed since the review, recovery), the report and diff rows.
+  changed since the review, recovery), the report and diff rows; `SideBySideRowsTest`: `side_by_side_rows`.
 - `tests/test_config_copier_app.py`: the TUI flow (source → targets → review → copy), the diff screen, greyed
-  targets, the macro warning in the confirm, 80x24; `NodeCountsAndColumnsTest`: every node's count (also under a
-  search and an unticked file box), the pair columns aligned, every line fitting the pane at 120x30 and 80x24. The suite-wide meta-tests (look and feel, help, quit, tool menu,
-  toasts, warnings, structure) cover the copier too; `tests/fixtures.py` `reach_review` and `pick_source` reach it.
+  targets, the macro warning in the confirm, 80x24; `ChangeSourceTest` (Change source, CP1), `DiffReasonTest` (the
+  disabled Diff's reason, CP3), `SideBySideDiffTest` and `DiffViewTest` (the side view, `v`, the `DiffSession`
+  across diffs and Change source, the `NARROW_WIDTH` rule, CP4); `NodeCountsAndColumnsTest`: every node's count
+  (also under a search and an unticked file box), the pair columns aligned, every line fitting the pane at 120x30
+  and 80x24. The suite-wide meta-tests (look and feel, help, quit, tool menu, toasts, warnings, structure) cover
+  the copier too; `tests/fixtures.py` `reach_review` and `pick_source` reach it.
 - `tests/test_docs.py` `test_config_copier_guide_readme_and_notes`: this doc, the guide, the README rows.

@@ -50,7 +50,7 @@ When a new file does not fit one rule clearly, it stays out until the release ma
 | Path | What it is |
 |---|---|
 | `tests/` | The test suite |
-| `scripts/` | `run_tests.py`, `build_release.py`, `update_vendor.py`, `gen_event_docs.py`, `virustotal_scan.py` |
+| `scripts/` | `run_tests.py`, `build_release.py`, `update_vendor.py`, `gen_event_docs.py`, `virustotal_scan.py`, `take_screenshots.py`, `refresh_kb.py` and the `kb_dump/` addon |
 | `.github/` | CI: the `tests` and `virustotal` workflows |
 | `docs/standards.md`, `docs/architecture.md`, `docs/internals/`, `docs/testing.md`, `docs/common-tasks.md`, `docs/adding-a-tool.md`, `docs/releasing.md`, `docs/vendoring.md`, `docs/events.md` | Developer documentation |
 | `docs/superpowers/`, `reviews/`, `docs/ideas/` | Design specs, plans, ledgers, review bundles and tool ideas |
@@ -86,7 +86,11 @@ install it can only be the user's.
    [green gate](testing.md#the-green-gate) (`run_tests.py --all`, the WSL and native Windows suites at once;
    `ruff check --no-cache .`; `gen_event_docs.py --check`). This is one of the two times CI is checked; the other
    is before a merge into master ([STD-10.2](standards.md#10-testing)).
-2. Bump `__version__` in `wowtools/__init__.py`, following semver.
+2. Bump `__version__` in `wowtools/__init__.py`, following semver. Then retake the screenshots, so they show the
+   screens as they are and the new version in their bottom bar: `python3 scripts/take_screenshots.py` (about 3
+   minutes; it needs Google Chrome or Chromium for the PNGs). It draws every image under `docs/assets/screenshots/`
+   from a made-up WoW folder at 1920x1032, never your own. Look over the changed images before you commit them. A
+   screen the guides should show but no image has yet is one `SHOTS` row in the script.
 3. Add the [`CHANGELOG.md`](../CHANGELOG.md) entry for vX.Y.Z: a `## [X.Y.Z] - YYYY-MM-DD` heading (today's date) above the previous
    one, with what changed (move anything under `## [Unreleased]` into it). Every tagged release must have an entry:
    the app shows it (`c` on the tool menu), a test fails while `__version__` has none, and step 6 refuses a tag

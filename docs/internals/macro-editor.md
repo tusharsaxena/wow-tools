@@ -85,9 +85,10 @@ character folder. Leaving, quitting, a rescan and Undo ask before dropping stage
 ## Screens
 
 - `review_screen.MacroReviewScreen`: the shared two-pane review (`WarningsHost`, `MacroEditActions`, `TreeFilter`,
-  `SvRecoveryActions`, `RunActions`, `ReviewBase`). Left pane: the risk banner (STD-7.10), the filter box with
-  Names / Bodies / Only matching macros, the staged line, Apply / Dry run / Rescan / Undo last change. The bar under
-  the tree: New `N`, Edit `e`, Delete `d`, Copy `k`, Paste… `p`, Replace text… `R` (`edit_actions.TREE_ACTIONS`).
+  `SvRecoveryActions`, `RunActions`, `FittedRows`, `ReviewBase`). Left pane: the risk banner (STD-7.10), the
+  filter box with Names / Bodies / Only matching macros, the staged line, Apply / Dry run / Rescan / Undo last
+  change. The bar under the tree: New `N`, Edit `e`, Delete `d`, Copy `k`, Paste… `p`, Replace text… `R`
+  (`edit_actions.TREE_ACTIONS`).
   The leaf (STD-7.27) is a macro line as `macro_rows` lists it and the search leaves it (a staged delete included:
   it stays a struck line until Apply, while the slots leave it out); a read-only set lists none. The root, a
   flavor, an account, a realm, a character and Account macros end with the lines the tree shows under them,

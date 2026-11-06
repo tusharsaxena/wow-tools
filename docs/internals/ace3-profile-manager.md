@@ -102,8 +102,8 @@ mismatch fails the file (`ace.verify_failed`) and stops the run before anything 
 ### Apply
 
 Code: `editor.apply_flavor`, `multi.apply_flavors`, on `core/sv_apply.py`. `apply_flavors` refuses while WoW runs (`WowRunning`,
-skipped for a dry run; the review screen checks only the flavors with pending changes), opens one `ProfileJournal`
-for the run, then per flavor: a real run is refused while an earlier run's crash marker is there
+skipped for a dry run; the review screen checks only the flavors with pending changes), opens one `EditJournal`
+(`core/sv_journal.py`) for the run, then per flavor: a real run is refused while an earlier run's crash marker is there
 (`ace.earlier_unfinished`: it would overwrite, then clear, the only pointer to that run's originals; the review
 screen offers that recovery again instead); `SvGuard`; recheck each file's
 SHA-256 (a changed file is skipped, "changed since the scan; rescan", `ace.file_changed`); compile and verify. A
@@ -181,12 +181,12 @@ per app session, L4; `ace.disclaimer_accepted` / `_declined`; Back returns to th
 `ProfileSettingsScreen` (backup folder, a `#blacklist-summary` line, **Edit blacklist…**, which opens the
 `BlacklistScreen` and keeps its answer until Save, and the show-the-risk-warning box; `validate_backup_dir` errors inline). `s` opens the shared WoW-folder settings, then this tool's (not while a `ProfileSettingsScreen` or a `BlacklistScreen` is on the stack: two Saves would overwrite each other).
 
-- `ProfileReviewScreen` (`review_screen.py`): `TreeFilter`, `SvRecoveryActions`, `RunActions` and `ReviewBase`,
-  `two_pane_css`, with two mixins of its own (F-007): `staging_actions.ProfileStagingActions` (Delete, Assign, Rename,
-  Copy, Leftovers, Only Default, Everyone → Default, the `m` menu and Discard: each picks its target, asks in a popup
-  and stages; Leftovers first ticks every leftover character shown, `_tick_leftovers`, decision L1) and
-  `blacklist_actions.ProfileBlacklistActions` (the `BlacklistAction` hooks, **Blacklist…**, `u` and dropping a
-  locked addon's pending changes and ticks). Left pane `#filters`, one control
+- `ProfileReviewScreen` (`review_screen.py`): `TreeFilter`, `SvRecoveryActions`, `RunActions`, `FittedRows` and
+  `ReviewBase`, `two_pane_css`, with two mixins of its own (F-007): `staging_actions.ProfileStagingActions`
+  (Delete, Assign, Rename, Copy, Leftovers, Only Default, Everyone → Default, the `m` menu and Discard: each picks
+  its target, asks in a popup and stages; Leftovers first ticks every leftover character shown, `_tick_leftovers`,
+  decision L1) and `blacklist_actions.ProfileBlacklistActions` (the `BlacklistAction` hooks, **Blacklist…**, `u`
+  and dropping a locked addon's pending changes and ticks). Left pane `#filters`, one control
   per row: the shared `RiskBanner` (D37), the View pair under a "View" heading (By addon / By character), the Show boxes under a "Show" heading, the
   shared `FilterBar` (its box id `#search`, `FILTER_SELECTOR`), the `#pending` line (`report.pending_text`, "N pending changes" or `NO_PENDING`) and the
   action row **Apply** (destructive), **Dry run**, **Rescan**, **Undo last change** (revert). Right:

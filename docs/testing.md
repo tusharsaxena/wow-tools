@@ -39,7 +39,7 @@ same on Windows. A failing shard prints its whole unittest output under `===== s
 is `OK` or `FAILED` after a `Ran N tests in T s across J processes (...)` summary. A shard that hangs (say, a pilot
 waiting on a worker that never finishes) is killed at its timeout, with every process it started, and reported as
 `===== shard i/N timed out after S s in <test id> =====`, naming the test it was running, so a hang fails the run
-with a name well before CI's 20-minute job timeout. A shard that hangs after its last test (say, a non-daemon thread
+with a name well before CI's 30-minute job timeout. A shard that hangs after its last test (say, a non-daemon thread
 that keeps the interpreter alive) is reported as `timed out after S s after its tests finished`, and its tests still
 count in the summary. Shard output goes to temp files, not pipes, so a child process a hung test left behind cannot
 hold the run open on Windows.
@@ -103,7 +103,7 @@ The Windows suite skips about 79 POSIX- or WSL-only tests that the WSL suite run
 ## CI
 
 `.github/workflows/tests.yml` runs on every push, every pull request and by hand (`workflow_dispatch`), with
-read-only permissions and a 20-minute timeout per job ([STD-10.2](standards.md#10-testing)). The matrix is two
+read-only permissions and a 30-minute timeout per job ([STD-10.2](standards.md#10-testing)). The matrix is two
 jobs, listed with `include` (spec F4):
 
 | Job | `os` | `python` |
@@ -161,6 +161,9 @@ Cleaner's tests predate that rule: its logic tests are `test_cleaner.py`, `test_
 | `test_no_replace_call_sites.py` | Every rename into a final name refuses an existing target |
 | `test_journal.py` | `core/journal.py` |
 | `test_parallel.py`, `test_parallel_runs.py` | `core/parallel.py`, and every parallel run giving the same result at parallelism 1 and 4 |
+| `test_client_apply.py` | `core/client_apply.py`: the client-file pipeline on top of the SavedVariables one, driven by a made-up tool |
+| `test_cvarfile.py`, `test_macrofile.py` | `core/cvarfile.py` and `core/macrofile.py`: the byte-exact `config-cache.wtf` / `Config.wtf` and `macros-cache.txt` readers and splices |
+| `test_kb.py` | `core/kb.py`, the knowledge-base loader, over a temp KB folder (`root=`) or the shipped seed data |
 | `test_config.py`, `test_paths.py`, `test_install.py`, `test_process.py`, `test_lock.py`, `test_bootstrap.py`, `test_migrate.py`, `test_changelog.py` | The module of the same name (`test_changelog.py` also drives the changelog screen) |
 
 ### Shared UI (`wowtools/ui/`)
@@ -176,6 +179,7 @@ Cleaner's tests predate that rule: its logic tests are `test_cleaner.py`, `test_
 | `test_ui_columns.py` | `ui/columns.py` and `ui/counts.py` (feedback round 2 R2, R4; STD-7.27, STD-7.28): node data in aligned columns fitted to the pane, the dim leaf count |
 | `test_dialogs.py`, `test_progress_popup.py` | `ui/dialogs.py`; the progress popup and its `ProgressBoard` |
 | `test_flavor_screen.py` | `ui/flavor_screen.py` |
+| `test_character_tree.py` | `ui/character_tree.py` (config tools spec X2, X3), driven on a toy tick screen over `build_character_tree` |
 | `test_counted_list.py` | `CountedTree` (spec L10, STD-7.26): long lists in popups behind one counted row |
 | `test_picker_keys.py` | The flavor and account pickers' keys in every tool |
 | `test_risk_disclaimer.py` | The USE AT YOUR OWN RISK popup (`ui/disclaimer.py`) and its don't-show box in the three tools that show it |
@@ -190,6 +194,7 @@ Cleaner's tests predate that rule: its logic tests are `test_cleaner.py`, `test_
 | `test_release_scripts.py` | `scripts/build_release.py`, the hashed vendor lock, `scripts/run_tests.py`'s per-shard timeout, its `--windows` / `--all` runs (the `cmd.exe` call is faked), its shards balanced by recorded time (the cache in a temp folder) and its default shard count (and that this page's CI section names it for a 4-vCPU runner); and the CI workflow (`CiWorkflowTest`): exactly its two jobs, no doc still claiming the old CI matrix, CI's round-robin shards named in the workflow and this page, STD-10.2 naming both jobs and STD-10.1 pointing to it |
 | `test_virustotal_scan.py` | `scripts/virustotal_scan.py` against a fake VirusTotal (fake opener and clock; no network, no real key): a finished report reused without an upload, upload then polls 15 s apart until completed, HTTP 429 backed off and retried, 401 / 403 / 413 / other errors, a missing key (no traceback, no request), a zip over 32 MB, the notes block appended then replaced (idempotent), `--block-file` then `--splice` (no key, no request), the detections line, the timeout (kept even when every request is slow; no request given longer than the time left), a dropped connection as a clean error; and `.github/workflows/virustotal.yml` (only on a published release or by hand, `contents: write` only, the key from `secrets.VT_API_KEY`, `SHA256SUMS` checked before the scan, the notes fetched only after it) |
 | `test_release_contents.py` | The release manifest (STD-11.5): every tracked path is in a table of [releasing.md](releasing.md#what-a-release-contains), `.gitattributes` export-ignores the "stays out" table, `git archive` of `HEAD` holds exactly the "ships" table, no shipped Markdown file links to a file that does not ship (needs git; skips without it), the updater's `RELEASE_SHIPS` / `RELEASE_STAYS_OUT` are the two tables entry for entry, and its `MANAGED_DIRS` / `MANAGED_FILES` are the top-level "ships" names |
+| `test_refresh_kb.py` | `scripts/refresh_kb.py`: the knowledge-base refresh from the KaosKbDump addon's SavedVariables, every dump synthesized in a temp tree |
 | `test_launcher.py` | `wow-tools.cmd` and `wow-tools.sh` stay safe to replace while they run, check Python and log each launch to `logs/suite/launcher.log`; the `.cmd` pauses a double-clicked window on failure (the cmd.exe parts run on Windows only, the `sh` parts everywhere else) |
 | `test_quit_key.py`, `test_tool_menu_key.py`, `test_toast_stack.py` | The suite-wide walks: `q` and `t` from every screen and popup, toasts above the bars (see [below](#the-suite-wide-key-and-toast-walks)) |
 
@@ -202,6 +207,9 @@ Cleaner's tests predate that rule: its logic tests are `test_cleaner.py`, `test_
 | Interface Backup | `test_interface_backup_{app,backup,catalog,folder,report,restore,scanner,settings,undo}.py` |
 | Ace3 Profile Manager | `test_ace_{app,compile,editor,journal,model,multi,ops,report,scanner,settings,undo}.py` |
 | Saved Variables Browser | `test_sv_browser_{app,apply,bulk,compile,edit,model,ops,run_ui,scanner,search,search_ui,skeleton}.py` |
+| Config Copier | `test_config_copier_{app,merge,planner,run}.py` |
+| Macro Editor | `test_macro_editor_{app,edit,ops,optimizer,run,syntax}.py` |
+| Config Editor | `test_config_editor_{app,ops,run}.py` |
 
 ## Fixtures: tests/fixtures.py
 
@@ -221,9 +229,14 @@ builder.
 | `build_interface_tree(root)` | Known bytes in `_retail_`'s Interface and WTF, and an empty `_ptr_` flavor |
 | `build_ace_tree(root)` | A separate install with AceDB SavedVariables written byte-exact with CRLF (the `ACE_*` texts) |
 | `build_sv_tree(root)` | A separate install for the Saved Variables Browser (the `SVB_*` texts): two flavors, two accounts, nested tables, numeric and boolean keys, escapes, a nil array slot, a `Blizzard_*` file, a `.bak` and a broken file |
+| `build_character_tree(root)` | Retail account and character folders only, for `ui/character_tree`: real characters (non-ASCII names), the `Bob - Copy` and `Bob2` folders that are not characters, a `SavedVariables` folder that is never a realm, an account with no characters |
+| `build_copier_tree(root)` | On `build_character_tree`: a source character with all five client files (the `COPIER_*` texts), targets with some, none, or the same file, a non-character folder with macros, and a `_classic_era_` character (another flavor) |
+| `build_macro_tree(root)` | On `build_character_tree`: account macros, characters' `macros-cache.txt` (the `MACRO_*` texts, one with a Retail-only conditional), a file in an LF-only layout the reader doesn't know (read-only), and a `_classic_era_` set |
+| `build_config_tree(root)` | On `build_character_tree`: `WTF/Config.wtf`, an account and character `config-cache.wtf` (the `CONFIG_*` texts, one CVar no KB knows), and one with LF endings, a non-`SET` line and no final newline |
 
 `ace_lua(*lines)` makes SavedVariables text the way WoW writes it. `NOW`, `DAY`, `FRESH` and `OLD` are the ages the
-builders stamp on files.
+builders stamp on files. `macro_file_bytes(macros)` and `cvar_file_bytes(pairs)` write a `macros-cache.txt` and a
+`config-cache.wtf` / `Config.wtf` the way the client does (CRLF unless `newline=` says otherwise).
 
 ### Config
 
@@ -239,7 +252,10 @@ keyword arguments go into `[general]`. A tool's own settings go into `<config_di
 | `await settle(app, pilot, timeout=30.0)` | Wait until workers are done, no rebuild or message is pending and every visible footer has recomposed. Call it after anything that starts work and before asserting. Past the timeout it fails, naming what was still busy (30 s: a loaded Windows CI runner needed more than 10 s after a clean) |
 | `submit_filter(screen, text)` | Put text in a tree screen's filter box and submit it (typing alone never filters, spec D40); `settle` after it |
 | `await accept_disclaimer(app, pilot)` | Accept the USE AT YOUR OWN RISK popup (`ui.disclaimer`, L4: WTF Cleaner, Ace3 Profile Manager, Saved Variables Browser) if it is showing |
+| `await pick_source(app, pilot)` / `await reach_review(app, pilot)` | The Config Copier's source picker (the first character with a file to copy), and from the flavor pick to any tool's review: `accept_disclaimer`, then `pick_source` |
 | `stage_sv_edit(review)` | Stage one value edit on a Saved Variables Browser review, so Apply and Dry run have something to do |
+| `tick_copier_targets(review)`, `stage_macro_edit(review)`, `stage_config_edit(review)` | The same for the Config Copier (tick every pair it can copy), the Macro Editor (stage one new macro) and the Config Editor (stage one CVar) |
+| `assert_fits_or_keeps_minimum(test, node, lead, room, name, minimum, after=)` / `assert_siblings_distinct(test, nodes)` | STD-7.28, U1: a tree row's name keeps its column minimum and the row fits its pane unless even that cannot (`COUNT_AFTER` for a counted row); no two sibling rows read the same |
 | `await footer_keys(screen, pilot, wanted)` | The keys a screen's footer lists, once it lists every key in `wanted` (or the timeout passes) |
 | `assert_keys_on_buttons(test, screen)` | Spec D17 on one screen: a button shows its action's key, a shown key works there, and the footer lists none of them |
 | `with record_fsyncs(module=None) as calls:` | Record `("fsync", file size)` for every `os.fsync`, and with `module`, `("rename", source size)` for every call of that module's `rename_no_replace`: a test checks a file reached the disk before it was moved into place or counted (F-012) |
@@ -346,7 +362,8 @@ Opens every tool's screens through the app (the tools in its `TOOLS` tuple) at `
   and Tab reaches every control; nothing about the layout is asserted there.
 
 `RUN_ACTION` names the action that reaches each tool's result screen without a running-WoW popup, and `PREPARE`
-stages what a review needs first (the Ace3 Profile Manager and Saved Variables Browser run pending changes only).
+stages what a review needs first (the Ace3 Profile Manager and Saved Variables Browser stage a change, the Config
+Copier ticks its targets, the Macro Editor and Config Editor stage an edit).
 
 ### tests/test_help.py
 
