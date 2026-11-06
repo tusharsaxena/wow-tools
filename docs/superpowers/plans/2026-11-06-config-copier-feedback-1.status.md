@@ -14,7 +14,7 @@ Branch `feat/config-copier-feedback-1`. Plan `2026-11-06-config-copier-feedback-
 | Task | What | Status | Commit | Notes |
 |---|---|---|---|---|
 | P1 | Change source on `p` (CP1) | done | bae360b, (this commit) | 6 new tests (`ChangeSourceTest`); gate green: 2432 tests on WSL and Windows, 0 failures (WSL 10 skipped, Windows 86), ruff clean, events doc in step. Review fixes: the fresh-review test now picks Dænerys (Bob stays the ticked target) and checks `files` too, so carried-over ticks fail it (checked against a shared-ticks mutant); `#source-row` margin dropped (the Files heading's own margin keeps one blank row, one row back at 80x24); gate green again, same counts |
-| P2 | Diff stands out: confirm kind, reason line (CP3) | done | (this commit) | 5 new tests (`DiffReasonTest`: confirm kind and colour, the line on a character row and gone on a replaced pair at 120x30 and 80x24, refit on resize, empty during a scan and a run, `fit_reason` cuts) and `"Diff": "confirm"` pinned in `test_same_label_same_colour`; gate green: 2437 tests on WSL and Windows, 0 failures (WSL 10 skipped, Windows 86), ruff clean, events doc in step |
+| P2 | Diff stands out: confirm kind, reason line (CP3) | done | 2825a5e | 5 new tests (`DiffReasonTest`: confirm kind and colour, the line on a character row and gone on a replaced pair at 120x30 and 80x24, refit on resize, empty during a scan and a run, `fit_reason` cuts) and `"Diff": "confirm"` pinned in `test_same_label_same_colour`; gate green: 2437 tests on WSL and Windows, 0 failures (WSL 10 skipped, Windows 86), ruff clean, events doc in step. Review fixes: `assert_fits_beside_the_button` now pins the button's place and full width and the line right after its gap, at 120x30 and 80x24 (P2r) |
 | P3 | Side-by-side diff rows and screen (CP4) | todo | | |
 | P4 | Inline on `v`, width rule, session view (CP4) | todo | | |
 | P5 | CHANGELOG, whole-branch review, push, CI | todo | | |
@@ -47,3 +47,7 @@ Branch `feat/config-copier-feedback-1`. Plan `2026-11-06-config-copier-feedback-
 - P1r (review fix, my call): `#source-row` loses its `margin-bottom: 1`; the `.section` heading under it already has
   `margin-top: 1`, so the gap was two rows. One row comes back for the left pane at 80x24 (it still scrolls there,
   as before this task; STD-7.23 makes 80x24 a floor, not a fit).
+- P2r (review fix, my call): the one finding (nothing pinned the Diff button's own width and place) is fixed in
+  the test only: `assert_fits_beside_the_button` asserts the button is as wide as its whole label + 2, sits at the
+  row's content start, and the reason line starts at `button.region.right + ActionBar.GUTTER`. A bar cut to the
+  bare label and a bar 6 cells too wide both fail it now.

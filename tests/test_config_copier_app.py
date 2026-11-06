@@ -32,6 +32,7 @@ from wowtools.ui.character_tree import CharacterNode
 from wowtools.ui.columns import GROUP_NAME_MINIMUM
 from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
+from wowtools.ui.review import ActionBar
 from wowtools.ui.suite_app import WowToolsApp
 from wowtools.ui.theme import ACTION_COLOURS
 from wowtools.ui.widgets import action_kind
@@ -525,7 +526,9 @@ class DiffReasonTest(CopierTestCase):
     def assert_fits_beside_the_button(self, review) -> None:
         line, button = self.line(review), review.query_one("#act-diff", Button)
         self.assertEqual(line.region.y, button.region.y)  # on the button's row ...
-        self.assertGreaterEqual(line.region.x, button.region.right)  # ... after it, never over it
+        self.assertEqual(line.region.x, button.region.right + ActionBar.GUTTER)  # ... right after its gap
+        self.assertEqual(button.region.width, cell_len(str(button.label)) + 2)  # the button's whole label, never cut
+        self.assertEqual(button.region.x, review.query_one("#diff-row").content_region.x)  # it never moves
         self.assertLessEqual(line.region.right, review.query_one("#tree-pane").region.right)
         width = line.content_size.width
         self.assertLessEqual(cell_len(line.shown), width)
