@@ -1,11 +1,15 @@
-"""The diff of one replaced (target, file) pair (config tools spec CC4, CC5): the target's file as it is against what
-the copy gives it, unified (one column fits 80x24): `-` lines it loses, `+` lines it gets, three lines of context
-around each change, `…` between two parts. A config-cache.wtf shows the whole file, its state lines marked kept (the
-target's own, CC5). Read-only; Back (Esc) returns to the review."""
+"""The diff of one replaced (target, file) pair (config tools spec CC4, CC5; feedback round 1 CP4): the target's
+file as it is against what the copy gives it, side by side: the file as it is on the left, what it gets on the right,
+each with its own line numbers, removed lines red on the left, added green on the right, a changed run paired row by
+row; three lines of context around each change, `…` between two parts, a long line cut with `…` so the two sides
+stay row-aligned. A config-cache.wtf shows the whole file, its state lines marked kept (the target's own, CC5).
+`diff_text` is the unified (inline) view of the same lines. Read-only; Back (Esc) returns to the review."""
 from __future__ import annotations
 
 from typing import ClassVar
 
+from rich.console import Group, RenderableType
+from rich.table import Table
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -15,12 +19,15 @@ from textual.widgets import Button, Header, Static
 
 from wowtools.core.text import plural
 from wowtools.tools.config_copier.model import CONFIG_FILE, PairPlan
-from wowtools.tools.config_copier.report import BYTES_ONLY, bytes_only, character_text, diff_rows, pair_text
+from wowtools.tools.config_copier.report import (BYTES_ONLY, GAP, SideRow, bytes_only, character_text, diff_rows,
+                                                 pair_text, side_by_side_rows)
 from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import theme_colour
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
 NAV_HINT = "↑↓ PgUp/PgDn scroll · Tab move"
+SAME = "The files are the same."
+SEPARATOR = "│"  # between the two sides
 
 
 class DiffScreen(Screen[None]):
@@ -38,6 +45,7 @@ class DiffScreen(Screen[None]):
         self.plan = plan
         self.source_text = source_text
         self.rows = diff_rows(plan)
+        self.side_rows = side_by_side_rows(plan)
 
     def head_text(self) -> Text:
         removed = sum(mark == "-" for mark, _, _ in self.rows)
@@ -49,9 +57,53 @@ class DiffScreen(Screen[None]):
             line += f" {plural(kept, 'state line')} kept as they are."
         return Text(line)
 
+    def _styles(self) -> dict[str, str]:
+        return {"-": f"bold {theme_colour(self.app, 'error')}", "+": f"bold {theme_colour(self.app, 'success')}"}
+
+    def _end_line(self) -> Text | None:
+        """The dim line under (or instead of) the diff: only bytes differ, or the files are the same."""
+        if bytes_only(self.plan):
+            return Text(BYTES_ONLY, style="dim")
+        return None if self.rows else Text(SAME, style="dim")
+
+    def side_view(self) -> RenderableType:
+        """The side-by-side diff (CP4): a grid of left number, left line, separator, right number, right line and,
+        for a config-cache.wtf, the dim note column. Each line is one row, cut at its end with … (never wrapped),
+        so old line i stays beside new line i; the two line columns share the width left equally."""
+        styles = self._styles()
+        table = Table.grid(expand=True, padding=(0, 1))
+        for side in range(2):
+            if side:
+                table.add_column(no_wrap=True, style="dim")  # the separator
+            table.add_column(justify="right", no_wrap=True, style="dim")
+            table.add_column(ratio=1, no_wrap=True, overflow="ellipsis")
+        notes = any(row.note for row in self.side_rows)
+        if notes:
+            table.add_column(no_wrap=True, style="dim italic")
+        for row in self.side_rows:
+            table.add_row(*self._side_cells(row, styles), *([row.note] if notes else []))
+        closing = self._end_line()
+        if closing is None:
+            return table
+        if not self.side_rows:
+            return closing
+        return Group(table, Text(), closing)
+
+    @staticmethod
+    def _side_cells(row: SideRow, styles: dict[str, str]) -> list[Text]:
+        if row.left_mark == GAP:
+            return [Text(GAP), Text(""), Text(SEPARATOR), Text(GAP), Text("")]
+        cells = []
+        for number, line, mark in ((row.left_no, row.left, row.left_mark), (row.right_no, row.right, row.right_mark)):
+            if cells:
+                cells.append(Text(SEPARATOR))
+            style = styles.get(mark, "")
+            cells += [Text("" if number is None else str(number), style=style), Text(line, style=style)]
+        return cells
+
     def diff_text(self) -> Text:
-        """The diff, one row per line: its mark, the line and, dim, its note."""
-        styles = {"-": f"bold {theme_colour(self.app, 'error')}", "+": f"bold {theme_colour(self.app, 'success')}"}
+        """The unified (inline) diff, one row per line: its mark, the line and, dim, its note."""
+        styles = self._styles()
         text = Text()
         for index, (mark, line, note) in enumerate(self.rows):
             if index:
@@ -59,10 +111,10 @@ class DiffScreen(Screen[None]):
             text.append(f"{mark} {line}".rstrip() if mark != " " else f"  {line}", style=styles.get(mark, ""))
             if note:
                 text.append(f"    ({note})", style="dim italic")
-        if bytes_only(self.plan):
-            text.append(f"\n\n{BYTES_ONLY}" if self.rows else BYTES_ONLY, style="dim")
-        elif not self.rows:
-            text.append("The files are the same.", style="dim")
+        closing = self._end_line()
+        if closing is not None:
+            text.append("\n\n" if self.rows else "")
+            text.append(closing)
         return text
 
     def compose(self) -> ComposeResult:
@@ -78,7 +130,7 @@ class DiffScreen(Screen[None]):
 
     def on_mount(self) -> None:
         self.sub_title = f"Config Copier · diff · {self.plan.name}"
-        self.query_one("#diff", Static).update(self.diff_text())
+        self.query_one("#diff", Static).update(self.side_view())
         self.query_one("#diff-scroll").focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:

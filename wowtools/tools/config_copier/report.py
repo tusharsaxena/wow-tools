@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import difflib
 from collections.abc import Sequence
+from typing import NamedTuple
 
 from wowtools.core import sv_report
 from wowtools.core.cvarfile import parse_cvars
@@ -18,10 +19,10 @@ from wowtools.core.text import Listed, plural
 from wowtools.tools.config_copier.model import CONFIG_FILE, PairPlan
 from wowtools.tools.config_copier.runner import COPYABLE
 
-__all__ = ["FILE_COLUMNS", "PAIR_CAPS", "PAIR_MINIMUMS", "RESULT_TEXT", "STAGE_TITLES", "STATUS_COLOURS",
-           "UNDO_COLUMNS", "WARNING_MARK", "WARNING_SHORT", "character_text", "copy_confirm", "copy_groups",
-           "copy_listed", "diff_rows", "file_rows", "pair_cells", "pair_text", "recovery_text", "summary_rows",
-           "undo_confirm", "undo_detail_rows", "undo_summary_rows"]
+__all__ = ["FILE_COLUMNS", "GAP_ROW", "PAIR_CAPS", "PAIR_MINIMUMS", "RESULT_TEXT", "STAGE_TITLES", "STATUS_COLOURS",
+           "UNDO_COLUMNS", "WARNING_MARK", "WARNING_SHORT", "SideRow", "character_text", "copy_confirm", "copy_groups",
+           "copy_listed", "diff_rows", "file_rows", "pair_cells", "pair_text", "recovery_text", "side_by_side_rows",
+           "summary_rows", "undo_confirm", "undo_detail_rows", "undo_summary_rows"]
 
 FILE_COLUMNS = ("Account", "Character", "File", "Result")
 # A pair's status as the review tree and the confirm say it (CC4).
@@ -136,14 +137,20 @@ def _state_line(line: str) -> bool:
     return bool(parsed.lines) and is_state_cvar(parsed.lines[0].name)
 
 
+def _diff_groups(plan: PairPlan) -> tuple[list[str], list[str], bool, list[list[tuple[str, int, int, int, int]]]]:
+    """The old and new lines, whether the pair is the config file, and the opcode groups both views draw: one group
+    of the whole file for config-cache.wtf, else difflib's groups with three lines of context."""
+    old, new = _lines(plan.old), _lines(plan.new)
+    config = plan.name == CONFIG_FILE
+    matcher = difflib.SequenceMatcher(None, old, new, autojunk=False)
+    return old, new, config, [matcher.get_opcodes()] if config else list(matcher.get_grouped_opcodes(3))
+
+
 def diff_rows(plan: PairPlan) -> list[tuple[str, str, str]]:
     """The diff of a replaced pair, the target's file as it is against what it gets: (mark, line, note) rows, mark
     " " for a line kept, "-" removed, "+" added, GAP between two parts. A plain file shows its changes with three
     lines around each; a config-cache.wtf shows the whole file, its state lines noted KEPT (CC5)."""
-    old, new = _lines(plan.old), _lines(plan.new)
-    config = plan.name == CONFIG_FILE
-    matcher = difflib.SequenceMatcher(None, old, new, autojunk=False)
-    groups = [matcher.get_opcodes()] if config else list(matcher.get_grouped_opcodes(3))
+    old, new, config, groups = _diff_groups(plan)
     rows: list[tuple[str, str, str]] = []
     for index, group in enumerate(groups):
         if index:
@@ -154,4 +161,43 @@ def diff_rows(plan: PairPlan) -> list[tuple[str, str, str]]:
                 continue
             rows += [("-", line, "") for line in old[i1:i2]]
             rows += [("+", line, "") for line in new[j1:j2]]
+    return rows
+
+
+class SideRow(NamedTuple):
+    """One row of the side-by-side diff (spec CP4): the target's line as it is (left) beside what it gets (right),
+    each with its 1-based line number and its mark (" " kept, "-" removed, "+" added, "" a blank side, GAP on both
+    sides between two parts, numbers None), and the note of a kept config-cache.wtf state line (KEPT)."""
+    left_no: int | None
+    left: str
+    left_mark: str
+    right_no: int | None
+    right: str
+    right_mark: str
+    note: str
+
+
+GAP_ROW = SideRow(None, GAP, GAP, None, GAP, GAP, "")
+
+
+def side_by_side_rows(plan: PairPlan) -> list[SideRow]:
+    """The diff_rows lines drawn as two aligned sides, from the same opcode groups (same context, gaps and KEPT
+    notes): a kept line on both sides, a removed line beside a blank, an added one after a blank, and a replaced run
+    paired line by line (old line i beside new line i), the longer side's extra lines beside a blank."""
+    old, new, config, groups = _diff_groups(plan)
+    rows: list[SideRow] = []
+    for index, group in enumerate(groups):
+        if index:
+            rows.append(GAP_ROW)
+        for tag, i1, i2, j1, j2 in group:
+            if tag == "equal":
+                rows += [SideRow(i + 1, old[i], " ", j + 1, new[j], " ",
+                                 KEPT if config and _state_line(old[i]) else "")
+                         for i, j in zip(range(i1, i2), range(j1, j2))]
+                continue
+            for k in range(max(i2 - i1, j2 - j1)):
+                i, j = i1 + k, j1 + k
+                left = (i + 1, old[i], "-") if i < i2 else (None, "", "")
+                right = (j + 1, new[j], "+") if j < j2 else (None, "", "")
+                rows.append(SideRow(*left, *right, ""))
     return rows

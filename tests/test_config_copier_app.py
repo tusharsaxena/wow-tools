@@ -22,7 +22,7 @@ from wowtools.tools import TOOLS
 from wowtools.tools.config_copier.diff_screen import DiffScreen
 from wowtools.tools.config_copier.help import HELP
 from wowtools.tools.config_copier.model import COPY_FILES, MACRO_WARNING
-from wowtools.tools.config_copier.report import PAIR_MINIMUMS, WARNING_MARK, WARNING_SHORT, pair_cells, pair_text
+from wowtools.tools.config_copier.report import BYTES_ONLY, PAIR_MINIMUMS, WARNING_MARK, WARNING_SHORT, pair_cells, pair_text
 from wowtools.tools.config_copier.review_screen import (DIFF_REASON, OTHER_FLAVOR_REASON, CopierResultScreen,
                                                         CopierReviewScreen, PairKey, PairNode, ReasonLine,
                                                         fit_reason)
@@ -30,7 +30,7 @@ from wowtools.tools.config_copier.source_screen import SourceScreen
 from wowtools.ui.branding import footer_bindings
 from wowtools.ui.character_tree import CharacterNode
 from wowtools.ui.columns import GROUP_NAME_MINIMUM
-from wowtools.ui.dialogs import ConfirmScreen
+from wowtools.ui.dialogs import ConfirmScreen, theme_colour
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.review import ActionBar
 from wowtools.ui.suite_app import WowToolsApp
@@ -617,6 +617,97 @@ class DiffReasonTest(CopierTestCase):
         self.assertEqual(fit_reason(DIFF_REASON, 9), "")
         self.assertEqual(fit_reason(DIFF_REASON, 0), "")
         self.assertEqual(fit_reason("", 40), "")
+
+
+class SideBySideDiffTest(CopierTestCase):
+    """Feedback round 1 CP4 (rows and screen): the diff screen draws report.side_by_side_rows as two aligned
+    columns, the target's file as it is on the left and what the copy gives it on the right, each with its line
+    numbers; removed lines red on the left, added green on the right, a long line cut with … so the rows stay
+    aligned, and the head's counts as the inline view's."""
+
+    def lines(self, app) -> list[str]:
+        return [strip.text for strip in app.screen._compositor.render_strips()]
+
+    def segment_colour(self, app, text: str) -> str | None:
+        """The foreground colour the screen draws `text` in (the first segment holding it)."""
+        for strip in app.screen._compositor.render_strips():
+            for segment in strip:
+                if text in segment.text and segment.style and segment.style.color:
+                    return segment.style.color.triplet.hex if segment.style.color.triplet else None
+        return None
+
+    async def open_diff(self, app, pilot, character: str, file: str) -> DiffScreen:
+        review = await self.open_review(app, pilot)
+        tree = review.query_one("#targets", Tree)
+        tree.focus()
+        await goto(pilot, tree, pair_node(tree, character, file))
+        await pilot.press("d")
+        await settle(app, pilot)
+        self.assertIsInstance(app.screen, DiffScreen)
+        return app.screen
+
+    async def test_both_sides_aligned_with_their_line_numbers_at_base(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            diff = await self.open_diff(app, pilot, "Bob", "macros-cache.txt")
+            lines = self.lines(app)
+            row = next(line for line in lines if "/sit" in line)
+            self.assertIn("/cast [@mouseover] Flash Heal", row)  # old line 2 beside new line 2
+            self.assertLess(row.index("/sit"), row.index("/cast"))
+            self.assertRegex(row, r"\b2 /sit .*\b2 /cast")
+            header = next(line for line in lines if '"Bob"' in line)
+            self.assertRegex(header, r'\b1 VER 3 0100000000000001 "Bob" .*\b1 VER 3 0100000000000001 "Heal')
+            end = next(line for line in lines if "END" in line)
+            self.assertRegex(end, r"\b3 END .*\b3 END")  # a kept line on both sides
+            extra = next(line for line in lines if '"D Up"' in line)
+            left, right = extra.split("│")
+            self.assertEqual(left.strip(" ▊"), "")  # the new side's extra line beside a blank
+            self.assertIn("4 VER 3 0100000000000002", right)
+            self.assertEqual(diff.query_one("#diff").size.height, len(diff.side_rows))  # one screen row each
+            self.assertEqual(self.segment_colour(app, "/sit"), theme_colour(app, "error").lower())
+            self.assertEqual(self.segment_colour(app, "Flash Heal"), theme_colour(app, "success").lower())
+            self.assertIn("2 lines removed, 5 lines added.", diff.head_text().plain)  # the inline view's counts
+
+    async def test_the_config_file_notes_its_kept_state_lines(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            diff = await self.open_diff(app, pilot, "Bob", "config-cache.wtf")
+            kept = next(line for line in self.lines(app) if "hardTrackedQuests" in line)
+            self.assertEqual(kept.count("hardTrackedQuests"), 2)
+            self.assertIn("kept", kept)
+            changed = next(line for line in self.lines(app) if "enableMultiActionBars" in line)
+            self.assertIn("assistedCombatHighlight", changed)
+            self.assertIn("1 state line kept as they are.", diff.head_text().plain)
+
+    async def test_a_long_line_is_cut_and_the_rows_stay_aligned(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            plan = next(p for p in review.plans.values() if (p.target.name, p.name) == ("Bob", "AddOns.txt"))
+            long_old, long_new = "Old" + "o" * 200, "New" + "n" * 200
+            pair = dataclasses.replace(plan, old=f"{long_old}\nK\n".encode(), new=f"{long_new}\nK\n".encode())
+            app.push_screen(DiffScreen(pair, "MAIN › Realm1/Aellâ"))
+            await settle(app, pilot)
+            diff = app.screen
+            self.assertEqual(diff.query_one("#diff").size.height, 2)  # never wrapped
+            row = next(line for line in self.lines(app) if "Oldooo" in line)
+            self.assertIn("Newnnn", row)
+            self.assertEqual(row.count("…"), 2)
+            kept = next(line for line in self.lines(app) if "2 K " in line)
+            self.assertRegex(kept, r"2 K +│ 2 K ")  # the kept line on its own row, both sides
+
+    async def test_bytes_only_and_the_same_files_say_so(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            plan = next(p for p in review.plans.values() if (p.target.name, p.name) == ("Bob", "AddOns.txt"))
+            for old, new, text in ((b"A\n", b"A\r\n", BYTES_ONLY), (b"A\n", b"A\n", "The files are the same.")):
+                with self.subTest(text=text):
+                    app.push_screen(DiffScreen(dataclasses.replace(plan, old=old, new=new), "MAIN › Realm1/Aellâ"))
+                    await settle(app, pilot)
+                    self.assertTrue(any(text in line for line in self.lines(app)))
+                    await pilot.press("escape")
+                    await settle(app, pilot)
 
 
 def indent(node) -> int:

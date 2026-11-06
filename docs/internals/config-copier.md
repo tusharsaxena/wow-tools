@@ -58,7 +58,9 @@ Modules (all UI-free except `app.py` and the `*_screen.py` files):
   `NAMES`; Undo puts back replaced files and deletes created ones, each only while it is what the run wrote (CC8).
 - `report`: pair statuses, the confirm (`copy_confirm`, `copy_groups`, `copy_listed` for the CC7 warnings as a
   counted list), result rows, and `diff_rows(plan)` (difflib: three lines of context per change for a plain file,
-  the whole file with state lines noted kept for `config-cache.wtf`); `bytes_only(plan)` is true for a replace whose
+  the whole file with state lines noted kept for `config-cache.wtf`), and `side_by_side_rows(plan)` (`SideRow`s from
+  the same opcode groups: left number, text, mark, right number, text, mark, note; a `replace` run paired line by line,
+  the longer side's extra lines beside a blank, `GAP_ROW` between two parts); `bytes_only(plan)` is true for a replace whose
   lines are the same (only line endings or bytes that are not UTF-8 differ): the diff screen says so.
 - `settings`: `[config_copier]` `backup_dir`, `last_flavor_choice`; `resolve_root` = `core.journal.tool_root`.
 
@@ -128,7 +130,10 @@ backups go under `settings.resolve_root()` (`<backup_dir or <wow_path>/wow-tools
   the tree, as wide as its button, and beside it `ReasonLine` (`#diff-reason`): while Diff is disabled and the
   review idle, `DIFF_REASON` cut at its end with `…` to the room left (`fit_reason`), nothing under 10 cells, fitted
   again on resize; set by `_refresh_buttons`. Ticks are a selection, not staged work, so leaving asks nothing.
-- `diff_screen.DiffScreen`: the unified diff of one replaced pair, read-only.
+- `diff_screen.DiffScreen`: the diff of one replaced pair, read-only: `side_view` draws `side_by_side_rows` as a
+  Rich grid (number, line, `│`, number, line, and a note column for `config-cache.wtf`), the two line columns sharing
+  the width, every line one row cut with `…` (never wrapped, so the sides stay aligned); `diff_text` is the unified
+  view of `diff_rows`. The head's counts come from `diff_rows` in both views.
 - `CopierResultScreen` (`ResultScreen`): the copy, dry run and Undo results.
 
 ## Events

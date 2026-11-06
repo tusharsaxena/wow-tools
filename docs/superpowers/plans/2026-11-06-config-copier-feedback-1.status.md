@@ -5,8 +5,8 @@ Branch `feat/config-copier-feedback-1`. Plan `2026-11-06-config-copier-feedback-
 
 ## Resume here
 
-- P1 and P2 done (Change source on `p`; Diff a `confirm` button with its reason line). Next: **P3** (side-by-side
-  diff rows and screen, CP4).
+- P1, P2 and P3 done (Change source on `p`; Diff a `confirm` button with its reason line; side-by-side diff rows
+  and screen). Next: **P4** (inline on `v`, the 100-column width rule, the session view, CP4; then push).
 - Spec, plan and ledger committed. Build runs as a workflow: per task implement (test first), review, fix; each
   task's row goes `done` with its commits. Push after P4; P5 is the whole-branch review, push and CI. Merge into
   master needs the user's approval.
@@ -15,7 +15,7 @@ Branch `feat/config-copier-feedback-1`. Plan `2026-11-06-config-copier-feedback-
 |---|---|---|---|---|
 | P1 | Change source on `p` (CP1) | done | bae360b, (this commit) | 6 new tests (`ChangeSourceTest`); gate green: 2432 tests on WSL and Windows, 0 failures (WSL 10 skipped, Windows 86), ruff clean, events doc in step. Review fixes: the fresh-review test now picks Dænerys (Bob stays the ticked target) and checks `files` too, so carried-over ticks fail it (checked against a shared-ticks mutant); `#source-row` margin dropped (the Files heading's own margin keeps one blank row, one row back at 80x24); gate green again, same counts |
 | P2 | Diff stands out: confirm kind, reason line (CP3) | done | 2825a5e | 5 new tests (`DiffReasonTest`: confirm kind and colour, the line on a character row and gone on a replaced pair at 120x30 and 80x24, refit on resize, empty during a scan and a run, `fit_reason` cuts) and `"Diff": "confirm"` pinned in `test_same_label_same_colour`; gate green: 2437 tests on WSL and Windows, 0 failures (WSL 10 skipped, Windows 86), ruff clean, events doc in step. Review fixes: `assert_fits_beside_the_button` now pins the button's place and full width and the line right after its gap, at 120x30 and 80x24 (P2r) |
-| P3 | Side-by-side diff rows and screen (CP4) | todo | | |
+| P3 | Side-by-side diff rows and screen (CP4) | done | (this commit) | 12 new tests: 8 unit (`SideBySideRowsTest`: equal, delete, insert, replace of unequal lengths both ways, gaps and context as `diff_rows`, config file whole with KEPT notes, empty old or new file, bytes only) and 4 screen (`SideBySideDiffTest` at 120x30: both sides aligned with their numbers and colours, config kept notes, a long line cut with `…` on one row, bytes-only and same-files lines); gate green: 2449 tests on WSL and Windows, 0 failures (WSL 10 skipped, Windows 86), ruff clean, events doc in step |
 | P4 | Inline on `v`, width rule, session view (CP4) | todo | | |
 | P5 | CHANGELOG, whole-branch review, push, CI | todo | | |
 
@@ -51,3 +51,16 @@ Branch `feat/config-copier-feedback-1`. Plan `2026-11-06-config-copier-feedback-
   the test only: `assert_fits_beside_the_button` asserts the button is as wide as its whole label + 2, sits at the
   row's content start, and the reason line starts at `button.region.right + ActionBar.GUTTER`. A bar cut to the
   bare label and a bar 6 cells too wide both fail it now.
+- P3a (builder, my call): `report.SideRow` is a NamedTuple (left_no, left, left_mark, right_no, right, right_mark,
+  note); marks `" "` kept, `"-"` removed, `"+"` added, `""` a blank side; a gap is `GAP_ROW` (GAP as both marks and
+  texts, no numbers). `diff_rows` and `side_by_side_rows` share `_diff_groups` (the same lines, opcode groups and
+  KEPT test), so the two views can never show different lines. A plain file with no line changed gives no row in
+  either view (difflib's grouped opcodes are empty), as before: the screen says `The files are the same.`
+- P3b (builder, my call): `DiffScreen.side_view` draws the rows as a Rich `Table.grid` (number, line, dim `│`,
+  number, line; a dim italic note column only when a row has a note): the two line columns share the width (ratio
+  1 each), `no_wrap` with `overflow="ellipsis"`, so a long line is cut with `…` and every row stays one screen row;
+  Rich refits it on a resize by itself. A removed line and its number are bold red, an added one bold green, kept
+  lines plain. `diff_text` (the unified view) is kept as it is for P4; the head counts still come from `diff_rows`.
+  Until P4 lands the screen opens side by side at every width (at 80x24 each side has about 33 cells).
+- P3c (builder, my call): P3 lists no docs, but the user guide's Diff sentence described `-` / `+` lines, so it and
+  the internals doc are updated now; the keys table, `help.py` and the rest of the Diff section stay for P4.

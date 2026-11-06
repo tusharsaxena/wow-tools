@@ -81,8 +81,9 @@ left, a few letters at each end, and the line scrolls sideways: widen the window
 A replaced `macros-cache.txt` on a character that already has macros shows **⚠ action bars**: see
 [Macros and action bars](#macros-and-action-bars).
 
-**Diff** (`d`, under the tree) shows what a replaced file loses (`-` lines) and gets (`+` lines), with three lines
-around each change. For `config-cache.wtf` it shows the whole file and notes each line the target keeps
+**Diff** (`d`, under the tree) shows a replaced file side by side: the target's file as it is on the left, what the
+copy gives it on the right, each with its line numbers. Lines it loses are red on the left, lines it gets green on the
+right, a changed line beside its new version, with three lines around each change; a long line is cut with `…`. For `config-cache.wtf` it shows the whole file and notes each line the target keeps
 `kept: the target's own` (see [How config-cache.wtf is merged](#how-config-cachewtf-is-merged)). When two files differ
 only in their line endings, or in bytes that are not text, the diff says **Only line endings or bytes that are not
 text differ.** **Back** (`Esc`) returns to the review. Diff works only on a replaced file: until one is highlighted
