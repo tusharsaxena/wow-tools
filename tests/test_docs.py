@@ -157,7 +157,7 @@ class DocsTest(unittest.TestCase):
                        "### If a copy was interrupted", "Put the originals back", "Leave as is", "## WoW running",
                        "changed since", "keep_backups", "keep_journals", "config\\config-copier.cfg", "## Settings",
                        "## FAQ", "## Troubleshooting", "](assets/screenshots/config-copier/", "Back to review",
-                       "**Diff**", "kept: the target's own", "Only line endings or bytes that are not text differ."):
+                       "**Diff**", "marks each line the target keeps as its own `kept`", "Only line endings or bytes that are not text differ."):
             self.assertIn(needle, flat)
         for key in ("`Space`", "`a`", "`n`", "`/`", "`x`", "`c`", "`w`", "`y`", "`r`", "`z`", "`d`", "`!`", "`f`",
                     "`t`", "`s`", "`h`", "`q`"):

@@ -677,7 +677,56 @@ class SideBySideDiffTest(CopierTestCase):
             self.assertIn("kept", kept)
             changed = next(line for line in self.lines(app) if "enableMultiActionBars" in line)
             self.assertIn("assistedCombatHighlight", changed)
-            self.assertIn("1 state line kept as they are.", diff.head_text().plain)
+            self.assertIn("1 state line kept as they are, the target's own (marked kept).", diff.head_text().plain)
+
+    async def test_a_changed_config_value_shows_on_both_sides_at_100_columns(self):
+        """P3 review: the kept note is a short mark, so it takes little width from the two sides and a changed
+        value at the end of a `SET name "value"` line stays in view on both."""
+        app = self.make_app()
+        async with app.run_test(size=(100, 30)) as pilot:
+            review = await self.open_review(app, pilot)
+            plan = next(p for p in review.plans.values() if (p.target.name, p.name) == ("Bob", "config-cache.wtf"))
+            state = 'SET hardTrackedQuests "222"\n'
+            old = (state + 'SET cameraSavedDistance "15.000000"\nSET Sound_MusicVolume "0.400000"\n').encode()
+            new = (state + 'SET cameraSavedDistance "28.500000"\nSET Sound_MusicVolume "0.100000"\n').encode()
+            app.push_screen(DiffScreen(dataclasses.replace(plan, old=old, new=new), "MAIN › Realm1/Aellâ"))
+            await settle(app, pilot)
+            lines = self.lines(app)
+            self.assertTrue(any("hardTrackedQuests" in line and "kept" in line for line in lines))
+            for before, after in (('"15.000000"', '"28.500000"'), ('"0.400000"', '"0.100000"')):
+                with self.subTest(value=after):
+                    row = next(line for line in lines if before in line)
+                    self.assertIn(after, row)
+
+    async def test_changed_rows_carry_their_mark_without_colour(self):
+        """P3 review: a removed or added side shows - / + beside its line number, so a changed row reads apart from
+        a kept one without colour; a kept line has no mark."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_diff(app, pilot, "Bob", "macros-cache.txt")
+            lines = self.lines(app)
+            row = next(line for line in lines if "/sit" in line)
+            self.assertRegex(row, r"-2 /sit .*\+2 /cast")
+            end = next(line for line in lines if "END" in line)
+            self.assertNotRegex(end, r"[-+]3 END")
+            extra = next(line for line in lines if '"D Up"' in line)
+            self.assertIn("+4 VER 3 0100000000000002", extra)
+
+    async def test_a_config_file_with_only_line_endings_changed_shows_its_rows_and_says_so(self):
+        """P3 review: side by side, a config-cache.wtf that differs only in line endings draws its rows and the
+        bytes-only line under them, never "the same"."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            plan = next(p for p in review.plans.values() if (p.target.name, p.name) == ("Bob", "config-cache.wtf"))
+            crlf = (plan.old or b"").replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+            app.push_screen(DiffScreen(dataclasses.replace(plan, new=crlf.replace(b"\r\n", b"\n"), old=crlf),
+                                       "MAIN › Realm1/Aellâ"))
+            await settle(app, pilot)
+            lines = self.lines(app)
+            self.assertTrue(any(line.count("hardTrackedQuests") == 2 for line in lines))
+            self.assertTrue(any(BYTES_ONLY in line for line in lines))
+            self.assertFalse(any("The files are the same." in line for line in lines))
 
     async def test_a_long_line_is_cut_and_the_rows_stay_aligned(self):
         app = self.make_app()
@@ -694,7 +743,7 @@ class SideBySideDiffTest(CopierTestCase):
             self.assertIn("Newnnn", row)
             self.assertEqual(row.count("…"), 2)
             kept = next(line for line in self.lines(app) if "2 K " in line)
-            self.assertRegex(kept, r"2 K +│ 2 K ")  # the kept line on its own row, both sides
+            self.assertRegex(kept, r" 2 K +│ +2 K ")  # the kept line on its own row, both sides
 
     async def test_bytes_only_and_the_same_files_say_so(self):
         app = self.make_app()

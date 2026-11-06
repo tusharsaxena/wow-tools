@@ -131,7 +131,8 @@ backups go under `settings.resolve_root()` (`<backup_dir or <wow_path>/wow-tools
   review idle, `DIFF_REASON` cut at its end with `…` to the room left (`fit_reason`), nothing under 10 cells, fitted
   again on resize; set by `_refresh_buttons`. Ticks are a selection, not staged work, so leaving asks nothing.
 - `diff_screen.DiffScreen`: the diff of one replaced pair, read-only: `side_view` draws `side_by_side_rows` as a
-  Rich grid (number, line, `│`, number, line, and a note column for `config-cache.wtf`), the two line columns sharing
+  Rich grid (number, line, `│`, number, line, and a short `kept` column for `config-cache.wtf`, explained once in
+  the head line; a removed or added line's number carries its `-` / `+`), the two line columns sharing
   the width, every line one row cut with `…` (never wrapped, so the sides stay aligned); `diff_text` is the unified
   view of `diff_rows`. The head's counts come from `diff_rows` in both views.
 - `CopierResultScreen` (`ResultScreen`): the copy, dry run and Undo results.

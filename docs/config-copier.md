@@ -83,8 +83,9 @@ A replaced `macros-cache.txt` on a character that already has macros shows **⚠
 
 **Diff** (`d`, under the tree) shows a replaced file side by side: the target's file as it is on the left, what the
 copy gives it on the right, each with its line numbers. Lines it loses are red on the left, lines it gets green on the
-right, a changed line beside its new version, with three lines around each change; a long line is cut with `…`. For `config-cache.wtf` it shows the whole file and notes each line the target keeps
-`kept: the target's own` (see [How config-cache.wtf is merged](#how-config-cachewtf-is-merged)). When two files differ
+right, a changed line beside its new version, with three lines around each change; the number of a lost line reads
+`-5`, of a new one `+5`, and a long line is cut with `…`. For `config-cache.wtf` it shows the whole file and marks each
+line the target keeps as its own `kept` (see [How config-cache.wtf is merged](#how-config-cachewtf-is-merged)). When two files differ
 only in their line endings, or in bytes that are not text, the diff says **Only line endings or bytes that are not
 text differ.** **Back** (`Esc`) returns to the review. Diff works only on a replaced file: until one is highlighted
 the button is off and a dim line beside it says **highlight a replaced file to see its diff** (cut short in a narrow

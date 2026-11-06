@@ -2,7 +2,8 @@
 file as it is against what the copy gives it, side by side: the file as it is on the left, what it gets on the right,
 each with its own line numbers, removed lines red on the left, added green on the right, a changed run paired row by
 row; three lines of context around each change, `…` between two parts, a long line cut with `…` so the two sides
-stay row-aligned. A config-cache.wtf shows the whole file, its state lines marked kept (the target's own, CC5).
+stay row-aligned, a removed or added line's number marked - / + so the change reads without colour. A
+config-cache.wtf shows the whole file, its state lines marked kept (the target's own, CC5; the head says so once).
 `diff_text` is the unified (inline) view of the same lines. Read-only; Back (Esc) returns to the review."""
 from __future__ import annotations
 
@@ -28,6 +29,7 @@ from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 NAV_HINT = "↑↓ PgUp/PgDn scroll · Tab move"
 SAME = "The files are the same."
 SEPARATOR = "│"  # between the two sides
+KEPT_MARK = "kept"  # the side view's short note on a config-cache.wtf state line (the head line explains it)
 
 
 class DiffScreen(Screen[None]):
@@ -54,7 +56,7 @@ class DiffScreen(Screen[None]):
                 f"{self.source_text}. {plural(removed, 'line')} removed, {plural(added, 'line')} added.")
         if self.plan.name == CONFIG_FILE:
             kept = sum(bool(note) for _, _, note in self.rows)
-            line += f" {plural(kept, 'state line')} kept as they are."
+            line += f" {plural(kept, 'state line')} kept as they are, the target's own (marked {KEPT_MARK})."
         return Text(line)
 
     def _styles(self) -> dict[str, str]:
@@ -68,7 +70,7 @@ class DiffScreen(Screen[None]):
 
     def side_view(self) -> RenderableType:
         """The side-by-side diff (CP4): a grid of left number, left line, separator, right number, right line and,
-        for a config-cache.wtf, the dim note column. Each line is one row, cut at its end with … (never wrapped),
+        for a config-cache.wtf, a short dim `kept` column. Each line is one row, cut at its end with … (never wrapped),
         so old line i stays beside new line i; the two line columns share the width left equally."""
         styles = self._styles()
         table = Table.grid(expand=True, padding=(0, 1))
@@ -81,7 +83,7 @@ class DiffScreen(Screen[None]):
         if notes:
             table.add_column(no_wrap=True, style="dim italic")
         for row in self.side_rows:
-            table.add_row(*self._side_cells(row, styles), *([row.note] if notes else []))
+            table.add_row(*self._side_cells(row, styles), *([KEPT_MARK if row.note else ""] if notes else []))
         closing = self._end_line()
         if closing is None:
             return table
@@ -98,7 +100,8 @@ class DiffScreen(Screen[None]):
             if cells:
                 cells.append(Text(SEPARATOR))
             style = styles.get(mark, "")
-            cells += [Text("" if number is None else str(number), style=style), Text(line, style=style)]
+            prefix = mark if mark in styles else ""  # - or + beside the number of a removed or added line
+            cells += [Text("" if number is None else f"{prefix}{number}", style=style), Text(line, style=style)]
         return cells
 
     def diff_text(self) -> Text:
