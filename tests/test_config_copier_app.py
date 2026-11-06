@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import dataclasses
 import tempfile
+import threading
 from pathlib import Path
+from unittest import mock
 
 from rich.cells import cell_len
 from textual.widgets import Button, Checkbox, Tree
@@ -19,9 +21,11 @@ from wowtools.core.events import capture_events
 from wowtools.core.install import flavor_name
 from wowtools.core.text import plural
 from wowtools.tools import TOOLS
+from wowtools.tools.config_copier import review_screen
 from wowtools.tools.config_copier.diff_screen import INLINE, NARROW_NOTE, SEPARATOR, SIDE, DiffScreen
 from wowtools.tools.config_copier.help import HELP
 from wowtools.tools.config_copier.model import COPY_FILES, MACRO_WARNING
+from wowtools.tools.config_copier.planner import plan_copy
 from wowtools.tools.config_copier.report import BYTES_ONLY, PAIR_MINIMUMS, WARNING_MARK, WARNING_SHORT, pair_cells, pair_text
 from wowtools.tools.config_copier.review_screen import (DIFF_REASON, OTHER_FLAVOR_REASON, CopierResultScreen,
                                                         CopierReviewScreen, PairKey, PairNode, ReasonLine,
@@ -511,6 +515,50 @@ class ChangeSourceTest(CopierTestCase):
             self.assertIs(app.screen, review)
             self.assertEqual(review.source.name, "Aellâ")
 
+    async def test_p_during_a_scan_leaves_and_the_late_result_stays_on_the_old_review(self):
+        """P5 review (ledger P1b): Change source while a scan runs leaves at once; the old scan's result, when it
+        comes, lands on the old review object, never on the new source's review."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            release, calls = threading.Event(), []
+
+            def held(source, targets, files):
+                calls.append(source.name)
+                if len(calls) == 1:  # the old review's rescan waits until the new review is shown
+                    release.wait(30)
+                return plan_copy(source, targets, files)
+            with mock.patch.object(review_screen, "plan_copy", held):
+                try:
+                    await pilot.press("r")
+                    await pilot.pause()
+                    self.assertTrue(review._scanning)
+                    await pilot.press("p")
+                    await pilot.pause()
+                    sources = app.screen
+                    self.assertIsInstance(sources, SourceScreen)
+                    tree = sources.query_one("#sources", Tree)
+                    tree.focus()
+                    tree.move_cursor(character_node(tree, "Dænerys"))
+                    await pilot.pause()
+                    await pilot.press("enter")
+                    for _ in range(50):
+                        await pilot.pause(0.05)
+                        if isinstance(app.screen, CopierReviewScreen) and app.screen is not review:
+                            break
+                finally:
+                    release.set()
+                await settle(app, pilot)
+            fresh = app.screen
+            self.assertIsInstance(fresh, CopierReviewScreen)
+            self.assertIsNot(fresh, review)
+            self.assertEqual(calls[0], "Aellâ")  # the held scan did run to its end
+            self.assertEqual((fresh.source.name, fresh.ticked), ("Dænerys", set()))
+            self.assertTrue(fresh.plans)
+            self.assertNotIn("Dænerys", {plan.target.name for plan in fresh.plans.values()})  # its own plans only
+            self.assertIn("Dænerys", {plan.target.name for plan in review.plans.values()})  # the late result
+            self.assertIs(app.screen, fresh)
+
     def test_help_names_change_source(self):
         self.assertIn("**Change source** (`p`)", HELP)
 
@@ -607,6 +655,38 @@ class DiffReasonTest(CopierTestCase):
                 self.assertEqual(self.line(review).shown, "")
             finally:
                 app.busy = False
+
+    async def test_the_button_and_the_line_follow_a_rebuild(self):
+        """P5 review: after a rebuild (a copy's rescan, a file box unticked) the button and the line read the row the
+        cursor lands on, never the node the rebuild removed: a copied pair is unchanged, so nothing to diff."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#targets", Tree)
+            tree.focus()
+            await goto(pilot, tree, pair_node(tree, "Bob", "macros-cache.txt"))
+            await pilot.press("space")
+            await settle(app, pilot)
+            self.assertFalse(review.query_one("#act-diff", Button).disabled)
+            await pilot.press("w")
+            await settle(app, pilot)
+            app.screen.dismiss(True)
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, CopierResultScreen)
+            await pilot.press("escape")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(tree.cursor_node.data.plan.status, "unchanged")
+            self.assertTrue(review.query_one("#act-diff", Button).disabled)
+            self.assertEqual(self.line(review).shown, DIFF_REASON)
+            await goto(pilot, tree, pair_node(tree, "Bob", "config-cache.wtf"))  # a replaced pair again
+            await settle(app, pilot)
+            self.assertFalse(review.query_one("#act-diff", Button).disabled)
+            review.query_one("#file-config-cache-wtf", Checkbox).value = False  # its file box unticked
+            await settle(app, pilot)
+            self.assertTrue(review.query_one("#act-diff", Button).disabled)
+            self.assertEqual(self.line(review).shown, DIFF_REASON)
+            self.assertNotIn("config-cache.wtf", review.summary_text)
 
     def test_fit_reason(self):
         """The cut: whole when it fits, cut at its end with … to the room, nothing under 10 cells."""
@@ -733,17 +813,43 @@ class SideBySideDiffTest(CopierTestCase):
         async with app.run_test(size=BASE) as pilot:
             review = await self.open_review(app, pilot)
             plan = next(p for p in review.plans.values() if (p.target.name, p.name) == ("Bob", "AddOns.txt"))
-            long_old, long_new = "Old" + "o" * 200, "New" + "n" * 200
-            pair = dataclasses.replace(plan, old=f"{long_old}\nK\n".encode(), new=f"{long_new}\nK\n".encode())
-            app.push_screen(DiffScreen(pair, "MAIN › Realm1/Aellâ"))
+            # one word with no space, and a real line with spaces (which a wrapping column would spread over rows)
+            for long_old, long_new, old_start, new_start in (
+                    ("Old" + "o" * 200, "New" + "n" * 200, "Oldooo", "Newnnn"),
+                    ("/cast " + "[@mouseover] Flash Heal " * 10, "/use " + "[@player] Healing Potion " * 10,
+                     "/cast [@mouseover]", "/use [@player]")):
+                with self.subTest(line=old_start):
+                    pair = dataclasses.replace(plan, old=f"{long_old}\nK\n".encode(), new=f"{long_new}\nK\n".encode())
+                    app.push_screen(DiffScreen(pair, "MAIN › Realm1/Aellâ"))
+                    await settle(app, pilot)
+                    diff = app.screen
+                    self.assertEqual(diff.query_one("#diff").size.height, 2)  # never wrapped
+                    row = next(line for line in self.lines(app) if old_start in line)
+                    self.assertIn(new_start, row)
+                    self.assertEqual(row.count("…"), 2)
+                    kept = next(line for line in self.lines(app) if "2 K " in line)
+                    self.assertRegex(kept, r" 2 K +│ +2 K ")  # the kept line on its own row, both sides
+                    await pilot.press("escape")
+                    await settle(app, pilot)
+
+    async def test_a_gap_between_two_parts_shows_on_both_sides(self):
+        """P5 review: changes far apart make two parts, drawn with a … row on both sides of the separator between
+        them; the rows around it keep their numbers."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            plan = next(p for p in review.plans.values() if (p.target.name, p.name) == ("Bob", "AddOns.txt"))
+            old = b"".join(b"L%d\n" % n for n in range(1, 21))
+            new = old.replace(b"L2\n", b"N2\n").replace(b"L18\n", b"")
+            app.push_screen(DiffScreen(dataclasses.replace(plan, old=old, new=new), "MAIN › Realm1/Aellâ"))
             await settle(app, pilot)
-            diff = app.screen
-            self.assertEqual(diff.query_one("#diff").size.height, 2)  # never wrapped
-            row = next(line for line in self.lines(app) if "Oldooo" in line)
-            self.assertIn("Newnnn", row)
-            self.assertEqual(row.count("…"), 2)
-            kept = next(line for line in self.lines(app) if "2 K " in line)
-            self.assertRegex(kept, r" 2 K +│ +2 K ")  # the kept line on its own row, both sides
+            lines = self.lines(app)
+            index = next(i for i, line in enumerate(lines) if "L5" in line)
+            self.assertRegex(lines[index], r"\b5 L5 +│ +5 L5")
+            left, right = lines[index + 1].split("│")
+            self.assertEqual((left.split()[-1], right.split()[0]), ("…", "…"))  # a gap on both sides, nothing else
+            self.assertEqual("".join(left.split()[:-1]).strip("▊▎"), "")
+            self.assertRegex(lines[index + 2], r"\b15 L15 +│ +15 L15")
 
     async def test_bytes_only_and_the_same_files_say_so(self):
         app = self.make_app()

@@ -220,6 +220,11 @@ class WrapButtonRow(ButtonRow):
     """
     GUTTER = 1  # the blank cell after each button (its margin-right)
 
+    @classmethod
+    def button_need(cls, button: Button) -> int:
+        """The cells one compact button takes in the row: its whole label, its padding and the gap after it."""
+        return cell_len(button.label.plain) + 2 + cls.GUTTER  # a compact button's padding
+
     def on_mount(self) -> None:
         self._fit(self.size.width)
 
@@ -233,7 +238,7 @@ class WrapButtonRow(ButtonRow):
         rows: list[list[tuple[Button, int]]] = [[]]
         used = 0
         for button in buttons:
-            need = min(width, cell_len(button.label.plain) + 2 + self.GUTTER)  # a compact button's padding
+            need = min(width, self.button_need(button))
             if rows[-1] and used + need > width:
                 rows.append([])
                 used = 0

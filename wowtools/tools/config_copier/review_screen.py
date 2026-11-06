@@ -18,7 +18,6 @@ from collections.abc import Collection, Hashable, Iterable, Sequence
 from pathlib import Path
 from typing import ClassVar, NamedTuple
 
-from rich.cells import cell_len
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -268,7 +267,7 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         bar = self.query_one("#tree-actions", ActionBar)
         diff = self.query_one("#act-diff", Button)
         # the bar is as wide as its one button and the gap after it; the reason line has the rest of the row (CP3)
-        bar.styles.width = cell_len(diff.label.plain) + 2 + ActionBar.GUTTER
+        bar.styles.width = ActionBar.button_need(diff)
         self.query_one("#targets", Tree).focus()
         self._refresh_buttons()
         self._scan()
@@ -494,7 +493,9 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         self.note_no_match(tree.root)
         tree.root.expand()
         self._restore_cursor(tree, cursor)
-        self._update_summary()
+        # once the tree has its new lines: until then cursor_node is still the node clear() removed (its old plan),
+        # and a cursor put back on the same line sends no NodeHighlighted (P5 review)
+        self.call_after_refresh(self._update_summary)
 
     @staticmethod
     def _greyed_widths(tree: Tree) -> dict[Path, tuple[int, ...]]:
