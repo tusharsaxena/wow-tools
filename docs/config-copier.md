@@ -56,8 +56,11 @@ reputation list. That is WoW, not the copy.
 
 ![The Config Copier review](assets/screenshots/config-copier/review.png)
 
-The left pane shows a red `⚠ USE AT YOUR OWN RISK` line (a copy overwrites the targets' files), the source, the five
-files (all ticked: untick one to leave it alone for every target), the filter and the buttons. The tree on the right
+The left pane shows a red `⚠ USE AT YOUR OWN RISK` line (a copy overwrites the targets' files), the source with
+**Change source** (`p`) under it, the five files (all ticked: untick one to leave it alone for every target), the
+filter and the buttons. **Change source** goes back to the source picker for the same game versions (or All
+flavors); the new source's review starts afresh, nothing ticked and every file box ticked. **Rescan** keeps the
+source. The tree on the right
 lists every account, realm and character. The source shows greyed (**source**), and so do the characters of other
 game versions (**other flavor**): a copy stays within one game version. Folders that aren't characters, such as
 `Bob - Copy`, are not listed. Each game version, account, realm and target character ends with how many files it
@@ -101,6 +104,7 @@ that match. Ticks the filter hides still count, and the bottom line says how man
 | `z` | **Undo last change** |
 | `d` | **Diff** of the highlighted replaced file |
 | `!` | Open the files and folders that could not be read (only while there are any; the **⚠ … (!)** button at the bottom does the same) |
+| `p` | **Change source**: back to the source picker |
 | `f` | Back to the game versions |
 | `t` | Back to the tool menu |
 | `s` | Settings |

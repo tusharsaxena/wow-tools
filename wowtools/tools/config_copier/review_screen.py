@@ -6,11 +6,11 @@ can't be read; ⚠ for the CC7 macro warning). Other flavors' characters are gre
 dropping a pair is unticking it); the left pane's file boxes (all ticked) leave a file out for every target. Only a
 ticked pair of a ticked file whose status writes something (new, replace) is copied.
 
-The left pane has the source, the file boxes, the filter and Copy / Dry run / Rescan / Undo last change; Diff under
+The left pane has the source (Change source, p: back to the source picker of the same flavor choice, CP1), the file boxes, the filter and Copy / Dry run / Rescan / Undo last change; Diff under
 the tree opens the diff of the highlighted replaced pair (diff_screen.py). Copy and Dry run run the shared client-file
 pipeline (RunActions: WoW check, confirm listing the CC7 warnings, progress popup, result screen), then the files are
 read again; a scan that finds a Copy that did not finish offers to put the originals back. Ticks are a selection,
-not staged work: leaving asks nothing, as on the WTF Cleaner. Dismisses with "flavors", "tools" or "quit"."""
+not staged work: leaving asks nothing, as on the WTF Cleaner. Dismisses with "flavors", "source", "tools" or "quit"."""
 from __future__ import annotations
 
 from collections import Counter
@@ -131,9 +131,11 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
     HIDDEN_NOUN = "file"
     PREFLIGHT_TEXT = "Checking whether WoW is running…"
     BUTTON_ACTIONS: ClassVar[dict[str, str]] = {"btn-copy": "copy", "btn-dry-run": "dry_run",
-                                                "btn-rescan": "rescan", "btn-undo": "undo", "act-diff": "diff"}
+                                                "btn-rescan": "rescan", "btn-undo": "undo", "act-diff": "diff",
+                                                "btn-source": "change_source"}
     DEFAULT_CSS = two_pane_css("CopierReviewScreen", "#targets") + """
     CopierReviewScreen #source { height: auto; }
+    CopierReviewScreen #source-row { margin-bottom: 1; }
     CopierReviewScreen #tree-pane { width: 1fr; }
     CopierReviewScreen #targets { height: 1fr; }
     CopierReviewScreen #tree-actions { padding: 0 1; }
@@ -153,6 +155,7 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         WARNINGS_BINDING,
         Binding("f", "leave('flavors')", "Flavors"),
         Binding("t", "leave('tools')", "Tools"),
+        Binding("p", "change_source", "Change source"),  # CP1: on its button, so out of the footer (D17)
         Binding("q", "app.quit", "Quit"),
         Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
@@ -194,6 +197,8 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
             with Vertical(id="filters"):
                 yield RiskBanner()
                 yield Static(Text.assemble(("Source: ", "bold"), self.source_text()), id="source")
+                with ButtonRow(id="source-row", wrap=False):
+                    yield action_button("Change source", "navigate", "p", id="btn-source", compact=True)
                 yield Label("Files", classes="section")
                 for name in COPY_FILES:
                     yield Ka0sCheckbox(name, True, id=file_id(name), compact=True)
@@ -223,6 +228,11 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
 
     def source_text(self) -> str:
         return f"{self.source_flavor.display_name} › {character_text(self.source)}"
+
+    def action_change_source(self) -> None:
+        """p, Change source (CP1): back to the source picker of the same flavor choice, through the review's own
+        way out (refused while a run writes). The flow opens a fresh review for the new source."""
+        self.action_leave("source")
 
     def first_filter(self) -> Widget | None:
         return self.query_one(f"#{file_id(COPY_FILES[0])}", Checkbox)

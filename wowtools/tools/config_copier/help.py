@@ -35,7 +35,9 @@ review marks those files ⚠ and the confirm lists them. WoW's own `cache.md5` a
 | **Rescan** | `r` | Reads the files again |
 | **Undo last change** | `z` | Puts back every file the last copy replaced and removes the ones it created |
 
-Under the tree, **Diff** (`d`) opens the diff of the highlighted replaced file.
+Under the source, **Change source** (`p`) goes back to the source picker for the same game versions; the new
+source's review starts with nothing ticked. Under the tree, **Diff** (`d`) opens the diff of the highlighted replaced
+file.
 
 ## Keys
 

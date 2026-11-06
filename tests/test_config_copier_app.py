@@ -9,7 +9,7 @@ import dataclasses
 import tempfile
 from pathlib import Path
 
-from textual.widgets import Checkbox, Tree
+from textual.widgets import Button, Checkbox, Tree
 
 from tests.fixtures import (BASE, COUNT_AFTER, COPIER_ADDONS, COPIER_CHAT, COPIER_MACROS, TINY, TuiTestCase,
                             assert_fits_or_keeps_minimum, assert_siblings_distinct, build_copier_tree, make_config,
@@ -19,16 +19,19 @@ from wowtools.core.install import flavor_name
 from wowtools.core.text import plural
 from wowtools.tools import TOOLS
 from wowtools.tools.config_copier.diff_screen import DiffScreen
+from wowtools.tools.config_copier.help import HELP
 from wowtools.tools.config_copier.model import COPY_FILES, MACRO_WARNING
 from wowtools.tools.config_copier.report import PAIR_MINIMUMS, WARNING_MARK, WARNING_SHORT, pair_cells, pair_text
 from wowtools.tools.config_copier.review_screen import (OTHER_FLAVOR_REASON, CopierResultScreen, CopierReviewScreen,
                                                         PairKey, PairNode)
 from wowtools.tools.config_copier.source_screen import SourceScreen
+from wowtools.ui.branding import footer_bindings
 from wowtools.ui.character_tree import CharacterNode
 from wowtools.ui.columns import GROUP_NAME_MINIMUM
 from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
+from wowtools.ui.widgets import action_kind
 
 TOOL = "config-copier"
 
@@ -408,6 +411,102 @@ class CopierAppTest(CopierTestCase):
             await pilot.press("t")
             await settle(app, pilot)
             self.assertIsNone(app.flow)
+
+
+class ChangeSourceTest(CopierTestCase):
+    """Feedback round 1 CP1: `p` (and the compact Change source button by the Source line) leaves the review for the
+    source picker of the same flavor choice; the review of the new source starts fresh (no target ticked, every file
+    box ticked). Refused while a run writes, as every way out of the review; Rescan keeps the source."""
+
+    async def pick(self, app, pilot, sources: SourceScreen, name: str) -> CopierReviewScreen:
+        tree = sources.query_one("#sources", Tree)
+        tree.focus()
+        tree.move_cursor(character_node(tree, name))
+        await pilot.pause()
+        await pilot.press("enter")
+        await settle(app, pilot)
+        self.assertIsInstance(app.screen, CopierReviewScreen)
+        return app.screen
+
+    async def test_p_returns_to_the_source_picker_of_all_flavors(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            flavors = [f.folder for f in review.flavors]
+            await self.tick(app, pilot, review, "Bob")
+            review.query_one("#file-AddOns-txt", Checkbox).value = False
+            await settle(app, pilot)
+            self.assertTrue(review.selected_plans())
+            await pilot.press("p")
+            await settle(app, pilot)
+            sources = app.screen
+            self.assertIsInstance(sources, SourceScreen)
+            self.assertEqual(([f.folder for f in sources.flavors], sources.scope_label), (flavors, "All flavors"))
+            self.assertNotIn(review, app.screen_stack)
+            fresh = await self.pick(app, pilot, sources, "Bob")
+            self.assertIsNot(fresh, review)
+            self.assertEqual(fresh.source.name, "Bob")
+            self.assertEqual(fresh.scope_label, "All flavors")
+            self.assertEqual(fresh.selected_plans(), [])  # ticks belonged to the old source
+            self.assertEqual(fresh.ticked, set())
+            self.assertTrue(all(box.value for box in fresh.query(Checkbox)))  # every file box ticked again
+            self.assertIn("Bob", fresh.source_text())
+
+    async def test_p_keeps_the_one_flavor_choice(self):
+        app = self.make_app()
+        async with app.run_test(size=TINY) as pilot:
+            review = await self.open_review(app, pilot, flavor="_retail_")
+            label = review.scope_label
+            await pilot.press("p")
+            await settle(app, pilot)
+            sources = app.screen
+            self.assertIsInstance(sources, SourceScreen)
+            self.assertEqual(([f.folder for f in sources.flavors], sources.scope_label), (["_retail_"], label))
+            fresh = await self.pick(app, pilot, sources, "Bob")
+            self.assertEqual((fresh.source.name, fresh.scope_label, [f.folder for f in fresh.flavors]),
+                             ("Bob", label, ["_retail_"]))
+            await pilot.press("escape")  # Esc on the new review still goes back to the flavor picker
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, FlavorScreen)
+
+    async def test_the_button_changes_the_source(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            button = review.query_one("#btn-source", Button)
+            self.assertEqual((str(button.label), action_kind(button), button.shortcut),
+                             ("Change source (p)", "navigate", "p"))
+            self.assertNotIn("p", {b.key for b, _, _ in footer_bindings(review)})  # the button carries the key
+            button.press()
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, SourceScreen)
+
+    async def test_p_refused_while_a_run_writes(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            app.busy = True
+            try:
+                await pilot.press("p")
+                await pilot.pause()
+                self.assertIs(app.screen, review)
+            finally:
+                app.busy = False
+            await pilot.press("p")
+            await settle(app, pilot)
+            self.assertIsInstance(app.screen, SourceScreen)
+
+    async def test_rescan_keeps_the_source(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            await pilot.press("r")
+            await settle(app, pilot)
+            self.assertIs(app.screen, review)
+            self.assertEqual(review.source.name, "Aellâ")
+
+    def test_help_names_change_source(self):
+        self.assertIn("**Change source** (`p`)", HELP)
 
 
 def indent(node) -> int:

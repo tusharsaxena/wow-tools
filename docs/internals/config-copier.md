@@ -100,6 +100,9 @@ backups go under `settings.resolve_root()` (`<backup_dir or <wow_path>/wow-tools
 ## Screens
 
 - `app.CopierFlow`: settings (first run) → `FlavorScreen` (All flavors allowed, X1) → `SourceScreen` → review.
+  The review dismissing with `"source"` (Change source, `p`, CP1) reopens `SourceScreen` with the same flavors and
+  label; the new source gets a new `CopierReviewScreen` (no ticks, every file box ticked), so nothing of the old
+  review (its ticks, plans or a late scan result, which lands on the old screen object) carries over.
   No USE AT YOUR OWN RISK popup (only the client's own five files, within one game version, with backups and Undo),
   but the review carries the shared `RiskBanner` (STD-7.10): Write overwrites the targets' files.
 - `source_screen.SourceScreen`: `populate_characters` without marks under each flavor (All flavors), the shared
@@ -119,9 +122,10 @@ backups go under `settings.resolve_root()` (`<backup_dir or <wow_path>/wow-tools
   node's name is cut in its middle so its count fits the pane (`ui/columns.group_text`; a greyed character's
   reason: `REASON_COLUMNS`), never below 4 cells, its count kept (a file name never below its 10: at 80 columns a
   line deeper than that keeps them and scrolls sideways, its status and warning dropped first, STD-7.28, U1);
-  every line is fitted again when the tree's width changes (`ui/review.FittedRows`). Left pane: the source, a box per file, the filter, **Write**, **Dry
-  run**, **Rescan**, **Undo last change**; **Diff** in the bar under the tree. Ticks are a selection, not staged
-  work, so leaving asks nothing.
+  every line is fitted again when the tree's width changes (`ui/review.FittedRows`). Left pane: the source and
+  **Change source** (`p`, through `action_leave`, so refused while a run writes), a box per file, the filter,
+  **Write**, **Dry run**, **Rescan**, **Undo last change**; **Diff** in the bar under the tree. Ticks are a
+  selection, not staged work, so leaving asks nothing.
 - `diff_screen.DiffScreen`: the unified diff of one replaced pair, read-only.
 - `CopierResultScreen` (`ResultScreen`): the copy, dry run and Undo results.
 
