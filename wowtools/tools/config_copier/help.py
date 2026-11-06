@@ -37,7 +37,7 @@ review marks those files ⚠ and the confirm lists them. WoW's own `cache.md5` a
 
 Under the source, **Change source** (`p`) goes back to the source picker for the same game versions; the new
 source's review starts with nothing ticked. Under the tree, **Diff** (`d`) opens the diff of the highlighted replaced
-file.
+file; until one is highlighted the line beside it says so.
 
 ## Keys
 

@@ -85,7 +85,9 @@ A replaced `macros-cache.txt` on a character that already has macros shows **⚠
 around each change. For `config-cache.wtf` it shows the whole file and notes each line the target keeps
 `kept: the target's own` (see [How config-cache.wtf is merged](#how-config-cachewtf-is-merged)). When two files differ
 only in their line endings, or in bytes that are not text, the diff says **Only line endings or bytes that are not
-text differ.** **Back** (`Esc`) returns to the review. Diff on anything but a replaced file says why it can't.
+text differ.** **Back** (`Esc`) returns to the review. Diff works only on a replaced file: until one is highlighted
+the button is off and a dim line beside it says **highlight a replaced file to see its diff** (cut short in a narrow
+window). That line is empty while the files are read or a copy runs.
 
 `/` goes to the filter box: type part of a name and press Enter or **Filter** to see only the characters (and files)
 that match. Ticks the filter hides still count, and the bottom line says how many.

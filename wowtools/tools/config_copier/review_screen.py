@@ -18,10 +18,12 @@ from collections.abc import Collection, Hashable, Iterable, Sequence
 from pathlib import Path
 from typing import ClassVar, NamedTuple
 
+from rich.cells import cell_len
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.events import Resize
 from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Button, Checkbox, Header, Label, ProgressBar, Static, Tree
@@ -64,10 +66,48 @@ NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f fl
 SOURCE_REASON = "source"
 OTHER_FLAVOR_REASON = "other flavor"  # X1: one flavor per run, the source's
 NO_DIFF = "Highlight a replaced file first: Diff compares a target's file with what it gets."
+DIFF_REASON = "highlight a replaced file to see its diff"  # CP3: beside the disabled Diff button
 NO_MARK = "  "
 PAIR_COLUMNS = ColumnLayout(caps=PAIR_CAPS, minimums=PAIR_MINIMUMS, shrink=((1,), (0,)), drop=(2,))
 # A greyed character's name · reason (R4): the name gives way, cut in its middle; the reason is never cut, only dropped.
 REASON_COLUMNS = ColumnLayout(caps=(None, None), minimums=(GROUP_NAME_MINIMUM, 0), shrink=((0,),))
+
+
+def fit_reason(reason: str, width: int) -> str:
+    """`reason` cut at its end with … to `width` cells; nothing below ReasonLine.MIN_ROOM cells (CP3)."""
+    if width < ReasonLine.MIN_ROOM:
+        return ""
+    text = Text(reason)
+    text.truncate(width, overflow="ellipsis")
+    return text.plain
+
+
+class ReasonLine(Static):
+    """The dim line beside the Diff button (CP3): why it is disabled, cut to the room left after the button (shown,
+    fit_reason) and fitted again whenever that room changes. Empty when the screen gives it no reason."""
+
+    MIN_ROOM = 10  # cells: narrower than this the line is hidden rather than a stub
+    DEFAULT_CSS = """
+    ReasonLine { width: 1fr; height: 1; color: $text-muted; text-style: italic; text-wrap: nowrap; }
+    """
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__("", markup=False, **kwargs)
+        self.reason = ""
+        self.shown = ""
+
+    def set_reason(self, reason: str) -> None:
+        self.reason = reason
+        self._fit()
+
+    def on_resize(self, event: Resize) -> None:
+        self._fit()
+
+    def _fit(self) -> None:
+        shown = fit_reason(self.reason, self.content_size.width)
+        if shown != self.shown:
+            self.shown = shown
+            self.update(shown)
 
 
 class PairKey(NamedTuple):
@@ -137,7 +177,7 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
     CopierReviewScreen #source { height: auto; }
     CopierReviewScreen #tree-pane { width: 1fr; }
     CopierReviewScreen #targets { height: 1fr; }
-    CopierReviewScreen #tree-actions { padding: 0 1; }
+    CopierReviewScreen #diff-row { height: auto; padding: 0 1; }
     """
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("space", "toggle", "Tick/untick", priority=True),
@@ -213,14 +253,20 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
                     yield ProgressBar(id="scan-progress", show_eta=False)
                     yield Static("", id="scan-label")
                 yield BarTree(Text(self.scope_label, style=ACCENT), id="targets")
-                with ActionBar(id="tree-actions"):
-                    yield action_button("Diff", "navigate", "d", id="act-diff", compact=True)
+                with Horizontal(id="diff-row"):
+                    with ActionBar(id="tree-actions"):
+                        yield action_button("Diff", "confirm", "d", id="act-diff", compact=True)
+                    yield ReasonLine(id="diff-reason")
         yield SummaryBar(Text(self.summary_text))
         yield BottomBar()
 
     def on_mount(self) -> None:
         self.sub_title = f"{TITLE} · {self.scope_label}"
         self.query_one("#scan-box").display = False
+        bar = self.query_one("#tree-actions", ActionBar)
+        diff = self.query_one("#act-diff", Button)
+        # the bar is as wide as its one button and the gap after it; the reason line has the rest of the row (CP3)
+        bar.styles.width = cell_len(diff.label.plain) + 2 + ActionBar.GUTTER
         self.query_one("#targets", Tree).focus()
         self._refresh_buttons()
         self._scan()
@@ -281,7 +327,9 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         self.query_one("#btn-dry-run", Button).disabled = not idle or not selected
         self.query_one("#btn-rescan", Button).disabled = not idle
         self.query_one("#btn-undo", Button).disabled = not idle or self.undoable is None
-        self.query_one("#act-diff", Button).disabled = not idle or self.highlighted_replace() is None
+        no_diff = self.highlighted_replace() is None
+        self.query_one("#act-diff", Button).disabled = not idle or no_diff
+        self.query_one("#diff-reason", ReasonLine).set_reason(DIFF_REASON if idle and no_diff else "")
         for box in self.query(Ka0sCheckbox).results(Ka0sCheckbox):
             box.disabled = not idle
 

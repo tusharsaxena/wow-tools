@@ -9,6 +9,7 @@ import dataclasses
 import tempfile
 from pathlib import Path
 
+from rich.cells import cell_len
 from textual.widgets import Button, Checkbox, Tree
 
 from tests.fixtures import (BASE, COUNT_AFTER, COPIER_ADDONS, COPIER_CHAT, COPIER_MACROS, TINY, TuiTestCase,
@@ -22,8 +23,9 @@ from wowtools.tools.config_copier.diff_screen import DiffScreen
 from wowtools.tools.config_copier.help import HELP
 from wowtools.tools.config_copier.model import COPY_FILES, MACRO_WARNING
 from wowtools.tools.config_copier.report import PAIR_MINIMUMS, WARNING_MARK, WARNING_SHORT, pair_cells, pair_text
-from wowtools.tools.config_copier.review_screen import (OTHER_FLAVOR_REASON, CopierResultScreen, CopierReviewScreen,
-                                                        PairKey, PairNode)
+from wowtools.tools.config_copier.review_screen import (DIFF_REASON, OTHER_FLAVOR_REASON, CopierResultScreen,
+                                                        CopierReviewScreen, PairKey, PairNode, ReasonLine,
+                                                        fit_reason)
 from wowtools.tools.config_copier.source_screen import SourceScreen
 from wowtools.ui.branding import footer_bindings
 from wowtools.ui.character_tree import CharacterNode
@@ -31,6 +33,7 @@ from wowtools.ui.columns import GROUP_NAME_MINIMUM
 from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import WowToolsApp
+from wowtools.ui.theme import ACTION_COLOURS
 from wowtools.ui.widgets import action_kind
 
 TOOL = "config-copier"
@@ -509,6 +512,108 @@ class ChangeSourceTest(CopierTestCase):
 
     def test_help_names_change_source(self):
         self.assertIn("**Change source** (`p`)", HELP)
+
+
+class DiffReasonTest(CopierTestCase):
+    """Feedback round 1 CP3: the Diff button under the tree is a `confirm` (blue) button, and while it is disabled a
+    dim line beside it says why, cut at its end with … to the room after the button (hidden under 10 cells), empty
+    while a scan or a run is going on."""
+
+    def line(self, review):
+        return review.query_one("#diff-reason", ReasonLine)
+
+    def assert_fits_beside_the_button(self, review) -> None:
+        line, button = self.line(review), review.query_one("#act-diff", Button)
+        self.assertEqual(line.region.y, button.region.y)  # on the button's row ...
+        self.assertGreaterEqual(line.region.x, button.region.right)  # ... after it, never over it
+        self.assertLessEqual(line.region.right, review.query_one("#tree-pane").region.right)
+        width = line.content_size.width
+        self.assertLessEqual(cell_len(line.shown), width)
+        if width < ReasonLine.MIN_ROOM:
+            self.assertEqual(line.shown, "")
+        elif cell_len(DIFF_REASON) > width:
+            self.assertTrue(line.shown.endswith("…"), line.shown)
+            self.assertTrue(DIFF_REASON.startswith(line.shown[:-1]), line.shown)
+        else:
+            self.assertEqual(line.shown, DIFF_REASON)
+
+    async def test_the_button_is_a_confirm_button(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            tree = review.query_one("#targets", Tree)
+            tree.focus()
+            await goto(pilot, tree, pair_node(tree, "Bob", "macros-cache.txt"))
+            await settle(app, pilot)
+            button = review.query_one("#act-diff", Button)
+            self.assertFalse(button.disabled)
+            self.assertEqual((str(button.label), action_kind(button)), ("Diff (d)", "confirm"))
+            self.assertEqual(button.styles.background.hex.upper(), ACTION_COLOURS["confirm"][0].upper())
+
+    async def test_the_reason_shows_until_a_replaced_pair_is_highlighted(self):
+        for size in (BASE, TINY):
+            with self.subTest(size=size):
+                app = self.make_app()
+                async with app.run_test(size=size) as pilot:
+                    review = await self.open_review(app, pilot)
+                    tree = review.query_one("#targets", Tree)
+                    tree.focus()
+                    await goto(pilot, tree, character_node(tree, "Bob"))
+                    await settle(app, pilot)
+                    self.assertTrue(review.query_one("#act-diff", Button).disabled)
+                    self.assertTrue(self.line(review).shown)  # 80x24 still has room for a cut line
+                    self.assert_fits_beside_the_button(review)
+                    await goto(pilot, tree, pair_node(tree, "Bob", "macros-cache.txt"))
+                    await settle(app, pilot)
+                    self.assertFalse(review.query_one("#act-diff", Button).disabled)
+                    self.assertEqual(self.line(review).shown, "")
+                    await goto(pilot, tree, pair_node(tree, "Trâxex", "AddOns.txt"))  # new: nothing to compare
+                    await settle(app, pilot)
+                    self.assertEqual(self.line(review).shown[:4], DIFF_REASON[:4])
+
+    async def test_the_reason_refits_on_resize(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            await settle(app, pilot)
+            self.assertEqual(self.line(review).shown, DIFF_REASON)
+            for size in (TINY, (100, 30), BASE):  # 80x24 is the floor (STD-7.23)
+                with self.subTest(size=size):
+                    await pilot.resize_terminal(*size)
+                    await settle(app, pilot)
+                    self.assert_fits_beside_the_button(review)
+            self.assertEqual(self.line(review).shown, DIFF_REASON)
+
+    async def test_the_reason_is_empty_while_busy(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            await settle(app, pilot)
+            self.assertEqual(self.line(review).shown, DIFF_REASON)
+            review._scanning = True  # a scan going on
+            try:
+                review._refresh_buttons()
+                self.assertEqual(self.line(review).shown, "")
+            finally:
+                review._scanning = False
+            review._refresh_buttons()
+            self.assertEqual(self.line(review).shown, DIFF_REASON)
+            app.busy = True  # a run writing
+            try:
+                review._refresh_buttons()
+                self.assertEqual(self.line(review).shown, "")
+            finally:
+                app.busy = False
+
+    def test_fit_reason(self):
+        """The cut: whole when it fits, cut at its end with … to the room, nothing under 10 cells."""
+        self.assertEqual(fit_reason(DIFF_REASON, 80), DIFF_REASON)
+        self.assertEqual(fit_reason(DIFF_REASON, cell_len(DIFF_REASON)), DIFF_REASON)
+        self.assertEqual(fit_reason(DIFF_REASON, 12), DIFF_REASON[:11] + "…")
+        self.assertEqual(fit_reason(DIFF_REASON, 10), DIFF_REASON[:9] + "…")
+        self.assertEqual(fit_reason(DIFF_REASON, 9), "")
+        self.assertEqual(fit_reason(DIFF_REASON, 0), "")
+        self.assertEqual(fit_reason("", 40), "")
 
 
 def indent(node) -> int:

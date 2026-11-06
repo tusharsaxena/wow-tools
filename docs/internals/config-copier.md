@@ -124,8 +124,10 @@ backups go under `settings.resolve_root()` (`<backup_dir or <wow_path>/wow-tools
   line deeper than that keeps them and scrolls sideways, its status and warning dropped first, STD-7.28, U1);
   every line is fitted again when the tree's width changes (`ui/review.FittedRows`). Left pane: the source and
   **Change source** (`p`, through `action_leave`, so refused while a run writes), a box per file, the filter,
-  **Write**, **Dry run**, **Rescan**, **Undo last change**; **Diff** in the bar under the tree. Ticks are a
-  selection, not staged work, so leaving asks nothing.
+  **Write**, **Dry run**, **Rescan**, **Undo last change**; **Diff** (a `confirm` button, CP3) in the bar under
+  the tree, as wide as its button, and beside it `ReasonLine` (`#diff-reason`): while Diff is disabled and the
+  review idle, `DIFF_REASON` cut at its end with `…` to the room left (`fit_reason`), nothing under 10 cells, fitted
+  again on resize; set by `_refresh_buttons`. Ticks are a selection, not staged work, so leaving asks nothing.
 - `diff_screen.DiffScreen`: the unified diff of one replaced pair, read-only.
 - `CopierResultScreen` (`ResultScreen`): the copy, dry run and Undo results.
 
