@@ -9,7 +9,7 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 ### Added
 
 - **Config Copier**: copy one character's macros, enabled addons, chat windows, CVars and layout to other
-  characters, with a diff of every file it replaces, a dry run and Undo.
+  characters, with a side-by-side diff of every file it replaces, a dry run and Undo.
 - **Macro Editor**: browse every account's and character's macros in every game version, edit, create and delete
   them, copy and paste them between characters, accounts and game versions, and change text in many at once, with
   a dry run and Undo. Its editor suggests and explains commands and conditionals as you type, and has a
