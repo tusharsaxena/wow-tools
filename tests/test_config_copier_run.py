@@ -286,5 +286,96 @@ class CopierReportTest(unittest.TestCase):
         self.assertEqual(report.file_rows(result), [("MAIN", "Realm2/Trâxex", "AddOns.txt", "changed: created")])
 
 
+class SideBySideRowsTest(unittest.TestCase):
+    """report.side_by_side_rows (spec CP4): the same opcodes, context and gaps as diff_rows, drawn as two aligned
+    sides; a replace run paired line by line, the longer side's extra lines beside a blank (Review Focus 3)."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        flavor = WowInstall(build_copier_tree(Path(tmp.name) / "wow")).flavor("_retail_")
+        characters = {c.name: c for a in flavor.accounts() for c in a.real_characters()}
+        plans = plan_copy(characters["Aellâ"], [characters["Bob"]], COPY_FILES)
+        self.plans = {plan.name: plan for plan in plans}
+
+    def rows(self, old: bytes | None, new: bytes | None, name: str = "AddOns.txt") -> list[report.SideRow]:
+        return report.side_by_side_rows(dataclasses.replace(self.plans[name], old=old, new=new))
+
+    def assert_same_lines_as_diff_rows(self, plan) -> None:
+        """Both views show the same lines: the left side is the diff's kept and removed lines, the right its kept
+        and added ones, in order, and as many gaps."""
+        rows, unified = report.side_by_side_rows(plan), report.diff_rows(plan)
+        self.assertEqual([r.left for r in rows if r.left_mark in (" ", "-")],
+                         [line for mark, line, _ in unified if mark in (" ", "-")])
+        self.assertEqual([r.right for r in rows if r.right_mark in (" ", "+")],
+                         [line for mark, line, _ in unified if mark in (" ", "+")])
+        self.assertEqual(sum(r.left_mark == report.GAP for r in rows), sum(m == report.GAP for m, _, _ in unified))
+
+    def test_equal_lines_on_both_sides_with_their_numbers(self):
+        self.assertEqual(self.rows(b"A\nB\n", b"A\nB\n"), [])  # a plain file the same: no row, as diff_rows
+        self.assertEqual(self.rows(b"SET a \"1\"\nSET b \"2\"\n", b"SET a \"1\"\nSET b \"2\"\n", "config-cache.wtf"),
+                         [(1, 'SET a "1"', " ", 1, 'SET a "1"', " ", ""), (2, 'SET b "2"', " ", 2, 'SET b "2"', " ", "")])
+
+    def test_a_delete_beside_a_blank(self):
+        self.assertEqual(self.rows(b"A\nB\nC\n", b"A\nC\n"),
+                         [(1, "A", " ", 1, "A", " ", ""), (2, "B", "-", None, "", "", ""),
+                          (3, "C", " ", 2, "C", " ", "")])
+
+    def test_an_insert_beside_a_blank(self):
+        self.assertEqual(self.rows(b"A\nC\n", b"A\nB\nC\n"),
+                         [(1, "A", " ", 1, "A", " ", ""), (None, "", "", 2, "B", "+", ""),
+                          (2, "C", " ", 3, "C", " ", "")])
+
+    def test_a_replace_of_unequal_lengths_paired_line_by_line(self):
+        self.assertEqual(self.rows(b"K\nx1\ny\n", b"K\nX1\nX2\nX3\ny\n"),
+                         [(1, "K", " ", 1, "K", " ", ""), (2, "x1", "-", 2, "X1", "+", ""),
+                          (None, "", "", 3, "X2", "+", ""), (None, "", "", 4, "X3", "+", ""),
+                          (3, "y", " ", 5, "y", " ", "")])
+        self.assertEqual(self.rows(b"a\nb\nc\nK\n", b"Z\nK\n"),
+                         [(1, "a", "-", 1, "Z", "+", ""), (2, "b", "-", None, "", "", ""),
+                          (3, "c", "-", None, "", "", ""), (4, "K", " ", 2, "K", " ", "")])
+
+    def test_gaps_and_three_lines_of_context_as_the_inline_diff(self):
+        old = b"".join(b"L%d\n" % n for n in range(1, 21))
+        new = old.replace(b"L2\n", b"N2\n").replace(b"L18\n", b"")
+        rows = self.rows(old, new)
+        gap = report.SideRow(None, report.GAP, report.GAP, None, report.GAP, report.GAP, "")
+        self.assertEqual(rows.count(gap), 1)
+        self.assertEqual(rows[:6], [(1, "L1", " ", 1, "L1", " ", ""), (2, "L2", "-", 2, "N2", "+", ""),
+                                    (3, "L3", " ", 3, "L3", " ", ""), (4, "L4", " ", 4, "L4", " ", ""),
+                                    (5, "L5", " ", 5, "L5", " ", ""), gap])
+        self.assertEqual(rows[6:], [(15, "L15", " ", 15, "L15", " ", ""), (16, "L16", " ", 16, "L16", " ", ""),
+                                    (17, "L17", " ", 17, "L17", " ", ""), (18, "L18", "-", None, "", "", ""),
+                                    (19, "L19", " ", 18, "L19", " ", ""), (20, "L20", " ", 19, "L20", " ", "")])
+        self.assert_same_lines_as_diff_rows(dataclasses.replace(self.plans["AddOns.txt"], old=old, new=new))
+
+    def test_the_config_file_whole_with_its_kept_notes(self):
+        plan = self.plans["config-cache.wtf"]
+        rows = report.side_by_side_rows(plan)
+        self.assertEqual(rows, [(1, 'SET hardTrackedQuests "222"', " ", 1, 'SET hardTrackedQuests "222"', " ",
+                                 report.KEPT),
+                                (2, 'SET enableMultiActionBars "15"', "-", 2, 'SET assistedCombatHighlight "1"', "+",
+                                 ""),
+                                (None, "", "", 3, 'SET nameplateMaxScaleDistance "40"', "+", "")])
+        many = b"".join(b'SET pref%d "1"\n' % n for n in range(20))
+        whole = report.side_by_side_rows(dataclasses.replace(plan, old=many, new=many.replace(b"pref0", b"other")))
+        self.assertEqual(len(whole), 20)  # the whole file: no gap
+        self.assertNotIn(report.GAP, [r.left_mark for r in whole])
+        for name in ("config-cache.wtf", "macros-cache.txt", "AddOns.txt"):
+            with self.subTest(name=name):
+                self.assert_same_lines_as_diff_rows(self.plans[name])
+
+    def test_an_empty_old_or_new_file(self):
+        self.assertEqual(self.rows(b"", b"A\nB\n"), [(None, "", "", 1, "A", "+", ""), (None, "", "", 2, "B", "+", "")])
+        self.assertEqual(self.rows(None, b"A\n"), [(None, "", "", 1, "A", "+", "")])
+        self.assertEqual(self.rows(b"A\n", b""), [(1, "A", "-", None, "", "", "")])
+        self.assertEqual(self.rows(b"", b""), [])
+
+    def test_bytes_only_has_no_row(self):
+        for old, new in ((b"A\nB\n", b"A\r\nB\r\n"), (b"A\xfe\n", b"A\xff\n"), (b"A\n", b"A")):
+            with self.subTest(old=old, new=new):
+                self.assertEqual(self.rows(old, new), [])
+
+
 if __name__ == "__main__":
     unittest.main()

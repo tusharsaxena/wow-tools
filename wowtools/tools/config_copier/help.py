@@ -35,7 +35,9 @@ review marks those files ⚠ and the confirm lists them. WoW's own `cache.md5` a
 | **Rescan** | `r` | Reads the files again |
 | **Undo last change** | `z` | Puts back every file the last copy replaced and removes the ones it created |
 
-Under the tree, **Diff** (`d`) opens the diff of the highlighted replaced file.
+Under the source, **Change source** (`p`) goes back to the source picker for the same game versions; the new
+source's review starts with nothing ticked. Under the tree, **Diff** (`d`) opens the diff of the highlighted replaced
+file; until one is highlighted the line beside it says so.
 
 ## Keys
 
@@ -43,7 +45,9 @@ Under the tree, **Diff** (`d`) opens the diff of the highlighted replaced file.
 filter box: type, then Enter or **Filter** shows only the targets and files that match. `x` / `c` expand or
 collapse the whole tree. `f` or `Esc` goes back to the game versions, `t` to the tool menu, `s` opens the settings,
 `q` quits. The results screen has **Rescan** (`r`), **Other flavor** (`f`), **Tools** (`t`) and **Quit** (`q`); after
-a dry run, **Back to review** (`Esc`). The diff screen's **Back** (`Esc`) returns to the review.
+a dry run, **Back to review** (`Esc`). The diff screen opens side by side (inline in a window under 100 columns);
+**View** (`v`) switches between side by side and inline, and the next diff opens in the view you picked. Its
+**Back** (`Esc`) returns to the review.
 
 ## Settings (`s`)
 

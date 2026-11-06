@@ -667,6 +667,20 @@ class ActionColoursTest(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertGreaterEqual(contrast(colour, BACKGROUND), 4.5)
 
+    def test_diff_backgrounds(self):
+        """Config Copier diff (round 1 follow-up): white text on a darker red and green, GitHub's look; the text
+        reads clearly on both (WCAG AAA, 7:1), and each background still stands apart from the screen's."""
+        from textual.color import Color
+        from wowtools.ui.theme import BACKGROUND, DIFF_ADDED_BACKGROUND, DIFF_REMOVED_BACKGROUND, DIFF_TEXT, contrast
+        self.assertEqual(DIFF_TEXT.upper(), "#FFFFFF")
+        for name, colour in (("removed", DIFF_REMOVED_BACKGROUND), ("added", DIFF_ADDED_BACKGROUND)):
+            with self.subTest(name=name):
+                self.assertGreaterEqual(contrast(DIFF_TEXT, colour), 7)
+                self.assertGreaterEqual(contrast(colour, BACKGROUND), 2)
+        red, green = (Color.parse(c).hsl[0] * 360 for c in (DIFF_REMOVED_BACKGROUND, DIFF_ADDED_BACKGROUND))
+        self.assertTrue(red < 15 or red > 345, red)
+        self.assertTrue(100 < green < 160, green)
+
     def test_button_colours_keep_clear_of_the_wtf_criterion_colours(self):
         """The WTF review shows its criteria in colour next to its Clean (red), Dry run (cyan), Rescan (lime) and
         Undo (violet) buttons: only red is shared (not installed means deleted); the others are other hues."""

@@ -6,11 +6,11 @@ can't be read; ⚠ for the CC7 macro warning). Other flavors' characters are gre
 dropping a pair is unticking it); the left pane's file boxes (all ticked) leave a file out for every target. Only a
 ticked pair of a ticked file whose status writes something (new, replace) is copied.
 
-The left pane has the source, the file boxes, the filter and Copy / Dry run / Rescan / Undo last change; Diff under
+The left pane has the source (Change source, p: back to the source picker of the same flavor choice, CP1), the file boxes, the filter and Copy / Dry run / Rescan / Undo last change; Diff under
 the tree opens the diff of the highlighted replaced pair (diff_screen.py). Copy and Dry run run the shared client-file
 pipeline (RunActions: WoW check, confirm listing the CC7 warnings, progress popup, result screen), then the files are
 read again; a scan that finds a Copy that did not finish offers to put the originals back. Ticks are a selection,
-not staged work: leaving asks nothing, as on the WTF Cleaner. Dismisses with "flavors", "tools" or "quit"."""
+not staged work: leaving asks nothing, as on the WTF Cleaner. Dismisses with "flavors", "source", "tools" or "quit"."""
 from __future__ import annotations
 
 from collections import Counter
@@ -22,6 +22,7 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.events import Resize
 from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Button, Checkbox, Header, Label, ProgressBar, Static, Tree
@@ -33,7 +34,7 @@ from wowtools.core.install import Character, Flavor, flavor_name
 from wowtools.core.process import wow_check_for
 from wowtools.core.sv_apply import Marker, MultiApplyResult
 from wowtools.core.text import plural
-from wowtools.tools.config_copier.diff_screen import DiffScreen
+from wowtools.tools.config_copier.diff_screen import DiffScreen, DiffSession
 from wowtools.tools.config_copier.events import SV_TOOL
 from wowtools.tools.config_copier.journal import latest_undoable, read_journal, resolve_journal_dir
 from wowtools.tools.config_copier.model import COPY_FILES, PairPlan
@@ -64,10 +65,48 @@ NAV_HINT = REVIEW_HINT + "a all · n none · " + FILTER_HINT + TREE_HINT + "f fl
 SOURCE_REASON = "source"
 OTHER_FLAVOR_REASON = "other flavor"  # X1: one flavor per run, the source's
 NO_DIFF = "Highlight a replaced file first: Diff compares a target's file with what it gets."
+DIFF_REASON = "highlight a replaced file to see its diff"  # CP3: beside the disabled Diff button
 NO_MARK = "  "
 PAIR_COLUMNS = ColumnLayout(caps=PAIR_CAPS, minimums=PAIR_MINIMUMS, shrink=((1,), (0,)), drop=(2,))
 # A greyed character's name · reason (R4): the name gives way, cut in its middle; the reason is never cut, only dropped.
 REASON_COLUMNS = ColumnLayout(caps=(None, None), minimums=(GROUP_NAME_MINIMUM, 0), shrink=((0,),))
+
+
+def fit_reason(reason: str, width: int) -> str:
+    """`reason` cut at its end with … to `width` cells; nothing below ReasonLine.MIN_ROOM cells (CP3)."""
+    if width < ReasonLine.MIN_ROOM:
+        return ""
+    text = Text(reason)
+    text.truncate(width, overflow="ellipsis")
+    return text.plain
+
+
+class ReasonLine(Static):
+    """The dim line beside the Diff button (CP3): why it is disabled, cut to the room left after the button (shown,
+    fit_reason) and fitted again whenever that room changes. Empty when the screen gives it no reason."""
+
+    MIN_ROOM = 10  # cells: narrower than this the line is hidden rather than a stub
+    DEFAULT_CSS = """
+    ReasonLine { width: 1fr; height: 1; color: $text-muted; text-style: italic; text-wrap: nowrap; }
+    """
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__("", markup=False, **kwargs)
+        self.reason = ""
+        self.shown = ""
+
+    def set_reason(self, reason: str) -> None:
+        self.reason = reason
+        self._fit()
+
+    def on_resize(self, event: Resize) -> None:
+        self._fit()
+
+    def _fit(self) -> None:
+        shown = fit_reason(self.reason, self.content_size.width)
+        if shown != self.shown:
+            self.shown = shown
+            self.update(shown)
 
 
 class PairKey(NamedTuple):
@@ -131,12 +170,13 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
     HIDDEN_NOUN = "file"
     PREFLIGHT_TEXT = "Checking whether WoW is running…"
     BUTTON_ACTIONS: ClassVar[dict[str, str]] = {"btn-copy": "copy", "btn-dry-run": "dry_run",
-                                                "btn-rescan": "rescan", "btn-undo": "undo", "act-diff": "diff"}
+                                                "btn-rescan": "rescan", "btn-undo": "undo", "act-diff": "diff",
+                                                "btn-source": "change_source"}
     DEFAULT_CSS = two_pane_css("CopierReviewScreen", "#targets") + """
     CopierReviewScreen #source { height: auto; }
     CopierReviewScreen #tree-pane { width: 1fr; }
     CopierReviewScreen #targets { height: 1fr; }
-    CopierReviewScreen #tree-actions { padding: 0 1; }
+    CopierReviewScreen #diff-row { height: auto; padding: 0 1; }
     """
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("space", "toggle", "Tick/untick", priority=True),
@@ -153,6 +193,7 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         WARNINGS_BINDING,
         Binding("f", "leave('flavors')", "Flavors"),
         Binding("t", "leave('tools')", "Tools"),
+        Binding("p", "change_source", "Change source"),  # CP1: on its button, so out of the footer (D17)
         Binding("q", "app.quit", "Quit"),
         Binding("escape", "leave('flavors')", "Flavors", show=False),
         Binding("left", "focus_filters", "Filters", show=False),
@@ -161,7 +202,8 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
     ]
 
     def __init__(self, cfg: Config, tool_cfg: Config, flavors: list[Flavor], scope_label: str,
-                 source_flavor: Flavor, source: Character, *, wow_check: WowCheck | None = None) -> None:
+                 source_flavor: Flavor, source: Character, *, wow_check: WowCheck | None = None,
+                 diff_session: DiffSession | None = None) -> None:
         super().__init__()
         self.cfg = cfg  # the suite config (WoW folder)
         self.tool_cfg = tool_cfg  # config/config-copier.cfg
@@ -170,6 +212,7 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         self.source_flavor = source_flavor
         self.source = source
         self._injected_check = wow_check
+        self.diff_session = diff_session if diff_session is not None else DiffSession()  # CP4: the flow's, if any
         self.wow_root = cfg.wow_path  # the WoW folder these flavors were read from (see wow_folder_changed)
         self._leaving_for_new_folder = False
         self.plans: dict[PairKey, PairPlan] = {}  # every pair of every target, from the last scan
@@ -194,6 +237,8 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
             with Vertical(id="filters"):
                 yield RiskBanner()
                 yield Static(Text.assemble(("Source: ", "bold"), self.source_text()), id="source")
+                with ButtonRow(id="source-row", wrap=False):
+                    yield action_button("Change source", "navigate", "p", id="btn-source", compact=True)
                 yield Label("Files", classes="section")
                 for name in COPY_FILES:
                     yield Ka0sCheckbox(name, True, id=file_id(name), compact=True)
@@ -209,20 +254,31 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
                     yield ProgressBar(id="scan-progress", show_eta=False)
                     yield Static("", id="scan-label")
                 yield BarTree(Text(self.scope_label, style=ACCENT), id="targets")
-                with ActionBar(id="tree-actions"):
-                    yield action_button("Diff", "navigate", "d", id="act-diff", compact=True)
+                with Horizontal(id="diff-row"):
+                    with ActionBar(id="tree-actions"):
+                        yield action_button("Diff", "confirm", "d", id="act-diff", compact=True)
+                    yield ReasonLine(id="diff-reason")
         yield SummaryBar(Text(self.summary_text))
         yield BottomBar()
 
     def on_mount(self) -> None:
         self.sub_title = f"{TITLE} · {self.scope_label}"
         self.query_one("#scan-box").display = False
+        bar = self.query_one("#tree-actions", ActionBar)
+        diff = self.query_one("#act-diff", Button)
+        # the bar is as wide as its one button and the gap after it; the reason line has the rest of the row (CP3)
+        bar.styles.width = ActionBar.button_need(diff)
         self.query_one("#targets", Tree).focus()
         self._refresh_buttons()
         self._scan()
 
     def source_text(self) -> str:
         return f"{self.source_flavor.display_name} › {character_text(self.source)}"
+
+    def action_change_source(self) -> None:
+        """p, Change source (CP1): back to the source picker of the same flavor choice, through the review's own
+        way out (refused while a run writes). The flow opens a fresh review for the new source."""
+        self.action_leave("source")
 
     def first_filter(self) -> Widget | None:
         return self.query_one(f"#{file_id(COPY_FILES[0])}", Checkbox)
@@ -272,7 +328,9 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         self.query_one("#btn-dry-run", Button).disabled = not idle or not selected
         self.query_one("#btn-rescan", Button).disabled = not idle
         self.query_one("#btn-undo", Button).disabled = not idle or self.undoable is None
-        self.query_one("#act-diff", Button).disabled = not idle or self.highlighted_replace() is None
+        no_diff = self.highlighted_replace() is None
+        self.query_one("#act-diff", Button).disabled = not idle or no_diff
+        self.query_one("#diff-reason", ReasonLine).set_reason(DIFF_REASON if idle and no_diff else "")
         for box in self.query(Ka0sCheckbox).results(Ka0sCheckbox):
             box.disabled = not idle
 
@@ -435,7 +493,9 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
         self.note_no_match(tree.root)
         tree.root.expand()
         self._restore_cursor(tree, cursor)
-        self._update_summary()
+        # once the tree has its new lines: until then cursor_node is still the node clear() removed (its old plan),
+        # and a cursor put back on the same line sends no NodeHighlighted (P5 review)
+        self.call_after_refresh(self._update_summary)
 
     @staticmethod
     def _greyed_widths(tree: Tree) -> dict[Path, tuple[int, ...]]:
@@ -645,7 +705,7 @@ class CopierReviewScreen(WarningsHost, TreeFilter, SvRecoveryActions, RunActions
             self.notify(NO_DIFF)
             return
         log_event("ui.selection", screen=self.LOG_SCREEN, control="diff", value=f"{plan.target.label}/{plan.name}")
-        self.app.push_screen(DiffScreen(plan, character_text(self.source)))
+        self.app.push_screen(DiffScreen(plan, character_text(self.source), self.diff_session))
 
     # --- runs: copy, dry run, undo (RunActions) --------------------------------------------------------
     def run_backup_dir(self) -> Path | None:

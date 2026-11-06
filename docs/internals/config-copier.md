@@ -58,7 +58,9 @@ Modules (all UI-free except `app.py` and the `*_screen.py` files):
   `NAMES`; Undo puts back replaced files and deletes created ones, each only while it is what the run wrote (CC8).
 - `report`: pair statuses, the confirm (`copy_confirm`, `copy_groups`, `copy_listed` for the CC7 warnings as a
   counted list), result rows, and `diff_rows(plan)` (difflib: three lines of context per change for a plain file,
-  the whole file with state lines noted kept for `config-cache.wtf`); `bytes_only(plan)` is true for a replace whose
+  the whole file with state lines noted kept for `config-cache.wtf`), and `side_by_side_rows(plan)` (`SideRow`s from
+  the same opcode groups: left number, text, mark, right number, text, mark, note; a `replace` run paired line by line,
+  the longer side's extra lines beside a blank, `GAP_ROW` between two parts); `bytes_only(plan)` is true for a replace whose
   lines are the same (only line endings or bytes that are not UTF-8 differ): the diff screen says so.
 - `settings`: `[config_copier]` `backup_dir`, `last_flavor_choice`; `resolve_root` = `core.journal.tool_root`.
 
@@ -100,6 +102,9 @@ backups go under `settings.resolve_root()` (`<backup_dir or <wow_path>/wow-tools
 ## Screens
 
 - `app.CopierFlow`: settings (first run) → `FlavorScreen` (All flavors allowed, X1) → `SourceScreen` → review.
+  The review dismissing with `"source"` (Change source, `p`, CP1) reopens `SourceScreen` with the same flavors and
+  label; the new source gets a new `CopierReviewScreen` (no ticks, every file box ticked), so nothing of the old
+  review (its ticks, plans or a late scan result, which lands on the old screen object) carries over.
   No USE AT YOUR OWN RISK popup (only the client's own five files, within one game version, with backups and Undo),
   but the review carries the shared `RiskBanner` (STD-7.10): Write overwrites the targets' files.
 - `source_screen.SourceScreen`: `populate_characters` without marks under each flavor (All flavors), the shared
@@ -119,10 +124,21 @@ backups go under `settings.resolve_root()` (`<backup_dir or <wow_path>/wow-tools
   node's name is cut in its middle so its count fits the pane (`ui/columns.group_text`; a greyed character's
   reason: `REASON_COLUMNS`), never below 4 cells, its count kept (a file name never below its 10: at 80 columns a
   line deeper than that keeps them and scrolls sideways, its status and warning dropped first, STD-7.28, U1);
-  every line is fitted again when the tree's width changes (`ui/review.FittedRows`). Left pane: the source, a box per file, the filter, **Write**, **Dry
-  run**, **Rescan**, **Undo last change**; **Diff** in the bar under the tree. Ticks are a selection, not staged
-  work, so leaving asks nothing.
-- `diff_screen.DiffScreen`: the unified diff of one replaced pair, read-only.
+  every line is fitted again when the tree's width changes (`ui/review.FittedRows`). Left pane: the source and
+  **Change source** (`p`, through `action_leave`, so refused while a run writes), a box per file, the filter,
+  **Write**, **Dry run**, **Rescan**, **Undo last change**; **Diff** (a `confirm` button, CP3) in the bar under
+  the tree, as wide as its button, and beside it `ReasonLine` (`#diff-reason`): while Diff is disabled and the
+  review idle, `DIFF_REASON` cut at its end with `…` to the room left (`fit_reason`), nothing under 10 cells, fitted
+  again on resize; set by `_refresh_buttons`. Ticks are a selection, not staged work, so leaving asks nothing.
+- `diff_screen.DiffScreen`: the diff of one replaced pair, read-only: `side_view` draws `side_by_side_rows` as a
+  Rich grid (number, line, `│`, number, line, and a short `kept` column for `config-cache.wtf`, explained once in
+  the head line; a removed or added line's number carries its `-` / `+`), the two line columns sharing
+  the width, every line one row cut with `…` (never wrapped, so the sides stay aligned); `diff_text` is the unified
+  view of `diff_rows`. The head's counts come from `diff_rows` in both views. `v` (and **View**) switches the two
+  (`action_switch_view`, logged as `ui.selection` `copier_diff` / `view`); the choice goes in a `DiffSession` the
+  `CopierFlow` holds and hands to every review it opens, so it carries to the next diff and across Change source,
+  and is gone when the tool closes (not a setting). With no choice, a screen under `NARROW_WIDTH` (100) columns
+  opens inline and the head adds `NARROW_NOTE`; the width is read in `on_mount` only, never on a resize.
 - `CopierResultScreen` (`ResultScreen`): the copy, dry run and Undo results.
 
 ## Events

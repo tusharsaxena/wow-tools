@@ -56,8 +56,11 @@ reputation list. That is WoW, not the copy.
 
 ![The Config Copier review](assets/screenshots/config-copier/review.png)
 
-The left pane shows a red `⚠ USE AT YOUR OWN RISK` line (a copy overwrites the targets' files), the source, the five
-files (all ticked: untick one to leave it alone for every target), the filter and the buttons. The tree on the right
+The left pane shows a red `⚠ USE AT YOUR OWN RISK` line (a copy overwrites the targets' files), the source with
+**Change source** (`p`) under it, the five files (all ticked: untick one to leave it alone for every target), the
+filter and the buttons. **Change source** goes back to the source picker for the same game versions (or All
+flavors); the new source's review starts afresh, nothing ticked and every file box ticked. **Rescan** keeps the
+source. The tree on the right
 lists every account, realm and character. The source shows greyed (**source**), and so do the characters of other
 game versions (**other flavor**): a copy stays within one game version. Folders that aren't characters, such as
 `Bob - Copy`, are not listed. Each game version, account, realm and target character ends with how many files it
@@ -78,11 +81,18 @@ left, a few letters at each end, and the line scrolls sideways: widen the window
 A replaced `macros-cache.txt` on a character that already has macros shows **⚠ action bars**: see
 [Macros and action bars](#macros-and-action-bars).
 
-**Diff** (`d`, under the tree) shows what a replaced file loses (`-` lines) and gets (`+` lines), with three lines
-around each change. For `config-cache.wtf` it shows the whole file and notes each line the target keeps
-`kept: the target's own` (see [How config-cache.wtf is merged](#how-config-cachewtf-is-merged)). When two files differ
-only in their line endings, or in bytes that are not text, the diff says **Only line endings or bytes that are not
-text differ.** **Back** (`Esc`) returns to the review. Diff on anything but a replaced file says why it can't.
+**Diff** (`d`, under the tree) shows a replaced file side by side: the target's file as it is on the left, what the copy
+gives it on the right, each with its line numbers. Lines it loses are on a red background on the left, lines it gets on
+a green one on the right, a changed line beside its new version, with three lines around each change; the number of a
+lost line reads `-5`, of a new one `+5`, and a long line is cut with `…`. For `config-cache.wtf` it shows the whole file
+and marks each line the target keeps as its own `kept` (see [How config-cache.wtf is
+merged](#how-config-cachewtf-is-merged)). When two files differ only in their line endings, or in bytes that are not
+text, the diff says **Only line endings or bytes that are not text differ.** **View** (`v`) switches to the inline view
+(each lost line marked `-`, each new one `+`, one under the other) and back; the view you pick stays for the next diff
+until you close the tool. Until you press `v`, a window under 100 columns opens the diff inline and its head says
+**opened inline: the window is narrow**. **Back** (`Esc`) returns to the review. Diff works only on a replaced file:
+until one is highlighted the button is off and a dim line beside it says **highlight a replaced file to see its diff**
+(cut short in a narrow window). That line is empty while the files are read or a copy runs.
 
 `/` goes to the filter box: type part of a name and press Enter or **Filter** to see only the characters (and files)
 that match. Ticks the filter hides still count, and the bottom line says how many.
@@ -100,7 +110,9 @@ that match. Ticks the filter hides still count, and the bottom line says how man
 | `r` | **Rescan**: read the files again |
 | `z` | **Undo last change** |
 | `d` | **Diff** of the highlighted replaced file |
+| `v` | On the diff: switch between side by side and inline |
 | `!` | Open the files and folders that could not be read (only while there are any; the **⚠ … (!)** button at the bottom does the same) |
+| `p` | **Change source**: back to the source picker |
 | `f` | Back to the game versions |
 | `t` | Back to the tool menu |
 | `s` | Settings |

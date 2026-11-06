@@ -1,5 +1,7 @@
 """The Config Copier inside the suite app (config tools spec CC2, X1): (first run: settings) → flavor (or All
-flavors) → source picker (one character, the shared character tree) → review. The review's targets are the source's
+flavors) → source picker (one character, the shared character tree) → review; the review's Change source (p, CP1)
+reopens the source picker for the same flavor choice. The flow holds the diff view chosen with v (CP4) for as long as
+the tool is open. The review's targets are the source's
 flavor only; other flavors' characters show greyed. No USE AT YOUR OWN RISK popup: the copier writes only the
 client's own five files, between characters of one game version, with backups and Undo (as Interface Backup's
 restore, which has none either)."""
@@ -15,6 +17,7 @@ from textual.widgets import Label
 from wowtools.core.config import Config
 from wowtools.core.events import log_event
 from wowtools.core.install import Character, Flavor, WowInstall, validate_backup_dir
+from wowtools.tools.config_copier.diff_screen import DiffSession
 from wowtools.tools.config_copier.review_screen import TITLE, CopierReviewScreen
 from wowtools.tools.config_copier.settings import (SECTION, CopierSettings, load_settings, resolve_root,
                                                    save_settings)
@@ -64,6 +67,7 @@ class CopierFlow(ToolFlow):
         super().__init__(app, tool_cfg)
         self._wow_check = wow_check  # tests inject it; None: the review builds one for the source's flavor
         self.flavors: list[Flavor] = []
+        self.diff_session = DiffSession()  # CP4: the diff view chosen with v, for as long as the tool is open
 
     def _pick_flavor(self) -> None:
         install = self.install()
@@ -101,8 +105,13 @@ class CopierFlow(ToolFlow):
     def _review(self, flavors: list[Flavor], label: str, flavor: Flavor, source: Character) -> None:
         log_event("copier.started", flavors=[f.folder for f in flavors],
                   source=f"{flavor.folder}/{source.account}/{source.label}")
+        def closed(choice: str | None) -> None:
+            if choice == "source":  # CP1: Change source, for the same flavor choice
+                self._pick_source(flavors, label)
+            else:
+                self._after_review(choice)
         self.app.push_screen(CopierReviewScreen(self.cfg, self.tool_cfg, flavors, label, flavor, source,
-                                                wow_check=self._wow_check), self._after_review)
+                                                wow_check=self._wow_check, diff_session=self.diff_session), closed)
 
 
 FLOW = CopierFlow
