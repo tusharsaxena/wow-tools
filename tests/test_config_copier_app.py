@@ -13,8 +13,8 @@ from rich.cells import cell_len
 from textual.widgets import Button, Checkbox, Tree
 
 from tests.fixtures import (BASE, COUNT_AFTER, COPIER_ADDONS, COPIER_CHAT, COPIER_MACROS, TINY, TuiTestCase,
-                            assert_fits_or_keeps_minimum, assert_siblings_distinct, build_copier_tree, make_config,
-                            settle, submit_filter)
+                            assert_fits_or_keeps_minimum, assert_keys_on_buttons, assert_siblings_distinct,
+                            build_copier_tree, make_config, settle, submit_filter)
 from wowtools.core.events import capture_events
 from wowtools.core.install import flavor_name
 from wowtools.core.text import plural
@@ -800,7 +800,8 @@ class DiffViewTest(CopierTestCase):
             button = diff.query_one("#btn-view", Button)
             self.assertEqual(action_kind(button), "navigate")
             self.assertEqual(button.shortcut, "v")
-            self.assertIn("v ", diff.query_one(NavHint).hint)
+            self.assertNotIn("v ", diff.query_one(NavHint).hint)  # STD-8.6: the key is on the button only
+            assert_keys_on_buttons(self, diff)
 
     async def test_tiny_opens_inline_with_the_note(self):
         app = self.make_app()
@@ -909,6 +910,29 @@ class DiffViewTest(CopierTestCase):
             await pilot.resize_terminal(*BASE)
             await settle(app, pilot)
             self.assert_view(app, diff, INLINE, note=True)
+
+    async def test_a_switch_goes_back_to_the_top(self):
+        """The two views have different row counts (inline lists a replaced run's lines one after the other), so a
+        switch starts the new view at its top rather than at the old view's row number."""
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            review = await self.open_review(app, pilot)
+            plan = next(p for p in review.plans.values() if (p.target.name, p.name) == ("Bob", "AddOns.txt"))
+            old = b"".join(f"Old{i}: enabled\n".encode() for i in range(80))
+            new = b"".join(f"New{i}: enabled\n".encode() for i in range(80))
+            diff = DiffScreen(dataclasses.replace(plan, old=old, new=new), "MAIN › Realm1/Aellâ")
+            app.push_screen(diff)
+            await settle(app, pilot)
+            scroll = diff.query_one("#diff-scroll")
+            for view in (INLINE, SIDE):
+                with self.subTest(view=view):
+                    scroll.scroll_end(animate=False)
+                    await settle(app, pilot)
+                    self.assertGreater(scroll.scroll_y, 0)
+                    await pilot.press("v")
+                    await settle(app, pilot)
+                    self.assertEqual(diff.view, view)
+                    self.assertEqual(scroll.scroll_y, 0)
 
     def test_help_and_the_guide_name_v(self):
         self.assertIn("**View** (`v`)", HELP)

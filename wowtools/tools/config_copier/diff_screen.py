@@ -31,7 +31,7 @@ from wowtools.ui.branding import BottomBar
 from wowtools.ui.dialogs import theme_colour
 from wowtools.ui.widgets import NAV_BINDINGS, ButtonRow, NavHint, action_button
 
-NAV_HINT = "↑↓ PgUp/PgDn scroll · v side by side / inline · Tab move"
+NAV_HINT = "↑↓ PgUp/PgDn scroll · Tab move"  # v is on the View button only (STD-8.6)
 SAME = "The files are the same."
 SEPARATOR = "│"  # between the two sides
 KEPT_MARK = "kept"  # the side view's short note on a config-cache.wtf state line (the head line explains it)
@@ -163,10 +163,14 @@ class DiffScreen(Screen[None]):
         self._show(chosen or (INLINE if self.narrow else SIDE))
 
     def _show(self, view: str) -> None:
+        """Draw `view` from its top: the two views have different row counts (inline lists a replaced run's lines one
+        after the other), so the old scroll offset would land on unrelated lines."""
         self.view = view
         self.query_one("#diff-head", Static).update(self.head_text())
         self.query_one("#diff", Static).update(self.side_view() if view == SIDE else self.diff_text())
-        self.query_one("#diff-scroll").focus()
+        scroll = self.query_one("#diff-scroll", VerticalScroll)
+        scroll.scroll_home(animate=False)
+        scroll.focus()
 
     def action_switch_view(self) -> None:
         """v: side by side <-> inline; the choice lasts the session and drops the width rule's note."""
