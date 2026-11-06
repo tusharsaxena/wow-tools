@@ -2,7 +2,8 @@
 
 It also holds the action-kind button colours (spec D12): one colour per kind of action, the same in every tool, as
 theme variables `$act-<kind>` (plus `-lighten`, `-darken` and `-text` shades) that `ui/widgets.py` turns into
-button CSS; and the colours of a CVar's state and category group (Config Editor feedback spec CF3)."""
+button CSS; the colours of a CVar's state and category group (Config Editor feedback spec CF3); and the Config
+Copier's diff backgrounds."""
 from __future__ import annotations
 
 from textual.color import Color
@@ -69,6 +70,12 @@ CVAR_CATEGORY_COLOURS: dict[str, str] = {
 # A CVar row the file doesn't set (Show all known, feedback round 2 R3): darker than the dim the set rows' secondary
 # text gets (the foreground blended 66% over the background, about 6.4:1), still readable (about 3.7:1).
 NOT_SET_COLOUR = "#5F6B7B"
+# The Config Copier's diff (round 1 follow-up, GitHub's look): a removed or added line is white text on a darker
+# red or green filled to its column's edge; white reads at 7:1 or better on both, and each still stands apart from
+# the screen's navy.
+DIFF_TEXT = "#FFFFFF"
+DIFF_REMOVED_BACKGROUND = "#8E3B3B"
+DIFF_ADDED_BACKGROUND = "#2A6340"
 SHADE = 0.15  # how much lighter / darker the top and bottom edges (and the hover background) are
 
 

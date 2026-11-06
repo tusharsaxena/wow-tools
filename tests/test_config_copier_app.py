@@ -34,11 +34,11 @@ from wowtools.tools.config_copier.source_screen import SourceScreen
 from wowtools.ui.branding import footer_bindings
 from wowtools.ui.character_tree import CharacterNode
 from wowtools.ui.columns import GROUP_NAME_MINIMUM
-from wowtools.ui.dialogs import ConfirmScreen, theme_colour
+from wowtools.ui.dialogs import ConfirmScreen
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.review import ActionBar
 from wowtools.ui.suite_app import WowToolsApp
-from wowtools.ui.theme import ACTION_COLOURS
+from wowtools.ui.theme import ACTION_COLOURS, DIFF_ADDED_BACKGROUND, DIFF_REMOVED_BACKGROUND, DIFF_TEXT
 from wowtools.ui.widgets import NavHint, action_kind
 
 TOOL = "config-copier"
@@ -716,6 +716,23 @@ class SideBySideDiffTest(CopierTestCase):
                     return segment.style.color.triplet.hex if segment.style.color.triplet else None
         return None
 
+    def row_backgrounds(self, app, text: str) -> tuple[str | None, str | None]:
+        """The background `text` is drawn on, and the background of the last blank cell of that line's side (the
+        fill to the column's edge): (text's, fill's)."""
+        for strip in app.screen._compositor.render_strips():
+            segments = list(strip)
+            for index, segment in enumerate(segments):
+                if text in segment.text:
+                    def bg(seg):
+                        colour = seg.style.bgcolor if seg.style else None
+                        return colour.triplet.hex if colour is not None and colour.triplet else None
+                    fill = bg(segment) if segment.text.endswith("  ") else None  # the padding drawn with the text
+                    if fill is None:
+                        later = segments[index + 1] if index + 1 < len(segments) else None
+                        fill = bg(later) if later is not None and later.text.strip() == "" else None
+                    return bg(segment), fill
+        return None, None
+
     async def open_diff(self, app, pilot, character: str, file: str) -> DiffScreen:
         review = await self.open_review(app, pilot)
         tree = review.query_one("#targets", Tree)
@@ -744,9 +761,26 @@ class SideBySideDiffTest(CopierTestCase):
             self.assertEqual(left.strip(" ▊"), "")  # the new side's extra line beside a blank
             self.assertIn("4 VER 3 0100000000000002", right)
             self.assertEqual(diff.query_one("#diff").size.height, len(diff.side_rows))  # one screen row each
-            self.assertEqual(self.segment_colour(app, "/sit"), theme_colour(app, "error").lower())
-            self.assertEqual(self.segment_colour(app, "Flash Heal"), theme_colour(app, "success").lower())
+            # GitHub's look (round 1 follow-up): white text on a red or green background filled to the column's edge
+            self.assertEqual(self.segment_colour(app, "/sit"), DIFF_TEXT.lower())
+            self.assertEqual(self.segment_colour(app, "Flash Heal"), DIFF_TEXT.lower())
+            self.assertEqual(self.row_backgrounds(app, "/sit"), (DIFF_REMOVED_BACKGROUND.lower(),) * 2)
+            self.assertEqual(self.row_backgrounds(app, "Flash Heal"), (DIFF_ADDED_BACKGROUND.lower(),) * 2)
+            diff_colours = {DIFF_REMOVED_BACKGROUND.lower(), DIFF_ADDED_BACKGROUND.lower()}
+            self.assertNotIn(self.row_backgrounds(app, "END")[0], diff_colours)  # a kept line: the screen's background
             self.assertIn("2 lines removed, 5 lines added.", diff.head_text().plain)  # the inline view's counts
+
+    async def test_the_inline_view_has_the_same_backgrounds(self):
+        app = self.make_app()
+        async with app.run_test(size=BASE) as pilot:
+            await self.open_diff(app, pilot, "Bob", "macros-cache.txt")
+            await pilot.press("v")
+            await settle(app, pilot)
+            self.assertEqual(self.segment_colour(app, "/sit"), DIFF_TEXT.lower())
+            self.assertEqual(self.row_backgrounds(app, "/sit"), (DIFF_REMOVED_BACKGROUND.lower(),) * 2)
+            self.assertEqual(self.row_backgrounds(app, "Flash Heal"), (DIFF_ADDED_BACKGROUND.lower(),) * 2)
+            diff_colours = {DIFF_REMOVED_BACKGROUND.lower(), DIFF_ADDED_BACKGROUND.lower()}
+            self.assertNotIn(self.row_backgrounds(app, "END")[0], diff_colours)
 
     async def test_the_config_file_notes_its_kept_state_lines(self):
         app = self.make_app()

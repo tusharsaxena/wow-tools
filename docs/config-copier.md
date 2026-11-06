@@ -81,18 +81,18 @@ left, a few letters at each end, and the line scrolls sideways: widen the window
 A replaced `macros-cache.txt` on a character that already has macros shows **⚠ action bars**: see
 [Macros and action bars](#macros-and-action-bars).
 
-**Diff** (`d`, under the tree) shows a replaced file side by side: the target's file as it is on the left, what the
-copy gives it on the right, each with its line numbers. Lines it loses are red on the left, lines it gets green on the
-right, a changed line beside its new version, with three lines around each change; the number of a lost line reads
-`-5`, of a new one `+5`, and a long line is cut with `…`. For `config-cache.wtf` it shows the whole file and marks each
-line the target keeps as its own `kept` (see [How config-cache.wtf is merged](#how-config-cachewtf-is-merged)). When two files differ
-only in their line endings, or in bytes that are not text, the diff says **Only line endings or bytes that are not
-text differ.** **View** (`v`) switches to the inline view (each lost line marked `-`, each new one `+`, one under
-the other) and back; the view you pick stays for the next diff until you close the tool. Until you press `v`, a
-window under 100 columns opens the diff inline and its head says **opened inline: the window is narrow**.
-**Back** (`Esc`) returns to the review. Diff works only on a replaced file: until one is highlighted
-the button is off and a dim line beside it says **highlight a replaced file to see its diff** (cut short in a narrow
-window). That line is empty while the files are read or a copy runs.
+**Diff** (`d`, under the tree) shows a replaced file side by side: the target's file as it is on the left, what the copy
+gives it on the right, each with its line numbers. Lines it loses are on a red background on the left, lines it gets on
+a green one on the right, a changed line beside its new version, with three lines around each change; the number of a
+lost line reads `-5`, of a new one `+5`, and a long line is cut with `…`. For `config-cache.wtf` it shows the whole file
+and marks each line the target keeps as its own `kept` (see [How config-cache.wtf is
+merged](#how-config-cachewtf-is-merged)). When two files differ only in their line endings, or in bytes that are not
+text, the diff says **Only line endings or bytes that are not text differ.** **View** (`v`) switches to the inline view
+(each lost line marked `-`, each new one `+`, one under the other) and back; the view you pick stays for the next diff
+until you close the tool. Until you press `v`, a window under 100 columns opens the diff inline and its head says
+**opened inline: the window is narrow**. **Back** (`Esc`) returns to the review. Diff works only on a replaced file:
+until one is highlighted the button is off and a dim line beside it says **highlight a replaced file to see its diff**
+(cut short in a narrow window). That line is empty while the files are read or a copy runs.
 
 `/` goes to the filter box: type part of a name and press Enter or **Filter** to see only the characters (and files)
 that match. Ticks the filter hides still count, and the bottom line says how many.
