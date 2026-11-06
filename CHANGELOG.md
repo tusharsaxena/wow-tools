@@ -4,7 +4,7 @@ Every change to Ka0s WoW Tools that you'd notice, newest first. The format follo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and version numbers follow
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.1.0] - 2026-11-07
 
 ### Added
 
