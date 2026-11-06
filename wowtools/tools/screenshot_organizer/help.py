@@ -53,7 +53,7 @@ collapse it, `h` opens the help, and **Back** (`Esc`) returns to the review.
   `Screenshots` (in copy mode it's left alone and marked **Already filed**). A different file with the same name is a
   **conflict**: both are left alone and listed.
 - In copy mode a screenshot whose name and size are already in its dated folder is listed unticked under
-  **Already filed (N)**; tick it by hand to have the run compare the two files.
+  **Already filed**; tick it by hand to have the run compare the two files.
 - Only WoW screenshot names are sorted; anything else is skipped and listed.
 - Moving to another drive copies and checks each file before the original is deleted.
 - **Undo last run** goes back one run. Moved shots return, copies are removed and removed duplicates come back. It

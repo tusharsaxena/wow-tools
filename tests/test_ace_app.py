@@ -37,7 +37,7 @@ from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.review import BLACKLISTED_MARK
 from wowtools.ui.suite_app import WowToolsApp
 from wowtools.ui.tree_filter import FILTER_HINT
-from wowtools.ui.widgets import action_kind
+from tests.fixtures import action_kind
 
 TOOL = "ace3-profile-manager"
 

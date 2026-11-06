@@ -17,7 +17,7 @@ from wowtools.tools.config_editor.ops import (ADD_LIST_CAP, ConfigStaged, add_ca
                                               match_candidates, rows, stage_remove, stage_reset, stage_set,
                                               stage_toggle)
 from wowtools.tools.config_editor.report import (CHANGED, COLUMN_CAPS, COLUMN_MINIMUMS, DEFAULT_STATE, DROP_ORDER,
-                                                 NO_DESCRIPTION, NOT_SET, STATES, UNKNOWN, row_cells, row_state,
+                                                 NO_DESCRIPTION, NOT_SET, UNKNOWN, row_cells, row_state,
                                                  what_it_does)
 from wowtools.tools.config_editor.review_screen import CVAR_COLUMNS
 from wowtools.tools.config_editor.scanner import scan_targets
@@ -287,8 +287,7 @@ class ConfigEditorOpsTest(unittest.TestCase):
     # CF1, CF2 (feedback round 1): a CVar row is five columns, name, value, default, state and category; the state is
     # `changed`, `default` or `unknown`; the name, value and default columns are capped and shrink to fit.
     def test_state_column(self):
-        self.assertEqual(STATES, (CHANGED, DEFAULT_STATE, UNKNOWN))
-        self.assertEqual(STATES, ("changed", "default", "unknown"))  # U1: the column's names only
+        self.assertEqual((CHANGED, DEFAULT_STATE, UNKNOWN), ("changed", "default", "unknown"))  # U1: the names only
         aella = self.target("MAIN/Realm1/Aellâ")
         staged = ConfigStaged()
         stage_set(staged, aella, "lastSelectedClubId", "7")

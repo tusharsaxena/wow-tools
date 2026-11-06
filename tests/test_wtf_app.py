@@ -42,7 +42,8 @@ from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.review import BLACKLIST_NO_TARGET, BLACKLISTED_MARK
 from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
-from wowtools.ui.widgets import ButtonRow, Ka0sCheckbox, NavHint, action_kind
+from wowtools.ui.widgets import ButtonRow, Ka0sCheckbox, NavHint
+from tests.fixtures import action_kind
 
 SIZE = (140, 50)
 REAL_ROOT = r"C:\Program Files (x86)\World of Warcraft"  # the default install's WoW folder

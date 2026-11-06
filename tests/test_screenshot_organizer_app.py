@@ -499,7 +499,7 @@ class ShotsAppTest(TuiTestCase):
             self.assertIn("4 items", flavors["_retail_"])
 
     async def test_action_buttons_share_the_suite_colours(self):
-        from wowtools.ui.widgets import action_kind
+        from tests.fixtures import action_kind
         self.save_tool_cfg()
         app = self.make_app()
         async with app.run_test(size=SIZE) as pilot:

@@ -22,7 +22,8 @@ from wowtools.tools.sv_browser.popups import EditValueScreen, RenameKeyScreen, S
 from wowtools.tools.sv_browser.review_screen import BROWSE, RESULTS, SvReviewScreen
 from wowtools.tools.sv_browser.search import KEY_CONTAINS, NEED_TEXT, REPLACE_NUMBER, VALUE_CONTAINS
 from wowtools.ui.dialogs import ConfirmScreen
-from wowtools.ui.widgets import Ka0sCheckbox, NavHint, action_kind
+from wowtools.ui.widgets import Ka0sCheckbox, NavHint
+from tests.fixtures import action_kind
 
 FRIZ = "Friz Quadrata TT"
 

@@ -21,7 +21,7 @@ from wowtools.tools.config_editor.model import CONFIG_WTF, ConfigTarget, Row
 from wowtools.tools.config_editor.ops import ConfigStaged, build_changes, is_boolean
 
 __all__ = ["ACCOUNT_CONFIG", "CHANGED", "COLUMN_CAPS", "COLUMN_MINIMUMS", "DEFAULT_STATE", "DROP_ORDER",
-           "FILE_COLUMNS", "NOT_SET", "NO_DESCRIPTION", "RESULT_TEXT", "STAGE_TITLES", "STATES", "STATUS_COLOURS",
+           "FILE_COLUMNS", "NOT_SET", "NO_DESCRIPTION", "RESULT_TEXT", "STAGE_TITLES", "STATUS_COLOURS",
            "UNDO_COLUMNS", "UNKNOWN", "HelpLine", "HelpPanel", "apply_confirm", "apply_groups", "file_label",
            "file_rows", "help_panel", "path_label", "recovery_text", "row_cells", "row_state",
            "scope_listed", "scope_text", "summary_rows", "target_text", "undo_confirm", "undo_detail_rows",
@@ -34,7 +34,6 @@ NOT_SET = "not set"
 CHANGED = "changed"
 DEFAULT_STATE = "default"
 UNKNOWN = "unknown"
-STATES = (CHANGED, DEFAULT_STATE, UNKNOWN)
 # The name, value and default columns (CF2): as wide as the file's widest cell up to the cap; when the tree pane is
 # narrower the value and the default give way first, then the name, down to the minimum (the state and category
 # columns are never cut, only dropped when nothing else fits: DROP_ORDER). "not set" fits the value's minimum. The

@@ -699,7 +699,8 @@ class ActionColoursTest(unittest.TestCase):
                     self.assertGreaterEqual(min(gap, 360 - gap), 25)
 
     def test_action_button_kinds(self):
-        from wowtools.ui.widgets import action_button, action_kind
+        from wowtools.ui.widgets import action_button
+        from tests.fixtures import action_kind
         cases = {"destructive": "error", "overwrite": "warning", "create": "success", "revert": "warning",
                  "refresh": "success",
                  "simulate": "primary", "confirm": "primary", "navigate": "default", "cancel": "default"}

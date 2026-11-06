@@ -21,7 +21,7 @@ from wowtools.ui.disclaimer import ACCEPT, BACK, DISCLAIMER_TITLE, DONT_SHOW, DO
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.settings_form import SHOW_RISK_WARNING_ID, SHOW_RISK_WARNING_LABEL
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
-from wowtools.ui.widgets import action_kind
+from tests.fixtures import action_kind
 
 # tool: (review screen, accepted event, declined event, words its text must hold)
 TOOLS = {

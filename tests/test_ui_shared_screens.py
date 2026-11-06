@@ -30,7 +30,8 @@ from wowtools.ui.result_screen import (ResultBase, ResultScreen, result_bindings
                                        status_style)
 from wowtools.ui.settings_form import ToolSettingsScreen, folder_hint, settings_hint
 from wowtools.ui.tool_flow import SETTINGS_SAVED, ToolFlow
-from wowtools.ui.widgets import Ka0sCheckbox, NavHint, action_kind
+from wowtools.ui.widgets import Ka0sCheckbox, NavHint
+from tests.fixtures import action_kind
 
 
 class Host(App):

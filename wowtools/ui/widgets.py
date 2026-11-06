@@ -93,11 +93,6 @@ def button_keys(screen: Widget) -> set[str]:
     return {b.shortcut for b in screen.query(ActionButton) if b.shortcut and shown(b)}
 
 
-def action_kind(button: Button) -> str | None:
-    """The action kind a button was built with (None for one not built by action_button)."""
-    return next((kind for kind in ACTION_VARIANTS if button.has_class(action_class(kind))), None)
-
-
 def _kind_css(kind: str) -> str:
     v = f"$act-{kind}"
     return f"""

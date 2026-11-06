@@ -39,7 +39,8 @@ from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.review import ActionBar
 from wowtools.ui.suite_app import WowToolsApp
 from wowtools.ui.theme import ACTION_COLOURS, DIFF_ADDED_BACKGROUND, DIFF_REMOVED_BACKGROUND, DIFF_TEXT
-from wowtools.ui.widgets import NavHint, action_kind
+from wowtools.ui.widgets import NavHint
+from tests.fixtures import action_kind
 
 TOOL = "config-copier"
 

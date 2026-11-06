@@ -19,7 +19,8 @@ from wowtools.ui.dialogs import TREE_HINT
 from wowtools.ui.tree_filter import FILTER_HINT, NO_MATCH_TEXT
 from wowtools.ui.warnings_view import (WARNINGS_BINDING, WARNINGS_BUTTON_ID, SummaryBar, SummaryLine, WarningItem,
                                        WarningsHost, WarningsScreen, scan_warning_items, warnings_label, where_text)
-from wowtools.ui.widgets import NavHint, action_kind
+from wowtools.ui.widgets import NavHint
+from tests.fixtures import action_kind
 
 ITEMS = [WarningItem("WTF/Account/A/SavedVariables", "cannot read folder: denied", "Retail"),
          WarningItem("WTF/Account/A/Realm/Char/AddOns.txt", "line 3 not understood: 'x'", "Retail"),

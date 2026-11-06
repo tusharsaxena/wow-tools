@@ -13,7 +13,7 @@ from wowtools.core import kb
 from wowtools.core.events import capture_events
 from wowtools.core.macrofile import BODY_LIMIT
 from wowtools.tools.macro_editor.explain import explain_block, unknown_terms
-from wowtools.tools.macro_editor.syntax import suggestions, token_at, tokenize
+from wowtools.tools.macro_editor.syntax import suggestions, tokenize
 from wowtools.tools.macro_editor.templates import MacroTemplate, fill_template, load_templates
 
 CLICK_CAST = "#showtooltip\n/cast [@mouseover,help,nodead][] Flash Heal\n/stopcasting [mod:alt]"
@@ -70,15 +70,6 @@ class TokenizeTest(unittest.TestCase):
         self.assertEqual([(t.kind, t.text) for t in tokens], [
             ("command", "/say"), ("text", "[help] me; now"), ("comment", "# my note"), ("command", "/run"),
             ("text", "print(1)")])
-
-    def test_token_at_returns_the_innermost_token(self):
-        offset = CLICK_CAST.index("help")
-        self.assertEqual(token_at(CLICK_CAST, offset).text, "help")
-        self.assertEqual(token_at(CLICK_CAST, offset + 4).text, "help")  # cursor just after the word
-        self.assertEqual(token_at(CLICK_CAST, CLICK_CAST.index("[]") + 1).kind, "condition_block")
-        self.assertEqual(token_at(CLICK_CAST, 3).text, "#showtooltip")
-        self.assertIsNone(token_at("", 0))
-        self.assertIsNone(token_at("/cast  x", 6))  # between the command and its argument
 
 
 class ExplainTest(KbCase):

@@ -279,5 +279,5 @@ class RecoverJournalTest(unittest.TestCase):
 
 
 def _journal(base):
-    from wowtools.tools.ace3_profile_manager.journal import ProfileJournal
-    return ProfileJournal(base / "journal" / "journal-20261004-120000.jsonl", {"kind": "apply"})
+    from wowtools.core.sv_journal import EditJournal
+    return EditJournal(base / "journal" / "journal-20261004-120000.jsonl", {"kind": "apply"})

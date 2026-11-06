@@ -37,7 +37,8 @@ from wowtools.ui.setup_screen import SetupScreen
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.tree_filter import FILTER_HINT, FilterInput
 from wowtools.ui.warnings_view import WARNINGS_BUTTON_ID, WarningsScreen
-from wowtools.ui.widgets import RISK_TEXT, ActionButton, NavHint, RiskBanner, action_kind
+from wowtools.ui.widgets import RISK_TEXT, ActionButton, NavHint, RiskBanner
+from tests.fixtures import action_kind
 
 SIZE = (140, 50)
 

@@ -58,6 +58,7 @@ from wowtools.core.config import Config
 from wowtools.ui.branding import KeyFooter, footer_bindings
 from wowtools.ui.columns import cut_middle
 from wowtools.ui.tree_filter import FILTER_BUTTON_ID, FilterInput
+from wowtools.ui.widgets import ACTION_VARIANTS, action_class
 from wowtools.ui.widgets import ActionButton, NavHint, button_keys, key_text, shown
 
 # Terminal sizes (docs/superpowers/specs/2026-10-04-ace-profiles-design.md, Addendum B): screens are designed for
@@ -774,3 +775,8 @@ def stage_config_edit(review) -> None:
                   if not t.read_only)
     stage_set(review.staged, target, "testCVar", "1")
     review.staging_changed()
+
+
+def action_kind(button) -> str | None:
+    """The action kind a button was built with (None for one not built by action_button)."""
+    return next((kind for kind in ACTION_VARIANTS if button.has_class(action_class(kind))), None)

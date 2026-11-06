@@ -31,7 +31,8 @@ from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.review import TOGGLE_WIDTH
 from wowtools.ui.suite_app import ToolMenuScreen, WowToolsApp
 from wowtools.ui.tree_filter import NO_MATCH_TEXT
-from wowtools.ui.widgets import RISK_TEXT, RiskBanner, action_kind
+from wowtools.ui.widgets import RISK_TEXT, RiskBanner
+from tests.fixtures import action_kind
 
 TOOL = "sv-browser"
 

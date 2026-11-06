@@ -14,8 +14,9 @@ from wowtools.core import luasv
 from wowtools.core.events import capture_events
 from wowtools.core.fsutil import atomic_write_bytes
 from wowtools.core.install import WowInstall
+from wowtools.core.sv_journal import EditJournal
 from wowtools.tools.ace3_profile_manager import editor, model, ops, scanner
-from wowtools.tools.ace3_profile_manager.journal import ProfileJournal, read_profile_journal
+from wowtools.tools.ace3_profile_manager.journal import read_profile_journal
 
 WHEN = datetime(2026, 10, 4, 12, 0, 0)
 
@@ -39,7 +40,7 @@ class EditorTest(unittest.TestCase):
         self.staging.remove_leftovers({self.key("KickCDDB"): ["Gone - Realm1"]})
 
     def journal(self):
-        journal = ProfileJournal(self.tmp / "journal" / "journal-20261004-120000.jsonl", {"kind": "apply"})
+        journal = EditJournal(self.tmp / "journal" / "journal-20261004-120000.jsonl", {"kind": "apply"})
         self.addCleanup(journal.close)
         return journal
 

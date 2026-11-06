@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from wowtools.core.sv_journal import EditJournal
 from wowtools.tools.ace3_profile_manager import journal as j
 
 
@@ -16,7 +17,7 @@ class JournalTest(unittest.TestCase):
 
     def write(self, rels, rolled=()):
         self.count = getattr(self, "count", 0) + 1
-        writer = j.ProfileJournal(self.folder / f"journal-20261004-12000{self.count}.jsonl", {"kind": "apply"})
+        writer = EditJournal(self.folder / f"journal-20261004-12000{self.count}.jsonl", {"kind": "apply"})
         for rel in rels:
             writer.add_edited(flavor="_retail_", path=Path("/w") / rel, rel=rel, zip_path=Path("/z/edited-a.zip"),
                               sha_before="a", sha_after="b", size_before=1, size_after=2, changes=["x"])

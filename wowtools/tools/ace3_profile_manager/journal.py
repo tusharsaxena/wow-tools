@@ -2,13 +2,12 @@
 tool's name, <WoW>/wow-tools/ace3-profile-manager/journal/journal-<stamp>.jsonl, one per Apply."""
 from __future__ import annotations
 
-from wowtools.core.sv_journal import EditJournal, read_edit_journal, record_recovered, referenced_zips
+from wowtools.core.sv_journal import read_edit_journal, record_recovered, referenced_zips
 from wowtools.tools.ace3_profile_manager.events import SV_TOOL
 
-__all__ = ["JOURNALS", "ProfileJournal", "latest_undoable", "prune_journals", "read_profile_journal",
+__all__ = ["JOURNALS", "latest_undoable", "prune_journals", "read_profile_journal",
            "record_recovered", "referenced_zips", "resolve_journal_dir"]
 
-ProfileJournal = EditJournal
 read_profile_journal = read_edit_journal
 JOURNALS = SV_TOOL.journals
 resolve_journal_dir = JOURNALS.dir

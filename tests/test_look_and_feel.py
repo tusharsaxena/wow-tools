@@ -34,7 +34,8 @@ from wowtools.ui.dialogs import (FILTERS_WIDTH, RESULT_HINT, REVIEW_HINT, TREE_H
 from wowtools.ui.flavor_screen import ALL_FLAVORS, FlavorScreen
 from wowtools.ui.suite_app import MENU_HINT, LockScreen, WowToolsApp
 from wowtools.ui.tree_filter import FILTER_BUTTON_ID, FILTER_HINT, FILTER_PLACEHOLDER, NO_MATCH_TEXT, FilterInput
-from wowtools.ui.widgets import CHECK_OFF, RISK_TEXT, NavHint, RiskBanner, action_kind
+from wowtools.ui.widgets import CHECK_OFF, RISK_TEXT, NavHint, RiskBanner
+from tests.fixtures import action_kind
 
 POPUP_MAX_WIDTH = 100  # a popup or confirm at LARGE: a readable width, never stretched edge to edge
 FORM_MAX_WIDTH = 100  # a settings form, at any size

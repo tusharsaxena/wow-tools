@@ -15,7 +15,7 @@ from typing import Literal
 from wowtools.core.kb import ConditionalInfo, MacroReference, load_macro_reference
 
 __all__ = ["DIRECTIVES", "Clause", "Line", "Token", "completion_start", "lines", "no_help", "option_commands",
-           "parse_line", "suggestions", "token_at", "tokenize"]
+           "parse_line", "suggestions", "tokenize"]
 
 DIRECTIVES = ("#showtooltip", "#show")  # written in lower case, or the client skips the line
 TokenKind = Literal["command", "condition_block", "condition", "unit", "text", "comment", "directive"]
@@ -158,14 +158,6 @@ def lines(body: str, options: frozenset[str] | None = None) -> list[Line]:
 def tokenize(body: str) -> list[Token]:
     """Every token of the body in order; a condition block comes before the conditionals inside it."""
     return [token for line in lines(body) for token in line.tokens]
-
-
-def token_at(body: str, offset: int) -> Token | None:
-    """The innermost token under the cursor or just before it (a cursor right after `help` is on `help`); None
-    between tokens."""
-    tokens = tokenize(body)
-    inside = [t for t in tokens if t.start <= offset <= t.end]
-    return min(inside, key=lambda t: t.end - t.start) if inside else None
 
 
 def _numbered(ref: MacroReference) -> list[str]:
