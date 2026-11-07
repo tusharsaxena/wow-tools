@@ -53,37 +53,21 @@ off for each tool (see [Your settings](#your-settings)).
 
 ## Screenshots
 
-**_WTF Cleaner: the list of leftover addon settings, ready to clean_**
+![WTF Cleaner: its main screen and its key popups](docs/assets/screenshots/wtf-cleaner/showcase.png)
 
-![WTF Cleaner review screen](docs/assets/screenshots/wtf-cleaner/review.png)
+![Screenshot Organizer: its main screen and its key popups](docs/assets/screenshots/screenshot-organizer/showcase.png)
 
-**_Screenshot Organizer: screenshots grouped by day, ready to sort_**
+![Interface Backup: its main screen and its key popups](docs/assets/screenshots/interface-backup/showcase.png)
 
-![Screenshot Organizer review screen](docs/assets/screenshots/screenshot-organizer/review.png)
+![Ace3 Profile Manager: its main screen and its key popups](docs/assets/screenshots/ace3-profile-manager/showcase.png)
 
-**_Interface Backup: every game version with its folders and its backups_**
+![Saved Variables Browser: its main screen and its key popups](docs/assets/screenshots/sv-browser/showcase.png)
 
-![Interface Backup review screen](docs/assets/screenshots/interface-backup/review.png)
+![Config Copier: its main screen and its key popups](docs/assets/screenshots/config-copier/showcase.png)
 
-**_Ace3 Profile Manager: every addon's profiles, by addon_**
+![Macro Editor: its main screen and its key popups](docs/assets/screenshots/macro-editor/showcase.png)
 
-![Ace3 Profile Manager review screen](docs/assets/screenshots/ace3-profile-manager/review.png)
-
-**_Saved Variables Browser: your SavedVariables files as a tree_**
-
-![Saved Variables Browser review screen](docs/assets/screenshots/sv-browser/review.png)
-
-**_Config Copier: a character's files, ready to copy to its alts_**
-
-![Config Copier review screen](docs/assets/screenshots/config-copier/review.png)
-
-**_Macro Editor: every account's and character's macros, with changes waiting to be applied_**
-
-![Macro Editor browse screen](docs/assets/screenshots/macro-editor/browse.png)
-
-**_Config Editor: a character's CVars with the help panel, and a change waiting to be applied_**
-
-![Config Editor browse screen](docs/assets/screenshots/config-editor/browse.png)
+![Config Editor: its main screen and its key popups](docs/assets/screenshots/config-editor/showcase.png)
 
 Every tool looks and works the same way: a panel on the left with its settings and buttons, a tree on the right
 with what it found (tick what you want), and a bar at the bottom that totals your choice. Before it changes

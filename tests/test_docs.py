@@ -165,7 +165,7 @@ class DocsTest(unittest.TestCase):
             self.assertIn(key, guide)
         readme = " ".join((REPO_ROOT / "README.md").read_text(encoding="utf-8").split())
         for needle in ("config\\config-copier.cfg", "](docs/config-copier.md)",
-                       "](docs/assets/screenshots/config-copier/review.png)", "the Config Copier's last copy",
+                       "](docs/assets/screenshots/config-copier/showcase.png)", "the Config Copier's last copy",
                        "the Saved Variables Browser, the Config Copier, the Macro Editor and the Config Editor can also do a practice run"):
             self.assertIn(needle, readme)
         faq = readme[readme.index("## FAQ"):]
@@ -225,7 +225,7 @@ class DocsTest(unittest.TestCase):
             self.assertIn(key, guide)
         readme = " ".join((REPO_ROOT / "README.md").read_text(encoding="utf-8").split())
         for needle in ("config\\macro-editor.cfg", "](docs/macro-editor.md)",
-                       "](docs/assets/screenshots/macro-editor/browse.png)", "the Macro Editor's last Apply",
+                       "](docs/assets/screenshots/macro-editor/showcase.png)", "the Macro Editor's last Apply",
                        "the Config Copier, the Macro Editor and the Config Editor can also do a practice run"):
             self.assertIn(needle, readme)
         faq = readme[readme.index("## FAQ"):]
@@ -281,7 +281,7 @@ class DocsTest(unittest.TestCase):
             self.assertIn(key, guide)
         readme = " ".join((REPO_ROOT / "README.md").read_text(encoding="utf-8").split())
         for needle in ("config\\config-editor.cfg", "](docs/config-editor.md)",
-                       "](docs/assets/screenshots/config-editor/browse.png)", "the Config Editor's last Apply",
+                       "](docs/assets/screenshots/config-editor/showcase.png)", "the Config Editor's last Apply",
                        "the Macro Editor and the Config Editor can also do a practice run"):
             self.assertIn(needle, readme)
         rows = (REPO_ROOT / "README.md").read_text(encoding="utf-8").splitlines()

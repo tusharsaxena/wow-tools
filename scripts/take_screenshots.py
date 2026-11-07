@@ -22,6 +22,11 @@ Each screenshot is a SHOTS row: its file under docs/assets/screenshots/, the flo
 flow takes the screenshots of one walk through a tool (review, confirm, progress, result ...) and saves only the
 ones asked for. To add one, add a row and a `capture(...)` call in its flow (or a new flow). A progress window is
 caught mid-run by holding the worker on its report (`hold_progress`).
+
+Each tool also gets a showcase, `<tool>/showcase.png`, the image the README shows for it: a SHOWCASES row names a
+full screen for the top and the popups and panels cut out below it, each with a caption. A flow saves those
+screens as parts (`part(name, widget)`, the widget being the region a cut-out shows); the showcase is laid out as
+an HTML page (one scale for every cut-out, packed into rows) and drawn by headless Chrome at 1920 wide.
 """
 from __future__ import annotations
 
@@ -38,7 +43,7 @@ import tempfile
 import threading
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Awaitable, Callable, Iterator
 from typing import Any
@@ -53,7 +58,7 @@ add_vendor_path()
 from rich.console import Console  # noqa: E402
 
 from wowtools.core.config import Config  # noqa: E402
-from wowtools.ui.theme import BACKGROUND  # noqa: E402
+from wowtools.ui.theme import BACKGROUND, FOREGROUND, TITLE_GOLD  # noqa: E402
 
 OUT_DIR = ROOT / "docs" / "assets" / "screenshots"
 DEFAULT_SIZE = (238, 64)
@@ -388,6 +393,14 @@ def svg_to_png(svg_path: Path, png_path: Path, chrome: str) -> None:
 # --------------------------------------------------------------------------------------------------------------
 # Driving the app
 # --------------------------------------------------------------------------------------------------------------
+@dataclass(frozen=True)
+class Part:
+    """One screen a showcase uses: its PNG and, for a cut-out, the cells it crops to (x, y, width, height)."""
+    png: Path
+    region: tuple[int, int, int, int] | None
+    cells: tuple[int, int]  # the terminal's size in cells when it was taken
+
+
 @dataclass
 class Options:
     size: tuple[int, int]
@@ -396,6 +409,9 @@ class Options:
     font: str
     chrome: str
     wanted: set[str]  # the SHOTS files to save
+    parts: Path = Path()  # where the showcases' parts go (a temp folder)
+    parts_wanted: set[str] = field(default_factory=set)  # the parts the wanted showcases use
+    parts_taken: dict[str, Part] = field(default_factory=dict)
 
 
 class Session:
@@ -469,6 +485,21 @@ class Session:
             svg.unlink()
         self.taken.append(name)
         print(f"  {name}")
+
+    async def part(self, name: str, widget: Any = None) -> None:
+        """Save the screen as showcase part `name` if a wanted showcase uses it; `widget` (a popup's dialog, a
+        panel) is the region its cut-out shows, None for the whole screen."""
+        if name not in self.options.parts_wanted:
+            return
+        await self.pilot.pause(0.2)
+        png = self.options.parts / f"{name.replace('/', '--')}.png"
+        svg = png.with_suffix(".svg")
+        svg.write_text(swap_paths(screen_svg(self.app, self.options.font), self.tmp), encoding="utf-8")
+        svg_to_png(svg, png, self.options.chrome)
+        svg.unlink()
+        region = None if widget is None else tuple(widget.region if hasattr(widget, "region") else widget)
+        self.options.parts_taken[name] = Part(png, region, tuple(self.app.size))
+        print(f"  ({name})")
 
     async def open_tool(self, name: str) -> None:
         await self.pilot.pause()
@@ -620,30 +651,40 @@ async def wtf_cleaner_flow(s: Session) -> None:
     await s.pick_flavor(None)
     await s.pick_all_accounts()
     await s.capture("wtf-cleaner/review.png")
+    await s.part("wtf-cleaner/review")
+    await s.part("wtf-cleaner/criteria", pane_to(s.app, "#btn-undo"))
     await s.press("w")
     await s.capture("wtf-cleaner/clean-confirm.png")
+    await s.part("wtf-cleaner/confirm", popup(s.app))
     with hold_progress(past("snapshot", 0.8)) as (reached, release):
         await s.pilot.press("enter")
         await wait_for(s, reached, "the WTF backup")
         await s.capture("wtf-cleaner/clean-progress.png")
+        await s.part("wtf-cleaner/progress", popup(s.app))
         release.set()
         await s.settle()
     await s.capture("wtf-cleaner/result.png")
+    await s.part("wtf-cleaner/result", filled(s.app.screen.query_one("#result-summary"), most=16))
 
 
 async def screenshot_organizer_flow(s: Session) -> None:
     await s.open_tool("screenshot-organizer")
     await s.pick_flavor(None)
     await s.capture("screenshot-organizer/review.png")
+    await s.part("screenshot-organizer/review")
+    await s.part("screenshot-organizer/where", pane_to(s.app, "#btn-undo"))
     await s.press("o")
     await s.capture("screenshot-organizer/organize-confirm.png")
+    await s.part("screenshot-organizer/confirm", popup(s.app))
     with hold_progress(past("organize", 0.4)) as (reached, release):
         await s.pilot.press("enter")
         await wait_for(s, reached, "the filing")
         await s.capture("screenshot-organizer/organize-progress.png")
+        await s.part("screenshot-organizer/progress", popup(s.app))
         release.set()
         await s.settle()
     await s.capture("screenshot-organizer/result.png")
+    await s.part("screenshot-organizer/result", filled(s.app.screen.query_one("#result-summary")))
 
 
 async def reveal(s: Session, tree, wanted: Callable[[Any], bool], depth: int = 4):
@@ -689,6 +730,7 @@ async def interface_backup_flow(s: Session) -> None:
         await s.pilot.press("enter")
         await wait_for(s, reached, "the zipping")
         await s.capture("interface-backup/backup-progress.png")
+        await s.part("interface-backup/progress", popup(s.app))
         release.set()
         await s.settle()
     await s.capture("interface-backup/backup-result.png")
@@ -699,11 +741,17 @@ async def interface_backup_flow(s: Session) -> None:
     oldest = min((i for i in review.backups if i.flavor_short == "retail"), key=lambda i: (i.stamp, i.n))
     await reveal(s, tree, lambda data: data[0] == "backup" and data[1] == oldest)
     await s.capture("interface-backup/review.png")
+    await s.part("interface-backup/review")
     await s.press("e")
     await s.capture("interface-backup/restore-screen.png")
-    await s.press("o", "y")
+    await s.part("interface-backup/restore", filled(s.app.screen.query_one("#effects"), most=24))
+    await s.press("o")
+    await s.part("interface-backup/restore-confirm", popup(s.app))
+    await s.press("y")
     await s.capture("interface-backup/restore-result.png")
-    await s.press("z", "y")
+    await s.press("z")
+    await s.part("interface-backup/undo-confirm", popup(s.app))
+    await s.press("y")
     await s.capture("interface-backup/undo-result.png")
 
 
@@ -713,13 +761,19 @@ async def ace3_flow(s: Session) -> None:
     await s.pick_all_accounts()
     await s.press("x")
     await s.capture("ace3-profile-manager/review.png")
+    await s.part("ace3-profile-manager/review")
     await s.press("v", "x")
     await s.capture("ace3-profile-manager/review-by-character.png")
+    from textual.widgets import Tree
+    await s.part("ace3-profile-manager/by-character", filled(s.app.screen.query_one(Tree), most=22))
     await s.press("v", "c", "a", "p")
     await s.capture("ace3-profile-manager/assign-popup.png")
+    await s.part("ace3-profile-manager/assign", popup(s.app))
     await s.press("escape", "o")
     await s.capture("ace3-profile-manager/leftovers-confirm.png")
+    await s.part("ace3-profile-manager/leftovers", popup(s.app))
     await s.press("y", "w")
+    await s.part("ace3-profile-manager/apply-confirm", popup(s.app))
     with hold_progress(past("snapshot", 0.6)) as (reached, release):
         await s.pilot.press("y")
         await wait_for(s, reached, "the WTF backup")
@@ -762,30 +816,36 @@ async def sv_browser_flow(s: Session) -> None:
     tree.focus()
     await s.settle()
     await s.capture("sv-browser/review.png")
+    await s.part("sv-browser/review")
     await s.press("e")
     s.app.screen.query_one("#value-text").value = "13"
     await s.settle()
     await s.capture("sv-browser/edit-value.png")
+    await s.part("sv-browser/edit", popup(s.app))
     await s.press("enter")
     del unit
     tree.focus()
     await s.press("S")
-    popup = s.app.screen
-    popup.query_one("#search-value").value = FONT
-    popup.query_one("#value-mode").value = VALUE_CONTAINS
+    search = s.app.screen
+    search.query_one("#search-value").value = FONT
+    search.query_one("#value-mode").value = VALUE_CONTAINS
     await s.settle()
     await s.capture("sv-browser/search.png")
+    await s.part("sv-browser/search", popup(s.app))
     await s.pilot.click("#find")
     await s.settle()
     await s.capture("sv-browser/search-results.png")
+    await s.part("sv-browser/results", filled(review.query_one("#browse", Tree), most=22))
     review.query_one("#browse", Tree).focus()
     await s.press("e")
     s.app.screen.query_one("#value-text").value = "Expressway"
     await s.settle()
     await s.capture("sv-browser/bulk-edit.png")
+    await s.part("sv-browser/bulk", popup(s.app))
     await s.press("enter")
     await s.press("w")
     await s.capture("sv-browser/apply-confirm.png")
+    await s.part("sv-browser/apply", popup(s.app))
     with hold_progress(past("snapshot", 0.6)) as (reached, release):
         await s.pilot.press("y")
         await wait_for(s, reached, "the WTF backup")
@@ -819,6 +879,7 @@ async def config_copier_flow(s: Session) -> None:
     sources.move_cursor(character_node(sources, "Ellandra"))
     await s.settle()
     await s.capture("config-copier/source.png")
+    await s.part("config-copier/source", filled(sources, most=20))
     await s.press("enter")
     targets = s.app.screen.query_one("#targets", Tree)
     targets.focus()
@@ -828,10 +889,17 @@ async def config_copier_flow(s: Session) -> None:
                              if isinstance(n.data, PairNode) and n.data.plan.name == "macros-cache.txt"))
     await s.settle()
     await s.capture("config-copier/review.png")
+    await s.part("config-copier/review")
     await s.press("d")
     await s.capture("config-copier/diff.png")
+    await s.part("config-copier/diff", filled(s.app.screen.query_one("#diff-scroll"), most=26))
     await s.press("v")
     await s.capture("config-copier/diff-inline.png")
+    await s.press("v", "escape")  # back to side by side for the next diff, and to the review
+    await s.press("w")
+    await s.part("config-copier/write", popup(s.app))
+    await s.press("y")
+    await s.part("config-copier/result", filled(s.app.screen.query_one("#result-summary")))
 
 
 async def macro_editor_flow(s: Session) -> None:
@@ -846,6 +914,7 @@ async def macro_editor_flow(s: Session) -> None:
     tree.move_cursor(node)
     await s.settle()
     await s.capture("macro-editor/browse.png")
+    await s.part("macro-editor/browse")
     await s.press("e")
     body = s.app.screen.query_one("#macro-body")
     body.focus()
@@ -853,6 +922,16 @@ async def macro_editor_flow(s: Session) -> None:
     body.move_cursor((1, line.index("help") + 2))
     await s.settle()
     await s.capture("macro-editor/edit.png")
+    edit_body, macro_body = s.app.screen.query_one("#edit-body").region, s.app.screen.query_one("#macro-body")
+    rows = macro_body.region.y - edit_body.y + macro_body.virtual_size.height + 8  # the lines and some room after
+    await s.part("macro-editor/edit", (edit_body.x, edit_body.y, edit_body.width, min(rows, edit_body.height)))
+    await s.press("ctrl+b")
+    await s.part("macro-editor/builder", popup(s.app))
+    await s.press("escape", "ctrl+o")
+    await s.part("macro-editor/optimize", popup(s.app))
+    await s.press("escape", "ctrl+t")
+    await s.part("macro-editor/template", popup(s.app))
+    await s.press("escape")
 
 
 async def config_editor_flow(s: Session) -> None:
@@ -873,9 +952,48 @@ async def config_editor_flow(s: Session) -> None:
     tree.move_cursor(cvar("cameraDistanceMaxZoomFactor"))
     await s.settle()
     await s.capture("config-editor/browse.png")
+    await s.part("config-editor/browse")
+    await s.part("config-editor/help", s.app.screen.query_one("#side-help-text"))
     tree.move_cursor(next(n for n in walk(tree.root) if isinstance(n.data, FileNode) and n.data.target.label == ACCOUNT))
     await s.press("m")
     await s.capture("config-editor/recommend.png")
+    await s.part("config-editor/recommend", popup(s.app))
+    await s.press("escape")
+    for name in ("Ellandra", "Thrungar", "Vexis"):  # tick three characters: an edit acts on every ticked file
+        tree.move_cursor(character_node(tree, name))
+        await s.press("space")
+    tree.move_cursor(cvar("cameraDistanceMaxZoomFactor"))
+    await s.press("e")
+    await s.part("config-editor/set-many", popup(s.app))
+    await s.press("enter")  # staged on the three: Apply below lists them
+    await s.press("N")
+    await s.pilot.press(*"nameplate")
+    await s.settle()
+    await s.part("config-editor/add", popup(s.app))
+    await s.press("escape")
+    await s.press("w")
+    await s.part("config-editor/apply", popup(s.app))
+    await s.press("escape")
+
+
+def popup(app) -> Any:
+    """The dialog of the popup on top: the first child of the modal screen that takes room."""
+    return next(w for w in app.screen.children if w.region.area)
+
+
+def pane_to(app, last: str) -> tuple[int, int, int, int]:
+    """The left pane (#filters) from its top down to the bottom of widget `last` (its buttons, say)."""
+    pane, end = app.screen.query_one("#filters").region, app.screen.query_one(last).region
+    return pane.x, pane.y, pane.width, end.bottom - pane.y
+
+
+def filled(widget, extra: int = 2, most: int | None = None) -> tuple[int, int, int, int]:
+    """A widget cut to the rows and columns its content fills (a tree or a table smaller than its box), at most
+    `most` rows."""
+    box = widget.region
+    rows = min(box.height, widget.virtual_size.height + extra, most or box.height)
+    return box.x, box.y, min(box.width, widget.virtual_size.width + extra), rows
+
 
 
 Flow = Callable[[Session], Awaitable[None]]
@@ -931,6 +1049,164 @@ SHOTS: tuple[Shot, ...] = (
 
 
 # --------------------------------------------------------------------------------------------------------------
+# Showcases: one image per tool for the README, a full screen with readable cut-outs of its popups and panels
+# --------------------------------------------------------------------------------------------------------------
+@dataclass(frozen=True)
+class Showcase:
+    file: str                         # under docs/assets/screenshots/
+    flow: Flow
+    title: str
+    subtitle: str
+    hero: tuple[str, str]             # (part, caption): the full screen on top
+    cutouts: tuple[tuple[str, str], ...]  # (part, caption): cut to their popup or panel, in rows below
+
+    @property
+    def parts(self) -> list[str]:
+        return [self.hero[0], *(part for part, _ in self.cutouts)]
+
+
+SHOWCASES: tuple[Showcase, ...] = (
+    Showcase("wtf-cleaner/showcase.png", wtf_cleaner_flow, "WTF Cleaner",
+             "Find and remove the settings that addons you no longer use left in your WTF folder",
+             ("wtf-cleaner/review", "Every addon the rules suggest, with why, how many files, their size and age"),
+             (("wtf-cleaner/criteria", "Five rules, each with its colour, and a maximum age you set"),
+              ("wtf-cleaner/confirm", "Clean: every file zipped and the whole WTF folder backed up first"),
+              ("wtf-cleaner/progress", "Progress for every step"),
+              ("wtf-cleaner/result", "What it did, with Undo for the last clean"))),
+    Showcase("screenshot-organizer/showcase.png", screenshot_organizer_flow, "Screenshot Organizer",
+             "File your screenshots into year, month and day folders, in place or into an archive",
+             ("screenshot-organizer/review", "Every screenshot by game version and day, before anything moves"),
+             (("screenshot-organizer/where", "Where they go, and whether they are moved or copied"),
+              ("screenshot-organizer/confirm", "Organize: never overwrites a file, and can be undone"),
+              ("screenshot-organizer/progress", "Progress as it files"),
+              ("screenshot-organizer/result", "What it moved, with Undo for the last run"))),
+    Showcase("interface-backup/showcase.png", interface_backup_flow, "Interface Backup",
+             "Zip a game version's Interface and WTF folders, and restore either one exactly as it was",
+             ("interface-backup/review", "Every game version with its folders and its backups"),
+             (("interface-backup/progress", "Back up: the folders zipped, with progress"),
+              ("interface-backup/restore", "Restore: what it removes and which newer changes are lost, before anything changes"),
+              ("interface-backup/restore-confirm", "A safety backup is taken before every restore"),
+              ("interface-backup/undo-confirm", "Undo puts the folders back as they were"))),
+    Showcase("ace3-profile-manager/showcase.png", ace3_flow, "Ace3 Profile Manager",
+             "See which characters use which Ace3 profile, and delete, rename, copy and reassign them",
+             ("ace3-profile-manager/review", "Every Ace3 addon's profiles and the characters that use each"),
+             (("ace3-profile-manager/by-character", "Or by character: each one's profile in every addon"),
+              ("ace3-profile-manager/assign", "Assign a profile to many characters at once"),
+              ("ace3-profile-manager/leftovers", "Clear out characters that no longer exist"),
+              ("ace3-profile-manager/apply-confirm", "Apply: every change listed, backed up first, and Undo after"))),
+    Showcase("sv-browser/showcase.png", sv_browser_flow, "Saved Variables Browser",
+             "Open any addon's SavedVariables as a tree you can edit, and change every match in one go",
+             ("sv-browser/review", "Every SavedVariables file by game version, account and character, as a tree"),
+             (("sv-browser/edit", "Edit any value"),
+              ("sv-browser/search", "Search keys and values across every file"),
+              ("sv-browser/results", "Every match, ready to change"),
+              ("sv-browser/bulk", "Change every match at once"),
+              ("sv-browser/apply", "Apply: every change listed, backed up first, and Undo after"))),
+    Showcase("config-copier/showcase.png", config_copier_flow, "Config Copier",
+             "Copy one character's macros, enabled addons, chat windows, CVars and layout to other characters",
+             ("config-copier/review", "What each target character gets: every file new, replaced, merged or unchanged"),
+             (("config-copier/source", "Pick the character to copy from"),
+              ("config-copier/diff", "A side-by-side diff of every file it replaces"),
+              ("config-copier/write", "Write: backed up first, with a dry run and Undo"),
+              ("config-copier/result", "What it wrote"))),
+    Showcase("macro-editor/showcase.png", macro_editor_flow, "Macro Editor",
+             "Browse, edit, copy and paste macros across characters, accounts and game versions",
+             ("macro-editor/browse", "Every account's and character's macros in every game version"),
+             (("macro-editor/edit", "An editor that suggests and explains commands and conditionals as you type"),
+              ("macro-editor/builder", "Build a conditional without remembering the syntax"),
+              ("macro-editor/optimize", "Shorten a macro with the optimizer"),
+              ("macro-editor/template", "Start from a template for a common macro"))),
+    Showcase("config-editor/showcase.png", config_editor_flow, "Config Editor",
+             "See and change every CVar in every game version, with help, recommendations, a dry run and Undo",
+             ("config-editor/browse", ("Every CVar in Config.wtf and each account's and character's config, with "
+                                       "its value, default, state and category")),
+             (("config-editor/help", "Help for each CVar: what it does, its default and where the game keeps it"),
+              ("config-editor/recommend", "Sourced recommendations: tick the ones you want"),
+              ("config-editor/set-many", "Set a CVar on every ticked character at once"),
+              ("config-editor/add", "Add any CVar the game knows, with its default and what it does"),
+              ("config-editor/apply", "Apply: every file it changes, backed up first, and Undo after"))),
+)
+
+SHOWCASE_WIDTH = 1920
+SHOWCASE_PAD = 48     # around the edge
+SHOWCASE_GAP = 28     # between cut-outs
+CAPTION_HEIGHT = 58   # two lines of caption under each picture
+HEADER_HEIGHT = 112   # the title and the subtitle
+CUTOUT_SCALE = 1.0    # cut-outs are drawn at the screen's own size: their text matches the hero's or is larger
+
+
+def showcase_page(show: Showcase, parts: dict[str, Part]) -> tuple[str, int]:
+    """The showcase as an HTML page, and its height: the hero across the top, then the cut-outs in justified rows
+    (each row one height, filling the width), each picture over its caption."""
+    inner = SHOWCASE_WIDTH - 2 * SHOWCASE_PAD
+
+    def picture(part: Part, width: float, height: float, region: tuple[float, float, float, float]) -> str:
+        x, y, w, _ = region
+        scale = width / w
+        return (f"<div class='pic' style='width:{width:.1f}px;height:{height:.1f}px'>"
+                f"<img src='{part.png.as_uri()}' style='width:{PNG_SIZE[0] * scale:.1f}px;"
+                f"left:{-x * scale:.1f}px;top:{-y * scale:.1f}px'></div>")
+
+    def pixels(part: Part) -> tuple[float, float, float, float]:
+        if part.region is None:
+            return 0.0, 0.0, float(PNG_SIZE[0]), float(PNG_SIZE[1])
+        cell_w, cell_h = PNG_SIZE[0] / part.cells[0], PNG_SIZE[1] / part.cells[1]
+        x, y, w, h = part.region
+        return x * cell_w, y * cell_h, w * cell_w, h * cell_h
+
+    hero_part, hero_caption = parts[show.hero[0]], show.hero[1]
+    hero_height = inner * PNG_SIZE[1] / PNG_SIZE[0]
+    body = [(f"<figure>{picture(hero_part, inner, hero_height, pixels(hero_part))}"
+             f"<figcaption>{hero_caption}</figcaption></figure>")]
+    height = HEADER_HEIGHT + hero_height + CAPTION_HEIGHT
+    # Every cut-out at one scale, so their text is one size, packed in order into rows that fit the width; only
+    # one wider than the page on its own is drawn smaller.
+    rows: list[list[tuple[str, str, tuple[float, float, float, float], float]]] = [[]]
+    for name, caption in show.cutouts:
+        box = pixels(parts[name])
+        scale = min(CUTOUT_SCALE, inner / box[2])
+        used = sum(b[2] * sc for *_, b, sc in rows[-1]) + SHOWCASE_GAP * len(rows[-1])
+        if rows[-1] and used + box[2] * scale > inner:
+            rows.append([])
+        rows[-1].append((name, caption, box, scale))
+    for row in rows:
+        figures = "".join(f"<figure>{picture(parts[name], box[2] * sc, box[3] * sc, box)}"
+                          f"<figcaption style='width:{box[2] * sc:.1f}px'>{caption}</figcaption></figure>"
+                          for name, caption, box, sc in row)
+        body.append(f"<div class='row'>{figures}</div>")
+        height += SHOWCASE_GAP + max(box[3] * sc for *_, box, sc in row) + CAPTION_HEIGHT
+    height = int(height + SHOWCASE_PAD)
+    page = f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+body {{ margin:0; background:{BACKGROUND}; color:{FOREGROUND}; font-family:"DejaVu Sans",sans-serif;
+       width:{SHOWCASE_WIDTH}px; height:{height}px; overflow:hidden; }}
+main {{ padding:{SHOWCASE_PAD // 2}px {SHOWCASE_PAD}px {SHOWCASE_PAD}px; }}
+h1 {{ margin:0; color:{TITLE_GOLD}; font-size:40px; height:52px; }}
+p.sub {{ margin:0 0 {HEADER_HEIGHT - 52 - 32 - SHOWCASE_PAD // 2}px; font-size:22px; height:32px; opacity:.85; }}
+figure {{ margin:0; }}
+.pic {{ position:relative; overflow:hidden; border:1px solid #2B4C73; border-radius:6px; box-sizing:border-box; }}
+.pic img {{ position:absolute; max-width:none; }}
+figcaption {{ font-size:19px; line-height:24px; height:{CAPTION_HEIGHT - 10}px; padding-top:10px; opacity:.85; }}
+.row {{ display:flex; gap:{SHOWCASE_GAP}px; justify-content:center; align-items:flex-start;
+        margin-top:{SHOWCASE_GAP}px; }}
+</style></head><body><main><h1>{show.title}</h1><p class="sub">{show.subtitle}</p>{"".join(body)}</main></body></html>"""
+    return page, height
+
+
+def build_showcase(show: Showcase, options: Options) -> None:
+    page, height = showcase_page(show, options.parts_taken)
+    html = options.parts / f"{show.file.replace('/', '--')}.html"
+    html.write_text(page, encoding="utf-8")
+    png = options.out / show.file
+    png.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as profile:
+        subprocess.run([options.chrome, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run",
+                        "--force-device-scale-factor=1", "--allow-file-access-from-files", f"--user-data-dir={profile}",
+                        f"--window-size={SHOWCASE_WIDTH},{height}", f"--screenshot={png}", html.as_uri()],
+                       check=True, capture_output=True, timeout=120)
+    print(f"  {show.file}")
+
+
+# --------------------------------------------------------------------------------------------------------------
 async def run_flow(flow: Flow, options: Options) -> list[str]:
     from wowtools.ui import dialogs
     dialogs.CONFIRM_GUARD = 0.0  # a confirm takes Enter at once
@@ -969,21 +1245,38 @@ def main(argv: list[str] | None = None) -> int:
     if args.list:
         for shot in SHOTS:
             print(f"{shot.file:48} {shot.caption}")
+        for show in SHOWCASES:
+            print(f"{show.file:48} Showcase: {show.title}")
         return 0
     only = args.only or []
-    wanted = {shot.file for shot in SHOTS
-              if not only or any(shot.file == o or shot.file.split("/")[0] == o.strip("/") for o in only)}
-    if not wanted:
+
+    def asked(file: str) -> bool:
+        return not only or any(file == o or file.split("/")[0] == o.strip("/") for o in only)
+    wanted = {shot.file for shot in SHOTS if asked(shot.file)}
+    shows = [show for show in SHOWCASES if asked(show.file)]
+    if not wanted and not shows:
         parser.error(f"nothing matches {' '.join(only)} (see --list)")
-    options = Options(args.size, args.out, args.keep_svg, args.font, find_chrome(args.chrome), wanted)
-    flows: list[Flow] = []
-    for shot in SHOTS:
-        if shot.file in wanted and shot.flow not in flows:
-            flows.append(shot.flow)
-    taken: list[str] = []
-    for flow in flows:
-        print(f"{flow.__name__}:")
-        taken += asyncio.run(run_flow(flow, options))
+    with tempfile.TemporaryDirectory() as parts:
+        options = Options(args.size, args.out, args.keep_svg, args.font, find_chrome(args.chrome), wanted,
+                          Path(parts), {part for show in shows for part in show.parts})
+        flows: list[Flow] = []
+        for flow in [shot.flow for shot in SHOTS if shot.file in wanted] + [show.flow for show in shows]:
+            if flow not in flows:
+                flows.append(flow)
+        taken: list[str] = []
+        for flow in flows:
+            print(f"{flow.__name__}:")
+            taken += asyncio.run(run_flow(flow, options))
+        if shows:
+            print("showcases:")
+        for show in shows:
+            lost = [part for part in show.parts if part not in options.parts_taken]
+            if lost:
+                print(f"Showcase {show.file} left out: no {', '.join(lost)}", file=sys.stderr)
+                continue
+            build_showcase(show, options)
+            taken.append(show.file)
+    wanted |= {show.file for show in shows}
     missing = sorted(wanted - set(taken))
     print(f"{len(taken)} screenshots in {options.out}")
     if missing:

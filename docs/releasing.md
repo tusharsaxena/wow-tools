@@ -89,8 +89,10 @@ install it can only be the user's.
 2. Bump `__version__` in `wowtools/__init__.py`, following semver. Then retake the screenshots, so they show the
    screens as they are and the new version in their bottom bar: `python3 scripts/take_screenshots.py` (about 3
    minutes; it needs Google Chrome or Chromium for the PNGs). It draws every image under `docs/assets/screenshots/`
-   from a made-up WoW folder at 1920x1032, never your own. Look over the changed images before you commit them. A
-   screen the guides should show but no image has yet is one `SHOTS` row in the script.
+   from a made-up WoW folder at 1920x1032, never your own, and each tool's `showcase.png` (the README's picture of
+   it: its main screen with its key popups cut out below). Look over the changed images before you commit them. A
+   screen the guides should show but no image has yet is one `SHOTS` row in the script; a showcase is a
+   `SHOWCASES` row.
 3. Add the [`CHANGELOG.md`](../CHANGELOG.md) entry for vX.Y.Z: a `## [X.Y.Z] - YYYY-MM-DD` heading (today's date) above the previous
    one, with what changed (move anything under `## [Unreleased]` into it). Every tagged release must have an entry:
    the app shows it (`c` on the tool menu), a test fails while `__version__` has none, and step 6 refuses a tag
